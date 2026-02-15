@@ -26,7 +26,7 @@ export const UserHandlers = UserApi.toLayer(
         Effect.gen(function* () {
           const users = yield* Ref.get(usersRef)
           const user = users.find((u) => u.id === id)
-          if (!user) {
+          if (user === undefined) {
             return yield* Effect.fail(new UserNotFoundError({ userId: id }))
           }
           return user

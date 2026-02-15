@@ -28,7 +28,7 @@ export const Inspector: FC<TableInspectorProps | ObjectInspectorProps> = ({
   data,
   ...rest
 }) => {
-  if (table) {
+  if (table === true) {
     return <TableInspector data={data} {...rest} />
   }
 

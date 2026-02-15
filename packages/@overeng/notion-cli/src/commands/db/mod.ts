@@ -119,10 +119,10 @@ const parseSimpleFilter = (
   filterStr: string,
 ): { property: string; [key: string]: unknown } | undefined => {
   const match = filterStr.match(/^([^=]+)=(.+)$/)
-  if (!match) return undefined
+  if (match === null) return undefined
 
   const [, property, value] = match
-  if (!property || !value) return undefined
+  if (property === undefined || value === undefined) return undefined
 
   // For now, assume it's a select/status property
   // TODO: Support more property types based on introspection
@@ -163,9 +163,9 @@ const extractAssetFromBlock = (block: BlockWithDepth['block']): AssetInfo | unde
       }
     | undefined
 
-  if (!blockData) return undefined
+  if (blockData === undefined) return undefined
 
-  if (blockData.type === 'file' && blockData.file) {
+  if (blockData.type === 'file' && blockData.file !== undefined) {
     const fileName = blockData.name ?? `${block.type}-${block.id}`
     return {
       blockId: block.id,
@@ -177,9 +177,9 @@ const extractAssetFromBlock = (block: BlockWithDepth['block']): AssetInfo | unde
     }
   }
 
-  if (blockData.type === 'external' && blockData.external) {
+  if (blockData.type === 'external' && blockData.external !== undefined) {
     const urlPath = blockData.external.url.split('/').pop() ?? ''
-    const fileName = blockData.name ?? (urlPath || `${block.type}-${block.id}`)
+    const fileName = blockData.name ?? (urlPath !== '' ? urlPath : `${block.type}-${block.id}`)
     return {
       blockId: block.id,
       blockType: block.type,
@@ -197,7 +197,7 @@ const extractAssetFromBlock = (block: BlockWithDepth['block']): AssetInfo | unde
 const extractAssetsFromBlocks = (blocks: readonly BlockWithDepth[]): readonly AssetInfo[] =>
   blocks.flatMap((b) => {
     const asset = extractAssetFromBlock(b.block)
-    return asset ? [asset] : []
+    return asset !== undefined ? [asset] : []
   })
 
 /** Download a single asset to the filesystem */
@@ -209,7 +209,7 @@ const downloadAsset = (args: { asset: AssetInfo; pageId: string; assetsDir: Abso
 
     const pageDir = EffectPath.ops.join(assetsDir, EffectPath.unsafe.relativeDir(`${pageId}/`))
     const dirExists = yield* fs.exists(pageDir)
-    if (!dirExists) {
+    if (dirExists === false) {
       yield* fs.makeDirectory(pageDir, { recursive: true })
     }
 
@@ -288,9 +288,9 @@ const dumpCommand = Command.make(
 
               // Handle incremental dump
               let lastEditedFilter: string | undefined
-              if (sinceLast) {
+              if (sinceLast === true) {
                 const checkpointExists = yield* fs.exists(checkpointPath)
-                if (checkpointExists) {
+                if (checkpointExists === true) {
                   const checkpointContent = yield* fs.readFileString(checkpointPath)
                   const checkpointData = yield* Schema.decodeUnknown(
                     Schema.parseJson(CheckpointData),
@@ -308,7 +308,7 @@ const dumpCommand = Command.make(
 
               // Create combined filter if we have both time and property filters
               let combinedFilter: DatabaseFilter | undefined
-              if (lastEditedFilter && queryFilter) {
+              if (lastEditedFilter !== undefined && queryFilter !== undefined) {
                 combinedFilter = {
                   and: [
                     {
@@ -318,12 +318,12 @@ const dumpCommand = Command.make(
                     queryFilter,
                   ],
                 }
-              } else if (lastEditedFilter) {
+              } else if (lastEditedFilter !== undefined) {
                 combinedFilter = {
                   timestamp: 'last_edited_time',
                   last_edited_time: { after: lastEditedFilter },
                 }
-              } else if (queryFilter) {
+              } else if (queryFilter !== undefined) {
                 combinedFilter = queryFilter
               }
 
@@ -370,7 +370,7 @@ export const DUMP_META = {
 
               // Ensure output directory exists
               const dirExists = yield* fs.exists(outputDir)
-              if (!dirExists) {
+              if (dirExists === false) {
                 yield* fs.makeDirectory(outputDir, { recursive: true })
               }
 
@@ -400,7 +400,7 @@ export const DUMP_META = {
 
                   // Fetch content blocks if --content flag is set
                   let contentBlocks: (typeof DumpPage.Type)['content'] = undefined
-                  if (content) {
+                  if (content === true) {
                     const blocksStream = NotionBlocks.retrieveAllNested({
                       blockId: page.id,
                       ...(Option.isSome(depth) === true ? { maxDepth: depth.value } : {}),
@@ -425,7 +425,7 @@ export const DUMP_META = {
                     // Handle assets
                     const pageAssets = extractAssetsFromBlocks(blocks)
                     if (pageAssets.length > 0) {
-                      if (assets) {
+                      if (assets === true) {
                         // Download assets
                         for (const asset of pageAssets) {
                           const downloadResult = yield* downloadAsset({
@@ -443,7 +443,7 @@ export const DUMP_META = {
                             ),
                           )
 
-                          if (downloadResult.success) {
+                          if (downloadResult.success === true) {
                             totalAssetsDownloaded++
                             totalAssetBytes += downloadResult.size
                           } else {
@@ -477,7 +477,7 @@ export const DUMP_META = {
                 // Dispatch page count update after each batch
                 tui.dispatch({ _tag: 'AddPages', count: result.results.length })
 
-                if (!result.hasMore || Option.isNone(result.nextCursor) === true) {
+                if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
                   break
                 }
                 startCursor = result.nextCursor.value
@@ -494,7 +494,7 @@ export const DUMP_META = {
                 lastDumpedAt: dumpedAt,
                 pageCount,
                 contentIncluded: content,
-                ...(assets
+                ...(assets === true
                   ? {
                       assets: {
                         count: totalAssetsDownloaded,
@@ -573,7 +573,7 @@ const infoCommand = Command.make(
                 dbId: db.id,
                 dbUrl: db.url,
                 properties: propertyList,
-                rowCount: result.hasMore ? '100+' : String(result.results.length),
+                rowCount: result.hasMore === true ? '100+' : String(result.results.length),
               })
             })
 

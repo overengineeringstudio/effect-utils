@@ -24,7 +24,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)(
           const paragraphBlock = blocks.find((b) => b.type === 'paragraph')
           expect(paragraphBlock).toBeDefined()
 
-          if (paragraphBlock) {
+          if (paragraphBlock !== undefined) {
             const blockData = paragraphBlock as {
               paragraph?: { rich_text?: unknown[] }
             }
@@ -56,7 +56,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)(
             (b) => b.type === 'heading_1' || b.type === 'heading_2' || b.type === 'heading_3',
           )
 
-          if (headingBlock) {
+          if (headingBlock !== undefined) {
             const blockData = headingBlock as unknown as {
               [key: string]: { rich_text?: unknown[] }
             }

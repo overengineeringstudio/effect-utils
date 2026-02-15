@@ -287,7 +287,7 @@ export const formatDiff = ({ diff, databaseId, filePath }: FormatDiffOptions): s
 
   lines.push('')
   const counts: string[] = []
-  if (!diff.databaseIdMatch) counts.push('database id mismatch')
+  if (diff.databaseIdMatch === false) counts.push('database id mismatch')
   if (added.length > 0) counts.push(`${added.length} added`)
   if (removed.length > 0) counts.push(`${removed.length} removed`)
   if (typeChanged.length > 0) counts.push(`${typeChanged.length} type changed`)

@@ -222,7 +222,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     const { originalPath, realPath } = args
     const normalizedReal = removeTrailingSlash(lexicalPure(realPath as AbsolutePath))
 
-    if (!contains(normalizedReal as AbsolutePath)) {
+    if (contains(normalizedReal as AbsolutePath) === false) {
       return Effect.fail(
         new TraversalError({
           path: originalPath,

@@ -101,7 +101,7 @@ export class InlineRenderer {
       hideCursor: options.hideCursor ?? true,
     }
     this.instanceId = ++globalInstanceCount
-    if (DEBUG) {
+    if (DEBUG === true) {
       console.error(
         `[TUI_DEBUG] InlineRenderer created: instance=${this.instanceId} isTTY=${terminal.isTTY} cols=${terminal.columns} rows=${terminal.rows}`,
       )
@@ -118,7 +118,7 @@ export class InlineRenderer {
     if (lines.length === 0) return
 
     // If we have dynamic content, we need to clear it first, print static, then re-render dynamic
-    if (this.hasRendered && this.dynamicLines.length > 0) {
+    if (this.hasRendered === true && this.dynamicLines.length > 0) {
       this.clearDynamic()
     }
 
@@ -129,7 +129,7 @@ export class InlineRenderer {
     this.staticLines.push(...lines)
 
     // Re-render dynamic content below the new static content
-    if (this.hasRendered && this.dynamicLines.length > 0) {
+    if (this.hasRendered === true && this.dynamicLines.length > 0) {
       this.previousDynamic = [] // Force full re-render
       this.renderDynamic()
     }
@@ -159,7 +159,7 @@ export class InlineRenderer {
   dispose(options: DisposeOptions = {}): void {
     const mode = options.mode ?? 'persist'
 
-    if (this.terminal.isTTY) {
+    if (this.terminal.isTTY === true) {
       switch (mode) {
         case 'persist':
           // Keep everything as-is, just show cursor
@@ -167,7 +167,7 @@ export class InlineRenderer {
 
         case 'clear':
           // Clear both dynamic and static regions
-          if (this.hasRendered && this.dynamicLines.length > 0) {
+          if (this.hasRendered === true && this.dynamicLines.length > 0) {
             this.clearDynamic()
           }
           // Clear static lines by moving up and clearing each line
@@ -178,7 +178,7 @@ export class InlineRenderer {
 
         case 'clearDynamic':
           // Clear only dynamic region, keep static
-          if (this.hasRendered && this.dynamicLines.length > 0) {
+          if (this.hasRendered === true && this.dynamicLines.length > 0) {
             this.clearDynamic()
           }
           break
@@ -186,7 +186,7 @@ export class InlineRenderer {
     }
 
     // Always restore cursor visibility
-    if (this.cursorHidden) {
+    if (this.cursorHidden === true) {
       this.terminal.write(showCursor())
       this.cursorHidden = false
     }
@@ -212,12 +212,12 @@ export class InlineRenderer {
    * terminal reflow during resize invalidates cursor position assumptions.
    */
   reset(): void {
-    if (DEBUG) {
+    if (DEBUG === true) {
       console.error(
         `[TUI_DEBUG] reset() called: instance=${this.instanceId} hadRendered=${this.hasRendered} staticLines=${this.staticLines.length} dynamicLines=${this.dynamicLines.length}`,
       )
     }
-    if (this.terminal.isTTY) {
+    if (this.terminal.isTTY === true) {
       // Clear entire screen - line-by-line clearing doesn't work after reflow
       this.terminal.write(clearScreenAndHome())
     }
@@ -235,15 +235,15 @@ export class InlineRenderer {
 
   private renderDynamic(): void {
     const renderNum = ++globalRenderCount
-    if (DEBUG) {
+    if (DEBUG === true) {
       console.error(
         `[TUI_DEBUG] renderDynamic #${renderNum}: instance=${this.instanceId} isTTY=${this.terminal.isTTY} hasRendered=${this.hasRendered} prevLines=${this.previousDynamic.length} currLines=${this.dynamicLines.length}`,
       )
     }
 
-    if (!this.terminal.isTTY) {
+    if (this.terminal.isTTY === false) {
       // Non-TTY: just print lines (no cursor control available)
-      if (DEBUG) {
+      if (DEBUG === true) {
         console.error(
           `[TUI_DEBUG] #${renderNum}: Taking NON-TTY path (isTTY=${this.terminal.isTTY})`,
         )
@@ -256,33 +256,33 @@ export class InlineRenderer {
     }
 
     // Hide cursor during render
-    if (this.options.hideCursor && !this.cursorHidden) {
+    if (this.options.hideCursor === true && this.cursorHidden === false) {
       this.terminal.write(hideCursor())
       this.cursorHidden = true
     }
 
     // Begin synchronized output
-    if (this.options.syncOutput) {
+    if (this.options.syncOutput === true) {
       this.terminal.write(beginSyncOutput())
     }
 
     try {
-      if (!this.hasRendered) {
+      if (this.hasRendered === false) {
         // First render: just output all lines
-        if (DEBUG) {
+        if (DEBUG === true) {
           console.error(`[TUI_DEBUG] #${renderNum}: Taking FIRST-RENDER path (hasRendered=false)`)
         }
         this.renderAllDynamic()
       } else {
         // Subsequent render: use differential update
-        if (DEBUG) {
+        if (DEBUG === true) {
           console.error(`[TUI_DEBUG] #${renderNum}: Taking DIFFERENTIAL path (hasRendered=true)`)
         }
         this.renderDifferential()
       }
     } finally {
       // End synchronized output
-      if (this.options.syncOutput) {
+      if (this.options.syncOutput === true) {
         this.terminal.write(endSyncOutput())
       }
     }
@@ -312,7 +312,7 @@ export class InlineRenderer {
 
     // If nothing changed, nothing to do
     if (firstDiff === prevLen && firstDiff === currLen) {
-      if (DEBUG) {
+      if (DEBUG === true) {
         console.error(`[TUI_DEBUG] renderDifferential: NO CHANGES, skipping`)
       }
       return
@@ -320,7 +320,7 @@ export class InlineRenderer {
 
     // Move cursor to first differing line
     const linesToMoveUp = prevLen - firstDiff
-    if (DEBUG) {
+    if (DEBUG === true) {
       console.error(
         `[TUI_DEBUG] renderDifferential: firstDiff=${firstDiff} prevLen=${prevLen} currLen=${currLen} linesToMoveUp=${linesToMoveUp}`,
       )
@@ -350,7 +350,7 @@ export class InlineRenderer {
   }
 
   private clearDynamic(): void {
-    if (!this.terminal.isTTY || this.previousDynamic.length === 0) return
+    if (this.terminal.isTTY === false || this.previousDynamic.length === 0) return
 
     // Move to start of dynamic region and clear all lines
     const linesToClear = this.previousDynamic.length
@@ -363,7 +363,7 @@ export class InlineRenderer {
   }
 
   private clearStaticLines(): void {
-    if (!this.terminal.isTTY || this.staticLines.length === 0) return
+    if (this.terminal.isTTY === false || this.staticLines.length === 0) return
 
     // Move up past all static lines and clear them
     const linesToClear = this.staticLines.length

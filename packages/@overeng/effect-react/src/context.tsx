@@ -105,7 +105,7 @@ export const EffectProvider = <TEnv, TErr>({
 
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
-      if (managedRuntime) {
+      if (managedRuntime !== undefined) {
         managedRuntime.dispose().catch(() => {
           // Ignore disposal errors during cleanup
         })

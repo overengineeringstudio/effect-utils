@@ -81,10 +81,10 @@ export const lexicalPure = <P extends Path>(path: P): P => {
     finalPath = '/' + finalPath
   }
   if (finalPath === '') {
-    finalPath = isAbsolute ? '/' : '.'
+    finalPath = isAbsolute === true ? '/' : '.'
   }
 
-  if (hadTrailingSlash && finalPath.endsWith('/') === false) {
+  if (hadTrailingSlash === true && finalPath.endsWith('/') === false) {
     finalPath = finalPath + '/'
   }
 

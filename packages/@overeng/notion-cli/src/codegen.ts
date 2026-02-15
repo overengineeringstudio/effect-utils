@@ -199,7 +199,7 @@ const ROLLUP_DATE_FUNCTIONS = new Set(['earliest_date', 'latest_date', 'date_ran
 
 const inferRollupTransform = (property: PropertyInfo): string | undefined => {
   const fn = property.rollup?.function
-  if (!fn) return undefined
+  if (fn === undefined) return undefined
 
   if (fn === 'show_original') return 'asArray'
   if (ROLLUP_BOOLEAN_FUNCTIONS.has(fn) === true) return 'asBoolean'
@@ -216,7 +216,7 @@ const inferDefaultTransform = (property: PropertyInfo): string => {
 
   if (property.type === 'rollup') {
     const rollupTransform = inferRollupTransform(property)
-    if (rollupTransform) return rollupTransform
+    if (rollupTransform !== undefined) return rollupTransform
   }
 
   return DEFAULT_TRANSFORMS[property.type] ?? 'raw'
@@ -328,7 +328,7 @@ const toTopLevelIdentifier = (name: string): string => {
 }
 
 const formatNotionSchemaCall = (options: { name: string; typeName?: string }): string =>
-  `NotionSchema.${options.name}${options.typeName ? `(${options.typeName})` : '()'}`
+  `NotionSchema.${options.name}${options.typeName !== undefined ? `(${options.typeName})` : '()'}`
 
 const formatMetaValue = (value: unknown): string => {
   if (value === null) return 'null'
@@ -453,7 +453,7 @@ const generatePropertyField = (options: {
 }): string => {
   const { property, transformConfig, typedOptions, schemaMeta } = options
   const transformKeys = NOTION_SCHEMA_TRANSFORM_KEYS[property.type]
-  if (!transformKeys) {
+  if (transformKeys === undefined) {
     return 'Schema.Unknown'
   }
 
@@ -463,16 +463,16 @@ const generatePropertyField = (options: {
   const defaultTransform = inferDefaultTransform(property)
 
   const transform =
-    configuredTransform && availableTransforms.includes(configuredTransform) === true
+    configuredTransform !== undefined && availableTransforms.includes(configuredTransform) === true
       ? configuredTransform
       : defaultTransform
 
   const typedOptionName = typedOptions.typeName
   if (property.type === 'select') {
     const base = formatNotionSchemaCall(
-      typedOptionName ? { name: 'select', typeName: typedOptionName } : { name: 'select' },
+      typedOptionName !== undefined ? { name: 'select', typeName: typedOptionName } : { name: 'select' },
     )
-    const metaSuffix = schemaMeta
+    const metaSuffix = schemaMeta === true
       ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
       : ''
     if (transform === 'asName') {
@@ -486,9 +486,9 @@ const generatePropertyField = (options: {
 
   if (property.type === 'status') {
     const base = formatNotionSchemaCall(
-      typedOptionName ? { name: 'status', typeName: typedOptionName } : { name: 'status' },
+      typedOptionName !== undefined ? { name: 'status', typeName: typedOptionName } : { name: 'status' },
     )
-    const metaSuffix = schemaMeta
+    const metaSuffix = schemaMeta === true
       ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
       : ''
     if (transform === 'asName') {
@@ -502,11 +502,11 @@ const generatePropertyField = (options: {
 
   if (property.type === 'multi_select') {
     const base = formatNotionSchemaCall(
-      typedOptionName
+      typedOptionName !== undefined
         ? { name: 'multiSelect', typeName: typedOptionName }
         : { name: 'multiSelect' },
     )
-    const metaSuffix = schemaMeta
+    const metaSuffix = schemaMeta === true
       ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
       : ''
     if (transform === 'asNames') {
@@ -516,12 +516,12 @@ const generatePropertyField = (options: {
   }
 
   const transformKey = transformKeys[transform]
-  if (!transformKey) {
+  if (transformKey === undefined) {
     return 'Schema.Unknown'
   }
 
   const value = `NotionSchema.${transformKey}`
-  return schemaMeta
+  return schemaMeta === true
     ? `${value}.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
     : value
 }
@@ -535,7 +535,7 @@ const generateWritePropertyField = (property: PropertyInfo): string | null => {
   }
 
   const transformKey = WRITE_TRANSFORM_KEYS[property.type]
-  if (!transformKey) {
+  if (transformKey === undefined) {
     return null
   }
 
@@ -554,15 +554,15 @@ const generateTypedOptions = (opts: {
   const { property, pascalName } = opts
   let options: readonly { name: string }[] | undefined
 
-  if (property.type === 'select' && property.select?.options) {
+  if (property.type === 'select' && property.select?.options !== undefined) {
     options = property.select.options
-  } else if (property.type === 'multi_select' && property.multi_select?.options) {
+  } else if (property.type === 'multi_select' && property.multi_select?.options !== undefined) {
     options = property.multi_select.options
-  } else if (property.type === 'status' && property.status?.options) {
+  } else if (property.type === 'status' && property.status?.options !== undefined) {
     options = property.status.options
   }
 
-  if (!options || options.length === 0) {
+  if (options === undefined || options.length === 0) {
     return null
   }
 
@@ -574,7 +574,7 @@ const generateTypedOptions = (opts: {
     .map((o) => sanitizeLiteralValue(o.name))
     .join(', ')
 
-  const descPart = property.description
+  const descPart = property.description !== undefined
     ? `,\n  description: ${toSingleQuotedStringLiteral(property.description)},`
     : ''
   const code = `export const ${typeName} = Schema.Literal(${literals}).annotations({
@@ -594,7 +594,7 @@ const parseGenerateOptions = (
   generatorVersion?: string
   schemaNameOverride?: string
 } => {
-  if (!options) {
+  if (options === undefined) {
     return {
       includeWrite: false,
       typedOptions: false,
@@ -665,16 +665,16 @@ const generateConfigComment = (options: {
   if (options.schemaNameOverride !== undefined) {
     config.name = options.schemaNameOverride
   }
-  if (options.includeWrite) {
+  if (options.includeWrite === true) {
     config.includeWrite = true
   }
-  if (options.typedOptions) {
+  if (options.typedOptions === true) {
     config.typedOptions = true
   }
-  if (options.includeApi) {
+  if (options.includeApi === true) {
     config.includeApi = true
   }
-  if (!options.schemaMeta) {
+  if (options.schemaMeta === false) {
     config.schemaMeta = false
   }
   if (Object.keys(options.transforms).length > 0) {
@@ -713,10 +713,10 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
     typeName: string
     code: string
   }> = []
-  if (typedOptions) {
+  if (typedOptions === true) {
     for (const prop of dbInfo.properties) {
       const result = generateTypedOptions({ property: prop, pascalName })
-      if (result) {
+      if (result !== null) {
         typedOptionsDefs.push({ property: prop, ...result })
       }
     }
@@ -735,25 +735,25 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
         transformConfig: transforms,
         typedOptions: {
           enabled: typedOptions,
-          ...(typeName ? { typeName } : {}),
+          ...(typeName !== undefined ? { typeName } : {}),
         },
         schemaMeta,
       })
       // Add JSDoc comment if description is available
-      const jsdoc = prop.description ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
+      const jsdoc = prop.description !== undefined ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
       return `${jsdoc}  ${key}: ${field},`
     })
     .join('\n')
 
   // Generate write property fields (excluding read-only)
-  const writePropertyFields = includeWrite
+  const writePropertyFields = includeWrite === true
     ? dbInfo.properties
         .map((prop) => {
           const writeField = generateWritePropertyField(prop)
-          if (!writeField) return null
+          if (writeField === null) return null
           const key = sanitizePropertyKey(prop.name)
           // Add JSDoc comment if description is available
-          const jsdoc = prop.description
+          const jsdoc = prop.description !== undefined
             ? `  /** ${sanitizeLineComment(prop.description)} */\n`
             : ''
           return `${jsdoc}  ${key}: ${writeField},`
@@ -775,13 +775,13 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   // Build the code
   const lines: string[] = [
     `// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY`,
-    `// Generated by notion-effect-schema-gen${generatorVersion ? ` v${generatorVersion}` : ''}`,
+    `// Generated by notion-effect-schema-gen${generatorVersion !== undefined ? ` v${generatorVersion}` : ''}`,
     `// Database: ${dbInfo.name}`,
     `// ID: ${dbInfo.id}`,
     `// URL: ${dbInfo.url}`,
-    ...(configComment ? [configComment] : []),
+    ...(configComment !== '' ? [configComment] : []),
     ``,
-    `import { NotionSchema${schemaMeta ? ', notionPropertyMeta' : ''} } from '@overeng/notion-effect-schema'`,
+    `import { NotionSchema${schemaMeta === true ? ', notionPropertyMeta' : ''} } from '@overeng/notion-effect-schema'`,
     `import { Schema } from 'effect'`,
   ]
 
@@ -834,7 +834,7 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
   )
 
   // Write schema (if enabled)
-  if (includeWrite && writePropertyFields) {
+  if (includeWrite === true && writePropertyFields !== '') {
     lines.push(``)
     lines.push(`// -----------------------------------------------------------------------------`)
     lines.push(`// Write Schema`)
@@ -945,15 +945,15 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
 
   const lines: string[] = [
     `// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY`,
-    `// Generated by notion-effect-schema-gen${generatorVersion ? ` v${generatorVersion}` : ''}`,
+    `// Generated by notion-effect-schema-gen${generatorVersion !== undefined ? ` v${generatorVersion}` : ''}`,
     `// Database API wrapper for: ${dbInfo.name}`,
     `// ID: ${dbInfo.id}`,
     `// URL: ${dbInfo.url}`,
-    ...(configComment ? [configComment] : []),
+    ...(configComment !== '' ? [configComment] : []),
     ``,
     `import { NotionDatabases, NotionPages, type TypedPage } from '@overeng/notion-effect-client'`,
     `import { Stream } from 'effect'`,
-    `import { ${pascalName}PageProperties${includeWrite ? `, ${pascalName}PageWrite, encode${pascalName}Write` : ''} } from '${schemaImportPath}'`,
+    `import { ${pascalName}PageProperties${includeWrite === true ? `, ${pascalName}PageWrite, encode${pascalName}Write` : ''} } from '${schemaImportPath}'`,
     ``,
     `/** Database ID for ${dbInfo.name} */`,
     `const DATABASE_ID = '${dbInfo.id}'`,
@@ -1008,7 +1008,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
   ]
 
   // Add create/update if write schema is enabled
-  if (includeWrite) {
+  if (includeWrite === true) {
     lines.push(``)
     lines.push(`// -----------------------------------------------------------------------------`)
     lines.push(`// Create`)

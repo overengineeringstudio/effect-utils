@@ -165,14 +165,14 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
           const result = yield* NotionDatabases.query({
             databaseId: TEST_IDS.largeDatabase,
             pageSize: 3,
-            ...(startCursor ? { startCursor } : {}),
+            ...(startCursor !== undefined ? { startCursor } : {}),
           })
 
           for (const page of result.results) {
             allPages.push(page.id)
           }
 
-          if (!result.hasMore) break
+          if (result.hasMore === false) break
           if (Option.isNone(result.nextCursor) === true) break
           startCursor = result.nextCursor.value
         }

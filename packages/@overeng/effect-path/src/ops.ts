@@ -217,7 +217,7 @@ export const parentPlatform = Effect.fnUntraced(function* (path: Path) {
 
   // Check if we're at root
   if (dirname === path || dirname === removeTrailingSlash(path)) {
-    return isFile ? (ensureTrailingSlash(dirname) as DirPath) : undefined
+    return isFile === true ? (ensureTrailingSlash(dirname) as DirPath) : undefined
   }
 
   return ensureTrailingSlash(dirname) as DirPath
@@ -293,8 +293,8 @@ export const withBaseName = <P extends Path>(args: {
   const { path, name } = args
   const isDir = hasTrailingSlash(path)
   const oldName = getFilename(removeTrailingSlash(path))
-  const ext = isDir ? undefined : extractFullExtension(oldName)
-  const dir = path.slice(0, -(oldName.length + (isDir ? 1 : 0)))
+  const ext = isDir === true ? undefined : extractFullExtension(oldName)
+  const dir = path.slice(0, -(oldName.length + (isDir === true ? 1 : 0)))
 
   if (isDir === true) {
     return ensureTrailingSlash(`${dir}${name}`) as P
@@ -359,7 +359,7 @@ export const stripPrefix = (args: {
 }): RelativePath | undefined => {
   const { path, prefix } = args
 
-  if (!startsWith({ path, prefix })) {
+  if (startsWith({ path, prefix }) === false) {
     return undefined
   }
 

@@ -11,7 +11,7 @@ const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
       <span style={styles.tagName}>{tagName}</span>
 
       {(() => {
-        if (attributes) {
+        if (attributes !== undefined) {
           const attributeNodes: ReactNode[] = []
           for (let i = 0; i < attributes.length; i++) {
             const attribute = attributes[i]
@@ -64,7 +64,7 @@ const nameByNodeType: Record<number, string> = {
 export const DOMNodePreview: FC<any> = ({ isCloseTag, data, expanded }) => {
   const styles = useStyles('DOMNodePreview')
 
-  if (isCloseTag) {
+  if (isCloseTag === true) {
     return <CloseTag styles={styles.htmlCloseTag} isChildNode tagName={data.tagName} />
   }
 
@@ -78,9 +78,9 @@ export const DOMNodePreview: FC<any> = ({ isCloseTag, data, expanded }) => {
             styles={styles.htmlOpenTag}
           />
 
-          {shouldInline(data) ? data.textContent : !expanded && '…'}
+          {shouldInline(data) === true ? data.textContent : expanded === false && '…'}
 
-          {!expanded && <CloseTag tagName={data.tagName} styles={styles.htmlCloseTag} />}
+          {expanded === false && <CloseTag tagName={data.tagName} styles={styles.htmlCloseTag} />}
         </span>
       )
     case Node.TEXT_NODE:
@@ -102,9 +102,9 @@ export const DOMNodePreview: FC<any> = ({ isCloseTag, data, expanded }) => {
         <span style={styles.htmlDoctype}>
           {'<!DOCTYPE '}
           {data.name}
-          {data.publicId ? ` PUBLIC "${data.publicId}"` : ''}
-          {!data.publicId && data.systemId ? ' SYSTEM' : ''}
-          {data.systemId ? ` "${data.systemId}"` : ''}
+          {data.publicId !== undefined ? ` PUBLIC "${data.publicId}"` : ''}
+          {data.publicId === undefined && data.systemId !== undefined ? ' SYSTEM' : ''}
+          {data.systemId !== undefined ? ` "${data.systemId}"` : ''}
           {'>'}
         </span>
       )

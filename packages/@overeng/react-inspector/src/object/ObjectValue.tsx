@@ -37,7 +37,7 @@ export const ObjectValue: FC<any> = ({ object, styles }) => {
       if (Array.isArray(object) === true) {
         return <span>{`Array(${object.length})`}</span>
       }
-      if (!object.constructor) {
+      if (object.constructor === undefined) {
         return <span>Object</span>
       }
       if (

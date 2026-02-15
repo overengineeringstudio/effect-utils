@@ -80,7 +80,7 @@ const isKnownBooleanExpression = (node: any): boolean => {
   const callee = node.callee
 
   // obj.method(...) — check method name
-  if (callee.type === 'MemberExpression' && callee.property?.name) {
+  if (callee.type === 'MemberExpression' && callee.property?.name !== undefined) {
     const name = callee.property.name
     if (KNOWN_BOOLEAN_METHODS.has(name) === true) return true
     if (isBooleanNamingConvention(name) === true) return true
@@ -94,7 +94,7 @@ const isKnownBooleanExpression = (node: any): boolean => {
 
 /** Check if a node is an explicit comparison or boolean literal (terminal explicit node). */
 const isExplicit = (node: any): boolean => {
-  if (!node) return true
+  if (node === undefined) return true
 
   // Comparison operators produce explicit boolean results
   if (node.type === 'BinaryExpression' && COMPARISON_OPERATORS.has(node.operator) === true) return true
@@ -112,7 +112,7 @@ const isExplicit = (node: any): boolean => {
  * leaf expressions that rely on implicit truthiness coercion.
  */
 const collectImplicit = (node: any): any[] => {
-  if (!node) return []
+  if (node === undefined) return []
 
   // Explicit comparison or boolean literal — nothing to flag
   if (isExplicit(node) === true) return []
@@ -185,7 +185,7 @@ export const explicitBooleanCompareRule = {
     }
 
     const checkTest = (test: any) => {
-      if (!test) return
+      if (test === undefined) return
       for (const node of collectImplicit(test)) {
         context.report({
           node,

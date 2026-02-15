@@ -116,7 +116,7 @@ const findConfigFile = Effect.fnUntraced(function* (startDir: AbsoluteDirPath) {
     for (const fileName of CONFIG_FILE_NAMES) {
       const filePath = EffectPath.ops.join(currentDir, EffectPath.unsafe.relativeFile(fileName))
       const exists = yield* fs.exists(filePath).pipe(Effect.orElseSucceed(() => false))
-      if (exists) {
+      if (exists === true) {
         return filePath
       }
     }
@@ -141,7 +141,7 @@ const normalizeTransform = (value: Transform | string): string =>
 const normalizeTransforms = (
   transforms: PropertyTransforms | undefined,
 ): PropertyTransformConfig | undefined => {
-  if (!transforms) return undefined
+  if (transforms === undefined) return undefined
 
   const result: PropertyTransformConfig = {}
   for (const [key, value] of Object.entries(transforms)) {
@@ -164,7 +164,7 @@ const loadTsConfig = Effect.fnUntraced(function* (configPath: string) {
   })
 
   const config = module.default as unknown
-  if (!config || typeof config !== 'object') {
+  if (config === undefined || typeof config !== 'object') {
     return yield* new ConfigParseError({
       message: 'Config file must export a default config object',
       path: configPath,
@@ -218,14 +218,14 @@ const buildResolvedDatabaseConfig = (opts: {
 
 /** Resolve database configs with outputDir and defaults applied */
 const resolveConfig = ({ config, configDir }: ResolveConfigOptions): ResolvedConfig => {
-  const baseDir: AbsoluteDirPath = config.outputDir
+  const baseDir: AbsoluteDirPath = config.outputDir !== undefined
     ? EffectPath.ops.join(configDir, config.outputDir)
     : configDir
 
   const databases = Object.entries(config.databases).map(([id, db]): ResolvedDatabaseConfig => {
     const merged = mergeWithDefaults({
       database: db,
-      ...(config.defaults && { defaults: config.defaults }),
+      ...(config.defaults !== undefined && { defaults: config.defaults }),
     })
     const normalizedTransforms = normalizeTransforms(merged.transforms)
 
@@ -250,13 +250,13 @@ export const loadConfig = Effect.fnUntraced(function* (configPath?: string) {
   const searchStartDir: AbsoluteDirPath = EffectPath.unsafe.absoluteDir(
     yield* CurrentWorkingDirectory,
   )
-  const resolvedPath: AbsoluteFilePath | undefined = configPath
+  const resolvedPath: AbsoluteFilePath | undefined = configPath !== undefined
     ? isAbsolutePath(configPath) === true
       ? EffectPath.unsafe.absoluteFile(configPath)
       : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
     : yield* findConfigFile(searchStartDir)
 
-  if (!resolvedPath) {
+  if (resolvedPath === undefined) {
     return yield* new ConfigNotFoundError({
       message: `No config file found. Create one of: ${CONFIG_FILE_NAMES.join(', ')}`,
       searchStartDir,
@@ -265,7 +265,7 @@ export const loadConfig = Effect.fnUntraced(function* (configPath?: string) {
   }
 
   const exists = yield* fs.exists(resolvedPath).pipe(Effect.orElseSucceed(() => false))
-  if (!exists) {
+  if (exists === false) {
     return yield* new ConfigFileNotFoundError({
       message: `Config file not found: ${resolvedPath}`,
       path: resolvedPath,
@@ -287,7 +287,7 @@ export const mergeWithDefaults = ({
   database: DatabaseConfig
   defaults?: DefaultsConfig
 }): DatabaseConfig => {
-  if (!defaults) return database
+  if (defaults === undefined) return database
 
   const includeWrite = database.includeWrite ?? defaults.includeWrite
   const typedOptions = database.typedOptions ?? defaults.typedOptions

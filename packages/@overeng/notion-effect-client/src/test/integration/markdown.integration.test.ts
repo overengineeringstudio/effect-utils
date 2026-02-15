@@ -125,13 +125,13 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionMarkdown (integration)', () => {
               // Custom transformer using BlockHelpers
               paragraph: (block, children) => {
                 const text = RichTextUtils.toPlainText(BlockHelpers.getRichText(block))
-                return `[P] ${text}${children ? `\n${children}` : ''}`
+                return `[P] ${text}${children !== undefined ? `\n${children}` : ''}`
               },
               // Custom callout using BlockHelpers
               callout: (block, children) => {
                 const icon = BlockHelpers.getCalloutIcon(block)
                 const text = RichTextUtils.toPlainText(BlockHelpers.getRichText(block))
-                return `[CALLOUT ${icon}] ${text}${children ? `\n${children}` : ''}`
+                return `[CALLOUT ${icon}] ${text}${children !== undefined ? `\n${children}` : ''}`
               },
             },
           })

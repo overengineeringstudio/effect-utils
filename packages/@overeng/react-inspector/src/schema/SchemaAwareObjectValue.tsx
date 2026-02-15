@@ -36,12 +36,12 @@ export const SchemaAwareObjectValue: FC<SchemaAwareObjectValueProps> = ({
     Array.isArray(object) === false
   ) {
     const schemaDisplayName = schemaCtx.getDisplayName()
-    if (schemaDisplayName && object.constructor?.name === 'Object') {
+    if (schemaDisplayName !== undefined && object.constructor?.name === 'Object') {
       return <span>{schemaDisplayName}</span>
     }
   }
 
-  if (styles) {
+  if (styles !== undefined) {
     return <ObjectValue object={object} styles={styles} />
   }
 

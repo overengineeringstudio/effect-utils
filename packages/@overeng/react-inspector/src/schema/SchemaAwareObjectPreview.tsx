@@ -50,7 +50,7 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     return <span>{prettyFormatted}</span>
   }
 
-  if (!schemaCtx.schema) {
+  if (schemaCtx.schema === undefined) {
     return <ObjectPreview data={data} />
   }
 
@@ -112,13 +112,13 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
             {ellipsis}
           </span>,
         )
-        if (ellipsis) break
+        if (ellipsis !== undefined) break
       }
     }
 
     const schemaDisplayName = schemaCtx.getDisplayName()
     const objectConstructorName =
-      schemaDisplayName ?? (object.constructor ? object.constructor.name : 'Object')
+      schemaDisplayName ?? (object.constructor !== undefined ? object.constructor.name : 'Object')
 
     return (
       <React.Fragment>

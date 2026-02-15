@@ -30,7 +30,7 @@ const unwrapAstForDisplay = (ast: SchemaAST.AST): SchemaAST.AST => {
       const nonNullish = ast.types.filter((member) => !isNullishAst(member))
       if (nonNullish.length === 1) {
         const [only] = nonNullish
-        if (only) return unwrapAstForDisplay(only)
+        if (only !== undefined) return unwrapAstForDisplay(only)
       }
       return ast
     }
@@ -65,7 +65,7 @@ export const formatWithPretty = (
   value: unknown,
   annotations: SchemaAnnotations,
 ): string | undefined => {
-  if (annotations.pretty) {
+  if (annotations.pretty !== undefined) {
     try {
       const result = annotations.pretty(value)
       // Effect's built-in schemas may have pretty annotations that return functions (hooks)
@@ -103,7 +103,7 @@ export const getFieldSchema = (
   if (ast._tag === 'TypeLiteral' && 'propertySignatures' in ast) {
     const typeLiteralAst = ast as SchemaAST.TypeLiteral
     const propSig = typeLiteralAst.propertySignatures.find((sig) => sig.name === fieldName)
-    if (propSig) {
+    if (propSig !== undefined) {
       return {
         ast: unwrapAstForDisplay(propSig.type),
       } as S.Schema.AnyNoContext
@@ -123,7 +123,7 @@ export const getArrayElementSchema = (
     const tupleAst = ast as SchemaAST.TupleType
     if (tupleAst.rest.length > 0) {
       const [firstRest] = tupleAst.rest
-      if (firstRest) {
+      if (firstRest !== undefined) {
         return {
           ast: unwrapAstForDisplay(firstRest.type),
         } as S.Schema.AnyNoContext
@@ -147,7 +147,7 @@ export const registerSchema = (
 ): void => {
   const annotations = getAnnotations(schema)
   const key = name ?? annotations.identifier ?? annotations.title
-  if (key) {
+  if (key !== undefined) {
     registry.set(key, schema)
   }
 }

@@ -49,7 +49,7 @@ const countNonRestParams = (params: any[]): number => {
  */
 const isCallback = (node: any): boolean => {
   const parent = node.parent
-  if (!parent) return false
+  if (parent === undefined) return false
 
   if (parent.type === 'CallExpression') {
     if (parent.arguments.includes(node) === true) return true
@@ -81,7 +81,7 @@ const isCallback = (node: any): boolean => {
  * Effect.gen(function* (_) { ... }) - the adapter param is idiomatic.
  */
 const isEffectGenAdapter = (node: any): boolean => {
-  if (node.type !== 'FunctionExpression' || !node.generator) return false
+  if (node.type !== 'FunctionExpression' || node.generator === false) return false
   if (node.params.length !== 1) return false
 
   const param = node.params[0]
@@ -138,7 +138,7 @@ const isEffectDualFunction = (node: any): boolean => {
 
 /** Get a human-readable description of where the function is defined. */
 const getFunctionContext = (node: any): string => {
-  if (node.type === 'FunctionDeclaration' && node.id?.name) {
+  if (node.type === 'FunctionDeclaration' && node.id?.name !== undefined) {
     return `function '${node.id.name}'`
   }
 

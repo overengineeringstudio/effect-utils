@@ -70,7 +70,7 @@ export const EffectButton = <TEnv, TA, TE>({
   )
 
   const runningLabel = React.useMemo(() => {
-    if (!isRunning) return undefined
+    if (isRunning === false) return undefined
     if (renderRunningLabel !== undefined) {
       return renderRunningLabel(
         state._tag === 'running' ? state.progress : initialProgress,
@@ -91,7 +91,7 @@ export const EffectButton = <TEnv, TA, TE>({
   return (
     <div className={containerClassName ?? 'inline-flex items-center gap-2'}>
       <Button {...buttonProps} onPress={onPress}>
-        {isRunning ? runningLabel : children}
+        {isRunning === true ? runningLabel : children}
       </Button>
       {completedBadge !== undefined && (
         <span className={completedBadgeClassName}>{completedBadge}</span>

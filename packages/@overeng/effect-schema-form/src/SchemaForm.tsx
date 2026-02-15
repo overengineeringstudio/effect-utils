@@ -115,7 +115,7 @@ export const SchemaForm = <T extends Record<string, unknown>>({
 
   // Always hide the internal `_tag` field from the rendered fields.
   // `showTagHeader` controls presentation (e.g. grouping), not whether `_tag` is editable.
-  const fieldsToRender = tagInfo.isTagged ? tagInfo.contentProperties : allFields
+  const fieldsToRender = tagInfo.isTagged === true ? tagInfo.contentProperties : allFields
 
   // Create the renderField function
   const renderField = (field: PropertyInfo): ReactNode => {
@@ -134,12 +134,12 @@ export const SchemaForm = <T extends Record<string, unknown>>({
     // Type assertion needed because FieldRenderers maps specific types to specific renderers
     // but at runtime we're dynamically selecting based on field.meta.type
     const renderer = renderers[field.meta.type] as FieldRenderer<unknown> | undefined
-    if (renderer) {
+    if (renderer !== undefined) {
       return renderer(props)
     }
 
     // Fall back to unknown renderer if available
-    if (renderers.unknown) {
+    if (renderers.unknown !== undefined) {
       return renderers.unknown(props)
     }
 
@@ -148,7 +148,7 @@ export const SchemaForm = <T extends Record<string, unknown>>({
   }
 
   // If render prop is provided, use it
-  if (children) {
+  if (children !== undefined) {
     return children({
       fields: fieldsToRender,
       renderField,
@@ -162,7 +162,7 @@ export const SchemaForm = <T extends Record<string, unknown>>({
   ))
 
   // Use wrapper if provided
-  if (wrapper) {
+  if (wrapper !== undefined) {
     return wrapper({ children: renderedFields, tagInfo })
   }
 

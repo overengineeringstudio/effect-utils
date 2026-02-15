@@ -119,7 +119,7 @@ export const noExternalImportsRule = {
       // export { x } from 'pkg' or export { type X, y } from 'pkg'
       ExportNamedDeclaration(node: any) {
         // Only check re-exports (those with a source)
-        if (!node.source) return
+        if (node.source === undefined) return
         if (isTypeOnlyExport(node) === true) return
 
         const source = node.source?.value

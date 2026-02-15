@@ -7,10 +7,10 @@ import { DOMNodePreview } from './DOMNodePreview.tsx'
 import { shouldInline } from './shouldInline.tsx'
 
 const domIterator = function* (data: any) {
-  if (data && data.childNodes) {
+  if (data !== undefined && data.childNodes !== undefined) {
     const textInlined = shouldInline(data)
 
-    if (textInlined) {
+    if (textInlined === true) {
       return
     }
 
@@ -26,7 +26,7 @@ const domIterator = function* (data: any) {
     }
 
     // at least 1 child node
-    if (data.tagName) {
+    if (data.tagName !== undefined) {
       yield {
         name: 'CLOSE_TAG',
         data: {

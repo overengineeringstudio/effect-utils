@@ -357,7 +357,7 @@ const buildDirInfo = <B extends Abs | Rel>(args: {
     extension: undefined as PathInfo<B, Dir>['extension'],
     fullExtension: undefined as PathInfo<B, Dir>['fullExtension'],
     baseName: dirName,
-    parent: isRoot
+    parent: isRoot === true
       ? (undefined as PathInfo<B, Dir>['parent'])
       : (buildDirInfo({
           original: parentPath,

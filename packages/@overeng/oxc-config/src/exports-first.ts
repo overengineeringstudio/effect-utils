@@ -92,7 +92,7 @@ const getDeclaredNames = (node: any): Set<string> => {
     node.type === 'ClassDeclaration' ||
     node.type === 'TSEnumDeclaration'
   ) {
-    if (node.id?.name) {
+    if (node.id?.name !== undefined) {
       names.add(node.id.name)
     }
   }
@@ -104,7 +104,7 @@ const getDeclaredNames = (node: any): Set<string> => {
 const collectReferences = (opts: { node: any; refs?: Set<string> }): Set<string> => {
   const { node } = opts
   const refs = opts.refs ?? new Set()
-  if (!node || typeof node !== 'object') return refs
+  if (node === undefined || node === null || typeof node !== 'object') return refs
 
   if (node.type === 'Identifier') {
     refs.add(node.name)
@@ -119,7 +119,7 @@ const collectReferences = (opts: { node: any; refs?: Set<string> }): Set<string>
       for (const item of value) {
         collectReferences({ node: item, refs })
       }
-    } else if (value && typeof value === 'object') {
+    } else if (value !== undefined && value !== null && typeof value === 'object') {
       collectReferences({ node: value, refs })
     }
   }
@@ -183,7 +183,7 @@ export const exportsFirstRule = {
 
           if (isExportDeclaration(node) === true) {
             hasExport = true
-            if (hasTrackableNonExport) {
+            if (hasTrackableNonExport === true) {
               exportAfterNonExport = true
               break
             }
@@ -195,7 +195,7 @@ export const exportsFirstRule = {
           }
         }
 
-        if (!hasExport || !hasTrackableNonExport || !exportAfterNonExport) {
+        if (hasExport === false || hasTrackableNonExport === false || exportAfterNonExport === false) {
           return
         }
 
@@ -216,7 +216,7 @@ export const exportsFirstRule = {
 
           if (isExportDeclaration(node) === true) {
             const decl = getExportDeclaration(node)
-            const refs = decl ? collectReferences({ node: decl }) : new Set<string>()
+            const refs = decl !== undefined ? collectReferences({ node: decl }) : new Set<string>()
             exports.push({ node, index: i, refs })
           } else if (isTrackableDeclaration(node) === true) {
             const names = getDeclaredNames(node)
@@ -232,7 +232,7 @@ export const exportsFirstRule = {
         }
 
         let changed = true
-        while (changed) {
+        while (changed === true) {
           changed = false
           for (const decl of nonExportedDecls) {
             let isNeeded = false
@@ -243,7 +243,7 @@ export const exportsFirstRule = {
               }
             }
 
-            if (isNeeded) {
+            if (isNeeded === true) {
               const declRefs = collectReferences({ node: decl.node })
               for (const ref of declRefs) {
                 if (referencedByAnyExport.has(ref) === false) {
@@ -266,7 +266,7 @@ export const exportsFirstRule = {
                 }
               }
 
-              if (!isReferenced) {
+              if (isReferenced === false) {
                 context.report({
                   node: exp.node,
                   messageId: 'exportAfterNonExport',

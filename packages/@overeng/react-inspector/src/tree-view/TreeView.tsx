@@ -35,7 +35,7 @@ const ConnectedTreeNode = memo((props: any) => {
     >
       {
         // only render if the node is expanded
-        expanded
+        expanded === true
           ? [...dataIterator(data)].map(({ name, data, ...renderNodeProps }) => {
               return (
                 <ConnectedTreeNode
