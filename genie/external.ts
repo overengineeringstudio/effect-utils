@@ -632,7 +632,7 @@ export {
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
-  repairNixStoreStep,
+  validateNixStoreStep,
   standardCIEnv,
   syncMegarepoStep,
   RUNNER_PROFILES,

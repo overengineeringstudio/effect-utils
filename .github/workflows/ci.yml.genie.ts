@@ -7,7 +7,7 @@ import {
   installNixStep,
   cachixStep,
   installDevenvFromLockStep,
-  repairNixStoreStep,
+  validateNixStoreStep,
   devenvShellDefaults,
   standardCIEnv,
   namespaceRunner,
@@ -18,7 +18,7 @@ const baseSteps = [
   installNixStep(),
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   installDevenvFromLockStep,
-  repairNixStoreStep,
+  validateNixStoreStep,
 ] as const
 
 const failureReminderStep = {
