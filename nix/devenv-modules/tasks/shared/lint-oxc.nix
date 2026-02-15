@@ -135,7 +135,7 @@ in
       exec = trace.exec "lint:check:genie" "genie --check";
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
       #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
-      after = [ "pnpm:install" ];
+      after = [ "genie:run" "pnpm:install" ];
       execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
