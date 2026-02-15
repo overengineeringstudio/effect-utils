@@ -375,7 +375,7 @@ in
 
   # mkAfter ensures this runs after other enterShell code, so env vars
   # (including TRACEPARENT from setup:gate) are available.
-  # Output goes to stderr so it survives devenv's TUI terminal reset.
+  # Output is deferred via PROMPT_COMMAND to survive devenv's TUI terminal reset.
   enterShell = lib.mkAfter ''
     # ── Mode detection ──────────────────────────────────────────────────
     # Resolve "auto" to "system" or "local" at runtime.
@@ -410,13 +410,13 @@ in
           fi
         '') extraDashboards
       )}
-      echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)" >&2
+      _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
       # Local devenv stack — set env vars with local hash-derived ports
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
       export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
       export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
-      echo "[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)" >&2
+      _otel_entry_msg="[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
     fi
 
     _otel_grafana="$OTEL_GRAFANA_URL"
@@ -442,7 +442,12 @@ in
     else
       _grafana_display="$_trace_label $_grafana_link_url"
     fi
-    echo "[otel] Start with: devenv up | $_grafana_display" >&2
+    _otel_entry_msg="$_otel_entry_msg
+[otel] Start with: devenv up | $_grafana_display"
+
+    # Defer output via PROMPT_COMMAND so it prints after the first prompt,
+    # surviving devenv's TUI terminal reset that swallows enterShell output.
+    PROMPT_COMMAND="''${PROMPT_COMMAND:+$PROMPT_COMMAND;}"'if [ -n "''${_otel_entry_msg:-}" ]; then echo "$_otel_entry_msg" >&2; unset _otel_entry_msg; fi'
 
     # Detect cold vs warm start (setup-git-hash written by setup.nix)
     _cold_start="false"
