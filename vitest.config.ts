@@ -21,7 +21,7 @@ const projectRoots = readdirSync(packagesRoot, { withFileTypes: true })
   .map((entry) => `packages/@overeng/${entry.name}`)
 
 const projects = projectRoots.map((root) =>
-  hasVitestConfig(root)
+  hasVitestConfig(root) === true
     ? root
     : { root, test: { exclude, server: { deps: { inline: inlineDeps } } } },
 )
