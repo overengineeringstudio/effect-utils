@@ -75,7 +75,7 @@ export const matchesPattern = (args: {
   if (args.pattern === args.name) return true
   if (args.pattern === '**') return true
 
-  if (args.pattern.includes('*')) {
+  if (args.pattern.includes('*') === true) {
     const regex = new RegExp(
       '^' +
         args.pattern
@@ -120,10 +120,10 @@ export const validateVersionConstraints = (args: {
   for (const constraint of args.constraints) {
     // Check if this package matches the constraint's package patterns
     if (
-      !matchesAnyPattern({
+      matchesAnyPattern({
         name: args.packageName,
         patterns: constraint.packages,
-      })
+      }) === false
     )
       continue
 
@@ -139,14 +139,14 @@ export const validateVersionConstraints = (args: {
     ]
 
     for (const { type, deps: depsObj } of depSources) {
-      if (!depTypes.includes(type as 'prod' | 'dev' | 'peer')) continue
-      if (!depsObj) continue
+      if (depTypes.includes(type as 'prod' | 'dev' | 'peer') === false) continue
+      if (depsObj === undefined) continue
 
       const currentVersion = depsObj[constraint.dependency]
       if (currentVersion === undefined) continue
 
       // Skip catalog: protocol - the constraint should be in the genie config itself
-      if (currentVersion === 'catalog:' || currentVersion.startsWith('catalog:')) {
+      if (currentVersion === 'catalog:' || currentVersion.startsWith('catalog:') === true) {
         issues.push({
           severity: 'error',
           packageName: args.packageName,
@@ -158,7 +158,10 @@ export const validateVersionConstraints = (args: {
       }
 
       // Check if version matches constraint
-      if (currentVersion !== constraint.version && !currentVersion.endsWith(constraint.version)) {
+      if (
+        currentVersion !== constraint.version &&
+        currentVersion.endsWith(constraint.version) === false
+      ) {
         issues.push({
           severity: 'error',
           packageName: args.packageName,

@@ -154,30 +154,30 @@ export const detectOutputMode = (): OutputMode => {
   const withEnvOverrides = (mode: OutputMode): OutputMode => {
     if (mode._tag !== 'react') return mode
     let render = mode.render
-    if (noColor) render = { ...render, colors: false }
-    if (noUnicode) render = { ...render, unicode: false }
+    if (noColor === true) render = { ...render, colors: false }
+    if (noUnicode === true) render = { ...render, unicode: false }
     return render === mode.render ? mode : { ...mode, render }
   }
 
-  if (forceVisual) {
+  if (forceVisual === true) {
     // Forced visual: use tty if actually TTY, otherwise ci mode
-    return withEnvOverrides(ttyEnv && !ciEnv ? tty : ci)
+    return withEnvOverrides(ttyEnv === true && ciEnv === false ? tty : ci)
   }
 
   // Agent environment → JSON output for structured consumption
-  if (agentEnv) {
+  if (agentEnv === true) {
     return json
   }
 
   // Auto-detect based on environment
-  if (ttyEnv) {
-    return withEnvOverrides(ciEnv ? ci : tty)
+  if (ttyEnv === true) {
+    return withEnvOverrides(ciEnv === true ? ci : tty)
   }
 
   // Non-TTY: distinguish between pipe and file redirect
   // Piped to another process (cmd | cat) → JSON for machine consumption
   // Unless TUI_PIPE_MODE=visual is set
-  if (pipedEnv && !forcePipeVisual) {
+  if (pipedEnv === true && forcePipeVisual === false) {
     return json
   }
 

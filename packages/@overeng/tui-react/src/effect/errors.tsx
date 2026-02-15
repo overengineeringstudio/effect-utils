@@ -120,7 +120,7 @@ export const outputJsonError = (error: CommandError): Effect.Effect<void> =>
  * Convert any error to a CommandError.
  */
 export const toCommandError = (error: unknown): CommandError => {
-  if (error instanceof Error) {
+  if (error instanceof Error === true) {
     return runtimeError({ message: error.message, cause: error.cause })
   }
   if (typeof error === 'string') {
@@ -129,7 +129,7 @@ export const toCommandError = (error: unknown): CommandError => {
   if (typeof error === 'object' && error !== null && '_tag' in error) {
     // Already a tagged error
     const tagged = error as { _tag: string; message?: string }
-    if (tagged._tag.startsWith('CommandError.')) {
+    if (tagged._tag.startsWith('CommandError.') === true) {
       return error as CommandError
     }
     return runtimeError({ message: tagged.message ?? String(error), cause: error })

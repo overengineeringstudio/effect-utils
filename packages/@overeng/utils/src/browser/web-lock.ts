@@ -53,14 +53,14 @@ export const withLock =
 
       const exit = yield* Effect.tryPromise<Exit.Exit<A, E> | undefined, E | E2>({
         try: async (signal) => {
-          if (signal.aborted) throw new Error('Aborted')
+          if (signal.aborted === true) throw new Error('Aborted')
 
           // NOTE The 'signal' and 'ifAvailable' options cannot be used together.
           const requestOptions = options?.ifAvailable === true ? options : { ...options, signal }
 
           const result = await navigator.locks.request(lockName, requestOptions, async (lock) => {
             if (lock === null) {
-              if (onTaken) {
+              if (onTaken === true) {
                 const onTakenExit = await Runtime.runPromiseExit(runtime)(onTaken)
                 if (onTakenExit._tag === 'Failure') {
                   return onTakenExit as unknown as Exit.Exit<A, E>
@@ -101,7 +101,7 @@ export const waitForDeferredLock = (opts: {
     }
 
     return Effect.async<void>((cb, signal) => {
-      if (signal.aborted) return
+      if (signal.aborted === true) return
 
       navigator.locks
         .request(lockName, { signal, mode: 'exclusive', ifAvailable: false }, (_lock) => {
@@ -187,7 +187,7 @@ export const waitForLock = (lockName: string): Effect.Effect<void, WebLockNotSup
     }
 
     return Effect.async<void>((cb, signal) => {
-      if (signal.aborted) return
+      if (signal.aborted === true) return
 
       navigator.locks.request(lockName, { mode: 'shared', signal, ifAvailable: false }, (_lock) => {
         cb(Effect.succeed(void 0))
@@ -211,7 +211,7 @@ export const getLockAndWaitForSteal = (
     }
 
     return Effect.async<void>((cb, signal) => {
-      if (signal.aborted) return
+      if (signal.aborted === true) return
 
       navigator.locks
         .request(lockName, { mode: 'exclusive', ifAvailable: true }, async (lock) => {

@@ -21,7 +21,7 @@ export type DetectedBrowser = 'Opera' | 'Chrome' | 'Safari' | 'Firefox' | 'Edge'
  * ```
  */
 export const detectBrowserName = (): DetectedBrowser => {
-  if (typeof navigator === 'undefined' || !navigator.userAgent) {
+  if (typeof navigator === 'undefined' || navigator.userAgent === undefined) {
     return 'Unknown'
   }
 
@@ -30,15 +30,16 @@ export const detectBrowserName = (): DetectedBrowser => {
   // Order matters: check more specific patterns first
   const isOpera = ua.includes('OP') || ua.includes('Opera')
   const isEdge = ua.includes('Edg') || ua.includes('Trident')
-  const isChrome = ua.includes('Chrome') && !isOpera && !isEdge
-  const isSafari = ua.includes('Safari') && !isChrome && !isOpera && !isEdge
+  const isChrome = ua.includes('Chrome') && isOpera === false && isEdge === false
+  const isSafari =
+    ua.includes('Safari') && isChrome === false && isOpera === false && isEdge === false
   const isFirefox = ua.includes('Firefox')
 
-  if (isOpera) return 'Opera'
-  if (isEdge) return 'Edge'
-  if (isChrome) return 'Chrome'
-  if (isSafari) return 'Safari'
-  if (isFirefox) return 'Firefox'
+  if (isOpera === true) return 'Opera'
+  if (isEdge === true) return 'Edge'
+  if (isChrome === true) return 'Chrome'
+  if (isSafari === true) return 'Safari'
+  if (isFirefox === true) return 'Firefox'
 
   return 'Unknown'
 }

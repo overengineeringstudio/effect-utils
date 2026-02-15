@@ -146,7 +146,7 @@ const main = async () => {
 
   // Handle keyboard input - bridges imperative events to Effect execution
   renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean }) => {
-    if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+    if (key.name === 'q' || (key.ctrl === true && key.name === 'c')) {
       cleanup()
       return
     }

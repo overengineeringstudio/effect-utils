@@ -113,7 +113,7 @@ const renderLocalVersion = ({
   stamp: LocalStamp
 }): string => {
   const timeAgo = formatRelativeTime(stamp.ts)
-  const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''
+  const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
   return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
 }
 
@@ -130,10 +130,10 @@ const renderNixVersion = (stamp: NixStamp): string => {
   // Only add -dirty suffix if the rev doesn't already include it
   // (Nix flakes may provide dirtyShortRev which already has the suffix)
   const revAlreadyHasDirty = stamp.rev.endsWith('-dirty')
-  const dirtySuffix = stamp.dirty && !revAlreadyHasDirty ? '-dirty' : ''
+  const dirtySuffix = stamp.dirty === true && revAlreadyHasDirty === false ? '-dirty' : ''
   const versionStr = `${stamp.version}+${stamp.rev}${dirtySuffix}`
 
-  const dirtyNote = stamp.dirty ? ', with uncommitted changes' : ''
+  const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
 
   if (stamp.buildTs !== undefined) {
     // Impure build: show build time
@@ -169,7 +169,7 @@ export const resolveCliVersion = (options: {
 
   // Local/dev build: check for runtime stamp
   const runtimeStampRaw = process.env[runtimeStampEnvVar]?.trim()
-  if (runtimeStampRaw) {
+  if (runtimeStampRaw === true) {
     const localStamp = parseStamp(runtimeStampRaw)
     if (localStamp?.type === 'local') {
       return renderLocalVersion({ baseVersion, stamp: localStamp })

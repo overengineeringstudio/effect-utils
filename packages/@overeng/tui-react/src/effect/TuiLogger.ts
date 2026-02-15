@@ -165,7 +165,7 @@ export const createTuiLogger = (
     const tuiLogger = Logger.make<unknown, void>(
       ({ logLevel, message, date, fiberId, annotations, spans }) => {
         // Check minimum level
-        if (LogLevel.greaterThanEqual(logLevel, minLevel)) {
+        if (LogLevel.greaterThanEqual(logLevel, minLevel) === true) {
           const spanLabel = spans._tag === 'Cons' ? spans.head.label : undefined
           const entry: TuiLogEntry = {
             id: ++logEntryId,
@@ -184,15 +184,16 @@ export const createTuiLogger = (
     )
 
     // Create the layer - either TUI only or combined with console
-    const layer = logToConsole
-      ? Layer.merge(
-          Logger.replace(Logger.defaultLogger, Logger.zip(Logger.defaultLogger, tuiLogger)),
-          Logger.minimumLogLevel(minLevel),
-        )
-      : Layer.merge(
-          Logger.replace(Logger.defaultLogger, tuiLogger),
-          Logger.minimumLogLevel(minLevel),
-        )
+    const layer =
+      logToConsole === true
+        ? Layer.merge(
+            Logger.replace(Logger.defaultLogger, Logger.zip(Logger.defaultLogger, tuiLogger)),
+            Logger.minimumLogLevel(minLevel),
+          )
+        : Layer.merge(
+            Logger.replace(Logger.defaultLogger, tuiLogger),
+            Logger.minimumLogLevel(minLevel),
+          )
 
     // Clear function
     const clear = SubscriptionRef.set(logsRef, [])
@@ -327,7 +328,7 @@ export const formatLogEntry = ({
 
   const parts: string[] = []
 
-  if (showTimestamp) {
+  if (showTimestamp === true) {
     const ts =
       timestampFormat === 'iso'
         ? entry.timestamp.toISOString()
@@ -337,11 +338,11 @@ export const formatLogEntry = ({
     parts.push(`[${ts}]`)
   }
 
-  if (showLevel) {
+  if (showLevel === true) {
     parts.push(`[${entry.level}]`)
   }
 
-  if (showFiber) {
+  if (showFiber === true) {
     parts.push(`[${entry.fiberId}]`)
   }
 

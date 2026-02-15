@@ -330,7 +330,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       const resolved = resolveResult.right
       const fs = yield* FileSystem.FileSystem
       const exists = yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
-      if (!exists) {
+      if (exists === false) {
         return false
       }
 

@@ -280,13 +280,13 @@ export const captureConsole = async <A, E, R>({
   const originalLog = console.log
   const originalError = console.error
 
-  if (options.captureLog) {
+  if (options.captureLog === true) {
     console.log = (...args: unknown[]) => {
       output.push(args.map(String).join(' '))
     }
   }
 
-  if (options.captureError) {
+  if (options.captureError === true) {
     console.error = (...args: unknown[]) => {
       errors.push(args.map(String).join(' '))
     }

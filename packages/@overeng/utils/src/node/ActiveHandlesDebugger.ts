@@ -36,16 +36,16 @@ const categorizeHandle = (handle: unknown): HandleInfo => {
       remotePort?: number
       localPort?: number
     }
-    if (socket.remoteAddress) {
+    if (socket.remoteAddress === true) {
       details = `remote: ${socket.remoteAddress}:${socket.remotePort}`
-    } else if (socket.localPort) {
+    } else if (socket.localPort === true) {
       details = `local port: ${socket.localPort}`
     }
   } else if (type === 'FSReqCallback' || type === 'FSReqPromise') {
     details = 'file system operation'
   } else if (type === 'ChildProcess') {
     const cp = handle as { pid?: number }
-    details = cp.pid ? `pid: ${cp.pid}` : ''
+    details = cp.pid !== undefined ? `pid: ${cp.pid}` : ''
   }
 
   return { type, details }

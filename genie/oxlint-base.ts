@@ -68,8 +68,8 @@ export const baseOxlintRules = {
   // Prefer function expressions over declarations
   'func-style': ['warn', 'expression', { allowArrowFunctions: true }],
 
-  // Enforce explicit boolean-literal comparisons in condition positions (1701 occurrences)
-  'overeng/explicit-boolean-compare': 'off',
+  // Enforce explicit boolean-literal comparisons in condition positions
+  'overeng/explicit-boolean-compare': 'warn',
 
   // Enforce exported declarations come before non-exported declarations
   'overeng/exports-first': 'warn',

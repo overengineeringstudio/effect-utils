@@ -25,7 +25,7 @@ const hasTag = (error: unknown): error is { _tag: string } => {
   return typeof (error as Record<string, unknown>)._tag === 'string'
 }
 
-const errorTag = (error: unknown) => (hasTag(error) ? error._tag : undefined)
+const errorTag = (error: unknown) => (hasTag(error) === true ? error._tag : undefined)
 
 const errorType = (error: unknown) => {
   if (typeof error === 'object' && error !== null) {

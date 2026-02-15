@@ -62,12 +62,12 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
   const content = yield* fs.readFileString(filePath).pipe(
     Effect.catchAllCause((cause) => {
       const failure = Cause.failureOption(cause).pipe(Option.getOrUndefined)
-      if (failure !== undefined && isNotFoundError(failure)) {
+      if (failure !== undefined && isNotFoundError(failure) === true) {
         return Effect.succeed(undefined)
       }
 
       const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
-      if (defect !== undefined && isNotFoundError(defect)) {
+      if (defect !== undefined && isNotFoundError(defect) === true) {
         return Effect.succeed(undefined)
       }
 
@@ -177,7 +177,7 @@ const countActivePermits = Effect.fn('FileSystemBacking.countActivePermits')(fun
     .exists(keyDir)
     .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
 
-  if (!exists) {
+  if (exists === false) {
     return 0
   }
 
@@ -190,7 +190,7 @@ const countActivePermits = Effect.fn('FileSystemBacking.countActivePermits')(fun
   let totalPermits = 0
 
   for (const entry of entries) {
-    if (!entry.endsWith('.lock')) continue
+    if (entry.endsWith('.lock') === false) continue
 
     const filePath = `${keyDir}/${entry}`
     const lock = yield* readHolderLock({ filePath, now })
@@ -440,7 +440,7 @@ export const listHolders = Effect.fn('FileSystemBacking.listHolders')(function* 
     .exists(keyDir)
     .pipe(Effect.mapError((cause) => new SemaphoreBackingError({ operation: 'exists', cause })))
 
-  if (!exists) {
+  if (exists === false) {
     return []
   }
 
@@ -453,7 +453,7 @@ export const listHolders = Effect.fn('FileSystemBacking.listHolders')(function* 
   const holders: HolderInfo[] = []
 
   for (const entry of entries) {
-    if (!entry.endsWith('.lock')) continue
+    if (entry.endsWith('.lock') === false) continue
 
     const filePath = `${keyDir}/${entry}`
     const lock = yield* readHolderLock({ filePath, now })

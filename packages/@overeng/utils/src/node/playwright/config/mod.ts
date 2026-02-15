@@ -65,7 +65,7 @@ const findAvailablePort = (): Promise<number> =>
     srv.on('error', reject)
     srv.listen(0, '127.0.0.1', () => {
       const address = srv.address()
-      if (address && typeof address === 'object') {
+      if (address !== null && typeof address === 'object') {
         const port = address.port
         srv.close(() => resolve(port))
       } else {
@@ -127,7 +127,7 @@ export const createPlaywrightConfig = async (
   }
 
   // Store port in env var for subsequent config evaluations
-  if (!envPort) {
+  if (envPort === false) {
     process.env[portEnvVar] = String(port)
   }
 

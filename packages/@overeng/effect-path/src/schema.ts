@@ -228,7 +228,7 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
 
   const segments = toSegments(normalized)
 
-  if (isFile) {
+  if (isFile === true) {
     const filename = getFilename(normalized)
     const rawParentPath = normalized.slice(0, -(filename.length + 1))
     const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute ? '/' : '.'

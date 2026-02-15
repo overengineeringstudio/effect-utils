@@ -100,13 +100,13 @@ export const runGenieValidation = ({
         }),
       )
 
-      if (!output) continue
-      if (output.validate) {
+      if (output === undefined) continue
+      if (output.validate !== undefined) {
         issues.push(...output.validate(ctx))
         continue
       }
 
-      if (requirePackageJsonValidate && isPackageJson) {
+      if (requirePackageJsonValidate === true && isPackageJson === true) {
         const pkgContent = yield* fs
           .readFileString(targetFilePath)
           .pipe(Effect.catchAll(() => Effect.succeed('')))

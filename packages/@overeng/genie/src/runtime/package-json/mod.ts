@@ -427,7 +427,7 @@ const resolveDeps = ({
 
   const resolved: Record<string, string> = {}
   for (const [name, version] of Object.entries(deps).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (version.startsWith(INTERNAL_FILE_PREFIX)) {
+    if (version.startsWith(INTERNAL_FILE_PREFIX) === true) {
       // Convert absolute repo path to relative path
       const targetLocation = version.slice('file:'.length)
       const relativePath = computeRelativePath({
@@ -435,7 +435,7 @@ const resolveDeps = ({
         to: targetLocation,
       })
       resolved[name] = `file:${relativePath}`
-    } else if (version.startsWith(INTERNAL_LINK_PREFIX)) {
+    } else if (version.startsWith(INTERNAL_LINK_PREFIX) === true) {
       // Convert absolute repo path to relative path for link: protocol
       const targetLocation = version.slice('link:'.length)
       const relativePath = computeRelativePath({
@@ -476,7 +476,7 @@ const resolvePatchPaths = ({
 
   const resolved: Record<string, string> = {}
   for (const [pkg, path] of Object.entries(patches).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (path.startsWith('./') || path.startsWith('../')) {
+    if (path.startsWith('./') === true || path.startsWith('../') === true) {
       // Already relative to current package
       resolved[pkg] = path
     } else {
@@ -621,7 +621,9 @@ export const packageJson = <const T extends PackageJsonData>(
   stringify: (ctx) =>
     JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
   validate: (ctx: GenieContext) =>
-    data.name ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name }) : [],
+    data.name !== undefined
+      ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name })
+      : [],
 })
 
 /**

@@ -296,7 +296,7 @@ export const withBaseName = <P extends Path>(args: {
   const ext = isDir ? undefined : extractFullExtension(oldName)
   const dir = path.slice(0, -(oldName.length + (isDir ? 1 : 0)))
 
-  if (isDir) {
+  if (isDir === true) {
     return ensureTrailingSlash(`${dir}${name}`) as P
   }
 

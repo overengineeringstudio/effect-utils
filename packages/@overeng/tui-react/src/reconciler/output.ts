@@ -89,14 +89,15 @@ const collectTextContent = (node: TuiNode): string => {
 const applyStyles = ({ text, style }: { text: string; style: TextStyle }): string => {
   let result = text
 
-  if (style.bold) result = bold(result)
-  if (style.dim) result = dim(result)
-  if (style.italic) result = italic(result)
-  if (style.underline) result = underline(result)
-  if (style.strikethrough) result = strikethrough(result)
-  if (style.color) result = fg({ color: style.color, text: result })
-  if (style.backgroundColor) result = bg({ color: style.backgroundColor, text: result })
-  if (style.href) {
+  if (style.bold === true) result = bold(result)
+  if (style.dim === true) result = dim(result)
+  if (style.italic === true) result = italic(result)
+  if (style.underline === true) result = underline(result)
+  if (style.strikethrough === true) result = strikethrough(result)
+  if (style.color !== undefined) result = fg({ color: style.color, text: result })
+  if (style.backgroundColor !== undefined)
+    result = bg({ color: style.backgroundColor, text: result })
+  if (style.href !== undefined) {
     result = underline(result)
     result = hyperlink({ url: style.href, text: result })
   }
@@ -223,20 +224,21 @@ const renderElementSimple = ({
       const isRow = node.props.flexDirection === 'row'
 
       // Create box style context for children
-      const newBoxStyle: BoxStyle = node.props.backgroundColor
-        ? {
-            backgroundColor: node.props.backgroundColor,
-            extendBackground: node.props.extendBackground,
-          }
-        : boxStyle
+      const newBoxStyle: BoxStyle =
+        node.props.backgroundColor !== undefined
+          ? {
+              backgroundColor: node.props.backgroundColor,
+              extendBackground: node.props.extendBackground,
+            }
+          : boxStyle
 
-      if (isRow) {
+      if (isRow === true) {
         // For row layout, collect all children on one line
         const parts: string[] = []
         for (const child of node.children) {
-          if (isTextElement(child) || isTextNode(child)) {
-            const mergedStyle = isTextElement(child) ? { ...style, ...child.props } : style
-            const text = isTextNode(child) ? child.text : collectTextContent(child)
+          if (isTextElement(child) === true || isTextNode(child) === true) {
+            const mergedStyle = isTextElement(child) === true ? { ...style, ...child.props } : style
+            const text = isTextNode(child) === true ? child.text : collectTextContent(child)
             parts.push(applyStyles({ text, style: mergedStyle }))
           }
         }
@@ -247,7 +249,7 @@ const renderElementSimple = ({
         }
         // Also render any nested boxes
         for (const child of node.children) {
-          if (isBoxElement(child)) {
+          if (isBoxElement(child) === true) {
             render({ node: child, style, boxStyle: newBoxStyle })
           }
         }
@@ -285,14 +287,14 @@ export const extractStaticContent = ({
     if (isBoxElement(node) || isTextElement(node)) {
       for (const child of node.children) {
         const found = findStatic(child)
-        if (found) return found
+        if (found !== null) return found
       }
     }
     return null
   }
 
   const staticElement = findStatic(root)
-  if (!staticElement || !isStaticElement(staticElement)) {
+  if (staticElement === null || isStaticElement(staticElement) === false) {
     return { lines: [], newItemCount: 0, element: null }
   }
 
@@ -301,7 +303,7 @@ export const extractStaticContent = ({
   const lines: string[] = []
 
   for (const child of uncommittedChildren) {
-    if (!isTextNode(child)) {
+    if (isTextNode(child) === false) {
       // Use renderTreeSimple which doesn't rely on Yoga layout measurements
       // This is necessary because standalone text elements have height=0 in Yoga
       // (text content isn't measured by Yoga, only by the terminal output)
@@ -329,7 +331,7 @@ const applyBoxStyle = ({
   boxStyle: BoxStyle
   terminalWidth: number
 }): string => {
-  if (!boxStyle.backgroundColor) {
+  if (boxStyle.backgroundColor === undefined) {
     return line
   }
 
@@ -339,7 +341,7 @@ const applyBoxStyle = ({
   const bgStart = bgCode(boxStyle.backgroundColor)
   const bgEnd = bgReset()
 
-  if (boxStyle.extendBackground) {
+  if (boxStyle.extendBackground === true) {
     // Pad to terminal width and add clear-to-EOL for full-width background
     const lineWidth = stringWidth(result)
     const padding = Math.max(0, terminalWidth - lineWidth)
@@ -412,20 +414,21 @@ export const renderTreeSimple = ({
         computedHeight > 0 && lines.length - startLineCount >= computedHeight
 
       // Create box style context for children
-      const newBoxStyle: BoxStyle = node.props.backgroundColor
-        ? {
-            backgroundColor: node.props.backgroundColor,
-            extendBackground: node.props.extendBackground,
-          }
-        : boxStyle
+      const newBoxStyle: BoxStyle =
+        node.props.backgroundColor !== undefined
+          ? {
+              backgroundColor: node.props.backgroundColor,
+              extendBackground: node.props.extendBackground,
+            }
+          : boxStyle
 
-      if (isRow) {
+      if (isRow === true) {
         // For row layout, collect all children on one line
         const parts: string[] = []
         for (const child of node.children) {
-          if (isTextElement(child) || isTextNode(child)) {
-            const mergedStyle = isTextElement(child) ? { ...style, ...child.props } : style
-            const text = isTextNode(child) ? child.text : collectTextContent(child)
+          if (isTextElement(child) === true || isTextNode(child) === true) {
+            const mergedStyle = isTextElement(child) === true ? { ...style, ...child.props } : style
+            const text = isTextNode(child) === true ? child.text : collectTextContent(child)
             parts.push(applyStyles({ text, style: mergedStyle }))
           }
         }
@@ -437,8 +440,8 @@ export const renderTreeSimple = ({
         // Also render any nested boxes
         for (const child of node.children) {
           if (maxLines !== undefined && lines.length >= maxLines) break
-          if (boxFull()) break
-          if (isBoxElement(child)) {
+          if (boxFull() === true) break
+          if (isBoxElement(child) === true) {
             render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
           }
         }
@@ -446,7 +449,7 @@ export const renderTreeSimple = ({
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
           if (maxLines !== undefined && lines.length >= maxLines) break
-          if (boxFull()) break
+          if (boxFull() === true) break
           render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
         }
       }

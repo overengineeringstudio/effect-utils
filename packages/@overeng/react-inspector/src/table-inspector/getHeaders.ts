@@ -4,7 +4,7 @@ export function getHeaders(
   if (typeof data === 'object' && data !== null) {
     let rowHeaders: (string | number)[] = []
     // is an array
-    if (Array.isArray(data)) {
+    if (Array.isArray(data) === true) {
       const nRows = data.length
       rowHeaders = [...Array(nRows).keys()]
     } else {
@@ -20,7 +20,7 @@ export function getHeaders(
         /* O(nCols) Could optimize `includes` here */
         const cols = Object.keys(row)
         cols.reduce<string[]>((xs, x) => {
-          if (!xs.includes(x)) {
+          if (xs.includes(x) === false) {
             /* xs is the colHeaders to be filled by searching the row's indexes */
             xs.push(x)
           }

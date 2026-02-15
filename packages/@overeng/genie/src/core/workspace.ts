@@ -37,10 +37,10 @@ const findFiles = Effect.fn('workspace/findFiles')(function* ({
     Effect.fnUntraced(function* (dir) {
       const entries = yield* fs.readDirectory(dir).pipe(Effect.catchAll(() => Effect.succeed([])))
       for (const entry of entries) {
-        if (shouldSkipDir(entry)) continue
+        if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
         const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-        if (!stat) continue
+        if (stat === undefined) continue
         if (stat.type === 'Directory') {
           yield* walk(fullPath)
           continue
@@ -68,10 +68,10 @@ const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function*
     Effect.fnUntraced(function* (dir) {
       const entries = yield* fs.readDirectory(dir).pipe(Effect.catchAll(() => Effect.succeed([])))
       for (const entry of entries) {
-        if (shouldSkipDir(entry)) continue
+        if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
         const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-        if (!stat) continue
+        if (stat === undefined) continue
         if (stat.type === 'Directory') {
           yield* walk(fullPath)
           continue
@@ -94,10 +94,10 @@ const parsePnpmWorkspacePackages = (content: string): string[] => {
 
   for (const line of lines) {
     const trimmed = line.trim()
-    if (trimmed === '' || trimmed.startsWith('#')) continue
+    if (trimmed === '' || trimmed.startsWith('#') === true) continue
 
-    if (!inPackages) {
-      if (/^\s*packages\s*:/.test(line)) {
+    if (inPackages === false) {
+      if (/^\s*packages\s*:/.test(line) === true) {
         inPackages = true
         packagesIndent = line.indexOf('p')
       }
@@ -105,7 +105,7 @@ const parsePnpmWorkspacePackages = (content: string): string[] => {
     }
 
     const listMatch = line.match(/^(\s*)-\s*(.+)$/)
-    if (!listMatch) {
+    if (listMatch === null) {
       if (line.search(/\S/) <= packagesIndent) break
       continue
     }
@@ -140,7 +140,7 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
 
       for (const packageDir of packageDirs) {
         const relPath = normalizePath(pathService.relative(workspaceDir, packageDir)) || '.'
-        if (matchesAnyPattern({ name: relPath, patterns })) {
+        if (matchesAnyPattern({ name: relPath, patterns }) === true) {
           matched.add(pathService.join(packageDir, 'package.json'))
         }
       }

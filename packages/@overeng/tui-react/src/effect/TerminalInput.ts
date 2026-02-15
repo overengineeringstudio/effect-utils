@@ -55,7 +55,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
       // Check for CSI sequence (ESC [)
       if (i + 1 < data.length && data[i + 1] === 0x5b) {
         const result = parseCSISequence({ data, start: i + 2 })
-        if (result) {
+        if (result !== null) {
           events.push(result.event)
           i = result.nextIndex
           continue
@@ -65,7 +65,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
       // Check for SS3 sequence (ESC O) - function keys
       if (i + 1 < data.length && data[i + 1] === 0x4f) {
         const result = parseSS3Sequence({ data, start: i + 2 })
-        if (result) {
+        if (result !== null) {
           events.push(result.event)
           i = result.nextIndex
           continue
@@ -89,7 +89,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
     // Control characters (Ctrl+A through Ctrl+Z)
     if (byte < 0x20) {
       const ctrlKey = parseControlCharacter(byte)
-      if (ctrlKey) {
+      if (ctrlKey !== null) {
         events.push(ctrlKey)
         i++
         continue
@@ -114,7 +114,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
     // UTF-8 multi-byte character
     if (byte >= 0x80) {
       const result = parseUTF8Char({ data, start: i })
-      if (result) {
+      if (result !== null) {
         events.push(keyEvent({ key: result.char }))
         i = result.nextIndex
         continue
@@ -570,7 +570,7 @@ export const createTerminalInput = (
     )
 
     // Set up resize handler if enabled
-    if (handleResize && output.isTTY) {
+    if (handleResize === true && output.isTTY === true) {
       const resizeHandler = () => {
         const cols = output.columns ?? 80
         const rows = output.rows ?? 24

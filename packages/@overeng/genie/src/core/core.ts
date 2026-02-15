@@ -30,11 +30,11 @@ export const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(functi
   explicitPath: Option.Option<string>
   cwd: string
 }) {
-  if (Option.isSome(explicitPath)) return explicitPath
+  if (Option.isSome(explicitPath) === true) return explicitPath
   const fs = yield* FileSystem.FileSystem
   for (const conventionPath of OXFMT_CONFIG_CONVENTION_PATHS) {
     const fullPath = path.join(cwd, conventionPath)
-    if (yield* fs.exists(fullPath)) return Option.some(fullPath)
+    if ((yield* fs.exists(fullPath)) === true) return Option.some(fullPath)
   }
   return Option.none()
 })
@@ -122,7 +122,7 @@ const computeSummary = ({
 /** Run validation and emit error event on failure. Returns the error effect if validation fails. */
 const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* (cwd: string) {
   const validationResult = yield* runGenieValidation({ cwd }).pipe(Effect.either)
-  if (Either.isLeft(validationResult)) {
+  if (Either.isLeft(validationResult) === true) {
     const error = validationResult.left
     const message = error instanceof Error ? error.message : String(error)
     yield* emit({ _tag: 'Error', message })
@@ -176,13 +176,13 @@ export const generateAll = ({
             oxfmtConfigPath,
           }).pipe(Effect.either)
 
-          if (Either.isRight(result)) {
+          if (Either.isRight(result) === true) {
             const status = mapResultToStatus(result.right)
             yield* emit({
               _tag: 'FileCompleted',
               path: genieFilePath,
               status,
-              ...(result.right._tag === 'updated' && result.right.diffSummary
+              ...(result.right._tag === 'updated' && result.right.diffSummary !== undefined
                 ? { message: result.right.diffSummary }
                 : {}),
             })
@@ -207,7 +207,7 @@ export const generateAll = ({
     // Handle TDZ errors with sequential re-validation
     const hasTdzErrors = failures.some((f) => isTdzError(f.cause))
 
-    if (failures.length > 0 && hasTdzErrors) {
+    if (failures.length > 0 && hasTdzErrors === true) {
       const revalidateErrors: Array<{
         genieFilePath: string
         error: ReturnType<typeof checkFile> extends Effect.Effect<any, infer E, any> ? E : never
@@ -217,7 +217,7 @@ export const generateAll = ({
       for (const genieFilePath of genieFiles) {
         const result = yield* checkFile({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.either)
 
-        if (Either.isLeft(result)) {
+        if (Either.isLeft(result) === true) {
           revalidateErrors.push({
             genieFilePath,
             error: result.left,
@@ -235,7 +235,7 @@ export const generateAll = ({
           _tag: 'FileCompleted',
           path: genieFilePath,
           status: 'error',
-          message: isRootCause ? error.message : 'Failed due to dependency error',
+          message: isRootCause === true ? error.message : 'Failed due to dependency error',
         })
       }
 
@@ -250,12 +250,13 @@ export const generateAll = ({
           return {
             path: p,
             relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
-            status: (reErr ? 'error' : 'unchanged') as GenieFileStatus,
-            message: reErr
-              ? reErr.isRootCause
-                ? reErr.error.message
-                : 'Failed due to dependency error'
-              : undefined,
+            status: (reErr !== undefined ? 'error' : 'unchanged') as GenieFileStatus,
+            message:
+              reErr !== undefined
+                ? reErr.isRootCause === true
+                  ? reErr.error.message
+                  : 'Failed due to dependency error'
+                : undefined,
           }
         }),
       })
@@ -271,7 +272,7 @@ export const generateAll = ({
         message: `${summary.failed} file(s) failed to generate`,
         files: genieFiles.map((p, i) => {
           const resultEither = results[i]!
-          if (Either.isRight(resultEither)) {
+          if (Either.isRight(resultEither) === true) {
             return {
               path: p,
               relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
@@ -289,7 +290,7 @@ export const generateAll = ({
     }
 
     // Run validation hooks after successful generation
-    if (!dryRun) {
+    if (dryRun === false) {
       yield* runValidationOrFail(cwd)
     }
 

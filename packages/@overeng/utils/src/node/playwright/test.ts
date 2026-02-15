@@ -54,7 +54,7 @@ export interface WithTestCtxParams<ROut, E1> {
    * @example
    * ```typescript
    * Pw.withTestCtx({ page, context }, {
-   *   setup: () => { if (!process.env.RUN_LIVE_TESTS) test.skip() },
+   *   setup: () => { if (process.env.RUN_LIVE_TESTS === false) test.skip() },
    * })(Effect.gen(...))
    * ```
    */

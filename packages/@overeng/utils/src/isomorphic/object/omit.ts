@@ -7,7 +7,7 @@ export const omit = <Obj extends Record<string, any>, Keys extends keyof Obj>({
   keys: Keys[]
 }): Omit<Obj, Keys> => {
   return Object.keys(from).reduce((acc, key: any) => {
-    if (!keys.includes(key)) {
+    if (keys.includes(key) === false) {
       acc[key] = (from as any)[key]
     }
     return acc

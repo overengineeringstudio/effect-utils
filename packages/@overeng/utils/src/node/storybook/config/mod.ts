@@ -80,18 +80,18 @@ export const createDomStorybookConfig = (
 
   return {
     stories,
-    ...(addons ? { addons } : {}),
+    ...(addons !== undefined ? { addons } : {}),
     framework: { name: '@storybook/react-vite', options: {} },
     viteFinal: async (config) => {
       applySharedConfig(config)
 
-      if (disableMinify && config.build) {
+      if (disableMinify === true && config.build !== undefined) {
         config.build.minify = false
-      } else if (disableMinify) {
+      } else if (disableMinify === true) {
         config.build = { minify: false }
       }
 
-      return userViteFinal ? userViteFinal(config) : config
+      return userViteFinal !== undefined ? userViteFinal(config) : config
     },
   }
 }
@@ -121,7 +121,7 @@ export const createTuiStorybookConfig = (
 
   return {
     stories,
-    ...(addons ? { addons } : {}),
+    ...(addons !== undefined ? { addons } : {}),
     framework: { name: '@storybook/react-vite', options: {} },
     viteFinal: async (config) => {
       applySharedConfig(config)
@@ -169,7 +169,7 @@ export const createTuiStorybookConfig = (
         external: ['@opentui/core', '@opentui/react'],
       }
 
-      return userViteFinal ? userViteFinal(config) : config
+      return userViteFinal !== undefined ? userViteFinal(config) : config
     },
   }
 }

@@ -57,7 +57,7 @@
         "allowArrowFunctions": true
       }
     ],
-    "overeng/explicit-boolean-compare": "off",
+    "overeng/explicit-boolean-compare": "warn",
     "overeng/exports-first": "warn",
     "overeng/jsdoc-require-exports": "warn",
     "typescript/consistent-type-imports": "warn",

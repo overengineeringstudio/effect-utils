@@ -94,13 +94,13 @@ export const OText = (props: OTextProps) => {
   // Map to OpenTUI props
   const openTuiProps: Record<string, unknown> = {}
 
-  if (color) openTuiProps.fg = color
-  if (backgroundColor) openTuiProps.bg = backgroundColor
-  if (bold) openTuiProps.bold = true
-  if (dim) openTuiProps.dim = true
-  if (italic) openTuiProps.italic = true
-  if (underline) openTuiProps.underline = true
-  if (strikethrough) openTuiProps.strikethrough = true
+  if (color !== undefined) openTuiProps.fg = color
+  if (backgroundColor !== undefined) openTuiProps.bg = backgroundColor
+  if (bold === true) openTuiProps.bold = true
+  if (dim === true) openTuiProps.dim = true
+  if (italic === true) openTuiProps.italic = true
+  if (underline === true) openTuiProps.underline = true
+  if (strikethrough === true) openTuiProps.strikethrough = true
 
   // Use createElement to create OpenTUI's lowercase elements
   return createElement('text', openTuiProps, children)
@@ -192,9 +192,9 @@ export const OBox = (props: OBoxProps) => {
   // Map to OpenTUI props
   const openTuiProps: Record<string, unknown> = {}
 
-  if (flexDirection) openTuiProps.flexDirection = flexDirection
-  if (alignItems) openTuiProps.alignItems = alignItems
-  if (justifyContent) openTuiProps.justifyContent = justifyContent
+  if (flexDirection !== undefined) openTuiProps.flexDirection = flexDirection
+  if (alignItems !== undefined) openTuiProps.alignItems = alignItems
+  if (justifyContent !== undefined) openTuiProps.justifyContent = justifyContent
   if (gap !== undefined) openTuiProps.gap = gap
 
   // Padding
@@ -223,12 +223,12 @@ export const OBox = (props: OBoxProps) => {
   if (flexShrink !== undefined) openTuiProps.flexShrink = flexShrink
 
   // Border
-  if (border) openTuiProps.border = true
-  if (borderColor) openTuiProps.borderColor = borderColor
-  if (title) openTuiProps.title = title
+  if (border === true) openTuiProps.border = true
+  if (borderColor !== undefined) openTuiProps.borderColor = borderColor
+  if (title !== undefined) openTuiProps.title = title
 
   // Focus
-  if (focused) openTuiProps.focused = true
+  if (focused === true) openTuiProps.focused = true
 
   return createElement('box', openTuiProps, children)
 }
@@ -266,7 +266,7 @@ export const OSpinner = (props: OSpinnerProps) => {
   }, [])
 
   const textProps: Record<string, unknown> = {}
-  if (color) textProps.fg = color
+  if (color !== undefined) textProps.fg = color
 
   return createElement('text', textProps, SPINNER_FRAMES[frame])
 }
@@ -296,7 +296,7 @@ export const OScrollBox = (props: OScrollBoxProps) => {
   const openTuiProps: Record<string, unknown> = {}
   if (width !== undefined) openTuiProps.width = width
   if (height !== undefined) openTuiProps.height = height
-  if (focused) openTuiProps.focused = true
+  if (focused === true) openTuiProps.focused = true
 
   return createElement('scrollbox', openTuiProps, children)
 }
@@ -328,12 +328,12 @@ export const OInput = (props: OInputProps) => {
   const { placeholder, value, focused, onInput, onChange, onSubmit } = props
 
   const openTuiProps: Record<string, unknown> = {}
-  if (placeholder) openTuiProps.placeholder = placeholder
+  if (placeholder !== undefined) openTuiProps.placeholder = placeholder
   if (value !== undefined) openTuiProps.value = value
-  if (focused) openTuiProps.focused = true
-  if (onInput) openTuiProps.onInput = onInput
-  if (onChange) openTuiProps.onChange = onChange
-  if (onSubmit) openTuiProps.onSubmit = onSubmit
+  if (focused === true) openTuiProps.focused = true
+  if (onInput !== undefined) openTuiProps.onInput = onInput
+  if (onChange !== undefined) openTuiProps.onChange = onChange
+  if (onSubmit !== undefined) openTuiProps.onSubmit = onSubmit
 
   return createElement('input', openTuiProps)
 }

@@ -59,7 +59,7 @@ export const LiteralField = ({
     label: formatLiteralLabel(lit),
   }))
 
-  const segmentedOptions = isOptional ? [{ value: '', label: '—' }, ...options] : options
+  const segmentedOptions = isOptional === true ? [{ value: '', label: '—' }, ...options] : options
 
   // Use segmented control for small option sets
   if (segmentedOptions.length <= MAX_SEGMENTED_OPTIONS) {
@@ -70,7 +70,7 @@ export const LiteralField = ({
           <ToggleButtonGroup
             aria-label={label ?? id}
             selectionMode="single"
-            selectedKeys={value !== undefined ? [value] : isOptional ? [''] : []}
+            selectedKeys={value !== undefined ? [value] : isOptional === true ? [''] : []}
             onSelectionChange={(keys) => {
               const selected = [...keys][0]
               onChange(selected === '' || selected === undefined ? undefined : String(selected))

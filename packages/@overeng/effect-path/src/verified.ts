@@ -140,7 +140,7 @@ const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(args: {
   const { original, normalized, isFile, platformPath } = args
   const segments = toSegments(normalized)
 
-  if (isFile) {
+  if (isFile === true) {
     const filename = getFilename(normalized)
     const parentPath = platformPath.dirname(normalized)
 

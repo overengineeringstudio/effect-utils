@@ -136,10 +136,10 @@ export const makeEffectLoaderResult = <A, E>(encoded: ExitEncoded): EffectLoader
     exit,
     isSuccess: Exit.isSuccess(exit),
     isFailure: Exit.isFailure(exit),
-    value: Exit.isSuccess(exit) ? Option.some(exit.value) : Option.none(),
-    error: Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none(),
+    value: Exit.isSuccess(exit) === true ? Option.some(exit.value) : Option.none(),
+    error: Exit.isFailure(exit) === true ? Cause.failureOption(exit.cause) : Option.none(),
     getOrThrow: () => {
-      if (Exit.isSuccess(exit)) {
+      if (Exit.isSuccess(exit) === true) {
         return exit.value
       }
       throw Cause.squash(exit.cause)
@@ -149,12 +149,12 @@ export const makeEffectLoaderResult = <A, E>(encoded: ExitEncoded): EffectLoader
         onSuccess: handlers.onSuccess,
         onFailure: (cause) => {
           const failure = Cause.failureOption(cause)
-          if (Option.isSome(failure)) {
+          if (Option.isSome(failure) === true) {
             return handlers.onFailure(failure.value)
           }
-          if (handlers.onDefect) {
+          if (handlers.onDefect !== undefined) {
             const defect = Cause.dieOption(cause)
-            if (Option.isSome(defect)) {
+            if (Option.isSome(defect) === true) {
               return handlers.onDefect(defect.value)
             }
           }

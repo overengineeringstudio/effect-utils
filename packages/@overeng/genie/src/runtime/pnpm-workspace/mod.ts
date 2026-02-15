@@ -736,7 +736,7 @@ const resolvePatchPaths = ({
 
   const resolved: Record<string, string> = {}
   for (const [pkg, path] of Object.entries(patches).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (path.startsWith('./') || path.startsWith('../')) {
+    if (path.startsWith('./') === true || path.startsWith('../') === true) {
       resolved[pkg] = path
     } else {
       const relativePath = computeRelativePath({
@@ -797,9 +797,9 @@ export const createWorkspaceDepsResolver = (config: {
   const collectInternalPackageNames = (pkg: PkgInput): string[] => {
     const names = new Set<string>()
     const collect = (deps?: Record<string, string>) => {
-      if (!deps) return
+      if (deps === undefined) return
       for (const name of Object.keys(deps)) {
-        if (config.prefixes.some((prefix) => name.startsWith(prefix))) {
+        if (config.prefixes.some((prefix) => name.startsWith(prefix)) === true) {
           names.add(name)
         }
       }
@@ -816,7 +816,7 @@ export const createWorkspaceDepsResolver = (config: {
     const registry = new Map<string, PkgInput>()
     for (const pkg of packages) {
       const name = pkg.data.name
-      if (name) {
+      if (name !== undefined) {
         registry.set(name, pkg)
       }
     }
@@ -838,13 +838,13 @@ export const createWorkspaceDepsResolver = (config: {
 
     const directDeps = collectInternalPackageNames(pkg)
     for (const depName of directDeps) {
-      if (visited.has(depName)) continue
+      if (visited.has(depName) === true) continue
       visited.add(depName)
 
       result.add(config.resolveWorkspacePath(depName, location))
 
       const depPkg = registry.get(depName)
-      if (depPkg) {
+      if (depPkg !== undefined) {
         const transitiveDeps = collectWorkspacePackagesRecursive({
           pkg: depPkg,
           registry,
@@ -1093,7 +1093,7 @@ const validatePnpmWorkspaceData = ({
 
   if (data.packages !== undefined) {
     for (const pkg of data.packages) {
-      if (pkg.startsWith('/')) {
+      if (pkg.startsWith('/') === true) {
         issues.push({
           severity: 'error',
           packageName: location,

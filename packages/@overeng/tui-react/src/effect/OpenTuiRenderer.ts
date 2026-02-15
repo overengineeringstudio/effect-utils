@@ -263,7 +263,7 @@ export const useOpenTuiRenderer = <S>(
     const { View, stateRef, eventPubSub, exitOnCtrlC = true } = options
 
     // Check if we're running in Bun
-    if (!isOpenTuiAvailable()) {
+    if (isOpenTuiAvailable() === false) {
       return yield* Effect.fail(
         new OpenTuiUnavailableError(
           'OpenTUI requires Bun runtime. ' +
@@ -294,7 +294,7 @@ export const useOpenTuiRenderer = <S>(
       // Bridge keyboard events
       reactLib.useKeyboard(
         (key) => {
-          if (eventPubSub) {
+          if (eventPubSub !== undefined) {
             const event = bridgeKeyEvent(key)
             Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
           }
@@ -304,7 +304,7 @@ export const useOpenTuiRenderer = <S>(
 
       // Bridge resize events
       reactLib.useOnResize((width, height) => {
-        if (eventPubSub) {
+        if (eventPubSub !== undefined) {
           const event = bridgeResizeEvent({ width, height })
           Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
         }

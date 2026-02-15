@@ -68,7 +68,7 @@ export const lexicalPure = <P extends Path>(path: P): P => {
     if (part === '..') {
       if (result.length > 0 && result.at(-1) !== '..') {
         result.pop()
-      } else if (!isAbsolute) {
+      } else if (isAbsolute === false) {
         result.push('..')
       }
       continue
@@ -77,7 +77,7 @@ export const lexicalPure = <P extends Path>(path: P): P => {
   }
 
   let finalPath = result.join('/')
-  if (isAbsolute) {
+  if (isAbsolute === true) {
     finalPath = '/' + finalPath
   }
   if (finalPath === '') {

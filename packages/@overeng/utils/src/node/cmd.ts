@@ -89,9 +89,9 @@ export const cmd: (
     .join('')
 
   const loggingOpts = {
-    ...(options?.logDir ? { logDir: options.logDir } : {}),
-    ...(options?.logFileName ? { logFileName: options.logFileName } : {}),
-    ...(options?.logRetention ? { logRetention: options.logRetention } : {}),
+    ...(options?.logDir !== undefined ? { logDir: options.logDir } : {}),
+    ...(options?.logFileName !== undefined ? { logFileName: options.logFileName } : {}),
+    ...(options?.logRetention !== undefined ? { logRetention: options.logRetention } : {}),
   } as const
   const {
     input: finalInput,
@@ -101,7 +101,7 @@ export const cmd: (
 
   const stdoutMode = options?.stdout ?? 'inherit'
   const stderrMode = options?.stderr ?? 'inherit'
-  const useShell = !!options?.shell || needsShell
+  const useShell = options?.shell === true || needsShell === true
 
   const commandDebugStr =
     debugEnvStr +
@@ -127,7 +127,7 @@ export const cmd: (
     killTimeout: options?.killTimeout,
   } as const
 
-  const exitCode = yield* isNotUndefined(logPath)
+  const exitCode = yield* isNotUndefined(logPath) === true
     ? Effect.gen(function* () {
         yield* Effect.log(`Logging output to ${logPath}`)
         return yield* runWithLogging({
@@ -186,7 +186,7 @@ export const cmdStart: (
   const debugEnvStr = Object.entries(options?.env ?? {})
     .map(([key, value]) => `${key}='${value}' `)
     .join('')
-  const useShell = !!options?.shell
+  const useShell = options?.shell === true
   let command: string | undefined
   let args: string[] = []
   let normalizedInput: string | string[]
@@ -221,7 +221,7 @@ export const cmdStart: (
     Command.stdout(options?.stdout ?? 'inherit'),
     Command.stderr(options?.stderr ?? 'inherit'),
     Command.workingDirectory(cwd),
-    useShell ? Command.runInShell(true) : identity,
+    useShell === true ? Command.runInShell(true) : identity,
     Command.env(options?.env ?? {}),
     Command.start,
   )
@@ -514,7 +514,7 @@ const runWithLogging = ({
         const stillRunning = yield* runningProcess.isRunning.pipe(
           Effect.catchAll(() => Effect.succeed(false)),
         )
-        if (stillRunning) {
+        if (stillRunning === true) {
           yield* killProcessGroup({
             proc: runningProcess,
             ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
@@ -546,7 +546,7 @@ const sendSignalToProcessGroup = (opts: {
   const { proc, signal } = opts
   const isUnix = process.platform !== 'win32'
 
-  if (isUnix) {
+  if (isUnix === true) {
     // Negative PID sends signal to entire process group
     return Effect.try({
       try: () => process.kill(-proc.pid, signal),
@@ -603,7 +603,7 @@ const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => 
     return Command.make(command, ...args)
   }
 
-  if (useShell) {
+  if (useShell === true) {
     return Command.make(input)
   }
 
@@ -718,7 +718,7 @@ const emitSegment = Effect.fn('cmd.emitSegment')(function* ({
     content: string
   }) => Effect.Effect<void, never>
 }) {
-  if (mirrorTarget) {
+  if (mirrorTarget !== undefined) {
     yield* Effect.sync(() => mirrorSegment({ target: mirrorTarget, content, terminator }))
   }
 

@@ -72,12 +72,12 @@ export const GenerateView = ({ stateAtom }: GenerateViewProps) => {
         <Text color="green">{symbols.status.check} Done</Text>
         <Text dim>
           Written to {state.outputPath}
-          {state.writable ? '' : ' (read-only)'}
+          {state.writable === true ? '' : ' (read-only)'}
         </Text>
         {state.apiOutputPath !== undefined && (
           <Text dim>
             Written to {state.apiOutputPath}
-            {state.writable ? '' : ' (read-only)'}
+            {state.writable === true ? '' : ' (read-only)'}
           </Text>
         )}
       </Box>

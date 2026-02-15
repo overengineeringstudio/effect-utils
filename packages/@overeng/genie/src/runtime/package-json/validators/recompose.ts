@@ -25,22 +25,24 @@ const validatePackageRecomposition = (args: {
   const isPrivate = args.pkg.private === true
 
   for (const [depName, spec] of Object.entries(deps)) {
-    if (!isWorkspaceSpec(spec)) continue
+    if (isWorkspaceSpec(spec) === false) continue
     const upstream = args.packageMap.get(depName)
-    if (!upstream) continue
+    if (upstream === undefined) continue
 
     const upstreamPeers = Object.keys(upstream.peerDependencies ?? {})
     for (const peer of upstreamPeers) {
-      const isSatisfied = isPrivate
-        ? peer in (args.pkg.dependencies ?? {}) ||
-          peer in (args.pkg.devDependencies ?? {}) ||
-          peer in (args.pkg.peerDependencies ?? {})
-        : args.pkg.peerDependencies !== undefined && peer in args.pkg.peerDependencies
+      const isSatisfied =
+        isPrivate === true
+          ? peer in (args.pkg.dependencies ?? {}) ||
+            peer in (args.pkg.devDependencies ?? {}) ||
+            peer in (args.pkg.peerDependencies ?? {})
+          : args.pkg.peerDependencies !== undefined && peer in args.pkg.peerDependencies
 
-      if (!isSatisfied) {
-        const message = isPrivate
-          ? `Missing dep "${peer}" (peer dep of "${depName}") in dependencies or devDependencies`
-          : `Missing peer dep "${peer}" required by "${depName}"`
+      if (isSatisfied === false) {
+        const message =
+          isPrivate === true
+            ? `Missing dep "${peer}" (peer dep of "${depName}") in dependencies or devDependencies`
+            : `Missing peer dep "${peer}" required by "${depName}"`
         issues.push({
           severity: 'error',
           packageName: args.pkg.name,
@@ -52,11 +54,12 @@ const validatePackageRecomposition = (args: {
       }
 
       /** Only check peerDependenciesMeta when the dep is actually in peerDependencies */
-      const isInPeerDeps = args.pkg.peerDependencies && peer in args.pkg.peerDependencies
+      const isInPeerDeps =
+        args.pkg.peerDependencies !== undefined && peer in args.pkg.peerDependencies
       if (
-        isInPeerDeps &&
-        hasOptionalPeer({ meta: upstream.peerDependenciesMeta, name: peer }) &&
-        !hasOptionalPeer({ meta: args.pkg.peerDependenciesMeta, name: peer })
+        isInPeerDeps === true &&
+        hasOptionalPeer({ meta: upstream.peerDependenciesMeta, name: peer }) === true &&
+        hasOptionalPeer({ meta: args.pkg.peerDependenciesMeta, name: peer }) === false
       ) {
         issues.push({
           severity: 'error',
@@ -100,10 +103,10 @@ export const validatePackageRecompositionForPackage = ({
   pkgName: string
 }): ValidationIssue[] => {
   const workspace = ctx.workspace
-  if (!workspace) return []
+  if (workspace === undefined) return []
 
   const pkg = workspace.byName.get(pkgName)
-  if (!pkg) return []
+  if (pkg === undefined) return []
 
   return validatePackageRecomposition({
     pkg,

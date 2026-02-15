@@ -89,7 +89,7 @@ function select<TName extends string>(
   nameSchema: Schema.Schema<TName>,
 ): ReturnType<typeof Select.asOptionNamed<TName>>
 function select<TName extends string>(nameSchema?: Schema.Schema<TName>) {
-  return nameSchema ? Select.asOptionNamed(nameSchema) : Select.asOption
+  return nameSchema !== undefined ? Select.asOptionNamed(nameSchema) : Select.asOption
 }
 
 /**
@@ -102,7 +102,7 @@ function status<TName extends string>(
   nameSchema: Schema.Schema<TName>,
 ): ReturnType<typeof Status.asOptionNamed<TName>>
 function status<TName extends string>(nameSchema?: Schema.Schema<TName>) {
-  return nameSchema ? Status.asOptionNamed(nameSchema) : Status.asOption
+  return nameSchema !== undefined ? Status.asOptionNamed(nameSchema) : Status.asOption
 }
 
 /**
@@ -115,7 +115,7 @@ function multiSelect<TName extends string>(
   nameSchema: Schema.Schema<TName>,
 ): ReturnType<typeof MultiSelect.asOptionsNamed<TName>>
 function multiSelect<TName extends string>(nameSchema?: Schema.Schema<TName>) {
-  return nameSchema ? MultiSelect.asOptionsNamed(nameSchema) : MultiSelect.raw
+  return nameSchema !== undefined ? MultiSelect.asOptionsNamed(nameSchema) : MultiSelect.raw
 }
 
 /** Collection of Effect schemas for Notion property types */

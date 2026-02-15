@@ -202,7 +202,7 @@ export const resolve = Effect.fnUntraced(function* (path: AbsolutePath) {
   )
 
   // Preserve trailing slash
-  if (hadTrailingSlash) {
+  if (hadTrailingSlash === true) {
     return ensureTrailingSlash(realPath) as AbsolutePath
   }
   return realPath as AbsolutePath

@@ -152,7 +152,7 @@ export const createRoot = ({
 
   // Auto-rerender on terminal resize (Node.js only)
   const resizeHandler = () => {
-    if (!disposed) scheduleRender()
+    if (disposed === false) scheduleRender()
   }
   if (typeof process !== 'undefined' && process.stdout?.on) {
     process.stdout.on('resize', resizeHandler)
@@ -169,16 +169,16 @@ export const createRoot = ({
   const container: TuiContainer = {
     root: null,
     onRender: () => {
-      if (disposed) return
+      if (disposed === true) return
 
       // Use microtask batching to ensure React completes all commit phases
       // before we render. Without this, we might render intermediate states
       // (e.g., empty container during a recreate operation).
-      if (!microtaskScheduled) {
+      if (microtaskScheduled === false) {
         microtaskScheduled = true
         queueMicrotask(() => {
           microtaskScheduled = false
-          if (!disposed) {
+          if (disposed === false) {
             scheduleRender()
           }
         })
@@ -224,21 +224,21 @@ export const createRoot = ({
       if ('children' in node && Array.isArray(node.children)) {
         for (const child of node.children) {
           const found = findStatic(child as { children?: unknown[] })
-          if (found) return found
+          if (found !== null) return found
         }
       }
       return null
     }
 
     const staticEl = findStatic(container.root as unknown as { children?: unknown[] })
-    if (staticEl) {
+    if (staticEl !== null) {
       staticEl.committedCount = 0
     }
   }
 
   /** Schedule a render with throttling */
   const scheduleRender = (): void => {
-    if (disposed) return
+    if (disposed === true) return
 
     if (throttleMs <= 0) {
       // No throttling
@@ -260,7 +260,7 @@ export const createRoot = ({
       pendingRender = true
       setTimeout(() => {
         renderScheduled = false
-        if (pendingRender) {
+        if (pendingRender === true) {
           doRender()
           lastRenderTime = Date.now()
           pendingRender = false
@@ -381,7 +381,7 @@ export const createRoot = ({
    * 4. Render to terminal
    */
   const doFlush = (): void => {
-    if (disposed) return
+    if (disposed === true) return
 
     // Flush React work repeatedly. React's reconciler can schedule work across
     // multiple phases (sync work, passive effects, microtasks). We need to keep
@@ -394,7 +394,7 @@ export const createRoot = ({
 
     // Re-render to pick up state changes from effects (e.g., useSyncExternalStore
     // subscriptions or useEffect callbacks that called setState).
-    if (lastRenderedElement) {
+    if (lastRenderedElement !== null) {
       reconciler.updateContainerSync(
         wrapWithProviders(lastRenderedElement),
         fiberRoot,
@@ -449,7 +449,7 @@ export const createRoot = ({
     resize: () => {
       // Just schedule a render - doRender() will detect the width change
       // and self-correct by resetting state if needed
-      if (!disposed) scheduleRender()
+      if (disposed === false) scheduleRender()
     },
     get viewport() {
       return viewport

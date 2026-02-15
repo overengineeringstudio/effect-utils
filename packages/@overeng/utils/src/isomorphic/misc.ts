@@ -25,7 +25,7 @@ export const debugCatch = <T>(try_: () => T): T => {
 
 /** Recursively removes undefined values from objects and arrays (mutates input) */
 export const recRemoveUndefinedValues = (val: any): void => {
-  if (Array.isArray(val)) {
+  if (Array.isArray(val) === true) {
     val.forEach(recRemoveUndefinedValues)
   } else if (typeof val === 'object') {
     Object.keys(val).forEach((key) => {
@@ -62,7 +62,7 @@ export const objectToString = (error: any): string => {
 export const errorToString = (error: any): string => {
   const stack = error.stack
   const str = error.toString()
-  const stackStr = stack ? `\n${stack}` : ''
+  const stackStr = stack !== undefined ? `\n${stack}` : ''
   if (str !== '[object Object]') return str + stackStr
 
   try {
@@ -157,7 +157,7 @@ export const throttle = ({ fn, ms }: { fn: () => void; ms: number }) => {
   let shouldCallAgain = false
 
   const timeoutFunc = () => {
-    if (shouldCallAgain) {
+    if (shouldCallAgain === true) {
       fn()
       shouldCallAgain = false
       setTimeout(timeoutFunc, ms)
@@ -167,7 +167,7 @@ export const throttle = ({ fn, ms }: { fn: () => void; ms: number }) => {
   }
 
   return () => {
-    if (shouldWait) {
+    if (shouldWait === true) {
       shouldCallAgain = true
       return
     }
@@ -207,7 +207,7 @@ export const memoize = <T extends (...args: any[]) => any>(fn: T): T => {
 
   return ((...args: any[]) => {
     const key = JSON.stringify(args)
-    if (cache.has(key)) {
+    if (cache.has(key) === true) {
       return cache.get(key)
     }
 

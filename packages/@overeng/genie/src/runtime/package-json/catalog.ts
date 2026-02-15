@@ -170,7 +170,7 @@ export function defineCatalog<const T extends CatalogInput>(
   }
 
   // Extended catalog - merge and validate
-  const bases = Array.isArray(input.extends) ? input.extends : [input.extends]
+  const bases = Array.isArray(input.extends) === true ? input.extends : [input.extends]
   const merged: Record<string, string> = {}
 
   // Merge all base catalogs (skip non-string values like the pick method)

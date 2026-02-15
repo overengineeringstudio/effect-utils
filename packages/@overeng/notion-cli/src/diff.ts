@@ -51,7 +51,7 @@ export interface DiffResult {
 /** Map NotionSchema transform keys back to property types (derived from codegen mappings) */
 const TRANSFORM_KEY_TO_TYPE: Record<string, NotionPropertyType> = Object.fromEntries(
   Object.entries(NOTION_SCHEMA_TRANSFORM_KEYS).flatMap(([propertyType, transforms]) =>
-    transforms ? Object.values(transforms).map((key) => [key, propertyType]) : [],
+    transforms !== undefined ? Object.values(transforms).map((key) => [key, propertyType]) : [],
   ),
 ) as Record<string, NotionPropertyType>
 
@@ -73,11 +73,11 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
   // Extract database ID from header comment
   for (const line of lines) {
     const idMatch = line.match(/^\/\/\s*ID:\s*(.+)$/)
-    if (idMatch?.[1]) {
+    if (idMatch?.[1] !== undefined) {
       databaseId = idMatch[1].trim()
     }
     const nameMatch = line.match(/^\/\/\s*Database:\s*(.+)$/)
-    if (nameMatch?.[1]) {
+    if (nameMatch?.[1] !== undefined) {
       databaseName = nameMatch[1].trim()
     }
   }
@@ -89,26 +89,26 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
 
   for (const line of lines) {
     // Look for the start of the read schema struct
-    if (!inReadSchema && /PageProperties\s*=\s*Schema\.Struct\s*\(/.test(line)) {
+    if (inReadSchema === false && /PageProperties\s*=\s*Schema\.Struct\s*\(/.test(line) === true) {
       inReadSchema = true
       braceDepth = 0
       hasOpened = false
     }
 
-    if (inReadSchema) {
+    if (inReadSchema === true) {
       // Track brace depth
       for (const char of line) {
         if (char === '{') braceDepth++
         if (char === '}') braceDepth--
       }
 
-      if (!hasOpened && braceDepth > 0) {
+      if (hasOpened === false && braceDepth > 0) {
         hasOpened = true
         readSchemaFound = true
       }
 
       // Stop when we close the struct
-      if (hasOpened && braceDepth === 0) {
+      if (hasOpened === true && braceDepth === 0) {
         inReadSchema = false
         break
       }
@@ -116,24 +116,24 @@ export const parseGeneratedFile = (content: string): ParsedSchema => {
       // Parse property line
       // Matches: PropertyName: NotionSchema.transformKey,
       // Or: 'Property Name': NotionSchema.transformKey,
-      if (!hasOpened) {
+      if (hasOpened === false) {
         continue
       }
 
       const propMatch = line.match(
         /^\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_$][a-zA-Z0-9_$]*))\s*:\s*NotionSchema\.([a-zA-Z0-9_]+)(?:\([^)]*\))?(?:\.pipe\(([^)]*)\))?\s*,/,
       )
-      if (propMatch) {
+      if (propMatch !== null) {
         const name = propMatch[1] ?? propMatch[2] ?? propMatch[3]
         const baseKey = propMatch[4]
         const pipeContent = propMatch[5]
-        if (name && baseKey) {
+        if (name !== undefined && baseKey !== undefined) {
           let transformKey = baseKey
-          if (pipeContent?.includes('NotionSchema.asName')) {
+          if (pipeContent?.includes('NotionSchema.asName') === true) {
             transformKey = `${baseKey}.asName`
-          } else if (pipeContent?.includes('NotionSchema.asNames')) {
+          } else if (pipeContent?.includes('NotionSchema.asNames') === true) {
             transformKey = `${baseKey}.asNames`
-          } else if (pipeContent?.includes('NotionSchema.asNullable')) {
+          } else if (pipeContent?.includes('NotionSchema.asNullable') === true) {
             transformKey = `${baseKey}.asNullable`
           }
           properties.push({ name, transformKey })
@@ -167,7 +167,7 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
   // Check for added properties (in live but not in generated)
   for (const liveProp of live.properties) {
     const genProp = generatedByName.get(liveProp.name)
-    if (!genProp) {
+    if (genProp === undefined) {
       const expectedTransform = DEFAULT_TRANSFORMS[liveProp.type] ?? 'raw'
       propertyDiffs.push({
         name: liveProp.name,
@@ -180,7 +180,7 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
   // Check for removed properties (in generated but not in live)
   for (const genProp of generated.properties) {
     const liveProp = liveByName.get(genProp.name)
-    if (!liveProp) {
+    if (liveProp === undefined) {
       propertyDiffs.push({
         name: genProp.name,
         type: 'removed',
@@ -192,12 +192,12 @@ export const computeDiff = ({ live, generated }: ComputeDiffOptions): DiffResult
   // Check for changed properties
   for (const liveProp of live.properties) {
     const genProp = generatedByName.get(liveProp.name)
-    if (!genProp) continue
+    if (genProp === undefined) continue
 
     const liveType = TRANSFORM_KEY_TO_TYPE[genProp.transformKey]
 
     // Type changed
-    if (liveType && liveType !== liveProp.type) {
+    if (liveType !== undefined && liveType !== liveProp.type) {
       const expectedTransform = DEFAULT_TRANSFORMS[liveProp.type] ?? 'raw'
       propertyDiffs.push({
         name: liveProp.name,
@@ -234,15 +234,16 @@ export const formatDiff = ({ diff, databaseId, filePath }: FormatDiffOptions): s
   lines.push(`Comparing database ${databaseId} with ${filePath}`)
   lines.push('')
 
-  if (diff.databaseIdMatch) {
+  if (diff.databaseIdMatch === true) {
     lines.push('Database ID matches')
   } else {
     lines.push('WARNING: Database ID does not match!')
   }
 
-  const hasChanges = !diff.databaseIdMatch || diff.properties.length > 0 || diff.options.length > 0
+  const hasChanges =
+    diff.databaseIdMatch === false || diff.properties.length > 0 || diff.options.length > 0
 
-  if (!hasChanges) {
+  if (hasChanges === false) {
     lines.push('')
     lines.push('No differences found')
     return lines
@@ -256,7 +257,7 @@ export const formatDiff = ({ diff, databaseId, filePath }: FormatDiffOptions): s
   const removed = diff.properties.filter((p) => p.type === 'removed')
   const typeChanged = diff.properties.filter((p) => p.type === 'type_changed')
 
-  if (!diff.databaseIdMatch) {
+  if (diff.databaseIdMatch === false) {
     lines.push('  ! database ID mismatch')
   }
 

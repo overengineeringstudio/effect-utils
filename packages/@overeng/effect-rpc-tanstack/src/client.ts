@@ -30,7 +30,7 @@ export const layerClient: (
 
   const protocolOptions = {
     url: options.url,
-    ...(options.transformClient ? { transformClient: options.transformClient } : {}),
+    ...(options.transformClient !== undefined ? { transformClient: options.transformClient } : {}),
   }
 
   return RpcClient.layerProtocolHttp(protocolOptions).pipe(

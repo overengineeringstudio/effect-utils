@@ -232,7 +232,7 @@ export const hostConfig = {
   },
 
   clearContainer(container: TuiContainer) {
-    if (container.root) {
+    if (container.root !== null) {
       freeYogaNode(container.root.yogaNode)
       container.root = null
     }

@@ -89,7 +89,8 @@ const sanitizeForBroadcast = (value: unknown): unknown => {
   if (value === null || value === undefined) return value
 
   if (typeof value === 'bigint') return value.toString()
-  if (typeof value === 'function') return `[Function${value.name ? `: ${value.name}` : ''}]`
+  if (typeof value === 'function')
+    return `[Function${value.name !== undefined && value.name !== '' ? `: ${value.name}` : ''}]`
   if (typeof value === 'symbol') return value.toString()
   if (typeof value !== 'object') return value
 
@@ -149,13 +150,13 @@ const makeBroadcastLoggerFromChannel = ({
       _tag: 'BroadcastLogEntry',
       timestamp: date.getTime(),
       level: logLevel.label,
-      message: (Array.isArray(message) ? message : [message]).map(sanitizeForBroadcast),
+      message: (Array.isArray(message) === true ? message : [message]).map(sanitizeForBroadcast),
       fiberId: FiberId.threadName(fiberId),
       spans: [...spans].map((span) => span.label),
       annotations: Object.fromEntries(
         HashMap.toEntries(annotations).map(([k, v]) => [k, sanitizeForBroadcast(v)]),
       ),
-      cause: Cause.isEmpty(cause) ? undefined : Cause.pretty(cause),
+      cause: Cause.isEmpty(cause) === true ? undefined : Cause.pretty(cause),
       source,
     })
 
@@ -276,8 +277,8 @@ export const makeLogBridgeLive = (
   Layer.scopedDiscard(
     logStream.pipe(
       Stream.filter((entry) => {
-        if (options?.sources && options.sources.length > 0) {
-          return entry.source !== undefined && options.sources.includes(entry.source)
+        if (options?.sources !== undefined && options.sources.length > 0) {
+          return entry.source !== undefined && options.sources.includes(entry.source) === true
         }
         return true
       }),
@@ -303,7 +304,7 @@ export const makeLogBridgeLive = (
             broadcastFiberId: entry.fiberId,
             ...(entry.spans.length > 0 ? { broadcastSpans: entry.spans.join(' > ') } : {}),
             ...entry.annotations,
-            ...(entry.cause ? { broadcastCause: entry.cause } : {}),
+            ...(entry.cause !== undefined ? { broadcastCause: entry.cause } : {}),
           }),
         )
       }),
@@ -323,7 +324,7 @@ export const formatLogEntry = (entry: BroadcastLogEntry): string => {
   const date = new Date(entry.timestamp)
   const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}.${date.getMilliseconds().toString().padStart(3, '0')}`
 
-  const source = entry.source ? `[${entry.source}] ` : ''
+  const source = entry.source !== undefined ? `[${entry.source}] ` : ''
   const spans = entry.spans.length > 0 ? ` ${entry.spans.join(' > ')}:` : ''
   const msg = entry.message.join(' ')
 

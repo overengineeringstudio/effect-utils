@@ -225,7 +225,7 @@ export class TestRenderer {
    */
   contains({ str, options = {} }: { str: string; options?: { ansi?: boolean } }): boolean {
     this.ensureRendered()
-    const source = options.ansi ? this.lastResult!.ansi : this.lastResult!.text
+    const source = options.ansi === true ? this.lastResult!.ansi : this.lastResult!.text
     return source.includes(str)
   }
 
@@ -254,7 +254,7 @@ export class TestRenderer {
     options?: { ansi?: boolean }
   }): string | undefined {
     this.ensureRendered()
-    const lines = options.ansi ? this.lastResult!.lines : this.lastResult!.textLines
+    const lines = options.ansi === true ? this.lastResult!.lines : this.lastResult!.textLines
     return lines[index]
   }
 
@@ -279,7 +279,7 @@ export class TestRenderer {
    * Ensure render() has been called.
    */
   private ensureRendered(): void {
-    if (!this.lastResult) {
+    if (this.lastResult === null) {
       throw new Error('TestRenderer: No render result. Call render() first.')
     }
   }

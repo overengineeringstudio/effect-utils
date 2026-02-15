@@ -162,11 +162,12 @@ export const definePatchedDependencies = <T extends Record<string, string>>(args
   Object.fromEntries(
     Object.entries(args.patches).map(([pkg, path]) => {
       // Convert local path (./patches/...) to repo-relative path
-      const repoRelativePath = path.startsWith('./')
-        ? `${args.location}/${path.slice(2)}`
-        : path.startsWith('../')
-          ? `${args.location}/${path}`
-          : path
+      const repoRelativePath =
+        path.startsWith('./') === true
+          ? `${args.location}/${path.slice(2)}`
+          : path.startsWith('../') === true
+            ? `${args.location}/${path}`
+            : path
       return [pkg, repoRelativePath]
     }),
   ) as { [K in keyof T]: string }
