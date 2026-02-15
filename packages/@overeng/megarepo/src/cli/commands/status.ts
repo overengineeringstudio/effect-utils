@@ -423,10 +423,7 @@ export const statusCommand = Cli.Command.make(
                   if (cwdRealPath === memberRealPathNorm) {
                     return newPath
                   }
-                  if (
-                    member.nestedMembers !== undefined &&
-                    member.nestedMembers !== undefined.length > 0
-                  ) {
+                  if (member.nestedMembers !== undefined && member.nestedMembers.length > 0) {
                     const nestedResult = yield* findCurrentMemberPath({
                       memberList: member.nestedMembers,
                       megarepoRoot: memberRealPathNorm + '/',
@@ -468,28 +465,29 @@ export const statusCommand = Cli.Command.make(
         prefix?: string
       }) => {
         for (const member of memberList) {
-          const memberLabel = prefix !== '' ? `${prefix}/${member.name}` : member.name
+          const memberLabel =
+            prefix !== undefined && prefix !== '' ? `${prefix}/${member.name}` : member.name
           if (member.symlinkExists === false) {
             syncReasons.push(`Member '${memberLabel}' symlink missing`)
           } else if (member.exists === false) {
             syncReasons.push(`Member '${memberLabel}' worktree missing`)
           }
-          if (member.staleLock === true) {
+          if (member.staleLock !== undefined) {
             syncReasons.push(
               `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
             )
           }
-          if (member.symlinkDrift === true) {
+          if (member.symlinkDrift !== undefined) {
             syncReasons.push(
               `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
             )
           }
-          if (member.refMismatch === true) {
+          if (member.refMismatch !== undefined) {
             syncReasons.push(
               `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
             )
           }
-          if (member.nestedMembers === true) {
+          if (member.nestedMembers !== undefined) {
             collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
           }
         }

@@ -121,7 +121,7 @@ const createTestWorkspace = (args: {
     yield* fs.makeDirectory(reposDir, { recursive: true })
 
     // Create symlinks if specified
-    if (args.createSymlinks === true) {
+    if (args.createSymlinks !== undefined) {
       for (const { name, targetPath } of args.createSymlinks) {
         const symlinkPath = EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile(name))
         yield* fs.symlink(targetPath, symlinkPath)

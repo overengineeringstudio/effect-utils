@@ -187,7 +187,7 @@ export const pinCommand = Cli.Command.make(
 
             // For dry-run, show what would happen
             if (dryRun === true) {
-              const shortCurrentLink = currentLink === true ? shortenPath(currentLink) : '(none)'
+              const shortCurrentLink = currentLink !== null ? shortenPath(currentLink) : '(none)'
               const shortNewLink = shortenPath(worktreePath.replace(/\/$/, ''))
               const lockChanges: string[] = []
               if (currentLockRef !== newRef) lockChanges.push(`ref: ${currentLockRef} → ${newRef}`)

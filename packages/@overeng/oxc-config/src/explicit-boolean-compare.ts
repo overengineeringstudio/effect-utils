@@ -94,7 +94,7 @@ const isKnownBooleanExpression = (node: any): boolean => {
 
 /** Check if a node is an explicit comparison or boolean literal (terminal explicit node). */
 const isExplicit = (node: any): boolean => {
-  if (node === undefined) return true
+  if (node === undefined || node === null) return true
 
   // Comparison operators produce explicit boolean results
   if (node.type === 'BinaryExpression' && COMPARISON_OPERATORS.has(node.operator) === true)
@@ -113,7 +113,7 @@ const isExplicit = (node: any): boolean => {
  * leaf expressions that rely on implicit truthiness coercion.
  */
 const collectImplicit = (node: any): any[] => {
-  if (node === undefined) return []
+  if (node === undefined || node === null) return []
 
   // Explicit comparison or boolean literal — nothing to flag
   if (isExplicit(node) === true) return []
@@ -186,7 +186,7 @@ export const explicitBooleanCompareRule = {
     }
 
     const checkTest = (test: any) => {
-      if (test === undefined) return
+      if (test === undefined || test === null) return
       for (const node of collectImplicit(test)) {
         context.report({
           node,
