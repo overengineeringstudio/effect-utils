@@ -373,8 +373,9 @@ in
   # Nix store path to compiled dashboard JSON files (built from jsonnet at eval time)
   env.OTEL_DASHBOARDS_DIR = "${allDashboards}";
 
-  # mkAfter ensures this runs after setup.nix's task execution and load-exports
-  # sourcing, so TRACEPARENT (from setup:gate) is available regardless of import order.
+  # mkAfter ensures this runs after other enterShell code, so env vars
+  # (including TRACEPARENT from setup:gate) are available.
+  # Output goes to stderr so it survives devenv's TUI terminal reset.
   enterShell = lib.mkAfter ''
     # ── Mode detection ──────────────────────────────────────────────────
     # Resolve "auto" to "system" or "local" at runtime.
@@ -409,13 +410,13 @@ in
           fi
         '') extraDashboards
       )}
-      echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
+      echo "[otel] Using system-level OTEL stack (mode=$OTEL_MODE)" >&2
     else
       # Local devenv stack — set env vars with local hash-derived ports
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
       export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
       export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
-      echo "[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
+      echo "[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)" >&2
     fi
 
     _otel_grafana="$OTEL_GRAFANA_URL"
@@ -436,12 +437,12 @@ in
     else
       _trace_label="grafana"
     fi
-    if [ -t 1 ]; then
+    if [ -t 2 ]; then
       _grafana_display="$(printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07' "$_grafana_link_url" "$_trace_label")"
     else
       _grafana_display="$_trace_label $_grafana_link_url"
     fi
-    echo "[otel] Start with: devenv up | $_grafana_display"
+    echo "[otel] Start with: devenv up | $_grafana_display" >&2
 
     # Detect cold vs warm start (setup-git-hash written by setup.nix)
     _cold_start="false"
