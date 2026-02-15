@@ -88,6 +88,15 @@ ruleTester.run('explicit-boolean-compare: valid other condition positions', rule
 })
 
 // ---------------------------------------------------------------------------
+// Valid: import.meta.main is allowed implicitly
+// ---------------------------------------------------------------------------
+
+ruleTester.run('explicit-boolean-compare: import.meta.main allowed', rule, {
+  valid: [{ code: `if (import.meta.main) {}` }, { code: `if (import.meta.main && x === true) {}` }],
+  invalid: [],
+})
+
+// ---------------------------------------------------------------------------
 // Valid: non-condition positions are not checked
 // ---------------------------------------------------------------------------
 
