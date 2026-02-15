@@ -136,6 +136,15 @@ const collectImplicit = (node: any): any[] => {
     return [node]
   }
 
+  // import.meta.main — idiomatic Bun/Deno entry-point guard, always boolean
+  if (
+    node.type === 'MemberExpression' &&
+    node.property?.name === 'main' &&
+    node.object?.type === 'MetaProperty'
+  ) {
+    return []
+  }
+
   // Everything else (identifier, call, member, etc.) — implicit
   return [node]
 }
