@@ -46,26 +46,26 @@ const applyMarkdownAnnotations = (opts: { text: string; annotations: TextAnnotat
   let result = text
 
   // Apply code first (innermost)
-  if (annotations.code) {
+  if (annotations.code === true) {
     result = `\`${result}\``
   }
 
   // Apply other formatting
-  if (annotations.strikethrough) {
+  if (annotations.strikethrough === true) {
     result = `~~${result}~~`
   }
 
-  if (annotations.italic) {
+  if (annotations.italic === true) {
     result = `*${result}*`
   }
 
-  if (annotations.bold) {
+  if (annotations.bold === true) {
     result = `**${result}**`
   }
 
   // Note: Markdown doesn't have native underline support
   // We use HTML for underline if needed
-  if (annotations.underline) {
+  if (annotations.underline === true) {
     result = `<u>${result}</u>`
   }
 
@@ -173,7 +173,7 @@ const getColorStyle = (color: TextAnnotations['color']): string | undefined => {
   if (color === 'default') return undefined
 
   // Background colors
-  if (color.endsWith('_background')) {
+  if (color.endsWith('_background') === true) {
     const baseColor = color.replace('_background', '')
     return `background-color: var(--notion-${baseColor}-background, ${baseColor})`
   }
@@ -190,23 +190,23 @@ const applyHtmlAnnotations = (opts: { text: string; annotations: TextAnnotations
   let result = text
 
   // Apply formatting tags (innermost first)
-  if (annotations.code) {
+  if (annotations.code === true) {
     result = `<code>${result}</code>`
   }
 
-  if (annotations.strikethrough) {
+  if (annotations.strikethrough === true) {
     result = `<del>${result}</del>`
   }
 
-  if (annotations.underline) {
+  if (annotations.underline === true) {
     result = `<u>${result}</u>`
   }
 
-  if (annotations.italic) {
+  if (annotations.italic === true) {
     result = `<em>${result}</em>`
   }
 
-  if (annotations.bold) {
+  if (annotations.bold === true) {
     result = `<strong>${result}</strong>`
   }
 

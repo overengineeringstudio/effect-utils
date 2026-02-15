@@ -116,7 +116,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     const normalized = lexicalPure(path)
 
     // Reject absolute paths (POSIX semantics)
-    if (normalized.startsWith('/')) {
+    if (normalized.startsWith('/') === true) {
       return Either.left(
         new TraversalError({
           path,
@@ -159,7 +159,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     }
 
     // Preserve trailing slash
-    if (hasTrailingSlash(path)) {
+    if (hasTrailingSlash(path) === true) {
       return Either.right(ensureTrailingSlash(normalized) as RelativePath)
     }
     return Either.right(normalized as RelativePath)
@@ -170,7 +170,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
    */
   const resolve = (path: RelativePath): Either.Either<AbsolutePath, TraversalError> => {
     const validatedResult = validate(path)
-    if (Either.isLeft(validatedResult)) {
+    if (Either.isLeft(validatedResult) === true) {
       return Either.left(validatedResult.left)
     }
 
@@ -184,7 +184,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     const absolutePath =
       normalizedRoot === '/' ? `/${normalizedRelative}` : `${normalizedRoot}/${normalizedRelative}`
 
-    if (hasTrailingSlash(validated)) {
+    if (hasTrailingSlash(validated) === true) {
       return Either.right(ensureTrailingSlash(absolutePath) as AbsolutePath)
     }
     return Either.right(absolutePath as AbsolutePath)
@@ -205,7 +205,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       return true
     }
 
-    if (normalizedPath.startsWith(normalizedRoot + '/')) {
+    if (normalizedPath.startsWith(normalizedRoot + '/') === true) {
       return true
     }
 
@@ -222,7 +222,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
     const { originalPath, realPath } = args
     const normalizedReal = removeTrailingSlash(lexicalPure(realPath as AbsolutePath))
 
-    if (!contains(normalizedReal as AbsolutePath)) {
+    if (contains(normalizedReal as AbsolutePath) === false) {
       return Effect.fail(
         new TraversalError({
           path: originalPath,
@@ -234,7 +234,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
       )
     }
 
-    if (hasTrailingSlash(originalPath)) {
+    if (hasTrailingSlash(originalPath) === true) {
       return Effect.succeed(ensureTrailingSlash(normalizedReal) as AbsolutePath)
     }
     return Effect.succeed(normalizedReal as AbsolutePath)
@@ -246,7 +246,7 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
   const getSafeRealPath = Effect.fnUntraced(function* (path: RelativePath) {
     // First do lexical validation
     const resolveResult = resolve(path)
-    if (Either.isLeft(resolveResult)) {
+    if (Either.isLeft(resolveResult) === true) {
       return yield* resolveResult.left
     }
     const resolved = resolveResult.right
@@ -324,13 +324,13 @@ export const sandbox = (root: AbsoluteDirPath): Sandbox => {
 
     exists: Effect.fnUntraced(function* (path) {
       const resolveResult = resolve(path)
-      if (Either.isLeft(resolveResult)) {
+      if (Either.isLeft(resolveResult) === true) {
         return yield* resolveResult.left
       }
       const resolved = resolveResult.right
       const fs = yield* FileSystem.FileSystem
       const exists = yield* fs.exists(resolved).pipe(Effect.orElse(() => Effect.succeed(false)))
-      if (!exists) {
+      if (exists === false) {
         return false
       }
 

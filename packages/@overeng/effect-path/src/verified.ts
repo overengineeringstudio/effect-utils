@@ -48,7 +48,7 @@ import type { PathInfo } from './PathInfo.ts'
 
 /** Validate basic path string */
 const validatePathString = (path: string): Effect.Effect<string, InvalidPathError> => {
-  if (isEmpty(path)) {
+  if (isEmpty(path) === true) {
     return Effect.fail(
       new InvalidPathError({
         path,
@@ -59,7 +59,7 @@ const validatePathString = (path: string): Effect.Effect<string, InvalidPathErro
     )
   }
 
-  if (hasNullByte(path)) {
+  if (hasNullByte(path) === true) {
     return Effect.fail(
       new InvalidPathError({
         path,
@@ -83,7 +83,7 @@ const validatePathString = (path: string): Effect.Effect<string, InvalidPathErro
 
   const segments = toSegments(path)
   for (const segment of segments) {
-    if (isWindowsReservedName(segment)) {
+    if (isWindowsReservedName(segment) === true) {
       return Effect.fail(
         new InvalidPathError({
           path,
@@ -140,7 +140,7 @@ const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(args: {
   const { original, normalized, isFile, platformPath } = args
   const segments = toSegments(normalized)
 
-  if (isFile) {
+  if (isFile === true) {
     const filename = getFilename(normalized)
     const parentPath = platformPath.dirname(normalized)
 
@@ -172,14 +172,15 @@ const buildPathInfo = <B extends Abs | Rel, T extends File | Dir>(args: {
     extension: undefined as PathInfo<B, Dir>['extension'],
     fullExtension: undefined as PathInfo<B, Dir>['fullExtension'],
     baseName: dirName,
-    parent: isRoot
-      ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildPathInfo<B, Dir>({
-          original: parentPath,
-          normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
-          isFile: false,
-          platformPath,
-        }) as PathInfo<B, Dir>['parent']),
+    parent:
+      isRoot === true
+        ? (undefined as PathInfo<B, Dir>['parent'])
+        : (buildPathInfo<B, Dir>({
+            original: parentPath,
+            normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
+            isFile: false,
+            platformPath,
+          }) as PathInfo<B, Dir>['parent']),
   }
   return dirInfo as PathInfo<B, T>
 }
@@ -196,7 +197,7 @@ export const absoluteFile = Effect.fnUntraced(function* (path: string) {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -235,7 +236,7 @@ export const absoluteDir = Effect.fnUntraced(function* (path: string) {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -283,7 +284,7 @@ export const relativeFile = Effect.fnUntraced(function* (args: {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     return yield* new NotRelativeError({
       path: validated,
       message: 'Expected relative path',
@@ -328,7 +329,7 @@ export const relativeDir = Effect.fnUntraced(function* (args: {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     return yield* new NotRelativeError({
       path: validated,
       message: 'Expected relative path',
@@ -374,7 +375,7 @@ export const resolveAbsolute = Effect.fnUntraced(function* (path: string) {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -419,7 +420,7 @@ export const resolveRelative = Effect.fnUntraced(function* (args: {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     return yield* new NotRelativeError({
       path: validated,
       message: 'Expected relative path',

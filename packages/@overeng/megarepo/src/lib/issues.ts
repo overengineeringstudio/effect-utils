@@ -90,7 +90,7 @@ export const detectRefMismatch = ({
 
     // If detached HEAD in a branch worktree, that's a mismatch
     // (user ran `git checkout <sha>` in a branch-based worktree)
-    if (Option.isNone(actualBranchOpt)) {
+    if (Option.isNone(actualBranchOpt) === true) {
       // Get the short commit SHA for display
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(
         Effect.map((sha) => sha.slice(0, 7)),
@@ -126,7 +126,7 @@ export const formatRefMismatchMessage = ({
   refMismatch: RefMismatch
   memberName: string
 }): string => {
-  if (refMismatch.isDetached) {
+  if (refMismatch.isDetached === true) {
     // Detached HEAD case
     const lines = [
       `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree is detached at ${refMismatch.actualRef}`,

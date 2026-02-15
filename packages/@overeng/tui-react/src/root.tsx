@@ -152,9 +152,9 @@ export const createRoot = ({
 
   // Auto-rerender on terminal resize (Node.js only)
   const resizeHandler = () => {
-    if (!disposed) scheduleRender()
+    if (disposed === false) scheduleRender()
   }
-  if (typeof process !== 'undefined' && process.stdout?.on) {
+  if (typeof process !== 'undefined' && process.stdout?.on !== undefined) {
     process.stdout.on('resize', resizeHandler)
   }
 
@@ -169,16 +169,16 @@ export const createRoot = ({
   const container: TuiContainer = {
     root: null,
     onRender: () => {
-      if (disposed) return
+      if (disposed === true) return
 
       // Use microtask batching to ensure React completes all commit phases
       // before we render. Without this, we might render intermediate states
       // (e.g., empty container during a recreate operation).
-      if (!microtaskScheduled) {
+      if (microtaskScheduled === false) {
         microtaskScheduled = true
         queueMicrotask(() => {
           microtaskScheduled = false
-          if (!disposed) {
+          if (disposed === false) {
             scheduleRender()
           }
         })
@@ -212,33 +212,33 @@ export const createRoot = ({
 
   /** Find Static element and reset its committedCount for full re-render */
   const resetStaticCommittedCount = (): void => {
-    if (!container.root) return
+    if (container.root === null) return
 
     // Walk the tree to find Static element
     const findStatic = (
       node: TuiStaticElement | { children?: unknown[] },
     ): TuiStaticElement | null => {
-      if (isStaticElement(node as TuiStaticElement)) {
+      if (isStaticElement(node as TuiStaticElement) === true) {
         return node as TuiStaticElement
       }
-      if ('children' in node && Array.isArray(node.children)) {
+      if ('children' in node && Array.isArray(node.children) === true) {
         for (const child of node.children) {
           const found = findStatic(child as { children?: unknown[] })
-          if (found) return found
+          if (found !== null) return found
         }
       }
       return null
     }
 
     const staticEl = findStatic(container.root as unknown as { children?: unknown[] })
-    if (staticEl) {
+    if (staticEl !== null) {
       staticEl.committedCount = 0
     }
   }
 
   /** Schedule a render with throttling */
   const scheduleRender = (): void => {
-    if (disposed) return
+    if (disposed === true) return
 
     if (throttleMs <= 0) {
       // No throttling
@@ -254,13 +254,13 @@ export const createRoot = ({
       doRender()
       lastRenderTime = now
       pendingRender = false
-    } else if (!renderScheduled) {
+    } else if (renderScheduled === false) {
       // Schedule render for later
       renderScheduled = true
       pendingRender = true
       setTimeout(() => {
         renderScheduled = false
-        if (pendingRender) {
+        if (pendingRender === true) {
           doRender()
           lastRenderTime = Date.now()
           pendingRender = false
@@ -274,7 +274,7 @@ export const createRoot = ({
 
   /** Perform the actual render */
   const doRender = (): void => {
-    if (!container.root) {
+    if (container.root === null) {
       renderer.render([])
       return
     }
@@ -322,7 +322,7 @@ export const createRoot = ({
         staticLineCount = Math.min(staticLineCount, maxStaticLines)
       }
 
-      if (staticResult.element && isStaticElement(staticResult.element)) {
+      if (staticResult.element !== null && isStaticElement(staticResult.element) === true) {
         ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
       }
     }
@@ -381,7 +381,7 @@ export const createRoot = ({
    * 4. Render to terminal
    */
   const doFlush = (): void => {
-    if (disposed) return
+    if (disposed === true) return
 
     // Flush React work repeatedly. React's reconciler can schedule work across
     // multiple phases (sync work, passive effects, microtasks). We need to keep
@@ -394,7 +394,7 @@ export const createRoot = ({
 
     // Re-render to pick up state changes from effects (e.g., useSyncExternalStore
     // subscriptions or useEffect callbacks that called setState).
-    if (lastRenderedElement) {
+    if (lastRenderedElement !== null) {
       reconciler.updateContainerSync(
         wrapWithProviders(lastRenderedElement),
         fiberRoot,
@@ -436,7 +436,7 @@ export const createRoot = ({
       // Mark as disposed to prevent any more renders
       disposed = true
       // Remove resize listener
-      if (typeof process !== 'undefined' && process.stdout?.off) {
+      if (typeof process !== 'undefined' && process.stdout?.off !== undefined) {
         process.stdout.off('resize', resizeHandler)
       }
       // Dispose renderer (preserves content for persist mode)
@@ -449,7 +449,7 @@ export const createRoot = ({
     resize: () => {
       // Just schedule a render - doRender() will detect the width change
       // and self-correct by resetting state if needed
-      if (!disposed) scheduleRender()
+      if (disposed === false) scheduleRender()
     },
     get viewport() {
       return viewport

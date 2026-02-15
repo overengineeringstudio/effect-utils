@@ -66,7 +66,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
 
         const firstBlock = children.results[0]
         expect(firstBlock).toBeDefined()
-        if (!firstBlock) throw new Error('Expected at least one block')
+        if (firstBlock === undefined) throw new Error('Expected at least one block')
 
         // Now retrieve that specific block
         const block = yield* NotionBlocks.retrieve({
@@ -154,7 +154,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
           })
 
           const block = appendResult.results[0]
-          if (!block) throw new Error('Expected appended block')
+          if (block === undefined) throw new Error('Expected appended block')
 
           // Update the block
           const updated = yield* NotionBlocks.update({
@@ -204,7 +204,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionBlocks (integration)', () => {
           })
 
           const blockToDelete = appendResult.results[0]
-          if (!blockToDelete) throw new Error('Expected appended block')
+          if (blockToDelete === undefined) throw new Error('Expected appended block')
 
           // Delete the block
           const deleted = yield* NotionBlocks.delete({

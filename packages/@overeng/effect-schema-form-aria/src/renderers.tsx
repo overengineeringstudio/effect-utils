@@ -21,7 +21,7 @@ const StringRenderer = ({
     value={value ?? ''}
     onChange={(v) => onChange(v || undefined)}
     hint={meta.description}
-    placeholder={meta.isOptional ? '(optional)' : undefined}
+    placeholder={meta.isOptional === true ? '(optional)' : undefined}
   />
 )
 

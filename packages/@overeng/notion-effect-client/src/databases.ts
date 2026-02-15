@@ -233,14 +233,13 @@ export function queryStream<TProperties, I, R>(
       Option.match(maybeNextCursor, {
         onNone: () => Effect.succeed(Option.none()),
         onSome: (cursor) => {
-          const queryOpts: QueryDatabaseOptionsBase = Option.isSome(cursor)
-            ? { ...opts, startCursor: cursor.value }
-            : { ...opts }
+          const queryOpts: QueryDatabaseOptionsBase =
+            Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
           return queryRaw(queryOpts).pipe(
             Effect.map((result) => {
               const chunk = Chunk.fromIterable(result.results)
 
-              if (!result.hasMore || Option.isNone(result.nextCursor)) {
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
                 return Option.some([chunk, Option.none()] as const)
               }
 

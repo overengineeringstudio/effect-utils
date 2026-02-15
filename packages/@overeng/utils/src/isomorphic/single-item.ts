@@ -9,7 +9,7 @@ export class SingleItem<T> {
   map = <U>(fn: (item: T) => U): SingleItem<U> => new SingleItem(fn(this.item))
 
   filter = (fn: (item: T) => boolean): SingleItem<T | undefined> =>
-    fn(this.item) ? this : new SingleItem(undefined)
+    fn(this.item) === true ? this : new SingleItem(undefined)
 }
 
 /** Creates a SingleItem wrapper for pipeline-style transformations */

@@ -38,20 +38,20 @@ export const writeSchemaToFile = (
 
     // Create directory if it doesn't exist
     const dirExists = yield* fs.exists(dir)
-    if (!dirExists) {
+    if (dirExists === false) {
       yield* fs.makeDirectory(dir, { recursive: true })
     }
 
     // If file exists, make it writable before overwriting (handles read-only files)
     const fileExists = yield* fs.exists(outputPath)
-    if (fileExists) {
+    if (fileExists === true) {
       yield* fs.chmod(outputPath, READ_WRITE_MODE)
     }
 
     yield* fs.writeFileString(outputPath, code)
 
     // Set file permissions based on writable option
-    if (!writable) {
+    if (writable === false) {
       yield* fs.chmod(outputPath, READ_ONLY_MODE)
     }
   }).pipe(
@@ -91,7 +91,7 @@ export const formatCode = (
         Effect.catchAll(() => Effect.succeed(false)),
       )
 
-      if (didFormat) {
+      if (didFormat === true) {
         return yield* fs.readFileString(tempFile)
       }
       return code

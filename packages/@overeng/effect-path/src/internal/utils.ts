@@ -79,15 +79,19 @@ const isPosixRoot = (p: string): boolean => /^\/+$/.test(p)
 
 /** Ensure path has a trailing slash */
 export const ensureTrailingSlash = (p: string): string =>
-  hasTrailingSlash(p) || isPosixRoot(p) ? (isPosixRoot(p) ? '/' : p) : `${p}/`
+  hasTrailingSlash(p) === true || isPosixRoot(p) === true
+    ? isPosixRoot(p) === true
+      ? '/'
+      : p
+    : `${p}/`
 
 /** Remove trailing slash if present */
 export const removeTrailingSlash = (p: string): string => {
-  if (!hasTrailingSlash(p)) {
+  if (hasTrailingSlash(p) === false) {
     return p
   }
 
-  if (isPosixRoot(p)) {
+  if (isPosixRoot(p) === true) {
     return '/'
   }
 
@@ -157,7 +161,7 @@ export const extractFullExtension = (filename: string): string | undefined => {
   const secondDot = withoutSingleExt.lastIndexOf('.')
   if (secondDot > 0) {
     const potentialCompound = filename.slice(secondDot + 1)
-    if (COMPOUND_EXTENSIONS.has(potentialCompound)) {
+    if (COMPOUND_EXTENSIONS.has(potentialCompound) === true) {
       return potentialCompound
     }
   }
@@ -190,7 +194,7 @@ export const toSegments = (p: string): ReadonlyArray<string> =>
  */
 export const hasExtension = (p: string): boolean => {
   const filename = getFilename(p)
-  return filename.includes('.') && !filename.startsWith('.')
+  return filename.includes('.') === true && filename.startsWith('.') === false
 }
 
 /**

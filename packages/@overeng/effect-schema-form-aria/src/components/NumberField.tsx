@@ -39,7 +39,7 @@ export const NumberField = ({
   const isEnabled = value !== undefined
 
   // Optional field: shows toggle to enable/disable
-  if (isOptional) {
+  if (isOptional === true) {
     return (
       <FieldWrapper description={hint}>
         <div className="flex items-center gap-2">
@@ -49,8 +49,8 @@ export const NumberField = ({
           <input
             id={id}
             type="number"
-            disabled={!isEnabled || isDisabled}
-            value={isEnabled ? value : ''}
+            disabled={isEnabled === false || isDisabled === true}
+            value={isEnabled === true ? value : ''}
             onChange={(e) => {
               const target = e.target as HTMLInputElement
               onChange(target.value === '' ? undefined : Number(target.value))
@@ -61,12 +61,12 @@ export const NumberField = ({
             type="button"
             role="switch"
             aria-checked={isEnabled}
-            title={isEnabled ? 'Click to disable (set to undefined)' : 'Click to enable'}
-            onClick={() => onChange(isEnabled ? undefined : 0)}
+            title={isEnabled === true ? 'Click to disable (set to undefined)' : 'Click to enable'}
+            onClick={() => onChange(isEnabled === true ? undefined : 0)}
             disabled={isDisabled}
             className="size-4 shrink-0 rounded border border-border flex items-center justify-center hover:bg-surface-raised disabled:opacity-50"
           >
-            {isEnabled ? (
+            {isEnabled === true ? (
               <svg
                 width="10"
                 height="10"
@@ -95,7 +95,7 @@ export const NumberField = ({
     <AriaNumberField
       className="grid gap-1.5"
       value={value ?? NaN}
-      onChange={(v) => onChange(Number.isNaN(v) ? undefined : v)}
+      onChange={(v) => onChange(Number.isNaN(v) === true ? undefined : v)}
       isDisabled={isDisabled}
     >
       <Label className="text-sm text-ink">{label}</Label>

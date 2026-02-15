@@ -60,7 +60,7 @@ export class MockTerminal implements Terminal {
 
     // Detect frame boundaries (newline at end suggests complete output)
     // This is a heuristic - not perfect but works for most cases
-    if (data.endsWith('\n') || data.includes('\x1b[?2026l')) {
+    if (data.endsWith('\n') === true || data.includes('\x1b[?2026l') === true) {
       // End of synchronized output or newline = frame complete
       this._frames.push(this.currentFrame)
       this.currentFrame = ''
@@ -95,7 +95,7 @@ export class MockTerminal implements Terminal {
    */
   get frames(): readonly string[] {
     // Include current frame if not empty
-    if (this.currentFrame) {
+    if (this.currentFrame !== '') {
       return [...this._frames, this.currentFrame]
     }
     return this._frames
@@ -105,7 +105,7 @@ export class MockTerminal implements Terminal {
    * Get the last rendered frame (raw, with ANSI).
    */
   lastFrame(): string | undefined {
-    if (this.currentFrame) {
+    if (this.currentFrame !== '') {
       return this.currentFrame
     }
     return this._frames[this._frames.length - 1]
@@ -116,7 +116,7 @@ export class MockTerminal implements Terminal {
    */
   lastFramePlain(): string | undefined {
     const frame = this.lastFrame()
-    return frame ? stripAnsi(frame) : undefined
+    return frame !== undefined ? stripAnsi(frame) : undefined
   }
 
   /**

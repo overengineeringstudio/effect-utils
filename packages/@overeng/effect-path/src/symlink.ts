@@ -118,7 +118,7 @@ export const readLink = Effect.fnUntraced(function* (path: AbsolutePath) {
   const fs = yield* FileSystem.FileSystem
 
   const targetResult = yield* fs.readLink(path).pipe(Effect.either)
-  if (Either.isRight(targetResult)) {
+  if (Either.isRight(targetResult) === true) {
     return targetResult.right as Path
   }
 
@@ -145,7 +145,7 @@ export const readLink = Effect.fnUntraced(function* (path: AbsolutePath) {
     Effect.mapError((error) => mapFsError({ path, error })),
     Effect.either,
   )
-  if (Either.isLeft(statResult)) {
+  if (Either.isLeft(statResult) === true) {
     return yield* statResult.left
   }
 
@@ -202,7 +202,7 @@ export const resolve = Effect.fnUntraced(function* (path: AbsolutePath) {
   )
 
   // Preserve trailing slash
-  if (hadTrailingSlash) {
+  if (hadTrailingSlash === true) {
     return ensureTrailingSlash(realPath) as AbsolutePath
   }
   return realPath as AbsolutePath
@@ -224,7 +224,7 @@ export const chain = Effect.fnUntraced(function* (path: AbsolutePath) {
 
   for (let depth = 0; depth < MAX_SYMLINK_DEPTH; depth++) {
     const targetResult = yield* fs.readLink(current).pipe(Effect.either)
-    if (Either.isLeft(targetResult)) {
+    if (Either.isLeft(targetResult) === true) {
       const error = targetResult.left
       if (
         error._tag === 'SystemError' &&
@@ -240,12 +240,13 @@ export const chain = Effect.fnUntraced(function* (path: AbsolutePath) {
     const target = targetResult.right
 
     // Resolve to absolute if relative
-    const absoluteTarget = platformPath.isAbsolute(target)
-      ? target
-      : platformPath.resolve(platformPath.dirname(current), target)
+    const absoluteTarget =
+      platformPath.isAbsolute(target) === true
+        ? target
+        : platformPath.resolve(platformPath.dirname(current), target)
 
     // Check for loop
-    if (seen.has(absoluteTarget)) {
+    if (seen.has(absoluteTarget) === true) {
       return yield* new SymlinkLoopError({
         path,
         message: `Symlink loop detected: ${current} -> ${absoluteTarget}`,

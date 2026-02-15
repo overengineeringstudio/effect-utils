@@ -92,17 +92,17 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   }
 
   // Simple flat list for non-all mode
-  if (!all) {
+  if (all === false) {
     return (
       <Box flexDirection="column">
         {members.map((member, i) => {
           const isLast = i === members.length - 1
           return (
             <Box key={member.name} flexDirection="row">
-              <Text dim>{isLast ? tree.last : tree.middle}</Text>
+              <Text dim>{isLast === true ? tree.last : tree.middle}</Text>
               <Text bold>{member.name}</Text>
               <Text dim> ({member.source})</Text>
-              {member.isMegarepo && (
+              {member.isMegarepo !== undefined && (
                 <>
                   <Text> </Text>
                   <Text color="cyan">[megarepo]</Text>
@@ -131,7 +131,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
           <React.Fragment key={path}>
             {/* Group header */}
             <Box flexDirection="row">
-              <Text bold color={isNested ? 'cyan' : undefined}>
+              <Text bold color={isNested === true ? 'cyan' : undefined}>
                 {megarepoLabel}
               </Text>
               {isNested && <Text dim> (nested megarepo)</Text>}
@@ -142,10 +142,10 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
               const isLast = i === groupMembers.length - 1
               return (
                 <Box key={member.name} flexDirection="row">
-                  <Text dim>{isLast ? tree.last : tree.middle}</Text>
+                  <Text dim>{isLast === true ? tree.last : tree.middle}</Text>
                   <Text bold>{member.name}</Text>
                   <Text dim> ({member.source})</Text>
-                  {member.isMegarepo && (
+                  {member.isMegarepo !== undefined && (
                     <>
                       <Text> </Text>
                       <Text color="cyan">[megarepo]</Text>

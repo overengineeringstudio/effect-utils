@@ -69,7 +69,7 @@ export const Success: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
             : fixtures.createFetchState(stateConfig)
         }
@@ -77,7 +77,9 @@ export const Success: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createFetchTimeline(stateConfig) } : {})}
+        {...(args.interactive === true
+          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+          : {})}
       />
     )
   },
@@ -97,7 +99,7 @@ export const WithErrors: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
             : fixtures.createFetchState(stateConfig)
         }
@@ -105,7 +107,9 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createFetchTimeline(stateConfig) } : {})}
+        {...(args.interactive === true
+          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+          : {})}
       />
     )
   },
@@ -136,7 +140,7 @@ export const AllErrors: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
             : fixtures.createFetchState(stateConfig)
         }
@@ -144,7 +148,9 @@ export const AllErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createFetchTimeline(stateConfig) } : {})}
+        {...(args.interactive === true
+          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+          : {})}
       />
     )
   },

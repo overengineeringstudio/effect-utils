@@ -75,10 +75,10 @@ export const cmd: (
   const cwd = yield* CurrentWorkingDirectory
 
   const asArray = Array.isArray(commandInput)
-  const parts = asArray
-    ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
-    : undefined
-  const [command, ...args] = asArray ? (parts as string[]) : (commandInput as string).split(' ')
+  const parts =
+    asArray === true ? (commandInput as (string | undefined)[]).filter(isNotUndefined) : undefined
+  const [command, ...args] =
+    asArray === true ? (parts as string[]) : (commandInput as string).split(' ')
 
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
@@ -89,9 +89,9 @@ export const cmd: (
     .join('')
 
   const loggingOpts = {
-    ...(options?.logDir ? { logDir: options.logDir } : {}),
-    ...(options?.logFileName ? { logFileName: options.logFileName } : {}),
-    ...(options?.logRetention ? { logRetention: options.logRetention } : {}),
+    ...(options?.logDir !== undefined ? { logDir: options.logDir } : {}),
+    ...(options?.logFileName !== undefined ? { logFileName: options.logFileName } : {}),
+    ...(options?.logRetention !== undefined ? { logRetention: options.logRetention } : {}),
   } as const
   const {
     input: finalInput,
@@ -101,12 +101,14 @@ export const cmd: (
 
   const stdoutMode = options?.stdout ?? 'inherit'
   const stderrMode = options?.stderr ?? 'inherit'
-  const useShell = !!options?.shell || needsShell
+  const useShell = options?.shell === true || needsShell === true
 
   const commandDebugStr =
     debugEnvStr +
-    (Array.isArray(finalInput) ? (finalInput as string[]).join(' ') : (finalInput as string))
-  const subshellStr = useShell ? ' (in subshell)' : ''
+    (Array.isArray(finalInput) === true
+      ? (finalInput as string[]).join(' ')
+      : (finalInput as string))
+  const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({
@@ -127,7 +129,7 @@ export const cmd: (
     killTimeout: options?.killTimeout,
   } as const
 
-  const exitCode = yield* isNotUndefined(logPath)
+  const exitCode = yield* isNotUndefined(logPath) === true
     ? Effect.gen(function* () {
         yield* Effect.log(`Logging output to ${logPath}`)
         return yield* runWithLogging({
@@ -186,13 +188,13 @@ export const cmdStart: (
   const debugEnvStr = Object.entries(options?.env ?? {})
     .map(([key, value]) => `${key}='${value}' `)
     .join('')
-  const useShell = !!options?.shell
+  const useShell = options?.shell === true
   let command: string | undefined
   let args: string[] = []
   let normalizedInput: string | string[]
   let commandDebugStr: string
 
-  if (Array.isArray(commandInput)) {
+  if (Array.isArray(commandInput) === true) {
     const parts = commandInput.filter(isNotUndefined)
     ;[command, ...args] = parts
     normalizedInput = parts
@@ -206,7 +208,7 @@ export const cmdStart: (
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
   }
-  const subshellStr = useShell ? ' (in subshell)' : ''
+  const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Starting '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({
@@ -221,7 +223,7 @@ export const cmdStart: (
     Command.stdout(options?.stdout ?? 'inherit'),
     Command.stderr(options?.stderr ?? 'inherit'),
     Command.workingDirectory(cwd),
-    useShell ? Command.runInShell(true) : identity,
+    useShell === true ? Command.runInShell(true) : identity,
     Command.env(options?.env ?? {}),
     Command.start,
   )
@@ -249,9 +251,10 @@ export const cmdText: (
   CommandExecutor.CommandExecutor | CurrentWorkingDirectory
 > = Effect.fn('cmdText')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
-  const [command, ...args] = Array.isArray(commandInput)
-    ? commandInput.filter(isNotUndefined)
-    : commandInput.split(' ')
+  const [command, ...args] =
+    Array.isArray(commandInput) === true
+      ? commandInput.filter(isNotUndefined)
+      : commandInput.split(' ')
 
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
@@ -261,7 +264,7 @@ export const cmdText: (
     .join('')
 
   const commandDebugStr = debugEnvStr + [command, ...args].join(' ')
-  const subshellStr = options?.runInShell ? ' (in subshell)' : ''
+  const subshellStr = options?.runInShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({
@@ -274,7 +277,7 @@ export const cmdText: (
     // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
     Command.stderr(options?.stderr ?? 'inherit'),
     Command.workingDirectory(cwd),
-    options?.runInShell ? Command.runInShell(true) : identity,
+    options?.runInShell === true ? Command.runInShell(true) : identity,
     Command.env(options?.env ?? {}),
     Command.string,
   )
@@ -316,13 +319,15 @@ export const cmdCollect = <R = never>(opts: {
 
     // Preserve raw string input for buildCommand's shell-mode path (avoids
     // splitting on spaces, which would break leading-whitespace commands).
-    const normalizedInput: string | string[] = Array.isArray(opts.commandInput)
-      ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
-      : useShell
-        ? (opts.commandInput as string)
-        : (opts.commandInput as string).split(' ')
+    const normalizedInput: string | string[] =
+      Array.isArray(opts.commandInput) === true
+        ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
+        : useShell === true
+          ? (opts.commandInput as string)
+          : (opts.commandInput as string).split(' ')
 
-    const debugStr = Array.isArray(normalizedInput) ? normalizedInput.join(' ') : normalizedInput
+    const debugStr =
+      Array.isArray(normalizedInput) === true ? normalizedInput.join(' ') : normalizedInput
 
     yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
 
@@ -330,7 +335,7 @@ export const cmdCollect = <R = never>(opts: {
       Command.stdout('pipe'),
       Command.stderr('pipe'),
       Command.workingDirectory(cwd),
-      useShell ? Command.runInShell(true) : identity,
+      useShell === true ? Command.runInShell(true) : identity,
       Command.env(opts.env ?? {}),
     )
 
@@ -344,14 +349,18 @@ export const cmdCollect = <R = never>(opts: {
               stdout: proc.stdout.pipe(
                 Stream.decodeText('utf8'),
                 Stream.splitLines,
-                Stream.tap((line) => (onOutput ? onOutput('stdout', line) : Effect.void)),
+                Stream.tap((line) =>
+                  onOutput !== undefined ? onOutput('stdout', line) : Effect.void,
+                ),
                 Stream.runCollect,
                 Effect.map(Chunk.toReadonlyArray),
               ),
               stderr: proc.stderr.pipe(
                 Stream.decodeText('utf8'),
                 Stream.splitLines,
-                Stream.tap((line) => (onOutput ? onOutput('stderr', line) : Effect.void)),
+                Stream.tap((line) =>
+                  onOutput !== undefined ? onOutput('stderr', line) : Effect.void,
+                ),
                 Stream.runCollect,
                 Effect.map(Chunk.toReadonlyArray),
               ),
@@ -405,7 +414,7 @@ const runWithoutLogging = ({
     Command.stdout(stdoutMode),
     Command.stderr(stderrMode),
     Command.workingDirectory(cwd),
-    useShell ? Command.runInShell(true) : identity,
+    useShell === true ? Command.runInShell(true) : identity,
     Command.env(env),
     Command.exitCode,
   )
@@ -467,7 +476,7 @@ const runWithLogging = ({
         Command.stdout('pipe'),
         Command.stderr('pipe'),
         Command.workingDirectory(cwd),
-        useShell ? Command.runInShell(true) : identity,
+        useShell === true ? Command.runInShell(true) : identity,
         Command.env(envWithColor),
       )
 
@@ -475,7 +484,7 @@ const runWithLogging = ({
       const runningProcess = yield* Effect.acquireRelease(command.pipe(Command.start), (proc) =>
         proc.isRunning.pipe(
           Effect.flatMap((running) =>
-            running
+            running === true
               ? killProcessGroup({
                   proc,
                   ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
@@ -514,7 +523,7 @@ const runWithLogging = ({
         const stillRunning = yield* runningProcess.isRunning.pipe(
           Effect.catchAll(() => Effect.succeed(false)),
         )
-        if (stillRunning) {
+        if (stillRunning === true) {
           yield* killProcessGroup({
             proc: runningProcess,
             ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
@@ -546,7 +555,7 @@ const sendSignalToProcessGroup = (opts: {
   const { proc, signal } = opts
   const isUnix = process.platform !== 'win32'
 
-  if (isUnix) {
+  if (isUnix === true) {
     // Negative PID sends signal to entire process group
     return Effect.try({
       try: () => process.kill(-proc.pid, signal),
@@ -589,7 +598,7 @@ const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
   const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
 
   // If still running after timeout, escalate to SIGKILL
-  if (Option.isNone(exited)) {
+  if (Option.isNone(exited) === true) {
     yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
     yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
   }
@@ -597,18 +606,18 @@ const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
 
 const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
   const { input, useShell } = opts
-  if (Array.isArray(input)) {
+  if (Array.isArray(input) === true) {
     const [command, ...args] = input
-    if (!command) throw new Error('Command cannot be empty')
+    if (command === undefined) throw new Error('Command cannot be empty')
     return Command.make(command, ...args)
   }
 
-  if (useShell) {
+  if (useShell === true) {
     return Command.make(input)
   }
 
   const [command, ...args] = input.split(' ')
-  if (!command) throw new Error('Command cannot be empty')
+  if (command === undefined) throw new Error('Command cannot be empty')
   return Command.make(command, ...args)
 }
 
@@ -644,7 +653,7 @@ const makeStreamHandler = ({
       channel,
       content: opts.content,
       terminator: opts.terminator,
-      ...(mirrorTarget ? { mirrorTarget } : {}),
+      ...(mirrorTarget !== undefined ? { mirrorTarget } : {}),
       appendLog,
     })
 
@@ -718,7 +727,7 @@ const emitSegment = Effect.fn('cmd.emitSegment')(function* ({
     content: string
   }) => Effect.Effect<void, never>
 }) {
-  if (mirrorTarget) {
+  if (mirrorTarget !== undefined) {
     yield* Effect.sync(() => mirrorSegment({ target: mirrorTarget, content, terminator }))
   }
 

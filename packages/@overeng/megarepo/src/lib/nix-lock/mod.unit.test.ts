@@ -42,10 +42,10 @@ const simulateSyncFlow = (
   // Process each node
   for (const [nodeName, node] of Object.entries(rawJson.nodes)) {
     const locked = node['locked'] as Record<string, unknown> | undefined
-    if (!locked) continue
+    if (locked === undefined) continue
 
     const match = matchLockedInputToMember({ locked, members: megarepoMembers })
-    if (match && needsRevUpdate({ locked, member: match.member })) {
+    if (match !== undefined && needsRevUpdate({ locked, member: match.member }) === true) {
       // Update using our order-preserving functions
       const newLocked = updateLockedInputRev({ locked, newRev: match.member.commit })
       // Preserve node key order

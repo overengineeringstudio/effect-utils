@@ -46,12 +46,12 @@ export const DryRunFull: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },
@@ -65,12 +65,12 @@ export const DryRunSimple: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },

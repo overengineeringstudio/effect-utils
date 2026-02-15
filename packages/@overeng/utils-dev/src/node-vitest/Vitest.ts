@@ -157,7 +157,7 @@ export const withTestCtx =
     {
       suffix,
       makeLayer,
-      timeout = IS_CI ? 60_000 : 10_000,
+      timeout = IS_CI === true ? 60_000 : 10_000,
       forceOtel = false,
     }: WithTestCtxParams<ROut, E1, RIn> = {},
   ) =>
@@ -173,18 +173,18 @@ export const withTestCtx =
       | Exclude<R, ROut | Scope.Scope>
     > => {
       const suiteName = testContext.task.suite?.name
-      const spanName = `${suiteName ? `${suiteName}:` : ''}${testContext.task.name}${suffix ? `:${suffix}` : ''}`
+      const spanName = `${suiteName !== undefined ? `${suiteName}:` : ''}${testContext.task.name}${suffix !== undefined ? `:${suffix}` : ''}`
       const layer = makeLayer?.(testContext) ?? Layer.empty
 
       const otelLayer =
-        DEBUGGER_ACTIVE || forceOtel
+        DEBUGGER_ACTIVE === true || forceOtel === true
           ? makeOtelVitestLayer({ rootSpanName: spanName, serviceName: 'vitest-runner' })
           : OtelVitestDummy
 
       const combinedLayer = layer.pipe(Layer.provideMerge(otelLayer))
 
       return self.pipe(
-        DEBUGGER_ACTIVE ? identity : Effect.timeout(timeout),
+        DEBUGGER_ACTIVE === true ? identity : Effect.timeout(timeout),
         Effect.provide(combinedLayer),
         Effect.scoped, // We need to scope the effect manually here because otherwise the span is not closed
         Effect.annotateLogs({ suffix }),
@@ -240,7 +240,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }>
 } => {
   // If it's a number, treat as timeout and add our default fastCheck
-  if (!Predicate.isObject(propOptions)) {
+  if (Predicate.isObject(propOptions) === false) {
     return {
       timeout: propOptions,
       fastCheck: { numRuns: 100 },
@@ -248,7 +248,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If no fastCheck property, add it with our default numRuns
-  if (!propOptions.fastCheck) {
+  if (propOptions.fastCheck === undefined) {
     return {
       ...propOptions,
       fastCheck: { numRuns: 100 },
@@ -256,7 +256,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }
 
   // If fastCheck exists but no numRuns, add our default
-  if (propOptions.fastCheck && propOptions.fastCheck.numRuns == null) {
+  if (propOptions.fastCheck !== undefined && propOptions.fastCheck.numRuns == null) {
     return {
       ...propOptions,
       fastCheck: {
@@ -334,31 +334,32 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
     name,
     arbitraries,
     (properties, ctx) => {
-      if (ctx.signal.aborted) {
+      if (ctx.signal.aborted === true) {
         return ctx.skip('Test aborted')
       }
 
       totalExecutions++
       const isInShrinkingPhase = runIndex >= numRuns
 
-      if (isInShrinkingPhase) {
+      if (isInShrinkingPhase === true) {
         shrinkAttempts++
       }
 
-      const enhancedContext: EnhancedTestContext = isInShrinkingPhase
-        ? {
-            _tag: 'shrinking',
-            numRuns,
-            runIndex: runIndex++,
-            shrinkAttempt: shrinkAttempts,
-            totalExecutions,
-          }
-        : {
-            _tag: 'initial',
-            numRuns,
-            runIndex: runIndex++,
-            totalExecutions,
-          }
+      const enhancedContext: EnhancedTestContext =
+        isInShrinkingPhase === true
+          ? {
+              _tag: 'shrinking',
+              numRuns,
+              runIndex: runIndex++,
+              shrinkAttempt: shrinkAttempts,
+              totalExecutions,
+            }
+          : {
+              _tag: 'initial',
+              numRuns,
+              runIndex: runIndex++,
+              totalExecutions,
+            }
 
       return test(properties, ctx, enhancedContext)
     },

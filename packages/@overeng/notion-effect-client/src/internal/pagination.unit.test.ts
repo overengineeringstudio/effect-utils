@@ -136,7 +136,7 @@ Vitest.describe('paginatedStream', () => {
         Effect.sync(() => {
           cursors.push(cursor)
 
-          if (Option.isNone(cursor)) {
+          if (Option.isNone(cursor) === true) {
             // First page
             return {
               object: 'list' as const,
@@ -214,7 +214,7 @@ Vitest.describe('paginatedStream', () => {
         Effect.sync(() => {
           fetchCount++
 
-          if (Option.isNone(cursor)) {
+          if (Option.isNone(cursor) === true) {
             return {
               object: 'list' as const,
               results: [{ id: '1' }],

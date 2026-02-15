@@ -40,7 +40,7 @@ export const generateAll = Effect.fn('megarepo/generate/all')((options: Generate
     const outputs: GeneratorOutput[] = []
     const vscodeEnabled = options.config.generators?.vscode?.enabled === true
 
-    if (vscodeEnabled) {
+    if (vscodeEnabled === true) {
       const vscodeResult = yield* generateVscode({
         megarepoRoot: options.megarepoRoot,
         config: options.config,

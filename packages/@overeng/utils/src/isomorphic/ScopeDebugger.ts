@@ -67,7 +67,7 @@ export const addTracedFinalizer = Effect.fn('ScopeDebugger.addTracedFinalizer')(
   const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
   const scope = yield* Effect.scope
 
-  if (!debugEnabled) {
+  if (debugEnabled === false) {
     yield* Scope.addFinalizer(scope, finalizer)
     return
   }
@@ -175,7 +175,7 @@ export const traceFinalizer = Effect.fn('ScopeDebugger.traceFinalizer')(function
   const { name, finalizer } = opts
   const debugEnabled = yield* FiberRef.get(ScopeDebugEnabled)
 
-  if (!debugEnabled) {
+  if (debugEnabled === false) {
     yield* finalizer
     return
   }

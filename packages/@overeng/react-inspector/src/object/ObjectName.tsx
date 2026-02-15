@@ -16,7 +16,7 @@ export const ObjectName: FC<any> = ({ name, dimmed = false, styles = {} }) => {
   const themeStyles = useStyles('ObjectName')
   const appliedStyles = {
     ...themeStyles.base,
-    ...(dimmed ? themeStyles['dimmed'] : {}),
+    ...(dimmed === true ? themeStyles['dimmed'] : {}),
     ...styles,
   }
 

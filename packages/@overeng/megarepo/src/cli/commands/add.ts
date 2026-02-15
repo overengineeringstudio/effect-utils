@@ -44,7 +44,7 @@ const parseRepoRef = (ref: string): { sourceString: string; suggestedName: strin
       break
     case 'url': {
       const parsed = Git.parseGitRemoteUrl(source.url)
-      suggestedName = Option.isSome(parsed) ? parsed.value.repo : 'unknown'
+      suggestedName = Option.isSome(parsed) === true ? parsed.value.repo : 'unknown'
       break
     }
     case 'path':
@@ -83,7 +83,7 @@ export const addCommand = Cli.Command.make(
         AddApp,
         (tui) =>
           Effect.gen(function* () {
-            if (Option.isNone(root)) {
+            if (Option.isNone(root) === true) {
               tui.dispatch({
                 _tag: 'SetError',
                 error: 'not_in_megarepo',
@@ -142,7 +142,7 @@ export const addCommand = Cli.Command.make(
             yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
             // Sync if requested
-            if (sync) {
+            if (sync === true) {
               tui.dispatch({
                 _tag: 'SetAdding',
                 member: memberName,

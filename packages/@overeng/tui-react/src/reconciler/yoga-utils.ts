@@ -93,7 +93,7 @@ export const applyBoxProps = ({ node, props }: { node: YogaNode; props: BoxNodeP
 
   // Sizing
   if (props.width !== undefined) {
-    if (typeof props.width === 'string' && props.width.endsWith('%')) {
+    if (typeof props.width === 'string' && props.width.endsWith('%') === true) {
       node.setWidthPercent(parseFloat(props.width))
     } else if (typeof props.width === 'number') {
       node.setWidth(props.width)

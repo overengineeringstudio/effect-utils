@@ -50,7 +50,7 @@ const normalizeDatabasePropertyDefinition = (args: {
   name: string
   raw: unknown
 }): Option.Option<Record<string, unknown>> => {
-  if (!isRecord(args.raw)) {
+  if (isRecord(args.raw) === false) {
     return Option.none()
   }
 
@@ -80,12 +80,12 @@ export const getProperties = (args: { schema: DatabaseSchema }): PropertySchema[
       name,
       raw: rawValue,
     })
-    if (Option.isNone(normalized)) {
+    if (Option.isNone(normalized) === true) {
       continue
     }
 
     const decoded = Schema.decodeUnknownOption(PropertySchemaCodec)(normalized.value)
-    if (Option.isNone(decoded)) {
+    if (Option.isNone(decoded) === true) {
       continue
     }
 
@@ -122,7 +122,7 @@ export const getPropertyByTag = <TTag extends PropertySchema['_tag']>(args: {
   const hasTag = (p: PropertySchema): p is Extract<PropertySchema, { _tag: TTag }> =>
     p._tag === args.tag
 
-  return Option.flatMap(prop, (p) => (hasTag(p) ? Option.some(p) : Option.none()))
+  return Option.flatMap(prop, (p) => (hasTag(p) === true ? Option.some(p) : Option.none()))
 }
 
 const getDatabaseName = (schema: DatabaseSchema): string | undefined => {
@@ -180,7 +180,7 @@ export const getRequiredPropertiesFromSchema = Effect.fn(
     }
 
     const annotation = SchemaAST.getAnnotation<NotionPropertyMeta>(prop.type, notionPropertyMeta)
-    if (Option.isSome(annotation)) {
+    if (Option.isSome(annotation) === true) {
       required.push({ name: prop.name, tag: annotation.value._tag })
     } else {
       missing.push(prop.name)
@@ -333,7 +333,7 @@ export const getRelationTargetOrFail = Effect.fnUntraced(function* (args: {
     schema: args.schema,
     property: args.property,
   })
-  if (Option.isSome(target)) {
+  if (Option.isSome(target) === true) {
     return target.value
   }
 

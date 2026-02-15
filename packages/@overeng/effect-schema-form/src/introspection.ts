@@ -249,7 +249,7 @@ export const analyzeTaggedStruct = (schema: Schema.Schema.AnyNoContext): TaggedS
   const tagProp = properties.find((p) => p.key === '_tag')
   const isSingleLiteralTag = tagProp?.meta.type === 'literal' && tagProp.meta.literals?.length === 1
 
-  if (!isSingleLiteralTag || !tagProp) {
+  if (isSingleLiteralTag === false || tagProp === undefined) {
     return {
       isTagged: false,
       tagValue: undefined,

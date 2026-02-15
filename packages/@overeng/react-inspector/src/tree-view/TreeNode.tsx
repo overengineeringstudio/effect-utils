@@ -7,7 +7,7 @@ const Arrow: FC<any> = ({ expanded, styles }) => (
   <span
     style={{
       ...styles.base,
-      ...(expanded ? styles.expanded : styles.collapsed),
+      ...(expanded === true ? styles.expanded : styles.collapsed),
     }}
   >
     ▶
@@ -39,16 +39,16 @@ export const TreeNode: FC<any> = memo((props) => {
   return (
     <li aria-expanded={expanded} role="treeitem" style={styles.treeNodeBase} title={title}>
       <div style={styles.treeNodePreviewContainer} onClick={onClick}>
-        {shouldShowArrow || Children.count(children) > 0 ? (
+        {shouldShowArrow === true || Children.count(children) > 0 ? (
           <Arrow expanded={expanded} styles={styles.treeNodeArrow} />
         ) : (
-          shouldShowPlaceholder && <span style={styles.treeNodePlaceholder}>&nbsp;</span>
+          shouldShowPlaceholder === true && <span style={styles.treeNodePlaceholder}>&nbsp;</span>
         )}
         <NodeRenderer {...props} />
       </div>
 
       <ol role="group" style={styles.treeNodeChildNodesContainer}>
-        {expanded ? children : undefined}
+        {expanded === true ? children : undefined}
       </ol>
     </li>
   )

@@ -42,7 +42,7 @@ const scanMembersRecursive = ({
 
     // Prevent cycles
     const normalizedRoot = megarepoRoot.replace(/\/$/, '')
-    if (visited.has(normalizedRoot)) {
+    if (visited.has(normalizedRoot) === true) {
       return []
     }
     visited.add(normalizedRoot)
@@ -53,7 +53,7 @@ const scanMembersRecursive = ({
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
     )
     const configExists = yield* fs.exists(configPath)
-    if (!configExists) {
+    if (configExists === false) {
       return []
     }
 
@@ -71,9 +71,10 @@ const scanMembersRecursive = ({
         memberPath,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
-      const isMegarepo = memberExists
-        ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
-        : false
+      const isMegarepo =
+        memberExists === true
+          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          : false
 
       members.push({
         name: memberName,
@@ -83,9 +84,9 @@ const scanMembersRecursive = ({
       })
 
       // Recursively scan nested megarepos if --all is used
-      if (all && isMegarepo && memberExists) {
+      if (all === true && isMegarepo === true && memberExists === true) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
-          memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
+          memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
         const nestedOwnerPath: [string, ...string[]] =
           ownerPath === undefined ? [memberName] : [...ownerPath, memberName]
@@ -122,7 +123,7 @@ export const lsCommand = Cli.Command.make(
         LsApp,
         (tui) =>
           Effect.gen(function* () {
-            if (Option.isNone(root)) {
+            if (Option.isNone(root) === true) {
               // Dispatch error state
               tui.dispatch({
                 _tag: 'SetError',

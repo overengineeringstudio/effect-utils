@@ -180,10 +180,10 @@ const deepMerge = ({
     if (
       sourceVal !== null &&
       typeof sourceVal === 'object' &&
-      !Array.isArray(sourceVal) &&
+      Array.isArray(sourceVal) === false &&
       targetVal !== null &&
       typeof targetVal === 'object' &&
-      !Array.isArray(targetVal)
+      Array.isArray(targetVal) === false
     ) {
       result[key] = deepMerge({
         target: targetVal as Record<string, unknown>,
@@ -221,9 +221,10 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
   }
 
   // Apply color: prefer env var (if configured) over static color field
-  const colorFromEnv = vscodeConfig?.colorEnvVar ? process.env[vscodeConfig.colorEnvVar] : undefined
+  const colorFromEnv =
+    vscodeConfig?.colorEnvVar !== undefined ? process.env[vscodeConfig.colorEnvVar] : undefined
   const color = colorFromEnv ?? vscodeConfig?.color
-  if (color) {
+  if (color !== undefined) {
     settings = deepMerge({
       target: settings,
       source: {
@@ -233,7 +234,7 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
   }
 
   // Apply user settings passthrough (overrides everything)
-  if (vscodeConfig?.settings) {
+  if (vscodeConfig?.settings !== undefined) {
     settings = deepMerge({
       target: settings,
       source: vscodeConfig.settings as Record<string, unknown>,

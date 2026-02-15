@@ -93,7 +93,7 @@ export const TuiRegistryContext = createContext<Registry.Registry | null>(null)
  */
 export const useTuiAtomValue = <T,>(atom: Atom.Atom<T>): T => {
   const registry = useContext(TuiRegistryContext)
-  if (!registry) {
+  if (registry === null) {
     throw new Error(
       'useTuiAtomValue must be used within a TUI component. ' +
         'Make sure your component is rendered by TuiApp.run().',
@@ -383,7 +383,7 @@ const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
 
     // Find the _tag property
     const tagProperty = type.propertySignatures.find((prop) => prop.name === '_tag')
-    if (!tagProperty) {
+    if (tagProperty === undefined) {
       return false
     }
 
@@ -401,7 +401,7 @@ const hasInterruptedVariant = <A,>(schema: Schema.Schema<A>): boolean => {
  * Create an Interrupted action value if the schema supports it.
  */
 const createInterruptedAction = <A,>(schema: Schema.Schema<A>): A | null => {
-  if (!hasInterruptedVariant(schema)) {
+  if (hasInterruptedVariant(schema) === false) {
     return null
   }
   // Create the Interrupted action
@@ -502,7 +502,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
        * Apply exit code based on final state if exitCode mapper is configured.
        */
       const applyExitCode = (): void => {
-        if (config.exitCode) {
+        if (config.exitCode !== undefined) {
           const finalState = registry.get(stateAtom)
           const code = config.exitCode(finalState)
           if (code !== undefined) {
@@ -518,10 +518,10 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
        */
       const unmount = (options?: UnmountOptions): Effect.Effect<void> =>
         Effect.sync(() => {
-          if (options?.mode) {
+          if (options?.mode !== undefined) {
             exitMode = options.mode
           }
-          if (rootRef) {
+          if (rootRef !== null) {
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }
@@ -553,11 +553,15 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
         Effect.sync(() => {
           // Only dispatch Interrupted when the fiber was actually interrupted (e.g. Ctrl+C),
           // not on normal scope close. Without this check, normal exits get exitCode 130.
-          if (interruptedAction && exit._tag === 'Failure' && Cause.isInterruptedOnly(exit.cause)) {
+          if (
+            interruptedAction !== undefined &&
+            exit._tag === 'Failure' &&
+            Cause.isInterruptedOnly(exit.cause) === true
+          ) {
             dispatch(interruptedAction)
           }
           // Unmount with current exit mode
-          if (rootRef) {
+          if (rootRef !== null) {
             rootRef.unmount({ mode: exitMode })
             rootRef = null
           }
@@ -601,12 +605,12 @@ const setupMode = <S,>({
   if (mode._tag === 'react') {
     if (mode.timing === 'progressive') {
       // Progressive React rendering (inline or fullscreen)
-      return view
+      return view !== undefined
         ? setupProgressiveVisualWithView({
             registry,
             view,
             renderConfig: mode.render,
-            ...(mode.capturedLogs ? { capturedLogs: mode.capturedLogs } : {}),
+            ...(mode.capturedLogs !== undefined ? { capturedLogs: mode.capturedLogs } : {}),
           })
         : Effect.succeed(null)
     } else {
@@ -655,7 +659,7 @@ const setupProgressiveVisualWithView = ({
       )
 
       // Wrap with captured logs provider if log capture is active
-      if (capturedLogs) {
+      if (capturedLogs !== undefined) {
         content = <CapturedLogsProvider handle={capturedLogs}>{content}</CapturedLogsProvider>
       }
 
@@ -686,7 +690,7 @@ const setupFinalVisualWithAtom = ({
   registry: Registry.Registry
   renderConfig: RenderConfig
 }): Effect.Effect<void, never, Scope.Scope> => {
-  if (!view) return Effect.void
+  if (view === undefined) return Effect.void
 
   return Effect.addFinalizer(() =>
     Effect.gen(function* () {
@@ -703,7 +707,7 @@ const setupFinalVisualWithAtom = ({
       const output = yield* Effect.promise(() => renderToString({ element }))
 
       // Strip ANSI codes if colors are disabled
-      const finalOutput = renderConfig.colors ? output : stripAnsi(output)
+      const finalOutput = renderConfig.colors === true ? output : stripAnsi(output)
 
       // Output to stdout
       yield* Console.log(finalOutput)
@@ -747,7 +751,7 @@ const setupFinalJsonWithAtom = <S,>({
       // For non-struct states, wrap in `value` field to avoid _tag collision
       const output =
         exit._tag === 'Success'
-          ? isStruct
+          ? isStruct === true
             ? { _tag: 'Success' as const, ...finalState }
             : { _tag: 'Success' as const, value: finalState }
           : { _tag: 'Failure' as const, cause: exit.cause as OutputCause, state: finalState }
@@ -806,7 +810,7 @@ const setupProgressiveJsonWithAtom = <S,>({
         const finalState = registry.get(stateAtom)
         const output =
           exit._tag === 'Success'
-            ? isStruct
+            ? isStruct === true
               ? { _tag: 'Success' as const, ...finalState }
               : { _tag: 'Success' as const, value: finalState }
             : { _tag: 'Failure' as const, cause: exit.cause as OutputCause, state: finalState }

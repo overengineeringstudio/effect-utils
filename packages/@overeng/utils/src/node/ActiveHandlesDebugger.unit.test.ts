@@ -16,7 +16,7 @@ const makeTestLogger = Effect.fnUntraced(function* () {
   const runtime = yield* Effect.runtime<never>()
 
   const logger = Logger.make<unknown, void>(({ message }) => {
-    const msg = Array.isArray(message) ? message.join(' ') : String(message)
+    const msg = Array.isArray(message) === true ? message.join(' ') : String(message)
     Runtime.runSync(runtime)(Ref.update(logs, Chunk.append(msg)))
   })
 

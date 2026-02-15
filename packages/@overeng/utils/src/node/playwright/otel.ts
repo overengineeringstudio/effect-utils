@@ -150,7 +150,8 @@ export const makeOtelPlaywrightLayer = (
 
       const rootSpanLive = Layer.span('playwright.root', {
         parent: parentSpan,
-        attributes: parentSpan ? { 'playwright.parentSpan._tag': parentSpan._tag } : {},
+        attributes:
+          parentSpan !== undefined ? { 'playwright.parentSpan._tag': parentSpan._tag } : {},
       })
 
       if (endpoint === undefined) {

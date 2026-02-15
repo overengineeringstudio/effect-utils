@@ -90,7 +90,7 @@ export class GitCommandError extends Error {
 const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
     const cmd = Command.make('git', ...args).pipe(
-      cwd ? Command.workingDirectory(cwd) : (x) => x,
+      cwd !== undefined ? Command.workingDirectory(cwd) : (x) => x,
       Command.stderr('pipe'),
       Command.stdout('pipe'),
     )
@@ -137,7 +137,7 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
 export const clone = (args: { url: string; targetPath: string; bare?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['clone']
-    if (args.bare) {
+    if (args.bare === true) {
       cmdArgs.push('--bare')
     }
     cmdArgs.push(args.url, args.targetPath)
@@ -150,7 +150,7 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
 export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['fetch']
-    if (args.prune) {
+    if (args.prune === true) {
       cmdArgs.push('--prune')
     }
     cmdArgs.push(args.remote ?? 'origin')
@@ -226,7 +226,7 @@ export const createWorktree = (args: {
 }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
-    if (args.createBranch) {
+    if (args.createBranch === true) {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
     } else {
@@ -241,7 +241,7 @@ export const createWorktree = (args: {
 export const removeWorktree = (args: { repoPath: string; worktreePath: string; force?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'remove']
-    if (args.force) {
+    if (args.force === true) {
       cmdArgs.push('--force')
     }
     cmdArgs.push(args.worktreePath)
@@ -265,14 +265,14 @@ export const listWorktrees = (repoPath: string) =>
 
     let current: { path?: string; head?: string; branch?: string } = {}
     for (const line of output.split('\n')) {
-      if (line.startsWith('worktree ')) {
+      if (line.startsWith('worktree ') === true) {
         current.path = line.slice(9)
-      } else if (line.startsWith('HEAD ')) {
+      } else if (line.startsWith('HEAD ') === true) {
         current.head = line.slice(5)
-      } else if (line.startsWith('branch ')) {
+      } else if (line.startsWith('branch ') === true) {
         current.branch = line.slice(7).replace('refs/heads/', '')
       } else if (line === '') {
-        if (current.path && current.head) {
+        if (current.path !== undefined && current.head !== undefined) {
           worktrees.push({
             path: current.path,
             head: current.head,
@@ -284,7 +284,7 @@ export const listWorktrees = (repoPath: string) =>
     }
 
     // Flush remaining entry if output doesn't end with blank line
-    if (current.path && current.head) {
+    if (current.path !== undefined && current.head !== undefined) {
       worktrees.push({
         path: current.path,
         head: current.head,
@@ -351,7 +351,7 @@ export const getDefaultBranch = (args: { url: string } | { repoPath: string; rem
 
     // Parse output: "ref: refs/heads/main\tHEAD"
     const match = output.match(/ref: refs\/heads\/([^\t\n]+)/)
-    if (match?.[1]) {
+    if (match?.[1] !== undefined) {
       return Option.some(match[1])
     }
     return Option.none()
@@ -640,7 +640,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
     )
 
-    if (tagExists.exists) {
+    if (tagExists.exists === true) {
       return { type: 'tag' as const, commit: tagExists.commit }
     }
 
@@ -653,7 +653,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
     )
 
-    if (branchExists.exists) {
+    if (branchExists.exists === true) {
       return { type: 'branch' as const, commit: branchExists.commit }
     }
 
@@ -666,7 +666,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
     )
 
-    if (localBranchExists.exists) {
+    if (localBranchExists.exists === true) {
       return { type: 'branch' as const, commit: localBranchExists.commit }
     }
 
@@ -691,11 +691,11 @@ export const validateRefExists = (args: {
 
     // If it looks like a commit SHA, we can't validate without the repo
     // Just assume it's valid - it will fail later if not
-    if (/^[0-9a-f]{40}$/i.test(ref)) {
+    if (/^[0-9a-f]{40}$/i.test(ref) === true) {
       return { exists: true, type: 'commit' as const }
     }
 
-    if (bareExists && bareRepoPath !== undefined) {
+    if (bareExists === true && bareRepoPath !== undefined) {
       // Check locally (fast path)
       const localResult = yield* queryLocalRefType({ repoPath: bareRepoPath, ref })
       if (localResult.type !== 'unknown') {
@@ -727,9 +727,9 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
 
   // Repository not found / access denied
   if (
-    stderr.includes('repository not found') ||
-    stderr.includes('could not read from remote') ||
-    stderr.includes('permission denied')
+    stderr.includes('repository not found') === true ||
+    stderr.includes('could not read from remote') === true ||
+    stderr.includes('permission denied') === true
   ) {
     return {
       message: 'Repository not found or access denied',
@@ -739,9 +739,9 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
 
   // Authentication required
   if (
-    stderr.includes('could not read username') ||
-    stderr.includes('authentication failed') ||
-    stderr.includes('invalid credentials')
+    stderr.includes('could not read username') === true ||
+    stderr.includes('authentication failed') === true ||
+    stderr.includes('invalid credentials') === true
   ) {
     return {
       message: 'Authentication required',
@@ -750,7 +750,10 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
   }
 
   // Ref not found (ambiguous argument)
-  if (stderr.includes('ambiguous argument') || stderr.includes('unknown revision')) {
+  if (
+    stderr.includes('ambiguous argument') === true ||
+    stderr.includes('unknown revision') === true
+  ) {
     // Extract the ref from the error or args
     const refMatch = error.stderr.match(/ambiguous argument '([^']+)'/)
     const ref = refMatch?.[1] ?? args.find((a) => !a.startsWith('-'))
@@ -761,7 +764,7 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
   }
 
   // Clone destination exists
-  if (stderr.includes('already exists and is not an empty directory')) {
+  if (stderr.includes('already exists and is not an empty directory') === true) {
     return {
       message: 'Target directory already exists',
       hint: 'Remove the directory or choose a different location',
@@ -770,9 +773,9 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
 
   // Network errors
   if (
-    stderr.includes('could not resolve host') ||
-    stderr.includes('network is unreachable') ||
-    stderr.includes('connection refused')
+    stderr.includes('could not resolve host') === true ||
+    stderr.includes('network is unreachable') === true ||
+    stderr.includes('connection refused') === true
   ) {
     return {
       message: 'Network error - could not connect to remote',
@@ -781,7 +784,10 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
   }
 
   // SSH errors
-  if (stderr.includes('host key verification failed') || stderr.includes('no such identity')) {
+  if (
+    stderr.includes('host key verification failed') === true ||
+    stderr.includes('no such identity') === true
+  ) {
     return {
       message: 'SSH connection failed',
       hint: 'Check your SSH configuration and keys',

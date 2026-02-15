@@ -36,7 +36,7 @@ const computeRelativeRef = ({ from, to }: { from: string; to: string }): string 
   const upCount = fromParts.length - common
   const downPath = toParts.slice(common).join('/')
   const result = '../'.repeat(upCount) + downPath
-  return result.endsWith('/') ? result.slice(0, -1) : result
+  return result.endsWith('/') === true ? result.slice(0, -1) : result
 }
 
 /**
@@ -54,14 +54,14 @@ export const validateTsconfigReferences = ({
   references: TSConfigArgs['references']
 }): ValidationIssue[] => {
   // Need workspace context and location to validate
-  if (!ctx.workspace) return []
+  if (ctx.workspace === undefined) return []
 
   const issues: ValidationIssue[] = []
   const currentRefs = new Set((references ?? []).map((r) => r.path))
 
   // Find current package from location
   const currentPkg = [...ctx.workspace.byName.values()].find((p) => p.path === ctx.location)
-  if (!currentPkg) return []
+  if (currentPkg === undefined) return []
 
   // Get workspace dependencies (both deps and devDeps)
   const allDeps = {
@@ -76,17 +76,17 @@ export const validateTsconfigReferences = ({
   // Check each workspace dep has a corresponding tsconfig reference
   for (const [depName] of workspaceDeps) {
     const depPkg = ctx.workspace.byName.get(depName)
-    if (!depPkg) continue
+    if (depPkg === undefined) continue
 
     // Skip deps that can't be valid project reference targets:
     // - No tsconfig.json (e.g. meta-packages like peer-deps)
     // - composite: false (e.g. Astro sites, CLI tools)
     const depTsconfigPath = join(ctx.cwd, depPkg.path, 'tsconfig.json')
-    if (!existsSync(depTsconfigPath)) continue
-    if (!isCompositeProject(depTsconfigPath)) continue
+    if (existsSync(depTsconfigPath) === false) continue
+    if (isCompositeProject(depTsconfigPath) === false) continue
 
     const expectedRef = computeRelativeRef({ from: ctx.location, to: depPkg.path })
-    if (!currentRefs.has(expectedRef)) {
+    if (currentRefs.has(expectedRef) === false) {
       issues.push({
         severity: 'error',
         packageName: currentPkg.name,
@@ -113,7 +113,7 @@ const isCompositeProject = (tsconfigPath: string): boolean => {
     // oxlint-disable-next-line typescript-eslint/consistent-type-imports -- dynamic require needs runtime type annotation
     const ts: typeof import('typescript') = require('typescript')
     const { config, error } = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
-    if (error || !config) return false
+    if (error !== undefined || config === undefined) return false
     return config.compilerOptions?.composite !== false
   } catch {
     return false

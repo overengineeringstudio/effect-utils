@@ -55,7 +55,7 @@ export const createTerminal = (stream: TerminalLike): Terminal => ({
  * Only returns the value directly if it's a proper Terminal object (like MockTerminal).
  */
 export const resolveTerminal = (terminalOrStream: Terminal | TerminalLike): Terminal =>
-  isTerminal(terminalOrStream) ? terminalOrStream : createTerminal(terminalOrStream)
+  isTerminal(terminalOrStream) === true ? terminalOrStream : createTerminal(terminalOrStream)
 
 /**
  * Check if an object is a Terminal.

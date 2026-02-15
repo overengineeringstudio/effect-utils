@@ -177,7 +177,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
         worktreePaths[`${repoKey}#${branch}`] = worktreePath
 
         // Make dirty if requested
-        if (repoFixture.dirtyWorktrees?.includes(branch)) {
+        if (repoFixture.dirtyWorktrees?.includes(branch) === true) {
           yield* fs.writeFileString(
             EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
             'uncommitted changes\n',
@@ -201,7 +201,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
         worktreePaths[`${repoKey}#${tag}`] = worktreePath
 
         // Make dirty if requested
-        if (repoFixture.dirtyWorktrees?.includes(tag)) {
+        if (repoFixture.dirtyWorktrees?.includes(tag) === true) {
           yield* fs.writeFileString(
             EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('dirty.txt')),
             'uncommitted changes\n',

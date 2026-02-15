@@ -74,7 +74,7 @@ export const readLockFile = (
     const fs = yield* FileSystem.FileSystem
 
     const exists = yield* fs.exists(lockPath)
-    if (!exists) {
+    if (exists === false) {
       return Option.none()
     }
 
@@ -175,7 +175,7 @@ export const upsertLockedMember = ({
 
   // If member exists and nothing changed, return unchanged lock file
   if (
-    existing &&
+    existing !== undefined &&
     existing.url === update.url &&
     existing.ref === update.ref &&
     existing.commit === update.commit &&
@@ -225,7 +225,7 @@ export const pinMember = ({
   memberName: string
 }): LockFile => {
   const member = lockFile.members[memberName]
-  if (!member) return lockFile
+  if (member === undefined) return lockFile
 
   return updateLockedMember({
     lockFile,
@@ -249,7 +249,7 @@ export const unpinMember = ({
   memberName: string
 }): LockFile => {
   const member = lockFile.members[memberName]
-  if (!member) return lockFile
+  if (member === undefined) return lockFile
 
   return updateLockedMember({
     lockFile,
@@ -355,7 +355,7 @@ export const syncLockWithConfig = ({
   const members: Record<string, LockedMember> = {}
 
   for (const [name, member] of Object.entries(lockFile.members)) {
-    if (configMemberNames.has(name)) {
+    if (configMemberNames.has(name) === true) {
       members[name] = member
     }
   }

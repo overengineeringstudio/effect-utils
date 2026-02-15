@@ -35,7 +35,7 @@ interface ClaudeCliJsonOutput {
 const formatCommandForDisplay = (opts: { command: string; args: readonly string[] }): string => {
   const parts = [opts.command, ...opts.args].map((part) => {
     if (part.length === 0) return "''"
-    if (/^[A-Za-z0-9_./:-]+$/.test(part)) return part
+    if (/^[A-Za-z0-9_./:-]+$/.test(part) === true) return part
     return JSON.stringify(part)
   })
 
@@ -91,7 +91,7 @@ const promptToString = (opts: {
 const stripMarkdownCodeBlocks = (text: string): string => {
   // Remove ```json ... ``` or ``` ... ``` wrappers
   const codeBlockMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/m)
-  if (codeBlockMatch?.[1]) {
+  if (codeBlockMatch?.[1] !== undefined) {
     return codeBlockMatch[1].trim()
   }
   return text.trim()
@@ -112,9 +112,9 @@ const wrapPlatformError = (error: PlatformError): ClaudeCliError => {
 
   // Check if CLI binary was not found
   if (
-    message.includes('enoent') ||
-    message.includes('not found') ||
-    message.includes('no such file')
+    message.includes('enoent') === true ||
+    message.includes('not found') === true ||
+    message.includes('no such file') === true
   ) {
     return new ClaudeCliNotFoundError({
       message: 'Claude CLI not found. Ensure `claude` is installed and available in PATH.',
@@ -167,10 +167,10 @@ export const classifyError = (opts: {
 
   // Check for login-related errors
   if (
-    combined.includes('not logged in') ||
-    combined.includes('login required') ||
-    combined.includes('please log in') ||
-    combined.includes('authentication required')
+    combined.includes('not logged in') === true ||
+    combined.includes('login required') === true ||
+    combined.includes('please log in') === true ||
+    combined.includes('authentication required') === true
   ) {
     return new ClaudeCliNotLoggedInError({
       message: 'Claude CLI requires login. Run `claude login` to authenticate.',
@@ -179,10 +179,10 @@ export const classifyError = (opts: {
 
   // Check for auth errors (expired/invalid)
   if (
-    combined.includes('unauthorized') ||
-    combined.includes('token expired') ||
-    combined.includes('invalid token') ||
-    combined.includes('session expired')
+    combined.includes('unauthorized') === true ||
+    combined.includes('token expired') === true ||
+    combined.includes('invalid token') === true ||
+    combined.includes('session expired') === true
   ) {
     return new ClaudeCliAuthError({
       message: 'Claude CLI authentication failed. Try `claude login` to re-authenticate.',
@@ -191,9 +191,9 @@ export const classifyError = (opts: {
 
   // Check for rate limiting
   if (
-    combined.includes('rate limit') ||
-    combined.includes('too many requests') ||
-    combined.includes('quota exceeded')
+    combined.includes('rate limit') === true ||
+    combined.includes('too many requests') === true ||
+    combined.includes('quota exceeded') === true
   ) {
     return new ClaudeCliRateLimitError({
       message: 'Rate limited by Claude API. Please wait before retrying.',
@@ -231,7 +231,7 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
         '', // disable tools for simple text generation
       ]
 
-      if (options.model) {
+      if (options.model !== undefined) {
         args.push('--model', options.model)
       }
 
@@ -278,10 +278,14 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
       let resultText = ''
 
       for (const line of lines) {
-        if (!line.trim()) continue
+        if (line.trim().length === 0) continue
         const parsed = safeParseJson<ClaudeCliJsonOutput>(line)
-        if (!parsed) continue
-        if (parsed.type === 'result' && parsed.subtype === 'success' && parsed.result) {
+        if (parsed === undefined) continue
+        if (
+          parsed.type === 'result' &&
+          parsed.subtype === 'success' &&
+          parsed.result !== undefined
+        ) {
           resultText = parsed.result
         } else if (parsed.type === 'result' && parsed.subtype === 'error') {
           // Classify the error based on the result message
@@ -295,7 +299,7 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
         }
       }
 
-      if (!resultText) {
+      if (resultText.length === 0) {
         return yield* new ClaudeCliParseError({
           message: 'Claude CLI returned no result',
           rawOutput: truncateForDisplay({
@@ -349,7 +353,7 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
 
         const args = ['-p', '--output-format', 'stream-json', '--tools', '']
 
-        if (options.model) {
+        if (options.model !== undefined) {
           args.push('--model', options.model)
         }
 
@@ -386,14 +390,14 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
                   delta?: { text?: string }
                 }>(line)
 
-                if (!parsed) return [] as Response.StreamPartEncoded[]
+                if (parsed === undefined) return [] as Response.StreamPartEncoded[]
 
-                if (parsed.type === 'assistant' && parsed.message?.content) {
+                if (parsed.type === 'assistant' && parsed.message?.content !== undefined) {
                   const content = parsed.message.content
                   if (typeof content === 'string') {
                     const startEmitted = yield* Ref.get(startEmittedRef)
                     const parts: Response.StreamPartEncoded[] = []
-                    if (!startEmitted) {
+                    if (startEmitted === false) {
                       parts.push({ type: 'text-start', id: textId })
                       yield* Ref.set(startEmittedRef, true)
                     }
@@ -406,10 +410,10 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
                   }
                 }
 
-                if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                if (parsed.type === 'content_block_delta' && parsed.delta?.text !== undefined) {
                   const startEmitted = yield* Ref.get(startEmittedRef)
                   const parts: Response.StreamPartEncoded[] = []
-                  if (!startEmitted) {
+                  if (startEmitted === false) {
                     parts.push({ type: 'text-start', id: textId })
                     yield* Ref.set(startEmittedRef, true)
                   }
@@ -422,10 +426,10 @@ export const make = Effect.fnUntraced(function* (options: ClaudeCliOptions = {})
                 }
 
                 if (parsed.type === 'result') {
-                  if (parsed.subtype === 'success' && parsed.result) {
+                  if (parsed.subtype === 'success' && parsed.result !== undefined) {
                     const startEmitted = yield* Ref.get(startEmittedRef)
                     const parts: Response.StreamPartEncoded[] = []
-                    if (!startEmitted) {
+                    if (startEmitted === false) {
                       parts.push({ type: 'text-start', id: textId })
                     }
                     parts.push({

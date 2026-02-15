@@ -165,7 +165,7 @@ const make = ({
     listRepos: () =>
       Effect.gen(function* () {
         const exists = yield* fs.exists(basePath)
-        if (!exists) {
+        if (exists === false) {
           return []
         }
 
@@ -178,7 +178,7 @@ const make = ({
         const hosts = yield* fs.readDirectory(basePath)
         for (const host of hosts) {
           // Skip hidden files/directories (like .DS_Store)
-          if (host.startsWith('.')) continue
+          if (host.startsWith('.') === true) continue
 
           const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`))
           const hostStat = yield* fs
@@ -189,7 +189,7 @@ const make = ({
           const owners = yield* fs.readDirectory(hostPath)
           for (const owner of owners) {
             // Skip hidden files/directories
-            if (owner.startsWith('.')) continue
+            if (owner.startsWith('.') === true) continue
 
             const ownerPath = EffectPath.ops.join(
               hostPath,
@@ -203,7 +203,7 @@ const make = ({
             const repos = yield* fs.readDirectory(ownerPath)
             for (const repo of repos) {
               // Skip hidden files/directories
-              if (repo.startsWith('.')) continue
+              if (repo.startsWith('.') === true) continue
 
               const repoPath = EffectPath.ops.join(
                 ownerPath,
@@ -220,7 +220,7 @@ const make = ({
                 EffectPath.unsafe.relativeDir('.bare/'),
               )
               const hasBare = yield* fs.exists(barePath)
-              if (!hasBare) continue
+              if (hasBare === false) continue
 
               result.push({
                 relativePath: EffectPath.unsafe.relativeDir(`${host}/${owner}/${repo}/`),
@@ -239,7 +239,7 @@ const make = ({
         const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('refs/'))
 
         const exists = yield* fs.exists(refsDir)
-        if (!exists) {
+        if (exists === false) {
           return []
         }
 
@@ -312,7 +312,7 @@ const pathSegmentToRefType = (segment: string): RefType | undefined => {
  */
 const expandStorePath = (path: string): AbsoluteDirPath => {
   const expanded = path.replace(/^~/, process.env.HOME ?? '~')
-  const withTrailingSlash = expanded.endsWith('/') ? expanded : `${expanded}/`
+  const withTrailingSlash = expanded.endsWith('/') === true ? expanded : `${expanded}/`
   return EffectPath.unsafe.absoluteDir(withTrailingSlash)
 }
 

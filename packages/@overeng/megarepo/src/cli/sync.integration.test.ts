@@ -129,7 +129,7 @@ const runSyncCommand = ({
       exit,
       stdout: (yield* getStdoutLines).join('\n'),
       stderr: [stderrCapture.stderrChunks.join(''), ...(yield* getStderrLines)].join('\n'),
-      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
     }
   }).pipe(Effect.scoped)
 
@@ -739,7 +739,7 @@ describe('--all nested error reporting', () => {
         expect(out.syncErrors).toHaveLength(1)
         const firstError = out.syncErrors[0]
         expect(firstError).toBeDefined()
-        if (firstError) {
+        if (firstError !== undefined) {
           expect(firstError.megarepoRoot).toBe(childNestedRoot)
           expect(firstError.memberName).toBe('bad')
         }
@@ -749,7 +749,7 @@ describe('--all nested error reporting', () => {
         expect(out.syncTree.nestedResults).toHaveLength(1)
         const firstNested = out.syncTree.nestedResults[0]
         expect(firstNested).toBeDefined()
-        if (firstNested) {
+        if (firstNested !== undefined) {
           expect(firstNested.root).toBe(childNestedRoot)
 
           const nestedResults = firstNested.results
@@ -1950,7 +1950,7 @@ describe('sync member filtering', () => {
           // Should have failed
           expect(result.exitCode).not.toBe(0)
           expect(Exit.isFailure(result.exit)).toBe(true)
-          if (Exit.isFailure(result.exit)) {
+          if (Exit.isFailure(result.exit) === true) {
             const cause = result.exit.cause
             const failureMessages = Chunk.toReadonlyArray(Cause.failures(cause))
               .map((error: unknown) => String(error))

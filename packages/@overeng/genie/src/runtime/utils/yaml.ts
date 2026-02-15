@@ -15,31 +15,31 @@ export const COMMENT_KEY = '$comment'
 const needsQuoting = (str: string): boolean => {
   if (str === '') return true
   if (str === 'true' || str === 'false' || str === 'null') return true
-  if (/^\d+$/.test(str) || /^\d+\.\d+$/.test(str)) return true
+  if (/^\d+$/.test(str) === true || /^\d+\.\d+$/.test(str) === true) return true
   // Always quote strings containing ${{ - in flow sequences (inline arrays),
   // {{ is interpreted as nested flow mapping start, causing YAML parse errors.
   // GitHub Actions evaluates expressions inside quoted strings, so this is safe.
-  if (str.includes('${{')) return true
-  if (/^[{[\]!@#%&*|>?]/.test(str)) return true
-  if (/[:#]/.test(str)) return true
-  if (str.includes('\n')) return true
+  if (str.includes('${{') === true) return true
+  if (/^[{[\]!@#%&*|>?]/.test(str) === true) return true
+  if (/[:#]/.test(str) === true) return true
+  if (str.includes('\n') === true) return true
   return false
 }
 
 /** Quote a key if it needs quoting (e.g., starts with @) */
-const quoteKey = (key: string): string => (needsQuoting(key) ? `"${key}"` : key)
+const quoteKey = (key: string): string => (needsQuoting(key) === true ? `"${key}"` : key)
 
 const quoteString = ({ str, indent }: { str: string; indent: number }): string => {
-  if (str.includes('\n')) {
+  if (str.includes('\n') === true) {
     const linePrefix = INDENT.repeat(indent)
     return `|\n${str
       .split('\n')
       .map((line) => linePrefix + line)
       .join('\n')}`
   }
-  if (needsQuoting(str)) {
+  if (needsQuoting(str) === true) {
     // Prefer single quotes, fall back to double quotes if string contains single quotes
-    if (str.includes("'")) {
+    if (str.includes("'") === true) {
       return `"${str.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
     }
     return `'${str}'`
@@ -53,7 +53,7 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
   }
 
   if (typeof value === 'boolean') {
-    return value ? 'true' : 'false'
+    return value === true ? 'true' : 'false'
   }
 
   if (typeof value === 'number') {
@@ -64,14 +64,14 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
     return quoteString({ str: value, indent })
   }
 
-  if (Array.isArray(value)) {
+  if (Array.isArray(value) === true) {
     if (value.length === 0) return '[]'
 
     const isSimpleArray = value.every(
       (item) => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean',
     )
 
-    if (isSimpleArray && value.length <= 5) {
+    if (isSimpleArray === true && value.length <= 5) {
       const items = value.map((item) =>
         typeof item === 'string' ? quoteString({ str: item, indent }) : String(item),
       )
@@ -92,12 +92,13 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
 
     const prefix = INDENT.repeat(indent)
     const comment = (value as Record<string, unknown>)[COMMENT_KEY]
-    const commentLines = comment
-      ? String(comment)
-          .split('\n')
-          .map((line) => `${prefix}# ${line}`)
-          .join('\n') + '\n'
-      : ''
+    const commentLines =
+      comment !== undefined
+        ? String(comment)
+            .split('\n')
+            .map((line) => `${prefix}# ${line}`)
+            .join('\n') + '\n'
+        : ''
 
     const lines = entries.map(([key, val]) => {
       const quotedKey = quoteKey(key)
@@ -105,13 +106,13 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
       if (
         typeof val === 'object' &&
         val !== null &&
-        !Array.isArray(val) &&
+        Array.isArray(val) === false &&
         Object.keys(val).length > 0
       ) {
         return `${prefix}${quotedKey}:\n${stringifiedVal}`
       }
-      if (Array.isArray(val) && val.length > 0) {
-        if (!isSimpleInlineArray(val)) {
+      if (Array.isArray(val) === true && val.length > 0) {
+        if (isSimpleInlineArray(val) === false) {
           // Dash format for complex/long arrays
           return `${prefix}${quotedKey}:${stringifiedVal}`
         }
@@ -121,10 +122,10 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
             keyLength: quotedKey.length,
             arr: val,
             indent,
-          })
+          }) === true
         ) {
           // Check if it should use multi-line inline format
-          if (shouldUseMultilineInlineArray({ arr: val, indent: indent + 1 })) {
+          if (shouldUseMultilineInlineArray({ arr: val, indent: indent + 1 }) === true) {
             return `${prefix}${quotedKey}:\n${prefix}${INDENT}${formatMultilineInlineArray({ arr: val, indent: indent + 1 })}`
           }
           return `${prefix}${quotedKey}:\n${prefix}${INDENT}${stringifiedVal}`
@@ -214,12 +215,13 @@ export const stringify = (value: unknown): string => {
 
   // Handle top-level comment
   const comment = (value as Record<string, unknown>)[COMMENT_KEY]
-  const headerComment = comment
-    ? String(comment)
-        .split('\n')
-        .map((line) => `# ${line}`)
-        .join('\n') + '\n'
-    : ''
+  const headerComment =
+    comment !== undefined
+      ? String(comment)
+          .split('\n')
+          .map((line) => `# ${line}`)
+          .join('\n') + '\n'
+      : ''
 
   const lines = entries.map(([key, val]) => {
     const quotedKey = quoteKey(key)
@@ -227,13 +229,13 @@ export const stringify = (value: unknown): string => {
     if (
       typeof val === 'object' &&
       val !== null &&
-      !Array.isArray(val) &&
+      Array.isArray(val) === false &&
       Object.keys(val).length > 0
     ) {
       return `${quotedKey}:\n${stringifiedVal}`
     }
-    if (Array.isArray(val) && val.length > 0) {
-      if (!isSimpleInlineArray(val)) {
+    if (Array.isArray(val) === true && val.length > 0) {
+      if (isSimpleInlineArray(val) === false) {
         // Dash format for complex/long arrays
         return `${quotedKey}:${stringifiedVal}`
       }
@@ -243,10 +245,10 @@ export const stringify = (value: unknown): string => {
           keyLength: quotedKey.length,
           arr: val,
           indent: 0,
-        })
+        }) === true
       ) {
         // Check if it should use multi-line inline format
-        if (shouldUseMultilineInlineArray({ arr: val, indent: 1 })) {
+        if (shouldUseMultilineInlineArray({ arr: val, indent: 1 }) === true) {
           return `${quotedKey}:\n${INDENT}${formatMultilineInlineArray({ arr: val, indent: 1 })}`
         }
         return `${quotedKey}:\n${INDENT}${stringifiedVal}`

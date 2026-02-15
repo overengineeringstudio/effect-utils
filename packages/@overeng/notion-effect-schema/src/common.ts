@@ -147,7 +147,7 @@ export const isDevEnv = (): boolean => {
 /** Throws an error for impossible states, triggering debugger in development */
 export const shouldNeverHappen = (msg?: string, ...args: unknown[]): never => {
   console.error(msg, ...args)
-  if (isDevEnv()) {
+  if (isDevEnv() === true) {
     // oxlint-disable-next-line eslint(no-debugger) -- intentional breakpoint for impossible states during development
     debugger
   }
@@ -167,7 +167,7 @@ const getOptionValueSchema = <TValue, TInput, TContext>(
     optionValueSchema,
   )
 
-  if (Option.isSome(annotated)) {
+  if (Option.isSome(annotated) === true) {
     return annotated.value
   }
 
@@ -184,7 +184,7 @@ const getOptionNameSchema = <TName extends string, TValue, TInput, TContext>(
     optionNameSchema,
   )
 
-  if (Option.isSome(annotated)) {
+  if (Option.isSome(annotated) === true) {
     return annotated.value
   }
 

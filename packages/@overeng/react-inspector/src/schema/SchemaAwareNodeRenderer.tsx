@@ -45,10 +45,10 @@ export const createSchemaAwareNodeRenderer = ({
       object !== null &&
       !(object instanceof Date) &&
       !(object instanceof RegExp) &&
-      !Array.isArray(object)
+      Array.isArray(object) === false
     ) {
       const schemaDisplayName = schemaCtx.getDisplayName()
-      if (schemaDisplayName && object.constructor?.name === 'Object') {
+      if (schemaDisplayName !== undefined && object.constructor?.name === 'Object') {
         return <span>{schemaDisplayName}</span>
       }
     }
@@ -110,7 +110,7 @@ export const createSchemaAwareNodeRenderer = ({
           <SchemaAwareObjectPreviewForPath data={name} path={path} />
         )}
         <span>: </span>
-        {isComplexObject ? (
+        {isComplexObject === true ? (
           <SchemaAwareObjectPreviewWithName
             data={data}
             schemaDisplayName={schemaDisplayName}
@@ -195,17 +195,20 @@ export const createSchemaAwareNodeRenderer = ({
       data.constructor?.name === 'Object'
 
     /** When expanded, show only the type identifier (no inline preview needed since children are visible) */
-    if (expanded && isComplexObject) {
+    if (expanded === true && isComplexObject === true) {
       const label = schemaDisplayName ?? data.constructor?.name ?? 'Object'
       return (
-        <span title={title} style={schemaDisplayName ? { fontStyle: 'italic' } : undefined}>
+        <span
+          title={title}
+          style={schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined}
+        >
           {label}
         </span>
       )
     }
 
     /** When collapsed, show the full preview with schema name prefix */
-    if (schemaDisplayName && isComplexObject) {
+    if (schemaDisplayName !== undefined && isComplexObject === true) {
       return (
         <span title={title}>
           <span style={{ fontStyle: 'italic' }}>{schemaDisplayName} </span>

@@ -24,7 +24,7 @@ const useTerminalDimensions = () => {
   })
 
   useEffect(() => {
-    if (!renderer) return
+    if (renderer === null) return
 
     const handleResize = () => {
       setDimensions({ width: renderer.width, height: renderer.height })

@@ -46,13 +46,13 @@ const runStatusCommand = ({
 
     // Parse JSON output
     let status: typeof StatusState.Type | undefined
-    if (stdout.trim()) {
+    if (stdout.trim() !== '') {
       status = yield* Schema.decodeUnknown(Schema.parseJson(StatusState))(stdout)
     }
 
     return {
       stdout,
-      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       status,
     }
   }).pipe(Effect.scoped)
@@ -121,7 +121,7 @@ const createTestWorkspace = (args: {
     yield* fs.makeDirectory(reposDir, { recursive: true })
 
     // Create symlinks if specified
-    if (args.createSymlinks) {
+    if (args.createSymlinks !== undefined) {
       for (const { name, targetPath } of args.createSymlinks) {
         const symlinkPath = EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile(name))
         yield* fs.symlink(targetPath, symlinkPath)

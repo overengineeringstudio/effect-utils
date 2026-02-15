@@ -45,7 +45,7 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
 
     const Inspector = ObjectInspector as FC<any>
 
-    if (schema || (schemas && schemas.length > 0)) {
+    if (schema !== undefined || (schemas !== undefined && schemas.length > 0)) {
       return (
         <SchemaProvider schema={schema} schemas={schemas}>
           <Inspector {...props} nodeRenderer={schemaNodeRenderer} />
@@ -79,7 +79,7 @@ export const withSchemaContext = <TInspector extends FC<any>>(
   > = ({ schema, schemas, ...props }) => {
     const inspector = <ObjectInspector {...(props as ComponentProps<TInspector>)} />
 
-    if (schema || (schemas && schemas.length > 0)) {
+    if (schema !== undefined || (schemas !== undefined && schemas.length > 0)) {
       return (
         <SchemaProvider schema={schema} schemas={schemas}>
           {inspector}

@@ -57,7 +57,7 @@ export const isOPFSSupported = (): boolean =>
  */
 export const getRootHandle: Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupportedError> =
   Effect.suspend(() => {
-    if (!isOPFSSupported()) {
+    if (isOPFSSupported() === false) {
       return Effect.fail(OPFSNotSupportedError.notAvailable)
     }
     return Effect.tryPromise({
@@ -235,12 +235,12 @@ export const getTree: (opts?: {
 
     lines.push({
       prefix,
-      icon: isDirectory ? '📁' : '📄',
+      icon: isDirectory === true ? '📁' : '📄',
       name: entry.name,
       ...(entry.size !== undefined ? { size: prettyBytes(entry.size) } : {}),
     })
 
-    if (isDirectory && depth > 0) {
+    if (isDirectory === true && depth > 0) {
       const nestedHandle = yield* Effect.tryPromise({
         try: () => handle.getDirectoryHandle(entry.name),
         catch: (error) =>
@@ -276,7 +276,7 @@ export const printTree = Effect.fn('OPFS.printTree')(function* (opts?: {
     ...(opts?.depth !== undefined && { depth: opts.depth }),
   })
   for (const line of lines) {
-    const sizeStr = line.size ? ` (${line.size})` : ''
+    const sizeStr = line.size !== undefined ? ` (${line.size})` : ''
     console.log(`${line.prefix}${line.icon} ${line.name}${sizeStr}`)
   }
 })

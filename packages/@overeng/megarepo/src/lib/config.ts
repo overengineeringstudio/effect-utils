@@ -214,15 +214,15 @@ export const isValidMemberName = (name: string): boolean => {
   if (name.length === 0) return false
 
   // Must not contain path separators or traversal sequences
-  if (name.includes('/') || name.includes('\\')) return false
+  if (name.includes('/') === true || name.includes('\\') === true) return false
   if (name === '.' || name === '..') return false
-  if (name.includes('..')) return false
+  if (name.includes('..') === true) return false
 
   // Must not start with a dot (hidden files) or hyphen (could be confused with flags)
-  if (name.startsWith('.') || name.startsWith('-')) return false
+  if (name.startsWith('.') === true || name.startsWith('-') === true) return false
 
   // Must not contain null bytes or other control characters
-  if (hasControlCharacters(name)) return false
+  if (hasControlCharacters(name) === true) return false
 
   return true
 }
@@ -232,12 +232,13 @@ export const isValidMemberName = (name: string): boolean => {
  */
 export const validateMemberName = (name: string): string | undefined => {
   if (name.length === 0) return 'Member name cannot be empty'
-  if (name.includes('/') || name.includes('\\')) return 'Member name cannot contain path separators'
+  if (name.includes('/') === true || name.includes('\\') === true)
+    return 'Member name cannot contain path separators'
   if (name === '.' || name === '..') return 'Member name cannot be . or ..'
-  if (name.includes('..')) return 'Member name cannot contain ..'
-  if (name.startsWith('.')) return 'Member name cannot start with a dot'
-  if (name.startsWith('-')) return 'Member name cannot start with a hyphen'
-  if (hasControlCharacters(name)) return 'Member name cannot contain control characters'
+  if (name.includes('..') === true) return 'Member name cannot contain ..'
+  if (name.startsWith('.') === true) return 'Member name cannot start with a dot'
+  if (name.startsWith('-') === true) return 'Member name cannot start with a hyphen'
+  if (hasControlCharacters(name) === true) return 'Member name cannot contain control characters'
   return undefined
 }
 
@@ -272,9 +273,14 @@ export interface ParsedMemberSource {
  */
 const isGitHubShorthand = (s: string): boolean => {
   // Not a URL (no protocol)
-  if (s.includes('://') || s.startsWith('git@')) return false
+  if (s.includes('://') === true || s.startsWith('git@') === true) return false
   // Not a path
-  if (s.startsWith('./') || s.startsWith('../') || s.startsWith('/') || s.startsWith('~'))
+  if (
+    s.startsWith('./') === true ||
+    s.startsWith('../') === true ||
+    s.startsWith('/') === true ||
+    s.startsWith('~') === true
+  )
     return false
   // Has exactly one slash with content on both sides
   const parts = s.split('/')
@@ -298,7 +304,7 @@ const isLocalPath = (s: string): boolean => {
  */
 export const parseSourceString = (sourceString: string): MemberSource | undefined => {
   // Local paths don't support #ref syntax - the entire string is the path
-  if (isLocalPath(sourceString)) {
+  if (isLocalPath(sourceString) === true) {
     return { type: 'path', path: sourceString }
   }
 
@@ -306,16 +312,16 @@ export const parseSourceString = (sourceString: string): MemberSource | undefine
   const { source, ref } = parseSourceRef(sourceString)
 
   // GitHub shorthand: owner/repo
-  if (isGitHubShorthand(source)) {
+  if (isGitHubShorthand(source) === true) {
     const parts = source.split('/')
-    if (parts.length === 2 && parts[0] && parts[1]) {
+    if (parts.length === 2 && parts[0] !== '' && parts[1] !== '') {
       return { type: 'github', owner: parts[0], repo: parts[1], ref }
     }
     return undefined
   }
 
   // URL (HTTPS or SSH)
-  if (source.includes('://') || source.startsWith('git@')) {
+  if (source.includes('://') === true || source.startsWith('git@') === true) {
     return { type: 'url', url: source, ref }
   }
 

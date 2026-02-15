@@ -37,7 +37,7 @@ export const DataContainer: FC<{
                 if (
                   typeof rowData === 'object' &&
                   rowData !== null &&
-                  hasOwnProperty.call(rowData, column)
+                  hasOwnProperty.call(rowData, column) === true
                 ) {
                   return (
                     <td key={column} style={{ ...styles.td, ...borderStyles.solid }}>

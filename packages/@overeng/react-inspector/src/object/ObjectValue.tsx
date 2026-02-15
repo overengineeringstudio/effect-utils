@@ -34,15 +34,15 @@ export const ObjectValue: FC<any> = ({ object, styles }) => {
       if (object instanceof RegExp) {
         return <span style={mkStyle('objectValueRegExp')}>{object.toString()}</span>
       }
-      if (Array.isArray(object)) {
+      if (Array.isArray(object) === true) {
         return <span>{`Array(${object.length})`}</span>
       }
-      if (!object.constructor) {
+      if (object.constructor === undefined) {
         return <span>Object</span>
       }
       if (
         typeof object.constructor.isBuffer === 'function' &&
-        object.constructor.isBuffer(object)
+        object.constructor.isBuffer(object) === true
       ) {
         return <span>{`Buffer[${object.length}]`}</span>
       }

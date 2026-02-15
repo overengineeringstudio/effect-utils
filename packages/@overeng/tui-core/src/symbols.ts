@@ -127,7 +127,7 @@ export type Symbols = {
  * ```
  */
 export const resolveSymbols = (useAscii: boolean): Symbols => {
-  const variant = useAscii ? 'ascii' : 'unicode'
+  const variant = useAscii === true ? 'ascii' : 'unicode'
 
   return {
     status: {

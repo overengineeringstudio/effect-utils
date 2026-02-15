@@ -79,9 +79,9 @@ const getGeneratorVersion = Effect.gen(function* () {
 
 /** Resolve the Notion API token from CLI option or `NOTION_TOKEN`. */
 export const resolveNotionToken = (token: Option.Option<string>) =>
-  Effect.sync(() => (Option.isSome(token) ? token.value : process.env.NOTION_TOKEN)).pipe(
+  Effect.sync(() => (Option.isSome(token) === true ? token.value : process.env.NOTION_TOKEN)).pipe(
     Effect.flatMap((t) =>
-      t
+      t !== undefined
         ? Effect.succeed(t)
         : Effect.fail(
             new NotionTokenMissingError({
@@ -205,7 +205,7 @@ const generateCommand = Command.make(
       const generatorVersion = yield* getGeneratorVersion
 
       const transformConfig: PropertyTransformConfig = {}
-      if (Option.isSome(transform)) {
+      if (Option.isSome(transform) === true) {
         for (const [key, value] of transform.value) {
           transformConfig[key] = value
         }
@@ -215,10 +215,10 @@ const generateCommand = Command.make(
         transforms: transformConfig,
         includeWrite,
         typedOptions,
-        schemaMeta: noSchemaMeta ? false : schemaMeta,
+        schemaMeta: noSchemaMeta === true ? false : schemaMeta,
         includeApi,
         generatorVersion,
-        ...(Option.isSome(name) ? { schemaNameOverride: name.value } : {}),
+        ...(Option.isSome(name) === true ? { schemaNameOverride: name.value } : {}),
       }
 
       const configLayer = Layer.succeed(NotionConfig, {
@@ -243,8 +243,8 @@ const generateCommand = Command.make(
               })
               const code = yield* formatCode(rawCode)
 
-              if (dryRun) {
-                if (includeApi) {
+              if (dryRun === true) {
+                if (includeApi === true) {
                   const schemaFileName = basename(output)
                   const rawApiCode = generateApiCode({
                     dbInfo,
@@ -277,7 +277,7 @@ const generateCommand = Command.make(
                   writable,
                 })
 
-                if (includeApi) {
+                if (includeApi === true) {
                   const schemaFileName = basename(output)
                   const rawApiCode = generateApiCode({
                     dbInfo,
@@ -360,7 +360,7 @@ const introspectCommand = Command.make(
                 if (prop.type === 'select' || prop.type === 'multi_select') {
                   const options = (prop[prop.type] as { options?: Array<{ name: string }> })
                     ?.options
-                  if (options && options.length > 0) {
+                  if (options !== undefined && options.length > 0) {
                     result.options = options.map((o) => o.name)
                   }
                 }
@@ -369,16 +369,16 @@ const introspectCommand = Command.make(
                     options?: Array<{ name: string }>
                     groups?: Array<{ name: string }>
                   }
-                  if (statusConfig?.options && statusConfig.options.length > 0) {
+                  if (statusConfig?.options !== undefined && statusConfig.options.length > 0) {
                     result.options = statusConfig.options.map((o) => o.name)
                   }
-                  if (statusConfig?.groups && statusConfig.groups.length > 0) {
+                  if (statusConfig?.groups !== undefined && statusConfig.groups.length > 0) {
                     result.groups = statusConfig.groups.map((g) => g.name)
                   }
                 }
                 if (prop.type === 'relation') {
                   const relationConfig = prop.relation as { database_id?: string }
-                  if (relationConfig?.database_id) {
+                  if (relationConfig?.database_id !== undefined) {
                     result.relationDatabase = relationConfig.database_id
                   }
                 }
@@ -433,7 +433,7 @@ const generateFromConfigCommand = Command.make(
   ({ config, token, dryRun, writable, output }) =>
     Effect.gen(function* () {
       const { config: resolvedConfig, path: resolvedConfigPath } = yield* loadConfig(
-        Option.isSome(config) ? config.value : undefined,
+        Option.isSome(config) === true ? config.value : undefined,
       )
 
       const resolvedToken = yield* resolveNotionToken(token)
@@ -487,7 +487,7 @@ const generateFromConfigCommand = Command.make(
                 })
                 const code = yield* formatCode(rawCode)
 
-                if (dryRun) {
+                if (dryRun === true) {
                   // In dry-run mode, still show progress but don't write files
                   tui.dispatch({ _tag: 'UpdateDatabase', id: dbConfig.id, status: 'done' })
                 } else {
@@ -498,7 +498,7 @@ const generateFromConfigCommand = Command.make(
                     writable,
                   })
 
-                  if (generateOptions.includeApi) {
+                  if (generateOptions.includeApi === true) {
                     const schemaFileName = basename(dbConfig.output)
                     const rawApiCode = generateApiCode({
                       dbInfo,
@@ -582,7 +582,7 @@ const diffCommand = Command.make(
             const program = Effect.gen(function* () {
               const fileContent = yield* fs.readFileString(file)
               const parsedSchema = parseGeneratedFile(fileContent)
-              if (!parsedSchema.readSchemaFound) {
+              if (parsedSchema.readSchemaFound === false) {
                 return yield* new GeneratedSchemaFileParseError({
                   file,
                   message:
@@ -593,7 +593,7 @@ const diffCommand = Command.make(
               const dbInfo = yield* introspectDatabase(databaseId)
               const diff = computeDiff({ live: dbInfo, generated: parsedSchema })
 
-              if (hasDifferences(diff)) {
+              if (hasDifferences(diff) === true) {
                 tui.dispatch({
                   _tag: 'SetResult',
                   databaseId,
@@ -613,7 +613,7 @@ const diffCommand = Command.make(
                   hasDifferences: true,
                 })
 
-                if (exitCode) {
+                if (exitCode === true) {
                   return yield* new SchemaDriftDetectedError({
                     databaseId,
                     file,

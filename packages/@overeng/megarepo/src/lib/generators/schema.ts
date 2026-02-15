@@ -47,7 +47,7 @@ export const generateSchema = (options: SchemaGeneratorOptions) =>
     )
     const outputDir = EffectPath.ops.parent(outputPath)
 
-    if (outputDir) {
+    if (outputDir !== undefined) {
       yield* fs.makeDirectory(outputDir, { recursive: true })
     }
 

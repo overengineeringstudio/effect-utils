@@ -91,7 +91,7 @@ const deploy = Command.make(
       Effect.scoped,
       Effect.flatMap((result) => {
         // Exit with appropriate code based on result
-        if (!result.success) {
+        if (result.success === false) {
           return Effect.fail(new DeployError({ message: result.error ?? 'Deployment failed' }))
         }
         return Effect.succeed(result)

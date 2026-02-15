@@ -65,7 +65,7 @@ const findAvailablePort = (): Promise<number> =>
     srv.on('error', reject)
     srv.listen(0, '127.0.0.1', () => {
       const address = srv.address()
-      if (address && typeof address === 'object') {
+      if (address !== null && typeof address === 'object') {
         const port = address.port
         srv.close(() => resolve(port))
       } else {
@@ -105,9 +105,10 @@ export const createPlaywrightConfig = async (
   } = options
 
   const defaultIgnore = ['**/dist/**', '**/node_modules/**']
-  const testIgnore = extraIgnore
-    ? [...defaultIgnore, ...(Array.isArray(extraIgnore) ? extraIgnore : [extraIgnore])]
-    : defaultIgnore
+  const testIgnore =
+    extraIgnore !== undefined
+      ? [...defaultIgnore, ...(Array.isArray(extraIgnore) === true ? extraIgnore : [extraIgnore])]
+      : defaultIgnore
 
   const {
     command,
@@ -118,16 +119,16 @@ export const createPlaywrightConfig = async (
 
   // Resolve port: read from env var if set, otherwise find available port and store it
   const envPort = process.env[portEnvVar]
-  const port = envPort ? Number.parseInt(envPort, 10) : await findAvailablePort()
+  const port = envPort !== undefined ? Number.parseInt(envPort, 10) : await findAvailablePort()
 
-  if (!Number.isFinite(port)) {
+  if (Number.isFinite(port) === false) {
     return shouldNeverHappen(
       `Failed to resolve port for Playwright webServer (portEnvVar: ${portEnvVar})`,
     )
   }
 
   // Store port in env var for subsequent config evaluations
-  if (!envPort) {
+  if (envPort === undefined) {
     process.env[portEnvVar] = String(port)
   }
 
@@ -138,27 +139,27 @@ export const createPlaywrightConfig = async (
     testDir,
     testMatch,
     testIgnore,
-    reporter: process.env.CI ? 'line' : 'list',
+    reporter: process.env.CI !== undefined ? 'line' : 'list',
 
     timeout,
-    ...(process.env.CI ? { maxFailures: 1 } : {}),
+    ...(process.env.CI !== undefined ? { maxFailures: 1 } : {}),
     workers,
     fullyParallel: false,
 
-    ...(projects ? { projects } : {}),
+    ...(projects !== undefined ? { projects } : {}),
 
     use: {
       baseURL: url,
       headless: !process.env.PW_HEADFUL,
       viewport: { width: 1280, height: 800 },
-      trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
+      trace: process.env.CI !== undefined ? 'on-first-retry' : 'retain-on-failure',
       screenshot: 'off',
       video: 'off',
     },
 
     webServer: {
       command: resolvedCommand,
-      ...(cwd ? { cwd } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
       url,
       timeout: serverTimeout,
       stdout: 'pipe',

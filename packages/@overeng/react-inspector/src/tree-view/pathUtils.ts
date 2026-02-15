@@ -5,7 +5,7 @@ const WILDCARD = '*'
 type DataIterator = (data: unknown) => Generator<{ name: string; data: unknown }>
 
 export function hasChildNodes(data: unknown, dataIterator: DataIterator): boolean {
-  return !dataIterator(data).next().done
+  return dataIterator(data).next().done === false
 }
 
 export const wildcardPathsFromLevel = (level: number): string[] => {
@@ -38,7 +38,7 @@ export const getExpandedPaths = (
       if (key === undefined) return
       if (depth === 0) {
         if (
-          hasChildNodes(curData, dataIterator) &&
+          hasChildNodes(curData, dataIterator) === true &&
           (key === DEFAULT_ROOT_PATH || key === WILDCARD)
         ) {
           populatePaths(curData, DEFAULT_ROOT_PATH, depth + 1)
@@ -46,13 +46,13 @@ export const getExpandedPaths = (
       } else {
         if (key === WILDCARD) {
           for (const { name, data } of dataIterator(curData)) {
-            if (hasChildNodes(data, dataIterator)) {
+            if (hasChildNodes(data, dataIterator) === true) {
               populatePaths(data, `${curPath}.${name}`, depth + 1)
             }
           }
         } else {
           const value = (curData as Record<string, unknown>)[key]
-          if (hasChildNodes(value, dataIterator)) {
+          if (hasChildNodes(value, dataIterator) === true) {
             populatePaths(value, `${curPath}.${key}`, depth + 1)
           }
         }

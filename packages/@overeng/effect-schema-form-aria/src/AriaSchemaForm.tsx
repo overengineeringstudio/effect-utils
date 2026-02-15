@@ -67,8 +67,8 @@ export const AriaSchemaForm = <T extends Record<string, unknown>>({
       {({ fields, renderField, tagInfo }: SchemaFormRenderProps) => {
         // Tagged struct with no content fields
         if (
-          showTagHeader &&
-          tagInfo.isTagged &&
+          showTagHeader === true &&
+          tagInfo.isTagged === true &&
           fields.length === 0 &&
           tagInfo.tagValue !== undefined
         ) {
@@ -79,7 +79,9 @@ export const AriaSchemaForm = <T extends Record<string, unknown>>({
 
         // Render fields
         const renderedFields = (
-          <div className={`grid gap-4 ${!tagInfo.isTagged || !showTagHeader ? className : ''}`}>
+          <div
+            className={`grid gap-4 ${tagInfo.isTagged === false || showTagHeader === false ? className : ''}`}
+          >
             {fields.map((field) => (
               <div key={field.key}>{renderField(field)}</div>
             ))}
@@ -87,7 +89,7 @@ export const AriaSchemaForm = <T extends Record<string, unknown>>({
         )
 
         // Wrap in FieldGroup for tagged structs
-        if (showTagHeader && tagInfo.isTagged && tagInfo.tagValue !== undefined) {
+        if (showTagHeader === true && tagInfo.isTagged === true && tagInfo.tagValue !== undefined) {
           return (
             <FieldGroup
               label={formatLiteralLabel(tagInfo.tagValue)}

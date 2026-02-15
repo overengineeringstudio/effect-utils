@@ -145,7 +145,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<never>
     // Effect.withSpan) appear under the dt task span in the trace.
     const parentLive = parentSpan !== undefined ? Layer.parentSpan(parentSpan) : Layer.empty
 
-    const baseUrl = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint
+    const baseUrl = endpoint.endsWith('/') === true ? endpoint.slice(0, -1) : endpoint
 
     const exporterLive = Otlp.layerJson({
       baseUrl,

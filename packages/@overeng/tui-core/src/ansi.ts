@@ -241,13 +241,13 @@ const bgCodes: Record<ColorName, number> = {
 
 /** Get foreground ANSI escape sequence for a color */
 const getFgCode = (color: Color): string => {
-  if (isColorName(color)) {
+  if (isColorName(color) === true) {
     return `${CSI}${fgCodes[color]}m`
   }
-  if (isColor256(color)) {
+  if (isColor256(color) === true) {
     return `${CSI}38;5;${color.ansi256}m`
   }
-  if (isColorRgb(color)) {
+  if (isColorRgb(color) === true) {
     return `${CSI}38;2;${color.rgb.r};${color.rgb.g};${color.rgb.b}m`
   }
   return ''
@@ -255,13 +255,13 @@ const getFgCode = (color: Color): string => {
 
 /** Get background ANSI escape sequence for a color */
 const getBgCode = (color: Color): string => {
-  if (isColorName(color)) {
+  if (isColorName(color) === true) {
     return `${CSI}${bgCodes[color]}m`
   }
-  if (isColor256(color)) {
+  if (isColor256(color) === true) {
     return `${CSI}48;5;${color.ansi256}m`
   }
-  if (isColorRgb(color)) {
+  if (isColorRgb(color) === true) {
     return `${CSI}48;2;${color.rgb.r};${color.rgb.g};${color.rgb.b}m`
   }
   return ''

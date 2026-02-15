@@ -75,7 +75,7 @@ export interface SchemaProviderProps {
 const parsePathSegments = (path: string): string[] => {
   if (path === '$') return []
   // Remove leading "$." and split by "."
-  const withoutRoot = path.startsWith('$.') ? path.slice(2) : path.slice(1)
+  const withoutRoot = path.startsWith('$.') === true ? path.slice(2) : path.slice(1)
   return withoutRoot.split('.')
 }
 
@@ -86,14 +86,14 @@ const resolveSchemaForSegments = (
   rootSchema: S.Schema.AnyNoContext | undefined,
   segments: string[],
 ): S.Schema.AnyNoContext | undefined => {
-  if (!rootSchema) return undefined
+  if (rootSchema === undefined) return undefined
   let current: S.Schema.AnyNoContext | undefined = rootSchema
 
   for (const segment of segments) {
-    if (!current) return undefined
+    if (current === undefined) return undefined
 
     // Check if segment is a numeric index (array access)
-    if (/^\d+$/.test(segment)) {
+    if (/^\d+$/.test(segment) === true) {
       current = getArrayElementSchema(current)
     } else {
       current = getFieldSchema(current, segment)
@@ -115,18 +115,19 @@ const createContextValue = (
     schema,
     rootSchema: effectiveRootSchema,
     registry,
-    getAnnotations: () => (schema ? getAnnotations(schema) : {}),
-    getDisplayName: () => (schema ? pipe(schema, getAnnotations, getDisplayName) : undefined),
-    getDescription: () => (schema ? getAnnotations(schema).description : undefined),
+    getAnnotations: () => (schema !== undefined ? getAnnotations(schema) : {}),
+    getDisplayName: () =>
+      schema !== undefined ? pipe(schema, getAnnotations, getDisplayName) : undefined,
+    getDescription: () => (schema !== undefined ? getAnnotations(schema).description : undefined),
     formatValue: (value: unknown) =>
-      schema ? formatWithPretty(value, getAnnotations(schema)) : undefined,
+      schema !== undefined ? formatWithPretty(value, getAnnotations(schema)) : undefined,
     getFieldContext: (fieldName: string) => {
-      if (!schema) return createContextValue(undefined, registry, effectiveRootSchema)
+      if (schema === undefined) return createContextValue(undefined, registry, effectiveRootSchema)
       const fieldSchema = getFieldSchema(schema, fieldName)
       return createContextValue(fieldSchema, registry, effectiveRootSchema)
     },
     getElementContext: () => {
-      if (!schema) return createContextValue(undefined, registry, effectiveRootSchema)
+      if (schema === undefined) return createContextValue(undefined, registry, effectiveRootSchema)
       const elementSchema = getArrayElementSchema(schema)
       return createContextValue(elementSchema, registry, effectiveRootSchema)
     },
@@ -149,7 +150,7 @@ export const SchemaProvider: FC<SchemaProviderProps> = ({ children, schema, sche
   const value = useMemo(() => {
     const registry = createSchemaRegistry()
 
-    if (schema) {
+    if (schema !== undefined) {
       registerSchema(registry, schema)
     }
 
@@ -178,7 +179,7 @@ export const useSchemaDisplayInfo = (
 } => {
   const ctx = useSchemaContext()
 
-  const effectiveCtx = fieldName ? ctx.getFieldContext(fieldName) : ctx
+  const effectiveCtx = fieldName !== undefined ? ctx.getFieldContext(fieldName) : ctx
 
   const displayName = effectiveCtx.getDisplayName()
   const formattedValue = effectiveCtx.formatValue(value)
@@ -186,6 +187,6 @@ export const useSchemaDisplayInfo = (
   return {
     displayName,
     formattedValue,
-    hasSchema: !!effectiveCtx.schema,
+    hasSchema: effectiveCtx.schema !== undefined,
   }
 }

@@ -80,13 +80,13 @@ export const Mixed: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -122,13 +122,13 @@ export const DryRun: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -152,13 +152,13 @@ export const OnlyCurrentMegarepo: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -195,13 +195,13 @@ export const NotInMegarepo: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -225,13 +225,13 @@ export const CustomWarning: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -258,7 +258,7 @@ export const Empty: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -300,13 +300,13 @@ export const AllSkipped: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -354,13 +354,13 @@ export const AllRemoved: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -405,13 +405,13 @@ export const AllErrors: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -483,13 +483,13 @@ export const ManyInUse: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -534,13 +534,13 @@ export const DirtyWithDetails: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -576,13 +576,13 @@ export const DryRunForceMode: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -651,13 +651,13 @@ export const LargeCleanup: Story = {
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
-          args.interactive ? { ...stateConfig, results: [] } : stateConfig,
+          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
       />
     )
   },

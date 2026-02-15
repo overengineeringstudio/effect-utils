@@ -74,7 +74,7 @@ const withEnv = <A, E, R>({
 const resolveCwd = (inputCwd: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const absoluteCwd = path.isAbsolute(inputCwd) ? inputCwd : path.resolve(inputCwd)
+    const absoluteCwd = path.isAbsolute(inputCwd) === true ? inputCwd : path.resolve(inputCwd)
     return yield* fs.realPath(absoluteCwd).pipe(Effect.catchAll(() => Effect.succeed(absoluteCwd)))
   })
 
@@ -104,7 +104,8 @@ export const generate = ({
   const core = Effect.gen(function* () {
     const cwd = yield* resolveCwd(inputCwd)
     const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
-      explicitPath: explicitOxfmtPath ? Option.some(explicitOxfmtPath) : Option.none(),
+      explicitPath:
+        explicitOxfmtPath !== undefined ? Option.some(explicitOxfmtPath) : Option.none(),
       cwd,
     })
     return yield* withSilentEventBus(
@@ -112,7 +113,7 @@ export const generate = ({
     )
   })
 
-  if (env && Object.keys(env).length > 0) {
+  if (env !== undefined && Object.keys(env).length > 0) {
     return withEnv({ env, effect: core })
   }
   return core
@@ -131,13 +132,14 @@ export const check = ({
   const core = Effect.gen(function* () {
     const cwd = yield* resolveCwd(inputCwd)
     const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
-      explicitPath: explicitOxfmtPath ? Option.some(explicitOxfmtPath) : Option.none(),
+      explicitPath:
+        explicitOxfmtPath !== undefined ? Option.some(explicitOxfmtPath) : Option.none(),
       cwd,
     })
     return yield* withSilentEventBus(checkAll({ cwd, oxfmtConfigPath }))
   })
 
-  if (env && Object.keys(env).length > 0) {
+  if (env !== undefined && Object.keys(env).length > 0) {
     return withEnv({ env, effect: core })
   }
   return core

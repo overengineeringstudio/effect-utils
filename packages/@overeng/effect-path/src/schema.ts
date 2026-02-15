@@ -70,11 +70,11 @@ const PathStringSchema = Schema.String.pipe(
  */
 const isAbsoluteHeuristic = (s: string): boolean => {
   // Unix absolute path
-  if (s.startsWith('/')) return true
+  if (s.startsWith('/') === true) return true
   // Windows absolute path (drive letter)
-  if (/^[A-Za-z]:[\\/]/.test(s)) return true
+  if (/^[A-Za-z]:[\\/]/.test(s) === true) return true
   // Windows UNC path
-  if (s.startsWith('\\\\')) return true
+  if (s.startsWith('\\\\') === true) return true
   return false
 }
 
@@ -228,10 +228,10 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
 
   const segments = toSegments(normalized)
 
-  if (isFile) {
+  if (isFile === true) {
     const filename = getFilename(normalized)
     const rawParentPath = normalized.slice(0, -(filename.length + 1))
-    const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute ? '/' : '.'
+    const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute === true ? '/' : '.'
     const parentDirPath = ensureTrailingSlash(parentPath)
 
     const fileInfo: PathInfo<B, File> = {
@@ -253,10 +253,10 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
   const normalizedDir = ensureTrailingSlash(normalized)
   const withoutTrailing = removeTrailingSlash(normalizedDir)
   const rawParentPath = withoutTrailing.split('/').slice(0, -1).join('/')
-  const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute ? '/' : '.'
+  const parentPath = rawParentPath !== '' ? rawParentPath : isAbsolute === true ? '/' : '.'
   const parentDirPath = ensureTrailingSlash(parentPath)
 
-  const isRoot = withoutTrailing === (isAbsolute ? '/' : '.')
+  const isRoot = withoutTrailing === (isAbsolute === true ? '/' : '.')
 
   const dirInfo: PathInfo<B, Dir> = {
     original,
@@ -265,12 +265,13 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
     extension: undefined as PathInfo<B, Dir>['extension'],
     fullExtension: undefined as PathInfo<B, Dir>['fullExtension'],
     baseName: dirName,
-    parent: isRoot
-      ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildPathInfoPure<B, Dir>({
-          original: parentDirPath,
-          isFile: false,
-        }) as PathInfo<B, Dir>['parent']),
+    parent:
+      isRoot === true
+        ? (undefined as PathInfo<B, Dir>['parent'])
+        : (buildPathInfoPure<B, Dir>({
+            original: parentDirPath,
+            isFile: false,
+          }) as PathInfo<B, Dir>['parent']),
   }
   return dirInfo as PathInfo<B, T>
 }

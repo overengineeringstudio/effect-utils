@@ -131,7 +131,7 @@ export const startSyncUI = (options: {
     } = options
 
     // If not TTY, return a no-op handle
-    if (!isTTY()) {
+    if (isTTY() === false) {
       return {
         dispatch: () => {},
         cleanup: () => Effect.void,
@@ -157,7 +157,9 @@ export const startSyncUI = (options: {
           force: force || undefined,
           verbose: verbose || undefined,
           skippedMembers:
-            skippedMembers && skippedMembers.length > 0 ? [...skippedMembers] : undefined,
+            skippedMembers !== undefined && skippedMembers.length > 0
+              ? [...skippedMembers]
+              : undefined,
         },
         members: [...memberNames],
         activeMember: null,

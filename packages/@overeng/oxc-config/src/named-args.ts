@@ -49,10 +49,10 @@ const countNonRestParams = (params: any[]): number => {
  */
 const isCallback = (node: any): boolean => {
   const parent = node.parent
-  if (!parent) return false
+  if (parent === undefined) return false
 
   if (parent.type === 'CallExpression') {
-    if (parent.arguments.includes(node)) return true
+    if (parent.arguments.includes(node) === true) return true
     if (parent.callee === node) return true
   }
 
@@ -64,10 +64,16 @@ const isCallback = (node: any): boolean => {
     const objectExpr = parent.parent
     if (objectExpr?.type === 'ObjectExpression') {
       const grandparent = objectExpr.parent
-      if (grandparent?.type === 'CallExpression' && grandparent.arguments.includes(objectExpr)) {
+      if (
+        grandparent?.type === 'CallExpression' &&
+        grandparent.arguments.includes(objectExpr) === true
+      ) {
         return true
       }
-      if (grandparent?.type === 'NewExpression' && grandparent.arguments.includes(objectExpr)) {
+      if (
+        grandparent?.type === 'NewExpression' &&
+        grandparent.arguments.includes(objectExpr) === true
+      ) {
         return true
       }
     }
@@ -81,7 +87,7 @@ const isCallback = (node: any): boolean => {
  * Effect.gen(function* (_) { ... }) - the adapter param is idiomatic.
  */
 const isEffectGenAdapter = (node: any): boolean => {
-  if (node.type !== 'FunctionExpression' || !node.generator) return false
+  if (node.type !== 'FunctionExpression' || node.generator === false) return false
   if (node.params.length !== 1) return false
 
   const param = node.params[0]
@@ -123,7 +129,7 @@ const isEffectDualFunction = (node: any): boolean => {
       const obj = callee.object
       if (obj?.type === 'Identifier') {
         // Common aliases: F, Function, Fn
-        if (['F', 'Function', 'Fn'].includes(obj.name)) return true
+        if (['F', 'Function', 'Fn'].includes(obj.name) === true) return true
       }
     }
   }
@@ -138,7 +144,7 @@ const isEffectDualFunction = (node: any): boolean => {
 
 /** Get a human-readable description of where the function is defined. */
 const getFunctionContext = (node: any): string => {
-  if (node.type === 'FunctionDeclaration' && node.id?.name) {
+  if (node.type === 'FunctionDeclaration' && node.id?.name !== undefined) {
     return `function '${node.id.name}'`
   }
 
@@ -177,9 +183,9 @@ export const namedArgsRule = {
   defaultOptions: [],
   create(context: any) {
     const checkFunction = (node: any) => {
-      if (isCallback(node)) return
-      if (isEffectGenAdapter(node)) return
-      if (isEffectDualFunction(node)) return
+      if (isCallback(node) === true) return
+      if (isEffectGenAdapter(node) === true) return
+      if (isEffectDualFunction(node) === true) return
 
       const nonRestCount = countNonRestParams(node.params)
       if (nonRestCount <= 1) return

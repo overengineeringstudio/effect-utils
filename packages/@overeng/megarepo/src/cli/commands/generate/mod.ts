@@ -39,7 +39,7 @@ const generateVscodeCommand = Cli.Command.make(
         GenerateApp,
         (tui) =>
           Effect.gen(function* () {
-            if (Option.isNone(root)) {
+            if (Option.isNone(root) === true) {
               tui.dispatch({
                 _tag: 'SetError',
                 error: 'not_found',
@@ -66,7 +66,7 @@ const generateVscodeCommand = Cli.Command.make(
             yield* generateVscode({
               megarepoRoot: root.value,
               config,
-              ...(Option.isSome(excludeList) ? { exclude: excludeList.value } : {}),
+              ...(Option.isSome(excludeList) === true ? { exclude: excludeList.value } : {}),
             })
 
             tui.dispatch({
@@ -99,7 +99,7 @@ const generateSchemaCommand = Cli.Command.make(
         GenerateApp,
         (tui) =>
           Effect.gen(function* () {
-            if (Option.isNone(root)) {
+            if (Option.isNone(root) === true) {
               tui.dispatch({
                 _tag: 'SetError',
                 error: 'not_found',
@@ -147,7 +147,7 @@ const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ 
       GenerateApp,
       (tui) =>
         Effect.gen(function* () {
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_found',

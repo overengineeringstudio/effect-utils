@@ -107,14 +107,13 @@ export const searchStream = (
     Option.match(maybeNextCursor, {
       onNone: () => Effect.succeed(Option.none()),
       onSome: (cursor) => {
-        const searchOpts: SearchOptions = Option.isSome(cursor)
-          ? { ...opts, startCursor: cursor.value }
-          : { ...opts }
+        const searchOpts: SearchOptions =
+          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
         return searchRaw(searchOpts).pipe(
           Effect.map((result) => {
             const chunk = Chunk.fromIterable(result.results)
 
-            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
               return Option.some([chunk, Option.none()] as const)
             }
 

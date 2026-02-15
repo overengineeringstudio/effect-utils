@@ -348,7 +348,7 @@ const parsePatchSpecifier = (specifier: string): [string, string] | undefined =>
   const lastAtIndex = specifier.lastIndexOf('@')
   if (lastAtIndex <= 0) return undefined
 
-  if (specifier.startsWith('@')) {
+  if (specifier.startsWith('@') === true) {
     const afterScope = specifier.indexOf('/', 1)
     if (afterScope === -1) return undefined
     const versionAtIndex = specifier.indexOf('@', afterScope)
@@ -375,7 +375,7 @@ const generatePatchCommands = ({
       if (!parsed) return undefined
       const [pkgName] = parsed
       const relativePath =
-        patchPath.startsWith('./') || patchPath.startsWith('../')
+        patchPath.startsWith('./') === true || patchPath.startsWith('../') === true
           ? patchPath
           : computeRelativePath({ from: location, to: patchPath })
       return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`

@@ -136,10 +136,10 @@ export const TuiStoryPreview = <S, A>({
   // Atom-based state management (replaces React useState for state)
   const registryRef = useRef<Registry.Registry | null>(null)
   const stateAtomRef = useRef<Atom.Writable<S> | null>(null)
-  if (!registryRef.current) {
+  if (registryRef.current === null) {
     registryRef.current = Registry.make()
   }
-  if (!stateAtomRef.current) {
+  if (stateAtomRef.current === null) {
     stateAtomRef.current = Atom.make(initialState)
   }
   const registry = registryRef.current
@@ -171,7 +171,7 @@ export const TuiStoryPreview = <S, A>({
   const currentState = registry.get(stateAtom)
 
   // Use final state for final modes, current state for live modes
-  const effectiveState = isFinalMode(activeTab) ? finalState : currentState
+  const effectiveState = isFinalMode(activeTab) === true ? finalState : currentState
 
   // Dispatch action and update state via atom
   const dispatch = useCallback(
@@ -209,7 +209,7 @@ export const TuiStoryPreview = <S, A>({
 
   // Timeline playback effect
   useEffect(() => {
-    if (!isPlaying || timeline.length === 0) return
+    if (isPlaying === false || timeline.length === 0) return
 
     const startTime = Date.now() - currentTime / playbackSpeed
     let animationFrame: number
@@ -239,14 +239,14 @@ export const TuiStoryPreview = <S, A>({
 
   // Auto-run on mount
   useEffect(() => {
-    if (autoRun && timeline.length > 0) {
+    if (autoRun === true && timeline.length > 0) {
       setIsPlaying(true)
     }
   }, [autoRun, timeline.length])
 
   // Initialize terminal for tty tab
   useEffect(() => {
-    if (activeTab !== 'tty' || !containerRef.current || terminalRef.current) return
+    if (activeTab !== 'tty' || containerRef.current === null || terminalRef.current !== null) return
 
     const terminal = new Terminal({
       fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
@@ -298,7 +298,7 @@ export const TuiStoryPreview = <S, A>({
 
   // Render view to terminal when state changes (reuse existing root for differential updates)
   useEffect(() => {
-    if (activeTab !== 'tty' || !isTerminalReady || !rootRef.current) return
+    if (activeTab !== 'tty' || isTerminalReady === false || rootRef.current === null) return
     // Wrap in registry context so useTuiAtomValue works
     rootRef.current.render(
       <TuiRegistryContext.Provider value={registry}>
@@ -448,9 +448,9 @@ const TabButton: React.FC<{
     style={{
       padding: '8px 16px',
       border: 'none',
-      borderBottom: active ? '2px solid #007acc' : '2px solid transparent',
-      background: active ? '#1e1e1e' : '#2d2d2d',
-      color: active ? '#fff' : '#888',
+      borderBottom: active === true ? '2px solid #007acc' : '2px solid transparent',
+      background: active === true ? '#1e1e1e' : '#2d2d2d',
+      color: active === true ? '#fff' : '#888',
       cursor: 'pointer',
       fontSize: '13px',
       fontFamily: 'system-ui, sans-serif',
@@ -466,7 +466,7 @@ const TabButton: React.FC<{
 
 /** Format action tag for display */
 const formatActionTag = (action: unknown): string => {
-  if (action && typeof action === 'object' && '_tag' in action) {
+  if (action !== null && typeof action === 'object' && '_tag' in action) {
     return String((action as { _tag: string })._tag)
   }
   return 'Action'
@@ -474,12 +474,12 @@ const formatActionTag = (action: unknown): string => {
 
 /** Get action details (nested _tag or key summary) */
 const getActionDetails = (action: unknown): string | null => {
-  if (!action || typeof action !== 'object') return null
+  if (action === null || typeof action !== 'object') return null
 
   const obj = action as Record<string, unknown>
 
   // Look for nested state with _tag
-  if ('state' in obj && obj.state && typeof obj.state === 'object') {
+  if ('state' in obj && obj.state !== null && typeof obj.state === 'object') {
     const state = obj.state as Record<string, unknown>
     if ('_tag' in state) {
       // Get additional info from state
@@ -487,7 +487,7 @@ const getActionDetails = (action: unknown): string | null => {
 
       // Add counts for arrays
       for (const [key, value] of Object.entries(state)) {
-        if (key !== '_tag' && Array.isArray(value)) {
+        if (key !== '_tag' && Array.isArray(value) === true) {
           parts.push(`${key}: ${value.length}`)
         }
       }
@@ -503,7 +503,7 @@ const getActionDetails = (action: unknown): string | null => {
   const summaryParts: string[] = []
   for (const key of keys.slice(0, 3)) {
     const value = obj[key]
-    if (Array.isArray(value)) {
+    if (Array.isArray(value) === true) {
       summaryParts.push(`${key}: ${value.length} items`)
     } else if (typeof value === 'string') {
       summaryParts.push(`${key}: "${value.slice(0, 20)}${value.length > 20 ? '...' : ''}"`)
@@ -641,40 +641,41 @@ const PlaybackControls = <A,>({
   } | null>(null)
 
   // For disabled state, show timeline at 100%
-  const effectiveTime = disabled ? totalDuration : currentTime
-  const effectiveEventIndex = disabled ? timeline.length - 1 : -1
+  const effectiveTime = disabled === true ? totalDuration : currentTime
+  const effectiveEventIndex = disabled === true ? timeline.length - 1 : -1
 
   // Calculate current event index (last event that has fired)
-  const currentEventIndex = disabled
-    ? effectiveEventIndex
-    : timeline.findIndex((e, i) => {
-        const nextEvent = timeline[i + 1]
-        return e.at <= currentTime && (!nextEvent || nextEvent.at > currentTime)
-      })
+  const currentEventIndex =
+    disabled === true
+      ? effectiveEventIndex
+      : timeline.findIndex((e, i) => {
+          const nextEvent = timeline[i + 1]
+          return e.at <= currentTime && (nextEvent === undefined || nextEvent.at > currentTime)
+        })
 
   // Get current event info
   const currentEvent = currentEventIndex >= 0 ? timeline[currentEventIndex] : null
-  const currentActionTag = currentEvent ? formatActionTag(currentEvent.action) : 'Ready'
-  const currentActionDetails = currentEvent ? getActionDetails(currentEvent.action) : null
+  const currentActionTag = currentEvent !== null ? formatActionTag(currentEvent.action) : 'Ready'
+  const currentActionDetails = currentEvent !== null ? getActionDetails(currentEvent.action) : null
 
   // Step to previous event
   const handlePrev = () => {
-    if (disabled) return
+    if (disabled === true) return
     if (currentEventIndex <= 0) {
       onSeek(0)
     } else {
       const prevEvent = timeline[currentEventIndex - 1]
-      if (prevEvent) onSeek(prevEvent.at)
+      if (prevEvent !== undefined) onSeek(prevEvent.at)
     }
   }
 
   // Step to next event
   const handleNext = () => {
-    if (disabled) return
+    if (disabled === true) return
     const nextIndex = currentEventIndex + 1
     if (nextIndex < timeline.length) {
       const nextEvent = timeline[nextIndex]
-      if (nextEvent) onSeek(nextEvent.at)
+      if (nextEvent !== undefined) onSeek(nextEvent.at)
     }
   }
 
@@ -696,7 +697,7 @@ const PlaybackControls = <A,>({
         padding: '8px 12px',
         background: '#2d2d2d',
         borderTop: '1px solid #3d3d3d',
-        opacity: disabled ? 0.6 : 1,
+        opacity: disabled === true ? 0.6 : 1,
       }}
     >
       {/* Row 1: Step controls + Event index + Time (or disabled message) */}
@@ -705,40 +706,40 @@ const PlaybackControls = <A,>({
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
             onClick={handlePrev}
-            style={disabled ? disabledButtonStyle : smallButtonStyle}
+            style={disabled === true ? disabledButtonStyle : smallButtonStyle}
             disabled={disabled || (currentEventIndex <= 0 && currentTime === 0)}
-            title={disabled ? 'Timeline disabled' : 'Previous event'}
+            title={disabled === true ? 'Timeline disabled' : 'Previous event'}
             aria-label="Previous event"
           >
             ◀
           </button>
           <button
-            onClick={disabled ? undefined : isPlaying ? onPause : onPlay}
+            onClick={disabled === true ? undefined : isPlaying === true ? onPause : onPlay}
             style={
-              disabled
+              disabled === true
                 ? { ...disabledButtonStyle, minWidth: '40px' }
                 : { ...smallButtonStyle, minWidth: '40px' }
             }
             disabled={disabled}
-            title={disabled ? 'Timeline disabled' : isPlaying ? 'Pause' : 'Play'}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
+            title={disabled === true ? 'Timeline disabled' : isPlaying === true ? 'Pause' : 'Play'}
+            aria-label={isPlaying === true ? 'Pause' : 'Play'}
           >
-            {isPlaying ? '⏸' : '▶'}
+            {isPlaying === true ? '⏸' : '▶'}
           </button>
           <button
             onClick={handleNext}
-            style={disabled ? disabledButtonStyle : smallButtonStyle}
+            style={disabled === true ? disabledButtonStyle : smallButtonStyle}
             disabled={disabled || currentEventIndex >= timeline.length - 1}
-            title={disabled ? 'Timeline disabled' : 'Next event'}
+            title={disabled === true ? 'Timeline disabled' : 'Next event'}
             aria-label="Next event"
           >
             ▶
           </button>
           <button
-            onClick={disabled ? undefined : onReset}
-            style={disabled ? disabledButtonStyle : smallButtonStyle}
+            onClick={disabled === true ? undefined : onReset}
+            style={disabled === true ? disabledButtonStyle : smallButtonStyle}
             disabled={disabled}
-            title={disabled ? 'Timeline disabled' : 'Reset to beginning'}
+            title={disabled === true ? 'Timeline disabled' : 'Reset to beginning'}
             aria-label="Reset"
           >
             ↺
@@ -746,11 +747,11 @@ const PlaybackControls = <A,>({
         </div>
 
         {/* Disabled message or Event index + timestamp */}
-        {disabled && disabledMessage ? (
+        {disabled === true && disabledMessage !== undefined ? (
           <span style={{ color: '#666', fontSize: '11px', fontStyle: 'italic' }}>
             {disabledMessage}
           </span>
-        ) : hasEvents ? (
+        ) : hasEvents === true ? (
           <span style={{ color: '#888', fontSize: '11px' }}>
             Event {Math.max(0, currentEventIndex + 1)} of {timeline.length}
             {currentEvent && (
@@ -801,13 +802,15 @@ const PlaybackControls = <A,>({
         {timeline.map((event, i) => {
           const position = totalDuration > 0 ? (event.at / totalDuration) * 100 : 0
           const isFired = disabled || event.at <= effectiveTime
-          const isCurrent = disabled ? i === timeline.length - 1 : i === currentEventIndex
-          const isHovered = !disabled && hoveredEvent?.index === i
+          const isCurrent = disabled === true ? i === timeline.length - 1 : i === currentEventIndex
+          const isHovered = disabled === false && hoveredEvent?.index === i
 
           // Calculate gap to next marker to decide if label fits
           const nextEvent = timeline[i + 1]
           const nextPosition =
-            nextEvent && totalDuration > 0 ? (nextEvent.at / totalDuration) * 100 : 100
+            nextEvent !== undefined && totalDuration > 0
+              ? (nextEvent.at / totalDuration) * 100
+              : 100
           const gapPercent = nextPosition - position
           const showLabel = gapPercent > 8 || i === timeline.length - 1 // Show if >8% gap or last event
 
@@ -829,9 +832,9 @@ const PlaybackControls = <A,>({
             >
               {/* Marker dot */}
               <div
-                onClick={disabled ? undefined : () => onSeek(event.at)}
+                onClick={disabled === true ? undefined : () => onSeek(event.at)}
                 onMouseEnter={
-                  disabled
+                  disabled === true
                     ? undefined
                     : (e) => {
                         const rect = e.currentTarget.getBoundingClientRect()
@@ -841,18 +844,19 @@ const PlaybackControls = <A,>({
                         })
                       }
                 }
-                onMouseLeave={disabled ? undefined : () => setHoveredEvent(null)}
+                onMouseLeave={disabled === true ? undefined : () => setHoveredEvent(null)}
                 style={{
-                  width: isCurrent || isHovered ? '14px' : '10px',
-                  height: isCurrent || isHovered ? '14px' : '10px',
+                  width: isCurrent === true || isHovered === true ? '14px' : '10px',
+                  height: isCurrent === true || isHovered === true ? '14px' : '10px',
                   borderRadius: '50%',
-                  background: isCurrent ? '#4a9eff' : isFired ? '#666' : '#444',
-                  border: isCurrent
-                    ? '2px solid #fff'
-                    : isHovered
-                      ? '2px solid #4a9eff'
-                      : '1px solid #555',
-                  cursor: disabled ? 'default' : 'pointer',
+                  background: isCurrent === true ? '#4a9eff' : isFired === true ? '#666' : '#444',
+                  border:
+                    isCurrent === true
+                      ? '2px solid #fff'
+                      : isHovered === true
+                        ? '2px solid #4a9eff'
+                        : '1px solid #555',
+                  cursor: disabled === true ? 'default' : 'pointer',
                   transition: 'all 0.15s ease',
                   marginTop: '5px',
                 }}
@@ -861,14 +865,14 @@ const PlaybackControls = <A,>({
               {/* Label below marker */}
               {showLabel && (
                 <span
-                  onClick={disabled ? undefined : () => onSeek(event.at)}
+                  onClick={disabled === true ? undefined : () => onSeek(event.at)}
                   style={{
                     marginTop: '4px',
                     fontSize: '9px',
                     fontFamily: 'Monaco, Menlo, monospace',
-                    color: isCurrent ? '#4a9eff' : isFired ? '#888' : '#555',
+                    color: isCurrent === true ? '#4a9eff' : isFired === true ? '#888' : '#555',
                     whiteSpace: 'nowrap',
-                    cursor: disabled ? 'default' : 'pointer',
+                    cursor: disabled === true ? 'default' : 'pointer',
                     textAlign: 'center',
                   }}
                 >
@@ -916,7 +920,7 @@ const PlaybackControls = <A,>({
             transform: 'translateY(-50%)',
             width: totalDuration > 0 ? `${(effectiveTime / totalDuration) * 100}%` : '0%',
             height: '4px',
-            background: disabled ? '#666' : '#4a9eff',
+            background: disabled === true ? '#666' : '#4a9eff',
             borderRadius: '2px',
             zIndex: 1,
           }}
@@ -928,7 +932,7 @@ const PlaybackControls = <A,>({
           min={0}
           max={totalDuration}
           value={effectiveTime}
-          onChange={disabled ? undefined : (e) => onSeek(Number(e.target.value))}
+          onChange={disabled === true ? undefined : (e) => onSeek(Number(e.target.value))}
           disabled={disabled}
           style={{
             position: 'absolute',
@@ -939,7 +943,7 @@ const PlaybackControls = <A,>({
             width: '100%',
             height: '100%',
             opacity: 0,
-            cursor: disabled ? 'default' : 'pointer',
+            cursor: disabled === true ? 'default' : 'pointer',
             zIndex: 1,
           }}
         />
@@ -1032,9 +1036,9 @@ const CIPreviewPane: React.FC<{
   const state = registry.get(stateAtom)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (containerRef.current === null) return
 
-    if (!terminalRef.current) {
+    if (terminalRef.current === null) {
       const terminal = new Terminal({
         fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
         fontSize: 14,
@@ -1104,7 +1108,7 @@ const useContainerColumns = (containerRef: React.RefObject<HTMLElement | null>):
   const [columns, setColumns] = useState(80)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (containerRef.current === null) return
 
     const calculateColumns = () => {
       const width = containerRef.current?.clientWidth ?? 0
@@ -1249,9 +1253,9 @@ const PipePreviewPane: React.FC<{
   const state = registry.get(stateAtom)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (containerRef.current === null) return
 
-    if (!terminalRef.current) {
+    if (terminalRef.current === null) {
       const terminal = new Terminal({
         fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
         fontSize: 14,
@@ -1334,7 +1338,7 @@ const FullscreenPreviewPane: React.FC<{
 
   // Initialize terminal
   useEffect(() => {
-    if (!containerRef.current || terminalRef.current) return
+    if (containerRef.current === null || terminalRef.current !== null) return
 
     const terminal = new Terminal({
       fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
@@ -1390,7 +1394,7 @@ const FullscreenPreviewPane: React.FC<{
   // Render content (reuse existing root for differential updates)
   // Wrap in registry context so useTuiAtomValue works
   useEffect(() => {
-    if (!isReady || !rootRef.current) return
+    if (isReady === false || rootRef.current === null) return
     rootRef.current.render(
       <TuiRegistryContext.Provider value={registry}>
         <View stateAtom={stateAtom} />
@@ -1401,11 +1405,11 @@ const FullscreenPreviewPane: React.FC<{
   // Keyboard handling
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!isFocused) return
+      if (isFocused === false) return
       const parts: string[] = []
-      if (e.ctrlKey) parts.push('Ctrl')
-      if (e.altKey) parts.push('Alt')
-      if (e.shiftKey) parts.push('Shift')
+      if (e.ctrlKey === true) parts.push('Ctrl')
+      if (e.altKey === true) parts.push('Alt')
+      if (e.shiftKey === true) parts.push('Shift')
       parts.push(e.key === ' ' ? 'Space' : e.key)
       setLastKey(parts.join('+'))
       if (e.key !== 'F5' && e.key !== 'F12') {
@@ -1475,8 +1479,8 @@ const FullscreenPreviewPane: React.FC<{
               Key: <code style={{ color: '#aaa' }}>{lastKey}</code>
             </span>
           )}
-          <span style={{ color: isFocused ? '#4a9eff' : '#666' }}>
-            {isFocused ? 'Focused' : 'Click to focus'}
+          <span style={{ color: isFocused === true ? '#4a9eff' : '#666' }}>
+            {isFocused === true ? 'Focused' : 'Click to focus'}
           </span>
         </div>
       </div>

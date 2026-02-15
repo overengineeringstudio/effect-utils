@@ -11,15 +11,15 @@ import { ObjectRootLabel } from './ObjectRootLabel.tsx'
 const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
   const objectIterator = function* (data: any) {
     const shouldIterate = (typeof data === 'object' && data !== null) || typeof data === 'function'
-    if (!shouldIterate) return
+    if (shouldIterate === false) return
 
     const dataIsArray = Array.isArray(data)
 
     // iterable objects (except arrays)
-    if (!dataIsArray && data[Symbol.iterator]) {
+    if (dataIsArray === false && data[Symbol.iterator] !== undefined) {
       let i = 0
       for (const entry of data) {
-        if (Array.isArray(entry) && entry.length === 2) {
+        if (Array.isArray(entry) === true && entry.length === 2) {
           const [k, v] = entry
           yield {
             name: k,
@@ -35,7 +35,7 @@ const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
       }
     } else {
       const keys = Object.getOwnPropertyNames(data)
-      if (sortObjectKeys === true && !dataIsArray) {
+      if (sortObjectKeys === true && dataIsArray === false) {
         // Array keys should not be sorted in alphabetical order
         keys.sort()
       } else if (typeof sortObjectKeys === 'function') {
@@ -43,13 +43,13 @@ const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
       }
 
       for (const propertyName of keys) {
-        if (propertyIsEnumerable.call(data, propertyName)) {
+        if (propertyIsEnumerable.call(data, propertyName) === true) {
           const propertyValue = getPropertyValue(data, propertyName)
           yield {
             name: propertyName || `""`,
             data: propertyValue,
           }
-        } else if (showNonenumerable) {
+        } else if (showNonenumerable === true) {
           // To work around the error (happens some time when propertyName === 'caller' || propertyName === 'arguments')
           // 'caller' and 'arguments' are restricted function properties and cannot be accessed in this context
           // http://stackoverflow.com/questions/31921189/caller-and-arguments-are-restricted-function-properties-and-cannot-be-access
@@ -73,7 +73,7 @@ const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
 
       // [[Prototype]] of the object: `Object.getPrototypeOf(data)`
       // the property name is shown as "__proto__"
-      if (showNonenumerable && data !== Object.prototype /* already added */) {
+      if (showNonenumerable === true && data !== Object.prototype /* already added */) {
         yield {
           name: '__proto__',
           data: Object.getPrototypeOf(data),
@@ -103,7 +103,7 @@ const ObjectInspector: FC<any> = ({
   ...treeViewProps
 }) => {
   const dataIterator = createIterator(showNonenumerable, sortObjectKeys)
-  const renderer = nodeRenderer ? nodeRenderer : defaultNodeRenderer
+  const renderer = nodeRenderer !== undefined ? nodeRenderer : defaultNodeRenderer
 
   return <TreeView nodeRenderer={renderer} dataIterator={dataIterator} {...treeViewProps} />
 }

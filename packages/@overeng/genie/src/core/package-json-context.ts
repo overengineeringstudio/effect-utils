@@ -29,13 +29,13 @@ export const buildPackageJsonValidationContext = Effect.fn(
     const content = yield* fs
       .readFileString(packageJsonPath)
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-    if (!content) continue
+    if (content === undefined) continue
     const parsed = Effect.try({
       try: () => JSON.parse(content) as Omit<PackageInfo, 'path'>,
       catch: () => undefined,
     })
     const data = yield* parsed
-    if (!data?.name) continue
+    if (data === undefined || data.name === undefined) continue
     const pkgDir = pathService.dirname(packageJsonPath)
     const relativePath = pathService.relative(cwd, pkgDir)
     packages.push({ ...data, path: normalizePath(relativePath) })

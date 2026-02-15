@@ -80,13 +80,15 @@ export const AddDefault: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -109,13 +111,15 @@ export const AddNoSync: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -139,13 +143,15 @@ export const AddWithSyncCloned: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -169,13 +175,15 @@ export const AddWithSyncExisting: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -199,13 +207,15 @@ export const AddWithSyncError: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },

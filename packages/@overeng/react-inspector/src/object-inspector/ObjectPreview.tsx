@@ -32,7 +32,7 @@ export const ObjectPreview: FC<any> = ({ data }) => {
     return <ObjectValue object={object} />
   }
 
-  if (Array.isArray(object)) {
+  if (Array.isArray(object) === true) {
     const maxProperties = styles.arrayMaxProperties
     const previewArray = object
       .slice(0, maxProperties)
@@ -53,7 +53,7 @@ export const ObjectPreview: FC<any> = ({ data }) => {
     const maxProperties = styles.objectMaxProperties
     const propertyNodes: ReactNode[] = []
     for (const propertyName in object) {
-      if (hasOwnProperty.call(object, propertyName)) {
+      if (hasOwnProperty.call(object, propertyName) === true) {
         let ellipsis
         if (
           propertyNodes.length === maxProperties - 1 &&
@@ -71,11 +71,12 @@ export const ObjectPreview: FC<any> = ({ data }) => {
             {ellipsis}
           </span>,
         )
-        if (ellipsis) break
+        if (ellipsis !== undefined) break
       }
     }
 
-    const objectConstructorName = object.constructor ? object.constructor.name : 'Object'
+    const objectConstructorName =
+      object.constructor !== undefined ? object.constructor.name : 'Object'
 
     return (
       <React.Fragment>

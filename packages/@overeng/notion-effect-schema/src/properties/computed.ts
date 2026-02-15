@@ -192,7 +192,7 @@ export const UniqueId = {
     strict: false,
     decode: (prop) => {
       const { prefix, number } = prop.unique_id
-      return prefix ? `${prefix}-${number}` : String(number)
+      return prefix !== null ? `${prefix}-${number}` : String(number)
     },
     encode: () =>
       shouldNeverHappen('UniqueId.asString encode is not supported (unique_id is read-only).'),

@@ -100,7 +100,7 @@ export const DiffView = ({ stateAtom }: DiffViewProps) => {
       )}
 
       <Text> </Text>
-      {state.hasDifferences ? (
+      {state.hasDifferences === true ? (
         <Text color="yellow">
           {symbols.status.warning} {diffCount} difference(s) found
         </Text>

@@ -134,7 +134,7 @@ test.describe('TuiStoryPreview Timeline Controls', () => {
     const playPauseButton = page.getByRole('button', { name: /pause/i })
 
     // If auto-playing, should show Pause
-    if (await playPauseButton.isVisible()) {
+    if ((await playPauseButton.isVisible()) === true) {
       await playPauseButton.click()
       // After clicking, should show Play
       await expect(page.getByRole('button', { name: /play/i })).toBeVisible()

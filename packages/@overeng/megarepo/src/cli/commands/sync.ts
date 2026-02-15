@@ -114,7 +114,7 @@ export const syncMegarepo = <R = never>({
     const resolvedRoot = yield* fs.realPath(megarepoRoot)
 
     // Check if we've already synced this megarepo (circuit breaker for diamond dependencies)
-    if (visited.has(resolvedRoot)) {
+    if (visited.has(resolvedRoot) === true) {
       // Skip silently - duplicate syncing detected
       return {
         root: megarepoRoot,
@@ -136,7 +136,7 @@ export const syncMegarepo = <R = never>({
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-    if (!dryRun) {
+    if (dryRun === false) {
       const membersRoot = getMembersRoot(megarepoRoot)
       yield* fs.makeDirectory(membersRoot, { recursive: true })
     }
@@ -153,7 +153,7 @@ export const syncMegarepo = <R = never>({
     const remoteMemberNames = new Set<string>()
     for (const [name, sourceString] of Object.entries(config.members)) {
       const source = parseSourceString(sourceString)
-      if (source !== undefined && isRemoteSource(source)) {
+      if (source !== undefined && isRemoteSource(source) === true) {
         remoteMemberNames.add(name)
       }
     }
@@ -174,7 +174,7 @@ export const syncMegarepo = <R = never>({
     )
 
     // Check --frozen requirements
-    if (frozen) {
+    if (frozen === true) {
       if (lockFile === undefined) {
         return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
       }
@@ -199,7 +199,7 @@ export const syncMegarepo = <R = never>({
         lockFile: filteredLockFile,
         configMemberNames: filteredRemoteMemberNames,
       })
-      if (staleness.isStale) {
+      if (staleness.isStale === true) {
         return yield* new StaleLockFileError({
           message: 'Lock file is stale',
           addedMembers: staleness.addedMembers,
@@ -266,17 +266,17 @@ export const syncMegarepo = <R = never>({
       .exists(membersRoot)
       .pipe(Effect.catchAll(() => Effect.succeed(false)))
 
-    if (membersRootExists) {
+    if (membersRootExists === true) {
       const existingEntries = yield* fs
         .readDirectory(membersRoot)
         .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
 
       for (const entry of existingEntries) {
         // Skip if this member is still in config
-        if (configuredMemberNames.has(entry)) continue
+        if (configuredMemberNames.has(entry) === true) continue
 
         // Skip if this member was explicitly skipped via --only/--skip
-        if (skippedMemberNames.has(entry)) continue
+        if (skippedMemberNames.has(entry) === true) continue
 
         const entryPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
 
@@ -287,7 +287,7 @@ export const syncMegarepo = <R = never>({
 
         if (linkTarget !== null) {
           // This is a symlink - it's an orphan, remove it
-          if (!dryRun) {
+          if (dryRun === false) {
             yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
           }
           removedResults.push({
@@ -317,7 +317,7 @@ export const syncMegarepo = <R = never>({
           const hasNestedConfig = yield* fs
             .exists(nestedConfigPath)
             .pipe(Effect.catchAll(() => Effect.succeed(false)))
-          return hasNestedConfig ? result.name : null
+          return hasNestedConfig === true ? result.name : null
         }),
       ),
       { concurrency: 'unbounded' },
@@ -328,7 +328,7 @@ export const syncMegarepo = <R = never>({
     let nixLockResult: NixLockSyncResult | undefined = undefined
 
     // Update lock file (unless dry run or frozen)
-    if (!dryRun && !frozen) {
+    if (dryRun === false && frozen === false) {
       // Initialize lock file if needed
       if (lockFile === undefined) {
         lockFile = createEmptyLockFile()
@@ -343,14 +343,14 @@ export const syncMegarepo = <R = never>({
       // Update lock entries from results
       for (const result of results) {
         // Only process results that have commit and ref info
-        const commit = 'commit' in result ? result.commit : undefined
-        const ref = 'ref' in result ? result.ref : undefined
+        const commit = 'commit' in result === true ? result.commit : undefined
+        const ref = 'ref' in result === true ? result.ref : undefined
         if (commit === undefined || ref === undefined) continue
 
         const sourceString = config.members[result.name]
         if (sourceString === undefined) continue
         const source = parseSourceString(sourceString)
-        if (source === undefined || !isRemoteSource(source)) continue
+        if (source === undefined || isRemoteSource(source) === false) continue
 
         const url = getSourceUrl(source) ?? sourceString
         const existingLocked = lockFile.members[result.name]
@@ -386,7 +386,7 @@ export const syncMegarepo = <R = never>({
         lockSyncExplicitSetting === true ||
         (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
-      if (lockSyncEnabled) {
+      if (lockSyncEnabled === true) {
         const excludeMembers = new Set(config.lockSync?.exclude ?? [])
         nixLockResult = yield* syncNixLocks({
           megarepoRoot,
@@ -403,7 +403,7 @@ export const syncMegarepo = <R = never>({
     }
 
     // Always regenerate the local Nix workspace after syncing members.
-    if (!dryRun) {
+    if (dryRun === false) {
       const outermostRootOpt = yield* findMegarepoRoot(megarepoRoot)
       const outermostRoot = Option.getOrElse(outermostRootOpt, () => megarepoRoot)
       yield* generateAll({
@@ -415,12 +415,12 @@ export const syncMegarepo = <R = never>({
 
     // Handle --all flag: recursively sync nested megarepos
     const nestedResults: MegarepoSyncResult[] = []
-    if (all && nestedMegarepos.length > 0) {
+    if (all === true && nestedMegarepos.length > 0) {
       for (const nestedName of nestedMegarepos) {
         const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
         // Convert to AbsoluteDirPath (add trailing slash if needed)
         const nestedRoot = EffectPath.unsafe.absoluteDir(
-          nestedPath.endsWith('/') ? nestedPath : `${nestedPath}/`,
+          nestedPath.endsWith('/') === true ? nestedPath : `${nestedPath}/`,
         )
 
         const nestedResult = yield* syncMegarepo({
@@ -572,17 +572,17 @@ export const syncCommand = Cli.Command.make(
       const root = yield* findMegarepoRoot(cwd)
 
       // Validate mutual exclusivity of --only and --skip
-      if (Option.isSome(only) && Option.isSome(skip)) {
+      if (Option.isSome(only) === true && Option.isSome(skip) === true) {
         return yield* new InvalidOptionsError({
           message: '--only and --skip are mutually exclusive',
         })
       }
 
       // Parse member filter options
-      const onlyMembers = Option.isSome(only) ? parseMemberList(only.value) : undefined
-      const skipMembers = Option.isSome(skip) ? parseMemberList(skip.value) : undefined
+      const onlyMembers = Option.isSome(only) === true ? parseMemberList(only.value) : undefined
+      const skipMembers = Option.isSome(skip) === true ? parseMemberList(skip.value) : undefined
 
-      if (Option.isNone(root)) {
+      if (Option.isNone(root) === true) {
         return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
       }
 
@@ -619,7 +619,7 @@ export const syncCommand = Cli.Command.make(
       // Determine if we should use live progress (TTY and not JSON mode)
       const useLiveProgress = !json && isTTY()
 
-      if (useLiveProgress) {
+      if (useLiveProgress === true) {
         // Start live progress UI (React-based)
         const ui = yield* startSyncUI({
           workspaceName: name,
@@ -636,7 +636,7 @@ export const syncCommand = Cli.Command.make(
 
         // Create interactive prompt callback if in TTY mode and not using --create-branches
         const onMissingRef =
-          !createBranches && isTTY()
+          createBranches === false && isTTY() === true
             ? (info: MissingRefInfo) => createMissingRefPrompt(info)
             : undefined
 

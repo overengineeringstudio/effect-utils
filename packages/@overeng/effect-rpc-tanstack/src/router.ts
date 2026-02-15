@@ -136,10 +136,10 @@ export const makeEffectLoaderResult = <A, E>(encoded: ExitEncoded): EffectLoader
     exit,
     isSuccess: Exit.isSuccess(exit),
     isFailure: Exit.isFailure(exit),
-    value: Exit.isSuccess(exit) ? Option.some(exit.value) : Option.none(),
-    error: Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none(),
+    value: Exit.isSuccess(exit) === true ? Option.some(exit.value) : Option.none(),
+    error: Exit.isFailure(exit) === true ? Cause.failureOption(exit.cause) : Option.none(),
     getOrThrow: () => {
-      if (Exit.isSuccess(exit)) {
+      if (Exit.isSuccess(exit) === true) {
         return exit.value
       }
       throw Cause.squash(exit.cause)
@@ -149,12 +149,12 @@ export const makeEffectLoaderResult = <A, E>(encoded: ExitEncoded): EffectLoader
         onSuccess: handlers.onSuccess,
         onFailure: (cause) => {
           const failure = Cause.failureOption(cause)
-          if (Option.isSome(failure)) {
+          if (Option.isSome(failure) === true) {
             return handlers.onFailure(failure.value)
           }
-          if (handlers.onDefect) {
+          if (handlers.onDefect !== undefined) {
             const defect = Cause.dieOption(cause)
-            if (Option.isSome(defect)) {
+            if (Option.isSome(defect) === true) {
               return handlers.onDefect(defect.value)
             }
           }
@@ -211,7 +211,7 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
     const loader = options.loader
 
     const config = {
-      ...(loader
+      ...(loader !== undefined
         ? {
             loader: async (ctx: { params: unknown; abortController: AbortController }) => {
               const effect = loader({
@@ -219,18 +219,21 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
                 abortController: ctx.abortController,
               })
 
-              const provided = options.loaderLayer
-                ? Effect.provide(effect, options.loaderLayer)
-                : (effect as Effect.Effect<TLoaderData, TLoaderError, never>)
+              const provided =
+                options.loaderLayer !== undefined
+                  ? Effect.provide(effect, options.loaderLayer)
+                  : (effect as Effect.Effect<TLoaderData, TLoaderError, never>)
 
               const exit = await Effect.runPromiseExit(provided)
               return encodeExit(exit)
             },
           }
         : {}),
-      ...(options.component ? { component: options.component } : {}),
-      ...(options.errorComponent ? { errorComponent: options.errorComponent } : {}),
-      ...(options.pendingComponent ? { pendingComponent: options.pendingComponent } : {}),
+      ...(options.component !== undefined ? { component: options.component } : {}),
+      ...(options.errorComponent !== undefined ? { errorComponent: options.errorComponent } : {}),
+      ...(options.pendingComponent !== undefined
+        ? { pendingComponent: options.pendingComponent }
+        : {}),
     } satisfies Parameters<typeof tanstackRoute>[0]
 
     return tanstackRoute(config)

@@ -76,7 +76,7 @@ export const pinCommand = Cli.Command.make(
           const cwd = yield* Cwd
           const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_in_megarepo',
@@ -122,7 +122,7 @@ export const pinCommand = Cli.Command.make(
               source: sourceString,
             })
           }
-          if (!isRemoteSource(source)) {
+          if (isRemoteSource(source) === false) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'local_path',
@@ -143,7 +143,7 @@ export const pinCommand = Cli.Command.make(
           const memberPathNormalized = memberPath.replace(/\/$/, '')
 
           // If -c is provided, switch to the new ref
-          if (Option.isSome(checkout)) {
+          if (Option.isSome(checkout) === true) {
             const newRef = checkout.value
 
             // Get current ref from source string for display (source is guaranteed to be remote at this point)
@@ -186,12 +186,12 @@ export const pinCommand = Cli.Command.make(
             const currentLockPinned = currentLockEntry?.pinned ?? false
 
             // For dry-run, show what would happen
-            if (dryRun) {
-              const shortCurrentLink = currentLink ? shortenPath(currentLink) : '(none)'
+            if (dryRun === true) {
+              const shortCurrentLink = currentLink !== null ? shortenPath(currentLink) : '(none)'
               const shortNewLink = shortenPath(worktreePath.replace(/\/$/, ''))
               const lockChanges: string[] = []
               if (currentLockRef !== newRef) lockChanges.push(`ref: ${currentLockRef} → ${newRef}`)
-              if (!currentLockPinned) lockChanges.push('pinned: true')
+              if (currentLockPinned === false) lockChanges.push('pinned: true')
 
               tui.dispatch({
                 _tag: 'SetDryRun',
@@ -228,7 +228,7 @@ export const pinCommand = Cli.Command.make(
             sourceString = newSourceString
             source = parseSourceString(newSourceString)!
 
-            if (!bareExists) {
+            if (bareExists === false) {
               // Clone the bare repo
               const cloneUrl = getCloneUrl(source)
               if (cloneUrl === undefined) {
@@ -264,7 +264,7 @@ export const pinCommand = Cli.Command.make(
               )
             }
 
-            if (!worktreeExists) {
+            if (worktreeExists === false) {
               // Ensure parent directory exists
               const worktreeParent = EffectPath.ops.parent(worktreePath)
               if (worktreeParent !== undefined) {
@@ -351,7 +351,7 @@ export const pinCommand = Cli.Command.make(
           }
 
           // Check if already pinned (only when not switching refs)
-          if (lockedMember.pinned) {
+          if (lockedMember.pinned === true) {
             tui.dispatch({
               _tag: 'SetAlready',
               member,
@@ -382,7 +382,7 @@ export const pinCommand = Cli.Command.make(
           const bareExists = yield* store.hasBareRepo(source)
 
           // For dry-run, show what would happen
-          if (dryRun) {
+          if (dryRun === true) {
             const wouldChangeSymlink =
               currentLink !== null &&
               currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')
@@ -392,13 +392,14 @@ export const pinCommand = Cli.Command.make(
               member,
               action: 'pin',
               commit: lockedMember.commit,
-              currentSymlink: wouldChangeSymlink ? shortenPath(currentLink) : undefined,
-              newSymlink: wouldChangeSymlink
-                ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
-                : undefined,
+              currentSymlink: wouldChangeSymlink === true ? shortenPath(currentLink) : undefined,
+              newSymlink:
+                wouldChangeSymlink === true
+                  ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
+                  : undefined,
               lockChanges: ['pinned: false → true'],
-              wouldCreateWorktree: !commitWorktreeExists && bareExists,
-              worktreeNotAvailable: !commitWorktreeExists && !bareExists,
+              wouldCreateWorktree: commitWorktreeExists === false && bareExists === true,
+              worktreeNotAvailable: commitWorktreeExists === false && bareExists === false,
             })
             return
           }
@@ -408,8 +409,8 @@ export const pinCommand = Cli.Command.make(
           yield* writeLockFile({ lockPath, lockFile })
 
           // If the commit worktree doesn't exist, create it
-          if (!commitWorktreeExists) {
-            if (!bareExists) {
+          if (commitWorktreeExists === false) {
+            if (bareExists === false) {
               // Bare repo doesn't exist, can't create worktree - warn user
               tui.dispatch({
                 _tag: 'SetWarning',
@@ -438,7 +439,7 @@ export const pinCommand = Cli.Command.make(
             refType: 'commit',
           })
 
-          if (worktreeReady) {
+          if (worktreeReady === true) {
             // Update the symlink
             if (
               currentLink !== null &&
@@ -485,7 +486,7 @@ const getCloneUrl = (source: ReturnType<typeof parseSourceString>): string | und
 const shortenPath = (path: string): string => {
   const home = process.env['HOME'] ?? ''
   let shortened = path
-  if (home && shortened.startsWith(home)) {
+  if (home !== '' && shortened.startsWith(home) === true) {
     shortened = '~' + shortened.slice(home.length)
   }
   // If still too long, show .../<last-3-components>
@@ -513,7 +514,7 @@ export const unpinCommand = Cli.Command.make(
           const cwd = yield* Cwd
           const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_in_megarepo',
@@ -549,7 +550,7 @@ export const unpinCommand = Cli.Command.make(
             EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
           )
           const lockFileOpt = yield* readLockFile(lockPath)
-          if (Option.isNone(lockFileOpt)) {
+          if (Option.isNone(lockFileOpt) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'no_lock',
@@ -573,7 +574,7 @@ export const unpinCommand = Cli.Command.make(
           }
 
           // Check if already unpinned
-          if (!lockedMember.pinned) {
+          if (lockedMember.pinned === false) {
             tui.dispatch({
               _tag: 'SetAlready',
               member,
@@ -597,7 +598,7 @@ export const unpinCommand = Cli.Command.make(
             })
           } else {
             const source = parseSourceString(sourceString)
-            if (source !== undefined && isRemoteSource(source)) {
+            if (source !== undefined && isRemoteSource(source) === true) {
               const store = yield* Store
               const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
               const memberPathNormalized = memberPath.replace(/\/$/, '')
@@ -616,7 +617,7 @@ export const unpinCommand = Cli.Command.make(
               })
 
               // Update symlink if ref worktree exists and current link is different
-              if (refWorktreeExists) {
+              if (refWorktreeExists === true) {
                 const currentLink = yield* fs
                   .readLink(memberPathNormalized)
                   .pipe(Effect.catchAll(() => Effect.succeed(null)))

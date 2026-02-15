@@ -52,20 +52,20 @@ const hasJsDocComment = ({
   }
 
   for (const comment of sortedComments) {
-    if (comment.type === 'Block' && comment.value.startsWith('*')) {
+    if (comment.type === 'Block' && comment.value.startsWith('*') === true) {
       const commentEndLine = comment.loc?.end.line
       if (commentEndLine === undefined) continue
 
       // Check if JSDoc is adjacent or only has line comments in between
       let isAdjacent = true
       for (let line = commentEndLine + 1; line < nodeStartLine; line++) {
-        if (!lineCommentLines.has(line)) {
+        if (lineCommentLines.has(line) === false) {
           isAdjacent = false
           break
         }
       }
 
-      if (isAdjacent) {
+      if (isAdjacent === true) {
         return true
       }
     }
@@ -98,7 +98,7 @@ const isExportRequiringJsDoc = (node: ASTNode) => {
     if (decl === undefined || decl === null) return false
 
     /** export type X = typeof Y - skip, derived types don't need JSDoc */
-    if (decl.type === 'TSTypeAliasDeclaration' && isDerivedTypeofAlias(decl)) {
+    if (decl.type === 'TSTypeAliasDeclaration' && isDerivedTypeofAlias(decl) === true) {
       return false
     }
 
@@ -176,9 +176,9 @@ export const jsdocRequireExportsRule = {
         // Only require JSDoc for named namespace exports: export * as name from '...'
         // Plain re-exports (export * from '...') don't need JSDoc
         const n = node as any
-        if (!n.exported) return
+        if (n.exported === undefined || n.exported === null) return
 
-        if (!hasJsDocComment({ node, sourceCode })) {
+        if (hasJsDocComment({ node, sourceCode }) === false) {
           context.report({
             node,
             messageId: 'missingJsdoc',
@@ -195,11 +195,11 @@ export const jsdocRequireExportsRule = {
         // FunctionDeclaration is the implementation
         if (decl?.type === 'TSDeclareFunction') {
           const funcName = decl.id?.name
-          if (funcName) {
+          if (funcName !== undefined) {
             // Only check JSDoc on the FIRST overload signature
-            if (!functionOverloads.has(funcName)) {
+            if (functionOverloads.has(funcName) === false) {
               functionOverloads.add(funcName)
-              if (!hasJsDocComment({ node, sourceCode })) {
+              if (hasJsDocComment({ node, sourceCode }) === false) {
                 context.report({
                   node,
                   messageId: 'missingJsdoc',
@@ -211,19 +211,19 @@ export const jsdocRequireExportsRule = {
           return
         }
 
-        if (!isExportRequiringJsDoc(node)) return
+        if (isExportRequiringJsDoc(node) === false) return
 
         // For function implementations, skip if there's a prior overload signature
         if (decl?.type === 'FunctionDeclaration') {
           const funcName = decl.id?.name
-          if (funcName && functionOverloads.has(funcName)) {
+          if (funcName !== undefined && functionOverloads.has(funcName) === true) {
             // This is the implementation of an overloaded function - skip JSDoc check
             // The first overload signature should have the JSDoc
             return
           }
         }
 
-        if (!hasJsDocComment({ node, sourceCode })) {
+        if (hasJsDocComment({ node, sourceCode }) === false) {
           context.report({
             node,
             messageId: 'missingJsdoc',

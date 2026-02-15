@@ -42,7 +42,7 @@ const TableInspector: FC<any> = ({
       sortIndexColumn: true,
       sortColumn: undefined,
       // when changed to a new column, default to asending
-      sortAscending: sortIndexColumn ? !sortAscending : true,
+      sortAscending: sortIndexColumn === true ? !sortAscending : true,
     }))
   }, [])
 
@@ -62,7 +62,7 @@ const TableInspector: FC<any> = ({
   }
 
   const headers = getHeaders(data)
-  if (!headers) {
+  if (headers === undefined) {
     return <div />
   }
   let { rowHeaders, colHeaders } = headers
@@ -91,7 +91,7 @@ const TableInspector: FC<any> = ({
       return [undefined, index]
     })
   } else {
-    if (sortIndexColumn) {
+    if (sortIndexColumn === true) {
       columnDataWithRowIndexes = rowHeaders.map((rowData, index: number) => {
         const columnData = rowHeaders[index]
         return [columnData, index]
@@ -134,7 +134,7 @@ const TableInspector: FC<any> = ({
           result = lt(order[type1], order[type2])
         }
         // reverse result if descending
-        if (!ascending) result = -result
+        if (ascending === false) result = -result
         return result
       }
     }

@@ -55,7 +55,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
       // Check for CSI sequence (ESC [)
       if (i + 1 < data.length && data[i + 1] === 0x5b) {
         const result = parseCSISequence({ data, start: i + 2 })
-        if (result) {
+        if (result !== null) {
           events.push(result.event)
           i = result.nextIndex
           continue
@@ -65,7 +65,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
       // Check for SS3 sequence (ESC O) - function keys
       if (i + 1 < data.length && data[i + 1] === 0x4f) {
         const result = parseSS3Sequence({ data, start: i + 2 })
-        if (result) {
+        if (result !== null) {
           events.push(result.event)
           i = result.nextIndex
           continue
@@ -89,7 +89,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
     // Control characters (Ctrl+A through Ctrl+Z)
     if (byte < 0x20) {
       const ctrlKey = parseControlCharacter(byte)
-      if (ctrlKey) {
+      if (ctrlKey !== null) {
         events.push(ctrlKey)
         i++
         continue
@@ -114,7 +114,7 @@ export const parseKeyInput = (data: Buffer): KeyEvent[] => {
     // UTF-8 multi-byte character
     if (byte >= 0x80) {
       const result = parseUTF8Char({ data, start: i })
-      if (result) {
+      if (result !== null) {
         events.push(keyEvent({ key: result.char }))
         i = result.nextIndex
         continue
@@ -305,7 +305,7 @@ const parseCSIModifiers = (
   if (parts.length < 2) return {}
 
   const modifier = parseInt(parts[parts.length - 1]!, 10)
-  if (isNaN(modifier)) return {}
+  if (isNaN(modifier) === true) return {}
 
   // Modifier encoding: 1 + (Shift ? 1 : 0) + (Alt ? 2 : 0) + (Ctrl ? 4 : 0) + (Meta ? 8 : 0)
   const adjusted = modifier - 1
@@ -525,7 +525,7 @@ export const createTerminalInput = (
     const setRawMode = 'setRawMode' in input ? (input.setRawMode as (mode: boolean) => void) : null
 
     // Enable raw mode if TTY
-    if (rawMode && isTTY && setRawMode) {
+    if (rawMode === true && isTTY === true && setRawMode !== null) {
       wasRawMode = true
       setRawMode(true)
 
@@ -542,7 +542,7 @@ export const createTerminalInput = (
       const events = parseKeyInput(data)
       for (const event of events) {
         // Handle Ctrl+C specially if not handling it ourselves
-        if (event.ctrl && event.key === 'c' && !handleCtrlC) {
+        if (event.ctrl === true && event.key === 'c' && handleCtrlC === false) {
           process.exit(130) // Standard exit code for Ctrl+C
         }
 
@@ -570,7 +570,7 @@ export const createTerminalInput = (
     )
 
     // Set up resize handler if enabled
-    if (handleResize && output.isTTY) {
+    if (handleResize === true && output.isTTY === true) {
       const resizeHandler = () => {
         const cols = output.columns ?? 80
         const rows = output.rows ?? 24
@@ -664,7 +664,7 @@ export const createTerminalResize = (
       rows: output.rows ?? 24,
     })
 
-    if (output.isTTY) {
+    if (output.isTTY === true) {
       // Set up resize handler
       const resizeHandler = () => {
         const dims = getDimensions()

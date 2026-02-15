@@ -47,7 +47,7 @@ export const execCommand = Cli.Command.make(
         ExecApp,
         (tui) =>
           Effect.gen(function* () {
-            if (Option.isNone(root)) {
+            if (Option.isNone(root) === true) {
               tui.dispatch({
                 _tag: 'SetError',
                 error: 'not_found',
@@ -97,7 +97,7 @@ export const execCommand = Cli.Command.make(
                 const memberPath = getMemberPath({ megarepoRoot: root.value, name })
                 const exists = yield* fs.exists(memberPath)
 
-                if (!exists) {
+                if (exists === false) {
                   tui.dispatch({
                     _tag: 'UpdateMember',
                     name,

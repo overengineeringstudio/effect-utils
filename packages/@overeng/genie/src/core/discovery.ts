@@ -20,15 +20,15 @@ const isCompiledBinary = (): boolean => {
 
 /** Normalize Bun importer paths to absolute filesystem paths when possible. */
 const normalizeImporterPath = (importer: string): string | undefined => {
-  if (importer.startsWith('file://')) {
+  if (importer.startsWith('file://') === true) {
     return fileURLToPath(importer)
   }
 
-  if (importer.startsWith('data:')) {
+  if (importer.startsWith('data:') === true) {
     return undefined
   }
 
-  if (!path.isAbsolute(importer)) {
+  if (path.isAbsolute(importer) === false) {
     return undefined
   }
 
@@ -58,11 +58,11 @@ type BunPluginBuilder = {
  * entirely in compiled binaries - files using `#...` imports need to be run with `bun run`.
  */
 export const ensureImportMapResolver = Effect.sync(() => {
-  if (importMapResolverRegistered) return
+  if (importMapResolverRegistered === true) return
   importMapResolverRegistered = true
 
   // Skip Bun.plugin in compiled binaries to avoid ResolveMessage class identity issues
-  if (isCompiledBinary()) return
+  if (isCompiledBinary() === true) return
 
   Bun.plugin({
     name: 'genie-import-map',
@@ -117,7 +117,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   const warnings: string[] = []
   // Prefer the canonical root when available; fall back to input on failure.
   const rootDir = yield* fs.realPath(dir).pipe(Effect.catchAll(() => Effect.succeed(dir)))
-  const rootPrefix = rootDir.endsWith(path.sep) ? rootDir : `${rootDir}${path.sep}`
+  const rootPrefix = rootDir.endsWith(path.sep) === true ? rootDir : `${rootDir}${path.sep}`
   const seenDirectories = new Set<string>()
 
   const resolveSymlinkTarget = (
@@ -125,7 +125,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   ): Effect.Effect<string | undefined, never, never> =>
     fs.readLink(fullPath).pipe(
       Effect.map((target) =>
-        pathService.isAbsolute(target)
+        pathService.isAbsolute(target) === true
           ? target
           : pathService.resolve(pathService.dirname(fullPath), target),
       ),
@@ -173,7 +173,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
       const results: string[] = []
 
       for (const entry of entries) {
-        if (shouldSkipDirectory(entry)) {
+        if (shouldSkipDirectory(entry) === true) {
           continue
         }
 
@@ -189,16 +189,16 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
              * This avoids duplicate traversal when submodules are symlinked
              * to a canonical working tree.
              */
-            if (isWithinRoot(symlinkTarget)) {
+            if (isWithinRoot(symlinkTarget) === true) {
               continue
             }
 
-            if (seenDirectories.has(symlinkTarget)) {
+            if (seenDirectories.has(symlinkTarget) === true) {
               continue
             }
             seenDirectories.add(symlinkTarget)
           } else {
-            if (seenDirectories.has(fullPath)) {
+            if (seenDirectories.has(fullPath) === true) {
               continue
             }
             seenDirectories.add(fullPath)
@@ -206,7 +206,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
 
           const nested = yield* walk(fullPath)
           results.push(...nested)
-        } else if (stat.type === 'file' && isGenieFile(entry)) {
+        } else if (stat.type === 'file' && isGenieFile(entry) === true) {
           results.push(fullPath)
         }
         // skip broken symlinks silently (already logged warning)
@@ -232,7 +232,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
     )
 
     if (resolvedPath === null) continue
-    if (seen.has(resolvedPath)) continue
+    if (seen.has(resolvedPath) === true) continue
     seen.add(resolvedPath)
     uniqueFiles.push(resolvedPath)
   }

@@ -96,7 +96,7 @@ const UserList = ({ initialUsers }: { initialUsers: readonly User[] }): React.Re
           </label>
         </div>
         <button type="submit" disabled={loading} data-testid="submit-button">
-          {loading ? 'Creating...' : 'Create User'}
+          {loading === true ? 'Creating...' : 'Create User'}
         </button>
         {error && <p style={{ color: 'red' }}>{error}</p>}
       </form>

@@ -60,7 +60,7 @@ const scanMembersRecursive = ({
 
     // Prevent cycles
     const normalizedRoot = megarepoRoot.replace(/\/$/, '')
-    if (visited.has(normalizedRoot)) {
+    if (visited.has(normalizedRoot) === true) {
       return []
     }
     visited.add(normalizedRoot)
@@ -71,7 +71,7 @@ const scanMembersRecursive = ({
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
     )
     const configExists = yield* fs.exists(configPath)
-    if (!configExists) {
+    if (configExists === false) {
       return []
     }
 
@@ -101,7 +101,7 @@ const scanMembersRecursive = ({
       // For remote members, also check if the underlying worktree exists
       // (symlink might exist but point to non-existent worktree)
       let memberExists = symlinkExists
-      if (symlinkExists && !isLocal) {
+      if (symlinkExists === true && isLocal === false) {
         // Check if symlink target exists
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
@@ -115,15 +115,16 @@ const scanMembersRecursive = ({
         memberPath,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
-      const isMegarepo = memberExists
-        ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
-        : false
+      const isMegarepo =
+        memberExists === true
+          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          : false
 
       // Recursively scan nested members if this is a megarepo and --all is used
       let nestedMembers: readonly MemberStatus[] | undefined = undefined
-      if (all && isMegarepo && memberExists) {
+      if (all === true && isMegarepo === true && memberExists === true) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
-          memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
+          memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
         nestedMembers = yield* scanMembersRecursive({
           megarepoRoot: nestedRoot,
@@ -136,10 +137,10 @@ const scanMembersRecursive = ({
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
       let fullCommit: string | undefined = undefined
-      if (memberExists) {
+      if (memberExists === true) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
-        if (isGit) {
+        if (isGit === true) {
           // Get worktree status (dirty, unpushed)
           const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
             Effect.catchAll(() =>
@@ -176,7 +177,7 @@ const scanMembersRecursive = ({
 
       // Read symlink target for drift detection
       const symlinkTarget =
-        memberExists && !isLocal
+        memberExists === true && isLocal === false
           ? yield* fs
               .readLink(memberPath.replace(/\/$/, ''))
               .pipe(Effect.catchAll(() => Effect.succeed(null)))
@@ -184,7 +185,9 @@ const scanMembersRecursive = ({
 
       // Get source ref (what megarepo.json intends)
       const sourceRef =
-        source && source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : undefined
+        source !== undefined && source.type !== 'path'
+          ? Option.getOrElse(source.ref, () => 'main')
+          : undefined
 
       // Detect stale lock vs symlink drift
       // These are mutually exclusive scenarios:
@@ -199,11 +202,11 @@ const scanMembersRecursive = ({
       let staleLock: StaleLock | undefined = undefined
       let symlinkDrift: SymlinkDrift | undefined = undefined
 
-      if (symlinkTarget !== null && lockedMember && sourceRef) {
+      if (symlinkTarget !== null && lockedMember !== undefined && sourceRef !== undefined) {
         const extracted = extractRefFromSymlinkPath(symlinkTarget)
         const symlinkRef = extracted?.ref
 
-        if (symlinkRef && lockedMember.ref !== sourceRef) {
+        if (symlinkRef !== undefined && lockedMember.ref !== sourceRef) {
           if (symlinkRef === sourceRef && symlinkRef !== lockedMember.ref) {
             // Stale lock: symlink matches source, lock is outdated
             staleLock = {
@@ -223,7 +226,12 @@ const scanMembersRecursive = ({
 
       // Detect commit drift: local worktree commit differs from locked commit
       let commitDrift: CommitDrift | undefined = undefined
-      if (memberExists && !isLocal && lockedMember && fullCommit) {
+      if (
+        memberExists === true &&
+        isLocal === false &&
+        lockedMember !== undefined &&
+        fullCommit !== undefined
+      ) {
         if (fullCommit !== lockedMember.commit) {
           commitDrift = {
             localCommit: fullCommit,
@@ -249,13 +257,14 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
-        lockInfo: lockedMember
-          ? {
-              ref: lockedMember.ref,
-              commit: lockedMember.commit,
-              pinned: lockedMember.pinned,
-            }
-          : undefined,
+        lockInfo:
+          lockedMember !== undefined
+            ? {
+                ref: lockedMember.ref,
+                commit: lockedMember.commit,
+                pinned: lockedMember.pinned,
+              }
+            : undefined,
         isMegarepo,
         nestedMembers,
         gitStatus,
@@ -285,7 +294,7 @@ export const statusCommand = Cli.Command.make(
       const fs = yield* FileSystem.FileSystem
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
+      if (Option.isNone(root) === true) {
         return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
@@ -324,12 +333,12 @@ export const statusCommand = Cli.Command.make(
       const remoteMemberNames = new Set<string>()
       for (const [memberName, sourceString] of Object.entries(config.members)) {
         const source = parseSourceString(sourceString)
-        if (source !== undefined && isRemoteSource(source)) {
+        if (source !== undefined && isRemoteSource(source) === true) {
           remoteMemberNames.add(memberName)
         }
       }
 
-      if (Option.isSome(lockFileOpt)) {
+      if (Option.isSome(lockFileOpt) === true) {
         // Find the most recent lockedAt timestamp across all members
         const timestamps = Object.values(lockFileOpt.value.members)
           .map((m) => new Date(m.lockedAt).getTime())
@@ -363,7 +372,7 @@ export const statusCommand = Cli.Command.make(
 
       // First try path-based detection (handles repos/<member>/repos/<member>/... paths)
       let currentMemberPath: string[] | undefined = undefined
-      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized)) {
+      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized) === true) {
         const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
         const parts = relativePath.split('/')
         const memberPath: string[] = []
@@ -408,13 +417,13 @@ export const statusCommand = Cli.Command.make(
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
                 if (
                   cwdRealPath === memberRealPathNorm ||
-                  cwdRealPath.startsWith(memberRealPathNorm + '/')
+                  cwdRealPath.startsWith(memberRealPathNorm + '/') === true
                 ) {
                   const newPath = [...pathSoFar, member.name]
                   if (cwdRealPath === memberRealPathNorm) {
                     return newPath
                   }
-                  if (member.nestedMembers && member.nestedMembers.length > 0) {
+                  if (member.nestedMembers !== undefined && member.nestedMembers.length > 0) {
                     const nestedResult = yield* findCurrentMemberPath({
                       memberList: member.nestedMembers,
                       megarepoRoot: memberRealPathNorm + '/',
@@ -440,7 +449,7 @@ export const statusCommand = Cli.Command.make(
 
       // When --all is false, truncate to top-level member only.
       // This ensures currentMemberPath always matches the flat member list.
-      if (!all && currentMemberPath !== undefined && currentMemberPath.length > 1) {
+      if (all === false && currentMemberPath !== undefined && currentMemberPath.length > 1) {
         currentMemberPath = [currentMemberPath[0]!]
       }
 
@@ -456,28 +465,29 @@ export const statusCommand = Cli.Command.make(
         prefix?: string
       }) => {
         for (const member of memberList) {
-          const memberLabel = prefix ? `${prefix}/${member.name}` : member.name
-          if (!member.symlinkExists) {
+          const memberLabel =
+            prefix !== undefined && prefix !== '' ? `${prefix}/${member.name}` : member.name
+          if (member.symlinkExists === false) {
             syncReasons.push(`Member '${memberLabel}' symlink missing`)
-          } else if (!member.exists) {
+          } else if (member.exists === false) {
             syncReasons.push(`Member '${memberLabel}' worktree missing`)
           }
-          if (member.staleLock) {
+          if (member.staleLock !== undefined) {
             syncReasons.push(
               `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
             )
           }
-          if (member.symlinkDrift) {
+          if (member.symlinkDrift !== undefined) {
             syncReasons.push(
               `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
             )
           }
-          if (member.refMismatch) {
+          if (member.refMismatch !== undefined) {
             syncReasons.push(
               `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
             )
           }
-          if (member.nestedMembers) {
+          if (member.nestedMembers !== undefined) {
             collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
           }
         }
@@ -485,8 +495,8 @@ export const statusCommand = Cli.Command.make(
       collectMemberSyncReasons({ memberList: members })
 
       // Check lock staleness
-      if (lockStaleness) {
-        if (!lockStaleness.exists) {
+      if (lockStaleness !== undefined) {
+        if (lockStaleness.exists === false) {
           syncReasons.push('Lock file missing')
         }
         for (const name of lockStaleness.missingFromLock) {

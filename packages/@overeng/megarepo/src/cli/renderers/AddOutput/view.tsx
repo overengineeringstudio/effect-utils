@@ -62,7 +62,7 @@ export const AddView = ({ stateAtom }: AddViewProps) => {
             {!state.synced && <Text dim> (sync skipped)</Text>}
           </Box>
 
-          {state.synced && state.syncStatus && (
+          {state.synced !== undefined && state.syncStatus !== undefined && (
             <Box flexDirection="row">
               <StatusIcon
                 status={

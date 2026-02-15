@@ -20,7 +20,7 @@ const SortIconContainer: FC<{ children: ReactNode }> = (props) => (
 
 const SortIcon: FC<{ sortAscending: boolean }> = ({ sortAscending }) => {
   const styles = useStyles('TableInspectorSortIcon')
-  const glyph = sortAscending ? '▲' : '▼'
+  const glyph = sortAscending === true ? '▲' : '▼'
   return <div style={styles}>{glyph}</div>
 }
 
@@ -48,14 +48,14 @@ export const TH: FC<{
       style={{
         ...styles.base,
         ...borderStyle,
-        ...(hovered ? styles.base[':hover'] : {}),
+        ...(hovered === true ? styles.base[':hover'] : {}),
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={onClick}
     >
       <div style={styles.div}>{children}</div>
-      {sorted && (
+      {sorted === true && (
         <SortIconContainer>
           <SortIcon sortAscending={sortAscending} />
         </SortIconContainer>

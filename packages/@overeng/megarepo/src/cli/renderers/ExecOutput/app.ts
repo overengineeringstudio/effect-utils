@@ -47,7 +47,7 @@ export const ExecApp = createTuiApp({
   reducer: execReducer,
   exitCode: (state) => {
     if (state._tag === 'Error') return 1
-    if (state._tag === 'Complete' && state.hasErrors) return 1
+    if (state._tag === 'Complete' && state.hasErrors === true) return 1
     return 0
   },
 })

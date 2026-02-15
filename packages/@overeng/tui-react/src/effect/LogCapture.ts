@@ -120,7 +120,7 @@ export const useCapturedLogs = (): readonly TuiLogEntry[] => {
   const handle = useContext(CapturedLogsContext)
 
   const getSnapshotActive = (): readonly TuiLogEntry[] => {
-    if (!handle) return emptyLogs
+    if (handle === null) return emptyLogs
     let value: readonly TuiLogEntry[] = emptyLogs
     Effect.runSync(
       SubscriptionRef.get(handle.logsRef).pipe(
@@ -135,7 +135,7 @@ export const useCapturedLogs = (): readonly TuiLogEntry[] => {
   }
 
   const subscribeActive = (onStoreChange: () => void): (() => void) => {
-    if (!handle) return () => {}
+    if (handle === null) return () => {}
     const fiber = Effect.runFork(
       handle.logsRef.changes.pipe(Stream.runForEach(() => Effect.sync(() => onStoreChange()))),
     )
@@ -145,9 +145,9 @@ export const useCapturedLogs = (): readonly TuiLogEntry[] => {
   }
 
   return useSyncExternalStore(
-    handle ? subscribeActive : subscribeEmpty,
-    handle ? getSnapshotActive : getSnapshotEmpty,
-    handle ? getSnapshotActive : getSnapshotEmpty,
+    handle !== null ? subscribeActive : subscribeEmpty,
+    handle !== null ? getSnapshotActive : getSnapshotEmpty,
+    handle !== null ? getSnapshotActive : getSnapshotEmpty,
   )
 }
 

@@ -25,12 +25,13 @@ export const cookies: (args: {
     const context = yield* PwBrowserContext
     return yield* tryPw({
       op: 'pw.context.cookies',
-      effect: () => (url ? context.cookies(url) : context.cookies()),
+      effect: () => (url !== undefined ? context.cookies(url) : context.cookies()),
     }).pipe(
       Effect.tap((cs) =>
         Effect.annotateCurrentSpan({
           'pw.cookie.count': cs.length,
-          'pw.cookies.url': url ? (Array.isArray(url) ? url.join(' | ') : url) : '',
+          'pw.cookies.url':
+            url !== undefined ? (Array.isArray(url) === true ? url.join(' | ') : url) : '',
         }),
       ),
     )

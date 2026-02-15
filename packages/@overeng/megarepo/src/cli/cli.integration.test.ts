@@ -42,7 +42,7 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
       const exists = yield* fs.exists(configPath)
-      if (exists) {
+      if (exists === true) {
         outermost = current
       }
       current = EffectPath.ops.parent(current)
@@ -502,13 +502,13 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
     const stdout = (yield* getStdoutLines).join('\n')
 
     let state: typeof RootState.Type | undefined
-    if (stdout.trim()) {
+    if (stdout.trim() !== '') {
       const envelope = yield* Schema.decodeUnknown(Schema.parseJson(RootOutputEnvelope))(stdout)
       state = envelope.value
     }
 
     return {
-      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       state,
     }
   }).pipe(Effect.scoped)

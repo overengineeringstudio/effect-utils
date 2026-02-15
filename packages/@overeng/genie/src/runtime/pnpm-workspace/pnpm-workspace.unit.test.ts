@@ -227,7 +227,7 @@ describe('createWorkspaceDepsResolver', () => {
       prefixes: ['@overeng/', '@local/'],
       resolveWorkspacePath: (name, from) => {
         const target = locations[name]
-        if (!target) throw new Error(`Unknown: ${name}`)
+        if (target === undefined) throw new Error(`Unknown: ${name}`)
         return computeRelativePath({ from, to: target })
       },
     })

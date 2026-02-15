@@ -91,7 +91,7 @@ const retrieveChildrenRaw = Effect.fn('NotionBlocks.retrieveChildren')(function*
   opts: RetrieveBlockChildrenOptions,
 ) {
   const queryString = buildBlockChildrenParams(opts)
-  const path = `/blocks/${opts.blockId}/children${queryString ? `?${queryString}` : ''}`
+  const path = `/blocks/${opts.blockId}/children${queryString !== '' ? `?${queryString}` : ''}`
   const response = yield* get({
     path,
     responseSchema: BlockChildrenResponseSchema,
@@ -125,14 +125,13 @@ export const retrieveChildrenStream = (
     Option.match(maybeNextCursor, {
       onNone: () => Effect.succeed(Option.none()),
       onSome: (cursor) => {
-        const childrenOpts: RetrieveBlockChildrenOptions = Option.isSome(cursor)
-          ? { ...opts, startCursor: cursor.value }
-          : { ...opts }
+        const childrenOpts: RetrieveBlockChildrenOptions =
+          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
         return retrieveChildrenRaw(childrenOpts).pipe(
           Effect.map((result) => {
             const chunk = Chunk.fromIterable(result.results)
 
-            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
               return Option.some([chunk, Option.none()] as const)
             }
 
@@ -254,8 +253,8 @@ export interface RetrieveNestedOptions {
 /** Check if a block can have children that need fetching */
 const canHaveChildren = (opts: { block: Block; skipTypes: ReadonlySet<BlockType> }): boolean => {
   const { block, skipTypes } = opts
-  if (!block.has_children) return false
-  if (skipTypes.has(block.type)) return false
+  if (block.has_children === false) return false
+  if (skipTypes.has(block.type) === true) return false
   return BLOCK_TYPES_WITH_CHILDREN.has(block.type)
 }
 
@@ -308,7 +307,7 @@ export const retrieveAllNested = (
         const item: BlockWithDepth = { block, depth, parentId }
 
         // Check if we should recurse into this block's children
-        if (canHaveChildren({ block, skipTypes })) {
+        if (canHaveChildren({ block, skipTypes }) === true) {
           // Emit this block, then recurse into its children
           return Stream.concat(
             Stream.succeed(item),
@@ -392,7 +391,7 @@ export const retrieveAsTree = (
           Effect.gen(function* () {
             let nodeChildren: BlockTree = []
 
-            if (canHaveChildren({ block, skipTypes })) {
+            if (canHaveChildren({ block, skipTypes }) === true) {
               nodeChildren = yield* fetchTreeRecursive({
                 blockId: block.id,
                 depth: depth + 1,

@@ -154,12 +154,12 @@ export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeT
 
   // For JSON modes, configure logger to write to stderr
   // This keeps stdout clean for JSON data only
-  if (isJson(mode)) {
+  if (isJson(mode) === true) {
     return Layer.merge(layer(mode), stderrLoggerLayer)
   }
 
   // For progressive React modes, capture logs to prevent TUI corruption
-  if (isReact(mode) && mode.timing === 'progressive') {
+  if (isReact(mode) === true && mode.timing === 'progressive') {
     return Layer.unwrapScoped(
       Effect.gen(function* () {
         const { handle, loggerLayer } = yield* createLogCapture()
@@ -286,7 +286,7 @@ export function runTuiMain<E, A>(
 ): ((effect: Effect.Effect<A, E>) => void) | void {
   const [runtime, effectOrOptions, maybeOptions] = args
   // Check if second argument is an Effect (data-first) or options/undefined (data-last)
-  if (effectOrOptions !== undefined && Effect.isEffect(effectOrOptions)) {
+  if (effectOrOptions !== undefined && Effect.isEffect(effectOrOptions) === true) {
     // Data-first: runTuiMain(runtime, effect, options?)
     return runTuiMainImpl({
       runtime,
@@ -321,7 +321,7 @@ const runTuiMainImpl = <E, A>({
         const failures = Cause.failures(cause)
         const hasLoggableFailure = failures.pipe((chunk) => {
           for (const error of chunk) {
-            if (shouldLogError(error)) return true
+            if (shouldLogError(error) === true) return true
           }
           return false
         })
@@ -330,7 +330,7 @@ const runTuiMainImpl = <E, A>({
         const hasDefects = !Cause.defects(cause).pipe((chunk) => chunk.length === 0)
         const isInterrupted = Cause.isInterrupted(cause)
 
-        if (hasLoggableFailure || hasDefects || isInterrupted) {
+        if (hasLoggableFailure === true || hasDefects === true || isInterrupted === true) {
           const pretty = Cause.pretty(cause, { renderErrorCause: true })
           process.stderr.write(pretty + '\n')
         }

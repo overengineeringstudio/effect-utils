@@ -114,9 +114,9 @@ const CanvasRenderer = ({
     for (let col = 0; col < row.length; col++) {
       const cell = row[col]!
       if (cell.color !== currentColor) {
-        if (currentText) {
+        if (currentText !== '') {
           segments.push(
-            currentColor ? (
+            currentColor !== null ? (
               <Text key={`${rowIdx}-${segments.length}`} color={currentColor}>
                 {currentText}
               </Text>
@@ -131,9 +131,9 @@ const CanvasRenderer = ({
         currentText += cell.char
       }
     }
-    if (currentText) {
+    if (currentText !== '') {
       segments.push(
-        currentColor ? (
+        currentColor !== null ? (
           <Text key={`${rowIdx}-${segments.length}`} color={currentColor}>
             {currentText}
           </Text>

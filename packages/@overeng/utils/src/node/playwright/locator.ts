@@ -60,7 +60,8 @@ export const type: (args: {
 }) => Effect.Effect<void, PwOpError> = Effect.fn('pw.locator.type')(({ locator, text, delayMs }) =>
   tryPw({
     op: 'pw.locator.type',
-    effect: () => locator.pressSequentially(text, delayMs ? { delay: delayMs } : undefined),
+    effect: () =>
+      locator.pressSequentially(text, delayMs !== undefined ? { delay: delayMs } : undefined),
   }).pipe(
     Effect.tap(() =>
       Effect.annotateCurrentSpan({

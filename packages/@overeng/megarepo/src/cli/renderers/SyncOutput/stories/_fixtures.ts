@@ -174,7 +174,7 @@ export const createTimeline = (
         state: createBaseState({
           workspace,
           options,
-          _tag: isFinal ? (hasErrors ? 'Error' : 'Success') : 'Syncing',
+          _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
           members,
           activeMember: nextMember,
           results: currentResults,

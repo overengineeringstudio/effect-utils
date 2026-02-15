@@ -45,7 +45,7 @@ export const ExecView = ({ stateAtom }: ExecViewProps) => {
 
   // Handle running state - show verbose header if enabled
   if (state._tag === 'Running') {
-    if (state.verbose) {
+    if (state.verbose === true) {
       return (
         <Box flexDirection="column">
           <Text dim>Command: {state.command}</Text>
