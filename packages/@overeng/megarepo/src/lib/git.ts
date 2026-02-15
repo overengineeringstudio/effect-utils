@@ -750,7 +750,10 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
   }
 
   // Ref not found (ambiguous argument)
-  if (stderr.includes('ambiguous argument') === true || stderr.includes('unknown revision') === true) {
+  if (
+    stderr.includes('ambiguous argument') === true ||
+    stderr.includes('unknown revision') === true
+  ) {
     // Extract the ref from the error or args
     const refMatch = error.stderr.match(/ambiguous argument '([^']+)'/)
     const ref = refMatch?.[1] ?? args.find((a) => !a.startsWith('-'))
@@ -781,7 +784,10 @@ export const interpretGitError = (error: GitCommandError): { message: string; hi
   }
 
   // SSH errors
-  if (stderr.includes('host key verification failed') === true || stderr.includes('no such identity') === true) {
+  if (
+    stderr.includes('host key verification failed') === true ||
+    stderr.includes('no such identity') === true
+  ) {
     return {
       message: 'SSH connection failed',
       hint: 'Check your SSH configuration and keys',

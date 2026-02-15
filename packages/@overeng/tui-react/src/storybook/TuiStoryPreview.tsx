@@ -645,12 +645,13 @@ const PlaybackControls = <A,>({
   const effectiveEventIndex = disabled === true ? timeline.length - 1 : -1
 
   // Calculate current event index (last event that has fired)
-  const currentEventIndex = disabled === true
-    ? effectiveEventIndex
-    : timeline.findIndex((e, i) => {
-        const nextEvent = timeline[i + 1]
-        return e.at <= currentTime && (nextEvent === undefined || nextEvent.at > currentTime)
-      })
+  const currentEventIndex =
+    disabled === true
+      ? effectiveEventIndex
+      : timeline.findIndex((e, i) => {
+          const nextEvent = timeline[i + 1]
+          return e.at <= currentTime && (nextEvent === undefined || nextEvent.at > currentTime)
+        })
 
   // Get current event info
   const currentEvent = currentEventIndex >= 0 ? timeline[currentEventIndex] : null
@@ -807,7 +808,9 @@ const PlaybackControls = <A,>({
           // Calculate gap to next marker to decide if label fits
           const nextEvent = timeline[i + 1]
           const nextPosition =
-            nextEvent !== undefined && totalDuration > 0 ? (nextEvent.at / totalDuration) * 100 : 100
+            nextEvent !== undefined && totalDuration > 0
+              ? (nextEvent.at / totalDuration) * 100
+              : 100
           const gapPercent = nextPosition - position
           const showLabel = gapPercent > 8 || i === timeline.length - 1 // Show if >8% gap or last event
 
@@ -847,11 +850,12 @@ const PlaybackControls = <A,>({
                   height: isCurrent === true || isHovered === true ? '14px' : '10px',
                   borderRadius: '50%',
                   background: isCurrent === true ? '#4a9eff' : isFired === true ? '#666' : '#444',
-                  border: isCurrent === true
-                    ? '2px solid #fff'
-                    : isHovered === true
-                      ? '2px solid #4a9eff'
-                      : '1px solid #555',
+                  border:
+                    isCurrent === true
+                      ? '2px solid #fff'
+                      : isHovered === true
+                        ? '2px solid #4a9eff'
+                        : '1px solid #555',
                   cursor: disabled === true ? 'default' : 'pointer',
                   transition: 'all 0.15s ease',
                   marginTop: '5px',

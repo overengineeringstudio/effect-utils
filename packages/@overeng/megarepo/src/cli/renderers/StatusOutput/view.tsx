@@ -47,7 +47,9 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
   const problems = analyzeProblems({ members, lockStaleness })
-  const hasNesting = members.some((m) => m.nestedMembers !== undefined && m.nestedMembers !== undefined.length > 0)
+  const hasNesting = members.some(
+    (m) => m.nestedMembers !== undefined && m.nestedMembers !== undefined.length > 0,
+  )
   const hasNestedMegarepos = members.some((m) => m.isMegarepo)
 
   return (
@@ -75,13 +77,17 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
             return (
               <React.Fragment key={member.name}>
                 <MemberLine member={member} isCurrent={isCurrent} />
-                {member.isMegarepo !== undefined && member.nestedMembers !== undefined && member.nestedMembers.length > 0 && (
-                  <MembersTree
-                    members={member.nestedMembers}
-                    prefix=""
-                    currentPath={isOnCurrentPath === true ? currentMemberPath.slice(1) : undefined}
-                  />
-                )}
+                {member.isMegarepo !== undefined &&
+                  member.nestedMembers !== undefined &&
+                  member.nestedMembers.length > 0 && (
+                    <MembersTree
+                      members={member.nestedMembers}
+                      prefix=""
+                      currentPath={
+                        isOnCurrentPath === true ? currentMemberPath.slice(1) : undefined
+                      }
+                    />
+                  )}
                 {i < members.length - 1 && <Text> </Text>}
               </React.Fragment>
             )
@@ -371,7 +377,9 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   <Text>{'      '}</Text>
                   <Text dim>git HEAD: </Text>
                   <Text color="yellow">
-                    {mismatch.isDetached !== undefined ? `detached at ${mismatch.actualRef}` : mismatch.actualRef}
+                    {mismatch.isDetached !== undefined
+                      ? `detached at ${mismatch.actualRef}`
+                      : mismatch.actualRef}
                   </Text>
                 </Box>
                 <Box flexDirection="row">
@@ -765,13 +773,15 @@ const MembersTree = ({
         return (
           <React.Fragment key={member.name}>
             <MemberLine member={member} isCurrent={isCurrent} prefix={`${prefix}${branchChar}`} />
-            {member.isMegarepo !== undefined && member.nestedMembers !== undefined && member.nestedMembers.length > 0 && (
-              <MembersTree
-                members={member.nestedMembers}
-                prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
-                currentPath={isOnCurrentPath === true ? currentPath.slice(1) : undefined}
-              />
-            )}
+            {member.isMegarepo !== undefined &&
+              member.nestedMembers !== undefined &&
+              member.nestedMembers.length > 0 && (
+                <MembersTree
+                  members={member.nestedMembers}
+                  prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
+                  currentPath={isOnCurrentPath === true ? currentPath.slice(1) : undefined}
+                />
+              )}
           </React.Fragment>
         )
       })}

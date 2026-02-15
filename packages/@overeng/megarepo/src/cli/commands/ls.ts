@@ -71,9 +71,10 @@ const scanMembersRecursive = ({
         memberPath,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
-      const isMegarepo = memberExists === true
-        ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
-        : false
+      const isMegarepo =
+        memberExists === true
+          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          : false
 
       members.push({
         name: memberName,

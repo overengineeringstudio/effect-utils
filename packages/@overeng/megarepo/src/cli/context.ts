@@ -51,7 +51,10 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
 
         // Use $PWD (logical path) as base for relative path resolution,
         // consistent with Cwd.live's symlink-aware behavior
-        const base = process.env.PWD?.length !== undefined && process.env.PWD?.length > 0 ? process.env.PWD : process.cwd()
+        const base =
+          process.env.PWD?.length !== undefined && process.env.PWD?.length > 0
+            ? process.env.PWD
+            : process.cwd()
         const resolved = resolve(base, path)
         const resolvedDir = resolved.endsWith('/') === true ? resolved : `${resolved}/`
 

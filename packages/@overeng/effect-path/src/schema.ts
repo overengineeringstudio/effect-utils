@@ -265,12 +265,13 @@ const buildPathInfoPure = <B extends Abs | Rel, T extends File | Dir>(args: {
     extension: undefined as PathInfo<B, Dir>['extension'],
     fullExtension: undefined as PathInfo<B, Dir>['fullExtension'],
     baseName: dirName,
-    parent: isRoot === true
-      ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildPathInfoPure<B, Dir>({
-          original: parentDirPath,
-          isFile: false,
-        }) as PathInfo<B, Dir>['parent']),
+    parent:
+      isRoot === true
+        ? (undefined as PathInfo<B, Dir>['parent'])
+        : (buildPathInfoPure<B, Dir>({
+            original: parentDirPath,
+            isFile: false,
+          }) as PathInfo<B, Dir>['parent']),
   }
   return dirInfo as PathInfo<B, T>
 }

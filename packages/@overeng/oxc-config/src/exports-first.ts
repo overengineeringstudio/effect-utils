@@ -195,7 +195,11 @@ export const exportsFirstRule = {
           }
         }
 
-        if (hasExport === false || hasTrackableNonExport === false || exportAfterNonExport === false) {
+        if (
+          hasExport === false ||
+          hasTrackableNonExport === false ||
+          exportAfterNonExport === false
+        ) {
           return
         }
 

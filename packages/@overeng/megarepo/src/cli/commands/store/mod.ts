@@ -455,9 +455,10 @@ const storeGcCommand = Cli.Command.make(
               ref: worktree.ref,
               path: worktree.path,
               status: 'skipped_dirty',
-              message: status.isDirty === true
-                ? `${status.changesCount} uncommitted change(s)`
-                : 'has unpushed commits',
+              message:
+                status.isDirty === true
+                  ? `${status.changesCount} uncommitted change(s)`
+                  : 'has unpushed commits',
             })
             continue
           }

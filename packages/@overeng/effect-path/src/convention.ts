@@ -357,13 +357,14 @@ const buildDirInfo = <B extends Abs | Rel>(args: {
     extension: undefined as PathInfo<B, Dir>['extension'],
     fullExtension: undefined as PathInfo<B, Dir>['fullExtension'],
     baseName: dirName,
-    parent: isRoot === true
-      ? (undefined as PathInfo<B, Dir>['parent'])
-      : (buildDirInfo({
-          original: parentPath,
-          normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
-          platformPath,
-        }) as PathInfo<B, Dir>['parent']),
+    parent:
+      isRoot === true
+        ? (undefined as PathInfo<B, Dir>['parent'])
+        : (buildDirInfo({
+            original: parentPath,
+            normalized: ensureTrailingSlash(parentPath) as string & B & Dir,
+            platformPath,
+          }) as PathInfo<B, Dir>['parent']),
   }
 }
 

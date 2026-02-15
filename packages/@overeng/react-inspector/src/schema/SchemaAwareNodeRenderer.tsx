@@ -198,7 +198,10 @@ export const createSchemaAwareNodeRenderer = ({
     if (expanded === true && isComplexObject === true) {
       const label = schemaDisplayName ?? data.constructor?.name ?? 'Object'
       return (
-        <span title={title} style={schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined}>
+        <span
+          title={title}
+          style={schemaDisplayName !== undefined ? { fontStyle: 'italic' } : undefined}
+        >
           {label}
         </span>
       )

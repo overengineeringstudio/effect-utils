@@ -282,9 +282,10 @@ const dumpCommand = Command.make(
               // Determine output paths
               const outputPath = output
               const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.ts'
-              const checkpointPath = Option.isSome(checkpoint) === true
-                ? checkpoint.value
-                : output.replace(/\.ndjson$/, '') + '.checkpoint.json'
+              const checkpointPath =
+                Option.isSome(checkpoint) === true
+                  ? checkpoint.value
+                  : output.replace(/\.ndjson$/, '') + '.checkpoint.json'
 
               // Handle incremental dump
               let lastEditedFilter: string | undefined
@@ -302,9 +303,8 @@ const dumpCommand = Command.make(
               }
 
               // Build query options
-              const queryFilter = Option.isSome(filter) === true
-                ? parseSimpleFilter(filter.value)
-                : undefined
+              const queryFilter =
+                Option.isSome(filter) === true ? parseSimpleFilter(filter.value) : undefined
 
               // Create combined filter if we have both time and property filters
               let combinedFilter: DatabaseFilter | undefined
@@ -364,9 +364,10 @@ export const DUMP_META = {
 
               const outputFile = EffectPath.unsafe.absoluteFile(outputPath)
               const outputDir = EffectPath.ops.parent(outputFile)
-              const resolvedAssetsDir: AbsoluteDirPath = Option.isSome(assetsDir) === true
-                ? EffectPath.unsafe.absoluteDir(assetsDir.value)
-                : EffectPath.ops.join(outputDir, EffectPath.unsafe.relativeDir('assets/'))
+              const resolvedAssetsDir: AbsoluteDirPath =
+                Option.isSome(assetsDir) === true
+                  ? EffectPath.unsafe.absoluteDir(assetsDir.value)
+                  : EffectPath.ops.join(outputDir, EffectPath.unsafe.relativeDir('assets/'))
 
               // Ensure output directory exists
               const dirExists = yield* fs.exists(outputDir)

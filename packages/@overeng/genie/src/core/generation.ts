@@ -479,9 +479,10 @@ export const generateFile = ({
 
     // Check if file exists and get current content
     const fileExists = yield* fs.exists(targetFilePath)
-    const currentContent = fileExists === true
-      ? yield* fs.readFileString(targetFilePath).pipe(Effect.catchAll(() => Effect.succeed('')))
-      : ''
+    const currentContent =
+      fileExists === true
+        ? yield* fs.readFileString(targetFilePath).pipe(Effect.catchAll(() => Effect.succeed('')))
+        : ''
 
     const isUnchanged = fileExists === true && currentContent === fileContentString
 

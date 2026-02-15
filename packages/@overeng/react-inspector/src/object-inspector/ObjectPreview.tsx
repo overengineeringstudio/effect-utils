@@ -75,7 +75,8 @@ export const ObjectPreview: FC<any> = ({ data }) => {
       }
     }
 
-    const objectConstructorName = object.constructor !== undefined ? object.constructor.name : 'Object'
+    const objectConstructorName =
+      object.constructor !== undefined ? object.constructor.name : 'Object'
 
     return (
       <React.Fragment>

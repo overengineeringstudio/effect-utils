@@ -64,10 +64,16 @@ const isCallback = (node: any): boolean => {
     const objectExpr = parent.parent
     if (objectExpr?.type === 'ObjectExpression') {
       const grandparent = objectExpr.parent
-      if (grandparent?.type === 'CallExpression' && grandparent.arguments.includes(objectExpr) === true) {
+      if (
+        grandparent?.type === 'CallExpression' &&
+        grandparent.arguments.includes(objectExpr) === true
+      ) {
         return true
       }
-      if (grandparent?.type === 'NewExpression' && grandparent.arguments.includes(objectExpr) === true) {
+      if (
+        grandparent?.type === 'NewExpression' &&
+        grandparent.arguments.includes(objectExpr) === true
+      ) {
         return true
       }
     }

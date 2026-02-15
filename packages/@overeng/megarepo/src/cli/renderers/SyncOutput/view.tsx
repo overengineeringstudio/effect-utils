@@ -516,9 +516,10 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   // Handle ref mismatch with structured display (multiline hints)
   if (result.refMismatch !== undefined) {
     const { expectedRef, actualRef, isDetached } = result.refMismatch
-    const mismatchDesc = isDetached === true
-      ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
-      : `store path implies '${expectedRef}' but worktree HEAD is '${actualRef}'`
+    const mismatchDesc =
+      isDetached === true
+        ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
+        : `store path implies '${expectedRef}' but worktree HEAD is '${actualRef}'`
 
     return (
       <Box flexDirection="column">
@@ -608,7 +609,11 @@ const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: b
       {files.map((file) => (
         <Box key={file} flexDirection="row">
           <Text> </Text>
-          {dryRun === true ? <Text dim>{symbols.arrow}</Text> : <Text color="green">{symbols.check}</Text>}
+          {dryRun === true ? (
+            <Text dim>{symbols.arrow}</Text>
+          ) : (
+            <Text color="green">{symbols.check}</Text>
+          )}
           <Text> </Text>
           <Text bold>{file}</Text>
         </Box>

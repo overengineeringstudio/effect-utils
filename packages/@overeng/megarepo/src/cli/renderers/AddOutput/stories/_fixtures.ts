@@ -29,7 +29,9 @@ export const createSuccessState = (config: {
   member: config.member,
   source: config.source,
   synced: config.synced,
-  ...(config.synced !== undefined && config.syncStatus !== undefined ? { syncStatus: config.syncStatus } : {}),
+  ...(config.synced !== undefined && config.syncStatus !== undefined
+    ? { syncStatus: config.syncStatus }
+    : {}),
 })
 
 export const createErrorNotInMegarepoState = (): AddStateType => ({
@@ -80,7 +82,9 @@ export const createTimeline = (config: {
       member: config.member,
       source: config.source,
       synced: config.synced,
-      ...(config.synced !== undefined && config.syncStatus !== undefined ? { syncStatus: config.syncStatus } : {}),
+      ...(config.synced !== undefined && config.syncStatus !== undefined
+        ? { syncStatus: config.syncStatus }
+        : {}),
     },
   })
 

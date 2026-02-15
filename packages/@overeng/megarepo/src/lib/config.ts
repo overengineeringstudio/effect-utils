@@ -232,7 +232,8 @@ export const isValidMemberName = (name: string): boolean => {
  */
 export const validateMemberName = (name: string): string | undefined => {
   if (name.length === 0) return 'Member name cannot be empty'
-  if (name.includes('/') === true || name.includes('\\') === true) return 'Member name cannot contain path separators'
+  if (name.includes('/') === true || name.includes('\\') === true)
+    return 'Member name cannot contain path separators'
   if (name === '.' || name === '..') return 'Member name cannot be . or ..'
   if (name.includes('..') === true) return 'Member name cannot contain ..'
   if (name.startsWith('.') === true) return 'Member name cannot start with a dot'
@@ -274,7 +275,12 @@ const isGitHubShorthand = (s: string): boolean => {
   // Not a URL (no protocol)
   if (s.includes('://') === true || s.startsWith('git@') === true) return false
   // Not a path
-  if (s.startsWith('./') === true || s.startsWith('../') === true || s.startsWith('/') === true || s.startsWith('~') === true)
+  if (
+    s.startsWith('./') === true ||
+    s.startsWith('../') === true ||
+    s.startsWith('/') === true ||
+    s.startsWith('~') === true
+  )
     return false
   // Has exactly one slash with content on both sides
   const parts = s.split('/')

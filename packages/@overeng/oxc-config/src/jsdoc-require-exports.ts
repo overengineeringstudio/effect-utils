@@ -176,7 +176,7 @@ export const jsdocRequireExportsRule = {
         // Only require JSDoc for named namespace exports: export * as name from '...'
         // Plain re-exports (export * from '...') don't need JSDoc
         const n = node as any
-        if (n.exported === undefined) return
+        if (n.exported === undefined || n.exported === null) return
 
         if (hasJsDocComment({ node, sourceCode }) === false) {
           context.report({

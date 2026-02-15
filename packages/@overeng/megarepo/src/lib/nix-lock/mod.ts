@@ -163,7 +163,10 @@ export const fetchNixFlakeMetadata = ({
       Effect.mapError((parseError) => {
         // Check if output looks like a nix error message (shouldn't normally happen
         // since nix errors go to stderr, but handle defensively)
-        if (trimmedResult.startsWith('error:') === true || trimmedResult.includes('error:') === true) {
+        if (
+          trimmedResult.startsWith('error:') === true ||
+          trimmedResult.includes('error:') === true
+        ) {
           return new NixFlakeMetadataError({
             message: `Nix command failed with error`,
             flakeRef,

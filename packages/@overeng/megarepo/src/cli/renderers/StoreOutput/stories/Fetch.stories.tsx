@@ -77,7 +77,9 @@ export const Success: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createFetchTimeline(stateConfig) } : {})}
+        {...(args.interactive === true
+          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+          : {})}
       />
     )
   },
@@ -105,7 +107,9 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createFetchTimeline(stateConfig) } : {})}
+        {...(args.interactive === true
+          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+          : {})}
       />
     )
   },
@@ -144,7 +148,9 @@ export const AllErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createFetchTimeline(stateConfig) } : {})}
+        {...(args.interactive === true
+          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+          : {})}
       />
     )
   },

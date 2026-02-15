@@ -191,9 +191,10 @@ export const canonicalOrLexical = Effect.fnUntraced(function* (path: Path) {
   const platformPath = yield* PlatformPath.Path
 
   // First make it absolute
-  const absolutePath = platformPath.isAbsolute(path) === true
-    ? (path as AbsolutePath)
-    : (platformPath.resolve(path) as AbsolutePath)
+  const absolutePath =
+    platformPath.isAbsolute(path) === true
+      ? (path as AbsolutePath)
+      : (platformPath.resolve(path) as AbsolutePath)
 
   // Try canonical first
   const result = yield* canonical(path).pipe(

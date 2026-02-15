@@ -219,9 +219,10 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
                 abortController: ctx.abortController,
               })
 
-              const provided = options.loaderLayer !== undefined
-                ? Effect.provide(effect, options.loaderLayer)
-                : (effect as Effect.Effect<TLoaderData, TLoaderError, never>)
+              const provided =
+                options.loaderLayer !== undefined
+                  ? Effect.provide(effect, options.loaderLayer)
+                  : (effect as Effect.Effect<TLoaderData, TLoaderError, never>)
 
               const exit = await Effect.runPromiseExit(provided)
               return encodeExit(exit)
@@ -230,7 +231,9 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
         : {}),
       ...(options.component !== undefined ? { component: options.component } : {}),
       ...(options.errorComponent !== undefined ? { errorComponent: options.errorComponent } : {}),
-      ...(options.pendingComponent !== undefined ? { pendingComponent: options.pendingComponent } : {}),
+      ...(options.pendingComponent !== undefined
+        ? { pendingComponent: options.pendingComponent }
+        : {}),
     } satisfies Parameters<typeof tanstackRoute>[0]
 
     return tanstackRoute(config)

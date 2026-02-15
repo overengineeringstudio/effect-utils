@@ -185,14 +185,15 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
   // Use pretty logger in VS Code for better readability (VSCODE_PID is set by VS Code extensions)
   const usePrettyLogger = prettyLoggerOption ?? process.env.VSCODE_PID !== undefined
 
-  const loggerLayer = debugLogs === true
-    ? usePrettyLogger === true
-      ? Layer.mergeAll(
-          Logger.minimumLogLevel(LogLevel.Debug),
-          Logger.replace(Logger.defaultLogger, Logger.prettyLogger()),
-        )
-      : Logger.minimumLogLevel(LogLevel.Debug)
-    : Layer.empty
+  const loggerLayer =
+    debugLogs === true
+      ? usePrettyLogger === true
+        ? Layer.mergeAll(
+            Logger.minimumLogLevel(LogLevel.Debug),
+            Logger.replace(Logger.defaultLogger, Logger.prettyLogger()),
+          )
+        : Logger.minimumLogLevel(LogLevel.Debug)
+      : Layer.empty
 
   const combinedLayer = Layer.mergeAll(
     playwrightLayers,

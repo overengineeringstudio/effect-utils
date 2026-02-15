@@ -75,10 +75,10 @@ export const cmd: (
   const cwd = yield* CurrentWorkingDirectory
 
   const asArray = Array.isArray(commandInput)
-  const parts = asArray === true
-    ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
-    : undefined
-  const [command, ...args] = asArray === true ? (parts as string[]) : (commandInput as string).split(' ')
+  const parts =
+    asArray === true ? (commandInput as (string | undefined)[]).filter(isNotUndefined) : undefined
+  const [command, ...args] =
+    asArray === true ? (parts as string[]) : (commandInput as string).split(' ')
 
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
@@ -105,7 +105,9 @@ export const cmd: (
 
   const commandDebugStr =
     debugEnvStr +
-    (Array.isArray(finalInput) === true ? (finalInput as string[]).join(' ') : (finalInput as string))
+    (Array.isArray(finalInput) === true
+      ? (finalInput as string[]).join(' ')
+      : (finalInput as string))
   const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
@@ -249,9 +251,10 @@ export const cmdText: (
   CommandExecutor.CommandExecutor | CurrentWorkingDirectory
 > = Effect.fn('cmdText')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
-  const [command, ...args] = Array.isArray(commandInput) === true
-    ? commandInput.filter(isNotUndefined)
-    : commandInput.split(' ')
+  const [command, ...args] =
+    Array.isArray(commandInput) === true
+      ? commandInput.filter(isNotUndefined)
+      : commandInput.split(' ')
 
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
@@ -316,13 +319,15 @@ export const cmdCollect = <R = never>(opts: {
 
     // Preserve raw string input for buildCommand's shell-mode path (avoids
     // splitting on spaces, which would break leading-whitespace commands).
-    const normalizedInput: string | string[] = Array.isArray(opts.commandInput) === true
-      ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
-      : useShell === true
-        ? (opts.commandInput as string)
-        : (opts.commandInput as string).split(' ')
+    const normalizedInput: string | string[] =
+      Array.isArray(opts.commandInput) === true
+        ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
+        : useShell === true
+          ? (opts.commandInput as string)
+          : (opts.commandInput as string).split(' ')
 
-    const debugStr = Array.isArray(normalizedInput) === true ? normalizedInput.join(' ') : normalizedInput
+    const debugStr =
+      Array.isArray(normalizedInput) === true ? normalizedInput.join(' ') : normalizedInput
 
     yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
 
@@ -344,14 +349,18 @@ export const cmdCollect = <R = never>(opts: {
               stdout: proc.stdout.pipe(
                 Stream.decodeText('utf8'),
                 Stream.splitLines,
-                Stream.tap((line) => (onOutput !== undefined ? onOutput('stdout', line) : Effect.void)),
+                Stream.tap((line) =>
+                  onOutput !== undefined ? onOutput('stdout', line) : Effect.void,
+                ),
                 Stream.runCollect,
                 Effect.map(Chunk.toReadonlyArray),
               ),
               stderr: proc.stderr.pipe(
                 Stream.decodeText('utf8'),
                 Stream.splitLines,
-                Stream.tap((line) => (onOutput !== undefined ? onOutput('stderr', line) : Effect.void)),
+                Stream.tap((line) =>
+                  onOutput !== undefined ? onOutput('stderr', line) : Effect.void,
+                ),
                 Stream.runCollect,
                 Effect.map(Chunk.toReadonlyArray),
               ),

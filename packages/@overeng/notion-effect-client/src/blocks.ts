@@ -125,9 +125,8 @@ export const retrieveChildrenStream = (
     Option.match(maybeNextCursor, {
       onNone: () => Effect.succeed(Option.none()),
       onSome: (cursor) => {
-        const childrenOpts: RetrieveBlockChildrenOptions = Option.isSome(cursor) === true
-          ? { ...opts, startCursor: cursor.value }
-          : { ...opts }
+        const childrenOpts: RetrieveBlockChildrenOptions =
+          Option.isSome(cursor) === true ? { ...opts, startCursor: cursor.value } : { ...opts }
         return retrieveChildrenRaw(childrenOpts).pipe(
           Effect.map((result) => {
             const chunk = Chunk.fromIterable(result.results)

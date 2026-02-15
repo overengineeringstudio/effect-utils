@@ -115,9 +115,10 @@ const scanMembersRecursive = ({
         memberPath,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
-      const isMegarepo = memberExists === true
-        ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
-        : false
+      const isMegarepo =
+        memberExists === true
+          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          : false
 
       // Recursively scan nested members if this is a megarepo and --all is used
       let nestedMembers: readonly MemberStatus[] | undefined = undefined
@@ -184,7 +185,9 @@ const scanMembersRecursive = ({
 
       // Get source ref (what megarepo.json intends)
       const sourceRef =
-        source !== undefined && source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : undefined
+        source !== undefined && source.type !== 'path'
+          ? Option.getOrElse(source.ref, () => 'main')
+          : undefined
 
       // Detect stale lock vs symlink drift
       // These are mutually exclusive scenarios:
@@ -223,7 +226,12 @@ const scanMembersRecursive = ({
 
       // Detect commit drift: local worktree commit differs from locked commit
       let commitDrift: CommitDrift | undefined = undefined
-      if (memberExists === true && isLocal === false && lockedMember !== undefined && fullCommit !== undefined) {
+      if (
+        memberExists === true &&
+        isLocal === false &&
+        lockedMember !== undefined &&
+        fullCommit !== undefined
+      ) {
         if (fullCommit !== lockedMember.commit) {
           commitDrift = {
             localCommit: fullCommit,
@@ -249,13 +257,14 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
-        lockInfo: lockedMember !== undefined
-          ? {
-              ref: lockedMember.ref,
-              commit: lockedMember.commit,
-              pinned: lockedMember.pinned,
-            }
-          : undefined,
+        lockInfo:
+          lockedMember !== undefined
+            ? {
+                ref: lockedMember.ref,
+                commit: lockedMember.commit,
+                pinned: lockedMember.pinned,
+              }
+            : undefined,
         isMegarepo,
         nestedMembers,
         gitStatus,
@@ -414,7 +423,10 @@ export const statusCommand = Cli.Command.make(
                   if (cwdRealPath === memberRealPathNorm) {
                     return newPath
                   }
-                  if (member.nestedMembers !== undefined && member.nestedMembers !== undefined.length > 0) {
+                  if (
+                    member.nestedMembers !== undefined &&
+                    member.nestedMembers !== undefined.length > 0
+                  ) {
                     const nestedResult = yield* findCurrentMemberPath({
                       memberList: member.nestedMembers,
                       megarepoRoot: memberRealPathNorm + '/',

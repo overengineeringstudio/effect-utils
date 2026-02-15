@@ -218,9 +218,8 @@ const buildResolvedDatabaseConfig = (opts: {
 
 /** Resolve database configs with outputDir and defaults applied */
 const resolveConfig = ({ config, configDir }: ResolveConfigOptions): ResolvedConfig => {
-  const baseDir: AbsoluteDirPath = config.outputDir !== undefined
-    ? EffectPath.ops.join(configDir, config.outputDir)
-    : configDir
+  const baseDir: AbsoluteDirPath =
+    config.outputDir !== undefined ? EffectPath.ops.join(configDir, config.outputDir) : configDir
 
   const databases = Object.entries(config.databases).map(([id, db]): ResolvedDatabaseConfig => {
     const merged = mergeWithDefaults({
@@ -250,11 +249,12 @@ export const loadConfig = Effect.fnUntraced(function* (configPath?: string) {
   const searchStartDir: AbsoluteDirPath = EffectPath.unsafe.absoluteDir(
     yield* CurrentWorkingDirectory,
   )
-  const resolvedPath: AbsoluteFilePath | undefined = configPath !== undefined
-    ? isAbsolutePath(configPath) === true
-      ? EffectPath.unsafe.absoluteFile(configPath)
-      : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
-    : yield* findConfigFile(searchStartDir)
+  const resolvedPath: AbsoluteFilePath | undefined =
+    configPath !== undefined
+      ? isAbsolutePath(configPath) === true
+        ? EffectPath.unsafe.absoluteFile(configPath)
+        : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
+      : yield* findConfigFile(searchStartDir)
 
   if (resolvedPath === undefined) {
     return yield* new ConfigNotFoundError({

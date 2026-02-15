@@ -393,9 +393,10 @@ export const pinCommand = Cli.Command.make(
               action: 'pin',
               commit: lockedMember.commit,
               currentSymlink: wouldChangeSymlink === true ? shortenPath(currentLink) : undefined,
-              newSymlink: wouldChangeSymlink === true
-                ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
-                : undefined,
+              newSymlink:
+                wouldChangeSymlink === true
+                  ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
+                  : undefined,
               lockChanges: ['pinned: false → true'],
               wouldCreateWorktree: commitWorktreeExists === false && bareExists === true,
               worktreeNotAvailable: commitWorktreeExists === false && bareExists === false,

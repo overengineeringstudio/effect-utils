@@ -116,7 +116,8 @@ const createContextValue = (
     rootSchema: effectiveRootSchema,
     registry,
     getAnnotations: () => (schema !== undefined ? getAnnotations(schema) : {}),
-    getDisplayName: () => (schema !== undefined ? pipe(schema, getAnnotations, getDisplayName) : undefined),
+    getDisplayName: () =>
+      schema !== undefined ? pipe(schema, getAnnotations, getDisplayName) : undefined,
     getDescription: () => (schema !== undefined ? getAnnotations(schema).description : undefined),
     formatValue: (value: unknown) =>
       schema !== undefined ? formatWithPretty(value, getAnnotations(schema)) : undefined,

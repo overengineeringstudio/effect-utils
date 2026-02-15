@@ -97,7 +97,8 @@ const isExplicit = (node: any): boolean => {
   if (node === undefined) return true
 
   // Comparison operators produce explicit boolean results
-  if (node.type === 'BinaryExpression' && COMPARISON_OPERATORS.has(node.operator) === true) return true
+  if (node.type === 'BinaryExpression' && COMPARISON_OPERATORS.has(node.operator) === true)
+    return true
 
   // Boolean literals are explicit
   if (node.type === 'Literal' && typeof node.value === 'boolean') return true

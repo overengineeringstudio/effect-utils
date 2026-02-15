@@ -345,20 +345,21 @@ export const asProp = <Arbs extends Vitest.Vitest.Arbitraries, A, E, R>(
         shrinkAttempts++
       }
 
-      const enhancedContext: EnhancedTestContext = isInShrinkingPhase === true
-        ? {
-            _tag: 'shrinking',
-            numRuns,
-            runIndex: runIndex++,
-            shrinkAttempt: shrinkAttempts,
-            totalExecutions,
-          }
-        : {
-            _tag: 'initial',
-            numRuns,
-            runIndex: runIndex++,
-            totalExecutions,
-          }
+      const enhancedContext: EnhancedTestContext =
+        isInShrinkingPhase === true
+          ? {
+              _tag: 'shrinking',
+              numRuns,
+              runIndex: runIndex++,
+              shrinkAttempt: shrinkAttempts,
+              totalExecutions,
+            }
+          : {
+              _tag: 'initial',
+              numRuns,
+              runIndex: runIndex++,
+              totalExecutions,
+            }
 
       return test(properties, ctx, enhancedContext)
     },

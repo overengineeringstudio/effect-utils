@@ -80,7 +80,9 @@ export const AddDefault: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive === true ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
@@ -109,7 +111,9 @@ export const AddNoSync: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive === true ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
@@ -139,7 +143,9 @@ export const AddWithSyncCloned: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive === true ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
@@ -169,7 +175,9 @@ export const AddWithSyncExisting: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive === true ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}
@@ -199,7 +207,9 @@ export const AddWithSyncError: Story = {
         View={AddView}
         app={AddApp}
         initialState={
-          args.interactive === true ? fixtures.createIdleState() : fixtures.createSuccessState(stateConfig)
+          args.interactive === true
+            ? fixtures.createIdleState()
+            : fixtures.createSuccessState(stateConfig)
         }
         height={args.height}
         autoRun={args.interactive}

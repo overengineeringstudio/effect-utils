@@ -404,7 +404,10 @@ export const resolveImportMapsInSource = Effect.fn('resolveImportMapsInSource')(
 
   return sourceCode.replace(IMPORT_REGEX, (match, quote, specifier) => {
     if (isImportMapSpecifier(specifier) === false) {
-      if (resolveRelativeImports === true && (specifier.startsWith('./') === true || specifier.startsWith('../') === true)) {
+      if (
+        resolveRelativeImports === true &&
+        (specifier.startsWith('./') === true || specifier.startsWith('../') === true)
+      ) {
         const resolvedRelative = path.resolve(sourceDir, specifier)
         return match.replace(specifier, normalizeSpecifier(resolvedRelative))
       }

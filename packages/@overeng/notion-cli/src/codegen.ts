@@ -470,11 +470,14 @@ const generatePropertyField = (options: {
   const typedOptionName = typedOptions.typeName
   if (property.type === 'select') {
     const base = formatNotionSchemaCall(
-      typedOptionName !== undefined ? { name: 'select', typeName: typedOptionName } : { name: 'select' },
+      typedOptionName !== undefined
+        ? { name: 'select', typeName: typedOptionName }
+        : { name: 'select' },
     )
-    const metaSuffix = schemaMeta === true
-      ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
-      : ''
+    const metaSuffix =
+      schemaMeta === true
+        ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+        : ''
     if (transform === 'asName') {
       return `${base}.pipe(NotionSchema.asName)${metaSuffix}`
     }
@@ -486,11 +489,14 @@ const generatePropertyField = (options: {
 
   if (property.type === 'status') {
     const base = formatNotionSchemaCall(
-      typedOptionName !== undefined ? { name: 'status', typeName: typedOptionName } : { name: 'status' },
+      typedOptionName !== undefined
+        ? { name: 'status', typeName: typedOptionName }
+        : { name: 'status' },
     )
-    const metaSuffix = schemaMeta === true
-      ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
-      : ''
+    const metaSuffix =
+      schemaMeta === true
+        ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+        : ''
     if (transform === 'asName') {
       return `${base}.pipe(NotionSchema.asName)${metaSuffix}`
     }
@@ -506,9 +512,10 @@ const generatePropertyField = (options: {
         ? { name: 'multiSelect', typeName: typedOptionName }
         : { name: 'multiSelect' },
     )
-    const metaSuffix = schemaMeta === true
-      ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
-      : ''
+    const metaSuffix =
+      schemaMeta === true
+        ? `.annotations({ [notionPropertyMeta]: ${formatMetaValue(buildPropertyMeta(property))} })`
+        : ''
     if (transform === 'asNames') {
       return `${base}.pipe(NotionSchema.asNames)${metaSuffix}`
     }
@@ -574,9 +581,10 @@ const generateTypedOptions = (opts: {
     .map((o) => sanitizeLiteralValue(o.name))
     .join(', ')
 
-  const descPart = property.description !== undefined
-    ? `,\n  description: ${toSingleQuotedStringLiteral(property.description)},`
-    : ''
+  const descPart =
+    property.description !== undefined
+      ? `,\n  description: ${toSingleQuotedStringLiteral(property.description)},`
+      : ''
   const code = `export const ${typeName} = Schema.Literal(${literals}).annotations({
   identifier: '${typeName}'${descPart}
 })
@@ -740,27 +748,30 @@ export function generateSchemaCode(opts: GenerateSchemaCodeOptions): string {
         schemaMeta,
       })
       // Add JSDoc comment if description is available
-      const jsdoc = prop.description !== undefined ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
+      const jsdoc =
+        prop.description !== undefined ? `  /** ${sanitizeLineComment(prop.description)} */\n` : ''
       return `${jsdoc}  ${key}: ${field},`
     })
     .join('\n')
 
   // Generate write property fields (excluding read-only)
-  const writePropertyFields = includeWrite === true
-    ? dbInfo.properties
-        .map((prop) => {
-          const writeField = generateWritePropertyField(prop)
-          if (writeField === null) return null
-          const key = sanitizePropertyKey(prop.name)
-          // Add JSDoc comment if description is available
-          const jsdoc = prop.description !== undefined
-            ? `  /** ${sanitizeLineComment(prop.description)} */\n`
-            : ''
-          return `${jsdoc}  ${key}: ${writeField},`
-        })
-        .filter(Boolean)
-        .join('\n')
-    : ''
+  const writePropertyFields =
+    includeWrite === true
+      ? dbInfo.properties
+          .map((prop) => {
+            const writeField = generateWritePropertyField(prop)
+            if (writeField === null) return null
+            const key = sanitizePropertyKey(prop.name)
+            // Add JSDoc comment if description is available
+            const jsdoc =
+              prop.description !== undefined
+                ? `  /** ${sanitizeLineComment(prop.description)} */\n`
+                : ''
+            return `${jsdoc}  ${key}: ${writeField},`
+          })
+          .filter(Boolean)
+          .join('\n')
+      : ''
 
   // Build the config comment
   const configComment = generateConfigComment({

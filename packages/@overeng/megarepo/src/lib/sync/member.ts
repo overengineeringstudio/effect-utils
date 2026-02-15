@@ -224,9 +224,10 @@ export const syncMember = <R = never>({
     // Handle local path sources - just create symlink
     if (source.type === 'path') {
       const expandedPath = source.path.replace(/^~/, process.env.HOME ?? '~')
-      const resolvedPath = path.isAbsolute(expandedPath) === true
-        ? expandedPath
-        : path.resolve(megarepoRoot, expandedPath)
+      const resolvedPath =
+        path.isAbsolute(expandedPath) === true
+          ? expandedPath
+          : path.resolve(megarepoRoot, expandedPath)
       const existingLink = yield* fs
         .readLink(memberPathNormalized)
         .pipe(Effect.catchAll(() => Effect.succeed(null)))
@@ -250,9 +251,10 @@ export const syncMember = <R = never>({
             return {
               name,
               status: 'skipped',
-              message: worktreeStatus.isDirty === true
-                ? `path changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
-                : 'path changed but old worktree has unpushed commits (use --force to override)',
+              message:
+                worktreeStatus.isDirty === true
+                  ? `path changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+                  : 'path changed but old worktree has unpushed commits (use --force to override)',
             } satisfies MemberSyncResult
           }
         }
@@ -358,9 +360,10 @@ export const syncMember = <R = never>({
       // This happens when lock says "refactor/foo" but source has no ref (defaulting to "dev")
       if (lockedMember !== undefined && lockedMember.ref !== targetRef) {
         // Extract the ref from the current symlink path for display
-        const extracted = currentLinkNormalized !== undefined
-          ? extractRefFromSymlinkPath(currentLinkNormalized)
-          : undefined
+        const extracted =
+          currentLinkNormalized !== undefined
+            ? extractRefFromSymlinkPath(currentLinkNormalized)
+            : undefined
         const symlinkRef = extracted?.ref
 
         return {
@@ -427,9 +430,10 @@ export const syncMember = <R = never>({
           return {
             name,
             status: 'skipped',
-            message: worktreeStatus.isDirty === true
-              ? `ref changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
-              : 'ref changed but old worktree has unpushed commits (use --force to override)',
+            message:
+              worktreeStatus.isDirty === true
+                ? `ref changed but old worktree has ${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+                : 'ref changed but old worktree has unpushed commits (use --force to override)',
           } satisfies MemberSyncResult
         }
       }
@@ -447,13 +451,17 @@ export const syncMember = <R = never>({
           }),
         ),
       )
-      if ((worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) && force === false) {
+      if (
+        (worktreeStatus.isDirty === true || worktreeStatus.hasUnpushed === true) &&
+        force === false
+      ) {
         return {
           name,
           status: 'skipped',
-          message: worktreeStatus.isDirty === true
-            ? `${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
-            : 'has unpushed commits (use --force to override)',
+          message:
+            worktreeStatus.isDirty === true
+              ? `${worktreeStatus.changesCount} uncommitted changes (use --force to override)`
+              : 'has unpushed commits (use --force to override)',
         } satisfies MemberSyncResult
       }
     }
@@ -638,7 +646,8 @@ export const syncMember = <R = never>({
     // Create or update worktree
     // For frozen/pinned mode, use commit-based worktree path to guarantee exact reproducibility
     // This ensures the worktree is at exactly the locked commit, not whatever a branch points to
-    const useCommitBasedPath = (frozen === true || lockedMember?.pinned === true) && targetCommit !== undefined
+    const useCommitBasedPath =
+      (frozen === true || lockedMember?.pinned === true) && targetCommit !== undefined
     // TypeScript note: when useCommitBasedPath is true, targetCommit is guaranteed to be defined
     const worktreeRef: string = useCommitBasedPath === true ? targetCommit! : targetRef
     // Use the actual ref type for accurate store path classification
@@ -703,7 +712,13 @@ export const syncMember = <R = never>({
     // Fast-forward existing branch worktrees when pulling
     let pullUpdated = false
     let pullPreviousCommit: string | undefined
-    if (worktreeExists === true && pull === true && dryRun === false && actualRefType === 'branch' && useCommitBasedPath === false) {
+    if (
+      worktreeExists === true &&
+      pull === true &&
+      dryRun === false &&
+      actualRefType === 'branch' &&
+      useCommitBasedPath === false
+    ) {
       // Verify the worktree is actually on the expected branch before merging.
       // If the user ran `git checkout <other-branch>` inside the worktree,
       // we must not merge into the wrong branch.
@@ -786,7 +801,8 @@ export const syncMember = <R = never>({
 
     // Determine if this is a pull update (changed commit)
     const previousCommit = lockedMember?.commit
-    const isUpdate = pull === true && previousCommit !== undefined && previousCommit !== targetCommit
+    const isUpdate =
+      pull === true && previousCommit !== undefined && previousCommit !== targetCommit
 
     // Build message for branch creation
     const branchCreatedMessage =
@@ -808,9 +824,10 @@ export const syncMember = <R = never>({
       // Interpret git errors to provide user-friendly messages
       if (error instanceof Git.GitCommandError) {
         const interpreted = Git.interpretGitError(error)
-        const message = interpreted.hint !== undefined
-          ? `${interpreted.message}\n  hint: ${interpreted.hint}`
-          : interpreted.message
+        const message =
+          interpreted.hint !== undefined
+            ? `${interpreted.message}\n  hint: ${interpreted.hint}`
+            : interpreted.message
         return Effect.succeed({
           name,
           status: 'error',

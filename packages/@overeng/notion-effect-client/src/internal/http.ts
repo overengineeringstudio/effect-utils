@@ -53,7 +53,7 @@ export const parseRateLimitHeaders = (
   headers: Headers | Record<string, string | undefined>,
 ): Option.Option<RateLimitInfo> => {
   const getHeader = (name: string): string | undefined => {
-    if ((headers instanceof Headers) === true) {
+    if (headers instanceof Headers === true) {
       return headers.get(name) ?? undefined
     }
 

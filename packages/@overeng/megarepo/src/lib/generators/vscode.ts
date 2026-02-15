@@ -221,7 +221,8 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
   }
 
   // Apply color: prefer env var (if configured) over static color field
-  const colorFromEnv = vscodeConfig?.colorEnvVar !== undefined ? process.env[vscodeConfig.colorEnvVar] : undefined
+  const colorFromEnv =
+    vscodeConfig?.colorEnvVar !== undefined ? process.env[vscodeConfig.colorEnvVar] : undefined
   const color = colorFromEnv ?? vscodeConfig?.color
   if (color !== undefined) {
     settings = deepMerge({

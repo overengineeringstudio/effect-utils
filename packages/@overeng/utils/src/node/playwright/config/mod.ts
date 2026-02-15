@@ -105,9 +105,10 @@ export const createPlaywrightConfig = async (
   } = options
 
   const defaultIgnore = ['**/dist/**', '**/node_modules/**']
-  const testIgnore = extraIgnore !== undefined
-    ? [...defaultIgnore, ...(Array.isArray(extraIgnore) === true ? extraIgnore : [extraIgnore])]
-    : defaultIgnore
+  const testIgnore =
+    extraIgnore !== undefined
+      ? [...defaultIgnore, ...(Array.isArray(extraIgnore) === true ? extraIgnore : [extraIgnore])]
+      : defaultIgnore
 
   const {
     command,
