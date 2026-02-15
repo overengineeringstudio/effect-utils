@@ -174,7 +174,7 @@ export const syncMegarepo = <R = never>({
     )
 
     // Check --frozen requirements
-    if (frozen) {
+    if (frozen === true) {
       if (lockFile === undefined) {
         return yield* new LockFileRequiredError({ message: 'Lock file required for --frozen' })
       }
@@ -199,7 +199,7 @@ export const syncMegarepo = <R = never>({
         lockFile: filteredLockFile,
         configMemberNames: filteredRemoteMemberNames,
       })
-      if (staleness.isStale) {
+      if (staleness.isStale === true) {
         return yield* new StaleLockFileError({
           message: 'Lock file is stale',
           addedMembers: staleness.addedMembers,
@@ -266,7 +266,7 @@ export const syncMegarepo = <R = never>({
       .exists(membersRoot)
       .pipe(Effect.catchAll(() => Effect.succeed(false)))
 
-    if (membersRootExists) {
+    if (membersRootExists === true) {
       const existingEntries = yield* fs
         .readDirectory(membersRoot)
         .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
@@ -328,7 +328,7 @@ export const syncMegarepo = <R = never>({
     let nixLockResult: NixLockSyncResult | undefined = undefined
 
     // Update lock file (unless dry run or frozen)
-    if (!dryRun && !frozen) {
+    if (dryRun === false && frozen === false) {
       // Initialize lock file if needed
       if (lockFile === undefined) {
         lockFile = createEmptyLockFile()
@@ -386,7 +386,7 @@ export const syncMegarepo = <R = never>({
         lockSyncExplicitSetting === true ||
         (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
-      if (lockSyncEnabled) {
+      if (lockSyncEnabled === true) {
         const excludeMembers = new Set(config.lockSync?.exclude ?? [])
         nixLockResult = yield* syncNixLocks({
           megarepoRoot,
@@ -415,7 +415,7 @@ export const syncMegarepo = <R = never>({
 
     // Handle --all flag: recursively sync nested megarepos
     const nestedResults: MegarepoSyncResult[] = []
-    if (all && nestedMegarepos.length > 0) {
+    if (all === true && nestedMegarepos.length > 0) {
       for (const nestedName of nestedMegarepos) {
         const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
         // Convert to AbsoluteDirPath (add trailing slash if needed)
@@ -619,7 +619,7 @@ export const syncCommand = Cli.Command.make(
       // Determine if we should use live progress (TTY and not JSON mode)
       const useLiveProgress = !json && isTTY()
 
-      if (useLiveProgress) {
+      if (useLiveProgress === true) {
         // Start live progress UI (React-based)
         const ui = yield* startSyncUI({
           workspaceName: name,
@@ -636,7 +636,7 @@ export const syncCommand = Cli.Command.make(
 
         // Create interactive prompt callback if in TTY mode and not using --create-branches
         const onMissingRef =
-          !createBranches && isTTY() === true
+          createBranches === false && isTTY() === true
             ? (info: MissingRefInfo) => createMissingRefPrompt(info)
             : undefined
 

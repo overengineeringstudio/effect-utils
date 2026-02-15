@@ -71,7 +71,7 @@ const scanMembersRecursive = ({
         memberPath,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
-      const isMegarepo = memberExists
+      const isMegarepo = memberExists === true
         ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
         : false
 
@@ -83,7 +83,7 @@ const scanMembersRecursive = ({
       })
 
       // Recursively scan nested megarepos if --all is used
-      if (all && isMegarepo && memberExists) {
+      if (all === true && isMegarepo === true && memberExists === true) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )

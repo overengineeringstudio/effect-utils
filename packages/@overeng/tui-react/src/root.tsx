@@ -154,7 +154,7 @@ export const createRoot = ({
   const resizeHandler = () => {
     if (disposed === false) scheduleRender()
   }
-  if (typeof process !== 'undefined' && process.stdout?.on) {
+  if (typeof process !== 'undefined' && process.stdout?.on !== undefined) {
     process.stdout.on('resize', resizeHandler)
   }
 
@@ -212,7 +212,7 @@ export const createRoot = ({
 
   /** Find Static element and reset its committedCount for full re-render */
   const resetStaticCommittedCount = (): void => {
-    if (!container.root) return
+    if (container.root === null) return
 
     // Walk the tree to find Static element
     const findStatic = (
@@ -254,7 +254,7 @@ export const createRoot = ({
       doRender()
       lastRenderTime = now
       pendingRender = false
-    } else if (!renderScheduled) {
+    } else if (renderScheduled === false) {
       // Schedule render for later
       renderScheduled = true
       pendingRender = true
@@ -274,7 +274,7 @@ export const createRoot = ({
 
   /** Perform the actual render */
   const doRender = (): void => {
-    if (!container.root) {
+    if (container.root === null) {
       renderer.render([])
       return
     }
@@ -322,7 +322,7 @@ export const createRoot = ({
         staticLineCount = Math.min(staticLineCount, maxStaticLines)
       }
 
-      if (staticResult.element && isStaticElement(staticResult.element) === true) {
+      if (staticResult.element !== undefined && isStaticElement(staticResult.element) === true) {
         ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
       }
     }
@@ -436,7 +436,7 @@ export const createRoot = ({
       // Mark as disposed to prevent any more renders
       disposed = true
       // Remove resize listener
-      if (typeof process !== 'undefined' && process.stdout?.off) {
+      if (typeof process !== 'undefined' && process.stdout?.off !== undefined) {
         process.stdout.off('resize', resizeHandler)
       }
       // Dispose renderer (preserves content for persist mode)

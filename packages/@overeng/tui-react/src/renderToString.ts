@@ -83,7 +83,7 @@ export const renderToString = async ({
     root: null,
     onRender: () => {
       // Capture output when React commits
-      if (!container.root) return
+      if (container.root === null) return
 
       // Clear previous lines (in case of re-render)
       lines.length = 0
@@ -92,7 +92,7 @@ export const renderToString = async ({
       const staticResult = extractStaticContent({ root: container.root, width })
       if (staticResult.lines.length > 0) {
         // Update the committed count
-        if (staticResult.element && isStaticElement(staticResult.element) === true) {
+        if (staticResult.element !== undefined && isStaticElement(staticResult.element) === true) {
           ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
         }
       }

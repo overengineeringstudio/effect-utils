@@ -30,7 +30,7 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
         Effect.gen(function* () {
           // Check if already in a git repo
           const isGit = yield* Git.isGitRepo(cwd)
-          if (!isGit) {
+          if (isGit === false) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_git_repo',
@@ -46,7 +46,7 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
 
           // Check if config already exists
           const exists = yield* fs.exists(configPath)
-          if (exists) {
+          if (exists === true) {
             // Already initialized
             tui.dispatch({ _tag: 'SetAlreadyInitialized', path: configPath })
             return

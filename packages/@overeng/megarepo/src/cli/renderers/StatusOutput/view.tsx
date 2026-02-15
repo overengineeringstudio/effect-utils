@@ -178,7 +178,7 @@ const flattenMembers = (members: readonly MemberStatus[]): MemberStatus[] => {
   const result: MemberStatus[] = []
   for (const member of members) {
     result.push(member)
-    if (member.nestedMembers) {
+    if (member.nestedMembers !== undefined) {
       result.push(...flattenMembers(member.nestedMembers))
     }
   }
@@ -214,9 +214,9 @@ const analyzeProblems = ({
   }
 
   if (lockStaleness !== undefined) {
-    if (!lockStaleness.exists) {
+    if (lockStaleness.exists === false) {
       const hasRemoteMembers = allMembers.some((m) => !m.isLocal)
-      if (hasRemoteMembers) {
+      if (hasRemoteMembers === true) {
         warnings.push({ _tag: 'lock_missing' })
       }
     } else if (lockStaleness.missingFromLock.length > 0 || lockStaleness.extraInLock.length > 0) {
@@ -282,17 +282,17 @@ const countMembers = (members: readonly MemberStatus[]) => {
     isNested: boolean
   }): void => {
     for (const m of ms) {
-      if (isNested) nested++
-      if (m.exists) synced++
-      if (m.nestedMembers) {
+      if (isNested === true) nested++
+      if (m.exists === true) synced++
+      if (m.nestedMembers !== undefined) {
         countRecursive({ ms: m.nestedMembers, isNested: true })
       }
     }
   }
 
   for (const m of members) {
-    if (m.exists) synced++
-    if (m.nestedMembers) {
+    if (m.exists === true) synced++
+    if (m.nestedMembers !== undefined) {
       countRecursive({ ms: m.nestedMembers, isNested: true })
     }
   }
@@ -643,10 +643,10 @@ const WarningsSection = ({ problems }: { problems: Problem[] }) => {
 
 /** Member status symbol */
 const MemberSymbol = ({ member }: { member: MemberStatus }) => {
-  if (!member.exists) {
+  if (member.exists === false) {
     return <Text color="yellow">{symbols.circle}</Text>
   }
-  if (member.gitStatus?.isDirty) {
+  if (member.gitStatus?.isDirty === true) {
     return <Text color="yellow">{symbols.check}</Text>
   }
   return <Text color="green">{symbols.check}</Text>
@@ -654,7 +654,7 @@ const MemberSymbol = ({ member }: { member: MemberStatus }) => {
 
 /** Branch display with color coding */
 const BranchInfo = ({ member }: { member: MemberStatus }) => {
-  if (member.gitStatus?.branch !== undefined && member.gitStatus?.shortRev) {
+  if (member.gitStatus?.branch !== undefined && member.gitStatus?.shortRev !== undefined) {
     const branch = member.gitStatus.branch
     const rev = member.gitStatus.shortRev
     const branchColor: 'green' | 'blue' | 'magenta' =
@@ -666,7 +666,7 @@ const BranchInfo = ({ member }: { member: MemberStatus }) => {
       </>
     )
   }
-  if (member.lockInfo) {
+  if (member.lockInfo !== undefined) {
     const ref = member.lockInfo.ref
     const refColor: 'green' | 'magenta' = ref === 'main' || ref === 'master' ? 'green' : 'magenta'
     return (
@@ -676,7 +676,7 @@ const BranchInfo = ({ member }: { member: MemberStatus }) => {
       </>
     )
   }
-  if (member.isLocal) {
+  if (member.isLocal === true) {
     return <Text dim>(local)</Text>
   }
   return null
@@ -805,7 +805,7 @@ const StatusSummary = ({
     parts.push(`${counts.synced}/${counts.total} synced`)
   }
 
-  if (lastSyncTime) {
+  if (lastSyncTime !== undefined) {
     const date = new Date(lastSyncTime)
     if (Number.isNaN(date.getTime()) === false) {
       parts.push(`synced ${formatRelativeTime(date)}`)
@@ -820,7 +820,7 @@ const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
   const used = detectUsedSymbols(members)
   const items: LegendItem[] = []
 
-  if (used.hasNotSynced) {
+  if (used.hasNotSynced === true) {
     items.push({
       key: 'not-synced',
       element: (
@@ -831,7 +831,7 @@ const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
       ),
     })
   }
-  if (used.hasDirty) {
+  if (used.hasDirty === true) {
     items.push({
       key: 'dirty',
       element: (
@@ -842,7 +842,7 @@ const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
       ),
     })
   }
-  if (used.hasUnpushed) {
+  if (used.hasUnpushed === true) {
     items.push({
       key: 'unpushed',
       element: (
@@ -853,7 +853,7 @@ const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
       ),
     })
   }
-  if (used.hasPinned) {
+  if (used.hasPinned === true) {
     items.push({
       key: 'pinned',
       element: <Text color="yellow">pinned</Text>,

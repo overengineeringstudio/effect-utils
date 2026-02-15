@@ -51,7 +51,7 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
 
         // Use $PWD (logical path) as base for relative path resolution,
         // consistent with Cwd.live's symlink-aware behavior
-        const base = process.env.PWD?.length ? process.env.PWD : process.cwd()
+        const base = process.env.PWD?.length !== undefined && process.env.PWD?.length > 0 ? process.env.PWD : process.cwd()
         const resolved = resolve(base, path)
         const resolvedDir = resolved.endsWith('/') === true ? resolved : `${resolved}/`
 
@@ -156,7 +156,7 @@ export const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
       const exists = yield* fs.exists(configPath)
-      if (exists) {
+      if (exists === true) {
         outermost = current // Keep going up, this might not be the outermost
       }
       current = EffectPath.ops.parent(current)
@@ -168,7 +168,7 @@ export const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
     )
     const rootExists = yield* fs.exists(rootConfigPath)
-    if (rootExists) {
+    if (rootExists === true) {
       outermost = rootDir
     }
 
@@ -192,7 +192,7 @@ export const findNearestMegarepoRoot = (startPath: AbsoluteDirPath) =>
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
       const exists = yield* fs.exists(configPath)
-      if (exists) {
+      if (exists === true) {
         return Option.some(current)
       }
       current = EffectPath.ops.parent(current)
@@ -203,5 +203,5 @@ export const findNearestMegarepoRoot = (startPath: AbsoluteDirPath) =>
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
     )
     const rootExists = yield* fs.exists(rootConfigPath)
-    return rootExists ? Option.some(rootDir) : Option.none()
+    return rootExists === true ? Option.some(rootDir) : Option.none()
   })

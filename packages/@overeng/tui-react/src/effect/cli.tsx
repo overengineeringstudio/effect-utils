@@ -321,7 +321,7 @@ const runTuiMainImpl = <E, A>({
         const failures = Cause.failures(cause)
         const hasLoggableFailure = failures.pipe((chunk) => {
           for (const error of chunk) {
-            if (shouldLogError(error)) return true
+            if (shouldLogError(error) === true) return true
           }
           return false
         })
@@ -330,7 +330,7 @@ const runTuiMainImpl = <E, A>({
         const hasDefects = !Cause.defects(cause).pipe((chunk) => chunk.length === 0)
         const isInterrupted = Cause.isInterrupted(cause)
 
-        if (hasLoggableFailure || hasDefects || isInterrupted) {
+        if (hasLoggableFailure === true || hasDefects === true || isInterrupted === true) {
           const pretty = Cause.pretty(cause, { renderErrorCause: true })
           process.stderr.write(pretty + '\n')
         }

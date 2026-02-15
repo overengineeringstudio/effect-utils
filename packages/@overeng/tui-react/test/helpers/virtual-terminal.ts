@@ -55,7 +55,7 @@ export class VirtualTerminal implements TuiTerminal {
     // Simulate terminal driver: convert \n to \r\n
     // Real terminals do this via the tty driver (stty onlcr)
     // xterm.js headless doesn't, so we do it here
-    const processedData = this.convertLfToCrLf ? data.replace(/\n/g, '\r\n') : data
+    const processedData = this.convertLfToCrLf === true ? data.replace(/\n/g, '\r\n') : data
 
     this.pending = this.pending.then(
       () =>

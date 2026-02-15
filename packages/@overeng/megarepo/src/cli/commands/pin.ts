@@ -186,12 +186,12 @@ export const pinCommand = Cli.Command.make(
             const currentLockPinned = currentLockEntry?.pinned ?? false
 
             // For dry-run, show what would happen
-            if (dryRun) {
+            if (dryRun === true) {
               const shortCurrentLink = currentLink === true ? shortenPath(currentLink) : '(none)'
               const shortNewLink = shortenPath(worktreePath.replace(/\/$/, ''))
               const lockChanges: string[] = []
               if (currentLockRef !== newRef) lockChanges.push(`ref: ${currentLockRef} → ${newRef}`)
-              if (!currentLockPinned) lockChanges.push('pinned: true')
+              if (currentLockPinned === false) lockChanges.push('pinned: true')
 
               tui.dispatch({
                 _tag: 'SetDryRun',
@@ -351,7 +351,7 @@ export const pinCommand = Cli.Command.make(
           }
 
           // Check if already pinned (only when not switching refs)
-          if (lockedMember.pinned) {
+          if (lockedMember.pinned === true) {
             tui.dispatch({
               _tag: 'SetAlready',
               member,
@@ -382,7 +382,7 @@ export const pinCommand = Cli.Command.make(
           const bareExists = yield* store.hasBareRepo(source)
 
           // For dry-run, show what would happen
-          if (dryRun) {
+          if (dryRun === true) {
             const wouldChangeSymlink =
               currentLink !== null &&
               currentLink.replace(/\/$/, '') !== commitWorktreePath.replace(/\/$/, '')
@@ -393,12 +393,12 @@ export const pinCommand = Cli.Command.make(
               action: 'pin',
               commit: lockedMember.commit,
               currentSymlink: wouldChangeSymlink === true ? shortenPath(currentLink) : undefined,
-              newSymlink: wouldChangeSymlink
+              newSymlink: wouldChangeSymlink === true
                 ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
                 : undefined,
               lockChanges: ['pinned: false → true'],
-              wouldCreateWorktree: !commitWorktreeExists && bareExists,
-              worktreeNotAvailable: !commitWorktreeExists && !bareExists,
+              wouldCreateWorktree: commitWorktreeExists === false && bareExists === true,
+              worktreeNotAvailable: commitWorktreeExists === false && bareExists === false,
             })
             return
           }
@@ -408,7 +408,7 @@ export const pinCommand = Cli.Command.make(
           yield* writeLockFile({ lockPath, lockFile })
 
           // If the commit worktree doesn't exist, create it
-          if (!commitWorktreeExists) {
+          if (commitWorktreeExists === false) {
             if (bareExists === false) {
               // Bare repo doesn't exist, can't create worktree - warn user
               tui.dispatch({
@@ -438,7 +438,7 @@ export const pinCommand = Cli.Command.make(
             refType: 'commit',
           })
 
-          if (worktreeReady) {
+          if (worktreeReady === true) {
             // Update the symlink
             if (
               currentLink !== null &&
@@ -485,7 +485,7 @@ const getCloneUrl = (source: ReturnType<typeof parseSourceString>): string | und
 const shortenPath = (path: string): string => {
   const home = process.env['HOME'] ?? ''
   let shortened = path
-  if (home && shortened.startsWith(home) === true) {
+  if (home !== '' && shortened.startsWith(home) === true) {
     shortened = '~' + shortened.slice(home.length)
   }
   // If still too long, show .../<last-3-components>
@@ -573,7 +573,7 @@ export const unpinCommand = Cli.Command.make(
           }
 
           // Check if already unpinned
-          if (!lockedMember.pinned) {
+          if (lockedMember.pinned === false) {
             tui.dispatch({
               _tag: 'SetAlready',
               member,
@@ -616,7 +616,7 @@ export const unpinCommand = Cli.Command.make(
               })
 
               // Update symlink if ref worktree exists and current link is different
-              if (refWorktreeExists) {
+              if (refWorktreeExists === true) {
                 const currentLink = yield* fs
                   .readLink(memberPathNormalized)
                   .pipe(Effect.catchAll(() => Effect.succeed(null)))

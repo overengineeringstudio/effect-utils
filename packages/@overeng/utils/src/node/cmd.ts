@@ -75,10 +75,10 @@ export const cmd: (
   const cwd = yield* CurrentWorkingDirectory
 
   const asArray = Array.isArray(commandInput)
-  const parts = asArray
+  const parts = asArray === true
     ? (commandInput as (string | undefined)[]).filter(isNotUndefined)
     : undefined
-  const [command, ...args] = asArray ? (parts as string[]) : (commandInput as string).split(' ')
+  const [command, ...args] = asArray === true ? (parts as string[]) : (commandInput as string).split(' ')
 
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
@@ -106,7 +106,7 @@ export const cmd: (
   const commandDebugStr =
     debugEnvStr +
     (Array.isArray(finalInput) === true ? (finalInput as string[]).join(' ') : (finalInput as string))
-  const subshellStr = useShell ? ' (in subshell)' : ''
+  const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({
@@ -206,7 +206,7 @@ export const cmdStart: (
   if (command === undefined) {
     return yield* Effect.die('Command is missing')
   }
-  const subshellStr = useShell ? ' (in subshell)' : ''
+  const subshellStr = useShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Starting '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({
@@ -261,7 +261,7 @@ export const cmdText: (
     .join('')
 
   const commandDebugStr = debugEnvStr + [command, ...args].join(' ')
-  const subshellStr = options?.runInShell ? ' (in subshell)' : ''
+  const subshellStr = options?.runInShell === true ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
   yield* Effect.annotateCurrentSpan({
@@ -274,7 +274,7 @@ export const cmdText: (
     // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
     Command.stderr(options?.stderr ?? 'inherit'),
     Command.workingDirectory(cwd),
-    options?.runInShell ? Command.runInShell(true) : identity,
+    options?.runInShell === true ? Command.runInShell(true) : identity,
     Command.env(options?.env ?? {}),
     Command.string,
   )
@@ -318,7 +318,7 @@ export const cmdCollect = <R = never>(opts: {
     // splitting on spaces, which would break leading-whitespace commands).
     const normalizedInput: string | string[] = Array.isArray(opts.commandInput) === true
       ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
-      : useShell
+      : useShell === true
         ? (opts.commandInput as string)
         : (opts.commandInput as string).split(' ')
 
@@ -330,7 +330,7 @@ export const cmdCollect = <R = never>(opts: {
       Command.stdout('pipe'),
       Command.stderr('pipe'),
       Command.workingDirectory(cwd),
-      useShell ? Command.runInShell(true) : identity,
+      useShell === true ? Command.runInShell(true) : identity,
       Command.env(opts.env ?? {}),
     )
 
@@ -344,14 +344,14 @@ export const cmdCollect = <R = never>(opts: {
               stdout: proc.stdout.pipe(
                 Stream.decodeText('utf8'),
                 Stream.splitLines,
-                Stream.tap((line) => (onOutput ? onOutput('stdout', line) : Effect.void)),
+                Stream.tap((line) => (onOutput !== undefined ? onOutput('stdout', line) : Effect.void)),
                 Stream.runCollect,
                 Effect.map(Chunk.toReadonlyArray),
               ),
               stderr: proc.stderr.pipe(
                 Stream.decodeText('utf8'),
                 Stream.splitLines,
-                Stream.tap((line) => (onOutput ? onOutput('stderr', line) : Effect.void)),
+                Stream.tap((line) => (onOutput !== undefined ? onOutput('stderr', line) : Effect.void)),
                 Stream.runCollect,
                 Effect.map(Chunk.toReadonlyArray),
               ),
@@ -405,7 +405,7 @@ const runWithoutLogging = ({
     Command.stdout(stdoutMode),
     Command.stderr(stderrMode),
     Command.workingDirectory(cwd),
-    useShell ? Command.runInShell(true) : identity,
+    useShell === true ? Command.runInShell(true) : identity,
     Command.env(env),
     Command.exitCode,
   )
@@ -467,7 +467,7 @@ const runWithLogging = ({
         Command.stdout('pipe'),
         Command.stderr('pipe'),
         Command.workingDirectory(cwd),
-        useShell ? Command.runInShell(true) : identity,
+        useShell === true ? Command.runInShell(true) : identity,
         Command.env(envWithColor),
       )
 
@@ -475,7 +475,7 @@ const runWithLogging = ({
       const runningProcess = yield* Effect.acquireRelease(command.pipe(Command.start), (proc) =>
         proc.isRunning.pipe(
           Effect.flatMap((running) =>
-            running
+            running === true
               ? killProcessGroup({
                   proc,
                   ...(killTimeout !== undefined ? { timeout: killTimeout } : {}),
@@ -599,7 +599,7 @@ const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => 
   const { input, useShell } = opts
   if (Array.isArray(input) === true) {
     const [command, ...args] = input
-    if (!command) throw new Error('Command cannot be empty')
+    if (command === undefined) throw new Error('Command cannot be empty')
     return Command.make(command, ...args)
   }
 
@@ -608,7 +608,7 @@ const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => 
   }
 
   const [command, ...args] = input.split(' ')
-  if (!command) throw new Error('Command cannot be empty')
+  if (command === undefined) throw new Error('Command cannot be empty')
   return Command.make(command, ...args)
 }
 
@@ -644,7 +644,7 @@ const makeStreamHandler = ({
       channel,
       content: opts.content,
       terminator: opts.terminator,
-      ...(mirrorTarget ? { mirrorTarget } : {}),
+      ...(mirrorTarget !== undefined ? { mirrorTarget } : {}),
       appendLog,
     })
 

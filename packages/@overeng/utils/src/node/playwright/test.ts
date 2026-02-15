@@ -177,7 +177,7 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
   const playwrightLayers = Layer.mergeAll(PwPage.layer(page), PwBrowserContext.layer(context))
 
   // OTEL layer (optional)
-  const otelLayer = otel ? OtelPlaywrightLive : Layer.empty
+  const otelLayer = otel === true ? OtelPlaywrightLive : Layer.empty
 
   // User-provided layers (if any)
   const userLayer = makeLayer?.() ?? Layer.empty
@@ -185,8 +185,8 @@ const runWithTestCtx = <ROut, E1, A, E, R>(
   // Use pretty logger in VS Code for better readability (VSCODE_PID is set by VS Code extensions)
   const usePrettyLogger = prettyLoggerOption ?? process.env.VSCODE_PID !== undefined
 
-  const loggerLayer = debugLogs
-    ? usePrettyLogger
+  const loggerLayer = debugLogs === true
+    ? usePrettyLogger === true
       ? Layer.mergeAll(
           Logger.minimumLogLevel(LogLevel.Debug),
           Logger.replace(Logger.defaultLogger, Logger.prettyLogger()),

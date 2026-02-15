@@ -64,7 +64,7 @@ export const ViewportProvider = ({
 }: ViewportProviderProps): ReactNode => {
   // Listen for resize events if in Node.js environment
   useEffect(() => {
-    if (typeof process === 'undefined' || !process.stdout?.on) {
+    if (typeof process === 'undefined' || process.stdout?.on === undefined) {
       return
     }
 

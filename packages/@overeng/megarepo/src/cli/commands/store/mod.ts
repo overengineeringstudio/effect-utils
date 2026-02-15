@@ -109,7 +109,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
       // List worktrees for this repo
       const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
       const refsExists = yield* fs.exists(refsDir)
-      if (!refsExists) continue
+      if (refsExists === false) continue
 
       const refTypes = yield* fs.readDirectory(refsDir)
       for (const refTypeDir of refTypes) {
@@ -154,7 +154,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           const gitExists = yield* fs
             .exists(gitPath)
             .pipe(Effect.catchAll(() => Effect.succeed(false)))
-          if (!gitExists) {
+          if (gitExists === false) {
             issues.push({
               type: 'broken_worktree',
               severity: 'error',
@@ -185,14 +185,14 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                 }),
               ),
             )
-            if (worktreeStatus.isDirty) {
+            if (worktreeStatus.isDirty === true) {
               issues.push({
                 type: 'dirty',
                 severity: 'warning',
                 message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
               })
             }
-            if (worktreeStatus.hasUnpushed) {
+            if (worktreeStatus.hasUnpushed === true) {
               issues.push({
                 type: 'unpushed',
                 severity: 'warning',
@@ -325,7 +325,7 @@ const storeGcCommand = Cli.Command.make(
       let lockFile: LockFile | undefined
       let inUsePaths = new Set<string>()
 
-      if (Option.isSome(root) === true && !all) {
+      if (Option.isSome(root) === true && all === false) {
         const lockPath = EffectPath.ops.join(
           root.value,
           EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -363,9 +363,9 @@ const storeGcCommand = Cli.Command.make(
 
       // Determine warning type for output
       const gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined =
-        !all && Option.isNone(root) === true
+        all === false && Option.isNone(root) === true
           ? { type: 'not_in_megarepo' }
-          : !all && Option.isSome(root) === true
+          : all === false && Option.isSome(root) === true
             ? { type: 'only_current_megarepo' }
             : undefined
 
@@ -449,13 +449,13 @@ const storeGcCommand = Cli.Command.make(
             ),
           )
 
-          if ((status.isDirty || status.hasUnpushed) && !force) {
+          if ((status.isDirty === true || status.hasUnpushed === true) && force === false) {
             results.push({
               repo: repo.relativePath,
               ref: worktree.ref,
               path: worktree.path,
               status: 'skipped_dirty',
-              message: status.isDirty
+              message: status.isDirty === true
                 ? `${status.changesCount} uncommitted change(s)`
                 : 'has unpushed commits',
             })

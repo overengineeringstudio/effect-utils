@@ -77,7 +77,7 @@ export const Spinner = (props: SpinnerProps): ReactNode => {
 
   // Only animate when animation is enabled
   useEffect(() => {
-    if (!renderConfig.animation) return
+    if (renderConfig.animation === false) return
 
     const timer = setInterval(() => {
       setFrameIndex((prev) => (prev + 1) % frames.length)
@@ -87,9 +87,9 @@ export const Spinner = (props: SpinnerProps): ReactNode => {
   }, [frames.length, interval, renderConfig.animation])
 
   // In static mode (animation: false), show a fixed character
-  if (!renderConfig.animation) {
+  if (renderConfig.animation === false) {
     const char = staticChar ?? spinnerStaticChars[type]
-    return Text({ color: renderConfig.colors ? color : undefined, children: char })
+    return Text({ color: renderConfig.colors === true ? color : undefined, children: char })
   }
 
   // In animated mode, show the current frame

@@ -64,7 +64,7 @@ export const flushPendingMicrotasks = (): void => {
 
 const appendChild = ({ parent, child }: { parent: Instance; child: TuiNode }): void => {
   // Remove from old parent if any
-  if (child.parent && isElement(child.parent) === true) {
+  if (child.parent !== undefined && isElement(child.parent) === true) {
     removeChild({ parent: child.parent, child })
   }
 
@@ -197,7 +197,7 @@ export const hostConfig = {
       return
     }
 
-    if (child.parent && isElement(child.parent) === true) {
+    if (child.parent !== undefined && isElement(child.parent) === true) {
       removeChild({ parent: child.parent, child })
     }
 

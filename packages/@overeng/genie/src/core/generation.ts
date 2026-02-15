@@ -28,7 +28,7 @@ const safeErrorString = (error: unknown): string => {
     return String(error)
   } catch {
     // Bun compiled binary issue - just return the constructor name
-    if (error && typeof error === 'object') {
+    if (error !== null && typeof error === 'object') {
       return `[${error.constructor?.name ?? 'Error'}]`
     }
     return '[Error]'
@@ -201,10 +201,10 @@ const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
   let last = ''
 
   while (current !== last) {
-    if (yield* fs.exists(path.join(current, 'megarepo.json'))) {
+    if ((yield* fs.exists(path.join(current, 'megarepo.json'))) === true) {
       return current
     }
-    if (yield* fs.exists(path.join(current, '.git'))) {
+    if ((yield* fs.exists(path.join(current, '.git'))) === true) {
       return current
     }
     last = current
@@ -393,7 +393,7 @@ const atomicWriteFile = ({
 
     // Make target writable if it exists (for read-only files)
     const targetExists = yield* fs.exists(targetFilePath)
-    if (targetExists) {
+    if (targetExists === true) {
       yield* fs.chmod(targetFilePath, 0o644).pipe(Effect.catchAll(() => Effect.void))
     }
 
@@ -472,38 +472,38 @@ export const generateFile = ({
     })
 
     const targetDirExists = yield* fs.exists(targetDir)
-    if (!targetDirExists) {
+    if (targetDirExists === false) {
       const reason = `Parent directory missing: ${targetDir}`
       return { _tag: 'skipped' as const, targetFilePath, reason }
     }
 
     // Check if file exists and get current content
     const fileExists = yield* fs.exists(targetFilePath)
-    const currentContent = fileExists
+    const currentContent = fileExists === true
       ? yield* fs.readFileString(targetFilePath).pipe(Effect.catchAll(() => Effect.succeed('')))
       : ''
 
-    const isUnchanged = fileExists && currentContent === fileContentString
+    const isUnchanged = fileExists === true && currentContent === fileContentString
 
     // Compute diff summary for updated files
     const diffSummary =
-      fileExists && !isUnchanged
+      fileExists === true && isUnchanged === false
         ? generateDiffSummary({ oldContent: currentContent, newContent: fileContentString })
         : undefined
 
-    if (dryRun) {
-      if (!fileExists) {
+    if (dryRun === true) {
+      if (fileExists === false) {
         return { _tag: 'created', targetFilePath } as const
       }
-      if (isUnchanged) {
+      if (isUnchanged === true) {
         return { _tag: 'unchanged', targetFilePath } as const
       }
       return { _tag: 'updated', targetFilePath, diffSummary } as const
     }
 
-    if (isUnchanged) {
+    if (isUnchanged === true) {
       // Restore read-only permissions if needed (e.g. after a --writeable run or manual chmod)
-      if (readOnly) {
+      if (readOnly === true) {
         yield* fs.chmod(targetFilePath, 0o444).pipe(Effect.catchAll(() => Effect.void))
       }
       return { _tag: 'unchanged', targetFilePath } as const
@@ -520,7 +520,7 @@ export const generateFile = ({
       }),
     })
 
-    if (!fileExists) {
+    if (fileExists === false) {
       return { _tag: 'created', targetFilePath } as const
     }
 
@@ -575,7 +575,7 @@ export const checkFile = ({
     })
 
     const fileExists = yield* fs.exists(targetFilePath)
-    if (!fileExists) {
+    if (fileExists === false) {
       return yield* new GenieCheckError({
         targetFilePath,
         message: `File does not exist. Run 'genie' to generate it.`,

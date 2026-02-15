@@ -159,7 +159,7 @@ export const runDeploy = (
         yield* Effect.sleep(Duration.millis(500))
         log({ level: 'info', message: 'Configuration validated' })
 
-        if (dryRun) {
+        if (dryRun === true) {
           log({ level: 'info', message: 'Dry run mode - skipping actual deployment' })
           const results: ServiceResult[] = services.map((name) => ({
             name,
@@ -311,7 +311,7 @@ export const runDeploy = (
         // ===================
         // Phase 3: Complete or Failed
         // ===================
-        if (failed) {
+        if (failed === true) {
           log({ level: 'error', message: `Deployment failed: ${failedError}` })
 
           setState({

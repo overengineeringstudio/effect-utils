@@ -105,7 +105,7 @@ export const createPlaywrightConfig = async (
   } = options
 
   const defaultIgnore = ['**/dist/**', '**/node_modules/**']
-  const testIgnore = extraIgnore
+  const testIgnore = extraIgnore !== undefined
     ? [...defaultIgnore, ...(Array.isArray(extraIgnore) === true ? extraIgnore : [extraIgnore])]
     : defaultIgnore
 
@@ -118,7 +118,7 @@ export const createPlaywrightConfig = async (
 
   // Resolve port: read from env var if set, otherwise find available port and store it
   const envPort = process.env[portEnvVar]
-  const port = envPort ? Number.parseInt(envPort, 10) : await findAvailablePort()
+  const port = envPort !== undefined ? Number.parseInt(envPort, 10) : await findAvailablePort()
 
   if (Number.isFinite(port) === false) {
     return shouldNeverHappen(
@@ -138,27 +138,27 @@ export const createPlaywrightConfig = async (
     testDir,
     testMatch,
     testIgnore,
-    reporter: process.env.CI ? 'line' : 'list',
+    reporter: process.env.CI !== undefined ? 'line' : 'list',
 
     timeout,
-    ...(process.env.CI ? { maxFailures: 1 } : {}),
+    ...(process.env.CI !== undefined ? { maxFailures: 1 } : {}),
     workers,
     fullyParallel: false,
 
-    ...(projects ? { projects } : {}),
+    ...(projects !== undefined ? { projects } : {}),
 
     use: {
       baseURL: url,
       headless: !process.env.PW_HEADFUL,
       viewport: { width: 1280, height: 800 },
-      trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
+      trace: process.env.CI !== undefined ? 'on-first-retry' : 'retain-on-failure',
       screenshot: 'off',
       video: 'off',
     },
 
     webServer: {
       command: resolvedCommand,
-      ...(cwd ? { cwd } : {}),
+      ...(cwd !== undefined ? { cwd } : {}),
       url,
       timeout: serverTimeout,
       stdout: 'pipe',

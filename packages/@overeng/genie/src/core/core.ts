@@ -336,8 +336,8 @@ export const checkAll = ({
           yield* emit({
             _tag: 'FileCompleted',
             path: genieFilePath,
-            status: result.success ? ('unchanged' as const) : ('error' as const),
-            ...(result.success ? {} : { message: result.error.message }),
+            status: result.success === true ? ('unchanged' as const) : ('error' as const),
+            ...(result.success === true ? {} : { message: result.error.message }),
           })
 
           return result
@@ -365,8 +365,8 @@ export const checkAll = ({
           return {
             path: p,
             relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
-            status: (r.success ? 'unchanged' : 'error') as GenieFileStatus,
-            message: r.success ? undefined : r.error.message,
+            status: (r.success === true ? 'unchanged' : 'error') as GenieFileStatus,
+            message: r.success === true ? undefined : r.error.message,
           }
         }),
       })

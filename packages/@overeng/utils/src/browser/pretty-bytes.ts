@@ -35,5 +35,5 @@ export const prettyBytes = (bytes: number): string => {
     maximumFractionDigits: 2,
   })
 
-  return `${isNegative ? '-' : ''}${formatted} ${unit}`
+  return `${isNegative === true ? '-' : ''}${formatted} ${unit}`
 }

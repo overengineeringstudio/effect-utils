@@ -525,7 +525,7 @@ export const createTerminalInput = (
     const setRawMode = 'setRawMode' in input ? (input.setRawMode as (mode: boolean) => void) : null
 
     // Enable raw mode if TTY
-    if (rawMode && isTTY && setRawMode) {
+    if (rawMode === true && isTTY === true && setRawMode !== null) {
       wasRawMode = true
       setRawMode(true)
 
@@ -542,7 +542,7 @@ export const createTerminalInput = (
       const events = parseKeyInput(data)
       for (const event of events) {
         // Handle Ctrl+C specially if not handling it ourselves
-        if (event.ctrl && event.key === 'c' && !handleCtrlC) {
+        if (event.ctrl === true && event.key === 'c' && handleCtrlC === false) {
           process.exit(130) // Standard exit code for Ctrl+C
         }
 
@@ -664,7 +664,7 @@ export const createTerminalResize = (
       rows: output.rows ?? 24,
     })
 
-    if (output.isTTY) {
+    if (output.isTTY === true) {
       // Set up resize handler
       const resizeHandler = () => {
         const dims = getDimensions()

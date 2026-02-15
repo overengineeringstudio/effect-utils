@@ -63,7 +63,7 @@ const filterMembers = <T extends { name: string }>(_: {
   members: readonly T[]
   memberFilter: string
 }): T[] => {
-  if (!_.memberFilter) return [..._.members]
+  if (_.memberFilter === '') return [..._.members]
   return _.members.filter((m) => m.name === _.memberFilter)
 }
 
@@ -161,7 +161,7 @@ export const CompleteSuccess: Story = {
         View={ExecView}
         app={ExecApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
             : withOverrides({
                 state: fixtures.completeSuccessState,
@@ -197,7 +197,7 @@ export const CompleteMixed: Story = {
         View={ExecView}
         app={ExecApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
             : withOverrides({
                 state: fixtures.completeMixedState,
@@ -233,7 +233,7 @@ export const CompleteWithSkipped: Story = {
         View={ExecView}
         app={ExecApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
             : withOverrides({
                 state: fixtures.completeWithSkippedState,
@@ -269,7 +269,7 @@ export const CompleteAllErrors: Story = {
         View={ExecView}
         app={ExecApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
             : withOverrides({
                 state: fixtures.completeAllErrorsState,
@@ -308,7 +308,7 @@ export const CompleteVerbose: Story = {
         View={ExecView}
         app={ExecApp}
         initialState={
-          args.interactive
+          args.interactive === true
             ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
             : withOverrides({
                 state: fixtures.completeVerboseState,

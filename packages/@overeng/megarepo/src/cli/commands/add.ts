@@ -142,7 +142,7 @@ export const addCommand = Cli.Command.make(
             yield* fs.writeFileString(configPath, newConfigContent + '\n')
 
             // Sync if requested
-            if (sync) {
+            if (sync === true) {
               tui.dispatch({
                 _tag: 'SetAdding',
                 member: memberName,

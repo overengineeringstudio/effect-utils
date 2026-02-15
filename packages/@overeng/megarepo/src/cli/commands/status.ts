@@ -101,7 +101,7 @@ const scanMembersRecursive = ({
       // For remote members, also check if the underlying worktree exists
       // (symlink might exist but point to non-existent worktree)
       let memberExists = symlinkExists
-      if (symlinkExists && !isLocal) {
+      if (symlinkExists === true && isLocal === false) {
         // Check if symlink target exists
         const targetExists = yield* fs.readLink(symlinkPath).pipe(
           Effect.flatMap((target) => fs.exists(target)),
@@ -115,13 +115,13 @@ const scanMembersRecursive = ({
         memberPath,
         EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
       )
-      const isMegarepo = memberExists
+      const isMegarepo = memberExists === true
         ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
         : false
 
       // Recursively scan nested members if this is a megarepo and --all is used
       let nestedMembers: readonly MemberStatus[] | undefined = undefined
-      if (all && isMegarepo && memberExists) {
+      if (all === true && isMegarepo === true && memberExists === true) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
@@ -136,10 +136,10 @@ const scanMembersRecursive = ({
       let gitStatus: GitStatus | undefined = undefined
       let currentBranch: string | undefined = undefined
       let fullCommit: string | undefined = undefined
-      if (memberExists) {
+      if (memberExists === true) {
         // Check if it's a git repo first
         const isGit = yield* Git.isGitRepo(memberPath)
-        if (isGit) {
+        if (isGit === true) {
           // Get worktree status (dirty, unpushed)
           const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
             Effect.catchAll(() =>
@@ -176,7 +176,7 @@ const scanMembersRecursive = ({
 
       // Read symlink target for drift detection
       const symlinkTarget =
-        memberExists && !isLocal
+        memberExists === true && isLocal === false
           ? yield* fs
               .readLink(memberPath.replace(/\/$/, ''))
               .pipe(Effect.catchAll(() => Effect.succeed(null)))
@@ -184,7 +184,7 @@ const scanMembersRecursive = ({
 
       // Get source ref (what megarepo.json intends)
       const sourceRef =
-        source && source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : undefined
+        source !== undefined && source.type !== 'path' ? Option.getOrElse(source.ref, () => 'main') : undefined
 
       // Detect stale lock vs symlink drift
       // These are mutually exclusive scenarios:
@@ -199,11 +199,11 @@ const scanMembersRecursive = ({
       let staleLock: StaleLock | undefined = undefined
       let symlinkDrift: SymlinkDrift | undefined = undefined
 
-      if (symlinkTarget !== null && lockedMember && sourceRef) {
+      if (symlinkTarget !== null && lockedMember !== undefined && sourceRef !== undefined) {
         const extracted = extractRefFromSymlinkPath(symlinkTarget)
         const symlinkRef = extracted?.ref
 
-        if (symlinkRef && lockedMember.ref !== sourceRef) {
+        if (symlinkRef !== undefined && lockedMember.ref !== sourceRef) {
           if (symlinkRef === sourceRef && symlinkRef !== lockedMember.ref) {
             // Stale lock: symlink matches source, lock is outdated
             staleLock = {
@@ -223,7 +223,7 @@ const scanMembersRecursive = ({
 
       // Detect commit drift: local worktree commit differs from locked commit
       let commitDrift: CommitDrift | undefined = undefined
-      if (memberExists && !isLocal && lockedMember && fullCommit) {
+      if (memberExists === true && isLocal === false && lockedMember !== undefined && fullCommit !== undefined) {
         if (fullCommit !== lockedMember.commit) {
           commitDrift = {
             localCommit: fullCommit,
@@ -249,7 +249,7 @@ const scanMembersRecursive = ({
         symlinkExists,
         source: sourceString,
         isLocal,
-        lockInfo: lockedMember
+        lockInfo: lockedMember !== undefined
           ? {
               ref: lockedMember.ref,
               commit: lockedMember.commit,

@@ -70,7 +70,7 @@ Vitest.describe('cmd helper', () => {
         const archives = fs.readdirSync(archiveDir).filter((file) => file.endsWith('.log'))
         expect(archives.length).toBe(1)
         const archivedName = archives[0]
-        if (!archivedName) throw new Error('Expected archive file')
+        if (archivedName === undefined) throw new Error('Expected archive file')
         const archivedPath = path.join(archiveDir, archivedName)
         const archivedLog = fs.readFileSync(archivedPath, 'utf8')
         const archivedStdoutLines = archivedLog

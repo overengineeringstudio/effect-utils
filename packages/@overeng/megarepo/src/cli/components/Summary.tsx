@@ -60,7 +60,7 @@ export interface SummaryProps {
 export const Summary = ({ counts, dryRun = false }: SummaryProps) => {
   const parts: Array<{ key: string; element: React.ReactNode }> = []
 
-  if (dryRun) {
+  if (dryRun === true) {
     if (counts.cloned !== undefined && counts.cloned !== undefined > 0)
       parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} to clone</Text> })
     if (counts.synced !== undefined && counts.synced !== undefined > 0)

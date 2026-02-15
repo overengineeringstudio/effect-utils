@@ -749,7 +749,7 @@ describe('--all nested error reporting', () => {
         expect(out.syncTree.nestedResults).toHaveLength(1)
         const firstNested = out.syncTree.nestedResults[0]
         expect(firstNested).toBeDefined()
-        if (firstNested) {
+        if (firstNested !== undefined) {
           expect(firstNested.root).toBe(childNestedRoot)
 
           const nestedResults = firstNested.results

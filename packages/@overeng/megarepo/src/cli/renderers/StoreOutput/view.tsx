@@ -588,7 +588,7 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
   const getStatusText = () => {
     switch (result.status) {
       case 'removed':
-        return <Text dim> ({dryRun ? 'would remove' : 'removed'})</Text>
+        return <Text dim> ({dryRun === true ? 'would remove' : 'removed'})</Text>
       case 'skipped_dirty':
         return <Text dim> ({result.message ?? 'dirty'})</Text>
       case 'skipped_in_use':

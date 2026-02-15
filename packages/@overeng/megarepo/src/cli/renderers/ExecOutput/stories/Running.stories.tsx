@@ -62,7 +62,7 @@ const filterMembers = <T extends { name: string }>(_: {
   members: readonly T[]
   memberFilter: string
 }): T[] => {
-  if (!_.memberFilter) return [..._.members]
+  if (_.memberFilter === '') return [..._.members]
   return _.members.filter((m) => m.name === _.memberFilter)
 }
 

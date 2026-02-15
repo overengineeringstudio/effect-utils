@@ -214,7 +214,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       <Text> </Text>
 
       {/* Results */}
-      {dryRun && !hasChanges && summaryCounts.errors === 0 ? (
+      {dryRun === true && hasChanges === false && summaryCounts.errors === 0 ? (
         <Box flexDirection="row">
           <Text color="green">{symbols.check}</Text>
           <Text dim> workspace is up to date</Text>
@@ -253,7 +253,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <SkippedLine key={r.name} result={r} />
           ))}
           {alreadySynced.length > 0 &&
-            (alreadySynced.length <= 5 || hasChanges ? (
+            (alreadySynced.length <= 5 || hasChanges === true ? (
               alreadySynced.map((r) => (
                 <AlreadySyncedLine
                   key={r.name}
@@ -468,7 +468,7 @@ const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boo
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="red">{dryRun ? 'would remove' : 'removed'}</Text>
+      <Text color="red">{dryRun === true ? 'would remove' : 'removed'}</Text>
       {result.message !== undefined && (
         <Text dim>
           {' '}
@@ -516,7 +516,7 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   // Handle ref mismatch with structured display (multiline hints)
   if (result.refMismatch !== undefined) {
     const { expectedRef, actualRef, isDetached } = result.refMismatch
-    const mismatchDesc = isDetached
+    const mismatchDesc = isDetached === true
       ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
       : `store path implies '${expectedRef}' but worktree HEAD is '${actualRef}'`
 
@@ -604,11 +604,11 @@ const AlreadySyncedLine = ({
 const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: boolean }) => {
   return (
     <Box paddingTop={1}>
-      <Text>{dryRun ? 'Would generate:' : 'Generated:'}</Text>
+      <Text>{dryRun === true ? 'Would generate:' : 'Generated:'}</Text>
       {files.map((file) => (
         <Box key={file} flexDirection="row">
           <Text> </Text>
-          {dryRun ? <Text dim>{symbols.arrow}</Text> : <Text color="green">{symbols.check}</Text>}
+          {dryRun === true ? <Text dim>{symbols.arrow}</Text> : <Text color="green">{symbols.check}</Text>}
           <Text> </Text>
           <Text bold>{file}</Text>
         </Box>
@@ -651,7 +651,7 @@ const LockSyncSection = ({
       {verbose &&
         results.map((memberResult) => {
           const hasUpdates = memberResult.files.some((f) => f.updatedInputs.length > 0)
-          if (!hasUpdates) return null
+          if (hasUpdates === false) return null
 
           return (
             <Box key={memberResult.memberName} paddingLeft={2} flexDirection="column">
