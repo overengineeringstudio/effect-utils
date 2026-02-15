@@ -22,11 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          extra_nix_config: |
-            extra-substituters = https://cache.nixos.org
-            extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
@@ -58,11 +58,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          extra_nix_config: |
-            extra-substituters = https://cache.nixos.org
-            extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
@@ -97,11 +97,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          extra_nix_config: |
-            extra-substituters = https://cache.nixos.org
-            extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
@@ -136,11 +136,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          extra_nix_config: |
-            extra-substituters = https://cache.nixos.org
-            extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
@@ -176,11 +176,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
-        uses: cachix/install-nix-action@v31
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          extra_nix_config: |
-            extra-substituters = https://cache.nixos.org
-            extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v16
         with:
