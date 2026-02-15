@@ -133,6 +133,7 @@ in
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
+      # genie:run must complete first so the check compares against freshly generated files
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
       #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
       after = [ "genie:run" "pnpm:install" ];
