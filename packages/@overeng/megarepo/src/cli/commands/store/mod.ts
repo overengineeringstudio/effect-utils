@@ -140,7 +140,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           const issues: StoreWorktreeIssue[] = []
 
           // Check for missing bare repo
-          if (!bareExists) {
+          if (bareExists === false) {
             issues.push({
               type: 'missing_bare',
               severity: 'error',
@@ -260,7 +260,7 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
           }).pipe(
             Effect.map(() => ({ path: repo.relativePath, status: 'fetched' as const })),
             Effect.catchAll((error) => {
-              const message = error instanceof Error ? error.message : String(error)
+              const message = error instanceof Error === true ? error.message : String(error)
               return Effect.succeed({
                 path: repo.relativePath,
                 status: 'error' as const,
@@ -385,7 +385,7 @@ const storeGcCommand = Cli.Command.make(
         const worktrees = yield* Effect.gen(function* () {
           const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
           const exists = yield* fs.exists(refsDir)
-          if (!exists) return []
+          if (exists === false) return []
 
           const result: Array<{
             ref: string
@@ -463,7 +463,7 @@ const storeGcCommand = Cli.Command.make(
           }
 
           // Remove the worktree
-          if (!dryRun) {
+          if (dryRun === false) {
             yield* Effect.gen(function* () {
               const bareRepoPath = EffectPath.ops.join(
                 repo.fullPath,
@@ -482,7 +482,7 @@ const storeGcCommand = Cli.Command.make(
             }).pipe(
               Effect.catchAll((error) =>
                 Effect.succeed({
-                  error: error instanceof Error ? error.message : String(error),
+                  error: error instanceof Error === true ? error.message : String(error),
                 }),
               ),
             )
@@ -589,7 +589,7 @@ const storeAddCommand = Cli.Command.make(
       const bareExists = yield* store.hasBareRepo(source)
 
       // Clone if needed (show progress for non-JSON modes)
-      if (!bareExists) {
+      if (bareExists === false) {
         const repoBasePath = store.getRepoBasePath(source)
         yield* fs.makeDirectory(repoBasePath, { recursive: true })
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
@@ -611,7 +611,7 @@ const storeAddCommand = Cli.Command.make(
       const worktreePath = store.getWorktreePath({ source, ref: targetRef, refType })
       const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef, refType })
 
-      if (!worktreeExists) {
+      if (worktreeExists === false) {
         const worktreeParent = EffectPath.ops.parent(worktreePath)
         if (worktreeParent !== undefined) {
           yield* fs.makeDirectory(worktreeParent, { recursive: true })
@@ -662,7 +662,7 @@ const storeAddCommand = Cli.Command.make(
           Effect.sync(() => {
             tui.dispatch({
               _tag: 'SetAdd',
-              status: alreadyExists ? 'already_exists' : 'added',
+              status: alreadyExists === true ? 'already_exists' : 'added',
               source: sourceString,
               ref: targetRef,
               commit,

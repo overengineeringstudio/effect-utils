@@ -79,13 +79,13 @@ export const WithErrors: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -112,13 +112,13 @@ export const AllErrors: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -145,13 +145,13 @@ export const SkippedMembers: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -179,13 +179,13 @@ export const MixedSkipped: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -229,13 +229,13 @@ export const RefMismatchDetected: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -261,13 +261,13 @@ export const Interrupted: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },

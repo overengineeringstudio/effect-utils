@@ -253,8 +253,8 @@ export const createGcTimeline = (config: {
       action: makeGcAction({
         dryRun,
         results: currentResults,
-        showForceHint: isLast ? showForceHint : false,
-        ...(isLast && warning !== undefined ? { warning } : {}),
+        showForceHint: isLast === true ? showForceHint : false,
+        ...(isLast === true && warning !== undefined ? { warning } : {}),
       }),
     })
   }

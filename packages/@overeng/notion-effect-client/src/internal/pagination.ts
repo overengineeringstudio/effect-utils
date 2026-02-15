@@ -41,7 +41,7 @@ export const paginatedStream = <A, E, R>(
             const items = response.results as A[]
             const chunk = Chunk.fromIterable(items)
 
-            if (!response.has_more || response.next_cursor === null) {
+            if (response.has_more === false || response.next_cursor === null) {
               // Last page - emit items and signal no more pages
               return Option.some([chunk, Option.none()] as const)
             }

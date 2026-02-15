@@ -71,7 +71,7 @@ const scanMembersRecursive = ({
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
     )
     const configExists = yield* fs.exists(configPath)
-    if (!configExists) {
+    if (configExists === false) {
       return []
     }
 
@@ -414,7 +414,7 @@ export const statusCommand = Cli.Command.make(
                   if (cwdRealPath === memberRealPathNorm) {
                     return newPath
                   }
-                  if (member.nestedMembers && member.nestedMembers.length > 0) {
+                  if (member.nestedMembers !== undefined && member.nestedMembers !== undefined.length > 0) {
                     const nestedResult = yield* findCurrentMemberPath({
                       memberList: member.nestedMembers,
                       megarepoRoot: memberRealPathNorm + '/',
@@ -440,7 +440,7 @@ export const statusCommand = Cli.Command.make(
 
       // When --all is false, truncate to top-level member only.
       // This ensures currentMemberPath always matches the flat member list.
-      if (!all && currentMemberPath !== undefined && currentMemberPath.length > 1) {
+      if (all === false && currentMemberPath !== undefined && currentMemberPath.length > 1) {
         currentMemberPath = [currentMemberPath[0]!]
       }
 
@@ -456,28 +456,28 @@ export const statusCommand = Cli.Command.make(
         prefix?: string
       }) => {
         for (const member of memberList) {
-          const memberLabel = prefix ? `${prefix}/${member.name}` : member.name
-          if (!member.symlinkExists) {
+          const memberLabel = prefix !== '' ? `${prefix}/${member.name}` : member.name
+          if (member.symlinkExists === false) {
             syncReasons.push(`Member '${memberLabel}' symlink missing`)
-          } else if (!member.exists) {
+          } else if (member.exists === false) {
             syncReasons.push(`Member '${memberLabel}' worktree missing`)
           }
-          if (member.staleLock) {
+          if (member.staleLock === true) {
             syncReasons.push(
               `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
             )
           }
-          if (member.symlinkDrift) {
+          if (member.symlinkDrift === true) {
             syncReasons.push(
               `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
             )
           }
-          if (member.refMismatch) {
+          if (member.refMismatch === true) {
             syncReasons.push(
               `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
             )
           }
-          if (member.nestedMembers) {
+          if (member.nestedMembers === true) {
             collectMemberSyncReasons({ memberList: member.nestedMembers, prefix: memberLabel })
           }
         }
@@ -485,8 +485,8 @@ export const statusCommand = Cli.Command.make(
       collectMemberSyncReasons({ memberList: members })
 
       // Check lock staleness
-      if (lockStaleness) {
-        if (!lockStaleness.exists) {
+      if (lockStaleness !== undefined) {
+        if (lockStaleness.exists === false) {
           syncReasons.push('Lock file missing')
         }
         for (const name of lockStaleness.missingFromLock) {

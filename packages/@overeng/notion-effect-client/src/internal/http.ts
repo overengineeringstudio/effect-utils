@@ -53,7 +53,7 @@ export const parseRateLimitHeaders = (
   headers: Headers | Record<string, string | undefined>,
 ): Option.Option<RateLimitInfo> => {
   const getHeader = (name: string): string | undefined => {
-    if (headers instanceof Headers) {
+    if ((headers instanceof Headers) === true) {
       return headers.get(name) ?? undefined
     }
 
@@ -71,7 +71,7 @@ export const parseRateLimitHeaders = (
   }
 
   const resetAfterRaw = getHeader('retry-after')
-  const resetAfterSeconds = resetAfterRaw ? Number.parseInt(resetAfterRaw, 10) : 0
+  const resetAfterSeconds = resetAfterRaw !== undefined ? Number.parseInt(resetAfterRaw, 10) : 0
 
   return Option.some({
     remaining,
@@ -256,7 +256,7 @@ export const executeRequest = <A, I, R>({
       )
     })
 
-    if (!retryEnabled) {
+    if (retryEnabled === false) {
       return yield* makeRequest
     }
 
@@ -271,7 +271,7 @@ export const executeRequest = <A, I, R>({
 
       const error = result.left
 
-      if (!error.isRetryable || retries >= maxRetries) {
+      if (error.isRetryable === false || retries >= maxRetries) {
         return yield* error
       }
 

@@ -126,7 +126,7 @@ export const formatRefMismatchMessage = ({
   refMismatch: RefMismatch
   memberName: string
 }): string => {
-  if (refMismatch.isDetached) {
+  if (refMismatch.isDetached === true) {
     // Detached HEAD case
     const lines = [
       `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree is detached at ${refMismatch.actualRef}`,

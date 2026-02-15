@@ -240,7 +240,7 @@ export function queryStream<TProperties, I, R>(
             Effect.map((result) => {
               const chunk = Chunk.fromIterable(result.results)
 
-              if (!result.hasMore || Option.isNone(result.nextCursor) === true) {
+              if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
                 return Option.some([chunk, Option.none()] as const)
               }
 

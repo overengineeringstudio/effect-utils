@@ -92,13 +92,13 @@ export const MixedResults: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -127,13 +127,13 @@ export const AllSynced: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -168,13 +168,13 @@ export const FirstSync: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -216,13 +216,13 @@ export const LockUpdates: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -262,13 +262,13 @@ export const RemovedMembers: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -302,13 +302,13 @@ export const WithGenerators: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -336,13 +336,13 @@ export const SingleMember: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -377,13 +377,13 @@ export const ManyMembers: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -416,13 +416,13 @@ export const NestedMegarepos: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -459,13 +459,13 @@ export const WithLockSync: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive ? { _tag: 'Success' } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },

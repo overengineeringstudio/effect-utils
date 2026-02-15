@@ -47,13 +47,13 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
           <Text color="green">{symbols.status.check}</Text>
           <Text> Pinned </Text>
           <Text bold>{state.member}</Text>
-          {state.ref && (
+          {state.ref !== undefined && (
             <>
               <Text> to </Text>
               <Text color="cyan">{state.ref}</Text>
             </>
           )}
-          {state.commit && (
+          {state.commit !== undefined && (
             <>
               <Text> at </Text>
               <Text dim>{state.commit.slice(0, 7)}</Text>
@@ -66,7 +66,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       return (
         <Text dim>
           Member '{state.member}' is {state.action === 'pin' ? 'already pinned' : 'not pinned'}
-          {state.commit && ` at ${state.commit.slice(0, 7)}`}
+          {state.commit !== undefined && ` at ${state.commit.slice(0, 7)}`}
         </Text>
       )
 
@@ -76,13 +76,13 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
           <Box flexDirection="row">
             <Text>Would {state.action} </Text>
             <Text bold>{state.member}</Text>
-            {state.ref && (
+            {state.ref !== undefined && (
               <>
                 <Text> to </Text>
                 <Text color="cyan">{state.ref}</Text>
               </>
             )}
-            {state.commit && (
+            {state.commit !== undefined && (
               <>
                 <Text> at </Text>
                 <Text dim>{state.commit.slice(0, 7)}</Text>
@@ -92,7 +92,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
           <Text> </Text>
 
           {/* Source change */}
-          {state.currentSource && state.newSource && state.currentSource !== state.newSource && (
+          {state.currentSource !== undefined && state.newSource !== undefined && state.currentSource !== state.newSource && (
             <Box flexDirection="row">
               <Text dim>{'  megarepo.json  '}</Text>
               <Text>{state.currentSource}</Text>
@@ -114,7 +114,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
             )}
 
           {/* Lock changes */}
-          {state.lockChanges && state.lockChanges.length > 0 && (
+          {state.lockChanges !== undefined && state.lockChanges !== undefined.length > 0 && (
             <Box flexDirection="row">
               <Text dim>{'  lock           '}</Text>
               <Text>{state.lockChanges.join(', ')}</Text>
@@ -127,7 +127,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
           )}
           {state.wouldClone && <Text dim>{'  + would clone bare repo'}</Text>}
           {state.wouldCreateWorktree && <Text dim>{'  + would create worktree'}</Text>}
-          {state.worktreeNotAvailable && (
+          {state.worktreeNotAvailable !== undefined && (
             <Box flexDirection="row">
               <Text color="yellow">{'  ! commit worktree not available (repo not in store)'}</Text>
             </Box>

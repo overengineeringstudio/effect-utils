@@ -69,7 +69,7 @@ const buildListParams = (opts: ListUsersOptions): string => {
 /** Internal raw list - used by both list and listStream */
 const listRaw = Effect.fn('NotionUsers.list')(function* (opts: ListUsersOptions) {
   const queryString = buildListParams(opts)
-  const path = `/users${queryString ? `?${queryString}` : ''}`
+  const path = `/users${queryString !== '' ? `?${queryString}` : ''}`
   const response = yield* get({
     path,
     responseSchema: ListUsersResponseSchema,
@@ -110,7 +110,7 @@ export const listStream = (
           Effect.map((result) => {
             const chunk = Chunk.fromIterable(result.results)
 
-            if (!result.hasMore || Option.isNone(result.nextCursor) === true) {
+            if (result.hasMore === false || Option.isNone(result.nextCursor) === true) {
               return Option.some([chunk, Option.none()] as const)
             }
 

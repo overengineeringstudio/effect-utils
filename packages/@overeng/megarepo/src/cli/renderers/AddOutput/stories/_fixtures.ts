@@ -29,7 +29,7 @@ export const createSuccessState = (config: {
   member: config.member,
   source: config.source,
   synced: config.synced,
-  ...(config.synced && config.syncStatus ? { syncStatus: config.syncStatus } : {}),
+  ...(config.synced !== undefined && config.syncStatus !== undefined ? { syncStatus: config.syncStatus } : {}),
 })
 
 export const createErrorNotInMegarepoState = (): AddStateType => ({
@@ -74,13 +74,13 @@ export const createTimeline = (config: {
 
   // Complete: adding -> success
   timeline.push({
-    at: config.synced ? 1200 : 600,
+    at: config.synced === true ? 1200 : 600,
     action: {
       _tag: 'SetSuccess',
       member: config.member,
       source: config.source,
       synced: config.synced,
-      ...(config.synced && config.syncStatus ? { syncStatus: config.syncStatus } : {}),
+      ...(config.synced !== undefined && config.syncStatus !== undefined ? { syncStatus: config.syncStatus } : {}),
     },
   })
 

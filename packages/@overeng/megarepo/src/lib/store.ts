@@ -165,7 +165,7 @@ const make = ({
     listRepos: () =>
       Effect.gen(function* () {
         const exists = yield* fs.exists(basePath)
-        if (!exists) {
+        if (exists === false) {
           return []
         }
 
@@ -220,7 +220,7 @@ const make = ({
                 EffectPath.unsafe.relativeDir('.bare/'),
               )
               const hasBare = yield* fs.exists(barePath)
-              if (!hasBare) continue
+              if (hasBare === false) continue
 
               result.push({
                 relativePath: EffectPath.unsafe.relativeDir(`${host}/${owner}/${repo}/`),
@@ -239,7 +239,7 @@ const make = ({
         const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('refs/'))
 
         const exists = yield* fs.exists(refsDir)
-        if (!exists) {
+        if (exists === false) {
           return []
         }
 

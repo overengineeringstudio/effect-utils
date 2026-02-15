@@ -134,9 +134,9 @@ export const getBlockUrl = (block: BlockWithData): string | undefined => {
       }
     | undefined
 
-  if (typeData?.url) return typeData.url
-  if (typeData?.external?.url) return typeData.external.url
-  if (typeData?.file?.url) return typeData.file.url
+  if (typeData?.url !== undefined) return typeData.url
+  if (typeData?.external?.url !== undefined) return typeData.external.url
+  if (typeData?.file?.url !== undefined) return typeData.file.url
   return undefined
 }
 
@@ -263,7 +263,7 @@ const quoteLines = (text: string): string =>
 const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
   paragraph: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children ? `${text}\n\n${children}` : text
+    return children !== '' ? `${text}\n\n${children}` : text
   },
 
   heading_1: (block) => `# ${richTextToMd(getBlockRichText(block))}`,
@@ -272,40 +272,40 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   bulleted_list_item: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children ? `- ${text}\n${indentLines({ text: children })}` : `- ${text}`
+    return children !== '' ? `- ${text}\n${indentLines({ text: children })}` : `- ${text}`
   },
 
   numbered_list_item: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children ? `1. ${text}\n${indentLines({ text: children })}` : `1. ${text}`
+    return children !== '' ? `1. ${text}\n${indentLines({ text: children })}` : `1. ${text}`
   },
 
   to_do: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
     const checkbox = isTodoChecked(block) === true ? '[x]' : '[ ]'
-    return children
+    return children !== ''
       ? `- ${checkbox} ${text}\n${indentLines({ text: children })}`
       : `- ${checkbox} ${text}`
   },
 
   toggle: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children
+    return children !== ''
       ? `<details>\n<summary>${text}</summary>\n\n${children}\n</details>`
       : `<details>\n<summary>${text}</summary>\n</details>`
   },
 
   quote: (block, children) => {
     const quotedText = quoteLines(richTextToMd(getBlockRichText(block)))
-    return children ? `${quotedText}\n${quoteLines(children)}` : quotedText
+    return children !== '' ? `${quotedText}\n${quoteLines(children)}` : quotedText
   },
 
   callout: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
     const icon = getCalloutIcon(block)
-    const prefix = icon ? `${icon} ` : ''
+    const prefix = icon !== undefined ? `${icon} ` : ''
     const quotedText = `> ${prefix}${text}`
-    return children ? `${quotedText}\n${quoteLines(children)}` : quotedText
+    return children !== '' ? `${quotedText}\n${quoteLines(children)}` : quotedText
   },
 
   code: (block) => {
@@ -318,55 +318,55 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   image: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     return `![${richTextToMd(getBlockCaption(block))}](${url})`
   },
 
   video: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption ? `[${caption}](${url})` : `[Video](${url})`
+    return caption !== '' ? `[${caption}](${url})` : `[Video](${url})`
   },
 
   audio: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption ? `[${caption}](${url})` : `[Audio](${url})`
+    return caption !== '' ? `[${caption}](${url})` : `[Audio](${url})`
   },
 
   file: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption ? `[${caption}](${url})` : `[File](${url})`
+    return caption !== '' ? `[${caption}](${url})` : `[File](${url})`
   },
 
   pdf: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption ? `[${caption}](${url})` : `[PDF](${url})`
+    return caption !== '' ? `[${caption}](${url})` : `[PDF](${url})`
   },
 
   bookmark: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption ? `[${caption}](${url})` : `[${url}](${url})`
+    return caption !== '' ? `[${caption}](${url})` : `[${url}](${url})`
   },
 
   embed: (block) => {
     const url = getBlockUrl(block)
-    if (!url) return ''
+    if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption ? `[${caption}](${url})` : `[Embed](${url})`
+    return caption !== '' ? `[${caption}](${url})` : `[Embed](${url})`
   },
 
   link_preview: (block) => {
     const url = getBlockUrl(block)
-    return url ? `[${url}](${url})` : ''
+    return url !== undefined ? `[${url}](${url})` : ''
   },
 
   equation: (block) => `$$\n${getEquationExpression(block)}\n$$`,
@@ -389,7 +389,7 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   template: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children ? `${text}\n\n${children}` : text
+    return children !== '' ? `${text}\n\n${children}` : text
   },
 
   link_to_page: (block) => {
@@ -435,7 +435,7 @@ const nodeToMarkdown = (opts: {
 
     // Get the transformer for this block type
     const transformer = transformers[node.block.type] ?? DEFAULT_TRANSFORMERS[node.block.type]
-    if (!transformer) {
+    if (transformer === undefined) {
       return childrenMd
     }
 
@@ -562,7 +562,7 @@ export const pageToMarkdown = Effect.fn('NotionMarkdown.pageToMarkdown')(functio
   })
 
   // Convert to markdown
-  return yield* treeToMarkdown(transformers ? { tree, transformers } : { tree })
+  return yield* treeToMarkdown(transformers !== undefined ? { tree, transformers } : { tree })
 })
 
 // -----------------------------------------------------------------------------

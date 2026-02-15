@@ -47,7 +47,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
   const problems = analyzeProblems({ members, lockStaleness })
-  const hasNesting = members.some((m) => m.nestedMembers && m.nestedMembers.length > 0)
+  const hasNesting = members.some((m) => m.nestedMembers !== undefined && m.nestedMembers !== undefined.length > 0)
   const hasNestedMegarepos = members.some((m) => m.isMegarepo)
 
   return (
@@ -64,7 +64,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
       <WarningsSection problems={problems} />
 
       {/* Members */}
-      {hasNesting ? (
+      {hasNesting === true ? (
         // Tree mode (when --all is used and there are nested members)
         <>
           {members.map((member, i) => {
@@ -75,11 +75,11 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
             return (
               <React.Fragment key={member.name}>
                 <MemberLine member={member} isCurrent={isCurrent} />
-                {member.isMegarepo && member.nestedMembers && member.nestedMembers.length > 0 && (
+                {member.isMegarepo !== undefined && member.nestedMembers !== undefined && member.nestedMembers.length > 0 && (
                   <MembersTree
                     members={member.nestedMembers}
                     prefix=""
-                    currentPath={isOnCurrentPath ? currentMemberPath.slice(1) : undefined}
+                    currentPath={isOnCurrentPath === true ? currentMemberPath.slice(1) : undefined}
                   />
                 )}
                 {i < members.length - 1 && <Text> </Text>}
@@ -371,7 +371,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   <Text>{'      '}</Text>
                   <Text dim>git HEAD: </Text>
                   <Text color="yellow">
-                    {mismatch.isDetached ? `detached at ${mismatch.actualRef}` : mismatch.actualRef}
+                    {mismatch.isDetached !== undefined ? `detached at ${mismatch.actualRef}` : mismatch.actualRef}
                   </Text>
                 </Box>
                 <Box flexDirection="row">
@@ -654,7 +654,7 @@ const MemberSymbol = ({ member }: { member: MemberStatus }) => {
 
 /** Branch display with color coding */
 const BranchInfo = ({ member }: { member: MemberStatus }) => {
-  if (member.gitStatus?.branch && member.gitStatus?.shortRev) {
+  if (member.gitStatus?.branch !== undefined && member.gitStatus?.shortRev) {
     const branch = member.gitStatus.branch
     const rev = member.gitStatus.shortRev
     const branchColor: 'green' | 'blue' | 'magenta' =
@@ -693,14 +693,14 @@ const MemberLine = ({
   prefix?: string
 }) => {
   // Use 256-color dark gray (index 236) for current line highlight
-  const bgColor = isCurrent ? { ansi256: 236 } : undefined
+  const bgColor = isCurrent === true ? { ansi256: 236 } : undefined
 
   return (
     <Box flexDirection="row" backgroundColor={bgColor} extendBackground={isCurrent}>
       <Text>{prefix}</Text>
       <MemberSymbol member={member} />
       <Text> </Text>
-      {isCurrent ? (
+      {isCurrent === true ? (
         <Text bold color="cyan">
           {member.name}
         </Text>
@@ -709,31 +709,31 @@ const MemberLine = ({
       )}
       <Text> </Text>
       <BranchInfo member={member} />
-      {member.gitStatus?.isDirty && (
+      {member.gitStatus?.isDirty !== undefined && (
         <>
           <Text> </Text>
           <Text color="yellow">{symbols.dirty}</Text>
         </>
       )}
-      {member.gitStatus?.hasUnpushed && (
+      {member.gitStatus?.hasUnpushed !== undefined && (
         <>
           <Text> </Text>
           <Text color="red">{symbols.ahead}</Text>
         </>
       )}
-      {member.lockInfo?.pinned && (
+      {member.lockInfo?.pinned !== undefined && (
         <>
           <Text> </Text>
           <Text color="yellow">pinned</Text>
         </>
       )}
-      {member.commitDrift && (
+      {member.commitDrift !== undefined && (
         <>
           <Text> </Text>
           <Text dim>({member.commitDrift.localCommit.slice(0, 7)} → lock)</Text>
         </>
       )}
-      {member.isMegarepo && (
+      {member.isMegarepo !== undefined && (
         <>
           <Text> </Text>
           <Text color="cyan">[megarepo]</Text>
@@ -758,18 +758,18 @@ const MembersTree = ({
     <>
       {members.map((member, i) => {
         const isLast = i === members.length - 1
-        const branchChar = isLast ? tree.last : tree.middle
+        const branchChar = isLast === true ? tree.last : tree.middle
         const isOnCurrentPath = currentPath !== undefined && currentPath[0] === member.name
         const isCurrent = isOnCurrentPath && currentPath.length === 1
 
         return (
           <React.Fragment key={member.name}>
             <MemberLine member={member} isCurrent={isCurrent} prefix={`${prefix}${branchChar}`} />
-            {member.isMegarepo && member.nestedMembers && member.nestedMembers.length > 0 && (
+            {member.isMegarepo !== undefined && member.nestedMembers !== undefined && member.nestedMembers.length > 0 && (
               <MembersTree
                 members={member.nestedMembers}
-                prefix={prefix + (isLast ? tree.empty : tree.vertical)}
-                currentPath={isOnCurrentPath ? currentPath.slice(1) : undefined}
+                prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
+                currentPath={isOnCurrentPath === true ? currentPath.slice(1) : undefined}
               />
             )}
           </React.Fragment>

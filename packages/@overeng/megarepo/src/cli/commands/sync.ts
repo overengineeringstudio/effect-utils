@@ -136,7 +136,7 @@ export const syncMegarepo = <R = never>({
     const configContent = yield* fs.readFileString(configPath)
     const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
 
-    if (!dryRun) {
+    if (dryRun === false) {
       const membersRoot = getMembersRoot(megarepoRoot)
       yield* fs.makeDirectory(membersRoot, { recursive: true })
     }
@@ -287,7 +287,7 @@ export const syncMegarepo = <R = never>({
 
         if (linkTarget !== null) {
           // This is a symlink - it's an orphan, remove it
-          if (!dryRun) {
+          if (dryRun === false) {
             yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
           }
           removedResults.push({
@@ -317,7 +317,7 @@ export const syncMegarepo = <R = never>({
           const hasNestedConfig = yield* fs
             .exists(nestedConfigPath)
             .pipe(Effect.catchAll(() => Effect.succeed(false)))
-          return hasNestedConfig ? result.name : null
+          return hasNestedConfig === true ? result.name : null
         }),
       ),
       { concurrency: 'unbounded' },
@@ -343,8 +343,8 @@ export const syncMegarepo = <R = never>({
       // Update lock entries from results
       for (const result of results) {
         // Only process results that have commit and ref info
-        const commit = 'commit' in result ? result.commit : undefined
-        const ref = 'ref' in result ? result.ref : undefined
+        const commit = 'commit' in result === true ? result.commit : undefined
+        const ref = 'ref' in result === true ? result.ref : undefined
         if (commit === undefined || ref === undefined) continue
 
         const sourceString = config.members[result.name]
@@ -403,7 +403,7 @@ export const syncMegarepo = <R = never>({
     }
 
     // Always regenerate the local Nix workspace after syncing members.
-    if (!dryRun) {
+    if (dryRun === false) {
       const outermostRootOpt = yield* findMegarepoRoot(megarepoRoot)
       const outermostRoot = Option.getOrElse(outermostRootOpt, () => megarepoRoot)
       yield* generateAll({

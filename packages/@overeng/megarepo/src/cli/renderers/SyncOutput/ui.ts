@@ -157,7 +157,7 @@ export const startSyncUI = (options: {
           force: force || undefined,
           verbose: verbose || undefined,
           skippedMembers:
-            skippedMembers && skippedMembers.length > 0 ? [...skippedMembers] : undefined,
+            skippedMembers !== undefined && skippedMembers.length > 0 ? [...skippedMembers] : undefined,
         },
         members: [...memberNames],
         activeMember: null,

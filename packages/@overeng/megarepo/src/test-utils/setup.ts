@@ -78,7 +78,7 @@ export const addCommit = ({
   filename?: string
 }) =>
   Effect.gen(function* () {
-    if (filename) {
+    if (filename !== undefined) {
       yield* runGitCommand(repoPath, 'add', filename)
     } else {
       yield* runGitCommand(repoPath, 'add', '-A')
@@ -137,7 +137,7 @@ export const createRepo = ({
     yield* initGitRepo(repoPath)
 
     // Set remote if provided
-    if (fixture.remote) {
+    if (fixture.remote !== undefined) {
       yield* runGitCommand(repoPath, 'remote', 'add', 'origin', fixture.remote)
     }
 
@@ -154,7 +154,7 @@ export const createRepo = ({
     yield* addCommit({ repoPath, message: 'Initial commit' })
 
     // Add dirty changes if requested
-    if (fixture.dirty) {
+    if (fixture.dirty === true) {
       yield* fs.writeFileString(
         EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeFile('dirty.txt')),
         'uncommitted changes\n',
@@ -205,7 +205,7 @@ export const createWorkspace = (fixture?: WorkspaceFixture) =>
 
     // Create repos and symlinks
     const repoPaths: Record<string, AbsoluteDirPath> = {}
-    if (fixture?.repos) {
+    if (fixture?.repos !== undefined) {
       // Create a store directory for repos
       const storePath = EffectPath.ops.join(
         tmpDir,
@@ -301,7 +301,7 @@ export const normalizeOutput = ({
   normalized = normalized.replace(/\b[a-f0-9]{7,8}\b/g, '<SHORT_HASH>')
 
   // Replace workspace name if provided
-  if (workspaceName) {
+  if (workspaceName !== undefined) {
     normalized = normalized.replace(new RegExp(workspaceName, 'g'), '<WORKSPACE>')
   }
 

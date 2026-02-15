@@ -46,12 +46,12 @@ export const PinWithRef: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },
@@ -65,12 +65,12 @@ export const PinCurrentCommit: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },
@@ -84,12 +84,12 @@ export const Unpin: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },
@@ -103,12 +103,12 @@ export const AlreadyPinned: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },
@@ -122,12 +122,12 @@ export const AlreadyUnpinned: Story = {
       <TuiStoryPreview
         View={PinView}
         app={PinApp}
-        initialState={args.interactive ? { _tag: 'Idle' } : finalState}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(finalState) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
       />
     )
   },

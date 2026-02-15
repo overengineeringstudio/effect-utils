@@ -181,7 +181,7 @@ export interface ParsedLockedInput {
 export const parseLockedInput = (
   locked: Record<string, unknown> | undefined,
 ): ParsedLockedInput | undefined => {
-  if (!locked) return undefined
+  if (locked === undefined) return undefined
 
   const type = locked['type']
   if (typeof type !== 'string') return undefined
@@ -228,9 +228,9 @@ export const updateLockedInputRev = ({
     if (key === 'rev') {
       result['rev'] = newRev
     } else if (key === 'narHash') {
-      if (metadata) result['narHash'] = metadata.narHash
+      if (metadata !== undefined) result['narHash'] = metadata.narHash
     } else if (key === 'lastModified') {
-      if (metadata) result['lastModified'] = metadata.lastModified
+      if (metadata !== undefined) result['lastModified'] = metadata.lastModified
     } else {
       result[key] = locked[key]
     }
@@ -238,7 +238,7 @@ export const updateLockedInputRev = ({
 
   // Ensure required fields are present
   if (!('rev' in result)) result['rev'] = newRev
-  if (metadata) {
+  if (metadata !== undefined) {
     if (!('narHash' in result)) result['narHash'] = metadata.narHash
     if (!('lastModified' in result)) result['lastModified'] = metadata.lastModified
   }

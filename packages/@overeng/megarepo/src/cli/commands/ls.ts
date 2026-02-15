@@ -53,7 +53,7 @@ const scanMembersRecursive = ({
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
     )
     const configExists = yield* fs.exists(configPath)
-    if (!configExists) {
+    if (configExists === false) {
       return []
     }
 

@@ -739,7 +739,7 @@ describe('--all nested error reporting', () => {
         expect(out.syncErrors).toHaveLength(1)
         const firstError = out.syncErrors[0]
         expect(firstError).toBeDefined()
-        if (firstError) {
+        if (firstError !== undefined) {
           expect(firstError.megarepoRoot).toBe(childNestedRoot)
           expect(firstError.memberName).toBe('bad')
         }

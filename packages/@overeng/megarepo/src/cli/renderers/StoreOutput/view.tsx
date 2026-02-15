@@ -603,7 +603,7 @@ const StoreGcResultRow = ({ result, dryRun }: { result: StoreGcResult; dryRun: b
   return (
     <Box flexDirection="row">
       {getSymbol()}
-      {isDim ? (
+      {isDim === true ? (
         <Text dim>
           {' '}
           {result.repo}refs/{result.ref}{' '}
@@ -640,7 +640,7 @@ const StoreGcSummary = ({
       key: 'removed',
       element: (
         <Text>
-          {removed} {dryRun ? 'would be removed' : 'removed'}
+          {removed} {dryRun === true ? 'would be removed' : 'removed'}
         </Text>
       ),
     })
@@ -700,12 +700,12 @@ const StoreAddView = ({
   path: string
   alreadyExists: boolean
 }) => {
-  const status = alreadyExists ? 'already in store' : 'added to store'
+  const status = alreadyExists === true ? 'already in store' : 'added to store'
 
   return (
     <Box flexDirection="column">
       <Box flexDirection="row">
-        {alreadyExists ? (
+        {alreadyExists === true ? (
           <Text dim>{SYMBOLS.check}</Text>
         ) : (
           <Text color="green">{SYMBOLS.check}</Text>

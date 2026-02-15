@@ -90,7 +90,7 @@ export class GitCommandError extends Error {
 const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
   Effect.gen(function* () {
     const cmd = Command.make('git', ...args).pipe(
-      cwd ? Command.workingDirectory(cwd) : (x) => x,
+      cwd !== undefined ? Command.workingDirectory(cwd) : (x) => x,
       Command.stderr('pipe'),
       Command.stdout('pipe'),
     )
@@ -137,7 +137,7 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
 export const clone = (args: { url: string; targetPath: string; bare?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['clone']
-    if (args.bare) {
+    if (args.bare === true) {
       cmdArgs.push('--bare')
     }
     cmdArgs.push(args.url, args.targetPath)
@@ -150,7 +150,7 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
 export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['fetch']
-    if (args.prune) {
+    if (args.prune === true) {
       cmdArgs.push('--prune')
     }
     cmdArgs.push(args.remote ?? 'origin')
@@ -226,7 +226,7 @@ export const createWorktree = (args: {
 }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
-    if (args.createBranch) {
+    if (args.createBranch === true) {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
     } else {
@@ -241,7 +241,7 @@ export const createWorktree = (args: {
 export const removeWorktree = (args: { repoPath: string; worktreePath: string; force?: boolean }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'remove']
-    if (args.force) {
+    if (args.force === true) {
       cmdArgs.push('--force')
     }
     cmdArgs.push(args.worktreePath)
@@ -272,7 +272,7 @@ export const listWorktrees = (repoPath: string) =>
       } else if (line.startsWith('branch ') === true) {
         current.branch = line.slice(7).replace('refs/heads/', '')
       } else if (line === '') {
-        if (current.path && current.head) {
+        if (current.path !== undefined && current.head !== undefined) {
           worktrees.push({
             path: current.path,
             head: current.head,
@@ -284,7 +284,7 @@ export const listWorktrees = (repoPath: string) =>
     }
 
     // Flush remaining entry if output doesn't end with blank line
-    if (current.path && current.head) {
+    if (current.path !== undefined && current.head !== undefined) {
       worktrees.push({
         path: current.path,
         head: current.head,
@@ -351,7 +351,7 @@ export const getDefaultBranch = (args: { url: string } | { repoPath: string; rem
 
     // Parse output: "ref: refs/heads/main\tHEAD"
     const match = output.match(/ref: refs\/heads\/([^\t\n]+)/)
-    if (match?.[1]) {
+    if (match?.[1] !== undefined) {
       return Option.some(match[1])
     }
     return Option.none()
@@ -640,7 +640,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
     )
 
-    if (tagExists.exists) {
+    if (tagExists.exists === true) {
       return { type: 'tag' as const, commit: tagExists.commit }
     }
 
@@ -653,7 +653,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
     )
 
-    if (branchExists.exists) {
+    if (branchExists.exists === true) {
       return { type: 'branch' as const, commit: branchExists.commit }
     }
 
@@ -666,7 +666,7 @@ export const queryLocalRefType = (args: { repoPath: string; ref: string }) =>
       Effect.catchAll(() => Effect.succeed({ exists: false, commit: '' })),
     )
 
-    if (localBranchExists.exists) {
+    if (localBranchExists.exists === true) {
       return { type: 'branch' as const, commit: localBranchExists.commit }
     }
 
@@ -695,7 +695,7 @@ export const validateRefExists = (args: {
       return { exists: true, type: 'commit' as const }
     }
 
-    if (bareExists && bareRepoPath !== undefined) {
+    if (bareExists === true && bareRepoPath !== undefined) {
       // Check locally (fast path)
       const localResult = yield* queryLocalRefType({ repoPath: bareRepoPath, ref })
       if (localResult.type !== 'unknown') {

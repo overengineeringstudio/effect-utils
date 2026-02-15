@@ -57,7 +57,7 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
 
         // Validate the path exists
         const exists = yield* fs.exists(resolvedDir)
-        if (!exists) {
+        if (exists === false) {
           return yield* new InvalidCwdError({
             path: resolvedDir,
             message: `--cwd directory does not exist: ${resolvedDir}`,

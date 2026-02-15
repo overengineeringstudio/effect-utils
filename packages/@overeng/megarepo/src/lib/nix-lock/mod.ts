@@ -203,7 +203,7 @@ const getFlakeRefFromLocked = (
     const url = locked['url']
     if (typeof url === 'string' && url.includes('github.com') === true) {
       const match = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/)
-      if (match?.[1] && match[2]) {
+      if (match?.[1] !== undefined && match[2] !== undefined) {
         return { owner: match[1], repo: match[2] }
       }
     }
@@ -287,14 +287,14 @@ const syncSingleLockFile = ({
       const locked = node['locked'] as Record<string, unknown> | undefined
 
       // Skip nodes without locked data (e.g., root node)
-      if (!locked) {
+      if (locked === undefined) {
         continue
       }
 
       // Try to match this input to a megarepo member
       const match = matchLockedInputToMember({ locked, members: megarepoMembers })
 
-      if (match && needsRevUpdate({ locked, member: match.member })) {
+      if (match !== undefined && needsRevUpdate({ locked, member: match.member }) === true) {
         // Found a match and rev differs - collect for update
         const oldRev = typeof locked['rev'] === 'string' ? locked['rev'] : 'unknown'
         const newRev = match.member.commit
@@ -316,7 +316,7 @@ const syncSingleLockFile = ({
     const metadataResults = yield* Effect.all(
       nodesToUpdate.map((info) =>
         Effect.gen(function* () {
-          if (info.flakeRef) {
+          if (info.flakeRef !== undefined) {
             const result = yield* fetchNixFlakeMetadata({
               owner: info.flakeRef.owner,
               repo: info.flakeRef.repo,
@@ -360,14 +360,14 @@ const syncSingleLockFile = ({
       const metadataResult = metadataMap.get(info.nodeName)
       let newLocked: Record<string, unknown>
 
-      if (metadataResult && metadataResult._tag === 'Some') {
+      if (metadataResult !== undefined && metadataResult._tag === 'Some') {
         // Use the fetched metadata
         newLocked = updateLockedInputRev({
           locked: info.locked,
           newRev: info.newRev,
           metadata: metadataResult.value,
         })
-      } else if (info.flakeRef) {
+      } else if (info.flakeRef !== undefined) {
         // Fallback: update rev without metadata (will be incomplete)
         yield* Effect.logWarning(
           `Using incomplete lock entry for ${info.nodeName} (missing narHash/lastModified)`,
@@ -436,7 +436,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
 
       // Check if member directory exists
       const memberExists = yield* fs.exists(memberPath)
-      if (!memberExists) {
+      if (memberExists === false) {
         continue
       }
 
@@ -448,7 +448,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
         EffectPath.unsafe.relativeFile(FLAKE_LOCK),
       )
       const hasFlakeLock = yield* fs.exists(flakeLockPath)
-      if (hasFlakeLock) {
+      if (hasFlakeLock === true) {
         const result = yield* syncSingleLockFile({
           lockPath: flakeLockPath,
           lockType: 'flake.lock',
@@ -477,7 +477,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
         EffectPath.unsafe.relativeFile(DEVENV_LOCK),
       )
       const hasDevenvLock = yield* fs.exists(devenvLockPath)
-      if (hasDevenvLock) {
+      if (hasDevenvLock === true) {
         const result = yield* syncSingleLockFile({
           lockPath: devenvLockPath,
           lockType: 'devenv.lock',

@@ -46,7 +46,7 @@ export type StatusIconProps =
  * ```
  */
 export const StatusIcon = (props: StatusIconProps) => {
-  const variant = 'variant' in props ? props.variant : 'task'
+  const variant = 'variant' in props === true ? props.variant : 'task'
   const config =
     variant === 'sync'
       ? syncStatusConfig[props.status as SyncResultStatus]

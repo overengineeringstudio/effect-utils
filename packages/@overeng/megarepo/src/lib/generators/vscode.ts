@@ -233,7 +233,7 @@ export const generateVscodeContent = (options: VscodeGeneratorOptions): string =
   }
 
   // Apply user settings passthrough (overrides everything)
-  if (vscodeConfig?.settings) {
+  if (vscodeConfig?.settings !== undefined) {
     settings = deepMerge({
       target: settings,
       source: vscodeConfig.settings as Record<string, unknown>,

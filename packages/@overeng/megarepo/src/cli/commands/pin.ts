@@ -187,7 +187,7 @@ export const pinCommand = Cli.Command.make(
 
             // For dry-run, show what would happen
             if (dryRun) {
-              const shortCurrentLink = currentLink ? shortenPath(currentLink) : '(none)'
+              const shortCurrentLink = currentLink === true ? shortenPath(currentLink) : '(none)'
               const shortNewLink = shortenPath(worktreePath.replace(/\/$/, ''))
               const lockChanges: string[] = []
               if (currentLockRef !== newRef) lockChanges.push(`ref: ${currentLockRef} → ${newRef}`)
@@ -228,7 +228,7 @@ export const pinCommand = Cli.Command.make(
             sourceString = newSourceString
             source = parseSourceString(newSourceString)!
 
-            if (!bareExists) {
+            if (bareExists === false) {
               // Clone the bare repo
               const cloneUrl = getCloneUrl(source)
               if (cloneUrl === undefined) {
@@ -264,7 +264,7 @@ export const pinCommand = Cli.Command.make(
               )
             }
 
-            if (!worktreeExists) {
+            if (worktreeExists === false) {
               // Ensure parent directory exists
               const worktreeParent = EffectPath.ops.parent(worktreePath)
               if (worktreeParent !== undefined) {
@@ -392,7 +392,7 @@ export const pinCommand = Cli.Command.make(
               member,
               action: 'pin',
               commit: lockedMember.commit,
-              currentSymlink: wouldChangeSymlink ? shortenPath(currentLink) : undefined,
+              currentSymlink: wouldChangeSymlink === true ? shortenPath(currentLink) : undefined,
               newSymlink: wouldChangeSymlink
                 ? shortenPath(commitWorktreePath.replace(/\/$/, ''))
                 : undefined,
@@ -409,7 +409,7 @@ export const pinCommand = Cli.Command.make(
 
           // If the commit worktree doesn't exist, create it
           if (!commitWorktreeExists) {
-            if (!bareExists) {
+            if (bareExists === false) {
               // Bare repo doesn't exist, can't create worktree - warn user
               tui.dispatch({
                 _tag: 'SetWarning',

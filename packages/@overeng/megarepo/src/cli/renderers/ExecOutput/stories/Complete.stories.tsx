@@ -174,7 +174,7 @@ export const CompleteSuccess: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -210,7 +210,7 @@ export const CompleteMixed: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -246,7 +246,7 @@ export const CompleteWithSkipped: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -282,7 +282,7 @@ export const CompleteAllErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -321,7 +321,7 @@ export const CompleteVerbose: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
     )
   },

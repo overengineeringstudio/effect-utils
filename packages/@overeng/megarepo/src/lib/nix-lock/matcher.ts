@@ -25,13 +25,13 @@ import { type ParsedLockedInput, parseLockedInput } from './schema.ts'
 export const normalizeGitHubUrl = (url: string): string | undefined => {
   // HTTPS format
   const httpsMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/.]+?)(?:\.git)?(?:\/)?$/)
-  if (httpsMatch?.[1] && httpsMatch[2]) {
+  if (httpsMatch?.[1] !== undefined && httpsMatch[2] !== undefined) {
     return `https://github.com/${httpsMatch[1]}/${httpsMatch[2]}`
   }
 
   // SSH format
   const sshMatch = url.match(/^git@github\.com:([^/]+)\/([^/.]+?)(?:\.git)?$/)
-  if (sshMatch?.[1] && sshMatch[2]) {
+  if (sshMatch?.[1] !== undefined && sshMatch[2] !== undefined) {
     return `https://github.com/${sshMatch[1]}/${sshMatch[2]}`
   }
 
@@ -54,7 +54,7 @@ export const urlsMatch = ({ url1, url2 }: { url1: string; url2: string }): boole
   const github1 = normalizeGitHubUrl(url1)
   const github2 = normalizeGitHubUrl(url2)
 
-  if (github1 && github2) {
+  if (github1 !== undefined && github2 !== undefined) {
     return github1.toLowerCase() === github2.toLowerCase()
   }
 
@@ -80,7 +80,7 @@ export interface MatchResult {
  * Extract GitHub URL from a flake lock input
  */
 const getGitHubUrlFromInput = (input: ParsedLockedInput): string | undefined => {
-  if (input.type === 'github' && input.owner && input.repo) {
+  if (input.type === 'github' && input.owner !== undefined && input.repo !== undefined) {
     return `https://github.com/${input.owner}/${input.repo}`
   }
   return undefined
@@ -105,24 +105,24 @@ export const matchLockedInputToMember = ({
   members: Record<string, LockedMember>
 }): MatchResult | undefined => {
   const parsed = parseLockedInput(locked)
-  if (!parsed) return undefined
+  if (parsed === undefined) return undefined
 
   // GitHub type: match by owner/repo
   if (parsed.type === 'github') {
     const inputUrl = getGitHubUrlFromInput(parsed)
-    if (!inputUrl) return undefined
+    if (inputUrl === undefined) return undefined
 
     for (const [memberName, member] of Object.entries(members)) {
-      if (urlsMatch({ url1: member.url, url2: inputUrl })) {
+      if (urlsMatch({ url1: member.url, url2: inputUrl }) === true) {
         return { memberName, member }
       }
     }
   }
 
   // Git type: match by URL
-  if (parsed.type === 'git' && parsed.url) {
+  if (parsed.type === 'git' && parsed.url !== undefined) {
     for (const [memberName, member] of Object.entries(members)) {
-      if (urlsMatch({ url1: member.url, url2: parsed.url })) {
+      if (urlsMatch({ url1: member.url, url2: parsed.url }) === true) {
         return { memberName, member }
       }
     }
@@ -146,7 +146,7 @@ export const needsRevUpdate = ({
   member: LockedMember
 }): boolean => {
   const parsed = parseLockedInput(locked)
-  if (!parsed?.rev) return false
+  if (parsed?.rev === undefined) return false
 
   return parsed.rev !== member.commit
 }

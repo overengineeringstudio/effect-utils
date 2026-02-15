@@ -71,11 +71,11 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
   // Build mode indicators
   const modes: string[] = []
-  if (options.dryRun) modes.push('dry run')
-  if (options.frozen) modes.push('frozen')
-  if (options.pull) modes.push('pull')
-  if (options.force) modes.push('force')
-  if (options.all) modes.push('all')
+  if (options.dryRun === true) modes.push('dry run')
+  if (options.frozen === true) modes.push('frozen')
+  if (options.pull === true) modes.push('pull')
+  if (options.force === true) modes.push('force')
+  if (options.all === true) modes.push('all')
 
   // Create a map of results by name for quick lookup
   const resultsByName = useMemo(() => {
@@ -203,7 +203,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       <Header name={workspace.name} root={workspace.root} modes={modes} />
 
       {/* Skipped members info */}
-      {options.skippedMembers && options.skippedMembers.length > 0 && (
+      {options.skippedMembers !== undefined && options.skippedMembers.length > 0 && (
         <Text dim>
           {'  '}skipping {options.skippedMembers.length} member
           {options.skippedMembers.length > 1 ? 's' : ''}: {options.skippedMembers.join(', ')}
@@ -318,7 +318,7 @@ const NestedErrorLine = ({ error }: { error: SyncErrorItem }) => {
         <Text> </Text>
         <Text dim>({error.megarepoRoot})</Text>
       </Box>
-      {error.message && (
+      {error.message !== undefined && (
         <Box paddingLeft={4}>
           <Text dim>{error.message}</Text>
         </Box>
@@ -333,7 +333,7 @@ const NestedErrorLine = ({ error }: { error: SyncErrorItem }) => {
 
 /** Count total lock input updates for a member */
 const countLockInputUpdates = (lockSync: MemberLockSyncResult | undefined): number => {
-  if (!lockSync) return 0
+  if (lockSync === undefined) return 0
   let count = 0
   for (const f of lockSync.files) {
     count += f.updatedInputs.length
@@ -359,7 +359,7 @@ const LockSyncBadge = ({ lockSync }: { lockSync: MemberLockSyncResult | undefine
 
 /** Format commit transition (e.g., "abc1234 → def5678") */
 const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
-  if (result.previousCommit && result.commit) {
+  if (result.previousCommit !== undefined && result.commit !== undefined) {
     const prev = result.previousCommit.slice(0, 7)
     const curr = result.commit.slice(0, 7)
     return (
@@ -368,7 +368,7 @@ const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
       </Text>
     )
   }
-  if (result.commit) {
+  if (result.commit !== undefined) {
     return <Text dim>{result.commit.slice(0, 7)}</Text>
   }
   return null
@@ -469,7 +469,7 @@ const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boo
       <Text bold>{result.name}</Text>
       <Text> </Text>
       <Text color="red">{dryRun ? 'would remove' : 'removed'}</Text>
-      {result.message && (
+      {result.message !== undefined && (
         <Text dim>
           {' '}
           ({symbols.arrow} {result.message})
@@ -482,7 +482,7 @@ const RemovedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boo
 /** Result line for error - uses multi-line format to show full error message */
 const ErrorLine = ({ result }: { result: MemberSyncResult }) => {
   // Multi-line format for errors with messages (similar to SkippedLine with refMismatch)
-  if (result.message) {
+  if (result.message !== undefined) {
     return (
       <Box flexDirection="column">
         <Box flexDirection="row">
@@ -514,7 +514,7 @@ const ErrorLine = ({ result }: { result: MemberSyncResult }) => {
 /** Result line for skipped member */
 const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   // Handle ref mismatch with structured display (multiline hints)
-  if (result.refMismatch) {
+  if (result.refMismatch !== undefined) {
     const { expectedRef, actualRef, isDetached } = result.refMismatch
     const mismatchDesc = isDetached
       ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
@@ -535,7 +535,7 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
         <Box paddingLeft={4}>
           <Text dim>
             hint: use 'mr pin {result.name} -c {actualRef}' to{' '}
-            {isDetached ? 'pin this commit' : 'create proper worktree'},
+            {isDetached === true ? 'pin this commit' : 'create proper worktree'},
           </Text>
         </Box>
         <Box paddingLeft={4}>
@@ -548,7 +548,7 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   }
 
   // Standard skipped line (non-ref-mismatch) - multi-line format for long messages
-  if (result.message) {
+  if (result.message !== undefined) {
     return (
       <Box flexDirection="column">
         <Box flexDirection="row">
@@ -642,7 +642,7 @@ const LockSyncSection = ({
         <Text color="cyan">{symbols.check}</Text>
         <Text> </Text>
         <Text>
-          {dryRun ? 'Would update' : 'Updated'} {totalUpdates} lock input
+          {dryRun === true ? 'Would update' : 'Updated'} {totalUpdates} lock input
           {totalUpdates > 1 ? 's' : ''} across {memberCount} member{memberCount > 1 ? 's' : ''}
         </Text>
       </Box>
@@ -707,7 +707,7 @@ const ProgressItem = ({
   isActive: boolean
   result: MemberSyncResult | undefined
 }) => {
-  if (result) {
+  if (result !== undefined) {
     // Show completed result using TaskItem with mapped status
     const message = getResultMessage(result)
     return (
@@ -720,7 +720,7 @@ const ProgressItem = ({
     )
   }
 
-  if (isActive) {
+  if (isActive === true) {
     // Show active with spinner
     return <TaskItem id={name} label={name} status="active" message="syncing..." />
   }
@@ -731,12 +731,12 @@ const ProgressItem = ({
 
 /** Format commit transition string (e.g., "abc1234 → def5678") */
 const formatCommitTransition = (result: MemberSyncResult): string | undefined => {
-  if (result.previousCommit && result.commit) {
+  if (result.previousCommit !== undefined && result.commit !== undefined) {
     const prev = result.previousCommit.slice(0, 7)
     const curr = result.commit.slice(0, 7)
     return `${prev} ${symbols.arrow} ${curr}`
   }
-  if (result.commit) {
+  if (result.commit !== undefined) {
     return result.commit.slice(0, 7)
   }
   return undefined
@@ -746,27 +746,27 @@ const formatCommitTransition = (result: MemberSyncResult): string | undefined =>
 const getResultMessage = (result: MemberSyncResult): string | undefined => {
   switch (result.status) {
     case 'cloned':
-      return result.ref ? `cloned (${result.ref})` : 'cloned'
+      return result.ref !== undefined ? `cloned (${result.ref})` : 'cloned'
     case 'synced':
-      return result.ref ? `synced (${result.ref})` : 'synced'
+      return result.ref !== undefined ? `synced (${result.ref})` : 'synced'
     case 'updated': {
       const transition = formatCommitTransition(result)
-      return transition ? `updated ${transition}` : 'updated'
+      return transition !== undefined ? `updated ${transition}` : 'updated'
     }
     case 'locked': {
       const transition = formatCommitTransition(result)
-      return transition ? `lock updated ${transition}` : 'lock updated'
+      return transition !== undefined ? `lock updated ${transition}` : 'lock updated'
     }
     case 'already_synced':
       return undefined // No message for already synced
     case 'skipped':
       // For ref mismatch, show a concise message (full details shown in final view)
-      if (result.refMismatch) {
+      if (result.refMismatch !== undefined) {
         return `ref mismatch (expected ${result.refMismatch.expectedRef})`
       }
-      return result.message ? `skipped: ${result.message}` : 'skipped'
+      return result.message !== undefined ? `skipped: ${result.message}` : 'skipped'
     case 'error':
-      return result.message ? `error: ${result.message}` : 'error'
+      return result.message !== undefined ? `error: ${result.message}` : 'error'
     case 'removed':
       return 'removed'
   }

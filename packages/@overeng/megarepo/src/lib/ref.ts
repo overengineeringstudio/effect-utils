@@ -163,7 +163,7 @@ export const classifyRef = (ref: string): RefType => {
   if (isCommitSha(ref) === true) {
     return 'commit'
   }
-  if (looksLikeTag(ref)) {
+  if (looksLikeTag(ref) === true) {
     return 'tag'
   }
   return 'branch'
@@ -245,14 +245,14 @@ export const extractRefFromSymlinkPath = (
   const tagsMatch = symlinkTarget.match(/\/refs\/tags\/([^/]+)(?:\/)?$/)
   const commitsMatch = symlinkTarget.match(/\/commits\/([a-f0-9]+)(?:\/)?$/)
 
-  if (refsMatch) {
+  if (refsMatch !== null) {
     // Decode URL-encoded branch names (e.g., refactor%2Fgenie-igor-ci -> refactor/genie-igor-ci)
     return { ref: decodeURIComponent(refsMatch[1]!), type: 'branch' }
   }
-  if (tagsMatch) {
+  if (tagsMatch !== null) {
     return { ref: tagsMatch[1]!, type: 'tag' }
   }
-  if (commitsMatch) {
+  if (commitsMatch !== null) {
     return { ref: commitsMatch[1]!, type: 'commit' }
   }
   return undefined

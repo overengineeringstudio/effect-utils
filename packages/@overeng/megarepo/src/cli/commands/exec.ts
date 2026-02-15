@@ -97,7 +97,7 @@ export const execCommand = Cli.Command.make(
                 const memberPath = getMemberPath({ megarepoRoot: root.value, name })
                 const exists = yield* fs.exists(memberPath)
 
-                if (!exists) {
+                if (exists === false) {
                   tui.dispatch({
                     _tag: 'UpdateMember',
                     name,

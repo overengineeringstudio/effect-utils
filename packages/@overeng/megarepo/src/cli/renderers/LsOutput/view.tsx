@@ -92,7 +92,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   }
 
   // Simple flat list for non-all mode
-  if (!all) {
+  if (all === false) {
     return (
       <Box flexDirection="column">
         {members.map((member, i) => {
@@ -102,7 +102,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
               <Text dim>{isLast ? tree.last : tree.middle}</Text>
               <Text bold>{member.name}</Text>
               <Text dim> ({member.source})</Text>
-              {member.isMegarepo && (
+              {member.isMegarepo !== undefined && (
                 <>
                   <Text> </Text>
                   <Text color="cyan">[megarepo]</Text>
@@ -145,7 +145,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
                   <Text dim>{isLast ? tree.last : tree.middle}</Text>
                   <Text bold>{member.name}</Text>
                   <Text dim> ({member.source})</Text>
-                  {member.isMegarepo && (
+                  {member.isMegarepo !== undefined && (
                     <>
                       <Text> </Text>
                       <Text color="cyan">[megarepo]</Text>
