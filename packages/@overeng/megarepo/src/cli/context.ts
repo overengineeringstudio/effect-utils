@@ -38,7 +38,7 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
       // to support running commands from inside symlinked members
       const pwd = process.env.PWD
       const cwd = pwd !== undefined && pwd.length > 0 ? pwd : process.cwd()
-      return EffectPath.unsafe.absoluteDir(cwd.endsWith('/') ? cwd : `${cwd}/`)
+      return EffectPath.unsafe.absoluteDir(cwd.endsWith('/') === true ? cwd : `${cwd}/`)
     }),
   )
 
@@ -53,7 +53,7 @@ export class Cwd extends Context.Tag('megarepo/Cwd')<Cwd, AbsoluteDirPath>() {
         // consistent with Cwd.live's symlink-aware behavior
         const base = process.env.PWD?.length ? process.env.PWD : process.cwd()
         const resolved = resolve(base, path)
-        const resolvedDir = resolved.endsWith('/') ? resolved : `${resolved}/`
+        const resolvedDir = resolved.endsWith('/') === true ? resolved : `${resolved}/`
 
         // Validate the path exists
         const exists = yield* fs.exists(resolvedDir)

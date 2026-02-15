@@ -32,7 +32,7 @@ export const Inspector: FC<TableInspectorProps | ObjectInspectorProps> = ({
     return <TableInspector data={data} {...rest} />
   }
 
-  if (isDOM(data)) return <DOMInspector data={data} {...rest} />
+  if (isDOM(data) === true) return <DOMInspector data={data} {...rest} />
 
   return <ObjectInspector data={data} {...rest} />
 }

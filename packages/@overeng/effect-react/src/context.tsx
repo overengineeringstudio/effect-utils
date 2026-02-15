@@ -96,7 +96,7 @@ export const EffectProvider = <TEnv, TErr>({
     const fiber = Effect.runFork(init)
 
     fiber.addObserver((exit) => {
-      if (Exit.isSuccess(exit)) {
+      if (Exit.isSuccess(exit) === true) {
         setState({ _tag: 'ready', runtime: exit.value })
       } else {
         setState({ _tag: 'error', cause: exit.cause })

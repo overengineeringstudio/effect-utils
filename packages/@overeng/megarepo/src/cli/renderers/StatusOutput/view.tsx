@@ -807,7 +807,7 @@ const StatusSummary = ({
 
   if (lastSyncTime) {
     const date = new Date(lastSyncTime)
-    if (!Number.isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime()) === false) {
       parts.push(`synced ${formatRelativeTime(date)}`)
     }
   }

@@ -34,7 +34,7 @@ const hasTag = (u: unknown): u is { readonly _tag: string } =>
 
 cli(process.argv).pipe(
   Effect.tapErrorCause((cause) => {
-    if (Cause.isInterruptedOnly(cause)) {
+    if (Cause.isInterruptedOnly(cause) === true) {
       return Effect.void
     }
 
@@ -42,7 +42,7 @@ cli(process.argv).pipe(
       onNone: () => Effect.logError(cause),
       onSome: (error) => {
         const unknownError: unknown = error
-        return hasTag(unknownError) && unknownError._tag === 'SchemaDriftDetectedError'
+        return hasTag(unknownError) === true && unknownError._tag === 'SchemaDriftDetectedError'
           ? Effect.void
           : Effect.logError(cause)
       },

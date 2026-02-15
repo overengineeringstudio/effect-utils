@@ -135,7 +135,7 @@ export const useEffectButton = <TEnv, TA, TE>({
         const exit = yield* Effect.exit(effect)
 
         const durationMs = Date.now() - startedAt
-        if (Exit.isSuccess(exit)) {
+        if (Exit.isSuccess(exit) === true) {
           const result = exit.value
           setState((prev) => ({
             _tag: 'completed',
@@ -146,7 +146,7 @@ export const useEffectButton = <TEnv, TA, TE>({
           onSuccess?.(result)
           return
         }
-        if (Exit.isInterrupted(exit)) {
+        if (Exit.isInterrupted(exit) === true) {
           return
         }
 

@@ -33,7 +33,7 @@ export const SchemaAwareObjectValue: FC<SchemaAwareObjectValueProps> = ({
     object !== null &&
     !(object instanceof Date) &&
     !(object instanceof RegExp) &&
-    !Array.isArray(object)
+    Array.isArray(object) === false
   ) {
     const schemaDisplayName = schemaCtx.getDisplayName()
     if (schemaDisplayName && object.constructor?.name === 'Object') {

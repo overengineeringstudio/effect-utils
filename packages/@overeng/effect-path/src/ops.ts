@@ -106,7 +106,7 @@ export function join(
 
   // Preserve trailing slash from last segment
   const lastSegment = segments.at(-1)!
-  if (hasTrailingSlash(lastSegment)) {
+  if (hasTrailingSlash(lastSegment) === true) {
     return ensureTrailingSlash(current) as Path
   }
 
@@ -132,7 +132,7 @@ export const joinPlatform = Effect.fnUntraced(function* (
 
   // Preserve trailing slash from last segment
   const lastSegment = segments.at(-1)!
-  if (hasTrailingSlash(lastSegment)) {
+  if (hasTrailingSlash(lastSegment) === true) {
     return ensureTrailingSlash(joined) as Path
   }
 
@@ -368,7 +368,7 @@ export const stripPrefix = (args: {
 
   const relative = normalizedPath.slice(normalizedPrefix.length)
   // Remove leading slash if present
-  const result = relative.startsWith('/') ? relative.slice(1) : relative
+  const result = relative.startsWith('/') === true ? relative.slice(1) : relative
 
   return (result || './') as RelativePath
 }

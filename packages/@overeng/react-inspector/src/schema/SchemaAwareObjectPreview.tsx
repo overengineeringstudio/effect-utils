@@ -63,7 +63,7 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     return <ObjectValue object={object} />
   }
 
-  if (Array.isArray(object)) {
+  if (Array.isArray(object) === true) {
     const maxProperties = (styles.arrayMaxProperties as number) || 10
     const elementCtx = schemaCtx.getElementContext()
 
@@ -90,7 +90,7 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     const maxProperties = (styles.objectMaxProperties as number) || 5
     const propertyNodes: ReactNode[] = []
     for (const propertyName in object) {
-      if (hasOwnProperty(object, propertyName)) {
+      if (hasOwnProperty(object, propertyName) === true) {
         let ellipsis
         if (
           propertyNodes.length === maxProperties - 1 &&

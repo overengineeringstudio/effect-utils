@@ -106,7 +106,7 @@ export const createPlaywrightConfig = async (
 
   const defaultIgnore = ['**/dist/**', '**/node_modules/**']
   const testIgnore = extraIgnore
-    ? [...defaultIgnore, ...(Array.isArray(extraIgnore) ? extraIgnore : [extraIgnore])]
+    ? [...defaultIgnore, ...(Array.isArray(extraIgnore) === true ? extraIgnore : [extraIgnore])]
     : defaultIgnore
 
   const {
@@ -120,7 +120,7 @@ export const createPlaywrightConfig = async (
   const envPort = process.env[portEnvVar]
   const port = envPort ? Number.parseInt(envPort, 10) : await findAvailablePort()
 
-  if (!Number.isFinite(port)) {
+  if (Number.isFinite(port) === false) {
     return shouldNeverHappen(
       `Failed to resolve port for Playwright webServer (portEnvVar: ${portEnvVar})`,
     )

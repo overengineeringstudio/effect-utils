@@ -171,7 +171,7 @@ export const TuiStoryPreview = <S, A>({
   const currentState = registry.get(stateAtom)
 
   // Use final state for final modes, current state for live modes
-  const effectiveState = isFinalMode(activeTab) ? finalState : currentState
+  const effectiveState = isFinalMode(activeTab) === true ? finalState : currentState
 
   // Dispatch action and update state via atom
   const dispatch = useCallback(
@@ -487,7 +487,7 @@ const getActionDetails = (action: unknown): string | null => {
 
       // Add counts for arrays
       for (const [key, value] of Object.entries(state)) {
-        if (key !== '_tag' && Array.isArray(value)) {
+        if (key !== '_tag' && Array.isArray(value) === true) {
           parts.push(`${key}: ${value.length}`)
         }
       }
@@ -503,7 +503,7 @@ const getActionDetails = (action: unknown): string | null => {
   const summaryParts: string[] = []
   for (const key of keys.slice(0, 3)) {
     const value = obj[key]
-    if (Array.isArray(value)) {
+    if (Array.isArray(value) === true) {
       summaryParts.push(`${key}: ${value.length} items`)
     } else if (typeof value === 'string') {
       summaryParts.push(`${key}: "${value.slice(0, 20)}${value.length > 20 ? '...' : ''}"`)

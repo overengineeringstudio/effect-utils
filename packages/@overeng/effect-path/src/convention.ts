@@ -51,7 +51,7 @@ import type { PathInfo } from './PathInfo.ts'
  * Returns Effect with InvalidPathError if invalid.
  */
 const validatePath = (path: string): Effect.Effect<string, InvalidPathError> => {
-  if (isEmpty(path)) {
+  if (isEmpty(path) === true) {
     return Effect.fail(
       new InvalidPathError({
         path,
@@ -62,7 +62,7 @@ const validatePath = (path: string): Effect.Effect<string, InvalidPathError> => 
     )
   }
 
-  if (hasNullByte(path)) {
+  if (hasNullByte(path) === true) {
     const position = path.indexOf('\0')
     return Effect.fail(
       new InvalidPathError({
@@ -88,7 +88,7 @@ const validatePath = (path: string): Effect.Effect<string, InvalidPathError> => 
   // Check for Windows reserved names in path segments
   const segments = toSegments(path)
   for (const segment of segments) {
-    if (isWindowsReservedName(segment)) {
+    if (isWindowsReservedName(segment) === true) {
       return Effect.fail(
         new InvalidPathError({
           path,
@@ -114,7 +114,7 @@ export const absoluteDir = Effect.fnUntraced(function* (path: string) {
   const validated = yield* validatePath(path)
   const platformPath = yield* PlatformPath.Path
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -122,7 +122,7 @@ export const absoluteDir = Effect.fnUntraced(function* (path: string) {
     })
   }
 
-  if (!hasTrailingSlash(validated)) {
+  if (hasTrailingSlash(validated) === false) {
     return yield* new ConventionError({
       path: validated,
       message: 'Directory path must end with a separator',
@@ -142,7 +142,7 @@ export const absoluteFile = Effect.fnUntraced(function* (path: string) {
   const validated = yield* validatePath(path)
   const platformPath = yield* PlatformPath.Path
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -150,7 +150,7 @@ export const absoluteFile = Effect.fnUntraced(function* (path: string) {
     })
   }
 
-  if (hasTrailingSlash(validated)) {
+  if (hasTrailingSlash(validated) === true) {
     return yield* new ConventionError({
       path: validated,
       message: 'File path must not end with a separator',
@@ -170,7 +170,7 @@ export const relativeDir = Effect.fnUntraced(function* (path: string) {
   const validated = yield* validatePath(path)
   const platformPath = yield* PlatformPath.Path
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     // Extract the absolute prefix for error context
     const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
     const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
@@ -181,7 +181,7 @@ export const relativeDir = Effect.fnUntraced(function* (path: string) {
     })
   }
 
-  if (!hasTrailingSlash(validated)) {
+  if (hasTrailingSlash(validated) === false) {
     return yield* new ConventionError({
       path: validated,
       message: 'Directory path must end with a separator',
@@ -201,7 +201,7 @@ export const relativeFile = Effect.fnUntraced(function* (path: string) {
   const validated = yield* validatePath(path)
   const platformPath = yield* PlatformPath.Path
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
     const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
     return yield* new NotRelativeError({
@@ -211,7 +211,7 @@ export const relativeFile = Effect.fnUntraced(function* (path: string) {
     })
   }
 
-  if (hasTrailingSlash(validated)) {
+  if (hasTrailingSlash(validated) === true) {
     return yield* new ConventionError({
       path: validated,
       message: 'File path must not end with a separator',
@@ -232,7 +232,7 @@ export const absolute = Effect.fnUntraced(function* (path: string) {
   const validated = yield* validatePath(path)
   const platformPath = yield* PlatformPath.Path
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -242,11 +242,11 @@ export const absolute = Effect.fnUntraced(function* (path: string) {
 
   const normalized = platformPath.normalize(validated)
 
-  if (hasTrailingSlash(validated)) {
+  if (hasTrailingSlash(validated) === true) {
     return ensureTrailingSlash(normalized) as AbsoluteDirPath
   }
 
-  if (hasExtension(normalized)) {
+  if (hasExtension(normalized) === true) {
     return normalized as AbsoluteFilePath
   }
 
@@ -262,7 +262,7 @@ export const relative = Effect.fnUntraced(function* (path: string) {
   const validated = yield* validatePath(path)
   const platformPath = yield* PlatformPath.Path
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     const firstSep = Math.max(validated.indexOf('/'), validated.indexOf('\\'))
     const prefix = firstSep === -1 ? validated : validated.slice(0, firstSep + 1)
     return yield* new NotRelativeError({
@@ -274,11 +274,11 @@ export const relative = Effect.fnUntraced(function* (path: string) {
 
   const normalized = platformPath.normalize(validated)
 
-  if (hasTrailingSlash(validated)) {
+  if (hasTrailingSlash(validated) === true) {
     return ensureTrailingSlash(normalized) as RelativeDirPath
   }
 
-  if (hasExtension(normalized)) {
+  if (hasExtension(normalized) === true) {
     return normalized as RelativeFilePath
   }
 

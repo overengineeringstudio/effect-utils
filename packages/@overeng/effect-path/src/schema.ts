@@ -70,11 +70,11 @@ const PathStringSchema = Schema.String.pipe(
  */
 const isAbsoluteHeuristic = (s: string): boolean => {
   // Unix absolute path
-  if (s.startsWith('/')) return true
+  if (s.startsWith('/') === true) return true
   // Windows absolute path (drive letter)
-  if (/^[A-Za-z]:[\\/]/.test(s)) return true
+  if (/^[A-Za-z]:[\\/]/.test(s) === true) return true
   // Windows UNC path
-  if (s.startsWith('\\\\')) return true
+  if (s.startsWith('\\\\') === true) return true
   return false
 }
 

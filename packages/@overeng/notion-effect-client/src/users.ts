@@ -103,14 +103,14 @@ export const listStream = (
     Option.match(maybeNextCursor, {
       onNone: () => Effect.succeed(Option.none()),
       onSome: (cursor) => {
-        const listOpts: ListUsersOptions = Option.isSome(cursor)
+        const listOpts: ListUsersOptions = Option.isSome(cursor) === true
           ? { ...opts, startCursor: cursor.value }
           : { ...opts }
         return listRaw(listOpts).pipe(
           Effect.map((result) => {
             const chunk = Chunk.fromIterable(result.results)
 
-            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+            if (!result.hasMore || Option.isNone(result.nextCursor) === true) {
               return Option.some([chunk, Option.none()] as const)
             }
 

@@ -33,7 +33,7 @@ export const lexical = Effect.fnUntraced(function* <P extends Path>(path: P) {
   const normalized = platformPath.normalize(path)
 
   // Preserve trailing slash for directories
-  if (hasTrailingSlash(path)) {
+  if (hasTrailingSlash(path) === true) {
     return ensureTrailingSlash(normalized) as P
   }
   return normalized as P
@@ -50,7 +50,7 @@ export const lexicalPure = <P extends Path>(path: P): P => {
   let normalized = path.replace(/\\/g, '/')
 
   // Remove duplicate slashes (except for leading // which could be UNC)
-  if (normalized.startsWith('//')) {
+  if (normalized.startsWith('//') === true) {
     normalized = '/' + normalized.slice(2).replace(/\/+/g, '/')
   } else {
     normalized = normalized.replace(/\/+/g, '/')
@@ -84,7 +84,7 @@ export const lexicalPure = <P extends Path>(path: P): P => {
     finalPath = isAbsolute ? '/' : '.'
   }
 
-  if (hadTrailingSlash && !finalPath.endsWith('/')) {
+  if (hadTrailingSlash && finalPath.endsWith('/') === false) {
     finalPath = finalPath + '/'
   }
 
@@ -106,7 +106,7 @@ export const absolute = Effect.fnUntraced(function* (path: RelativePath) {
   const resolved = platformPath.resolve(path)
 
   // Preserve trailing slash
-  if (hasTrailingSlash(path)) {
+  if (hasTrailingSlash(path) === true) {
     return ensureTrailingSlash(resolved) as AbsolutePath
   }
   return resolved as AbsolutePath
@@ -119,10 +119,10 @@ export const absolute = Effect.fnUntraced(function* (path: RelativePath) {
 export const toAbsolute = Effect.fnUntraced(function* (path: Path) {
   const platformPath = yield* PlatformPath.Path
 
-  if (platformPath.isAbsolute(path)) {
+  if (platformPath.isAbsolute(path) === true) {
     // Already absolute, just normalize
     const normalized = platformPath.normalize(path)
-    if (hasTrailingSlash(path)) {
+    if (hasTrailingSlash(path) === true) {
       return ensureTrailingSlash(normalized) as AbsolutePath
     }
     return normalized as AbsolutePath
@@ -151,7 +151,7 @@ export const canonical = Effect.fnUntraced(function* (path: Path) {
   const fs = yield* FileSystem.FileSystem
 
   // First make it absolute
-  const absolutePath = platformPath.isAbsolute(path) ? path : platformPath.resolve(path)
+  const absolutePath = platformPath.isAbsolute(path) === true ? path : platformPath.resolve(path)
 
   // Use realpath to resolve symlinks
   const realPath = yield* fs.realPath(absolutePath).pipe(
@@ -176,7 +176,7 @@ export const canonical = Effect.fnUntraced(function* (path: Path) {
   )
 
   // Preserve trailing slash for directories
-  if (hasTrailingSlash(path)) {
+  if (hasTrailingSlash(path) === true) {
     return ensureTrailingSlash(realPath) as AbsolutePath
   }
   return realPath as AbsolutePath
@@ -191,7 +191,7 @@ export const canonicalOrLexical = Effect.fnUntraced(function* (path: Path) {
   const platformPath = yield* PlatformPath.Path
 
   // First make it absolute
-  const absolutePath = platformPath.isAbsolute(path)
+  const absolutePath = platformPath.isAbsolute(path) === true
     ? (path as AbsolutePath)
     : (platformPath.resolve(path) as AbsolutePath)
 

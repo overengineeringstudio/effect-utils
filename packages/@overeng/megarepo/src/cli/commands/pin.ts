@@ -76,7 +76,7 @@ export const pinCommand = Cli.Command.make(
           const cwd = yield* Cwd
           const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_in_megarepo',
@@ -122,7 +122,7 @@ export const pinCommand = Cli.Command.make(
               source: sourceString,
             })
           }
-          if (!isRemoteSource(source)) {
+          if (isRemoteSource(source) === false) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'local_path',
@@ -143,7 +143,7 @@ export const pinCommand = Cli.Command.make(
           const memberPathNormalized = memberPath.replace(/\/$/, '')
 
           // If -c is provided, switch to the new ref
-          if (Option.isSome(checkout)) {
+          if (Option.isSome(checkout) === true) {
             const newRef = checkout.value
 
             // Get current ref from source string for display (source is guaranteed to be remote at this point)
@@ -485,7 +485,7 @@ const getCloneUrl = (source: ReturnType<typeof parseSourceString>): string | und
 const shortenPath = (path: string): string => {
   const home = process.env['HOME'] ?? ''
   let shortened = path
-  if (home && shortened.startsWith(home)) {
+  if (home && shortened.startsWith(home) === true) {
     shortened = '~' + shortened.slice(home.length)
   }
   // If still too long, show .../<last-3-components>
@@ -513,7 +513,7 @@ export const unpinCommand = Cli.Command.make(
           const cwd = yield* Cwd
           const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_in_megarepo',
@@ -549,7 +549,7 @@ export const unpinCommand = Cli.Command.make(
             EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
           )
           const lockFileOpt = yield* readLockFile(lockPath)
-          if (Option.isNone(lockFileOpt)) {
+          if (Option.isNone(lockFileOpt) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'no_lock',
@@ -597,7 +597,7 @@ export const unpinCommand = Cli.Command.make(
             })
           } else {
             const source = parseSourceString(sourceString)
-            if (source !== undefined && isRemoteSource(source)) {
+            if (source !== undefined && isRemoteSource(source) === true) {
               const store = yield* Store
               const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
               const memberPathNormalized = memberPath.replace(/\/$/, '')

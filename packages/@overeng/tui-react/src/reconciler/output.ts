@@ -76,10 +76,10 @@ const writeToBuffer = ({
 
 /** Collect all text content from a text element and its children */
 const collectTextContent = (node: TuiNode): string => {
-  if (isTextNode(node)) {
+  if (isTextNode(node) === true) {
     return node.text
   }
-  if (isTextElement(node)) {
+  if (isTextElement(node) === true) {
     return node.children.map(collectTextContent).join('')
   }
   return ''
@@ -119,12 +119,12 @@ const renderNode = ({
   parentY: number
   inheritedStyle: TextStyle
 }): void => {
-  if (isTextNode(node)) {
+  if (isTextNode(node) === true) {
     // Raw text nodes are rendered by their parent text element
     return
   }
 
-  if (isStaticElement(node)) {
+  if (isStaticElement(node) === true) {
     // Static elements are handled separately - they don't render to the main buffer
     return
   }
@@ -133,7 +133,7 @@ const renderNode = ({
   const x = parentX + layout.left
   const y = parentY + layout.top
 
-  if (isTextElement(node)) {
+  if (isTextElement(node) === true) {
     // Merge styles
     const style: TextStyle = { ...inheritedStyle, ...node.props }
 
@@ -149,7 +149,7 @@ const renderNode = ({
     return
   }
 
-  if (isBoxElement(node)) {
+  if (isBoxElement(node) === true) {
     // Render children
     for (const child of node.children) {
       renderNode({ node: child, buffer, parentX: x, parentY: y, inheritedStyle })
@@ -204,15 +204,15 @@ const renderElementSimple = ({
     style: TextStyle
     boxStyle: BoxStyle
   }): void => {
-    if (isTextNode(node)) {
+    if (isTextNode(node) === true) {
       return // Handled by parent
     }
 
-    if (isStaticElement(node)) {
+    if (isStaticElement(node) === true) {
       return // Static handled separately
     }
 
-    if (isTextElement(node)) {
+    if (isTextElement(node) === true) {
       const mergedStyle = { ...style, ...node.props }
       const text = collectTextContent(node)
       const styledText = applyStyles({ text, style: mergedStyle })
@@ -220,7 +220,7 @@ const renderElementSimple = ({
       return
     }
 
-    if (isBoxElement(node)) {
+    if (isBoxElement(node) === true) {
       const isRow = node.props.flexDirection === 'row'
 
       // Create box style context for children
@@ -281,10 +281,10 @@ export const extractStaticContent = ({
 }): { lines: string[]; newItemCount: number; element: TuiElement | null } => {
   // Find the first static element
   const findStatic = (node: TuiNode): TuiElement | null => {
-    if (isStaticElement(node)) {
+    if (isStaticElement(node) === true) {
       return node
     }
-    if (isBoxElement(node) || isTextElement(node)) {
+    if (isBoxElement(node) === true || isTextElement(node) === true) {
       for (const child of node.children) {
         const found = findStatic(child)
         if (found !== null) return found
@@ -381,17 +381,17 @@ export const renderTreeSimple = ({
     indent: number
     boxStyle: BoxStyle
   }): void => {
-    if (isTextNode(node)) {
+    if (isTextNode(node) === true) {
       return // Handled by parent
     }
 
-    if (isStaticElement(node)) {
+    if (isStaticElement(node) === true) {
       return // Static handled separately
     }
 
     if (maxLines !== undefined && lines.length >= maxLines) return
 
-    if (isTextElement(node)) {
+    if (isTextElement(node) === true) {
       const mergedStyle = { ...style, ...node.props }
       const text = collectTextContent(node)
       const styledText = applyStyles({ text, style: mergedStyle })
@@ -401,7 +401,7 @@ export const renderTreeSimple = ({
       return
     }
 
-    if (isBoxElement(node)) {
+    if (isBoxElement(node) === true) {
       const isRow = node.props.flexDirection === 'row'
       const paddingLeft = node.props.paddingLeft ?? node.props.padding ?? 0
       const newIndent = indent + paddingLeft

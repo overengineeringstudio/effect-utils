@@ -27,7 +27,7 @@ export const rootCommand = Cli.Command.make('root', { output: outputOption }, ({
           // Search up from current directory
           const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             // Dispatch error state
             tui.dispatch({
               _tag: 'SetError',

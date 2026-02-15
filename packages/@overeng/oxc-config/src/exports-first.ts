@@ -115,7 +115,7 @@ const collectReferences = (opts: { node: any; refs?: Set<string> }): Set<string>
     if (key === 'parent' || key === 'loc' || key === 'range') continue
 
     const value = node[key]
-    if (Array.isArray(value)) {
+    if (Array.isArray(value) === true) {
       for (const item of value) {
         collectReferences({ node: item, refs })
       }
@@ -172,16 +172,16 @@ export const exportsFirstRule = {
           }
 
           // Skip re-exports
-          if (isReExport(node)) {
+          if (isReExport(node) === true) {
             continue
           }
 
           // Skip type-only exports
-          if (isTypeOnlyExport(node)) {
+          if (isTypeOnlyExport(node) === true) {
             continue
           }
 
-          if (isExportDeclaration(node)) {
+          if (isExportDeclaration(node) === true) {
             hasExport = true
             if (hasTrackableNonExport) {
               exportAfterNonExport = true
@@ -190,7 +190,7 @@ export const exportsFirstRule = {
             continue
           }
 
-          if (isTrackableDeclaration(node)) {
+          if (isTrackableDeclaration(node) === true) {
             hasTrackableNonExport = true
           }
         }
@@ -211,14 +211,14 @@ export const exportsFirstRule = {
           const node = programNode.body[i]
 
           if (node.type === 'ImportDeclaration') continue
-          if (isReExport(node)) continue
-          if (isTypeOnlyExport(node)) continue
+          if (isReExport(node) === true) continue
+          if (isTypeOnlyExport(node) === true) continue
 
-          if (isExportDeclaration(node)) {
+          if (isExportDeclaration(node) === true) {
             const decl = getExportDeclaration(node)
             const refs = decl ? collectReferences({ node: decl }) : new Set<string>()
             exports.push({ node, index: i, refs })
-          } else if (isTrackableDeclaration(node)) {
+          } else if (isTrackableDeclaration(node) === true) {
             const names = getDeclaredNames(node)
             nonExportedDecls.push({ names, node, index: i })
           }
@@ -237,7 +237,7 @@ export const exportsFirstRule = {
           for (const decl of nonExportedDecls) {
             let isNeeded = false
             for (const name of decl.names) {
-              if (referencedByAnyExport.has(name)) {
+              if (referencedByAnyExport.has(name) === true) {
                 isNeeded = true
                 break
               }
@@ -246,7 +246,7 @@ export const exportsFirstRule = {
             if (isNeeded) {
               const declRefs = collectReferences({ node: decl.node })
               for (const ref of declRefs) {
-                if (!referencedByAnyExport.has(ref)) {
+                if (referencedByAnyExport.has(ref) === false) {
                   referencedByAnyExport.add(ref)
                   changed = true
                 }
@@ -260,7 +260,7 @@ export const exportsFirstRule = {
             if (decl.index < exp.index) {
               let isReferenced = false
               for (const name of decl.names) {
-                if (referencedByAnyExport.has(name)) {
+                if (referencedByAnyExport.has(name) === true) {
                   isReferenced = true
                   break
                 }

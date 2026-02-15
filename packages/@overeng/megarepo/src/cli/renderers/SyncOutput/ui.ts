@@ -131,7 +131,7 @@ export const startSyncUI = (options: {
     } = options
 
     // If not TTY, return a no-op handle
-    if (!isTTY()) {
+    if (isTTY() === false) {
       return {
         dispatch: () => {},
         cleanup: () => Effect.void,

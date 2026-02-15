@@ -42,7 +42,7 @@ export const withLock =
   <Ctx, E, A>(eff: Effect.Effect<A, E, Ctx>): Effect.Effect<A | undefined, E | E2, Ctx> => {
     const { lockName, onTaken, options } = lockOptions
     return Effect.gen(function* () {
-      if (!isWebLocksSupported()) {
+      if (isWebLocksSupported() === false) {
         return yield* Effect.fail(WebLockNotSupportedError.notAvailable) as Effect.Effect<
           never,
           E | E2
@@ -96,7 +96,7 @@ export const waitForDeferredLock = (opts: {
 }): Effect.Effect<void, WebLockNotSupportedError> => {
   const { deferred, lockName } = opts
   return Effect.suspend(() => {
-    if (!isWebLocksSupported()) {
+    if (isWebLocksSupported() === false) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
@@ -129,7 +129,7 @@ export const tryGetDeferredLock = (opts: {
 }): Effect.Effect<boolean, WebLockNotSupportedError> => {
   const { deferred, lockName } = opts
   return Effect.suspend(() => {
-    if (!isWebLocksSupported()) {
+    if (isWebLocksSupported() === false) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
@@ -155,7 +155,7 @@ export const stealDeferredLock = (opts: {
 }): Effect.Effect<boolean, WebLockNotSupportedError> => {
   const { deferred, lockName } = opts
   return Effect.suspend(() => {
-    if (!isWebLocksSupported()) {
+    if (isWebLocksSupported() === false) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
@@ -182,7 +182,7 @@ export const stealDeferredLock = (opts: {
  */
 export const waitForLock = (lockName: string): Effect.Effect<void, WebLockNotSupportedError> =>
   Effect.suspend(() => {
-    if (!isWebLocksSupported()) {
+    if (isWebLocksSupported() === false) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 
@@ -206,7 +206,7 @@ export const getLockAndWaitForSteal = (
   lockName: string,
 ): Effect.Effect<void, WebLockNotSupportedError> =>
   Effect.suspend(() => {
-    if (!isWebLocksSupported()) {
+    if (isWebLocksSupported() === false) {
       return Effect.fail(WebLockNotSupportedError.notAvailable)
     }
 

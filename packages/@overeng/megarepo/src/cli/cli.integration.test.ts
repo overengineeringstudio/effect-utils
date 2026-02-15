@@ -508,7 +508,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
     }
 
     return {
-      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       state,
     }
   }).pipe(Effect.scoped)

@@ -195,7 +195,7 @@ describe('mr pin', () => {
           // Read and verify
           const savedLockFile = yield* readLockFile(lockPath)
           expect(Option.isSome(savedLockFile)).toBe(true)
-          if (Option.isSome(savedLockFile)) {
+          if (Option.isSome(savedLockFile) === true) {
             const member = savedLockFile.value.members['test-repo']
             expect(member?.ref).toBe('feature-branch')
             expect(member?.commit).toBe(commit)
@@ -250,7 +250,7 @@ describe('mr pin', () => {
           // Verify update
           const savedLockFile = yield* readLockFile(lockPath)
           expect(Option.isSome(savedLockFile)).toBe(true)
-          if (Option.isSome(savedLockFile)) {
+          if (Option.isSome(savedLockFile) === true) {
             const member = savedLockFile.value.members['test-repo']
             expect(member?.ref).toBe('feature-branch')
             expect(member?.commit).toBe(newCommit)

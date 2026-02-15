@@ -224,7 +224,7 @@ export const syncMember = <R = never>({
     // Handle local path sources - just create symlink
     if (source.type === 'path') {
       const expandedPath = source.path.replace(/^~/, process.env.HOME ?? '~')
-      const resolvedPath = path.isAbsolute(expandedPath)
+      const resolvedPath = path.isAbsolute(expandedPath) === true
         ? expandedPath
         : path.resolve(megarepoRoot, expandedPath)
       const existingLink = yield* fs
@@ -324,7 +324,7 @@ export const syncMember = <R = never>({
     } else {
       // Use ref from source string, or determine default
       const sourceRef = getSourceRef(source)
-      if (Option.isSome(sourceRef)) {
+      if (Option.isSome(sourceRef) === true) {
         targetRef = sourceRef.value
       } else {
         // Need to determine default branch
@@ -505,7 +505,7 @@ export const syncMember = <R = never>({
     let needsCreateBranch = false
     let defaultBranchForCreate: string | undefined
 
-    if (targetCommit === undefined && !isCommitSha(targetRef)) {
+    if (targetCommit === undefined && isCommitSha(targetRef) === false) {
       const refValidation = yield* Git.validateRefExists({
         ref: targetRef,
         bareRepoPath: bareExists ? bareRepoPath : undefined,
@@ -589,7 +589,7 @@ export const syncMember = <R = never>({
     let actualRefType: RefType = classifyRef(targetRef) // fallback to heuristic
     if (targetCommit === undefined && !dryRun) {
       // If it's already a commit SHA, use it directly
-      if (isCommitSha(targetRef)) {
+      if (isCommitSha(targetRef) === true) {
         targetCommit = targetRef
         actualRefType = 'commit'
       } else {

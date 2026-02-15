@@ -52,7 +52,7 @@ const runStatusCommand = ({
 
     return {
       stdout,
-      exitCode: Exit.isSuccess(exit) ? 0 : 1,
+      exitCode: Exit.isSuccess(exit) === true ? 0 : 1,
       status,
     }
   }).pipe(Effect.scoped)

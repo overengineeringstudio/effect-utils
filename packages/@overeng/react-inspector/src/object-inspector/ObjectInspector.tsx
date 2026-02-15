@@ -19,7 +19,7 @@ const createIterator = (showNonenumerable: any, sortObjectKeys: any) => {
     if (!dataIsArray && data[Symbol.iterator]) {
       let i = 0
       for (const entry of data) {
-        if (Array.isArray(entry) && entry.length === 2) {
+        if (Array.isArray(entry) === true && entry.length === 2) {
           const [k, v] = entry
           yield {
             name: k,

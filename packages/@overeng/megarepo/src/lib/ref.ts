@@ -160,7 +160,7 @@ export const looksLikeTag = (ref: string): boolean => {
  * classifyRef('feature/foo') // 'branch'
  */
 export const classifyRef = (ref: string): RefType => {
-  if (isCommitSha(ref)) {
+  if (isCommitSha(ref) === true) {
     return 'commit'
   }
   if (looksLikeTag(ref)) {

@@ -427,7 +427,7 @@ Vitest.describe('sandbox', () => {
     it('rejects path escaping with ..', () => {
       const result = sandbox.validate(EffectPath.unsafe.relativeFile('../../../etc/passwd'))
       expect(Either.isLeft(result)).toBe(true)
-      if (Either.isLeft(result)) {
+      if (Either.isLeft(result) === true) {
         expect(result.left._tag).toBe('TraversalError')
       }
     })
@@ -452,7 +452,7 @@ Vitest.describe('sandbox', () => {
     it('resolves relative path to absolute', () => {
       const result = sandbox.resolve(EffectPath.unsafe.relativeFile('file.txt'))
       expect(Either.isRight(result)).toBe(true)
-      if (Either.isRight(result)) {
+      if (Either.isRight(result) === true) {
         expect(result.right).toBe('/home/user/file.txt')
       }
     })
@@ -460,7 +460,7 @@ Vitest.describe('sandbox', () => {
     it('resolves nested path', () => {
       const result = sandbox.resolve(EffectPath.unsafe.relativeFile('sub/dir/file.txt'))
       expect(Either.isRight(result)).toBe(true)
-      if (Either.isRight(result)) {
+      if (Either.isRight(result) === true) {
         expect(result.right).toBe('/home/user/sub/dir/file.txt')
       }
     })

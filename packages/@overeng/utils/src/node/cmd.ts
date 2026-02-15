@@ -105,7 +105,7 @@ export const cmd: (
 
   const commandDebugStr =
     debugEnvStr +
-    (Array.isArray(finalInput) ? (finalInput as string[]).join(' ') : (finalInput as string))
+    (Array.isArray(finalInput) === true ? (finalInput as string[]).join(' ') : (finalInput as string))
   const subshellStr = useShell ? ' (in subshell)' : ''
 
   yield* Effect.logDebug(`Running '${commandDebugStr}' in '${cwd}'${subshellStr}`)
@@ -192,7 +192,7 @@ export const cmdStart: (
   let normalizedInput: string | string[]
   let commandDebugStr: string
 
-  if (Array.isArray(commandInput)) {
+  if (Array.isArray(commandInput) === true) {
     const parts = commandInput.filter(isNotUndefined)
     ;[command, ...args] = parts
     normalizedInput = parts
@@ -249,7 +249,7 @@ export const cmdText: (
   CommandExecutor.CommandExecutor | CurrentWorkingDirectory
 > = Effect.fn('cmdText')(function* (commandInput, options) {
   const cwd = yield* CurrentWorkingDirectory
-  const [command, ...args] = Array.isArray(commandInput)
+  const [command, ...args] = Array.isArray(commandInput) === true
     ? commandInput.filter(isNotUndefined)
     : commandInput.split(' ')
 
@@ -316,13 +316,13 @@ export const cmdCollect = <R = never>(opts: {
 
     // Preserve raw string input for buildCommand's shell-mode path (avoids
     // splitting on spaces, which would break leading-whitespace commands).
-    const normalizedInput: string | string[] = Array.isArray(opts.commandInput)
+    const normalizedInput: string | string[] = Array.isArray(opts.commandInput) === true
       ? (opts.commandInput as (string | undefined)[]).filter(isNotUndefined)
       : useShell
         ? (opts.commandInput as string)
         : (opts.commandInput as string).split(' ')
 
-    const debugStr = Array.isArray(normalizedInput) ? normalizedInput.join(' ') : normalizedInput
+    const debugStr = Array.isArray(normalizedInput) === true ? normalizedInput.join(' ') : normalizedInput
 
     yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
 
@@ -589,7 +589,7 @@ const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
   const exited = yield* proc.exitCode.pipe(Effect.timeout(timeout), Effect.option)
 
   // If still running after timeout, escalate to SIGKILL
-  if (Option.isNone(exited)) {
+  if (Option.isNone(exited) === true) {
     yield* Effect.logDebug(`Process ${proc.pid} didn't exit gracefully, sending SIGKILL`)
     yield* sendSignalToProcessGroup({ proc, signal: 'SIGKILL' })
   }
@@ -597,7 +597,7 @@ const killProcessGroup = Effect.fn('cmd/killProcessGroup')(function* (opts: {
 
 const buildCommand = (opts: { input: string | string[]; useShell: boolean }) => {
   const { input, useShell } = opts
-  if (Array.isArray(input)) {
+  if (Array.isArray(input) === true) {
     const [command, ...args] = input
     if (!command) throw new Error('Command cannot be empty')
     return Command.make(command, ...args)

@@ -157,7 +157,7 @@ export const withJsonErrors = <A, E, R>(
   Effect.gen(function* () {
     const mode = yield* OutputModeTag
 
-    if (isJson(mode)) {
+    if (isJson(mode) === true) {
       // In JSON mode, catch errors and output as JSON
       const result = yield* effect.pipe(
         Effect.catchAll((error) =>
@@ -190,7 +190,7 @@ export const runWithJsonErrors = <A, E, R>(
     Effect.catchAll((error) =>
       Effect.gen(function* () {
         const mode = yield* OutputModeTag
-        if (isJson(mode)) {
+        if (isJson(mode) === true) {
           yield* outputJsonError(toCommandError(error))
           return undefined as unknown as A
         }

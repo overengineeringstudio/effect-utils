@@ -30,7 +30,7 @@ export const cookies: (args: {
       Effect.tap((cs) =>
         Effect.annotateCurrentSpan({
           'pw.cookie.count': cs.length,
-          'pw.cookies.url': url ? (Array.isArray(url) ? url.join(' | ') : url) : '',
+          'pw.cookies.url': url ? (Array.isArray(url) === true ? url.join(' | ') : url) : '',
         }),
       ),
     )

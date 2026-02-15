@@ -48,7 +48,7 @@ import type { PathInfo } from './PathInfo.ts'
 
 /** Validate basic path string */
 const validatePathString = (path: string): Effect.Effect<string, InvalidPathError> => {
-  if (isEmpty(path)) {
+  if (isEmpty(path) === true) {
     return Effect.fail(
       new InvalidPathError({
         path,
@@ -59,7 +59,7 @@ const validatePathString = (path: string): Effect.Effect<string, InvalidPathErro
     )
   }
 
-  if (hasNullByte(path)) {
+  if (hasNullByte(path) === true) {
     return Effect.fail(
       new InvalidPathError({
         path,
@@ -83,7 +83,7 @@ const validatePathString = (path: string): Effect.Effect<string, InvalidPathErro
 
   const segments = toSegments(path)
   for (const segment of segments) {
-    if (isWindowsReservedName(segment)) {
+    if (isWindowsReservedName(segment) === true) {
       return Effect.fail(
         new InvalidPathError({
           path,
@@ -196,7 +196,7 @@ export const absoluteFile = Effect.fnUntraced(function* (path: string) {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -235,7 +235,7 @@ export const absoluteDir = Effect.fnUntraced(function* (path: string) {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -283,7 +283,7 @@ export const relativeFile = Effect.fnUntraced(function* (args: {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     return yield* new NotRelativeError({
       path: validated,
       message: 'Expected relative path',
@@ -328,7 +328,7 @@ export const relativeDir = Effect.fnUntraced(function* (args: {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     return yield* new NotRelativeError({
       path: validated,
       message: 'Expected relative path',
@@ -374,7 +374,7 @@ export const resolveAbsolute = Effect.fnUntraced(function* (path: string) {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (!platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === false) {
     return yield* new NotAbsoluteError({
       path: validated,
       message: 'Expected absolute path',
@@ -419,7 +419,7 @@ export const resolveRelative = Effect.fnUntraced(function* (args: {
   const platformPath = yield* PlatformPath.Path
   const fs = yield* FileSystem.FileSystem
 
-  if (platformPath.isAbsolute(validated)) {
+  if (platformPath.isAbsolute(validated) === true) {
     return yield* new NotRelativeError({
       path: validated,
       message: 'Expected relative path',

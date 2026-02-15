@@ -66,7 +66,7 @@ export const parseRateLimitHeaders = (
   }
 
   const remaining = Number.parseInt(remainingRaw, 10)
-  if (Number.isNaN(remaining)) {
+  if (Number.isNaN(remaining) === true) {
     return Option.none()
   }
 
@@ -75,7 +75,7 @@ export const parseRateLimitHeaders = (
 
   return Option.some({
     remaining,
-    resetAfterSeconds: Number.isNaN(resetAfterSeconds) ? 0 : resetAfterSeconds,
+    resetAfterSeconds: Number.isNaN(resetAfterSeconds) === true ? 0 : resetAfterSeconds,
   })
 }
 

@@ -305,7 +305,7 @@ const parseCSIModifiers = (
   if (parts.length < 2) return {}
 
   const modifier = parseInt(parts[parts.length - 1]!, 10)
-  if (isNaN(modifier)) return {}
+  if (isNaN(modifier) === true) return {}
 
   // Modifier encoding: 1 + (Shift ? 1 : 0) + (Alt ? 2 : 0) + (Ctrl ? 4 : 0) + (Meta ? 8 : 0)
   const adjusted = modifier - 1

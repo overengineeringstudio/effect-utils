@@ -173,7 +173,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
           }
 
           if (!result.hasMore) break
-          if (Option.isNone(result.nextCursor)) break
+          if (Option.isNone(result.nextCursor) === true) break
           startCursor = result.nextCursor.value
         }
 

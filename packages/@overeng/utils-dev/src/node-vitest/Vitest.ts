@@ -240,7 +240,7 @@ const normalizePropOptions = <Arbs extends Vitest.Vitest.Arbitraries>(
   }>
 } => {
   // If it's a number, treat as timeout and add our default fastCheck
-  if (!Predicate.isObject(propOptions)) {
+  if (Predicate.isObject(propOptions) === false) {
     return {
       timeout: propOptions,
       fastCheck: { numRuns: 100 },

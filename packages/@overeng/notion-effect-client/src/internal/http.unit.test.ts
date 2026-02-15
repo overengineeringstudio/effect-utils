@@ -26,7 +26,7 @@ Vitest.describe('parseRateLimitHeaders', () => {
       })
       const result = parseRateLimitHeaders(headers)
       expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
+      if (Option.isSome(result) === true) {
         expect(result.value.remaining).toBe(100)
         expect(result.value.resetAfterSeconds).toBe(60)
       }
@@ -40,7 +40,7 @@ Vitest.describe('parseRateLimitHeaders', () => {
       })
       const result = parseRateLimitHeaders(headers)
       expect(Option.isSome(result)).toBe(true)
-      if (Option.isSome(result)) {
+      if (Option.isSome(result) === true) {
         expect(result.value.remaining).toBe(50)
         expect(result.value.resetAfterSeconds).toBe(0)
       }

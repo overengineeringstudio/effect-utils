@@ -57,7 +57,7 @@ export const isOPFSSupported = (): boolean =>
  */
 export const getRootHandle: Effect.Effect<FileSystemDirectoryHandle, OPFSNotSupportedError> =
   Effect.suspend(() => {
-    if (!isOPFSSupported()) {
+    if (isOPFSSupported() === false) {
       return Effect.fail(OPFSNotSupportedError.notAvailable)
     }
     return Effect.tryPromise({

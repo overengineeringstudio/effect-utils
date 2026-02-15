@@ -163,7 +163,7 @@ export const fetchNixFlakeMetadata = ({
       Effect.mapError((parseError) => {
         // Check if output looks like a nix error message (shouldn't normally happen
         // since nix errors go to stderr, but handle defensively)
-        if (trimmedResult.startsWith('error:') || trimmedResult.includes('error:')) {
+        if (trimmedResult.startsWith('error:') === true || trimmedResult.includes('error:') === true) {
           return new NixFlakeMetadataError({
             message: `Nix command failed with error`,
             flakeRef,
@@ -201,7 +201,7 @@ const getFlakeRefFromLocked = (
   // For git type, try to extract owner/repo from GitHub URL
   if (type === 'git') {
     const url = locked['url']
-    if (typeof url === 'string' && url.includes('github.com')) {
+    if (typeof url === 'string' && url.includes('github.com') === true) {
       const match = url.match(/github\.com[/:]([^/]+)\/([^/.]+)/)
       if (match?.[1] && match[2]) {
         return { owner: match[1], repo: match[2] }
@@ -425,7 +425,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     // Process each member in the megarepo
     for (const memberName of Object.keys(options.config.members)) {
       // Skip excluded members
-      if (excludeMembers.has(memberName)) {
+      if (excludeMembers.has(memberName) === true) {
         continue
       }
 

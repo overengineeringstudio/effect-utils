@@ -64,7 +64,7 @@ export const flushPendingMicrotasks = (): void => {
 
 const appendChild = ({ parent, child }: { parent: Instance; child: TuiNode }): void => {
   // Remove from old parent if any
-  if (child.parent && isElement(child.parent)) {
+  if (child.parent && isElement(child.parent) === true) {
     removeChild({ parent: child.parent, child })
   }
 
@@ -72,7 +72,7 @@ const appendChild = ({ parent, child }: { parent: Instance; child: TuiNode }): v
   parent.children.push(child)
 
   // Update yoga tree
-  if (isElement(child)) {
+  if (isElement(child) === true) {
     parent.yogaNode.insertChild(child.yogaNode, parent.yogaNode.getChildCount())
   }
 }
@@ -85,7 +85,7 @@ const removeChild = ({ parent, child }: { parent: Instance; child: TuiNode }): v
   child.parent = null
 
   // Update yoga tree
-  if (isElement(child)) {
+  if (isElement(child) === true) {
     parent.yogaNode.removeChild(child.yogaNode)
   }
 }
@@ -184,7 +184,7 @@ export const hostConfig = {
 
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
   appendChildToContainer(container: TuiContainer, child: TuiNode) {
-    if (isElement(child)) {
+    if (isElement(child) === true) {
       container.root = child as TuiBoxElement
     }
   },
@@ -197,21 +197,21 @@ export const hostConfig = {
       return
     }
 
-    if (child.parent && isElement(child.parent)) {
+    if (child.parent && isElement(child.parent) === true) {
       removeChild({ parent: child.parent, child })
     }
 
     child.parent = parent
     parent.children.splice(index, 0, child)
 
-    if (isElement(child)) {
+    if (isElement(child) === true) {
       parent.yogaNode.insertChild(child.yogaNode, index)
     }
   },
 
   // oxlint-disable-next-line overeng/named-args -- React reconciler API
   insertInContainerBefore(container: TuiContainer, child: TuiNode, _beforeChild: TuiNode) {
-    if (isElement(child)) {
+    if (isElement(child) === true) {
       container.root = child as TuiBoxElement
     }
   },
@@ -226,7 +226,7 @@ export const hostConfig = {
     if (container.root === child) {
       container.root = null
     }
-    if (isElement(child)) {
+    if (isElement(child) === true) {
       freeYogaNode(child.yogaNode)
     }
   },

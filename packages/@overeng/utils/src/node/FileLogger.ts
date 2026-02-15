@@ -187,7 +187,7 @@ export const prettyLoggerTty = (options: {
         ` ${color(logLevel.label, ...logLevelColors[logLevel._tag])}` +
         ` (${FiberId.threadName(fiberId)})`
 
-      if (List.isCons(spans)) {
+      if (List.isCons(spans) === true) {
         const now = date.getTime()
         const render = LogSpan.render(now)
         for (const span of spans) {
@@ -207,7 +207,7 @@ export const prettyLoggerTty = (options: {
 
       log(firstLine)
 
-      if (!Cause.isEmpty(cause)) {
+      if (Cause.isEmpty(cause) === false) {
         logIndented(Cause.pretty(cause, { renderErrorCause: true }))
       }
 

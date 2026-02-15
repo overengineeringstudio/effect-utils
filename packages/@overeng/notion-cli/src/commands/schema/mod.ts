@@ -79,7 +79,7 @@ const getGeneratorVersion = Effect.gen(function* () {
 
 /** Resolve the Notion API token from CLI option or `NOTION_TOKEN`. */
 export const resolveNotionToken = (token: Option.Option<string>) =>
-  Effect.sync(() => (Option.isSome(token) ? token.value : process.env.NOTION_TOKEN)).pipe(
+  Effect.sync(() => (Option.isSome(token) === true ? token.value : process.env.NOTION_TOKEN)).pipe(
     Effect.flatMap((t) =>
       t
         ? Effect.succeed(t)
@@ -205,7 +205,7 @@ const generateCommand = Command.make(
       const generatorVersion = yield* getGeneratorVersion
 
       const transformConfig: PropertyTransformConfig = {}
-      if (Option.isSome(transform)) {
+      if (Option.isSome(transform) === true) {
         for (const [key, value] of transform.value) {
           transformConfig[key] = value
         }
@@ -218,7 +218,7 @@ const generateCommand = Command.make(
         schemaMeta: noSchemaMeta ? false : schemaMeta,
         includeApi,
         generatorVersion,
-        ...(Option.isSome(name) ? { schemaNameOverride: name.value } : {}),
+        ...(Option.isSome(name) === true ? { schemaNameOverride: name.value } : {}),
       }
 
       const configLayer = Layer.succeed(NotionConfig, {
@@ -433,7 +433,7 @@ const generateFromConfigCommand = Command.make(
   ({ config, token, dryRun, writable, output }) =>
     Effect.gen(function* () {
       const { config: resolvedConfig, path: resolvedConfigPath } = yield* loadConfig(
-        Option.isSome(config) ? config.value : undefined,
+        Option.isSome(config) === true ? config.value : undefined,
       )
 
       const resolvedToken = yield* resolveNotionToken(token)
@@ -593,7 +593,7 @@ const diffCommand = Command.make(
               const dbInfo = yield* introspectDatabase(databaseId)
               const diff = computeDiff({ live: dbInfo, generated: parsedSchema })
 
-              if (hasDifferences(diff)) {
+              if (hasDifferences(diff) === true) {
                 tui.dispatch({
                   _tag: 'SetResult',
                   databaseId,

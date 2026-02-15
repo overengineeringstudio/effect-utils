@@ -32,7 +32,7 @@ export const ObjectPreview: FC<any> = ({ data }) => {
     return <ObjectValue object={object} />
   }
 
-  if (Array.isArray(object)) {
+  if (Array.isArray(object) === true) {
     const maxProperties = styles.arrayMaxProperties
     const previewArray = object
       .slice(0, maxProperties)

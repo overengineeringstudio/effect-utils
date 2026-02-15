@@ -180,10 +180,10 @@ const deepMerge = ({
     if (
       sourceVal !== null &&
       typeof sourceVal === 'object' &&
-      !Array.isArray(sourceVal) &&
+      Array.isArray(sourceVal) === false &&
       targetVal !== null &&
       typeof targetVal === 'object' &&
-      !Array.isArray(targetVal)
+      Array.isArray(targetVal) === false
     ) {
       result[key] = deepMerge({
         target: targetVal as Record<string, unknown>,

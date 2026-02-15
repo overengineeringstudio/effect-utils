@@ -282,7 +282,7 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   to_do: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    const checkbox = isTodoChecked(block) ? '[x]' : '[ ]'
+    const checkbox = isTodoChecked(block) === true ? '[x]' : '[ ]'
     return children
       ? `- ${checkbox} ${text}\n${indentLines({ text: children })}`
       : `- ${checkbox} ${text}`
@@ -414,7 +414,7 @@ const applyTransformer = (opts: {
 }): Effect.Effect<string, never, never> => {
   const { transformer, block, children } = opts
   const result = transformer(block, children)
-  if (Effect.isEffect(result)) {
+  if (Effect.isEffect(result) === true) {
     return result
   }
   return Effect.succeed(result)

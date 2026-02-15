@@ -135,7 +135,7 @@ const isTransform = (value: unknown): value is Transform =>
 
 /** Normalize transform value to string */
 const normalizeTransform = (value: Transform | string): string =>
-  isTransform(value) ? value.name : value
+  isTransform(value) === true ? value.name : value
 
 /** Normalize PropertyTransforms to PropertyTransformConfig (string values) */
 const normalizeTransforms = (
@@ -251,7 +251,7 @@ export const loadConfig = Effect.fnUntraced(function* (configPath?: string) {
     yield* CurrentWorkingDirectory,
   )
   const resolvedPath: AbsoluteFilePath | undefined = configPath
-    ? isAbsolutePath(configPath)
+    ? isAbsolutePath(configPath) === true
       ? EffectPath.unsafe.absoluteFile(configPath)
       : EffectPath.ops.join(searchStartDir, EffectPath.unsafe.relativeFile(configPath))
     : yield* findConfigFile(searchStartDir)

@@ -60,7 +60,7 @@ export class MockTerminal implements Terminal {
 
     // Detect frame boundaries (newline at end suggests complete output)
     // This is a heuristic - not perfect but works for most cases
-    if (data.endsWith('\n') || data.includes('\x1b[?2026l')) {
+    if (data.endsWith('\n') === true || data.includes('\x1b[?2026l') === true) {
       // End of synchronized output or newline = frame complete
       this._frames.push(this.currentFrame)
       this.currentFrame = ''

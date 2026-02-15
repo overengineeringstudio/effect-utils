@@ -61,7 +61,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
     const root = yield* findMegarepoRoot(cwd)
     let inUsePaths = new Set<string>()
 
-    if (Option.isSome(root)) {
+    if (Option.isSome(root) === true) {
       const lockPath = EffectPath.ops.join(
         root.value,
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -79,7 +79,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
 
         for (const [name, sourceString] of Object.entries(config.members)) {
           const source = parseSourceString(sourceString)
-          if (source === undefined || !isRemoteSource(source)) continue
+          if (source === undefined || isRemoteSource(source) === false) continue
 
           const lockedMember = lockFile.members[name]
           if (lockedMember === undefined) continue
@@ -166,7 +166,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
               const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
                 Effect.catchAll(() => Effect.succeed(Option.none<string>())),
               )
-              if (Option.isSome(actualBranch) && actualBranch.value !== expectedRef) {
+              if (Option.isSome(actualBranch) === true && actualBranch.value !== expectedRef) {
                 issues.push({
                   type: 'ref_mismatch',
                   severity: 'error',
@@ -202,7 +202,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           }
 
           // Check if orphaned (not in current megarepo's lock)
-          if (!inUsePaths.has(worktreePath)) {
+          if (inUsePaths.has(worktreePath) === false) {
             issues.push({
               type: 'orphaned',
               severity: 'info',
@@ -325,7 +325,7 @@ const storeGcCommand = Cli.Command.make(
       let lockFile: LockFile | undefined
       let inUsePaths = new Set<string>()
 
-      if (Option.isSome(root) && !all) {
+      if (Option.isSome(root) === true && !all) {
         const lockPath = EffectPath.ops.join(
           root.value,
           EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -346,7 +346,7 @@ const storeGcCommand = Cli.Command.make(
 
           for (const [name, sourceString] of Object.entries(config.members)) {
             const source = parseSourceString(sourceString)
-            if (source === undefined || !isRemoteSource(source)) continue
+            if (source === undefined || isRemoteSource(source) === false) continue
 
             const lockedMember = lockFile.members[name]
             if (lockedMember === undefined) continue
@@ -363,9 +363,9 @@ const storeGcCommand = Cli.Command.make(
 
       // Determine warning type for output
       const gcWarning: { type: 'not_in_megarepo' | 'only_current_megarepo' } | undefined =
-        !all && Option.isNone(root)
+        !all && Option.isNone(root) === true
           ? { type: 'not_in_megarepo' }
-          : !all && Option.isSome(root)
+          : !all && Option.isSome(root) === true
             ? { type: 'only_current_megarepo' }
             : undefined
 
@@ -428,7 +428,7 @@ const storeGcCommand = Cli.Command.make(
 
         for (const worktree of worktrees) {
           // Check if worktree is in use
-          if (inUsePaths.has(worktree.path)) {
+          if (inUsePaths.has(worktree.path) === true) {
             results.push({
               repo: repo.relativePath,
               ref: worktree.ref,
@@ -552,7 +552,7 @@ const storeAddCommand = Cli.Command.make(
         return yield* new StoreCommandError({ message: 'Invalid source' })
       }
 
-      if (!isRemoteSource(source)) {
+      if (isRemoteSource(source) === false) {
         yield* run(
           StoreApp,
           (tui) =>
@@ -598,7 +598,7 @@ const storeAddCommand = Cli.Command.make(
       // Determine ref to use
       const sourceRef = getSourceRef(source)
       let targetRef: string
-      if (Option.isSome(sourceRef)) {
+      if (Option.isSome(sourceRef) === true) {
         targetRef = sourceRef.value
       } else {
         // Get default branch

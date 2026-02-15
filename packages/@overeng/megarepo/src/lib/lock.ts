@@ -355,7 +355,7 @@ export const syncLockWithConfig = ({
   const members: Record<string, LockedMember> = {}
 
   for (const [name, member] of Object.entries(lockFile.members)) {
-    if (configMemberNames.has(name)) {
+    if (configMemberNames.has(name) === true) {
       members[name] = member
     }
   }

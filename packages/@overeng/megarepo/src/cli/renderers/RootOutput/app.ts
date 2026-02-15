@@ -24,5 +24,5 @@ export const RootApp = createTuiApp({
   actionSchema: RootAction,
   initial: createInitialRootState(),
   reducer: rootReducer,
-  exitCode: (state) => (isRootError(state) ? 1 : 0),
+  exitCode: (state) => (isRootError(state) === true ? 1 : 0),
 })

@@ -58,7 +58,7 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
     storeCommand,
     generateCommand,
   ]),
-  Cli.Command.provide(({ cwd }) => (Option.isSome(cwd) ? Cwd.fromPath(cwd.value) : Cwd.live)),
+  Cli.Command.provide(({ cwd }) => (Option.isSome(cwd) === true ? Cwd.fromPath(cwd.value) : Cwd.live)),
   Cli.Command.withDescription('Multi-repo workspace management tool'),
 )
 

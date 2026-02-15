@@ -16,7 +16,7 @@ const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'] as const
  * ```
  */
 export const prettyBytes = (bytes: number): string => {
-  if (!Number.isFinite(bytes)) {
+  if (Number.isFinite(bytes) === false) {
     throw new TypeError(`Expected a finite number, got ${typeof bytes}: ${bytes}`)
   }
 

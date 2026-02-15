@@ -75,7 +75,7 @@ export interface SchemaProviderProps {
 const parsePathSegments = (path: string): string[] => {
   if (path === '$') return []
   // Remove leading "$." and split by "."
-  const withoutRoot = path.startsWith('$.') ? path.slice(2) : path.slice(1)
+  const withoutRoot = path.startsWith('$.') === true ? path.slice(2) : path.slice(1)
   return withoutRoot.split('.')
 }
 
@@ -93,7 +93,7 @@ const resolveSchemaForSegments = (
     if (!current) return undefined
 
     // Check if segment is a numeric index (array access)
-    if (/^\d+$/.test(segment)) {
+    if (/^\d+$/.test(segment) === true) {
       current = getArrayElementSchema(current)
     } else {
       current = getFieldSchema(current, segment)

@@ -218,10 +218,10 @@ export const createRoot = ({
     const findStatic = (
       node: TuiStaticElement | { children?: unknown[] },
     ): TuiStaticElement | null => {
-      if (isStaticElement(node as TuiStaticElement)) {
+      if (isStaticElement(node as TuiStaticElement) === true) {
         return node as TuiStaticElement
       }
-      if ('children' in node && Array.isArray(node.children)) {
+      if ('children' in node && Array.isArray(node.children) === true) {
         for (const child of node.children) {
           const found = findStatic(child as { children?: unknown[] })
           if (found !== null) return found
@@ -322,7 +322,7 @@ export const createRoot = ({
         staticLineCount = Math.min(staticLineCount, maxStaticLines)
       }
 
-      if (staticResult.element && isStaticElement(staticResult.element)) {
+      if (staticResult.element && isStaticElement(staticResult.element) === true) {
         ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
       }
     }

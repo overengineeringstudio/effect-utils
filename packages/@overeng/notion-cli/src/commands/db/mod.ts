@@ -151,7 +151,7 @@ interface AssetInfo {
 
 /** Extract asset info from a block if it contains downloadable files */
 const extractAssetFromBlock = (block: BlockWithDepth['block']): AssetInfo | undefined => {
-  if (!ASSET_BLOCK_TYPES.has(block.type)) return undefined
+  if (ASSET_BLOCK_TYPES.has(block.type) === false) return undefined
 
   const blockData = block[block.type] as
     | {
@@ -282,7 +282,7 @@ const dumpCommand = Command.make(
               // Determine output paths
               const outputPath = output
               const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.ts'
-              const checkpointPath = Option.isSome(checkpoint)
+              const checkpointPath = Option.isSome(checkpoint) === true
                 ? checkpoint.value
                 : output.replace(/\.ndjson$/, '') + '.checkpoint.json'
 
@@ -297,12 +297,12 @@ const dumpCommand = Command.make(
                   )(checkpointContent)
                   lastEditedFilter = checkpointData.lastDumpedAt
                 }
-              } else if (Option.isSome(since)) {
+              } else if (Option.isSome(since) === true) {
                 lastEditedFilter = since.value
               }
 
               // Build query options
-              const queryFilter = Option.isSome(filter)
+              const queryFilter = Option.isSome(filter) === true
                 ? parseSimpleFilter(filter.value)
                 : undefined
 
@@ -352,7 +352,7 @@ export const DUMP_META = {
   dumpedAt: '${dumpedAt}',
   options: {
     includeContent: ${content},
-    contentDepth: ${Option.isSome(depth) ? depth.value : 'undefined'},
+    contentDepth: ${Option.isSome(depth) === true ? depth.value : 'undefined'},
     includeAssets: ${assets},
   },
 } as const
@@ -364,7 +364,7 @@ export const DUMP_META = {
 
               const outputFile = EffectPath.unsafe.absoluteFile(outputPath)
               const outputDir = EffectPath.ops.parent(outputFile)
-              const resolvedAssetsDir: AbsoluteDirPath = Option.isSome(assetsDir)
+              const resolvedAssetsDir: AbsoluteDirPath = Option.isSome(assetsDir) === true
                 ? EffectPath.unsafe.absoluteDir(assetsDir.value)
                 : EffectPath.ops.join(outputDir, EffectPath.unsafe.relativeDir('assets/'))
 
@@ -403,7 +403,7 @@ export const DUMP_META = {
                   if (content) {
                     const blocksStream = NotionBlocks.retrieveAllNested({
                       blockId: page.id,
-                      ...(Option.isSome(depth) ? { maxDepth: depth.value } : {}),
+                      ...(Option.isSome(depth) === true ? { maxDepth: depth.value } : {}),
                       concurrency: 3,
                     })
 
@@ -477,7 +477,7 @@ export const DUMP_META = {
                 // Dispatch page count update after each batch
                 tui.dispatch({ _tag: 'AddPages', count: result.results.length })
 
-                if (!result.hasMore || Option.isNone(result.nextCursor)) {
+                if (!result.hasMore || Option.isNone(result.nextCursor) === true) {
                   break
                 }
                 startCursor = result.nextCursor.value

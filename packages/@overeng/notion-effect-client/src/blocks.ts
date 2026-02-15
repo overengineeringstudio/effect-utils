@@ -125,14 +125,14 @@ export const retrieveChildrenStream = (
     Option.match(maybeNextCursor, {
       onNone: () => Effect.succeed(Option.none()),
       onSome: (cursor) => {
-        const childrenOpts: RetrieveBlockChildrenOptions = Option.isSome(cursor)
+        const childrenOpts: RetrieveBlockChildrenOptions = Option.isSome(cursor) === true
           ? { ...opts, startCursor: cursor.value }
           : { ...opts }
         return retrieveChildrenRaw(childrenOpts).pipe(
           Effect.map((result) => {
             const chunk = Chunk.fromIterable(result.results)
 
-            if (!result.hasMore || Option.isNone(result.nextCursor)) {
+            if (!result.hasMore || Option.isNone(result.nextCursor) === true) {
               return Option.some([chunk, Option.none()] as const)
             }
 
@@ -255,7 +255,7 @@ export interface RetrieveNestedOptions {
 const canHaveChildren = (opts: { block: Block; skipTypes: ReadonlySet<BlockType> }): boolean => {
   const { block, skipTypes } = opts
   if (!block.has_children) return false
-  if (skipTypes.has(block.type)) return false
+  if (skipTypes.has(block.type) === true) return false
   return BLOCK_TYPES_WITH_CHILDREN.has(block.type)
 }
 

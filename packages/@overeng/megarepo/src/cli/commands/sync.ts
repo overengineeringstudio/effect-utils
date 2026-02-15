@@ -114,7 +114,7 @@ export const syncMegarepo = <R = never>({
     const resolvedRoot = yield* fs.realPath(megarepoRoot)
 
     // Check if we've already synced this megarepo (circuit breaker for diamond dependencies)
-    if (visited.has(resolvedRoot)) {
+    if (visited.has(resolvedRoot) === true) {
       // Skip silently - duplicate syncing detected
       return {
         root: megarepoRoot,
@@ -153,7 +153,7 @@ export const syncMegarepo = <R = never>({
     const remoteMemberNames = new Set<string>()
     for (const [name, sourceString] of Object.entries(config.members)) {
       const source = parseSourceString(sourceString)
-      if (source !== undefined && isRemoteSource(source)) {
+      if (source !== undefined && isRemoteSource(source) === true) {
         remoteMemberNames.add(name)
       }
     }
@@ -273,10 +273,10 @@ export const syncMegarepo = <R = never>({
 
       for (const entry of existingEntries) {
         // Skip if this member is still in config
-        if (configuredMemberNames.has(entry)) continue
+        if (configuredMemberNames.has(entry) === true) continue
 
         // Skip if this member was explicitly skipped via --only/--skip
-        if (skippedMemberNames.has(entry)) continue
+        if (skippedMemberNames.has(entry) === true) continue
 
         const entryPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
 
@@ -350,7 +350,7 @@ export const syncMegarepo = <R = never>({
         const sourceString = config.members[result.name]
         if (sourceString === undefined) continue
         const source = parseSourceString(sourceString)
-        if (source === undefined || !isRemoteSource(source)) continue
+        if (source === undefined || isRemoteSource(source) === false) continue
 
         const url = getSourceUrl(source) ?? sourceString
         const existingLocked = lockFile.members[result.name]
@@ -420,7 +420,7 @@ export const syncMegarepo = <R = never>({
         const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
         // Convert to AbsoluteDirPath (add trailing slash if needed)
         const nestedRoot = EffectPath.unsafe.absoluteDir(
-          nestedPath.endsWith('/') ? nestedPath : `${nestedPath}/`,
+          nestedPath.endsWith('/') === true ? nestedPath : `${nestedPath}/`,
         )
 
         const nestedResult = yield* syncMegarepo({
@@ -572,17 +572,17 @@ export const syncCommand = Cli.Command.make(
       const root = yield* findMegarepoRoot(cwd)
 
       // Validate mutual exclusivity of --only and --skip
-      if (Option.isSome(only) && Option.isSome(skip)) {
+      if (Option.isSome(only) === true && Option.isSome(skip) === true) {
         return yield* new InvalidOptionsError({
           message: '--only and --skip are mutually exclusive',
         })
       }
 
       // Parse member filter options
-      const onlyMembers = Option.isSome(only) ? parseMemberList(only.value) : undefined
-      const skipMembers = Option.isSome(skip) ? parseMemberList(skip.value) : undefined
+      const onlyMembers = Option.isSome(only) === true ? parseMemberList(only.value) : undefined
+      const skipMembers = Option.isSome(skip) === true ? parseMemberList(skip.value) : undefined
 
-      if (Option.isNone(root)) {
+      if (Option.isNone(root) === true) {
         return yield* new NotInMegarepoError({ message: 'No megarepo.json found' })
       }
 
@@ -636,7 +636,7 @@ export const syncCommand = Cli.Command.make(
 
         // Create interactive prompt callback if in TTY mode and not using --create-branches
         const onMissingRef =
-          !createBranches && isTTY()
+          !createBranches && isTTY() === true
             ? (info: MissingRefInfo) => createMissingRefPrompt(info)
             : undefined
 

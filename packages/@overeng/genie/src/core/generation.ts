@@ -91,7 +91,7 @@ export const errorOriginatesInFile = ({
   filePath: string
 }): boolean => {
   // TDZ errors never originate in the file - they're always from dependencies
-  if (isTdzError(error)) return false
+  if (isTdzError(error) === true) return false
   // Check if the stack trace includes this file path
   if (error instanceof Error) {
     return error.stack?.includes(filePath) ?? false
@@ -124,7 +124,7 @@ const getHeaderComment = ({
   const basename = path.basename(targetFilePath)
 
   // tsconfig*.json files support JS-style comments
-  if (basename.startsWith('tsconfig') && ext === '.json') {
+  if (basename.startsWith('tsconfig') === true && ext === '.json') {
     return `// Generated file - DO NOT EDIT\n// Source: ${sourceFile}\n`
   }
 
@@ -158,7 +158,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
 }) {
   const ext = path.extname(targetFilePath)
 
-  if (!oxfmtSupportedExtensions.has(ext)) {
+  if (oxfmtSupportedExtensions.has(ext) === false) {
     return content
   }
 

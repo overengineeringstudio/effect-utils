@@ -59,7 +59,7 @@ const isTypeOnlyImport = (node: any): boolean => {
 
   // No specifiers means side-effect import (import 'x') — not type-only
   const specifiers = node.specifiers
-  if (!Array.isArray(specifiers) || specifiers.length === 0) return false
+  if (Array.isArray(specifiers) === false || specifiers.length === 0) return false
 
   // import { type A, type B } from 'y' — all specifiers must be type-kind
   return specifiers.every((s: any) => s.importKind === 'type')
@@ -76,7 +76,7 @@ const isTypeOnlyExport = (node: any): boolean => {
   if (node.exportKind === 'type') return true
 
   const specifiers = node.specifiers
-  if (!Array.isArray(specifiers) || specifiers.length === 0) return false
+  if (Array.isArray(specifiers) === false || specifiers.length === 0) return false
 
   return specifiers.every((s: any) => s.exportKind === 'type')
 }
@@ -102,12 +102,12 @@ export const noExternalImportsRule = {
   create(context: any) {
     return {
       ImportDeclaration(node: any) {
-        if (isTypeOnlyImport(node)) return
+        if (isTypeOnlyImport(node) === true) return
 
         const source = node.source?.value
         if (typeof source !== 'string') return
 
-        if (isExternalSpecifier(source)) {
+        if (isExternalSpecifier(source) === true) {
           context.report({
             node,
             messageId: 'noExternalImport',
@@ -120,12 +120,12 @@ export const noExternalImportsRule = {
       ExportNamedDeclaration(node: any) {
         // Only check re-exports (those with a source)
         if (!node.source) return
-        if (isTypeOnlyExport(node)) return
+        if (isTypeOnlyExport(node) === true) return
 
         const source = node.source?.value
         if (typeof source !== 'string') return
 
-        if (isExternalSpecifier(source)) {
+        if (isExternalSpecifier(source) === true) {
           context.report({
             node,
             messageId: 'noExternalExport',
@@ -142,7 +142,7 @@ export const noExternalImportsRule = {
         const source = node.source?.value
         if (typeof source !== 'string') return
 
-        if (isExternalSpecifier(source)) {
+        if (isExternalSpecifier(source) === true) {
           context.report({
             node,
             messageId: 'noExternalExport',

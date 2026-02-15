@@ -60,7 +60,7 @@ const scanMembersRecursive = ({
 
     // Prevent cycles
     const normalizedRoot = megarepoRoot.replace(/\/$/, '')
-    if (visited.has(normalizedRoot)) {
+    if (visited.has(normalizedRoot) === true) {
       return []
     }
     visited.add(normalizedRoot)
@@ -123,7 +123,7 @@ const scanMembersRecursive = ({
       let nestedMembers: readonly MemberStatus[] | undefined = undefined
       if (all && isMegarepo && memberExists) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
-          memberPath.endsWith('/') ? memberPath : `${memberPath}/`,
+          memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
         nestedMembers = yield* scanMembersRecursive({
           megarepoRoot: nestedRoot,
@@ -285,7 +285,7 @@ export const statusCommand = Cli.Command.make(
       const fs = yield* FileSystem.FileSystem
       const root = yield* findMegarepoRoot(cwd)
 
-      if (Option.isNone(root)) {
+      if (Option.isNone(root) === true) {
         return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
@@ -324,12 +324,12 @@ export const statusCommand = Cli.Command.make(
       const remoteMemberNames = new Set<string>()
       for (const [memberName, sourceString] of Object.entries(config.members)) {
         const source = parseSourceString(sourceString)
-        if (source !== undefined && isRemoteSource(source)) {
+        if (source !== undefined && isRemoteSource(source) === true) {
           remoteMemberNames.add(memberName)
         }
       }
 
-      if (Option.isSome(lockFileOpt)) {
+      if (Option.isSome(lockFileOpt) === true) {
         // Find the most recent lockedAt timestamp across all members
         const timestamps = Object.values(lockFileOpt.value.members)
           .map((m) => new Date(m.lockedAt).getTime())
@@ -363,7 +363,7 @@ export const statusCommand = Cli.Command.make(
 
       // First try path-based detection (handles repos/<member>/repos/<member>/... paths)
       let currentMemberPath: string[] | undefined = undefined
-      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized)) {
+      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized) === true) {
         const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
         const parts = relativePath.split('/')
         const memberPath: string[] = []
@@ -408,7 +408,7 @@ export const statusCommand = Cli.Command.make(
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
                 if (
                   cwdRealPath === memberRealPathNorm ||
-                  cwdRealPath.startsWith(memberRealPathNorm + '/')
+                  cwdRealPath.startsWith(memberRealPathNorm + '/') === true
                 ) {
                   const newPath = [...pathSoFar, member.name]
                   if (cwdRealPath === memberRealPathNorm) {

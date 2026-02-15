@@ -202,9 +202,9 @@ const inferRollupTransform = (property: PropertyInfo): string | undefined => {
   if (!fn) return undefined
 
   if (fn === 'show_original') return 'asArray'
-  if (ROLLUP_BOOLEAN_FUNCTIONS.has(fn)) return 'asBoolean'
-  if (ROLLUP_DATE_FUNCTIONS.has(fn)) return 'asDate'
-  if (ROLLUP_NUMBER_FUNCTIONS.has(fn)) return 'asNumber'
+  if (ROLLUP_BOOLEAN_FUNCTIONS.has(fn) === true) return 'asBoolean'
+  if (ROLLUP_DATE_FUNCTIONS.has(fn) === true) return 'asDate'
+  if (ROLLUP_NUMBER_FUNCTIONS.has(fn) === true) return 'asNumber'
 
   return undefined
 }
@@ -289,7 +289,7 @@ const toPascalCase = (str: string): string => {
  */
 const sanitizePropertyKey = (name: string): string => {
   // If it's a valid identifier, use it as-is
-  if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) {
+  if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) === true) {
     return name
   }
   // Otherwise, quote it
@@ -321,7 +321,7 @@ const toIdentifier = (name: string): string => {
 
 const toTopLevelIdentifier = (name: string): string => {
   const identifier = toIdentifier(name)
-  if (/^[a-zA-Z_$]/.test(identifier)) {
+  if (/^[a-zA-Z_$]/.test(identifier) === true) {
     return identifier
   }
   return `_${identifier}`
@@ -334,7 +334,7 @@ const formatMetaValue = (value: unknown): string => {
   if (value === null) return 'null'
   if (typeof value === 'string') return toSingleQuotedStringLiteral(value)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) {
+  if (Array.isArray(value) === true) {
     return `[${value.map(formatMetaValue).join(', ')}]`
   }
   if (typeof value === 'object' && value !== null) {
@@ -463,7 +463,7 @@ const generatePropertyField = (options: {
   const defaultTransform = inferDefaultTransform(property)
 
   const transform =
-    configuredTransform && availableTransforms.includes(configuredTransform)
+    configuredTransform && availableTransforms.includes(configuredTransform) === true
       ? configuredTransform
       : defaultTransform
 
@@ -530,7 +530,7 @@ const generatePropertyField = (options: {
  * Generate the write schema field expression for a property
  */
 const generateWritePropertyField = (property: PropertyInfo): string | null => {
-  if (READ_ONLY_PROPERTIES.has(property.type)) {
+  if (READ_ONLY_PROPERTIES.has(property.type) === true) {
     return null
   }
 
@@ -629,19 +629,19 @@ const formatConfigValue = (value: unknown): string => {
   }
   if (typeof value === 'string') {
     // Quote strings that need it (contain spaces, special chars, etc.)
-    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value)) {
+    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value) === true) {
       return value
     }
     return JSON.stringify(value)
   }
   if (typeof value === 'object' && value !== null) {
-    if (Array.isArray(value)) {
+    if (Array.isArray(value) === true) {
       return `[${value.map(formatConfigValue).join(', ')}]`
     }
     const entries = Object.entries(value)
       .filter(([, v]) => v !== undefined)
       .map(([k, v]) => {
-        const key = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k) ? k : JSON.stringify(k)
+        const key = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k) === true ? k : JSON.stringify(k)
         return `${key}: ${formatConfigValue(v)}`
       })
     return `{ ${entries.join(', ')} }`
@@ -892,7 +892,7 @@ export const getAvailableTransforms = (propertyType: string): readonly string[] 
   const isNotionPropertyType = (u: string): u is NotionPropertyType =>
     Object.hasOwn(PROPERTY_TRANSFORMS, u)
 
-  if (isNotionPropertyType(propertyType)) {
+  if (isNotionPropertyType(propertyType) === true) {
     return PROPERTY_TRANSFORMS[propertyType]
   }
   return ['raw']
@@ -903,7 +903,7 @@ export const getDefaultTransform = (propertyType: string): string => {
   const isNotionPropertyType = (u: string): u is NotionPropertyType =>
     Object.hasOwn(DEFAULT_TRANSFORMS, u)
 
-  if (isNotionPropertyType(propertyType)) {
+  if (isNotionPropertyType(propertyType) === true) {
     return DEFAULT_TRANSFORMS[propertyType]
   }
   return 'raw'
