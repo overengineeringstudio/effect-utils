@@ -117,7 +117,7 @@ export type {
 export const pnpmWorkspace = (...patterns: string[]) => {
   // '.' means standalone (no siblings), otherwise default to '../*'
   const isStandalone = patterns.length === 1 && patterns[0] === '.'
-  const additionalPatterns = isStandalone ? [] : patterns.length > 0 ? patterns : ['../*']
+  const additionalPatterns = isStandalone === true ? [] : patterns.length > 0 ? patterns : ['../*']
 
   return pnpmWorkspaceYaml({
     packages: ['.', ...additionalPatterns],
@@ -372,7 +372,7 @@ const generatePatchCommands = ({
   return patchEntries
     .map(([specifier, patchPath]) => {
       const parsed = parsePatchSpecifier(specifier)
-      if (!parsed) return undefined
+      if (parsed === undefined) return undefined
       const [pkgName] = parsed
       const relativePath =
         patchPath.startsWith('./') === true || patchPath.startsWith('../') === true
