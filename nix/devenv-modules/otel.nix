@@ -375,7 +375,8 @@ in
 
   # mkAfter ensures this runs after other enterShell code, so env vars
   # (including TRACEPARENT from setup:gate) are available.
-  # Output is deferred via PROMPT_COMMAND to survive devenv's TUI terminal reset.
+  # Note: devenv's PTY task runner drains all PROMPT_COMMAND output before the
+  # interactive session, so we provide `otel-trace` for on-demand trace URL access.
   enterShell = lib.mkAfter ''
     # ── Mode detection ──────────────────────────────────────────────────
     # Resolve "auto" to "system" or "local" at runtime.
@@ -445,9 +446,26 @@ in
     _otel_entry_msg="$_otel_entry_msg
 [otel] Start with: devenv up | $_grafana_display"
 
-    # Defer output via PROMPT_COMMAND so it prints after the first prompt,
-    # surviving devenv's TUI terminal reset that swallows enterShell output.
-    PROMPT_COMMAND="''${PROMPT_COMMAND:+$PROMPT_COMMAND;}"'if [ -n "''${_otel_entry_msg:-}" ]; then echo "$_otel_entry_msg" >&2; unset _otel_entry_msg; fi'
+    # devenv's PTY task runner drains all PROMPT_COMMAND output before the
+    # interactive session starts, so we can't display messages via echo.
+    # Instead, provide an `otel-trace` shell function for on-demand access.
+    # No `export -f` needed — function is defined during rcfile sourcing
+    # and stays available in the interactive shell.
+    export OTEL_GRAFANA_LINK_URL="$_grafana_link_url"
+    otel_trace() {
+      if [ -n "''${TRACEPARENT:-}" ]; then
+        IFS='-' read -r _ _tid _ _ <<< "$TRACEPARENT"
+        local _url="''${OTEL_GRAFANA_LINK_URL:-$OTEL_GRAFANA_URL}"
+        if [ -t 1 ]; then
+          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "trace:$_tid"
+        else
+          echo "trace:$_tid $_url"
+        fi
+      else
+        echo "[otel] No TRACEPARENT available"
+      fi
+    }
+    alias otel-trace=otel_trace
 
     # Detect cold vs warm start (setup-git-hash written by setup.nix)
     _cold_start="false"
