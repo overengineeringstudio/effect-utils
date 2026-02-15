@@ -169,7 +169,7 @@ export const resolveCliVersion = (options: {
 
   // Local/dev build: check for runtime stamp
   const runtimeStampRaw = process.env[runtimeStampEnvVar]?.trim()
-  if (runtimeStampRaw === true) {
+  if (runtimeStampRaw !== undefined) {
     const localStamp = parseStamp(runtimeStampRaw)
     if (localStamp?.type === 'local') {
       return renderLocalVersion({ baseVersion, stamp: localStamp })

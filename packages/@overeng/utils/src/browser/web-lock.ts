@@ -60,7 +60,7 @@ export const withLock =
 
           const result = await navigator.locks.request(lockName, requestOptions, async (lock) => {
             if (lock === null) {
-              if (onTaken === true) {
+              if (onTaken !== undefined) {
                 const onTakenExit = await Runtime.runPromiseExit(runtime)(onTaken)
                 if (onTakenExit._tag === 'Failure') {
                   return onTakenExit as unknown as Exit.Exit<A, E>

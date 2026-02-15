@@ -128,7 +128,7 @@ export const createPlaywrightConfig = async (
   }
 
   // Store port in env var for subsequent config evaluations
-  if (envPort === false) {
+  if (envPort === undefined) {
     process.env[portEnvVar] = String(port)
   }
 

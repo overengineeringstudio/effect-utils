@@ -36,9 +36,9 @@ const categorizeHandle = (handle: unknown): HandleInfo => {
       remotePort?: number
       localPort?: number
     }
-    if (socket.remoteAddress === true) {
+    if (socket.remoteAddress !== undefined) {
       details = `remote: ${socket.remoteAddress}:${socket.remotePort}`
-    } else if (socket.localPort === true) {
+    } else if (socket.localPort !== undefined) {
       details = `local port: ${socket.localPort}`
     }
   } else if (type === 'FSReqCallback' || type === 'FSReqPromise') {
