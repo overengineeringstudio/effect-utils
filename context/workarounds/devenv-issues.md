@@ -112,16 +112,11 @@ Example trace event:
 - `direnv` activation fails (non-zero exit) when an optional setup task fails
 - Shell entry becomes brittle even though failures should be best-effort (R15)
 
-**Workaround (effect-utils):**
+**Resolution:**
 
-- Use shell-entry wrapper tasks (`setup:opt:*`) that run the real task via a nested
-  `devenv tasks run ...` and always exit 0 while logging a warning
-
-**Cleanup checklist once upstream is fixed:**
-
-- Remove wrapper tasks (`setup:opt:*`)
-- Switch shell-entry optional deps back to native `@complete`
-- Remove nested `devenv tasks run ...` calls
+Resolved by switching to `devenv shell` (instead of direnv). Optional tasks now use
+native `@complete` dependency suffix directly. The `setup:opt:*` wrapper tasks were
+removed as they are no longer needed.
 
 ---
 

@@ -35,7 +35,7 @@ Use namespaced names consistently across repos:
 | `lint:`   | `lint:check`, `lint:fix`, `lint:check:format`                   |
 | `test:`   | `test:run`, `test:watch`, `test:unit`                           |
 | `check:`  | `check:quick`, `check:all`                                      |
-| `setup:`  | `setup:run`, `setup:gate`, `setup:optional`, `setup:strict`     |
+| `setup:`  | `setup:run`, `setup:gate`, `setup:strict`                       |
 | `nix:`    | `nix:build`, `nix:hash`, `nix:check`                            |
 
 Reminder: `devenv tasks run check` executes all `check:*` tasks and does not run a plain `check` task.

@@ -210,7 +210,7 @@ in
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
-      exec = tscWithDiagnostics tsconfigFile "--noCheck";
+      exec = tscWithDiagnostics "--build ${tsconfigFile}" "--noCheck";
       status = ''
         set -euo pipefail
 

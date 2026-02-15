@@ -15,19 +15,8 @@
 #
 # The tasks will run as part of shell entry.
 #
-# Optional task failures:
-#
-# Upstream devenv regression: optional task failures can cause `devenv shell` / direnv
-# activation to exit non-zero again (R15). We work around this by introducing wrapper
-# tasks for shell entry optional work.
-#
-# Upstream issue:
-# - https://github.com/cachix/devenv/issues/2480
-#
-# Cleanup checklist once upstream is fixed:
-# - Remove wrapper tasks (setup:opt:*) and switch back to native `@complete` deps.
-# - Remove nested `devenv tasks run` calls from wrappers.
-# - Consider reintroducing a single optional gate task without wrappers.
+# Required tasks are hard dependencies of devenv:enterShell.
+# Optional tasks use the `@complete` suffix so failures don't block shell entry.
 #
 # ## Rebase Guard
 #
@@ -37,12 +26,6 @@
 # be "skipped due to dependency failure".
 #
 # If you need to run setup during rebase, use: `dt setup:run`
-#
-# ## Optional Tasks
-#
-# Optional tasks are wired through a gate task (`setup:optional`) which depends on
-# wrapper tasks (`setup:opt:*`). Wrappers always exit 0 so shell entry remains resilient
-# even if upstream failure handling regresses.
 {
   requiredTasks ? [ ],
   optionalTasks ? [ ],
@@ -160,17 +143,7 @@ let
   setupRequiredTasks = userRequiredTasks;
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
-
-  # Shell entry optional tasks run via wrapper tasks that never fail.
-  # This keeps direnv activation resilient even when upstream dependency failure
-  # handling regresses.
-  mkOptionalWrapperTaskName = t: "setup:opt:${lib.replaceStrings [ ":" ] [ "-" ] t}";
-  optionalWrapperTasks = map mkOptionalWrapperTaskName setupOptionalTasks;
-
-  optionalGateTaskName = "setup:optional";
-  allSetupTasks =
-    setupRequiredTasks
-    ++ lib.optionals (setupOptionalTasks != [ ]) (optionalWrapperTasks ++ [ optionalGateTaskName ]);
+  allSetupTasks = setupTasks;
 in
 {
   tasks =
@@ -181,87 +154,6 @@ in
         status = completionsStatus;
       };
     }
-    // {
-      # Gate for shell-entry optional tasks.
-      #
-      # - Runs wrapper tasks as dependencies; wrappers swallow failures so shell entry
-      #   stays resilient.
-      "${optionalGateTaskName}" = lib.mkIf (setupOptionalTasks != [ ]) ({
-        description = "Shell entry optional tasks (best effort)";
-        exec = "exit 0";
-        after = optionalWrapperTasks;
-      });
-
-      # Wrapper tasks for shell entry optional work.
-      #
-      # Why wrappers?
-      # - We cannot depend directly on optional tasks (or use @complete) without risking
-      #   `devenv shell` returning non-zero on failures in some upstream versions.
-      # - Wrappers run the real task via a nested `devenv tasks run ...` and always exit 0.
-      #
-      # Strict mode (`setup:strict` / DEVENV_STRICT=1) still depends on the real tasks
-      # so failures are enforced when explicitly requested.
-    }
-    // (lib.listToAttrs (
-      map (
-        t:
-        let
-          wrapper = mkOptionalWrapperTaskName t;
-        in
-        {
-          name = wrapper;
-          value = {
-            description = "Optional setup wrapper (best effort): ${t}";
-            exec = ''
-              set -u
-              set -o pipefail
-
-              # Guard: prevent recursive fork bomb. Each wrapper calls `devenv tasks run`
-              # which may re-evaluate enterShell, spawning wrappers again (6^n explosion).
-              if [ "''${_DEVENV_SETUP_OPT_ACTIVE:-}" = "1" ]; then
-                exit 0
-              fi
-              export _DEVENV_SETUP_OPT_ACTIVE=1
-
-              # Secondary guard in case environment is not propagated to recursive
-              # task invocations: create a per-wrapper filesystem lock.
-              _setup_opt_lock_root="''${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/devenv-setup-opt-locks"
-              _setup_opt_lock_dir="$_setup_opt_lock_root/${wrapper}"
-              mkdir -p "$_setup_opt_lock_root"
-
-              if ! mkdir "$_setup_opt_lock_dir" 2>/dev/null; then
-                if [ -f "$_setup_opt_lock_dir/pid" ]; then
-                  _setup_opt_pid="$(cat "$_setup_opt_lock_dir/pid" 2>/dev/null || true)"
-                  if [ -n "''${_setup_opt_pid:-}" ] && kill -0 "$_setup_opt_pid" 2>/dev/null; then
-                    exit 0
-                  fi
-                fi
-
-                rm -rf "$_setup_opt_lock_dir"
-                if ! mkdir "$_setup_opt_lock_dir" 2>/dev/null; then
-                  exit 0
-                fi
-              fi
-
-              echo "$$" > "$_setup_opt_lock_dir/pid"
-              trap 'rm -rf "$_setup_opt_lock_dir"' EXIT
-
-              echo "[devenv] optional setup: ${t}" >&2
-
-              if DEVENV_SETUP_FROM_WRAPPER=1 \
-              devenv tasks run "${t}" --mode before --no-tui --show-output; then
-                exit 0
-              fi
-
-              code=$?
-              echo "[devenv] WARN: optional setup task failed: ${t} (exit $code)" >&2
-              echo "[devenv] WARN: shell continues; re-run with: dt ${t}" >&2
-              exit 0
-            '';
-          };
-        }
-      ) setupOptionalTasks
-    ))
     // {
 
       # Strict variant of setup tasks.
@@ -311,11 +203,11 @@ in
       };
 
       # Wire setup tasks to run during shell entry.
-      # Required tasks are hard dependencies; optional tasks are best-effort via wrappers.
-      # The root OTEL span is emitted in enterShell (devenv.nix) where SHELL_ENTRY_TIME_NS
-      # is available, using TRACEPARENT propagated from setup:gate via devenv.env.
+      # Required tasks are hard dependencies; optional tasks use @complete so
+      # failures don't block shell entry.
       "devenv:enterShell" = {
-        after = allSetupTasks;
+        after = setupRequiredTasks
+          ++ (map (t: "${t}@complete") setupOptionalTasks);
       };
 
       # Run setup tasks explicitly.
