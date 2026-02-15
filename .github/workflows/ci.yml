@@ -35,8 +35,15 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - name: Repair Nix store
-        run: nix-store --verify --repair
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
         shell: bash
       - name: Type check
         run: 'dt ts:check'
@@ -71,8 +78,15 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - name: Repair Nix store
-        run: nix-store --verify --repair
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
         shell: bash
       - name: Format + lint
         run: 'dt lint:check'
@@ -110,8 +124,15 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - name: Repair Nix store
-        run: nix-store --verify --repair
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
         shell: bash
       - name: Unit tests
         run: 'dt test:run'
@@ -149,8 +170,15 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - name: Repair Nix store
-        run: nix-store --verify --repair
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
         shell: bash
       - name: Nix hash check
         run: 'dt nix:check'
@@ -189,8 +217,15 @@ jobs:
       - name: Install devenv
         run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
         shell: bash
-      - name: Repair Nix store
-        run: nix-store --verify --repair
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
         shell: bash
       - name: Deploy storybooks to Netlify
         run: |

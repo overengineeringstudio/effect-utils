@@ -114,12 +114,20 @@ export const syncMegarepoStep = (opts?: { frozen?: boolean; skip?: string[] }) =
 }
 
 /**
- * Repair Nix store on namespace runners.
- * Removes invalid DB entries so nix re-fetches from substituters on demand.
+ * Validate Nix store on namespace runners.
+ * A cheap `devenv version` probe catches corruption before real work starts;
+ * the expensive `--verify --repair` only runs when actually needed.
+ * @see https://github.com/namespacelabs/nscloud-setup/issues/8
  * @see https://github.com/overengineeringstudio/effect-utils/issues/201
  */
-export const repairNixStoreStep = {
-  name: 'Repair Nix store',
-  run: 'nix-store --verify --repair',
+export const validateNixStoreStep = {
+  name: 'Validate Nix store',
+  run: `if devenv version > /dev/null 2>&1; then
+  echo "Nix store OK"
+else
+  echo "::warning::Nix store validation failed, running repair..."
+  nix-store --verify --repair 2>&1 | tail -20
+  devenv version
+fi`,
   shell: 'bash',
 } as const
