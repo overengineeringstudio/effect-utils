@@ -322,7 +322,7 @@ export const createRoot = ({
         staticLineCount = Math.min(staticLineCount, maxStaticLines)
       }
 
-      if (staticResult.element !== undefined && isStaticElement(staticResult.element) === true) {
+      if (staticResult.element !== null && isStaticElement(staticResult.element) === true) {
         ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
       }
     }

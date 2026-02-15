@@ -92,7 +92,7 @@ export const renderToString = async ({
       const staticResult = extractStaticContent({ root: container.root, width })
       if (staticResult.lines.length > 0) {
         // Update the committed count
-        if (staticResult.element !== undefined && isStaticElement(staticResult.element) === true) {
+        if (staticResult.element !== null && isStaticElement(staticResult.element) === true) {
           ;(staticResult.element as TuiStaticElement).committedCount = staticResult.newItemCount
         }
       }

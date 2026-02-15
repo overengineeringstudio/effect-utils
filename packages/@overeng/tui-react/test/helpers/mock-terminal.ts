@@ -95,7 +95,7 @@ export class MockTerminal implements Terminal {
    */
   get frames(): readonly string[] {
     // Include current frame if not empty
-    if (this.currentFrame !== undefined) {
+    if (this.currentFrame !== '') {
       return [...this._frames, this.currentFrame]
     }
     return this._frames
@@ -105,7 +105,7 @@ export class MockTerminal implements Terminal {
    * Get the last rendered frame (raw, with ANSI).
    */
   lastFrame(): string | undefined {
-    if (this.currentFrame !== undefined) {
+    if (this.currentFrame !== '') {
       return this.currentFrame
     }
     return this._frames[this._frames.length - 1]
