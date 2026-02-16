@@ -28,18 +28,19 @@ export { RUNNER_PROFILES, type RunnerProfile }
 // Shared Config
 // =============================================================================
 
-/**
- * Standard devenv shell for CI job defaults.
- * TODO: Drop `--no-tui` once devenv auto-disables TUI in CI (https://github.com/cachix/devenv/issues/2504)
- */
+/** Standard devenv shell for CI job defaults */
 export const devenvShellDefaults = {
-  run: { shell: 'devenv shell --no-tui bash -- -e {0}' },
+  run: { shell: 'devenv shell bash -- -e {0}' },
 } as const
 
-/** Standard CI environment variables */
+/**
+ * Standard CI environment variables.
+ * TODO: Drop DEVENV_TUI once devenv auto-disables TUI in CI (https://github.com/cachix/devenv/issues/2504)
+ */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
+  DEVENV_TUI: 'false',
 } as const
 
 /**
