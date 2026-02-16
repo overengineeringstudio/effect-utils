@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Reduce duplicate check-time work by reusing loaded genie modules between content verification and validation
   - Added `loadGenieFile` / `checkFileDetailed` in core generation to return reusable module/context metadata
   - `checkAll` now passes preloaded modules into `runGenieValidation` instead of re-importing every `.genie.ts`
+  - Switched formatting hot path to in-process `oxfmt` API with CLI fallback, eliminating per-file formatter process spawn in normal operation
 
 - **devenv/otel-span**: Consolidate `otel-span` and `otel-emit-span` into single CLI with subcommands
   - `otel-span run <service> <span-name> [opts] -- <cmd>` replaces bare `otel-span <service> ...`

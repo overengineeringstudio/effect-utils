@@ -110,6 +110,61 @@ export const errorOriginatesInFile = ({
 /** File extensions that oxfmt can format */
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
+type OxfmtConfig = Readonly<Record<string, unknown>>
+type OxfmtFormatResult = {
+  code: string
+  errors: ReadonlyArray<unknown>
+}
+type OxfmtFormat = (
+  fileName: string,
+  text: string,
+  options?: OxfmtConfig,
+) => Promise<OxfmtFormatResult>
+
+let oxfmtFormatPromise: Promise<OxfmtFormat | undefined> | undefined
+const oxfmtConfigCache = new Map<string, OxfmtConfig | undefined>()
+
+const loadOxfmtFormat = (): Promise<OxfmtFormat | undefined> => {
+  if (oxfmtFormatPromise !== undefined) {
+    return oxfmtFormatPromise
+  }
+
+  oxfmtFormatPromise = import('oxfmt')
+    .then((module) => (typeof module.format === 'function' ? module.format : undefined))
+    .catch(() => undefined)
+
+  return oxfmtFormatPromise
+}
+
+const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
+  configPath,
+}: {
+  configPath: Option.Option<string>
+}): Effect.Effect<Option.Option<OxfmtConfig>, PlatformError.PlatformError, FileSystem.FileSystem> {
+  if (Option.isNone(configPath) === true) {
+    return Option.none()
+  }
+
+  const cached = oxfmtConfigCache.get(configPath.value)
+  if (cached !== undefined) {
+    return Option.some(cached)
+  }
+
+  const fs = yield* FileSystem.FileSystem
+  const config = yield* fs.readFileString(configPath.value).pipe(
+    Effect.flatMap((raw) =>
+      Effect.try({
+        try: () => JSON.parse(raw) as OxfmtConfig,
+        catch: () => new Error('Invalid oxfmt config JSON'),
+      }),
+    ),
+    Effect.catchAll(() => Effect.succeed(undefined)),
+  )
+
+  oxfmtConfigCache.set(configPath.value, config)
+  return config === undefined ? Option.none() : Option.some(config)
+})
+
 /**
  * Get the appropriate header comment for a generated file based on its extension.
  *
@@ -168,6 +223,26 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
 
   if (oxfmtSupportedExtensions.has(ext) === false) {
     return content
+  }
+
+  const format = yield* Effect.tryPromise({
+    try: () => loadOxfmtFormat(),
+    catch: () => undefined,
+  })
+  const options = yield* loadOxfmtConfig({ configPath })
+
+  if (format !== undefined) {
+    const result = yield* Effect.tryPromise({
+      try: () => format(targetFilePath, content, Option.getOrUndefined(options)),
+      catch: () => undefined,
+    })
+
+    if (result !== undefined && result.errors.length === 0) {
+      if (result.code.length === 0 && content.length > 0) {
+        return content
+      }
+      return result.code
+    }
   }
 
   const args = Option.match(configPath, {

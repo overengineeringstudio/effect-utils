@@ -235,6 +235,7 @@ export const catalog = defineCatalog({
   '@typescript-eslint/rule-tester': '8.52.0',
   '@typescript-eslint/utils': '8.52.0',
   'typescript-eslint': '8.52.0',
+  prettier: '3.6.2',
   oxfmt: '0.23.0',
   oxlint: '1.39.0',
   'oxlint-tsgolint': '0.11.4',
@@ -338,7 +339,8 @@ export const createEffectUtilsRefs = (basePath: string) =>
  * we use postinstall scripts instead of bun's patchedDependencies.
  */
 const patches = {
-  'effect-distributed-lock@0.0.11': 'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch',
+  'effect-distributed-lock@0.0.11':
+    'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch',
 } as const satisfies PatchesRegistry
 
 /**
