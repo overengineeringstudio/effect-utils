@@ -112,16 +112,35 @@ Example trace event:
 - `direnv` activation fails (non-zero exit) when an optional setup task fails
 - Shell entry becomes brittle even though failures should be best-effort (R15)
 
-**Workaround (effect-utils):**
+**Resolution:**
 
-- Use shell-entry wrapper tasks (`setup:opt:*`) that run the real task via a nested
-  `devenv tasks run ...` and always exit 0 while logging a warning
+Resolved by switching to `devenv shell` (instead of direnv). Optional tasks now use
+native `@complete` dependency suffix directly. The `setup:opt:*` wrapper tasks were
+removed as they are no longer needed.
 
-**Cleanup checklist once upstream is fixed:**
+---
 
-- Remove wrapper tasks (`setup:opt:*`)
-- Switch shell-entry optional deps back to native `@complete`
-- Remove nested `devenv tasks run ...` calls
+### DEVENV-05: PTY task runner drains all enterShell output before interactive session
+
+**Issue:** https://github.com/cachix/devenv/issues/2500
+
+**Affected repos:** Any repo wanting to display messages (e.g. trace URLs) on shell entry
+
+**Symptoms:**
+
+- `echo` / `printf` output from `enterShell` is consumed by `drain_pty_to_vt` and never visible
+- `PROMPT_COMMAND` hooks fire 4 times during drain before the first visible prompt
+- No mechanism to run code or display output after the PTY drain completes
+
+**Root cause:**
+
+devenv's PTY task runner sends two echo sentinels and reads until both are found, feeding all output to a headless VT. This intentionally hides task runner noise but also swallows any user-facing messages from `enterShell`.
+
+**Workaround:**
+
+Provide an on-demand `otel-trace` shell function instead of auto-displaying. The function is defined during rcfile sourcing and stays available in the interactive shell.
+
+**Upstream proposal:** A post-drain hook mechanism (env var, file-based, or `ShellCommand` variant) to run code after the interactive session starts.
 
 ---
 
@@ -223,6 +242,11 @@ Git hooks run in a subprocess that doesn't inherit the direnv environment.
   - When #2415 is fixed: can use native OTLP export to observability platforms
   - Remove manual JSON trace post-processing from CI pipelines
   - Update R10 status in this document to reflect full compliance
+
+- **DEVENV-05 fixed (post-drain hook via #2500):**
+  - Implement auto-display of otel trace URL using the new hook mechanism
+  - Remove "on-demand only" comment in `nix/devenv-modules/otel.nix`
+  - Update `context/otel.md` to reflect auto-display capability
 
 - **COMPAT-01 improved (web coding agent support):**
   - When Claude Code Web adds Nix domains to allowlist: update status, remove "Full internet" workaround

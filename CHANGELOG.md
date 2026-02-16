@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- **devenv/tasks/shared/setup.nix**: Remove `setup:opt:*` wrapper tasks and `setup:optional` gate
+  - Optional tasks now use native `@complete` dependency suffix instead of nested `devenv tasks run` wrappers
+  - Eliminates 6x shell re-evaluation, ~5.9s trace gap, fork-bomb guards, and filesystem locks
+  - The workaround for `cachix/devenv#2480` is no longer needed since we use `devenv shell` (not direnv)
+
+### Fixed
+
+- **devenv/tasks/shared/ts.nix**: Fix `ts:emit` missing `--build` flag
+  - `tscWithDiagnostics` was called without `--build`, causing tsc to treat `tsconfig.all.json` as a source file
+  - Previously masked by `setup:opt:*` wrappers silently swallowing the failure
+
 ### Changed
 
 - **devenv/otel-span**: Consolidate `otel-span` and `otel-emit-span` into single CLI with subcommands

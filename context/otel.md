@@ -11,8 +11,8 @@ To run a **local** per-project stack instead (e.g. when no system stack is avail
 ## Quick Start
 
 ```bash
-# 1. Enter devenv -- ports are printed on shell entry
-direnv allow
+# 1. Enter devenv
+devenv shell
 # [otel] Collector: http://127.0.0.1:XXXXX
 # [otel] Grafana:   http://127.0.0.1:XXXXX
 
@@ -24,6 +24,7 @@ dt pnpm:install
 dt check:quick
 
 # 4. View traces
+otel-trace                      # clickable trace URL for the current shell session
 open $OTEL_GRAFANA_URL          # Grafana UI -> Explore -> Tempo
 ```
 
@@ -56,6 +57,7 @@ When in system mode, project dashboards are automatically copied to `$OTEL_STATE
 | `OTEL_GRAFANA_URL`            | `otel.nix`   | Grafana UI URL                                                        |
 | `OTEL_STATE_DIR`              | system stack | System-level state directory; presence triggers system-mode detection |
 | `TRACEPARENT`                 | `otel-span`  | W3C Trace Context, propagated for parent-child trace links            |
+| `OTEL_GRAFANA_LINK_URL`       | `otel.nix`   | Grafana Explore URL template for trace links                          |
 
 ## Port Allocation
 
@@ -79,6 +81,19 @@ base = portRangeStart + (parseInt(sha256(root)[0:7], 16) % (portRangeEnd - portR
 Range: 10000-60000 (~0.012% collision probability for 2 worktrees).
 
 ## Shell Helpers
+
+### `otel-trace` -- Trace URL display
+
+Prints the current shell session's trace URL as a clickable OSC 8 hyperlink (when stdout is a terminal) or plain text (when piped). Available in any `devenv shell` session with OTEL enabled.
+
+```bash
+otel-trace                  # clickable hyperlink: trace:<trace-id>
+otel-trace | cat            # plain text: trace:<trace-id> <url>
+```
+
+The function parses `TRACEPARENT` (W3C format: `version-traceId-spanId-traceFlags`) and constructs a Grafana Explore URL from `OTEL_GRAFANA_LINK_URL`.
+
+**Note:** Auto-display of the trace URL on shell entry is blocked by devenv's PTY task runner (`drain_pty_to_vt`), which consumes all shell output before the interactive session starts. Tracked upstream in [cachix/devenv#2500](https://github.com/cachix/devenv/issues/2500).
 
 ### `otel-span` -- Trace span CLI
 
@@ -168,7 +183,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 | -------------------- | ---------------------------------------------- |
 | `overview`           | Landing page: recent traces, service breakdown |
 | `dt-tasks`           | Task duration, cache hit rate, failure rate    |
-| `shell-entry`        | `direnv allow` / enterShell duration breakdown |
+| `shell-entry`        | `devenv shell` / enterShell duration breakdown |
 | `pnpm-install`       | Per-package install analysis, waterfall view   |
 | `ts-app-traces`      | General-purpose trace exploration for Effect   |
 | `dt-duration-trends` | p50/p95/p99 percentiles over time by category  |
@@ -210,3 +225,4 @@ nix/devenv-modules/
 
 - **`nix/devenv-modules/tasks/tasks.md`** -- `dt` wrapper and task modules
 - **[cachix/devenv#2415](https://github.com/cachix/devenv/issues/2415)** -- Upstream native OTEL support
+- **[cachix/devenv#2500](https://github.com/cachix/devenv/issues/2500)** -- Post-drain hook (for auto-displaying trace URL on shell entry)
