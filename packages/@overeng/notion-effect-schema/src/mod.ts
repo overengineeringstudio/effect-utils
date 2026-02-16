@@ -143,6 +143,8 @@ export const NotionSchema = {
   relationIds: Relation.asIds,
   relationSingle: Relation.asSingle,
   relationSingleId: Relation.asSingleId,
+  relationSingleOption: Relation.asSingleOption,
+  relationSingleIdOption: Relation.asSingleIdOption,
   relationProperty: Relation.Property,
   peopleIds: People.asIds,
   peopleRaw: People.raw,

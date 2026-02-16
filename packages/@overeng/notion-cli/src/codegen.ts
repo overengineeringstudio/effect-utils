@@ -69,7 +69,7 @@ export const PROPERTY_TRANSFORMS: Record<NotionPropertyType, readonly string[]> 
   email: ['raw', 'asString', 'asOption'],
   phone_number: ['raw', 'asString', 'asOption'],
   formula: ['raw', 'asBoolean', 'asDate', 'asNumber', 'asString'],
-  relation: ['raw', 'asIds', 'asSingle', 'asSingleId'],
+  relation: ['raw', 'asIds', 'asSingle', 'asSingleOption', 'asSingleId', 'asSingleIdOption'],
   rollup: ['raw', 'asArray', 'asBoolean', 'asDate', 'asNumber', 'asString'],
   created_time: ['raw', 'asDate'],
   created_by: ['raw'],
@@ -155,7 +155,9 @@ export const NOTION_SCHEMA_TRANSFORM_KEYS: Partial<
     raw: 'relationProperty',
     asIds: 'relationIds',
     asSingle: 'relationSingle',
+    asSingleOption: 'relationSingleOption',
     asSingleId: 'relationSingleId',
+    asSingleIdOption: 'relationSingleIdOption',
   },
   rollup: {
     raw: 'rollupRaw',
@@ -211,7 +213,7 @@ const inferRollupTransform = (property: PropertyInfo): string | undefined => {
 
 const inferDefaultTransform = (property: PropertyInfo): string => {
   if (property.type === 'relation' && property.relation?.type === 'single_property') {
-    return 'asSingle'
+    return 'asSingleOption'
   }
 
   if (property.type === 'rollup') {
