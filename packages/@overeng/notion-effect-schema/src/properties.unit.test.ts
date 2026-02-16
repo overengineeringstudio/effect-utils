@@ -1308,6 +1308,70 @@ Vitest.describe('Relation Property', () => {
     )
   })
 
+  Vitest.describe('NotionSchema.relationSingleOption', () => {
+    Vitest.it.effect('returns Some for single relation', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleOption)(
+          singleRelationProperty,
+        )
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrThrow(result)).toEqual({ id: 'page-1' })
+      }),
+    )
+
+    Vitest.it.effect('returns None for empty relation', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleOption)({
+          id: 'relation',
+          type: 'relation' as const,
+          relation: [],
+        })
+        expect(Option.isNone(result)).toBe(true)
+      }),
+    )
+
+    Vitest.it.effect('fails for multiple relations', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleOption)(
+          relationProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
+  Vitest.describe('NotionSchema.relationSingleIdOption', () => {
+    Vitest.it.effect('returns Some for single relation', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleIdOption)(
+          singleRelationProperty,
+        )
+        expect(Option.isSome(result)).toBe(true)
+        expect(Option.getOrThrow(result)).toBe('page-1')
+      }),
+    )
+
+    Vitest.it.effect('returns None for empty relation', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleIdOption)({
+          id: 'relation',
+          type: 'relation' as const,
+          relation: [],
+        })
+        expect(Option.isNone(result)).toBe(true)
+      }),
+    )
+
+    Vitest.it.effect('fails for multiple relations', () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decodeUnknown(NotionSchema.relationSingleIdOption)(
+          relationProperty,
+        ).pipe(Effect.either)
+        expect(result._tag).toBe('Left')
+      }),
+    )
+  })
+
   Vitest.describe('NotionSchema.relationWriteFromIds', () => {
     Vitest.it.effect('encodes page IDs to write payload', () =>
       Effect.gen(function* () {

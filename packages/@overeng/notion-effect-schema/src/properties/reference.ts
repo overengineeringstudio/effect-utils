@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 
 import { docsPath, NotionUUID, shouldNeverHappen } from '../common.ts'
 import { User } from '../users.ts'
@@ -222,6 +222,42 @@ export const Relation = {
       encode: () =>
         shouldNeverHappen(
           'Relation.asSingleId encode is not supported. Use RelationWrite / RelationWriteFromIds.',
+        ),
+    },
+  ),
+
+  /** Transform to an optional single relation object (allows 0 or 1 items). */
+  asSingleOption: Schema.transform(
+    RelationProperty.pipe(
+      Schema.filter((p) => p.relation.length <= 1, {
+        message: () => 'Relation must have at most one item',
+      }),
+    ),
+    Schema.OptionFromSelf(Schema.Struct({ id: NotionUUID })),
+    {
+      strict: false,
+      decode: (prop) => Option.fromNullable(prop.relation[0]),
+      encode: () =>
+        shouldNeverHappen(
+          'Relation.asSingleOption encode is not supported. Use RelationWrite / RelationWriteFromIds.',
+        ),
+    },
+  ),
+
+  /** Transform to an optional single related page ID (allows 0 or 1 items). */
+  asSingleIdOption: Schema.transform(
+    RelationProperty.pipe(
+      Schema.filter((p) => p.relation.length <= 1, {
+        message: () => 'Relation must have at most one item',
+      }),
+    ),
+    Schema.OptionFromSelf(NotionUUID),
+    {
+      strict: false,
+      decode: (prop) => Option.fromNullable(prop.relation[0]?.id),
+      encode: () =>
+        shouldNeverHappen(
+          'Relation.asSingleIdOption encode is not supported. Use RelationWrite / RelationWriteFromIds.',
         ),
     },
   ),

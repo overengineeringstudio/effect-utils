@@ -516,7 +516,7 @@ describe('codegen', () => {
       }
 
       const code = generateSchemaCode({ dbInfo, schemaName: 'Test' })
-      expect(code).toContain('Owner: NotionSchema.relationSingle')
+      expect(code).toContain('Owner: NotionSchema.relationSingleOption')
       expect(code).toContain('Total: NotionSchema.rollupNumber')
     })
 
