@@ -45,9 +45,6 @@
             "context": "nix-check (namespace-profile-macos-arm64)"
           },
           {
-            "context": "nix-cold-build"
-          },
-          {
             "context": "deploy-storybooks"
           }
         ]

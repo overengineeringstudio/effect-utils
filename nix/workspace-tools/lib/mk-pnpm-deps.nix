@@ -49,6 +49,13 @@ in
       #
       # See: https://blog.eigenvalue.net/nix-rerunning-fixed-output-derivations/
       #
+      # NOTE: This does NOT cover npm registry content drift (a tarball
+      # republished with different content at the same version). In that case
+      # the lockfile stays the same, so the fingerprint doesn't change and
+      # cachix can still serve a stale output. The CI store eviction in
+      # nix-cli.nix handles that edge case by deleting cached pnpm-deps
+      # outputs before building.
+      #
       # TODO(nix-ca): Replace with content-addressed (CA) derivations once the
       # experimental feature is production-ready and binary cache support is
       # complete. CA derivations eliminate manually-maintained FOD hashes entirely.

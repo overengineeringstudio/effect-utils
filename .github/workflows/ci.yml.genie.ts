@@ -71,24 +71,6 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
     name: 'Nix hash check',
     run: 'dt nix:check',
   }),
-  // Cold build without cachix to catch stale pnpmDepsHash.
-  // The regular nix-check can miss stale hashes when cachix has the old
-  // (previously valid) output cached in the Nix store, causing `nix build`
-  // to succeed without re-fetching dependencies.
-  'nix-cold-build': {
-    'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
-    steps: [
-      checkoutStep(),
-      installNixStep(),
-      // No cachix step — forces a from-scratch build
-      {
-        name: 'Nix cold build (no binary cache)',
-        shell: 'bash',
-        run: 'nix build .#megarepo .#genie .#oxlint-npm --no-link',
-      },
-      failureReminderStep,
-    ],
-  },
 }
 
 const NETLIFY_SITE = 'overeng-utils'
