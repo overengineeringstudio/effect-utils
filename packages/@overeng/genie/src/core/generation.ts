@@ -122,7 +122,6 @@ type OxfmtFormat = (
 ) => Promise<OxfmtFormatResult>
 
 let oxfmtFormatPromise: Promise<OxfmtFormat | undefined> | undefined
-const oxfmtConfigCache = new Map<string, OxfmtConfig | undefined>()
 
 const loadOxfmtFormat = (): Promise<OxfmtFormat | undefined> => {
   if (oxfmtFormatPromise !== undefined) {
@@ -145,11 +144,6 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
     return Option.none()
   }
 
-  const cached = oxfmtConfigCache.get(configPath.value)
-  if (cached !== undefined) {
-    return Option.some(cached)
-  }
-
   const fs = yield* FileSystem.FileSystem
   const config = yield* fs.readFileString(configPath.value).pipe(
     Effect.flatMap((raw) =>
@@ -161,7 +155,6 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
     Effect.catchAll(() => Effect.succeed(undefined)),
   )
 
-  oxfmtConfigCache.set(configPath.value, config)
   return config === undefined ? Option.none() : Option.some(config)
 })
 

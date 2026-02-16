@@ -62,9 +62,11 @@ export const runGenieValidation = ({
       if (loaded === undefined) continue
 
       // Create per-file context with location and workspace data
+      const location = loaded.ctx.location === '.' ? '' : loaded.ctx.location
+
       const ctx: GenieContext = {
         cwd,
-        location: loaded.ctx.location,
+        location,
         workspace: {
           packages: packageJsonContext.packages,
           byName: packageJsonContext.byName,
