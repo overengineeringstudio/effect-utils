@@ -9,7 +9,7 @@ import {
   type Error as PlatformError,
   FileSystem,
 } from '@effect/platform'
-import { Duration, Effect, Option } from 'effect'
+import { Duration, Effect, Either, Option } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
@@ -145,17 +145,13 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   }
 
   const fs = yield* FileSystem.FileSystem
-  const config = yield* fs.readFileString(configPath.value).pipe(
-    Effect.flatMap((raw) =>
-      Effect.try({
-        try: () => JSON.parse(raw) as OxfmtConfig,
-        catch: () => new Error('Invalid oxfmt config JSON'),
-      }),
-    ),
-    Effect.catchAll(() => Effect.succeed(undefined)),
-  )
+  const raw = yield* fs.readFileString(configPath.value)
+  const config = yield* Effect.try({
+    try: () => JSON.parse(raw) as OxfmtConfig,
+    catch: () => new Error('Invalid oxfmt config JSON'),
+  })
 
-  return config === undefined ? Option.none() : Option.some(config)
+  return Option.some(config)
 })
 
 /**
@@ -222,11 +218,11 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     try: () => loadOxfmtFormat(),
     catch: () => undefined,
   })
-  const options = yield* loadOxfmtConfig({ configPath })
+  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
 
-  if (format !== undefined) {
+  if (format !== undefined && Either.isRight(optionsResult) === true) {
     const result = yield* Effect.tryPromise({
-      try: () => format(targetFilePath, content, Option.getOrUndefined(options)),
+      try: () => format(targetFilePath, content, Option.getOrUndefined(optionsResult.right)),
       catch: () => undefined,
     })
 
