@@ -1,3 +1,4 @@
+import os from 'node:os'
 import path from 'node:path'
 
 import { type Error as PlatformError, FileSystem } from '@effect/platform'
@@ -10,7 +11,14 @@ import { assertNever } from '@overeng/utils'
 import { findGenieFiles } from './discovery.ts'
 import { GenieGenerationFailedError } from './errors.ts'
 import { type GenieEventBus, emit } from './events.ts'
-import { checkFile, errorOriginatesInFile, generateFile, isTdzError } from './generation.ts'
+import {
+  checkFile,
+  checkFileDetailed,
+  errorOriginatesInFile,
+  generateFile,
+  type LoadedGenieFile,
+  isTdzError,
+} from './generation.ts'
 import type { GenieFileStatus, GenieSummary } from './schema.ts'
 import type { GenerateSuccess } from './types.ts'
 import { runGenieValidation } from './validation.ts'
@@ -120,8 +128,18 @@ const computeSummary = ({
 })
 
 /** Run validation and emit error event on failure. Returns the error effect if validation fails. */
-const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* (cwd: string) {
-  const validationResult = yield* runGenieValidation({ cwd }).pipe(Effect.either)
+const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
+  cwd,
+  genieFiles,
+  preloadedFiles,
+}: {
+  cwd: string
+  genieFiles?: ReadonlyArray<string>
+  preloadedFiles?: ReadonlyArray<LoadedGenieFile>
+}) {
+  const validationResult = yield* runGenieValidation({ cwd, genieFiles, preloadedFiles }).pipe(
+    Effect.either,
+  )
   if (Either.isLeft(validationResult) === true) {
     const error = validationResult.left
     const message = error instanceof Error ? error.message : String(error)
@@ -291,7 +309,7 @@ export const generateAll = ({
 
     // Run validation hooks after successful generation
     if (dryRun === false) {
-      yield* runValidationOrFail(cwd)
+      yield* runValidationOrFail({ cwd, genieFiles })
     }
 
     yield* emit({ _tag: 'Complete', summary })
@@ -308,6 +326,16 @@ export const checkAll = ({
   FileSystem.FileSystem | Path | CommandExecutor.CommandExecutor | GenieEventBus
 > =>
   Effect.gen(function* () {
+    const checkConcurrency = Math.max(
+      1,
+      Math.min(
+        typeof os.availableParallelism === 'function'
+          ? os.availableParallelism()
+          : os.cpus().length,
+        12,
+      ),
+    )
+
     const genieFiles = yield* discoverAndValidate(cwd)
 
     if (genieFiles.length === 0) {
@@ -328,8 +356,8 @@ export const checkAll = ({
         Effect.gen(function* () {
           yield* emit({ _tag: 'FileStarted', path: genieFilePath })
 
-          const result = yield* checkFile({ genieFilePath, cwd, oxfmtConfigPath }).pipe(
-            Effect.map(() => ({ success: true as const })),
+          const result = yield* checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(
+            Effect.map((value) => ({ success: true as const, value })),
             Effect.catchAll((error) => Effect.succeed({ success: false as const, error })),
           )
 
@@ -343,7 +371,7 @@ export const checkAll = ({
           return result
         }),
       ),
-      { concurrency: 'unbounded' },
+      { concurrency: checkConcurrency },
     )
 
     const failed = results.filter((r) => !r.success).length
@@ -372,7 +400,18 @@ export const checkAll = ({
       })
     }
 
-    yield* runValidationOrFail(cwd)
+    const preloadedFiles = results
+      .filter(
+        (
+          result,
+        ): result is {
+          success: true
+          value: { loadedGenieFile: LoadedGenieFile }
+        } => result.success,
+      )
+      .map((result) => result.value.loadedGenieFile)
+
+    yield* runValidationOrFail({ cwd, genieFiles, preloadedFiles })
 
     const summary: GenieSummary = {
       created: 0,

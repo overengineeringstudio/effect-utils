@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/genie**: Reduce duplicate check-time work by reusing loaded genie modules between content verification and validation
+  - Added `loadGenieFile` / `checkFileDetailed` in core generation to return reusable module/context metadata
+  - `checkAll` now passes preloaded modules into `runGenieValidation` instead of re-importing every `.genie.ts`
+
 - **devenv/otel-span**: Consolidate `otel-span` and `otel-emit-span` into single CLI with subcommands
   - `otel-span run <service> <span-name> [opts] -- <cmd>` replaces bare `otel-span <service> ...`
   - `otel-span emit` replaces `otel-emit-span` (reads OTLP JSON from stdin)
