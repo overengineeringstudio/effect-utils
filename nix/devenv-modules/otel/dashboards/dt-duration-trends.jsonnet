@@ -331,11 +331,11 @@ g.dashboard.new('dt Task Duration Trends')
     0, y.shellContent, 12, 8,
   ),
 
-  // Shell entry sub-tasks (setup:gate, pnpm:install, genie:run, ts:patch-lsp, etc.)
+  // Shell entry sub-tasks (setup:gate, optional tasks, devenv internals)
   at(
     taskDurationPanel(
       'Shell entry sub-tasks (p50 / p95)',
-      'setup:gate|devenv:.*|ts:patch-lsp',
+      'setup:gate|pnpm:install|genie:run|megarepo:sync|ts:patch-lsp|ts:emit|setup:completions|beads:daemon:ensure|devenv:.*',
     ),
     12, y.shellContent, 12, 8,
   ),
