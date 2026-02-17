@@ -22,12 +22,30 @@ jobs:
       DEVENV_TUI: 'false'
     steps:
       - uses: actions/checkout@v4
-      - name: CI bootstrap
-        uses: ./.github/actions/ci-bootstrap
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          cache-name: overeng-effect-utils
-          cachix-auth-token: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-          validate-nix-store: 'true'
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Install devenv
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
+        shell: bash
       - name: Type check
         run: 'dt ts:check'
       - name: Failure note
@@ -48,12 +66,30 @@ jobs:
       DEVENV_TUI: 'false'
     steps:
       - uses: actions/checkout@v4
-      - name: CI bootstrap
-        uses: ./.github/actions/ci-bootstrap
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          cache-name: overeng-effect-utils
-          cachix-auth-token: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-          validate-nix-store: 'true'
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Install devenv
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
+        shell: bash
       - name: Format + lint
         run: 'dt lint:check'
       - name: Failure note
@@ -77,12 +113,30 @@ jobs:
       DEVENV_TUI: 'false'
     steps:
       - uses: actions/checkout@v4
-      - name: CI bootstrap
-        uses: ./.github/actions/ci-bootstrap
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          cache-name: overeng-effect-utils
-          cachix-auth-token: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-          validate-nix-store: 'true'
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Install devenv
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
+        shell: bash
       - name: Unit tests
         run: 'dt test:run'
       - name: Failure note
@@ -106,12 +160,30 @@ jobs:
       DEVENV_TUI: 'false'
     steps:
       - uses: actions/checkout@v4
-      - name: CI bootstrap
-        uses: ./.github/actions/ci-bootstrap
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          cache-name: overeng-effect-utils
-          cachix-auth-token: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-          validate-nix-store: 'true'
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Install devenv
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
+        shell: bash
       - name: Nix hash check
         run: 'dt nix:check'
       - name: Failure note
@@ -136,12 +208,30 @@ jobs:
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
     steps:
       - uses: actions/checkout@v4
-      - name: CI bootstrap
-        uses: ./.github/actions/ci-bootstrap
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
         with:
-          cache-name: overeng-effect-utils
-          cachix-auth-token: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-          validate-nix-store: 'true'
+          extra-conf: |
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v16
+        with:
+          name: overeng-effect-utils
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Install devenv
+        run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
+        shell: bash
+      - name: Validate Nix store
+        run: |
+          if devenv version > /dev/null 2>&1; then
+            echo "Nix store OK"
+          else
+            echo "::warning::Nix store validation failed, running repair..."
+            nix-store --verify --repair 2>&1 | tail -20
+            devenv version
+          fi
+        shell: bash
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
