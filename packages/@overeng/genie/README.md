@@ -136,6 +136,7 @@ Each generator has its own documentation:
 - **[package-json](./src/lib/package-json/README.md)** - Generate `package.json` files with field ordering, dependency inference, and validation
 - **[tsconfig-json](./src/lib/tsconfig-json/README.md)** - Generate `tsconfig.json` files with TypeScript compiler options
 - **[github-workflow](./src/lib/github-workflow/README.md)** - Generate GitHub Actions workflow YAML files
+- **[github-action](./src/runtime/github-action/README.md)** - Generate GitHub Action metadata (`action.yml`) files
 - **[oxlint-config](./src/lib/oxlint-config/README.md)** - Generate `oxlint.jsonc` configuration files
 - **[oxfmt-config](./src/lib/oxfmt-config/README.md)** - Generate `oxfmt.jsonc` configuration files
 - **[pnpm-workspace](./src/lib/pnpm-workspace/README.md)** - Generate `pnpm-workspace.yaml` files

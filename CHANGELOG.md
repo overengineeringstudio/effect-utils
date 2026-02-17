@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 - **CI bootstrap action**: Added reusable composite action at `.github/actions/ci-bootstrap`
   - Supports Nix + Cachix setup, optional megarepo sync (including skip list), devenv install, and optional Nix store validation
   - Added `ciBootstrapStep` helper in `genie/ci-workflow.ts` and re-export in `genie/external.ts`
+  - Added `githubAction` runtime generator in `@overeng/genie` for type-safe `action.yml` generation
+  - Migrated `.github/actions/ci-bootstrap/action.yml` to `.github/actions/ci-bootstrap/action.yml.genie.ts`
   - Updated effect-utils CI workflow source to use the local composite action
 
 ### Removed

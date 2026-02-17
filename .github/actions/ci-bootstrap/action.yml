@@ -1,4 +1,8 @@
+# Generated file - DO NOT EDIT
+# Source: action.yml.genie.ts
+
 name: CI Bootstrap
+
 description: Install Nix, enable Cachix, and optionally sync megarepo/install devenv
 
 inputs:
@@ -48,27 +52,23 @@ runs:
           extra-substituters = https://devenv.cachix.org
           extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
           ${{ inputs.extra-nix-conf }}
-
     - name: Enable Cachix cache
-      if: ${{ inputs.cachix-auth-token == '' }}
+      if: "${{ inputs.cachix-auth-token == '' }}"
       uses: cachix/cachix-action@v16
       with:
-        name: ${{ inputs.cache-name }}
-
+        name: '${{ inputs.cache-name }}'
     - name: Enable Cachix cache (auth)
-      if: ${{ inputs.cachix-auth-token != '' }}
+      if: "${{ inputs.cachix-auth-token != '' }}"
       uses: cachix/cachix-action@v16
       with:
-        name: ${{ inputs.cache-name }}
-        authToken: ${{ inputs.cachix-auth-token }}
-
+        name: '${{ inputs.cache-name }}'
+        authToken: '${{ inputs.cachix-auth-token }}'
     - name: Install megarepo CLI
-      if: ${{ inputs.install-megarepo == 'true' || inputs.sync-megarepo == 'true' }}
-      run: nix profile install github:overengineeringstudio/effect-utils#megarepo
+      if: "${{ inputs.install-megarepo == 'true' || inputs.sync-megarepo == 'true' }}"
+      run: 'nix profile install github:overengineeringstudio/effect-utils#megarepo'
       shell: bash
-
     - name: Sync megarepo dependencies
-      if: ${{ inputs.sync-megarepo == 'true' }}
+      if: "${{ inputs.sync-megarepo == 'true' }}"
       shell: bash
       run: |
         args=(mr sync)
@@ -87,14 +87,12 @@ runs:
         fi
 
         "${args[@]}"
-
     - name: Install devenv
-      if: ${{ inputs.install-devenv == 'true' }}
-      run: nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)
+      if: "${{ inputs.install-devenv == 'true' }}"
+      run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)'
       shell: bash
-
     - name: Validate Nix store
-      if: ${{ inputs.validate-nix-store == 'true' }}
+      if: "${{ inputs.validate-nix-store == 'true' }}"
       shell: bash
       run: |
         if devenv version > /dev/null 2>&1; then
