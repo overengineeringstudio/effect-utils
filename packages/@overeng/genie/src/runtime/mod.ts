@@ -63,6 +63,7 @@ export type GenieOutput<T> = {
   validate?: (ctx: GenieContext) => GenieValidationIssue[]
 }
 
+export * from './github-action/mod.ts'
 export * from './github-ruleset/mod.ts'
 export * from './github-workflow/mod.ts'
 export * from './megarepo-config/mod.ts'

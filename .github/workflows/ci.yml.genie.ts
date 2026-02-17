@@ -3,14 +3,14 @@ import { type CIJobName } from '../../genie/ci.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
-  checkoutStep,
-  installNixStep,
   cachixStep,
-  installDevenvFromLockStep,
-  validateNixStoreStep,
+  checkoutStep,
   devenvShellDefaults,
+  installDevenvFromLockStep,
+  installNixStep,
   standardCIEnv,
   namespaceRunner,
+  validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 
 const baseSteps = [
