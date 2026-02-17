@@ -17,6 +17,11 @@ type ActionOutput = {
   value?: string
 }
 
+type CompositeActionOutput = {
+  description?: string
+  value: string
+}
+
 type ActionStepBase = {
   id?: string
   name?: string
@@ -75,16 +80,24 @@ type ActionBranding = {
   color: ActionBrandingColor
 }
 
-/** Arguments for generating a GitHub Action metadata file. */
-export type GitHubActionArgs = {
+type GitHubActionArgsBase = {
   name: string
   description?: string
   author?: string
   inputs?: Record<string, ActionInput>
-  outputs?: Record<string, ActionOutput>
-  runs: CompositeRuns | NodeRuns | DockerRuns
   branding?: ActionBranding
 }
+
+/** Arguments for generating a GitHub Action metadata file. */
+export type GitHubActionArgs =
+  | (GitHubActionArgsBase & {
+      outputs?: Record<string, CompositeActionOutput>
+      runs: CompositeRuns
+    })
+  | (GitHubActionArgsBase & {
+      outputs?: Record<string, ActionOutput>
+      runs: NodeRuns | DockerRuns
+    })
 
 /**
  * Creates a GitHub Action metadata file (`action.yml`).
