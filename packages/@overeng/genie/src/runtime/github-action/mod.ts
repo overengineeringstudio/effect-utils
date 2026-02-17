@@ -34,11 +34,15 @@ type ActionStepBase = {
 type ActionRunStep = ActionStepBase & {
   run: string
   shell: 'bash' | 'pwsh' | 'python' | 'sh' | 'cmd' | 'powershell' | string
+  uses?: never
+  with?: never
 }
 
 type ActionUsesStep = ActionStepBase & {
   uses: string
   with?: Record<string, InputValue | Expression>
+  run?: never
+  shell?: never
 }
 
 type ActionStep = ActionRunStep | ActionUsesStep
