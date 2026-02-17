@@ -112,6 +112,21 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
+### Reusable CI Bootstrap Action
+
+Use the shared CI setup action from any repository:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: overengineeringstudio/effect-utils/.github/actions/ci-bootstrap@main
+  with:
+    cache-name: devenv
+    sync-megarepo: 'true'
+    sync-megarepo-skip: schickling-beads,documents
+```
+
+This action centralizes Nix setup, Cachix setup, optional `mr sync`, and devenv installation.
+
 ### Rebuild and reload binaries
 
 ```bash

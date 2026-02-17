@@ -627,6 +627,7 @@ export { baseOxlintIgnorePatterns } from './oxlint-base.ts'
 // =============================================================================
 
 export {
+  ciBootstrapStep,
   checkoutStep,
   cachixStep,
   devenvShellDefaults,

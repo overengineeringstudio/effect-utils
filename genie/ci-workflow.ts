@@ -135,3 +135,38 @@ else
 fi`,
   shell: 'bash',
 } as const
+
+type CIBootstrapStepArgs = {
+  cacheName: string
+  cachixAuthToken?: string
+  extraNixConf?: string
+  installMegarepo?: boolean
+  syncMegarepo?: boolean
+  syncMegarepoFrozen?: boolean
+  syncMegarepoSkip?: readonly string[]
+  installDevenv?: boolean
+  validateNixStore?: boolean
+  actionRef?: string
+}
+
+/**
+ * Single-step CI bootstrap via composite action.
+ * Uses a stable GitHub Action ref by default and supports local overrides.
+ */
+export const ciBootstrapStep = (args: CIBootstrapStepArgs) => ({
+  name: 'CI bootstrap',
+  uses: args.actionRef ?? 'overengineeringstudio/effect-utils/.github/actions/ci-bootstrap@main',
+  with: {
+    'cache-name': args.cacheName,
+    ...(args.cachixAuthToken ? { 'cachix-auth-token': args.cachixAuthToken } : {}),
+    ...(args.extraNixConf ? { 'extra-nix-conf': args.extraNixConf } : {}),
+    ...(args.installMegarepo !== undefined ? { 'install-megarepo': String(args.installMegarepo) } : {}),
+    ...(args.syncMegarepo !== undefined ? { 'sync-megarepo': String(args.syncMegarepo) } : {}),
+    ...(args.syncMegarepoFrozen !== undefined
+      ? { 'sync-megarepo-frozen': String(args.syncMegarepoFrozen) }
+      : {}),
+    ...(args.syncMegarepoSkip?.length ? { 'sync-megarepo-skip': args.syncMegarepoSkip.join(',') } : {}),
+    ...(args.installDevenv !== undefined ? { 'install-devenv': String(args.installDevenv) } : {}),
+    ...(args.validateNixStore !== undefined ? { 'validate-nix-store': String(args.validateNixStore) } : {}),
+  },
+})

@@ -3,11 +3,8 @@ import { type CIJobName } from '../../genie/ci.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
+  ciBootstrapStep,
   checkoutStep,
-  installNixStep,
-  cachixStep,
-  installDevenvFromLockStep,
-  validateNixStoreStep,
   devenvShellDefaults,
   standardCIEnv,
   namespaceRunner,
@@ -15,10 +12,12 @@ import {
 
 const baseSteps = [
   checkoutStep(),
-  installNixStep(),
-  cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
-  installDevenvFromLockStep,
-  validateNixStoreStep,
+  ciBootstrapStep({
+    actionRef: './.github/actions/ci-bootstrap',
+    cacheName: 'overeng-effect-utils',
+    cachixAuthToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+    validateNixStore: true,
+  }),
 ] as const
 
 const failureReminderStep = {
