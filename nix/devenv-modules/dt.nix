@@ -84,7 +84,7 @@
       # Clear TRACEPARENT to avoid inheriting stale context from devenv shell
       # re-evaluations. otel-span reads OTEL_TASK_TRACEPARENT instead (which
       # survives re-evaluations) and exports both for child processes.
-      if ! _dt_run TRACEPARENT="" otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
+      if ! TRACEPARENT="" _dt_run otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
         -- devenv tasks run "$@" --mode before $_dt_extra_args; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
         exit 1
