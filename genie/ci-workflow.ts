@@ -33,10 +33,14 @@ export const devenvShellDefaults = {
   run: { shell: 'devenv shell bash -- -e {0}' },
 } as const
 
-/** Standard CI environment variables */
+/**
+ * Standard CI environment variables.
+ * TODO: Drop DEVENV_TUI once devenv auto-disables TUI in CI (https://github.com/cachix/devenv/issues/2504)
+ */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
+  DEVENV_TUI: 'false',
 } as const
 
 /**
