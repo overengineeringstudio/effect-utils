@@ -3,57 +3,23 @@ import { Effect } from 'effect'
 
 import type { GenieContext } from '../runtime/mod.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
-import type { GenieValidationIssue } from '../runtime/validation/mod.ts'
 import { findGenieFiles } from './discovery.ts'
-import { GenieImportError, GenieValidationError } from './errors.ts'
+import { GenieValidationError } from './errors.ts'
+import type { GenieImportError } from './errors.ts'
+import { loadGenieFile, type LoadedGenieFile } from './generation.ts'
 import { buildPackageJsonValidationContext } from './package-json-context.ts'
 import { resolveWorkspaceProvider } from './workspace.ts'
-
-const importGenieOutput = Effect.fn('genie/importGenieOutput')(function* ({
-  genieFilePath,
-  _cwd,
-}: {
-  genieFilePath: string
-  _cwd: string
-}) {
-  const importPath = `${genieFilePath}?import=${Date.now()}`
-  const module = yield* Effect.tryPromise({
-    // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
-    try: () => import(importPath),
-    catch: (error) =>
-      new GenieImportError({
-        genieFilePath,
-        message: `Failed to import ${genieFilePath}: ${error instanceof Error ? error.message : String(error)}`,
-        cause: error,
-      }),
-  })
-
-  const exported = module.default
-  if (
-    typeof exported !== 'object' ||
-    exported === null ||
-    !('stringify' in exported) ||
-    typeof exported.stringify !== 'function'
-  ) {
-    return yield* new GenieImportError({
-      genieFilePath,
-      message: `Genie file must export a GenieOutput object with { data, stringify }, got ${typeof exported}`,
-      cause: new Error(`Invalid export type: ${typeof exported}`),
-    })
-  }
-
-  return exported as {
-    data: unknown
-    validate?: (ctx: GenieContext) => GenieValidationIssue[]
-  }
-})
 
 /** Import all genie files in a workspace and run their validation hooks, collecting any issues. */
 export const runGenieValidation = ({
   cwd,
+  genieFiles,
+  preloadedFiles,
   requirePackageJsonValidate = process.env.GENIE_REQUIRE_PACKAGE_JSON_VALIDATE === '1',
 }: {
   cwd: string
+  genieFiles?: ReadonlyArray<string>
+  preloadedFiles?: ReadonlyArray<LoadedGenieFile>
   requirePackageJsonValidate?: boolean
 }): Effect.Effect<
   ValidationIssue[],
@@ -65,29 +31,22 @@ export const runGenieValidation = ({
     const pathService = yield* Path.Path
     const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
     const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })
-    const genieFiles = yield* findGenieFiles(cwd)
+    const files = genieFiles === undefined ? yield* findGenieFiles(cwd) : genieFiles
+    const preloadedByPath = new Map(preloadedFiles?.map((file) => [file.genieFilePath, file]) ?? [])
 
     const issues: ValidationIssue[] = []
 
-    for (const genieFilePath of genieFiles) {
+    for (const genieFilePath of files) {
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       const isPackageJson = pathService.basename(targetFilePath) === 'package.json'
 
-      // Compute repo-relative location for this genie file
-      const genieDir = pathService.dirname(genieFilePath)
-      const location = pathService.relative(cwd, genieDir).replace(/\\/g, '/')
-
-      // Create per-file context with location and workspace data
-      const ctx: GenieContext = {
-        cwd,
-        location,
-        workspace: {
-          packages: packageJsonContext.packages,
-          byName: packageJsonContext.byName,
-        },
-      }
-
-      const output = yield* importGenieOutput({ genieFilePath, _cwd: cwd }).pipe(
+      const loaded = yield* ((): Effect.Effect<LoadedGenieFile, GenieImportError> => {
+        const preloaded = preloadedByPath.get(genieFilePath)
+        if (preloaded !== undefined) {
+          return Effect.succeed(preloaded)
+        }
+        return loadGenieFile({ genieFilePath, cwd })
+      })().pipe(
         Effect.catchAll((error) => {
           issues.push({
             severity: 'error',
@@ -100,9 +59,22 @@ export const runGenieValidation = ({
         }),
       )
 
-      if (output === undefined) continue
-      if (output.validate !== undefined) {
-        issues.push(...output.validate(ctx))
+      if (loaded === undefined) continue
+
+      const genieDir = pathService.dirname(genieFilePath)
+      const location = pathService.relative(cwd, genieDir).replace(/\\/g, '/')
+
+      const ctx: GenieContext = {
+        cwd,
+        location,
+        workspace: {
+          packages: packageJsonContext.packages,
+          byName: packageJsonContext.byName,
+        },
+      }
+
+      if (loaded.output.validate !== undefined) {
+        issues.push(...loaded.output.validate(ctx))
         continue
       }
 

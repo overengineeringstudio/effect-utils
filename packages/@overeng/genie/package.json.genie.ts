@@ -58,6 +58,8 @@ export default packageJson({
       'storybook',
       '@types/react',
       '@types/react-reconciler',
+      'prettier',
+      'oxfmt',
     ),
     ...effectLspDevDeps(),
   },

@@ -9,14 +9,22 @@ import {
   type Error as PlatformError,
   FileSystem,
 } from '@effect/platform'
-import { Duration, Effect, Option } from 'effect'
+import { Duration, Effect, Either, Option } from 'effect'
 
 import { DistributedSemaphore } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
 
+import type { GenieOutput } from '../runtime/mod.ts'
 import { ensureImportMapResolver } from './discovery.ts'
 import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
 import type { GenerateSuccess, GenieContext } from './types.ts'
+
+/** Loaded genie module plus base context reused across check and validation phases. */
+export type LoadedGenieFile = {
+  genieFilePath: string
+  output: GenieOutput<unknown>
+  ctx: GenieContext
+}
 
 /**
  * Safely convert error to string.
@@ -102,6 +110,50 @@ export const errorOriginatesInFile = ({
 /** File extensions that oxfmt can format */
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
+type OxfmtConfig = Readonly<Record<string, unknown>>
+type OxfmtFormatResult = {
+  code: string
+  errors: ReadonlyArray<unknown>
+}
+type OxfmtFormat = (
+  fileName: string,
+  text: string,
+  options?: OxfmtConfig,
+) => Promise<OxfmtFormatResult>
+
+let oxfmtFormatPromise: Promise<OxfmtFormat | undefined> | undefined
+
+const loadOxfmtFormat = (): Promise<OxfmtFormat | undefined> => {
+  if (oxfmtFormatPromise !== undefined) {
+    return oxfmtFormatPromise
+  }
+
+  oxfmtFormatPromise = import('oxfmt')
+    .then((module) => (typeof module.format === 'function' ? module.format : undefined))
+    .catch(() => undefined)
+
+  return oxfmtFormatPromise
+}
+
+const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
+  configPath,
+}: {
+  configPath: Option.Option<string>
+}): Effect.Effect<Option.Option<OxfmtConfig>, PlatformError.PlatformError, FileSystem.FileSystem> {
+  if (Option.isNone(configPath) === true) {
+    return Option.none()
+  }
+
+  const fs = yield* FileSystem.FileSystem
+  const raw = yield* fs.readFileString(configPath.value)
+  const config = yield* Effect.try({
+    try: () => JSON.parse(raw) as OxfmtConfig,
+    catch: () => new Error('Invalid oxfmt config JSON'),
+  })
+
+  return Option.some(config)
+})
+
 /**
  * Get the appropriate header comment for a generated file based on its extension.
  *
@@ -162,6 +214,26 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
+  const format = yield* Effect.tryPromise({
+    try: () => loadOxfmtFormat(),
+    catch: () => undefined,
+  })
+  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
+
+  if (format !== undefined && Either.isRight(optionsResult) === true) {
+    const result = yield* Effect.tryPromise({
+      try: () => format(targetFilePath, content, Option.getOrUndefined(optionsResult.right)),
+      catch: () => undefined,
+    })
+
+    if (result !== undefined && result.errors.length === 0) {
+      if (result.code.length === 0 && content.length > 0) {
+        return content
+      }
+      return result.code
+    }
+  }
+
   const args = Option.match(configPath, {
     onNone: () => ['--stdin-filepath', targetFilePath],
     onSome: (cfg) => ['-c', cfg, '--stdin-filepath', targetFilePath],
@@ -189,6 +261,8 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
  * Find the nearest repo root for a genie file.
  * Prefers a local megarepo.json marker, falls back to .git.
  */
+const repoRootCache = new Map<string, string>()
+
 const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
   startDir,
   cwd,
@@ -196,15 +270,23 @@ const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
   startDir: string
   cwd: string
 }) {
+  const cacheKey = `${cwd}::${startDir}`
+  const cached = repoRootCache.get(cacheKey)
+  if (cached !== undefined) {
+    return cached
+  }
+
   const fs = yield* FileSystem.FileSystem
   let current = startDir
   let last = ''
 
   while (current !== last) {
     if ((yield* fs.exists(path.join(current, 'megarepo.json'))) === true) {
+      repoRootCache.set(cacheKey, current)
       return current
     }
     if ((yield* fs.exists(path.join(current, '.git'))) === true) {
+      repoRootCache.set(cacheKey, current)
       return current
     }
     last = current
@@ -213,6 +295,7 @@ const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
     current = parent
   }
 
+  repoRootCache.set(cacheKey, cwd)
   return cwd
 })
 
@@ -236,20 +319,18 @@ const computeLocationFromPath = ({
 }
 
 /**
- * Import a genie file and return its default export (the raw content string).
+ * Import a genie file and return its typed output plus the base context.
  *
  * A Bun import resolver is registered once so `#...` specifiers are resolved
  * using the import map closest to the importing file (including transitive imports).
- *
- * All genie files must export a function that takes GenieContext and returns a string.
  */
-const importGenieFile = Effect.fn('importGenieFile')(function* ({
+export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   genieFilePath,
   cwd,
 }: {
   genieFilePath: string
   cwd: string
-}) {
+}): Effect.Effect<LoadedGenieFile, GenieImportError, FileSystem.FileSystem> {
   yield* ensureImportMapResolver
 
   const importPath = `${genieFilePath}?import=${Date.now()}`
@@ -289,7 +370,7 @@ const importGenieFile = Effect.fn('importGenieFile')(function* ({
   const location = computeLocationFromPath({ genieFilePath, repoRoot })
   const ctx: GenieContext = { location, cwd }
 
-  return exported.stringify(ctx) as string
+  return { genieFilePath, output: exported as GenieOutput<unknown>, ctx }
 })
 
 /**
@@ -323,10 +404,12 @@ export const getExpectedContent = ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
+  loadedGenieFile,
 }: {
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
+  loadedGenieFile?: LoadedGenieFile
 }): Effect.Effect<
   { targetFilePath: string; content: string },
   PlatformError.PlatformError | GenieImportError,
@@ -335,7 +418,9 @@ export const getExpectedContent = ({
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const sourceFile = path.basename(genieFilePath)
-    let rawContent = yield* importGenieFile({ genieFilePath, cwd })
+    const loaded =
+      loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
+    let rawContent = loaded.output.stringify(loaded.ctx)
 
     // For package.json files, enrich the $genie marker with source info
     if (path.basename(targetFilePath) === 'package.json') {
@@ -566,13 +651,30 @@ export const checkFile = ({
   void,
   GenieCheckError | GenieImportError | PlatformError.PlatformError,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor
+> => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
+
+/** Check a generated file and return the loaded genie module for downstream validation reuse. */
+export const checkFileDetailed = ({
+  genieFilePath,
+  cwd,
+  oxfmtConfigPath,
+}: {
+  genieFilePath: string
+  cwd: string
+  oxfmtConfigPath: Option.Option<string>
+}): Effect.Effect<
+  { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
+  GenieCheckError | GenieImportError | PlatformError.PlatformError,
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
+    const loadedGenieFile = yield* loadGenieFile({ genieFilePath, cwd })
     const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
       genieFilePath,
       cwd,
       oxfmtConfigPath,
+      loadedGenieFile,
     })
 
     const fileExists = yield* fs.exists(targetFilePath)
@@ -591,4 +693,6 @@ export const checkFile = ({
         message: `File content is out of date. Run 'genie' to regenerate it.`,
       })
     }
+
+    return { targetFilePath, loadedGenieFile }
   }).pipe(Effect.withSpan('checkFile'))
