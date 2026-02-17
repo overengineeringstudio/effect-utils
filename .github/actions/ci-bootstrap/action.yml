@@ -70,14 +70,17 @@ runs:
     - name: Sync megarepo dependencies
       if: "${{ inputs.sync-megarepo == 'true' }}"
       shell: bash
+      env:
+        SYNC_MEGAREPO_FROZEN: '${{ inputs.sync-megarepo-frozen }}'
+        SYNC_MEGAREPO_SKIP: '${{ inputs.sync-megarepo-skip }}'
       run: |
         args=(mr sync)
-        if [ "${{ inputs.sync-megarepo-frozen }}" = "true" ]; then
+        if [ "$SYNC_MEGAREPO_FROZEN" = "true" ]; then
           args+=(--frozen)
         fi
 
-        if [ -n "${{ inputs.sync-megarepo-skip }}" ]; then
-          IFS=',' read -ra items <<< "${{ inputs.sync-megarepo-skip }}"
+        if [ -n "$SYNC_MEGAREPO_SKIP" ]; then
+          IFS=',' read -ra items <<< "$SYNC_MEGAREPO_SKIP"
           for item in "${items[@]}"; do
             skip=$(echo "$item" | xargs)
             if [ -n "$skip" ]; then
