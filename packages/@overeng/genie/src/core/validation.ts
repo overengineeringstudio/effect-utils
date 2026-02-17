@@ -61,8 +61,8 @@ export const runGenieValidation = ({
 
       if (loaded === undefined) continue
 
-      // Create per-file context with location and workspace data
-      const location = loaded.ctx.location === '.' ? '' : loaded.ctx.location
+      const genieDir = pathService.dirname(genieFilePath)
+      const location = pathService.relative(cwd, genieDir).replace(/\\/g, '/')
 
       const ctx: GenieContext = {
         cwd,
