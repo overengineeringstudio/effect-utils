@@ -39,12 +39,10 @@ export const devenvShellDefaults = {
 /**
  * Standard CI environment variables.
  * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
- * TODO: Drop DEVENV_TUI once devenv auto-disables TUI in CI (https://github.com/cachix/devenv/issues/2504)
  */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
-  DEVENV_TUI: 'false',
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
 
