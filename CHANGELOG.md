@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/tasks/shared/megarepo.nix**: Document source-mode dependency requirements for `megarepo:sync:update`
+  - Added matching `pnpm:install:megarepo` dependency wiring for `megarepo:sync:update` in this repository
+  - Prevents `mr` command resolution failures when running the new update task before dependency install
+
 - **devenv/tasks/shared/ts.nix**: Fix `ts:emit` missing `--build` flag
   - `tscWithDiagnostics` was called without `--build`, causing tsc to treat `tsconfig.all.json` as a source file
   - Previously masked by `setup:opt:*` wrappers silently swallowing the failure

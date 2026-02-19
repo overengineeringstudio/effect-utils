@@ -15,6 +15,7 @@
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
 #   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
+#   tasks."megarepo:sync:update".after = [ "pnpm:install:megarepo" ];
 {
   syncAll ? true,
 }:
