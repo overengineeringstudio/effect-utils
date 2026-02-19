@@ -630,7 +630,6 @@ export {
   bashShellDefaults,
   checkoutStep,
   cachixStep,
-  devenvShellDefaults,
   installDevenvFromLockStep,
   installMegarepoStep,
   installNixStep,

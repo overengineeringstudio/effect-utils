@@ -37,12 +37,6 @@ export const bashShellDefaults = {
 } as const
 
 /**
- * @deprecated Use `bashShellDefaults` instead.
- * Kept for compatibility with downstream templates still importing this name.
- */
-export const devenvShellDefaults = bashShellDefaults
-
-/**
  * Standard CI environment variables.
  * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
  */
