@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Fix `genie check` hanging when a `.genie.ts` import fails (#251)
+  - Add `Effect.catchAllDefect` to per-file processing in `checkAll` so defects don't crash `Effect.all` and leave sibling fibers interrupted
+  - Add `Effect.timeoutFail` (120s) to per-file processing in both `checkAll` and `generateAll` to prevent indefinite hangs from stuck module imports
+
 - **devenv/tasks/shared/ts.nix**: Fix `ts:emit` missing `--build` flag
   - `tscWithDiagnostics` was called without `--build`, causing tsc to treat `tsconfig.all.json` as a source file
   - Previously masked by `setup:opt:*` wrappers silently swallowing the failure
