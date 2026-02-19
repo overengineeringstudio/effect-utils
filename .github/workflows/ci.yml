@@ -15,11 +15,10 @@ jobs:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
-        shell: devenv shell bash -- -e {0}
+        shell: bash
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +48,7 @@ jobs:
           fi
         shell: bash
       - name: Type check
-        run: 'dt ts:check'
+        run: 'devenv tasks run ts:check --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -61,11 +60,10 @@ jobs:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
-        shell: devenv shell bash -- -e {0}
+        shell: bash
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +93,7 @@ jobs:
           fi
         shell: bash
       - name: Format + lint
-        run: 'dt lint:check'
+        run: 'devenv tasks run lint:check --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -110,11 +108,10 @@ jobs:
     runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
-        shell: devenv shell bash -- -e {0}
+        shell: bash
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +141,7 @@ jobs:
           fi
         shell: bash
       - name: Unit tests
-        run: 'dt test:run'
+        run: 'devenv tasks run test:run --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -159,11 +156,10 @@ jobs:
     runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
     defaults:
       run:
-        shell: devenv shell bash -- -e {0}
+        shell: bash
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -193,7 +189,7 @@ jobs:
           fi
         shell: bash
       - name: Nix hash check
-        run: 'dt nix:check'
+        run: 'devenv tasks run nix:check --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -208,11 +204,10 @@ jobs:
       pull-requests: write
     defaults:
       run:
-        shell: devenv shell bash -- -e {0}
+        shell: bash
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
     steps:
@@ -245,9 +240,9 @@ jobs:
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            dt netlify:deploy --input type=prod
+            devenv tasks run netlify:deploy --input type=prod --mode before
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            dt netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }}
+            devenv tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()

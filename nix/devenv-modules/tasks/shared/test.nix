@@ -55,8 +55,9 @@ let
         "${pkg.path}/test/**/*.test.tsx"
         "${pkg.path}/vitest.config.ts"
       ];
-      # Only depends on the package's own install task
-      after = [ "${installTaskPrefix}:install:${pkg.name}" ];
+      # Conservative barrier: wait for all installs to finish before running tests.
+      # TODO(#254): Replace full install barrier with canonical resolver-driven granular blockers.
+      after = [ "${installTaskPrefix}:install" ];
     };
   };
 

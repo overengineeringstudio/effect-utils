@@ -627,13 +627,14 @@ export { baseOxlintIgnorePatterns } from './oxlint-base.ts'
 // =============================================================================
 
 export {
+  bashShellDefaults,
   checkoutStep,
   cachixStep,
-  devenvShellDefaults,
   installDevenvFromLockStep,
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
+  runDevenvTasksBefore,
   validateNixStoreStep,
   standardCIEnv,
   syncMegarepoStep,
