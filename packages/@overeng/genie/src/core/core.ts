@@ -4,12 +4,12 @@ import path from 'node:path'
 import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { Path } from '@effect/platform/Path'
-import { Duration, Effect, Either, Option } from 'effect'
+import { Effect, Either, Option } from 'effect'
 
 import { assertNever } from '@overeng/utils'
 
 import { findGenieFiles } from './discovery.ts'
-import { GenieCheckError, GenieFileError, GenieGenerationFailedError } from './errors.ts'
+import { GenieCheckError, GenieGenerationFailedError } from './errors.ts'
 import { type GenieEventBus, emit } from './events.ts'
 import {
   checkFile,
@@ -62,14 +62,6 @@ export const mapResultToStatus = (result: { _tag: string }): GenieFileStatus => 
       return 'error'
   }
 }
-
-/**
- * Per-file processing timeout.
- *
- * Prevents indefinite hangs when a module import never settles (e.g. ESM
- * module loader stuck after a dependency's evaluation failed).
- */
-const FILE_PROCESSING_TIMEOUT = Duration.seconds(120)
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -200,18 +192,7 @@ export const generateAll = ({
             readOnly,
             dryRun,
             oxfmtConfigPath,
-          }).pipe(
-            Effect.timeoutFail({
-              duration: FILE_PROCESSING_TIMEOUT,
-              onTimeout: () =>
-                new GenieFileError({
-                  targetFilePath: genieFilePath.replace('.genie.ts', ''),
-                  message: `File generation timed out`,
-                  cause: new Error('Timeout'),
-                }),
-            }),
-            Effect.either,
-          )
+          }).pipe(Effect.either)
 
           if (Either.isRight(result) === true) {
             const status = mapResultToStatus(result.right)
@@ -376,14 +357,6 @@ export const checkAll = ({
           yield* emit({ _tag: 'FileStarted', path: genieFilePath })
 
           const result = yield* checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(
-            Effect.timeoutFail({
-              duration: FILE_PROCESSING_TIMEOUT,
-              onTimeout: () =>
-                new GenieCheckError({
-                  targetFilePath: genieFilePath.replace('.genie.ts', ''),
-                  message: 'File check timed out',
-                }),
-            }),
             Effect.map((value) => ({ success: true as const, value })),
             Effect.catchAll((error) => Effect.succeed({ success: false as const, error })),
             Effect.catchAllDefect((defect) =>
