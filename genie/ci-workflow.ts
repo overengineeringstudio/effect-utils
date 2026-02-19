@@ -125,14 +125,6 @@ export const syncMegarepoStep = (opts?: { frozen?: boolean; skip?: string[] }) =
   }
 }
 
-/** Resolve the effect-utils rev pinned in devenv.lock (for locked nix run) */
-export const resolveEffectUtilsRefStep = {
-  name: 'Resolve effect-utils ref from devenv.lock',
-  id: 'eu-ref',
-  run: `echo "rev=$(jq -r '.nodes["effect-utils"].locked.rev' devenv.lock)" >> "$GITHUB_OUTPUT"`,
-  shell: 'bash',
-} as const
-
 /**
  * Sync megarepo dependencies using the locked effect-utils rev from devenv.lock.
  * Resolves the rev inline and uses `nix run` to avoid `nix profile install`
