@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/dt**: Remove CI/non-interactive TUI suppression workaround now that devenv auto-disables TUI in CI
+  - Dropped manual `DEVENV_TUI=false` handling and PTY stderr piping from `dt`
+  - Updated failure re-run hints to use `devenv tasks run ... --mode before` without `--no-tui`
+
 - **@overeng/genie**: Reduce duplicate check-time work by reusing loaded genie modules between content verification and validation
   - Added `loadGenieFile` / `checkFileDetailed` in core generation to return reusable module/context metadata
   - `checkAll` now passes preloaded modules into `runGenieValidation` instead of re-importing every `.genie.ts`
