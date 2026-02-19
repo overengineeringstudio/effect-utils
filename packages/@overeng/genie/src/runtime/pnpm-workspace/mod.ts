@@ -885,6 +885,149 @@ export const createWorkspaceDepsResolver = (config: {
 }
 
 // =============================================================================
+// Megarepo Workspace Deps Resolver
+// =============================================================================
+
+/** Workspace root mapping for a package-name prefix. */
+export type MegarepoWorkspaceRoot = {
+  /** Stable root identifier used by package-level overrides. */
+  id: string
+  /** Package-name prefix handled by this root (for example `@overeng/`). */
+  prefix: string
+  /** Repo-relative root directory containing packages for this prefix. */
+  path: string
+}
+
+/** Error thrown when no configured root matches an internal package name. */
+export class MissingWorkspaceRootError extends Error {
+  readonly packageName: string
+  readonly knownPrefixes: readonly string[]
+
+  constructor(args: { packageName: string; knownPrefixes: readonly string[] }) {
+    super(
+      `No workspace root configured for package '${args.packageName}'. Known prefixes: ${args.knownPrefixes.join(', ')}`,
+    )
+    this.name = 'MissingWorkspaceRootError'
+    this.packageName = args.packageName
+    this.knownPrefixes = args.knownPrefixes
+  }
+}
+
+/** Error thrown when package name matches multiple roots without explicit override. */
+export class AmbiguousWorkspaceRootError extends Error {
+  readonly packageName: string
+  readonly candidateRootIds: readonly string[]
+
+  constructor(args: { packageName: string; candidateRootIds: readonly string[] }) {
+    super(
+      `Ambiguous workspace root for package '${args.packageName}'. Candidates: ${args.candidateRootIds.join(', ')}. Configure packageRootOverrides for this package.`,
+    )
+    this.name = 'AmbiguousWorkspaceRootError'
+    this.packageName = args.packageName
+    this.candidateRootIds = args.candidateRootIds
+  }
+}
+
+/** Error thrown when package override references an unknown or incompatible root id. */
+export class InvalidWorkspaceRootOverrideError extends Error {
+  readonly packageName: string
+  readonly rootId: string
+  readonly candidateRootIds: readonly string[]
+
+  constructor(args: { packageName: string; rootId: string; candidateRootIds: readonly string[] }) {
+    super(
+      `Invalid workspace root override for package '${args.packageName}': '${args.rootId}'. Allowed roots: ${args.candidateRootIds.join(', ')}`,
+    )
+    this.name = 'InvalidWorkspaceRootOverrideError'
+    this.packageName = args.packageName
+    this.rootId = args.rootId
+    this.candidateRootIds = args.candidateRootIds
+  }
+}
+
+/**
+ * Creates a strict resolver for composed megarepo workspaces.
+ *
+ * This wrapper standardizes cross-repo package resolution by mapping package-name
+ * prefixes to explicit roots and enforcing deterministic ambiguity handling.
+ *
+ * Rules:
+ * - No matching root prefix => throw `MissingWorkspaceRootError`
+ * - Multiple matching roots => require `packageRootOverrides` for that package,
+ *   otherwise throw `AmbiguousWorkspaceRootError`
+ * - Invalid override root id => throw `InvalidWorkspaceRootOverrideError`
+ */
+export const createMegarepoWorkspaceDepsResolver = (config: {
+  roots: readonly MegarepoWorkspaceRoot[]
+  internalPrefixes?: readonly string[]
+  packageRootOverrides?: Readonly<Record<string, string>>
+}) => {
+  const uniquePrefixes = [
+    ...new Set([...(config.internalPrefixes ?? []), ...config.roots.map((root) => root.prefix)]),
+  ].toSorted((a, b) => a.localeCompare(b))
+
+  const resolvePath = (args: {
+    packageName: string
+    fromLocation: string
+    matchingRoots: readonly MegarepoWorkspaceRoot[]
+  }): string => {
+    const candidateRootIds = args.matchingRoots
+      .map((root) => root.id)
+      .toSorted((a, b) => a.localeCompare(b))
+
+    const chooseRoot = (): MegarepoWorkspaceRoot => {
+      if (args.matchingRoots.length === 1) {
+        return args.matchingRoots[0]!
+      }
+
+      const overrideRootId = config.packageRootOverrides?.[args.packageName]
+      if (overrideRootId === undefined) {
+        throw new AmbiguousWorkspaceRootError({
+          packageName: args.packageName,
+          candidateRootIds,
+        })
+      }
+
+      const overriddenRoot = args.matchingRoots.find((root) => root.id === overrideRootId)
+      if (overriddenRoot === undefined) {
+        throw new InvalidWorkspaceRootOverrideError({
+          packageName: args.packageName,
+          rootId: overrideRootId,
+          candidateRootIds,
+        })
+      }
+
+      return overriddenRoot
+    }
+
+    const root = chooseRoot()
+    const suffix = args.packageName.slice(root.prefix.length)
+    const targetPath =
+      root.path.endsWith('/') === true ? `${root.path}${suffix}` : `${root.path}/${suffix}`
+
+    return computeRelativePath({ from: args.fromLocation, to: targetPath })
+  }
+
+  return createWorkspaceDepsResolver({
+    prefixes: uniquePrefixes,
+    resolveWorkspacePath: (packageName, fromLocation) => {
+      const matchingRoots = config.roots.filter(
+        (root) => packageName.startsWith(root.prefix) === true,
+      )
+
+      if (matchingRoots.length === 0) {
+        throw new MissingWorkspaceRootError({
+          packageName,
+          knownPrefixes: uniquePrefixes,
+        })
+      }
+
+      return resolvePath({ packageName, fromLocation, matchingRoots })
+    },
+  })
+}
+
+// =============================================================================
 // Stringify Utilities
 // =============================================================================
 

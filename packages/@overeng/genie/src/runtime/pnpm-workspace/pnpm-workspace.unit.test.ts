@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
-import { computeRelativePath, createWorkspaceDepsResolver } from './mod.ts'
+import {
+  AmbiguousWorkspaceRootError,
+  computeRelativePath,
+  createMegarepoWorkspaceDepsResolver,
+  createWorkspaceDepsResolver,
+  InvalidWorkspaceRootOverrideError,
+  MissingWorkspaceRootError,
+} from './mod.ts'
 
 // =============================================================================
 // Helper: create a minimal package.json genie output for testing
@@ -343,5 +350,160 @@ describe('createWorkspaceDepsResolver', () => {
       const paths = resolveDeps({ pkg: app, deps: [dep1, shared], location: '.' })
       expect(paths).toEqual(['../shared'])
     })
+  })
+})
+
+// =============================================================================
+// createMegarepoWorkspaceDepsResolver
+// =============================================================================
+
+describe('createMegarepoWorkspaceDepsResolver', () => {
+  it('resolves packages for a single root mapping', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [{ id: 'effect-utils', prefix: '@overeng/', path: '../' }],
+    })
+
+    const app = makePkg({
+      name: '@overeng/app',
+      dependencies: { '@overeng/utils': 'workspace:*' },
+    })
+    const utils = makePkg({ name: '@overeng/utils' })
+
+    const paths = resolveDeps({ pkg: app, deps: [utils], location: '.' })
+    expect(paths).toEqual(['../utils'])
+  })
+
+  it('resolves packages across multiple roots and prefixes', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [
+        {
+          id: 'effect-utils',
+          prefix: '@overeng/',
+          path: 'repos/effect-utils/packages/@overeng',
+        },
+        {
+          id: 'local',
+          prefix: '@local/',
+          path: 'packages/@local',
+        },
+      ],
+    })
+
+    const app = makePkg({
+      name: '@local/app',
+      dependencies: {
+        '@local/shared': 'workspace:*',
+        '@overeng/utils': 'workspace:*',
+      },
+    })
+    const shared = makePkg({ name: '@local/shared' })
+    const utils = makePkg({ name: '@overeng/utils' })
+
+    const paths = resolveDeps({
+      pkg: app,
+      deps: [shared, utils],
+      location: 'packages/@local/app',
+    })
+
+    expect(paths).toEqual(['../../../repos/effect-utils/packages/@overeng/utils', '../shared'])
+  })
+
+  it('throws MissingWorkspaceRootError for unknown internal prefix', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [{ id: 'effect-utils', prefix: '@overeng/', path: 'packages/@overeng' }],
+      internalPrefixes: ['@overeng/', '@local/'],
+    })
+
+    const app = makePkg({
+      name: '@overeng/app',
+      dependencies: { '@local/shared': 'workspace:*' },
+    })
+
+    expect(() => resolveDeps({ pkg: app, deps: [], location: '.' })).toThrow(
+      MissingWorkspaceRootError,
+    )
+  })
+
+  it('throws AmbiguousWorkspaceRootError for same-prefix multi-root without override', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [
+        {
+          id: 'effect-utils',
+          prefix: '@overeng/',
+          path: 'repos/effect-utils/packages/@overeng',
+        },
+        {
+          id: 'private-shared',
+          prefix: '@overeng/',
+          path: 'repos/private-shared/packages/@overeng',
+        },
+      ],
+    })
+
+    const app = makePkg({
+      name: '@overeng/app',
+      dependencies: { '@overeng/geist-design-system': 'workspace:*' },
+    })
+
+    expect(() => resolveDeps({ pkg: app, deps: [], location: '.' })).toThrow(
+      AmbiguousWorkspaceRootError,
+    )
+  })
+
+  it('uses packageRootOverrides for same-prefix multi-root packages', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [
+        {
+          id: 'effect-utils',
+          prefix: '@overeng/',
+          path: 'repos/effect-utils/packages/@overeng',
+        },
+        {
+          id: 'private-shared',
+          prefix: '@overeng/',
+          path: 'repos/private-shared/packages/@overeng',
+        },
+      ],
+      packageRootOverrides: {
+        '@overeng/geist-design-system': 'private-shared',
+      },
+    })
+
+    const app = makePkg({
+      name: '@overeng/app',
+      dependencies: { '@overeng/geist-design-system': 'workspace:*' },
+    })
+
+    const paths = resolveDeps({ pkg: app, deps: [], location: '.' })
+    expect(paths).toEqual(['repos/private-shared/packages/@overeng/geist-design-system'])
+  })
+
+  it('throws InvalidWorkspaceRootOverrideError for invalid override root id', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [
+        {
+          id: 'effect-utils',
+          prefix: '@overeng/',
+          path: 'repos/effect-utils/packages/@overeng',
+        },
+        {
+          id: 'private-shared',
+          prefix: '@overeng/',
+          path: 'repos/private-shared/packages/@overeng',
+        },
+      ],
+      packageRootOverrides: {
+        '@overeng/geist-design-system': 'missing-root',
+      },
+    })
+
+    const app = makePkg({
+      name: '@overeng/app',
+      dependencies: { '@overeng/geist-design-system': 'workspace:*' },
+    })
+
+    expect(() => resolveDeps({ pkg: app, deps: [], location: '.' })).toThrow(
+      InvalidWorkspaceRootOverrideError,
+    )
   })
 })

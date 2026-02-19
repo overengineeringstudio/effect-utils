@@ -7,7 +7,7 @@
 
 import {
   catalog as externalCatalog,
-  createWorkspaceDepsResolver,
+  createMegarepoWorkspaceDepsResolver,
   defineCatalog,
   pnpmWorkspaceYaml,
   type GenieOutput,
@@ -21,6 +21,7 @@ export {
   CatalogBrand,
   computeRelativePath,
   createEffectUtilsRefs,
+  createMegarepoWorkspaceDepsResolver,
   createPatchPostinstall,
   createPnpmPatchedDependencies,
   createWorkspaceDepsResolver,
@@ -61,7 +62,6 @@ export {
   type WorkspaceRootData,
 } from './external.ts'
 
-
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.
  *
@@ -95,9 +95,14 @@ export const pnpmWorkspaceReact = (packages: readonly string[]) =>
 
 type PkgInput = GenieOutput<PackageJsonData>
 
-const resolveDeps = createWorkspaceDepsResolver({
-  prefixes: ['@overeng/'],
-  resolveWorkspacePath: (packageName) => `../${packageName.split('/')[1]}`,
+const resolveDeps = createMegarepoWorkspaceDepsResolver({
+  roots: [
+    {
+      id: 'effect-utils',
+      prefix: '@overeng/',
+      path: '../',
+    },
+  ],
 })
 
 /**
