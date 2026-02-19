@@ -35,41 +35,6 @@
     done
     set -- "''${_dt_args[@]}"
 
-    # Detect coding agent environments (mirrors isAgentEnv from tui-react)
-    _dt_is_agent_env() {
-      # AGENT: generic convention (OpenCode: AGENT=1, Amp: AGENT=amp)
-      if [ -n "''${AGENT:-}" ] && [ "''${AGENT}" != "0" ] && [ "''${AGENT}" != "false" ]; then return 0; fi
-      # Claude Code
-      [ -n "''${CLAUDE_PROJECT_DIR:-}" ] && return 0
-      # Amp
-      [ -n "''${CLAUDECODE:-}" ] && return 0
-      # OpenCode
-      [ -n "''${OPENCODE:-}" ] && return 0
-      # Cline (VS Code extension)
-      [ -n "''${CLINE_ACTIVE:-}" ] && return 0
-      # OpenAI Codex CLI
-      [ -n "''${CODEX_SANDBOX:-}" ] && return 0
-      return 1
-    }
-
-    # Auto-detect non-interactive environments (CI, piped output, git hooks, coding agents)
-    # Sets DEVENV_TUI env var (not --no-tui flag) for reliable propagation to nested devenv calls
-    # TODO: Drop once devenv auto-disables TUI in CI (https://github.com/cachix/devenv/issues/2504)
-    if [ -z "''${DEVENV_TUI:-}" ] && { [ -n "''${CI:-}" ] || ! [ -t 1 ] || _dt_is_agent_env; }; then
-      export DEVENV_TUI=false
-    fi
-
-    # When DEVENV_TUI=false, pipe stderr through cat to break PTY terminal detection.
-    # devenv's legacy CLI mode (--no-tui) still shows indicatif spinners when stderr
-    # is a terminal (e.g. inside devenv shell's PTY). Piping defeats is_terminal().
-    _dt_run() {
-      if [ "''${DEVENV_TUI:-}" = "false" ]; then
-        "$@" 2> >(cat 1>&2)
-      else
-        "$@"
-      fi
-    }
-
     task_name="''${1:-unknown}"
 
     if command -v otel-span >/dev/null 2>&1 && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
@@ -84,15 +49,15 @@
       # Clear TRACEPARENT to avoid inheriting stale context from devenv shell
       # re-evaluations. otel-span reads OTEL_TASK_TRACEPARENT instead (which
       # survives re-evaluations) and exports both for child processes.
-      if ! TRACEPARENT="" _dt_run otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
+      if ! TRACEPARENT="" otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
         -- devenv tasks run "$@" --mode before $_dt_extra_args; then
-        echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
+        echo "dt: task failed. Re-run with: devenv tasks run $* --mode before" >&2
         exit 1
       fi
     else
       # No OTEL: run directly
-      if ! _dt_run devenv tasks run "$@" --mode before $_dt_extra_args; then
-        echo "dt: task failed. Re-run with: devenv tasks run $* --mode before --no-tui" >&2
+      if ! devenv tasks run "$@" --mode before $_dt_extra_args; then
+        echo "dt: task failed. Re-run with: devenv tasks run $* --mode before" >&2
         exit 1
       fi
     fi
