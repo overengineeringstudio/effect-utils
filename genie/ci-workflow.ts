@@ -8,7 +8,7 @@
  * ```ts
  * import {
  *   checkoutStep, installNixStep, cachixStep,
- *   installDevenvFromLockStep, devenvShellDefaults, standardCIEnv,
+ *   installDevenvFromLockStep, runDevenvTasksBefore, standardCIEnv,
  * } from '../../repos/effect-utils/genie/ci-workflow.ts'
  *
  * const baseSteps = [
@@ -31,10 +31,16 @@ export { RUNNER_PROFILES, type RunnerProfile }
 /** Self-hosted NixOS runner labels */
 export const selfHostedRunner = ['self-hosted', 'nix'] as const
 
-/** Standard devenv shell for CI job defaults */
-export const devenvShellDefaults = {
-  run: { shell: 'devenv shell bash -- -e {0}' },
+/** Standard shell defaults for CI run steps */
+export const bashShellDefaults = {
+  run: { shell: 'bash' },
 } as const
+
+/**
+ * @deprecated Use `bashShellDefaults` instead.
+ * Kept for compatibility with downstream templates still importing this name.
+ */
+export const devenvShellDefaults = bashShellDefaults
 
 /**
  * Standard CI environment variables.
@@ -45,6 +51,10 @@ export const standardCIEnv = {
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
+
+/** Build a command that runs one or more devenv tasks with `--mode before`. */
+export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
+  `devenv tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.

@@ -3,11 +3,12 @@ import { type CIJobName } from '../../genie/ci.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
+  bashShellDefaults,
   cachixStep,
   checkoutStep,
-  devenvShellDefaults,
   installDevenvFromLockStep,
   installNixStep,
+  runDevenvTasksBefore,
   standardCIEnv,
   namespaceRunner,
   validateNixStoreStep,
@@ -33,7 +34,7 @@ const failureReminderStep = {
 
 const job = (step: { name: string; run: string }) => ({
   'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
-  defaults: devenvShellDefaults,
+  defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [...baseSteps, step, failureReminderStep],
 })
@@ -46,7 +47,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     },
   },
   'runs-on': namespaceRunner('${{ matrix.runner }}' as RunnerProfile, '${{ github.run_id }}'),
-  defaults: devenvShellDefaults,
+  defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [...baseSteps, step, failureReminderStep],
 })
@@ -55,21 +56,21 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
     name: 'Type check',
-    run: 'dt ts:check',
+    run: runDevenvTasksBefore('ts:check'),
   }),
   lint: job({
     name: 'Format + lint',
-    run: 'dt lint:check',
+    run: runDevenvTasksBefore('lint:check'),
   }),
   test: multiPlatformJob({
     name: 'Unit tests',
-    run: 'dt test:run',
+    run: runDevenvTasksBefore('test:run'),
   }),
   // Verify Nix hashes are up-to-date (pnpmDepsHash + localDeps)
   // This catches stale hashes before they break downstream consumers
   'nix-check': multiPlatformJob({
     name: 'Nix hash check',
-    run: 'dt nix:check',
+    run: runDevenvTasksBefore('nix:check'),
   }),
 }
 
@@ -84,7 +85,7 @@ const deployJobs = {
       contents: 'read',
       'pull-requests': 'write',
     },
-    defaults: devenvShellDefaults,
+    defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
@@ -95,9 +96,9 @@ const deployJobs = {
         name: 'Deploy storybooks to Netlify',
         run: [
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-          '  dt netlify:deploy --input type=prod',
+          `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=prod')}`,
           'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-          '  dt netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }}',
+          `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')}`,
           'fi',
         ].join('\n'),
       },
