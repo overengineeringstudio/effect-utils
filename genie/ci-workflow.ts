@@ -28,6 +28,9 @@ export { RUNNER_PROFILES, type RunnerProfile }
 // Shared Config
 // =============================================================================
 
+/** Self-hosted NixOS runner labels */
+export const selfHostedRunner = ['self-hosted', 'nix'] as const
+
 /** Standard devenv shell for CI job defaults */
 export const devenvShellDefaults = {
   run: { shell: 'devenv shell bash -- -e {0}' },
@@ -35,12 +38,14 @@ export const devenvShellDefaults = {
 
 /**
  * Standard CI environment variables.
+ * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
  * TODO: Drop DEVENV_TUI once devenv auto-disables TUI in CI (https://github.com/cachix/devenv/issues/2504)
  */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
   DEVENV_TUI: 'false',
+  GITHUB_TOKEN: '${{ github.token }}',
 } as const
 
 /**
@@ -63,8 +68,10 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
 
 /**
  * Install Nix via DeterminateSystems/determinate-nix-action@v3.
- * Includes devenv.cachix.org as extra substituter by default
- * for pre-built devenv binaries.
+ * Includes devenv.cachix.org as extra substituter and github.com access-tokens
+ * by default. On self-hosted where Nix is pre-installed, this action is a no-op
+ * and extra-conf is silently skipped — the runner's nix wrapper handles
+ * access-tokens there by reading GITHUB_TOKEN from the environment.
  */
 export const installNixStep = (opts?: { extraConf?: string }) => ({
   name: 'Install Nix',
@@ -73,6 +80,7 @@ export const installNixStep = (opts?: { extraConf?: string }) => ({
     'extra-conf': [
       'extra-substituters = https://devenv.cachix.org',
       'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
+      'access-tokens = github.com=${{ github.token }}',
       ...(opts?.extraConf ? [opts.extraConf] : []),
     ].join('\n'),
   },
@@ -90,11 +98,11 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 
 /**
  * Install devenv pinned to the exact rev from devenv.lock.
- * Ensures version consistency between local dev and CI.
+ * Skips installation if devenv is already on PATH (e.g. self-hosted runners).
  */
 export const installDevenvFromLockStep = {
-  name: 'Install devenv',
-  run: 'nix profile install github:cachix/devenv/$(jq -r ".nodes.devenv.locked.rev" devenv.lock)',
+  name: 'Install devenv if needed',
+  run: 'command -v devenv > /dev/null || nix profile install "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)"',
   shell: 'bash',
 } as const
 
@@ -113,6 +121,20 @@ export const syncMegarepoStep = (opts?: { frozen?: boolean; skip?: string[] }) =
   return {
     name: 'Sync megarepo dependencies',
     run: args.join(' '),
+    shell: 'bash',
+  }
+}
+
+/**
+ * Sync megarepo dependencies using the locked effect-utils rev from devenv.lock.
+ * Resolves the rev inline and uses `nix run` to avoid `nix profile install`
+ * (which can conflict on self-hosted).
+ */
+export const syncMegarepoFromLockStep = (opts?: { skip?: string[] }) => {
+  const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
+  return {
+    name: 'Sync megarepo dependencies',
+    run: `EU_REV=$(jq -r '.nodes["effect-utils"].locked.rev' devenv.lock)\nnix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --frozen${skipArgs ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
