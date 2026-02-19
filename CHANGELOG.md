@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/tasks/shared/megarepo.nix**: Add `syncFrozen` option to `taskModules.megarepo`
+  - Allows repos to opt into `mr sync --frozen` for deterministic shell-entry sync
+  - Keeps default behavior unchanged (`syncFrozen = false`)
+
 - **devenv/dt**: Remove CI/non-interactive TUI suppression workaround now that devenv auto-disables TUI in CI
   - Dropped manual `DEVENV_TUI=false` handling and PTY stderr piping from `dt`
   - Updated failure re-run hints to use `devenv tasks run ... --mode before` without `--no-tui`
