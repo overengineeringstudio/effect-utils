@@ -478,6 +478,26 @@ describe('createMegarepoWorkspaceDepsResolver', () => {
     expect(paths).toEqual(['repos/private-shared/packages/@overeng/geist-design-system'])
   })
 
+  it('excludes configured packages from workspace output', () => {
+    const resolveDeps = createMegarepoWorkspaceDepsResolver({
+      roots: [
+        { id: 'effect-utils', prefix: '@overeng/', path: 'repos/effect-utils/packages/@overeng' },
+      ],
+      excludedPackages: ['@overeng/geist-design-system'],
+    })
+
+    const app = makePkg({
+      name: '@overeng/app',
+      dependencies: {
+        '@overeng/geist-design-system': 'workspace:*',
+        '@overeng/utils': 'workspace:*',
+      },
+    })
+
+    const paths = resolveDeps({ pkg: app, deps: [], location: '.' })
+    expect(paths).toEqual(['repos/effect-utils/packages/@overeng/utils'])
+  })
+
   it('throws InvalidWorkspaceRootOverrideError for invalid override root id', () => {
     const resolveDeps = createMegarepoWorkspaceDepsResolver({
       roots: [

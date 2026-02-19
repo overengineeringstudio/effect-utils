@@ -960,8 +960,12 @@ export class InvalidWorkspaceRootOverrideError extends Error {
 export const createMegarepoWorkspaceDepsResolver = (config: {
   roots: readonly MegarepoWorkspaceRoot[]
   internalPrefixes?: readonly string[]
+  excludedPackages?: readonly string[]
   packageRootOverrides?: Readonly<Record<string, string>>
 }) => {
+  const excludedPackages = new Set(config.excludedPackages ?? [])
+  const excludedPrefix = '__excluded_workspace_package__/'
+
   const uniquePrefixes = [
     ...new Set([...(config.internalPrefixes ?? []), ...config.roots.map((root) => root.prefix)]),
   ].toSorted((a, b) => a.localeCompare(b))
@@ -1008,9 +1012,13 @@ export const createMegarepoWorkspaceDepsResolver = (config: {
     return computeRelativePath({ from: args.fromLocation, to: targetPath })
   }
 
-  return createWorkspaceDepsResolver({
+  const resolveDeps = createWorkspaceDepsResolver({
     prefixes: uniquePrefixes,
     resolveWorkspacePath: (packageName, fromLocation) => {
+      if (excludedPackages.has(packageName) === true) {
+        return `${excludedPrefix}${packageName}`
+      }
+
       const matchingRoots = config.roots.filter(
         (root) => packageName.startsWith(root.prefix) === true,
       )
@@ -1025,6 +1033,13 @@ export const createMegarepoWorkspaceDepsResolver = (config: {
       return resolvePath({ packageName, fromLocation, matchingRoots })
     },
   })
+
+  return (args: {
+    pkg: GenieOutput<PackageJsonData>
+    deps: readonly GenieOutput<PackageJsonData>[]
+    location: string
+    extraPackages?: readonly string[]
+  }): string[] => resolveDeps(args).filter((path) => path.startsWith(excludedPrefix) === false)
 }
 
 // =============================================================================
