@@ -135,14 +135,14 @@ export const resolveEffectUtilsRefStep = {
 
 /**
  * Sync megarepo dependencies using the locked effect-utils rev from devenv.lock.
- * Uses `nix run` to avoid `nix profile install` (which can conflict on self-hosted).
- * Requires resolveEffectUtilsRefStep to run first.
+ * Resolves the rev inline and uses `nix run` to avoid `nix profile install`
+ * (which can conflict on self-hosted).
  */
 export const syncMegarepoFromLockStep = (opts?: { skip?: string[] }) => {
   const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
   return {
     name: 'Sync megarepo dependencies',
-    run: `nix run github:overengineeringstudio/effect-utils/\${{ steps.eu-ref.outputs.rev }}#megarepo -- sync --frozen${skipArgs ? ` ${skipArgs}` : ''}`,
+    run: `EU_REV=$(jq -r '.nodes["effect-utils"].locked.rev' devenv.lock)\nnix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --frozen${skipArgs ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
