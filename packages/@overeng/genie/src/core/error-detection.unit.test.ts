@@ -1,5 +1,14 @@
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import path from 'node:path'
+
+import { NodeContext } from '@effect/platform-node'
+import { Duration, Effect, Either, Option, PubSub } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { checkAll } from './core.ts'
+import { GenieEventBus } from './events.ts'
+import type { GenieEvent } from './events.ts'
 import { errorOriginatesInFile, isTdzError } from './generation.ts'
 
 describe('isTdzError', () => {
@@ -91,5 +100,100 @@ describe('errorOriginatesInFile', () => {
 
     // Path not in stack - should return false
     expect(errorOriginatesInFile({ error, filePath: '/other/path.ts' })).toBe(false)
+  })
+})
+
+describe('checkAll', () => {
+  it('fails fast on fatal import errors and marks interrupted siblings as non-active', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'genie-check-fail-fast-'))
+    const globalWithBun = globalThis as { Bun?: unknown }
+    const previousBun = globalWithBun.Bun
+
+    const writeFile = async ({
+      relativePath,
+      content,
+    }: {
+      relativePath: string
+      content: string
+    }) => {
+      const filePath = path.join(root, relativePath)
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      await fs.writeFile(filePath, content)
+    }
+
+    try {
+      globalWithBun.Bun = { plugin: () => undefined }
+
+      await writeFile({
+        relativePath: 'package.json',
+        content: JSON.stringify({ name: 'genie-check-test', private: true, type: 'module' }),
+      })
+
+      await writeFile({
+        relativePath: 'shared/broken.ts',
+        content: `export const duplicate = 1
+export const duplicate = 2
+`,
+      })
+
+      await writeFile({
+        relativePath: 'fatal/package.json.genie.ts',
+        content: `import { duplicate } from '../shared/broken.ts'
+
+export default {
+  data: { duplicate },
+  stringify: () => JSON.stringify({ duplicate }),
+}
+`,
+      })
+
+      await writeFile({
+        relativePath: 'stuck/package.json.genie.ts',
+        content: `await new Promise(() => {})
+
+export default {
+  data: { ok: true },
+  stringify: () => JSON.stringify({ ok: true }),
+}
+`,
+      })
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const bus = yield* PubSub.unbounded<GenieEvent>()
+          return yield* checkAll({
+            cwd: root,
+            oxfmtConfigPath: Option.none(),
+          }).pipe(
+            Effect.provideService(GenieEventBus, bus),
+            Effect.provide(NodeContext.layer),
+            Effect.timeout(Duration.seconds(2)),
+            Effect.either,
+          )
+        }),
+      )
+
+      expect(Either.isLeft(result)).toBe(true)
+      if (Either.isRight(result) === true) return
+
+      const error = result.left
+      expect(error._tag).toBe('GenieGenerationFailedError')
+      if (error._tag !== 'GenieGenerationFailedError') return
+
+      expect(error.files.some((file) => file.status === 'active')).toBe(false)
+
+      const canceledSibling = error.files.find(
+        (file) => file.message?.includes('Cancelled due to fatal error in another file') === true,
+      )
+      expect(canceledSibling).toBeDefined()
+      expect(canceledSibling?.status).toBe('error')
+    } finally {
+      if (previousBun === undefined) {
+        delete globalWithBun.Bun
+      } else {
+        globalWithBun.Bun = previousBun
+      }
+      await fs.rm(root, { recursive: true, force: true })
+    }
   })
 })

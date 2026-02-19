@@ -29,6 +29,7 @@ export const errorMessages = {
   syntaxError: 'Failed to import: SyntaxError in source file',
   tdzCascade: 'TDZ: Cannot access catalog before initialization',
   fileOutOfDate: 'File is out of date',
+  cancelledDueToFatal: 'Cancelled due to fatal error in another file',
   parentMissing: 'Parent directory missing',
   networkTimeout: 'Network timeout while fetching template',
   permissionDenied: 'Permission denied: cannot write to file',

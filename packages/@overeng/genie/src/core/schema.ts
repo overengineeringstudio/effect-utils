@@ -189,7 +189,9 @@ export const genieReducer = ({
       return {
         ...state,
         files: state.files.map((f) =>
-          f.path === action.path ? { ...f, status: 'active' as const } : f,
+          f.path === action.path && f.status === 'pending'
+            ? { ...f, status: 'active' as const }
+            : f,
         ),
       }
 

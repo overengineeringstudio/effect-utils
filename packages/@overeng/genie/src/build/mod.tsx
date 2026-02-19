@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Either, pipe, PubSub, Queue, Stream } from 'effect'
+import { Effect, Either, Fiber, pipe, PubSub, Queue, Stream } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
@@ -133,115 +133,158 @@ export const genieCommand: Cli.Command.Command<
               // Create event bus and subscribe for TUI progress
               const bus = yield* PubSub.unbounded<GenieEvent>()
               const sub = yield* PubSub.subscribe(bus)
-              yield* Queue.take(sub).pipe(
+              const consumerFiber = yield* Queue.take(sub).pipe(
                 Effect.tap((event) => Effect.sync(() => dispatchEvent(tui, event))),
                 Effect.forever,
                 Effect.forkScoped,
               )
 
-              if (check) {
-                yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath }).pipe(
-                  Effect.provideService(GenieEventBus, bus),
-                )
-              } else {
-                yield* generateAll({
-                  cwd: resolvedCwd,
-                  readOnly,
-                  dryRun,
-                  oxfmtConfigPath,
-                }).pipe(Effect.provideService(GenieEventBus, bus))
-              }
+              const syncStateFromGenerationError = Effect.fn('genie/syncStateFromGenerationError')(
+                function* (error: GenieGenerationFailedError) {
+                  const currentState = tui.getState()
+                  const summary: GenieSummary = {
+                    created: error.files.filter((file) => file.status === 'created').length,
+                    updated: error.files.filter((file) => file.status === 'updated').length,
+                    unchanged: error.files.filter((file) => file.status === 'unchanged').length,
+                    skipped: error.files.filter((file) => file.status === 'skipped').length,
+                    failed: error.files.filter((file) => file.status === 'error').length,
+                  }
 
-              if (watch && !check && !dryRun) {
-                // Watch mode - uses low-level APIs directly (CLI-specific)
-                yield* pipe(
-                  fs.watch(resolvedCwd),
-                  Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
-                  Stream.tap(({ path: p }) => {
-                    const genieFilePath = path.join(resolvedCwd, p)
+                  tui.dispatch({
+                    _tag: 'SetState',
+                    state: {
+                      ...currentState,
+                      phase: 'complete',
+                      files: error.files,
+                      summary,
+                    },
+                  })
+                },
+              )
 
-                    // Reset for new watch cycle
-                    tui.dispatch({ _tag: 'WatchReset' })
+              yield* Effect.gen(function* () {
+                if (check) {
+                  yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath }).pipe(
+                    Effect.provideService(GenieEventBus, bus),
+                    Effect.catchTag('GenieGenerationFailedError', (error) =>
+                      syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
+                    ),
+                  )
+                } else {
+                  yield* generateAll({
+                    cwd: resolvedCwd,
+                    readOnly,
+                    dryRun,
+                    oxfmtConfigPath,
+                  }).pipe(
+                    Effect.provideService(GenieEventBus, bus),
+                    Effect.catchTag('GenieGenerationFailedError', (error) =>
+                      syncStateFromGenerationError(error).pipe(Effect.zipRight(Effect.fail(error))),
+                    ),
+                  )
+                }
 
-                    return Effect.gen(function* () {
-                      // Re-discover files (in case new ones were added)
-                      const newGenieFiles = yield* findGenieFiles(resolvedCwd)
+                if (watch && !check && !dryRun) {
+                  // Watch mode - uses low-level APIs directly (CLI-specific)
+                  yield* pipe(
+                    fs.watch(resolvedCwd),
+                    Stream.filter(({ path: p }) => p.endsWith('.genie.ts')),
+                    Stream.tap(({ path: p }) => {
+                      const genieFilePath = path.join(resolvedCwd, p)
 
-                      tui.dispatch({
-                        _tag: 'FilesDiscovered',
-                        files: newGenieFiles.map((filePath) => ({
-                          path: filePath,
-                          relativePath: path.relative(
-                            resolvedCwd,
-                            filePath.replace('.genie.ts', ''),
-                          ),
-                        })),
-                      })
+                      // Reset for new watch cycle
+                      tui.dispatch({ _tag: 'WatchReset' })
 
-                      // Regenerate the changed file
-                      tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
+                      return Effect.gen(function* () {
+                        // Re-discover files (in case new ones were added)
+                        const newGenieFiles = yield* findGenieFiles(resolvedCwd)
 
-                      const result = yield* generateFile({
-                        genieFilePath,
-                        cwd: resolvedCwd,
-                        readOnly,
-                        oxfmtConfigPath,
-                      }).pipe(Effect.either)
-
-                      if (Either.isRight(result)) {
-                        const message =
-                          result.right._tag === 'updated' ? result.right.diffSummary : undefined
                         tui.dispatch({
-                          _tag: 'FileCompleted',
-                          path: genieFilePath,
-                          status: mapResultToStatus(result.right),
-                          message,
+                          _tag: 'FilesDiscovered',
+                          files: newGenieFiles.map((filePath) => ({
+                            path: filePath,
+                            relativePath: path.relative(
+                              resolvedCwd,
+                              filePath.replace('.genie.ts', ''),
+                            ),
+                          })),
                         })
-                      } else {
-                        tui.dispatch({
-                          _tag: 'FileCompleted',
-                          path: genieFilePath,
-                          status: 'error',
-                          message: result.left.message,
-                        })
-                      }
 
-                      // Mark all other files as unchanged
-                      for (const otherFile of newGenieFiles) {
-                        if (otherFile !== genieFilePath) {
+                        // Regenerate the changed file
+                        tui.dispatch({ _tag: 'FileStarted', path: genieFilePath })
+
+                        const result = yield* generateFile({
+                          genieFilePath,
+                          cwd: resolvedCwd,
+                          readOnly,
+                          oxfmtConfigPath,
+                        }).pipe(Effect.either)
+
+                        if (Either.isRight(result)) {
+                          const message =
+                            result.right._tag === 'updated' ? result.right.diffSummary : undefined
                           tui.dispatch({
                             _tag: 'FileCompleted',
-                            path: otherFile,
-                            status: 'unchanged',
+                            path: genieFilePath,
+                            status: mapResultToStatus(result.right),
+                            message,
+                          })
+                        } else {
+                          tui.dispatch({
+                            _tag: 'FileCompleted',
+                            path: genieFilePath,
+                            status: 'error',
+                            message: result.left.message,
                           })
                         }
-                      }
 
-                      const watchSummary: GenieSummary = Either.isRight(result)
-                        ? {
-                            created: result.right._tag === 'created' ? 1 : 0,
-                            updated: result.right._tag === 'updated' ? 1 : 0,
-                            unchanged:
-                              newGenieFiles.length -
-                              1 +
-                              (result.right._tag === 'unchanged' ? 1 : 0),
-                            skipped: result.right._tag === 'skipped' ? 1 : 0,
-                            failed: 0,
+                        // Mark all other files as unchanged
+                        for (const otherFile of newGenieFiles) {
+                          if (otherFile !== genieFilePath) {
+                            tui.dispatch({
+                              _tag: 'FileCompleted',
+                              path: otherFile,
+                              status: 'unchanged',
+                            })
                           }
-                        : {
-                            created: 0,
-                            updated: 0,
-                            unchanged: newGenieFiles.length - 1,
-                            skipped: 0,
-                            failed: 1,
-                          }
+                        }
 
-                      tui.dispatch({ _tag: 'Complete', summary: watchSummary })
-                    })
+                        const watchSummary: GenieSummary = Either.isRight(result)
+                          ? {
+                              created: result.right._tag === 'created' ? 1 : 0,
+                              updated: result.right._tag === 'updated' ? 1 : 0,
+                              unchanged:
+                                newGenieFiles.length -
+                                1 +
+                                (result.right._tag === 'unchanged' ? 1 : 0),
+                              skipped: result.right._tag === 'skipped' ? 1 : 0,
+                              failed: 0,
+                            }
+                          : {
+                              created: 0,
+                              updated: 0,
+                              unchanged: newGenieFiles.length - 1,
+                              skipped: 0,
+                              failed: 1,
+                            }
+
+                        tui.dispatch({ _tag: 'Complete', summary: watchSummary })
+                      })
+                    }),
+                    Stream.runDrain,
+                  )
+                }
+              }).pipe(
+                Effect.ensuring(
+                  Effect.gen(function* () {
+                    yield* Fiber.interrupt(consumerFiber)
+                    const pendingEvents = yield* Queue.takeAll(sub)
+                    for (const event of pendingEvents) {
+                      yield* Effect.sync(() => dispatchEvent(tui, event))
+                    }
                   }),
-                  Stream.runDrain,
-                )
-              }
+                ),
+              )
             }),
           ),
         { view: <GenieView stateAtom={GenieApp.stateAtom} /> },
