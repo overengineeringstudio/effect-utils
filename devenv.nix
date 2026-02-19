@@ -226,6 +226,7 @@ in
       packages = packagesWithStorybook;
     })
     (taskModules.lint-oxc {
+      jsPlugins = lib.optionals (oxlintNpm.pluginPath != null) [ oxlintNpm.pluginPath ];
       lintPaths = [
         "packages"
         "scripts"

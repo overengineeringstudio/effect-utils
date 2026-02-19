@@ -112,10 +112,7 @@ in
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
-      after = [
-        "genie:run"
-        "pnpm:install"
-      ];
+      after = [ "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
@@ -124,19 +121,16 @@ in
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
       #   Upstream issue: https://github.com/cachix/devenv/issues/2422
       #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
-      after = [
-        "genie:run"
-        "pnpm:install"
-      ];
+      after = [ "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
-      # genie:run must complete first so the check compares against freshly generated files
+      # Strict mode: never auto-regenerate before checking drift.
       # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
       #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
-      after = [ "genie:run" "pnpm:install" ];
+      after = [ "pnpm:install" ];
       execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
