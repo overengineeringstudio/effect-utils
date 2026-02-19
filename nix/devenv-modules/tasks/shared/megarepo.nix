@@ -3,23 +3,20 @@
 # Uses the `mr` CLI for megarepo operations.
 #
 # Tasks:
-# - megarepo:sync - Clone/update member repos and create symlinks
+# - megarepo:sync - Clone/update member repos and create symlinks (frozen lock state)
+# - megarepo:sync:update - Update lockfile/member refs intentionally
 # - megarepo:check - Verify megarepo setup is complete
 #
 # Options:
 # - syncAll: Whether to use `--all` (recursive nested sync). Default: true.
 #   Set to false in CI where root members are already synced and nested sync
 #   may fail due to credential scoping or version mismatches.
-# - syncFrozen: Whether to pass `--frozen` to `mr sync`. Default: false.
-#   Enable this in repos where shell-entry sync must not rewrite lockfiles.
-#
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
 #   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 {
   syncAll ? true,
-  syncFrozen ? false,
 }:
 { lib, pkgs, ... }:
 let
@@ -38,7 +35,7 @@ in
         exit 0
       fi
 
-      mr sync${if syncFrozen then " --frozen" else ""}${if syncAll then " --all" else ""}
+      mr sync --frozen${if syncAll then " --all" else ""}
     '';
     # Status: use `mr status --output json` to detect if sync is needed.
     # The CLI computes syncNeeded based on: missing symlinks/worktrees, symlink drift, lock staleness.
@@ -57,6 +54,17 @@ in
 
       # Use the top-level syncNeeded boolean for a simple check
       echo "$status_json" | ${pkgs.jq}/bin/jq -e '.syncNeeded == false' >/dev/null 2>&1
+    '';
+  };
+
+  tasks."megarepo:sync:update" = {
+    description = "Update megarepo lock/member refs intentionally";
+    exec = trace.exec "megarepo:sync:update" ''
+      if [ ! -f ./megarepo.json ]; then
+        exit 0
+      fi
+
+      mr sync${if syncAll then " --all" else ""}
     '';
   };
 
