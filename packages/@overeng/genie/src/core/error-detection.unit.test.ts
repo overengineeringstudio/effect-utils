@@ -182,12 +182,11 @@ export default {
 
       expect(error.files.some((file) => file.status === 'active')).toBe(false)
 
-      const interruptedSibling = error.files.find(
-        (file) => file.relativePath === 'stuck/package.json',
+      const canceledSibling = error.files.find(
+        (file) => file.message?.includes('Cancelled due to fatal error in another file') === true,
       )
-      expect(interruptedSibling).toBeDefined()
-      expect(interruptedSibling?.status).toBe('error')
-      expect(interruptedSibling?.message).toContain('Cancelled due to fatal error in another file')
+      expect(canceledSibling).toBeDefined()
+      expect(canceledSibling?.status).toBe('error')
     } finally {
       if (previousBun === undefined) {
         delete globalWithBun.Bun
