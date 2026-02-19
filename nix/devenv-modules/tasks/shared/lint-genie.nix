@@ -15,8 +15,8 @@ in
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
-      # genie:run must complete first so the check compares against freshly generated files
-      after = [ "genie:run" "pnpm:install" ];
+      # Strict mode: never auto-regenerate before checking drift.
+      after = [ "pnpm:install" ];
     };
     "lint:check" = {
       description = "Run all lint checks";
