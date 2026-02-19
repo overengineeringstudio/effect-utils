@@ -19,7 +19,6 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +64,6 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +112,6 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +160,6 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
       - uses: actions/checkout@v4
@@ -212,7 +208,6 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      DEVENV_TUI: 'false'
       GITHUB_TOKEN: '${{ github.token }}'
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
     steps:

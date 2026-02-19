@@ -247,6 +247,92 @@ export const CheckModeFailed: Story = {
   },
 }
 
+/** Issue #251: fatal check error interrupts sibling checks and marks them canceled */
+export const Issue251FailFastCancellation: Story = {
+  args: {
+    mode: 'check',
+  },
+  render: (args) => {
+    const files = useMemo(
+      () => [
+        {
+          path: '/workspace/packages/b/package.json.genie.ts',
+          relativePath: 'packages/b/package.json',
+        },
+        {
+          path: '/workspace/packages/a/package.json.genie.ts',
+          relativePath: 'packages/a/package.json',
+        },
+      ],
+      [],
+    )
+
+    const stateConfig = useMemo(
+      () =>
+        fixtures.createState({
+          mode: 'check',
+          files: [
+            {
+              path: '/workspace/packages/b/package.json.genie.ts',
+              relativePath: 'packages/b/package.json',
+              status: 'error',
+              message:
+                'Failed to import /workspace/packages/b/package.json.genie.ts: BuildMessage: "createMegarepoWorkspaceDepsResolver" has already been declared',
+            },
+            {
+              path: '/workspace/packages/a/package.json.genie.ts',
+              relativePath: 'packages/a/package.json',
+              status: 'error',
+              message: fixtures.errorMessages.cancelledDueToFatal,
+            },
+          ],
+          summary: { created: 0, updated: 0, unchanged: 0, skipped: 0, failed: 2 },
+        }),
+      [],
+    )
+
+    const timeline = useMemo(
+      () =>
+        fixtures.createTimeline({
+          files,
+          results: [
+            {
+              path: '/workspace/packages/b/package.json.genie.ts',
+              status: 'error',
+              message:
+                'Failed to import /workspace/packages/b/package.json.genie.ts: BuildMessage: "createMegarepoWorkspaceDepsResolver" has already been declared',
+            },
+            {
+              path: '/workspace/packages/a/package.json.genie.ts',
+              status: 'error',
+              message: fixtures.errorMessages.cancelledDueToFatal,
+            },
+          ],
+          mode: 'check',
+          stepDuration: 400,
+        }),
+      [files],
+    )
+
+    return (
+      <TuiStoryPreview
+        View={GenieView}
+        app={GenieApp}
+        initialState={
+          args.interactive
+            ? fixtures.createState({ phase: 'discovering', mode: 'check' })
+            : stateConfig
+        }
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        {...(args.interactive ? { timeline } : {})}
+      />
+    )
+  },
+}
+
 /** Global error phase (config not found, etc.) */
 export const GlobalError: Story = {
   // GlobalError uses phase='error' which is terminal - interactive doesn't make sense

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { Path } from '@effect/platform/Path'
-import { Effect, Either, Option } from 'effect'
+import { Effect, Either, Option, Ref } from 'effect'
 
 import { assertNever } from '@overeng/utils'
 
@@ -351,36 +351,148 @@ export const checkAll = ({
       })),
     })
 
-    const results = yield* Effect.all(
-      genieFiles.map((genieFilePath) =>
+    type FileCheckResult =
+      | {
+          _tag: 'success'
+          path: string
+          loadedGenieFile: LoadedGenieFile
+        }
+      | {
+          _tag: 'error'
+          path: string
+          message: string
+        }
+
+    type FatalCheckFailure = {
+      _tag: 'FatalCheckFailure'
+      path: string
+      message: string
+    }
+
+    const completedPathsRef = yield* Ref.make(new Set<string>())
+    const resultByPathRef = yield* Ref.make(new Map<string, FileCheckResult>())
+
+    const completeFile = Effect.fn('genie/checkAll/completeFile')(function* ({
+      path,
+      result,
+    }: {
+      path: string
+      result: FileCheckResult
+    }) {
+      yield* emit({
+        _tag: 'FileCompleted',
+        path,
+        status: result._tag === 'success' ? ('unchanged' as const) : ('error' as const),
+        ...(result._tag === 'error' ? { message: result.message } : {}),
+      })
+      yield* Ref.update(resultByPathRef, (prev) => {
+        const next = new Map(prev)
+        next.set(path, result)
+        return next
+      })
+      yield* Ref.update(completedPathsRef, (prev) => {
+        const next = new Set(prev)
+        next.add(path)
+        return next
+      })
+    })
+
+    const checkResult = yield* Effect.forEach(
+      genieFiles,
+      (genieFilePath) =>
         Effect.gen(function* () {
           yield* emit({ _tag: 'FileStarted', path: genieFilePath })
 
           const result = yield* checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(
-            Effect.map((value) => ({ success: true as const, value })),
-            Effect.catchAll((error) => Effect.succeed({ success: false as const, error })),
+            Effect.either,
           )
 
-          yield* emit({
-            _tag: 'FileCompleted',
+          if (Either.isRight(result) === true) {
+            yield* completeFile({
+              path: genieFilePath,
+              result: {
+                _tag: 'success',
+                path: genieFilePath,
+                loadedGenieFile: result.right.loadedGenieFile,
+              },
+            })
+            return
+          }
+
+          const errorResult: FileCheckResult = {
+            _tag: 'error',
             path: genieFilePath,
-            status: result.success === true ? ('unchanged' as const) : ('error' as const),
-            ...(result.success === true ? {} : { message: result.error.message }),
+            message: result.left.message,
+          }
+          yield* completeFile({ path: genieFilePath, result: errorResult })
+
+          if (result.left._tag === 'GenieCheckError') {
+            return
+          }
+
+          return yield* Effect.fail<FatalCheckFailure>({
+            _tag: 'FatalCheckFailure',
+            path: genieFilePath,
+            message: result.left.message,
           })
-
-          return result
         }),
-      ),
       { concurrency: checkConcurrency },
-    )
+    ).pipe(Effect.either)
 
-    const failed = results.filter((r) => !r.success).length
+    if (Either.isLeft(checkResult) === true) {
+      const completedPaths = yield* Ref.get(completedPathsRef)
+      const interruptedPaths = genieFiles.filter((p) => !completedPaths.has(p))
+
+      for (const interruptedPath of interruptedPaths) {
+        yield* completeFile({
+          path: interruptedPath,
+          result: {
+            _tag: 'error',
+            path: interruptedPath,
+            message: 'Cancelled due to fatal error in another file',
+          },
+        })
+      }
+
+      const allResults = yield* Ref.get(resultByPathRef)
+      const failed = Array.from(allResults.values()).filter((r) => r._tag === 'error').length
+      const unchanged = Array.from(allResults.values()).filter((r) => r._tag === 'success').length
+
+      const summary: GenieSummary = {
+        created: 0,
+        updated: 0,
+        unchanged,
+        skipped: 0,
+        failed,
+      }
+      yield* emit({ _tag: 'Complete', summary })
+
+      return yield* new GenieGenerationFailedError({
+        failedCount: failed,
+        message:
+          interruptedPaths.length > 0
+            ? `Fatal check error in ${path.relative(cwd, checkResult.left.path)}; interrupted ${interruptedPaths.length} sibling file(s)`
+            : `Fatal check error in ${path.relative(cwd, checkResult.left.path)}`,
+        files: genieFiles.map((p) => {
+          const r = allResults.get(p)
+          return {
+            path: p,
+            relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
+            status: (r?._tag === 'success' ? 'unchanged' : 'error') as GenieFileStatus,
+            message: r?._tag === 'error' ? r.message : undefined,
+          }
+        }),
+      })
+    }
+
+    const resultByPath = yield* Ref.get(resultByPathRef)
+    const failed = Array.from(resultByPath.values()).filter((r) => r._tag === 'error').length
 
     if (failed > 0) {
       const summary: GenieSummary = {
         created: 0,
         updated: 0,
-        unchanged: results.filter((r) => r.success).length,
+        unchanged: Array.from(resultByPath.values()).filter((r) => r._tag === 'success').length,
         skipped: 0,
         failed,
       }
@@ -388,35 +500,30 @@ export const checkAll = ({
       return yield* new GenieGenerationFailedError({
         failedCount: failed,
         message: `${failed} file(s) are out of date`,
-        files: genieFiles.map((p, i) => {
-          const r = results[i]!
+        files: genieFiles.map((p) => {
+          const r = resultByPath.get(p)
           return {
             path: p,
             relativePath: path.relative(cwd, p.replace('.genie.ts', '')),
-            status: (r.success === true ? 'unchanged' : 'error') as GenieFileStatus,
-            message: r.success === true ? undefined : r.error.message,
+            status: (r?._tag === 'success' ? 'unchanged' : 'error') as GenieFileStatus,
+            message: r?._tag === 'error' ? r.message : undefined,
           }
         }),
       })
     }
 
-    const preloadedFiles = results
-      .filter(
-        (
-          result,
-        ): result is {
-          success: true
-          value: { loadedGenieFile: LoadedGenieFile }
-        } => result.success,
-      )
-      .map((result) => result.value.loadedGenieFile)
+    const preloadedFiles = Array.from(resultByPath.values())
+      .filter((result): result is Extract<FileCheckResult, { _tag: 'success' }> => {
+        return result._tag === 'success'
+      })
+      .map((result) => result.loadedGenieFile)
 
     yield* runValidationOrFail({ cwd, genieFiles, preloadedFiles })
 
     const summary: GenieSummary = {
       created: 0,
       updated: 0,
-      unchanged: results.filter((r) => r.success).length,
+      unchanged: preloadedFiles.length,
       skipped: 0,
       failed: 0,
     }

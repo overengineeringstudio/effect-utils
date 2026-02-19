@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
 - **devenv/tasks/shared/ts.nix**: Fix `ts:emit` missing `--build` flag
   - `tscWithDiagnostics` was called without `--build`, causing tsc to treat `tsconfig.all.json` as a source file
   - Previously masked by `setup:opt:*` wrappers silently swallowing the failure
+- **@overeng/genie**: `genie --check` now fails fast on fatal `.genie.ts` import/build errors and marks interrupted sibling checks as canceled
+  - Prevents indefinite stalls when a sibling check remains in-flight after a fatal import/build failure
+  - Final JSON/TUI failure state is reconciled from `GenieGenerationFailedError.files` to avoid stale `active` entries
 
 ### Changed
 
