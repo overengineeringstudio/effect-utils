@@ -25,7 +25,7 @@ All notable changes to this project will be documented in this file.
   - Final JSON/TUI failure state is reconciled from `GenieGenerationFailedError.files` to avoid stale `active` entries
 - **beads packaging/tasks**: Fix `bd` Dolt startup failures on macOS by building with CGO enabled and updating beads task/hook invocations for current CLI flags
   - `nix/beads.nix` now builds `bd` from source (`buildGo126Module`) with CGO + ICU/SQLite inputs instead of prebuilt no-CGO release tarballs
-  - `nix/devenv-modules/tasks/shared/beads.nix` now exports `BEADS_DB`, uses Dolt-directory bootstrap checks, and removes deprecated `--no-daemon/--no-db` flag usage
+  - `nix/devenv-modules/tasks/shared/beads.nix` now uses Dolt-directory bootstrap checks and removes deprecated `--no-daemon/--no-db` flag usage
 
 ### Changed
 
