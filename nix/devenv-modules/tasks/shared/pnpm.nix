@@ -119,6 +119,9 @@ let
 
   # Collision fallback name:
   # include enough stable context (repo + scope + relative path) to avoid conflicts.
+  # Example:
+  #   repos/repo-a/packages/@scope/utils -> repo-a-scope-utils
+  #   packages/@other/utils -> other-utils
   disambiguatedName =
     path:
     let
