@@ -8,13 +8,17 @@
  */
 
 import {
+  AmbiguousWorkspaceRootError,
   CatalogBrand,
   computeRelativePath,
+  createMegarepoWorkspaceDepsResolver,
   createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
   githubWorkflow,
+  InvalidWorkspaceRootOverrideError,
+  MissingWorkspaceRootError,
   megarepoJson,
   oxfmtConfig,
   oxlintConfig,
@@ -30,6 +34,7 @@ import {
   type OxlintConfigArgs,
   type PackageJsonData,
   type PatchesRegistry,
+  type MegarepoWorkspaceRoot,
   type PnpmSettings,
   type PnpmWorkspaceData,
   type ScriptValue,
@@ -40,13 +45,17 @@ import {
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
+  AmbiguousWorkspaceRootError,
   CatalogBrand,
   computeRelativePath,
+  createMegarepoWorkspaceDepsResolver,
   createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
   githubWorkflow,
+  InvalidWorkspaceRootOverrideError,
+  MissingWorkspaceRootError,
   megarepoJson,
   oxfmtConfig,
   oxlintConfig,
@@ -59,6 +68,7 @@ export type {
   GenieOutput,
   GithubRulesetArgs,
   GitHubWorkflowArgs,
+  MegarepoWorkspaceRoot,
   MegarepoConfigArgs,
   OxfmtConfigArgs,
   OxlintConfigArgs,
