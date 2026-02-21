@@ -14,9 +14,10 @@
 # git-portable source of truth. Multiple megarepo workspaces sharing the
 # same store worktree share a single daemon instance.
 #
-# Only env var exported: BEADS_DIR (upstream bd env var for database discovery).
-# With BEADS_DIR set, `bd` works from anywhere — no wrapper script or shell
-# function needed. This works with direnv (env vars survive export).
+# Exported env vars:
+# - BEADS_DIR: upstream bd env var for .beads discovery
+# - BEADS_DB: explicit DB path for compatibility with legacy metadata
+# With these set, `bd` works from anywhere without wrapper scripts.
 #
 # Provides:
 # - beads:daemon:ensure task — starts daemon if not running (idempotent)
@@ -38,9 +39,10 @@ let
   beadsRepoRelPath = beadsRepoPath;
 in
 {
-  # BEADS_DIR — upstream bd env var for database discovery.
+  # BEADS_DIR/BEADS_DB — upstream bd env vars for discovery and explicit DB path.
   # Available in tasks, shell, and direnv.
   env.BEADS_DIR = "${config.devenv.root}/${beadsRepoRelPath}/.beads";
+  env.BEADS_DB = "${config.devenv.root}/${beadsRepoRelPath}/.beads/beads.db";
 
   # beads:daemon:ensure — Start daemon if not running. Idempotent: if another
   # workspace already started a daemon for this repo, this is a no-op.
@@ -62,13 +64,12 @@ in
         exit 0
       fi
 
-      # Cold-start: create DB from JSONL on fresh checkout (daemon can't auto-create).
+      # Cold-start: create/migrate Dolt DB from JSONL on fresh or legacy checkouts.
       # Uses `bd list` instead of `bd init` because init refuses to run in git
-      # worktrees (which megarepo always creates). `bd list` auto-creates the DB
-      # from JSONL as a side effect without the worktree guard.
-      if [ ! -f "$BEADS_DIR/beads.db" ] && [ -f "$BEADS_DIR/issues.jsonl" ]; then
+      # worktrees (which megarepo always creates).
+      if [ ! -d "$BEADS_DIR/dolt" ] && [ -f "$BEADS_DIR/issues.jsonl" ]; then
         echo "[beads] No database found, initializing from JSONL..."
-        ${bd} list --no-daemon --quiet >/dev/null 2>&1 || true
+        ${bd} list --quiet >/dev/null 2>&1 || true
       fi
 
       # Start daemon in background with auto-commit + auto-pull.
@@ -123,9 +124,8 @@ in
 
   git-hooks.hooks.beads-commit-correlation = {
     enable = true;
-    # Always use --no-daemon --no-db for the hook: it runs in git hook context
-    # where BEADS_DIR may not be set. Writing directly to JSONL is fast and
-    # reliable. The daemon auto-imports JSONL changes on its next poll.
+    # Use explicit BEADS_DB for hook context where BEADS_DIR may not be set.
+    # The daemon auto-imports/syncs hook-written changes on its next poll.
     entry = "${pkgs.writeShellScript "beads-post-commit" ''
       set -euo pipefail
 
@@ -145,10 +145,10 @@ in
 
       [ -z "$ISSUES" ] && exit 0
 
-      # Add comment to each referenced issue (uses --no-db mode for reliability)
+      # Add comment to each referenced issue (uses explicit DB path for reliability)
       for issue_id in $ISSUES; do
         comment="Commit ''${COMMIT_SHORT} in ''${REPO_NAME}: ''${COMMIT_MSG%%$'\n'*}"
-        (cd "$BEADS_REPO" && ${bd} --no-daemon --no-db comment "$issue_id" "$comment") 2>/dev/null || true
+        (cd "$BEADS_REPO" && BEADS_DB="$BEADS_REPO/.beads/beads.db" ${bd} comment "$issue_id" "$comment") 2>/dev/null || true
       done
     ''}";
     stages = ["post-commit"];
