@@ -93,7 +93,9 @@ let
   cacheRoot = cache.mkCachePath "pnpm-install";
   flock = "${pkgs.flock}/bin/flock";
 
-  # Convert path to task name:
+  sanitize = s: builtins.replaceStrings [ "/" "." "@" ] [ "-" "-" "" ] s;
+
+  # Primary display name used when unique:
   # "packages/@scope/foo" -> "foo"
   # "packages/@scope/foo/examples/basic" -> "foo-examples-basic"
   # "packages/app" -> "app"
@@ -101,23 +103,65 @@ let
   # "tests/wa-sqlite" -> "tests-wa-sqlite"
   # "scripts" -> "scripts"
   # "repos/effect-utils/packages/@overeng/oxc-config" -> "oxc-config"
-  toName =
+  baseName =
     path:
     let
-      sanitize = s: builtins.replaceStrings [ "/" "." ] [ "-" "-" ] s;
-      # Strip "repos/*/packages/" prefix for megarepo peer repo paths
       repoStripped =
         let
           m = builtins.match "repos/[^/]+/packages/(.*)" path;
         in
         if m != null then builtins.head m else path;
-      # Only strip "packages/" or "apps/" prefix, keep others like "tests/"
       stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" repoStripped);
-      # Strip @scope/ pattern (e.g., "@overeng/foo" -> "foo")
       m = builtins.match "@[^/]+/(.*)" stripped;
       final = if m != null then builtins.head m else stripped;
     in
     sanitize final;
+
+  # Collision fallback name:
+  # include enough stable context (repo + scope + relative path) to avoid conflicts.
+  disambiguatedName =
+    path:
+    let
+      repoMatch = builtins.match "repos/([^/]+)/(.*)" path;
+      repo = if repoMatch == null then null else builtins.elemAt repoMatch 0;
+      repoRelative = if repoMatch == null then path else builtins.elemAt repoMatch 1;
+      stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" repoRelative);
+      scopeMatch = builtins.match "@([^/]+)/(.*)" stripped;
+      scope = if scopeMatch == null then null else builtins.elemAt scopeMatch 0;
+      rest = if scopeMatch == null then stripped else builtins.elemAt scopeMatch 1;
+      pieces = lib.filter (x: x != null && x != "") [ repo scope rest ];
+    in
+    sanitize (lib.concatStringsSep "-" pieces);
+
+  baseTaskNames = map baseName packages;
+  duplicateBaseTaskNames = lib.filterAttrs (_: names: builtins.length names > 1) (lib.groupBy (n: n) baseTaskNames);
+  toName =
+    path:
+    let
+      name = baseName path;
+    in
+    if (duplicateBaseTaskNames.${name} or null) != null then disambiguatedName path else name;
+
+  packageTaskNames = map toName packages;
+  duplicateTaskNames = lib.filterAttrs (_: names: builtins.length names > 1) (lib.groupBy (n: n) packageTaskNames);
+  duplicateTaskNameLines = lib.mapAttrsToList (
+    taskName: _:
+    let
+      conflictingPaths = lib.filter (path: toName path == taskName) packages;
+    in
+    "- ${taskName}: ${lib.concatStringsSep ", " conflictingPaths}"
+  ) duplicateTaskNames;
+  ensureUniqueTaskNames =
+    if duplicateTaskNames == { } then
+      true
+    else
+      throw ''
+        pnpm task name collision detected.
+        Conflicting task names (derived from package paths):
+        ${lib.concatStringsSep "\n" duplicateTaskNameLines}
+
+        Fix by adjusting task-name derivation so each configured package path maps to a unique task name.
+      '';
 
   # =============================================================================
   # Auto-detect injected deps from package.json
@@ -167,13 +211,15 @@ let
     injectedPaths;
 
   # Build list of {path, name, prevName, injected} for sequential chaining
-  packagesWithPrev = lib.imap0 (i: path: {
-    inherit path;
-    name = toName path;
-    prevName = if i == 0 then null else toName (builtins.elemAt packages (i - 1));
-    # Auto-detect injected deps from package.json
-    injected = getInjectedDeps path;
-  }) packages;
+  packagesWithPrev =
+    assert ensureUniqueTaskNames;
+    lib.imap0 (i: path: {
+      inherit path;
+      name = toName path;
+      prevName = if i == 0 then null else toName (builtins.elemAt packages (i - 1));
+      # Auto-detect injected deps from package.json
+      injected = getInjectedDeps path;
+    }) packages;
 
   # =============================================================================
   # Shared hash computation scripts
