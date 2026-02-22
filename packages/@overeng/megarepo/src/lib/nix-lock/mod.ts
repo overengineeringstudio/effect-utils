@@ -415,7 +415,7 @@ const syncSingleLockFile = ({
  * Find a matching parent lock member for a nested lock entry.
  *
  * Matching strategy:
- * 1. Prefer same-name matches when URLs are equivalent
+ * 1. Prefer same-name matches when URLs and refs are equivalent
  * 2. Fall back to URL+ref lookup to support member aliases
  * 3. If URL+ref fallback is ambiguous with conflicting commits, skip the update
  */
@@ -431,7 +431,8 @@ const findMatchingParentMember = ({
   const sameNameMember = parentMembers[nestedMemberName]
   if (
     sameNameMember !== undefined &&
-    urlsMatch({ url1: nestedMember.url, url2: sameNameMember.url }) === true
+    urlsMatch({ url1: nestedMember.url, url2: sameNameMember.url }) === true &&
+    sameNameMember.ref === nestedMember.ref
   ) {
     return { memberName: nestedMemberName, member: sameNameMember }
   }

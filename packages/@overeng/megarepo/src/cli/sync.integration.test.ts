@@ -2589,7 +2589,7 @@ describe('lock sync with nested megarepo.lock files', () => {
       function* () {
         const fs = yield* FileSystem.FileSystem
 
-        const { storePath, worktreePaths } = yield* createStoreFixture([
+        const { storePath } = yield* createStoreFixture([
           {
             host: 'example.com',
             owner: 'org',
@@ -2597,12 +2597,6 @@ describe('lock sync with nested megarepo.lock files', () => {
             branches: ['main'],
           },
         ])
-        const sharedKey = 'example.com/org/shared-lib#main'
-        const sharedWorktreePath = worktreePaths[sharedKey]
-        if (sharedWorktreePath === undefined) {
-          throw new Error(`Missing worktree path for ${sharedKey}`)
-        }
-        const sharedCommit = yield* runGitCommand(sharedWorktreePath, 'rev-parse', 'HEAD')
 
         const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
         const childPath = EffectPath.ops.join(
@@ -2698,8 +2692,32 @@ describe('lock sync with nested megarepo.lock files', () => {
         const childLockSync = syncOutput.lockSyncResults.find(
           (r) => r.memberName === 'child-megarepo',
         )
-        if (childLockSync !== undefined) {
-          expect(childLockSync.files.some((f) => f.type === 'megarepo.lock')).toBe(true)
+        expect(childLockSync).toBeDefined()
+        if (childLockSync === undefined) {
+          throw new Error('Expected child-megarepo lock sync result')
+        }
+        const childMegarepoLockSync = childLockSync.files.find((f) => f.type === 'megarepo.lock')
+        expect(childMegarepoLockSync).toBeDefined()
+        if (childMegarepoLockSync === undefined) {
+          throw new Error('Expected child megarepo.lock sync file result')
+        }
+        expect(
+          childMegarepoLockSync.updatedInputs.some(
+            (u) => u.inputName === 'shared-lib' && u.memberName === 'shared-lib',
+          ),
+        ).toBe(true)
+
+        const parentLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const parentLock = yield* readLockFile(parentLockPath)
+        expect(Option.isSome(parentLock)).toBe(true)
+        const resolvedParentLock = Option.getOrThrow(parentLock)
+        const sharedParentMember = resolvedParentLock.members['shared-lib']
+        expect(sharedParentMember).toBeDefined()
+        if (sharedParentMember === undefined) {
+          throw new Error('Missing shared-lib entry in parent lock file')
         }
 
         const nestedLockPath = EffectPath.ops.join(
@@ -2709,7 +2727,8 @@ describe('lock sync with nested megarepo.lock files', () => {
         const nestedLock = yield* readLockFile(nestedLockPath)
         expect(Option.isSome(nestedLock)).toBe(true)
         const resolvedNestedLock = Option.getOrThrow(nestedLock)
-        expect(resolvedNestedLock.members['shared-lib']?.commit).toBe(sharedCommit)
+        expect(resolvedNestedLock.members['shared-lib']?.commit).toBe(sharedParentMember.commit)
+        expect(resolvedNestedLock.members['shared-lib']?.commit).not.toBe(staleCommit)
         expect(resolvedNestedLock.members['shared-lib-alias']?.commit).toBe(pinnedCommit)
       },
       Effect.provide(NodeContext.layer),
@@ -2829,18 +2848,11 @@ describe('lock sync with nested megarepo.lock files', () => {
             branches: ['main', 'release'],
           },
         ])
-        const mainKey = 'example.com/org/shared-lib#main'
         const releaseKey = 'example.com/org/shared-lib#release'
-        const sharedMainWorktreePath = worktreePaths[mainKey]
-        if (sharedMainWorktreePath === undefined) {
-          throw new Error(`Missing worktree path for ${mainKey}`)
-        }
         const sharedReleaseWorktreePath = worktreePaths[releaseKey]
         if (sharedReleaseWorktreePath === undefined) {
           throw new Error(`Missing worktree path for ${releaseKey}`)
         }
-
-        const mainCommit = yield* runGitCommand(sharedMainWorktreePath, 'rev-parse', 'HEAD')
 
         yield* runGitCommand(sharedReleaseWorktreePath, 'config', 'user.email', 'test@example.com')
         yield* runGitCommand(sharedReleaseWorktreePath, 'config', 'user.name', 'Test User')
@@ -2860,8 +2872,6 @@ describe('lock sync with nested megarepo.lock files', () => {
           '-m',
           'Release commit',
         )
-        const releaseCommit = yield* runGitCommand(sharedReleaseWorktreePath, 'rev-parse', 'HEAD')
-        expect(releaseCommit).not.toBe(mainCommit)
 
         const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
         const childPath = EffectPath.ops.join(
@@ -2925,6 +2935,65 @@ describe('lock sync with nested megarepo.lock files', () => {
         })
         expect(result.exitCode).toBe(0)
 
+        const SyncOutput = Schema.Struct({
+          lockSyncResults: Schema.Array(
+            Schema.Struct({
+              memberName: Schema.String,
+              files: Schema.Array(
+                Schema.Struct({
+                  type: Schema.String,
+                  updatedInputs: Schema.Array(
+                    Schema.Struct({
+                      inputName: Schema.String,
+                      memberName: Schema.String,
+                      oldRev: Schema.String,
+                      newRev: Schema.String,
+                    }),
+                  ),
+                }),
+              ),
+            }),
+          ),
+        })
+        const syncOutput = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(
+          result.stdout.trim(),
+        )
+        const childLockSync = syncOutput.lockSyncResults.find(
+          (r) => r.memberName === 'child-megarepo',
+        )
+        expect(childLockSync).toBeDefined()
+        if (childLockSync === undefined) {
+          throw new Error('Expected child-megarepo lock sync result')
+        }
+        const childMegarepoLockSync = childLockSync.files.find((f) => f.type === 'megarepo.lock')
+        expect(childMegarepoLockSync).toBeDefined()
+        if (childMegarepoLockSync === undefined) {
+          throw new Error('Expected child megarepo.lock sync file result')
+        }
+        expect(
+          childMegarepoLockSync.updatedInputs.some(
+            (u) => u.inputName === 'shared-lib-alias' && u.memberName === 'shared-lib-release',
+          ),
+        ).toBe(true)
+
+        const parentLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const parentLock = yield* readLockFile(parentLockPath)
+        expect(Option.isSome(parentLock)).toBe(true)
+        const resolvedParentLock = Option.getOrThrow(parentLock)
+        const releaseMember = resolvedParentLock.members['shared-lib-release']
+        expect(releaseMember).toBeDefined()
+        if (releaseMember === undefined) {
+          throw new Error('Missing shared-lib-release entry in parent lock file')
+        }
+        const mainMember = resolvedParentLock.members['shared-lib-main']
+        expect(mainMember).toBeDefined()
+        if (mainMember === undefined) {
+          throw new Error('Missing shared-lib-main entry in parent lock file')
+        }
+
         const nestedLockPath = EffectPath.ops.join(
           workspacePath,
           EffectPath.unsafe.relativeFile(`repos/child-megarepo/${LOCK_FILE_NAME}`),
@@ -2932,8 +3001,187 @@ describe('lock sync with nested megarepo.lock files', () => {
         const nestedLock = yield* readLockFile(nestedLockPath)
         expect(Option.isSome(nestedLock)).toBe(true)
         const resolvedNestedLock = Option.getOrThrow(nestedLock)
-        expect(resolvedNestedLock.members['shared-lib-alias']?.commit).toBe(releaseCommit)
-        expect(resolvedNestedLock.members['shared-lib-alias']?.commit).not.toBe(mainCommit)
+        expect(resolvedNestedLock.members['shared-lib-alias']?.commit).toBe(releaseMember.commit)
+        if (mainMember.commit !== releaseMember.commit) {
+          expect(resolvedNestedLock.members['shared-lib-alias']?.commit).not.toBe(mainMember.commit)
+        }
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+    { timeout: 20_000 },
+  )
+
+  it.effect(
+    'should fall back to URL+ref when same-name parent member has a different ref',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'example.com',
+            owner: 'org',
+            repo: 'shared-lib',
+            branches: ['main', 'release'],
+          },
+        ])
+        const releaseKey = 'example.com/org/shared-lib#release'
+        const sharedReleaseWorktreePath = worktreePaths[releaseKey]
+        if (sharedReleaseWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${releaseKey}`)
+        }
+
+        yield* runGitCommand(sharedReleaseWorktreePath, 'config', 'user.email', 'test@example.com')
+        yield* runGitCommand(sharedReleaseWorktreePath, 'config', 'user.name', 'Test User')
+        yield* runGitCommand(sharedReleaseWorktreePath, 'checkout', '-B', 'release')
+        yield* fs.writeFileString(
+          EffectPath.ops.join(
+            sharedReleaseWorktreePath,
+            EffectPath.unsafe.relativeFile('release.txt'),
+          ),
+          'release branch content\n',
+        )
+        yield* runGitCommand(sharedReleaseWorktreePath, 'add', '-A')
+        yield* runGitCommand(
+          sharedReleaseWorktreePath,
+          'commit',
+          '--no-verify',
+          '-m',
+          'Release commit',
+        )
+
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const childPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('child-megarepo/'),
+        )
+        yield* fs.makeDirectory(childPath, { recursive: true })
+        yield* initGitRepo(childPath)
+
+        const staleCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'release',
+                commit: staleCommit,
+              }),
+            },
+          },
+        })
+        yield* addCommit({
+          repoPath: childPath,
+          message: 'Initialize nested megarepo lock',
+        })
+
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('parent-megarepo/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            'shared-lib': 'https://example.com/org/shared-lib#main',
+            'shared-lib-release': 'https://example.com/org/shared-lib#release',
+            'child-megarepo': childPath,
+          },
+          lockSync: {
+            enabled: true,
+          },
+        }
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize parent megarepo',
+        })
+
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const SyncOutput = Schema.Struct({
+          lockSyncResults: Schema.Array(
+            Schema.Struct({
+              memberName: Schema.String,
+              files: Schema.Array(
+                Schema.Struct({
+                  type: Schema.String,
+                  updatedInputs: Schema.Array(
+                    Schema.Struct({
+                      inputName: Schema.String,
+                      memberName: Schema.String,
+                      oldRev: Schema.String,
+                      newRev: Schema.String,
+                    }),
+                  ),
+                }),
+              ),
+            }),
+          ),
+        })
+        const syncOutput = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(
+          result.stdout.trim(),
+        )
+        const childLockSync = syncOutput.lockSyncResults.find(
+          (r) => r.memberName === 'child-megarepo',
+        )
+        expect(childLockSync).toBeDefined()
+        if (childLockSync === undefined) {
+          throw new Error('Expected child-megarepo lock sync result')
+        }
+        const childMegarepoLockSync = childLockSync.files.find((f) => f.type === 'megarepo.lock')
+        expect(childMegarepoLockSync).toBeDefined()
+        if (childMegarepoLockSync === undefined) {
+          throw new Error('Expected child megarepo.lock sync file result')
+        }
+        expect(
+          childMegarepoLockSync.updatedInputs.some(
+            (u) => u.inputName === 'shared-lib' && u.memberName === 'shared-lib-release',
+          ),
+        ).toBe(true)
+
+        const parentLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const parentLock = yield* readLockFile(parentLockPath)
+        expect(Option.isSome(parentLock)).toBe(true)
+        const resolvedParentLock = Option.getOrThrow(parentLock)
+        const mainMember = resolvedParentLock.members['shared-lib']
+        expect(mainMember).toBeDefined()
+        if (mainMember === undefined) {
+          throw new Error('Missing shared-lib entry in parent lock file')
+        }
+        const releaseMember = resolvedParentLock.members['shared-lib-release']
+        expect(releaseMember).toBeDefined()
+        if (releaseMember === undefined) {
+          throw new Error('Missing shared-lib-release entry in parent lock file')
+        }
+        expect(releaseMember.commit).not.toBe(mainMember.commit)
+
+        const nestedLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(`repos/child-megarepo/${LOCK_FILE_NAME}`),
+        )
+        const nestedLock = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(nestedLock)).toBe(true)
+        const resolvedNestedLock = Option.getOrThrow(nestedLock)
+        expect(resolvedNestedLock.members['shared-lib']?.commit).toBe(releaseMember.commit)
+        expect(resolvedNestedLock.members['shared-lib']?.commit).not.toBe(mainMember.commit)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

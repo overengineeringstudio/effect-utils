@@ -609,16 +609,26 @@ export const syncMember = <R = never>({
 
         if (refInfo.type === 'tag') {
           actualRefType = 'tag'
-          targetCommit = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/tags/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+          targetCommit =
+            refInfo.commit.length > 0
+              ? refInfo.commit
+              : yield* Git.resolveRef({
+                  repoPath: bareRepoPath,
+                  ref: `refs/tags/${targetRef}`,
+                }).pipe(
+                  Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+                )
         } else if (refInfo.type === 'branch') {
           actualRefType = 'branch'
-          targetCommit = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/remotes/origin/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+          targetCommit =
+            refInfo.commit.length > 0
+              ? refInfo.commit
+              : yield* Git.resolveRef({
+                  repoPath: bareRepoPath,
+                  ref: `refs/remotes/origin/${targetRef}`,
+                }).pipe(
+                  Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+                )
         } else {
           // Unknown ref type - fall back to heuristic-based resolution
           const heuristicType = classifyRef(targetRef)
