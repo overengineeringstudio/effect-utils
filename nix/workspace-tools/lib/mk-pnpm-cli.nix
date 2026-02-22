@@ -30,6 +30,7 @@
 # - dirty: Whether build includes uncommitted changes (defaults to false).
 # - smokeTestArgs: Args for smoke test (defaults to ["--help"]).
 # - extraExcludedSourceNames: Extra top-level paths to omit from the staged workspace.
+# - extraBunBuildArgs: Extra arguments passed to `bun build` (e.g., --external flags).
 
 { pkgs }:
 
@@ -48,6 +49,7 @@
   dirty ? false,
   smokeTestArgs ? [ "--help" ],
   extraExcludedSourceNames ? [ ],
+  extraBunBuildArgs ? [ ],
 }:
 
 let
@@ -379,7 +381,7 @@ pkgs.stdenv.mkDerivation {
     # Build the CLI
     echo "Building CLI..."
     mkdir -p ${packageDir}/output
-    bun build ${entry} --compile --outfile=${packageDir}/output/${binaryName}
+    bun build ${entry} --compile ${lib.concatStringsSep " " extraBunBuildArgs} --outfile=${packageDir}/output/${binaryName}
 
     # Smoke test
     if [ -n "${smokeTestArgsStr}" ]; then
