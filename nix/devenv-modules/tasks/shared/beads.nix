@@ -1,23 +1,10 @@
 # Beads devenv module — integrates beads issue tracking with devenv.
 #
-# Since beads v0.51, the daemon and SQLite backend have been removed.
-# Beads now uses Dolt as the sole backend. In embedded mode (default),
-# bd manages the database directly — no server needed. In server mode,
-# `bd dolt start` runs a Dolt SQL server for multi-writer concurrency.
+# Uses Dolt as backend. In embedded mode (default), bd manages the
+# database directly. In server mode, `bd dolt start` runs a Dolt SQL
+# server for multi-writer concurrency.
 #
-# Sync is handled via `bd dolt push/pull` (JSONL sync layer was removed).
-# JSONL is still maintained for git portability via `bd hooks install`,
-# but Dolt is the source of truth.
-#
-# Exported env var:
-# - BEADS_DIR: upstream bd env var for .beads discovery
-# With this set, `bd` works from anywhere without wrapper scripts.
-#
-# Provides:
-# - beads:ensure task — bootstraps Dolt DB on cold start
-# - beads:push task — push via `bd dolt push`
-# - beads:pull task — pull via `bd dolt pull`
-# - beads-commit-correlation git hook — cross-references commits with beads issues
+# Sets BEADS_DIR so `bd` works from anywhere without wrapper scripts.
 { beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}" }:
 { pkgs, config, ... }:
 let
@@ -40,8 +27,8 @@ in
 
       cd "''${BEADS_DIR%/.beads}"
 
-      # Cold-start: bootstrap Dolt DB from JSONL on fresh checkout.
-      # `bd list` auto-creates the DB from JSONL as a side effect.
+      # Bootstrap Dolt DB from JSONL on fresh checkout
+      # (`bd list` auto-creates the DB from JSONL as a side effect)
       if [ ! -d "$BEADS_DIR/dolt" ] && [ -f "$BEADS_DIR/issues.jsonl" ]; then
         echo "[beads] No database found, bootstrapping from JSONL..."
         ${bd} list --quiet >/dev/null 2>&1 || true

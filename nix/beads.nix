@@ -1,5 +1,4 @@
-# Beads (bd) — built from source with CGO for Dolt support.
-# CGO is required for go-icu-regex; non-CGO builds lack `bd dolt push/pull/commit`.
+# Beads (bd) — built from source with CGO (required for go-icu-regex / Dolt support).
 { pkgs }:
 let
   version = "0.55.4";

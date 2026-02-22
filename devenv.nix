@@ -184,7 +184,7 @@ let
 in
 {
   imports = [
-    # Beads integration: Dolt-native, push/pull, commit correlation hook
+    # Beads integration
     (taskModules.beads {
       beadsPrefix = "oep";
       beadsRepoName = "overeng-beads-public";
@@ -351,10 +351,8 @@ in
     description = "Apply .github/repo-settings.json to GitHub ruleset";
   };
 
-  # Wire beads:ensure directly to shell entry (not via optionalTasks).
-  # The setup module's gitHashStatus cache would prevent re-checking the DB
-  # state without a new commit. The beads module's own status check
-  # (does dolt/ dir exist?) is the correct gate for this task.
+  # Wire beads:ensure directly to shell entry (not via optionalTasks)
+  # because the setup module's gitHashStatus cache isn't the right gate here.
   tasks."devenv:enterShell".after = lib.mkAfter [ "beads:ensure" ];
 
   # Keep git-hook installation out of the shell-entry path.

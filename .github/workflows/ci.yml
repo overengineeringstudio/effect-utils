@@ -39,12 +39,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          if devenv version > /dev/null 2>&1; then
+          if devenv shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, running repair..."
-            nix-store --verify --repair 2>&1 | tail -20
-            devenv version
+            echo "::warning::Nix store validation failed, repairing..."
+            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            rm -rf ~/.cache/nix/eval-cache-*
+            devenv shell -- true
           fi
         shell: bash
       - name: Type check
@@ -84,12 +85,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          if devenv version > /dev/null 2>&1; then
+          if devenv shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, running repair..."
-            nix-store --verify --repair 2>&1 | tail -20
-            devenv version
+            echo "::warning::Nix store validation failed, repairing..."
+            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            rm -rf ~/.cache/nix/eval-cache-*
+            devenv shell -- true
           fi
         shell: bash
       - name: Format + lint
@@ -132,12 +134,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          if devenv version > /dev/null 2>&1; then
+          if devenv shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, running repair..."
-            nix-store --verify --repair 2>&1 | tail -20
-            devenv version
+            echo "::warning::Nix store validation failed, repairing..."
+            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            rm -rf ~/.cache/nix/eval-cache-*
+            devenv shell -- true
           fi
         shell: bash
       - name: Unit tests
@@ -180,12 +183,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          if devenv version > /dev/null 2>&1; then
+          if devenv shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, running repair..."
-            nix-store --verify --repair 2>&1 | tail -20
-            devenv version
+            echo "::warning::Nix store validation failed, repairing..."
+            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            rm -rf ~/.cache/nix/eval-cache-*
+            devenv shell -- true
           fi
         shell: bash
       - name: Nix hash check
@@ -229,12 +233,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          if devenv version > /dev/null 2>&1; then
+          if devenv shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, running repair..."
-            nix-store --verify --repair 2>&1 | tail -20
-            devenv version
+            echo "::warning::Nix store validation failed, repairing..."
+            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            rm -rf ~/.cache/nix/eval-cache-*
+            devenv shell -- true
           fi
         shell: bash
       - name: Deploy storybooks to Netlify

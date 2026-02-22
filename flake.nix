@@ -161,7 +161,6 @@
         }:
         import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
 
-      # Beads (bd) package built from source with CGO (Dolt support).
       # Usage: effectUtils.lib.mkBeads { inherit pkgs; }
       lib.mkBeads = { pkgs }: import ./nix/beads.nix { inherit pkgs; };
 
