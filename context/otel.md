@@ -47,7 +47,7 @@ mode = "auto" (default)
   └── not set?            → "local": starts per-project Collector/Tempo/Grafana
 ```
 
-When in system mode, this module does not auto-provision project dashboards into the system Grafana state. Sync dashboards explicitly from the project when needed (for example via `otel dash sync` in setups that provide it).
+When in system mode, this module auto-syncs dashboards by invoking `otel dash sync` on shell entry (when `otel` is available), targeting `$OTEL_STATE_DIR/dashboards`. This keeps dashboard path/UID/archive behavior aligned with the otel-cli implementation instead of ad-hoc shell copies.
 
 ## Environment Variables
 
@@ -190,7 +190,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
-Projects define their own dashboards in `.otel/dashboards.json`. In system mode, keep provisioning explicit by syncing dashboards intentionally instead of copying on shell entry.
+Projects define their own dashboards in `.otel/dashboards.json`. In system mode, dashboard syncing is delegated to `otel dash sync` on shell entry.
 
 ## Data Storage
 

@@ -395,6 +395,43 @@ in
       if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
         echo "[otel] WARNING: OTEL_STATE_DIR is set but OTEL_EXPORTER_OTLP_ENDPOINT is missing" >&2
       fi
+      # Delegate dashboard provisioning to otel-cli so path/UID/archive semantics
+      # stay centralized in one implementation.
+      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
+        if command -v otel >/dev/null 2>&1; then
+          _project_name=$(basename "$DEVENV_ROOT")
+          _dash_sync_source="$OTEL_DASHBOARDS_DIR"
+          _dash_sync_tmp=""
+          ${builtins.concatStringsSep "\n          " (
+            map (group: ''
+              if [ -z "$_dash_sync_tmp" ]; then
+                _dash_sync_tmp="$DEVENV_STATE/otel-dash-sync"
+                rm -rf "$_dash_sync_tmp"
+                mkdir -p "$_dash_sync_tmp"
+                cp -f ${allDashboards}/*.json "$_dash_sync_tmp/" 2>/dev/null || true
+              fi
+              _group_name='${group.name}'
+              _group_prefix=$(printf '%s' "$_group_name" | sed 's/[^A-Za-z0-9_-]/-/g')
+              for _dash_src in ${group.path}/*.json; do
+                [ -f "$_dash_src" ] || continue
+                _dash_name=$(basename "$_dash_src")
+                cp -f "$_dash_src" "$_dash_sync_tmp/$_group_prefix--$_dash_name"
+              done
+            '') extraDashboards
+          )}
+          if [ -n "$_dash_sync_tmp" ]; then
+            _dash_sync_source="$_dash_sync_tmp"
+          fi
+          if ! otel dash sync \
+            --project "$_project_name" \
+            --source "$_dash_sync_source" \
+            --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
+            echo "[otel] WARNING: otel dash sync failed for $_project_name" >&2
+          fi
+        else
+          echo "[otel] WARNING: otel CLI not found; skipping automatic dashboard sync" >&2
+        fi
+      fi
       _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
       # Local devenv stack — set env vars with local hash-derived ports
