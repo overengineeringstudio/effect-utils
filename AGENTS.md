@@ -40,7 +40,7 @@ This repo uses [beads](../overeng-beads-public) for task tracking via the megare
 
 - Create an **epic** for larger work items and correlate it with the PR
 - Create **follow-up beads** (or a follow-up epic for larger scope) for out-of-scope work discovered during implementation
-- Run `dt beads:sync` before pushing to keep beads in sync with git
+- Run `dt beads:push` before pushing to sync beads to Dolt remote
 
 ## Landing the Plane (Session Completion)
 
@@ -54,7 +54,7 @@ This repo uses [beads](../overeng-beads-public) for task tracking via the megare
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   dt beads:sync    # sync beads JSONL to git (pull + commit + push)
+   dt beads:push    # push beads changes to Dolt remote
    git push
    git status  # MUST show "up to date with origin"
    ```
