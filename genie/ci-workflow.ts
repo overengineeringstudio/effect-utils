@@ -148,19 +148,22 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
 
 /**
  * Validate Nix store on namespace runners.
- * A cheap `devenv version` probe catches corruption before real work starts;
- * the expensive `--verify --repair` only runs when actually needed.
+ * Runs `devenv shell -- true` to fully evaluate the devenv expression — this
+ * catches stale store paths that a lightweight `devenv version` would miss.
+ * On failure, repairs the store AND clears the Nix eval cache (which may
+ * reference GC'd paths), then retries.
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
  * @see https://github.com/overengineeringstudio/effect-utils/issues/201
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if devenv version > /dev/null 2>&1; then
+  run: `if devenv shell -- true > /dev/null 2>&1; then
   echo "Nix store OK"
 else
-  echo "::warning::Nix store validation failed, running repair..."
-  nix-store --verify --repair 2>&1 | tail -20
-  devenv version
+  echo "::warning::Nix store validation failed, repairing..."
+  nix-store --verify --check-contents --repair 2>&1 | tail -20
+  rm -rf ~/.cache/nix/eval-cache-*
+  devenv shell -- true
 fi`,
   shell: 'bash',
 } as const

@@ -184,7 +184,7 @@ let
 in
 {
   imports = [
-    # Beads integration: daemon, sync task, commit correlation hook
+    # Beads integration
     (taskModules.beads {
       beadsPrefix = "oep";
       beadsRepoName = "overeng-beads-public";
@@ -351,11 +351,9 @@ in
     description = "Apply .github/repo-settings.json to GitHub ruleset";
   };
 
-  # Wire beads:daemon:ensure directly to shell entry (not via optionalTasks).
-  # The setup module's gitHashStatus cache would prevent re-checking the daemon
-  # after it stops without a new commit. The beads module's own status check
-  # (is daemon running?) is the correct gate for this task.
-  tasks."devenv:enterShell".after = lib.mkAfter [ "beads:daemon:ensure" ];
+  # Wire beads:ensure directly to shell entry (not via optionalTasks)
+  # because the setup module's gitHashStatus cache isn't the right gate here.
+  tasks."devenv:enterShell".after = lib.mkAfter [ "beads:ensure" ];
 
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.
