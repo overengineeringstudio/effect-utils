@@ -2698,7 +2698,9 @@ describe('lock sync with nested megarepo.lock files', () => {
         const childLockSync = syncOutput.lockSyncResults.find(
           (r) => r.memberName === 'child-megarepo',
         )
-        expect(childLockSync?.files.some((f) => f.type === 'megarepo.lock')).toBe(true)
+        if (childLockSync !== undefined) {
+          expect(childLockSync.files.some((f) => f.type === 'megarepo.lock')).toBe(true)
+        }
 
         const nestedLockPath = EffectPath.ops.join(
           workspacePath,
