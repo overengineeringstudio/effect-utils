@@ -395,22 +395,6 @@ in
       if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
         echo "[otel] WARNING: OTEL_STATE_DIR is set but OTEL_EXPORTER_OTLP_ENDPOINT is missing" >&2
       fi
-      # Copy built-in dashboards to system stack for Grafana provisioning
-      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-        _project_name=$(basename "$DEVENV_ROOT")
-        _dash_target="$OTEL_STATE_DIR/dashboards/$_project_name"
-        mkdir -p "$_dash_target"
-        cp -f ${allDashboards}/*.json "$_dash_target/" 2>/dev/null || true
-      fi
-      ${builtins.concatStringsSep "\n      " (
-        map (group: ''
-          # Copy extra dashboards: ${group.name}
-          if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-            mkdir -p "$OTEL_STATE_DIR/dashboards/${group.name}"
-            cp -f ${group.path}/*.json "$OTEL_STATE_DIR/dashboards/${group.name}/" 2>/dev/null || true
-          fi
-        '') extraDashboards
-      )}
       _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
       # Local devenv stack — set env vars with local hash-derived ports
