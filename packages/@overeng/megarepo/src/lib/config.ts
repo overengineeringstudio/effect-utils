@@ -88,7 +88,7 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
 }) {}
 
 /**
- * Configuration for syncing flake.lock and devenv.lock files
+ * Configuration for syncing flake.lock, devenv.lock, and nested megarepo.lock files
  *
  * When enabled, megarepo will update the `rev` fields in member repos'
  * flake.lock and devenv.lock files to match the commits in megarepo.lock.
@@ -142,7 +142,7 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
   generators: Schema.optional(GeneratorsConfig),
 
   /**
-   * Lock sync configuration for flake.lock and devenv.lock files.
+   * Lock sync configuration for flake.lock, devenv.lock, and nested megarepo.lock files.
    * Auto-detected by default: enabled if devenv.lock or flake.lock exists in megarepo root.
    */
   lockSync: Schema.optional(LockSyncConfig),

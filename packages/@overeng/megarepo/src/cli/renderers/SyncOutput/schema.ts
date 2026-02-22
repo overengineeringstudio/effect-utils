@@ -35,7 +35,7 @@ export type LockInputUpdate = Schema.Schema.Type<typeof LockInputUpdate>
 /** Schema for lock file sync result */
 export const LockFileSyncResult = Schema.Struct({
   /** Type of lock file */
-  type: Schema.Literal('flake.lock', 'devenv.lock'),
+  type: Schema.Literal('flake.lock', 'devenv.lock', 'megarepo.lock'),
   /** Inputs that were updated */
   updatedInputs: Schema.Array(LockInputUpdate),
 })
@@ -131,7 +131,7 @@ export const SyncState = Schema.Struct({
   /** List of generated file paths */
   generatedFiles: Schema.Array(Schema.String),
 
-  /** Lock sync results (flake.lock/devenv.lock updates) */
+  /** Lock sync results (flake.lock/devenv.lock/megarepo.lock updates) */
   lockSyncResults: Schema.Array(MemberLockSyncResult),
 
   /** Full nested sync tree (includes nested megarepos when --all is used). */

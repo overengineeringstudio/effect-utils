@@ -1,7 +1,7 @@
 /**
  * Nix Lock File Sync
  *
- * Synchronizes flake.lock and devenv.lock files in megarepo members
+ * Synchronizes flake.lock, devenv.lock, and nested megarepo.lock files in megarepo members
  * to match the commits tracked in megarepo.lock.
  *
  * This ensures all lock files stay in sync with megarepo as the single
@@ -19,8 +19,15 @@ import { Effect, Schema, type ParseResult } from 'effect'
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
 import { getMemberPath, type MegarepoConfig } from '../config.ts'
-import type { LockFile, LockedMember } from '../lock.ts'
-import { matchLockedInputToMember, needsRevUpdate } from './matcher.ts'
+import {
+  LOCK_FILE_NAME,
+  readLockFile,
+  upsertLockedMember,
+  writeLockFile,
+  type LockFile,
+  type LockedMember,
+} from '../lock.ts'
+import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
 import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
 
 // =============================================================================
@@ -31,8 +38,8 @@ import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema
 export interface NixLockSyncFileResult {
   /** Path to the lock file */
   readonly path: AbsoluteFilePath
-  /** Type of lock file (flake.lock or devenv.lock) */
-  readonly type: 'flake.lock' | 'devenv.lock'
+  /** Type of lock file (flake.lock, devenv.lock, or megarepo.lock) */
+  readonly type: 'flake.lock' | 'devenv.lock' | 'megarepo.lock'
   /** Inputs that were updated */
   readonly updatedInputs: ReadonlyArray<{
     /** Name of the input in the flake.lock */
@@ -77,6 +84,7 @@ export interface NixLockSyncOptions {
 
 const FLAKE_LOCK = 'flake.lock'
 const DEVENV_LOCK = 'devenv.lock'
+const MEGAREPO_LOCK = LOCK_FILE_NAME
 
 /** Schema for raw flake lock JSON (used to preserve key order during manipulation) */
 const RawFlakeLockJson = Schema.parseJson(
@@ -403,6 +411,112 @@ const syncSingleLockFile = ({
     }
   })
 
+/**
+ * Find a matching parent lock member for a nested lock entry.
+ *
+ * Matching strategy:
+ * 1. Prefer same-name matches when URLs are equivalent
+ * 2. Fall back to URL-based lookup to support member aliases
+ */
+const findMatchingParentMember = ({
+  nestedMemberName,
+  nestedMember,
+  parentMembers,
+}: {
+  nestedMemberName: string
+  nestedMember: LockedMember
+  parentMembers: Record<string, LockedMember>
+}): { memberName: string; member: LockedMember } | undefined => {
+  const sameNameMember = parentMembers[nestedMemberName]
+  if (
+    sameNameMember !== undefined &&
+    urlsMatch({ url1: nestedMember.url, url2: sameNameMember.url }) === true
+  ) {
+    return { memberName: nestedMemberName, member: sameNameMember }
+  }
+
+  for (const [memberName, member] of Object.entries(parentMembers)) {
+    if (urlsMatch({ url1: nestedMember.url, url2: member.url }) === true) {
+      return { memberName, member }
+    }
+  }
+
+  return undefined
+}
+
+const syncNestedMegarepoLockFile = ({
+  lockPath,
+  parentMembers,
+}: {
+  lockPath: AbsoluteFilePath
+  parentMembers: Record<string, LockedMember>
+}): Effect.Effect<
+  NixLockSyncFileResult,
+  PlatformError.PlatformError | ParseResult.ParseError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const nestedLockFileOption = yield* readLockFile(lockPath)
+    if (nestedLockFileOption._tag === 'None') {
+      return {
+        path: lockPath,
+        type: 'megarepo.lock',
+        updatedInputs: [],
+      }
+    }
+
+    let nextLockFile = nestedLockFileOption.value
+    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
+
+    for (const [nestedMemberName, nestedMember] of Object.entries(
+      nestedLockFileOption.value.members,
+    )) {
+      if (nestedMember.pinned === true) {
+        continue
+      }
+
+      const parentMatch = findMatchingParentMember({
+        nestedMemberName,
+        nestedMember,
+        parentMembers,
+      })
+      if (parentMatch === undefined || parentMatch.member.commit === nestedMember.commit) {
+        continue
+      }
+
+      updatedInputs.push({
+        inputName: nestedMemberName,
+        memberName: parentMatch.memberName,
+        oldRev: nestedMember.commit,
+        newRev: parentMatch.member.commit,
+      })
+
+      nextLockFile = upsertLockedMember({
+        lockFile: nextLockFile,
+        memberName: nestedMemberName,
+        update: {
+          url: nestedMember.url,
+          ref: nestedMember.ref,
+          commit: parentMatch.member.commit,
+          pinned: nestedMember.pinned,
+        },
+      })
+    }
+
+    if (updatedInputs.length > 0) {
+      yield* writeLockFile({
+        lockPath,
+        lockFile: nextLockFile,
+      })
+    }
+
+    return {
+      path: lockPath,
+      type: 'megarepo.lock',
+      updatedInputs,
+    }
+  })
+
 // =============================================================================
 // Main Sync Function
 // =============================================================================
@@ -410,7 +524,7 @@ const syncSingleLockFile = ({
 /**
  * Sync all Nix lock files in megarepo members
  *
- * Scans each member for flake.lock and devenv.lock files,
+ * Scans each member for flake.lock, devenv.lock, and megarepo.lock files,
  * and updates any inputs that match other megarepo members
  * to use the commits from megarepo.lock.
  */
@@ -492,6 +606,34 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
               return {
                 path: devenvLockPath,
                 type: 'devenv.lock' as const,
+                updatedInputs: [],
+              }
+            }),
+          ),
+        )
+        if (result.updatedInputs.length > 0) {
+          files.push(result)
+          totalUpdates += result.updatedInputs.length
+        }
+      }
+
+      // Check for megarepo.lock
+      const megarepoLockPath = EffectPath.ops.join(
+        memberPath,
+        EffectPath.unsafe.relativeFile(MEGAREPO_LOCK),
+      )
+      const hasMegarepoLock = yield* fs.exists(megarepoLockPath)
+      if (hasMegarepoLock === true) {
+        const result = yield* syncNestedMegarepoLockFile({
+          lockPath: megarepoLockPath,
+          parentMembers: megarepoMembers,
+        }).pipe(
+          Effect.catchTag('ParseError', (e) =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(`Failed to parse ${megarepoLockPath}: ${e.message}`)
+              return {
+                path: megarepoLockPath,
+                type: 'megarepo.lock' as const,
                 updatedInputs: [],
               }
             }),

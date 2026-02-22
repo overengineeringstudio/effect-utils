@@ -2581,3 +2581,233 @@ describe('sync member removal detection', () => {
     ),
   )
 })
+
+describe('lock sync with nested megarepo.lock files', () => {
+  it.effect(
+    'should update nested megarepo.lock entries and skip pinned entries',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'example.com',
+            owner: 'org',
+            repo: 'shared-lib',
+            branches: ['main'],
+          },
+        ])
+        const sharedKey = 'example.com/org/shared-lib#main'
+        const sharedWorktreePath = worktreePaths[sharedKey]
+        if (sharedWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${sharedKey}`)
+        }
+        const sharedCommit = yield* runGitCommand(sharedWorktreePath, 'rev-parse', 'HEAD')
+
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const childPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('child-megarepo/'),
+        )
+        yield* fs.makeDirectory(childPath, { recursive: true })
+        yield* initGitRepo(childPath)
+
+        const staleCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        const pinnedCommit = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'main',
+                commit: staleCommit,
+              }),
+              'shared-lib-alias': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'main',
+                commit: pinnedCommit,
+                pinned: true,
+              }),
+            },
+          },
+        })
+        yield* addCommit({
+          repoPath: childPath,
+          message: 'Initialize nested megarepo lock',
+        })
+
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('parent-megarepo/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            'shared-lib': 'https://example.com/org/shared-lib#main',
+            'child-megarepo': childPath,
+          },
+          lockSync: {
+            enabled: true,
+          },
+        }
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize parent megarepo',
+        })
+
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const SyncOutput = Schema.Struct({
+          lockSyncResults: Schema.Array(
+            Schema.Struct({
+              memberName: Schema.String,
+              files: Schema.Array(
+                Schema.Struct({
+                  type: Schema.String,
+                  updatedInputs: Schema.Array(
+                    Schema.Struct({
+                      inputName: Schema.String,
+                      memberName: Schema.String,
+                      oldRev: Schema.String,
+                      newRev: Schema.String,
+                    }),
+                  ),
+                }),
+              ),
+            }),
+          ),
+        })
+        const syncOutput = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(
+          result.stdout.trim(),
+        )
+        const childLockSync = syncOutput.lockSyncResults.find(
+          (r) => r.memberName === 'child-megarepo',
+        )
+        expect(childLockSync?.files.some((f) => f.type === 'megarepo.lock')).toBe(true)
+
+        const nestedLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(`repos/child-megarepo/${LOCK_FILE_NAME}`),
+        )
+        const nestedLock = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(nestedLock)).toBe(true)
+        const resolvedNestedLock = Option.getOrThrow(nestedLock)
+        expect(resolvedNestedLock.members['shared-lib']?.commit).toBe(sharedCommit)
+        expect(resolvedNestedLock.members['shared-lib-alias']?.commit).toBe(pinnedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should not update nested megarepo.lock for excluded members',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'example.com',
+            owner: 'org',
+            repo: 'shared-lib',
+            branches: ['main'],
+          },
+        ])
+        const sharedKey = 'example.com/org/shared-lib#main'
+        const sharedWorktreePath = worktreePaths[sharedKey]
+        if (sharedWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${sharedKey}`)
+        }
+
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const childPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('child-megarepo/'),
+        )
+        yield* fs.makeDirectory(childPath, { recursive: true })
+        yield* initGitRepo(childPath)
+
+        const staleCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'main',
+                commit: staleCommit,
+              }),
+            },
+          },
+        })
+        yield* addCommit({
+          repoPath: childPath,
+          message: 'Initialize nested megarepo lock',
+        })
+
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('parent-megarepo/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            'shared-lib': 'https://example.com/org/shared-lib#main',
+            'child-megarepo': childPath,
+          },
+          lockSync: {
+            enabled: true,
+            exclude: ['child-megarepo'],
+          },
+        }
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize parent megarepo',
+        })
+
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const nestedLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(`repos/child-megarepo/${LOCK_FILE_NAME}`),
+        )
+        const nestedLock = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(nestedLock)).toBe(true)
+        const resolvedNestedLock = Option.getOrThrow(nestedLock)
+        expect(resolvedNestedLock.members['shared-lib']?.commit).toBe(staleCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+})

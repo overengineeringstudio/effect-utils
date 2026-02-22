@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: `mr sync` lock-sync now updates nested member `megarepo.lock` files
+  - Fixes drift where parent `megarepo.lock` commit updates were not propagated into nested megarepo member locks
+  - Nested lock matching now prefers same-name entries (with URL verification) and falls back to URL matching
+  - Pinned nested lock entries remain unchanged
 - **devenv/tasks/shared/ts.nix**: Fix `ts:emit` missing `--build` flag
   - `tscWithDiagnostics` was called without `--build`, causing tsc to treat `tsconfig.all.json` as a source file
   - Previously masked by `setup:opt:*` wrappers silently swallowing the failure

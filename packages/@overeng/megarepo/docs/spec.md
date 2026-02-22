@@ -884,26 +884,29 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 
 ### Nix Lock Sync
 
-Megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in member repos to keep them in sync with `megarepo.lock`. Lock sync is **auto-detected**: it is enabled if `devenv.lock` or `flake.lock` exists in the megarepo root directory.
+Megarepo automatically synchronizes `flake.lock`, `devenv.lock`, and nested `megarepo.lock` files in member repos to keep them in sync with the parent `megarepo.lock`. Lock sync is **auto-detected**: it is enabled if `devenv.lock` or `flake.lock` exists in the megarepo root directory.
 
 **The Problem:**
 
 When repo A (a megarepo member) depends on repo B (also a megarepo member) via Nix flake inputs, you get duplicate version tracking:
 
-1. `megarepo.lock` tracks commit for repo B
+1. Parent `megarepo.lock` tracks commit for repo B
 2. `repos/A/flake.lock` or `repos/A/devenv.lock` also tracks commit for repo B
+3. If A is a nested megarepo, `repos/A/megarepo.lock` can also track repo B
 
 These can drift, causing CI reproducibility issues and confusion.
 
 **The Solution:**
 
-During `mr sync`, after `megarepo.lock` is updated, megarepo scans each member repo for `flake.lock` and `devenv.lock` files. For any input that matches another megarepo member (by URL), it updates the `rev` to match `megarepo.lock`.
+During `mr sync`, after the parent `megarepo.lock` is updated, megarepo scans each member repo for `flake.lock`, `devenv.lock`, and `megarepo.lock` files. For entries that match another parent megarepo member, it updates the commit/revision to match the parent lock file.
 
 **How it works:**
 
-1. Matches flake inputs to megarepo members by comparing URLs (GitHub owner/repo or git URL)
-2. If a match is found and the `rev` differs, updates to the commit from `megarepo.lock`
-3. Removes `narHash` and `lastModified` fields (Nix recalculates these on demand)
+1. Matches flake/devenv lock inputs to megarepo members by comparing URLs (GitHub owner/repo or git URL)
+2. Matches nested `megarepo.lock` members by name first (with URL verification), then URL fallback
+3. If a match is found and the commit/revision differs, updates to the commit from the parent `megarepo.lock`
+4. For flake/devenv entries, removes `narHash` and `lastModified` fields (Nix recalculates these on demand)
+5. Pinned entries in nested `megarepo.lock` are not modified
 
 **Configuration:**
 
