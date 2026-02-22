@@ -1,4 +1,5 @@
-# Beads (bd) — build from source with CGO enabled so Dolt embedded mode works.
+# Beads (bd) — built from source with CGO for Dolt support.
+# CGO is required for go-icu-regex; non-CGO builds lack `bd dolt push/pull/commit`.
 { pkgs }:
 let
   version = "0.55.4";
@@ -18,15 +19,8 @@ pkgs.buildGo126Module {
   subPackages = [ "cmd/bd" ];
   doCheck = false;
 
-  nativeBuildInputs = [
-    pkgs.installShellFiles
-    pkgs.pkg-config
-  ];
-
-  buildInputs = [
-    pkgs.icu
-    pkgs.sqlite
-  ];
+  nativeBuildInputs = [ pkgs.installShellFiles pkgs.pkg-config ];
+  buildInputs = [ pkgs.icu ];
 
   env.CGO_ENABLED = 1;
 

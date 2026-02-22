@@ -1,34 +1,23 @@
 # Beads devenv module — integrates beads issue tracking with devenv.
 #
-# Runs beads in daemon mode:
-# - Serializes concurrent access via RPC (safe for multiple workspaces)
-# - Auto-flushes DB changes to JSONL (event-driven)
-# - Auto-imports when JSONL is newer (e.g. after commit-correlation hook writes)
-# - Auto-commits JSONL changes to the sync branch
-# - Auto-pulls remote changes (every 30s)
+# Since beads v0.51, the daemon and SQLite backend have been removed.
+# Beads now uses Dolt as the sole backend. In embedded mode (default),
+# bd manages the database directly — no server needed. In server mode,
+# `bd dolt start` runs a Dolt SQL server for multi-writer concurrency.
 #
-# Git push is NOT handled by the daemon (upstream detection doesn't work
-# reliably in bare+worktree git layouts). Use `dt beads:sync` to push.
-#
-# The SQLite DB is gitignored (.beads/.gitignore) — JSONL remains the
-# git-portable source of truth. Multiple megarepo workspaces sharing the
-# same store worktree share a single daemon instance.
+# Sync is handled via `bd dolt push/pull` (JSONL sync layer was removed).
+# JSONL is still maintained for git portability via `bd hooks install`,
+# but Dolt is the source of truth.
 #
 # Exported env var:
 # - BEADS_DIR: upstream bd env var for .beads discovery
 # With this set, `bd` works from anywhere without wrapper scripts.
 #
 # Provides:
-# - beads:daemon:ensure task — starts daemon if not running (idempotent)
-# - beads:daemon:stop task — stops daemon (cleanup)
-# - beads:sync task — push JSONL changes to remote
+# - beads:ensure task — bootstraps Dolt DB on cold start
+# - beads:push task — push via `bd dolt push`
+# - beads:pull task — pull via `bd dolt pull`
 # - beads-commit-correlation git hook — cross-references commits with beads issues
-#
-# Parameters:
-#   beadsPrefix    — issue ID prefix (e.g. "oep"), used by commit correlation hook
-#   beadsRepoName  — megarepo member name (e.g. "overeng-beads-public")
-#   beadsRepoPath  — path to beads repo relative to devenv root
-#                    (default: "repos/${beadsRepoName}" for megarepo members)
 { beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}" }:
 { pkgs, config, ... }:
 let
@@ -38,112 +27,76 @@ let
   beadsRepoRelPath = beadsRepoPath;
 in
 {
-  # BEADS_DIR — upstream bd env var for .beads discovery.
-  # Available in tasks, shell, and direnv.
   env.BEADS_DIR = "${config.devenv.root}/${beadsRepoRelPath}/.beads";
 
-  # beads:daemon:ensure — Start daemon if not running. Idempotent: if another
-  # workspace already started a daemon for this repo, this is a no-op.
-  # The daemon auto-commits to the sync branch and auto-pulls from remote.
-  # Git push is handled separately by beads:sync (see note in module header).
-  tasks."beads:daemon:ensure" = {
-    description = "Ensure beads daemon is running with auto-sync";
+  tasks."beads:ensure" = {
+    description = "Ensure beads database is initialized";
     after = [ "megarepo:sync" ];
     exec = ''
       if [ ! -d "$BEADS_DIR" ]; then
-        echo "[beads] Beads repo not materialized, skipping daemon."
+        echo "[beads] Beads repo not materialized, skipping."
         exit 0
       fi
 
       cd "''${BEADS_DIR%/.beads}"
 
-      # If daemon already running (e.g. started by another workspace), skip
-      if ${bd} daemon status >/dev/null 2>&1; then
-        exit 0
-      fi
-
-      # Cold-start: create/migrate Dolt DB from JSONL on fresh or legacy checkouts.
-      # Uses `bd list` instead of `bd init` because init refuses to run in git
-      # worktrees (which megarepo always creates).
+      # Cold-start: bootstrap Dolt DB from JSONL on fresh checkout.
+      # `bd list` auto-creates the DB from JSONL as a side effect.
       if [ ! -d "$BEADS_DIR/dolt" ] && [ -f "$BEADS_DIR/issues.jsonl" ]; then
-        echo "[beads] No database found, initializing from JSONL..."
+        echo "[beads] No database found, bootstrapping from JSONL..."
         ${bd} list --quiet >/dev/null 2>&1 || true
       fi
-
-      # Start daemon in background with auto-commit + auto-pull.
-      # NOTE: --auto-push is not used because beads' upstream detection
-      # doesn't work reliably in megarepo's bare+worktree git layout.
-      # Git push is handled by the beads:sync task instead.
-      ${bd} daemon start --auto-commit --auto-pull 2>&1 || true
     '';
     status = ''
       [ ! -d "$BEADS_DIR" ] && exit 0
-      cd "''${BEADS_DIR%/.beads}"
-      ${bd} daemon status >/dev/null 2>&1
+      [ -d "$BEADS_DIR/dolt" ]
     '';
   };
 
-  tasks."beads:daemon:stop" = {
-    description = "Stop beads daemon";
-    exec = ''
-      [ ! -d "$BEADS_DIR" ] && exit 0
-      cd "''${BEADS_DIR%/.beads}"
-      ${bd} daemons stop . 2>&1 || true
-      echo "[beads] Daemon stopped."
-    '';
-  };
-
-  # beads:sync — Push beads changes to remote.
-  # The daemon handles auto-commit and auto-pull. This task handles git push
-  # (daemon --auto-push doesn't work in bare+worktree git layout).
-  # Includes safety commit for when daemon wasn't running.
-  tasks."beads:sync" = {
-    description = "Push beads changes to remote";
+  tasks."beads:push" = {
+    description = "Push beads changes to Dolt remote";
     after = [ "megarepo:sync" ];
     exec = ''
       if [ ! -d "$BEADS_DIR" ]; then
         echo "[beads] Beads repo not found." >&2
         exit 1
       fi
-
       cd "''${BEADS_DIR%/.beads}"
+      ${bd} dolt push 2>&1
+    '';
+  };
 
-      # Safety: commit any uncommitted changes (in case daemon wasn't running)
-      if ! ${git} diff --quiet .beads/ 2>/dev/null || ! ${git} diff --cached --quiet .beads/ 2>/dev/null; then
-        ${git} add .beads/
-        ${git} commit -m "beads: sync issues" 2>&1
+  tasks."beads:pull" = {
+    description = "Pull beads changes from Dolt remote";
+    after = [ "megarepo:sync" ];
+    exec = ''
+      if [ ! -d "$BEADS_DIR" ]; then
+        echo "[beads] Beads repo not found." >&2
+        exit 1
       fi
-
-      echo "[beads] Pushing..."
-      ${git} push 2>&1
-      echo "[beads] Sync complete."
+      cd "''${BEADS_DIR%/.beads}"
+      ${bd} dolt pull 2>&1
     '';
   };
 
   git-hooks.hooks.beads-commit-correlation = {
     enable = true;
-    # Run from the beads repo root so `bd` auto-discovers .beads reliably.
-    # The daemon auto-imports/syncs hook-written changes on its next poll.
     entry = "${pkgs.writeShellScript "beads-post-commit" ''
       set -euo pipefail
 
       GIT_ROOT="$(${git} rev-parse --show-toplevel)"
       BEADS_REPO="''${GIT_ROOT}/${beadsRepoRelPath}"
 
-      # Skip if beads repo doesn't exist
       [ ! -d "$BEADS_REPO/.beads" ] && exit 0
 
-      # Get commit info
       COMMIT_SHORT=$(${git} rev-parse --short HEAD)
       COMMIT_MSG=$(${git} log -1 --format=%B)
       REPO_NAME=$(basename "$GIT_ROOT")
 
-      # Extract issue references matching (prefix-xxx) pattern
       ISSUES=$(echo "$COMMIT_MSG" | grep -oE "\(${beadsPrefix}-[a-z0-9]+\)" | tr -d '()' || true)
 
       [ -z "$ISSUES" ] && exit 0
 
-      # Add comment to each referenced issue
       for issue_id in $ISSUES; do
         comment="Commit ''${COMMIT_SHORT} in ''${REPO_NAME}: ''${COMMIT_MSG%%$'\n'*}"
         (cd "$BEADS_REPO" && ${bd} comment "$issue_id" "$comment") 2>/dev/null || true
