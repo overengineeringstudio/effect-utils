@@ -14,10 +14,9 @@
 # git-portable source of truth. Multiple megarepo workspaces sharing the
 # same store worktree share a single daemon instance.
 #
-# Exported env vars:
+# Exported env var:
 # - BEADS_DIR: upstream bd env var for .beads discovery
-# - BEADS_DB: explicit DB path for compatibility with legacy metadata
-# With these set, `bd` works from anywhere without wrapper scripts.
+# With this set, `bd` works from anywhere without wrapper scripts.
 #
 # Provides:
 # - beads:daemon:ensure task — starts daemon if not running (idempotent)
@@ -39,10 +38,9 @@ let
   beadsRepoRelPath = beadsRepoPath;
 in
 {
-  # BEADS_DIR/BEADS_DB — upstream bd env vars for discovery and explicit DB path.
+  # BEADS_DIR — upstream bd env var for .beads discovery.
   # Available in tasks, shell, and direnv.
   env.BEADS_DIR = "${config.devenv.root}/${beadsRepoRelPath}/.beads";
-  env.BEADS_DB = "${config.devenv.root}/${beadsRepoRelPath}/.beads/beads.db";
 
   # beads:daemon:ensure — Start daemon if not running. Idempotent: if another
   # workspace already started a daemon for this repo, this is a no-op.
@@ -124,7 +122,7 @@ in
 
   git-hooks.hooks.beads-commit-correlation = {
     enable = true;
-    # Use explicit BEADS_DB for hook context where BEADS_DIR may not be set.
+    # Run from the beads repo root so `bd` auto-discovers .beads reliably.
     # The daemon auto-imports/syncs hook-written changes on its next poll.
     entry = "${pkgs.writeShellScript "beads-post-commit" ''
       set -euo pipefail
@@ -145,10 +143,10 @@ in
 
       [ -z "$ISSUES" ] && exit 0
 
-      # Add comment to each referenced issue (uses explicit DB path for reliability)
+      # Add comment to each referenced issue
       for issue_id in $ISSUES; do
         comment="Commit ''${COMMIT_SHORT} in ''${REPO_NAME}: ''${COMMIT_MSG%%$'\n'*}"
-        (cd "$BEADS_REPO" && BEADS_DB="$BEADS_REPO/.beads/beads.db" ${bd} comment "$issue_id" "$comment") 2>/dev/null || true
+        (cd "$BEADS_REPO" && ${bd} comment "$issue_id" "$comment") 2>/dev/null || true
       done
     ''}";
     stages = ["post-commit"];
