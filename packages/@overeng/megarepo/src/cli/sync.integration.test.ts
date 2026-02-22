@@ -2814,4 +2814,130 @@ describe('lock sync with nested megarepo.lock files', () => {
     ),
     { timeout: 20_000 },
   )
+
+  it.effect(
+    'should disambiguate nested alias updates by ref when URL matches multiple parent members',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'example.com',
+            owner: 'org',
+            repo: 'shared-lib',
+            branches: ['main', 'release'],
+          },
+        ])
+        const mainKey = 'example.com/org/shared-lib#main'
+        const releaseKey = 'example.com/org/shared-lib#release'
+        const sharedMainWorktreePath = worktreePaths[mainKey]
+        if (sharedMainWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${mainKey}`)
+        }
+        const sharedReleaseWorktreePath = worktreePaths[releaseKey]
+        if (sharedReleaseWorktreePath === undefined) {
+          throw new Error(`Missing worktree path for ${releaseKey}`)
+        }
+
+        const mainCommit = yield* runGitCommand(sharedMainWorktreePath, 'rev-parse', 'HEAD')
+
+        yield* runGitCommand(sharedReleaseWorktreePath, 'config', 'user.email', 'test@example.com')
+        yield* runGitCommand(sharedReleaseWorktreePath, 'config', 'user.name', 'Test User')
+        yield* runGitCommand(sharedReleaseWorktreePath, 'checkout', '-B', 'release')
+        yield* fs.writeFileString(
+          EffectPath.ops.join(
+            sharedReleaseWorktreePath,
+            EffectPath.unsafe.relativeFile('release.txt'),
+          ),
+          'release branch content\n',
+        )
+        yield* runGitCommand(sharedReleaseWorktreePath, 'add', '-A')
+        yield* runGitCommand(
+          sharedReleaseWorktreePath,
+          'commit',
+          '--no-verify',
+          '-m',
+          'Release commit',
+        )
+        const releaseCommit = yield* runGitCommand(sharedReleaseWorktreePath, 'rev-parse', 'HEAD')
+        expect(releaseCommit).not.toBe(mainCommit)
+
+        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const childPath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('child-megarepo/'),
+        )
+        yield* fs.makeDirectory(childPath, { recursive: true })
+        yield* initGitRepo(childPath)
+
+        const staleCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib-alias': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'release',
+                commit: staleCommit,
+              }),
+            },
+          },
+        })
+        yield* addCommit({
+          repoPath: childPath,
+          message: 'Initialize nested megarepo lock',
+        })
+
+        const workspacePath = EffectPath.ops.join(
+          tmpDir,
+          EffectPath.unsafe.relativeDir('parent-megarepo/'),
+        )
+        yield* fs.makeDirectory(workspacePath, { recursive: true })
+        yield* initGitRepo(workspacePath)
+
+        const config: typeof MegarepoConfig.Type = {
+          members: {
+            'shared-lib-main': 'https://example.com/org/shared-lib#main',
+            'shared-lib-release': 'https://example.com/org/shared-lib#release',
+            'child-megarepo': childPath,
+          },
+          lockSync: {
+            enabled: true,
+          },
+        }
+        yield* fs.writeFileString(
+          EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+          (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n',
+        )
+        yield* addCommit({
+          repoPath: workspacePath,
+          message: 'Initialize parent megarepo',
+        })
+
+        const result = yield* runSyncCommand({
+          cwd: workspacePath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const nestedLockPath = EffectPath.ops.join(
+          workspacePath,
+          EffectPath.unsafe.relativeFile(`repos/child-megarepo/${LOCK_FILE_NAME}`),
+        )
+        const nestedLock = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(nestedLock)).toBe(true)
+        const resolvedNestedLock = Option.getOrThrow(nestedLock)
+        expect(resolvedNestedLock.members['shared-lib-alias']?.commit).toBe(releaseCommit)
+        expect(resolvedNestedLock.members['shared-lib-alias']?.commit).not.toBe(mainCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+    { timeout: 20_000 },
+  )
 })

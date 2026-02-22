@@ -416,7 +416,8 @@ const syncSingleLockFile = ({
  *
  * Matching strategy:
  * 1. Prefer same-name matches when URLs are equivalent
- * 2. Fall back to URL-based lookup to support member aliases
+ * 2. Fall back to URL+ref lookup to support member aliases
+ * 3. If URL+ref fallback is ambiguous with conflicting commits, skip the update
  */
 const findMatchingParentMember = ({
   nestedMemberName,
@@ -435,13 +436,29 @@ const findMatchingParentMember = ({
     return { memberName: nestedMemberName, member: sameNameMember }
   }
 
-  for (const [memberName, member] of Object.entries(parentMembers)) {
-    if (urlsMatch({ url1: nestedMember.url, url2: member.url }) === true) {
-      return { memberName, member }
-    }
+  const urlAndRefMatches = Object.entries(parentMembers).filter(
+    ([, member]) =>
+      urlsMatch({ url1: nestedMember.url, url2: member.url }) === true &&
+      member.ref === nestedMember.ref,
+  )
+
+  if (urlAndRefMatches.length === 0) {
+    return undefined
   }
 
-  return undefined
+  if (urlAndRefMatches.length === 1) {
+    const [memberName, member] = urlAndRefMatches[0]!
+    return { memberName, member }
+  }
+
+  const firstCommit = urlAndRefMatches[0]?.[1].commit
+  const hasConflictingCommits = urlAndRefMatches.some(([, member]) => member.commit !== firstCommit)
+  if (hasConflictingCommits === true) {
+    return undefined
+  }
+
+  const [memberName, member] = urlAndRefMatches[0]!
+  return { memberName, member }
 }
 
 const syncNestedMegarepoLockFile = ({
