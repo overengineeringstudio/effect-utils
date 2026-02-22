@@ -47,6 +47,11 @@ All notable changes to this project will be documented in this file.
   - `otel-span emit` replaces `otel-emit-span` (reads OTLP JSON from stdin)
   - Breaking: subcommand is now required
 
+- **devenv/otel.nix**: Hard-cut system-mode dashboard sync compatibility
+  - `OTEL_MODE=system` now fails shell entry when `OTEL_STATE_DIR`, `OTEL_EXPORTER_OTLP_ENDPOINT`, or `otel` CLI is missing
+  - Removed `OTEL_DASHBOARDS_DIR` shell env export
+  - Removed shell-side `extraDashboards` merge logic; `extraDashboards` is now rejected in system mode
+
 - **devenv/otel.nix**: Replace `curl` with file spool (`otlpjsonfilereceiver`) in `otel-span`
   - Spans are written to `$OTEL_SPAN_SPOOL_DIR/spans.jsonl` instead of HTTP POST
   - Collector picks up spans via `otlpjsonfilereceiver` (500ms poll, delete after read)
