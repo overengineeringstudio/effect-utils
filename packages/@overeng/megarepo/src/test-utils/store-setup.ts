@@ -142,12 +142,44 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
 
       // Set up bare repo as remote and push
       yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', bareRepoPath)
-      yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
-        Effect.catchAll(() =>
-          // Try master if main fails
-          runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
-        ),
-      )
+
+      // Ensure requested branches exist regardless of the git init default branch.
+      const requestedBranches = repoFixture.branches ?? []
+      if (requestedBranches.length > 0) {
+        const currentBranch = yield* runGitCommand(sourceRepoPath, 'branch', '--show-current')
+
+        for (const branch of requestedBranches) {
+          if (branch === currentBranch) {
+            continue
+          }
+
+          const branchExists = yield* runGitCommand(
+            sourceRepoPath,
+            'show-ref',
+            '--verify',
+            '--quiet',
+            `refs/heads/${branch}`,
+          ).pipe(
+            Effect.as(true),
+            Effect.catchAll(() => Effect.succeed(false)),
+          )
+
+          if (branchExists === false) {
+            yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha)
+          }
+        }
+
+        for (const branch of requestedBranches) {
+          yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', branch)
+        }
+      } else {
+        yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main').pipe(
+          Effect.catchAll(() =>
+            // Try master if main fails
+            runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'master'),
+          ),
+        )
+      }
 
       // Create tags if requested
       for (const tag of repoFixture.tags ?? []) {

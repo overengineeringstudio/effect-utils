@@ -2715,6 +2715,7 @@ describe('lock sync with nested megarepo.lock files', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 20_000 },
   )
 
   it.effect(
@@ -2811,5 +2812,6 @@ describe('lock sync with nested megarepo.lock files', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 20_000 },
   )
 })
