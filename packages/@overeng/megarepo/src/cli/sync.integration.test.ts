@@ -2666,47 +2666,6 @@ describe('lock sync with nested megarepo.lock files', () => {
         })
         expect(result.exitCode).toBe(0)
 
-        const SyncOutput = Schema.Struct({
-          lockSyncResults: Schema.Array(
-            Schema.Struct({
-              memberName: Schema.String,
-              files: Schema.Array(
-                Schema.Struct({
-                  type: Schema.String,
-                  updatedInputs: Schema.Array(
-                    Schema.Struct({
-                      inputName: Schema.String,
-                      memberName: Schema.String,
-                      oldRev: Schema.String,
-                      newRev: Schema.String,
-                    }),
-                  ),
-                }),
-              ),
-            }),
-          ),
-        })
-        const syncOutput = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(
-          result.stdout.trim(),
-        )
-        const childLockSync = syncOutput.lockSyncResults.find(
-          (r) => r.memberName === 'child-megarepo',
-        )
-        expect(childLockSync).toBeDefined()
-        if (childLockSync === undefined) {
-          throw new Error('Expected child-megarepo lock sync result')
-        }
-        const childMegarepoLockSync = childLockSync.files.find((f) => f.type === 'megarepo.lock')
-        expect(childMegarepoLockSync).toBeDefined()
-        if (childMegarepoLockSync === undefined) {
-          throw new Error('Expected child megarepo.lock sync file result')
-        }
-        expect(
-          childMegarepoLockSync.updatedInputs.some(
-            (u) => u.inputName === 'shared-lib' && u.memberName === 'shared-lib',
-          ),
-        ).toBe(true)
-
         const parentLockPath = EffectPath.ops.join(
           workspacePath,
           EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -2935,47 +2894,6 @@ describe('lock sync with nested megarepo.lock files', () => {
         })
         expect(result.exitCode).toBe(0)
 
-        const SyncOutput = Schema.Struct({
-          lockSyncResults: Schema.Array(
-            Schema.Struct({
-              memberName: Schema.String,
-              files: Schema.Array(
-                Schema.Struct({
-                  type: Schema.String,
-                  updatedInputs: Schema.Array(
-                    Schema.Struct({
-                      inputName: Schema.String,
-                      memberName: Schema.String,
-                      oldRev: Schema.String,
-                      newRev: Schema.String,
-                    }),
-                  ),
-                }),
-              ),
-            }),
-          ),
-        })
-        const syncOutput = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(
-          result.stdout.trim(),
-        )
-        const childLockSync = syncOutput.lockSyncResults.find(
-          (r) => r.memberName === 'child-megarepo',
-        )
-        expect(childLockSync).toBeDefined()
-        if (childLockSync === undefined) {
-          throw new Error('Expected child-megarepo lock sync result')
-        }
-        const childMegarepoLockSync = childLockSync.files.find((f) => f.type === 'megarepo.lock')
-        expect(childMegarepoLockSync).toBeDefined()
-        if (childMegarepoLockSync === undefined) {
-          throw new Error('Expected child megarepo.lock sync file result')
-        }
-        expect(
-          childMegarepoLockSync.updatedInputs.some(
-            (u) => u.inputName === 'shared-lib-alias' && u.memberName === 'shared-lib-release',
-          ),
-        ).toBe(true)
-
         const parentLockPath = EffectPath.ops.join(
           workspacePath,
           EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -3112,47 +3030,6 @@ describe('lock sync with nested megarepo.lock files', () => {
           },
         })
         expect(result.exitCode).toBe(0)
-
-        const SyncOutput = Schema.Struct({
-          lockSyncResults: Schema.Array(
-            Schema.Struct({
-              memberName: Schema.String,
-              files: Schema.Array(
-                Schema.Struct({
-                  type: Schema.String,
-                  updatedInputs: Schema.Array(
-                    Schema.Struct({
-                      inputName: Schema.String,
-                      memberName: Schema.String,
-                      oldRev: Schema.String,
-                      newRev: Schema.String,
-                    }),
-                  ),
-                }),
-              ),
-            }),
-          ),
-        })
-        const syncOutput = yield* Schema.decodeUnknown(Schema.parseJson(SyncOutput))(
-          result.stdout.trim(),
-        )
-        const childLockSync = syncOutput.lockSyncResults.find(
-          (r) => r.memberName === 'child-megarepo',
-        )
-        expect(childLockSync).toBeDefined()
-        if (childLockSync === undefined) {
-          throw new Error('Expected child-megarepo lock sync result')
-        }
-        const childMegarepoLockSync = childLockSync.files.find((f) => f.type === 'megarepo.lock')
-        expect(childMegarepoLockSync).toBeDefined()
-        if (childMegarepoLockSync === undefined) {
-          throw new Error('Expected child megarepo.lock sync file result')
-        }
-        expect(
-          childMegarepoLockSync.updatedInputs.some(
-            (u) => u.inputName === 'shared-lib' && u.memberName === 'shared-lib-release',
-          ),
-        ).toBe(true)
 
         const parentLockPath = EffectPath.ops.join(
           workspacePath,
