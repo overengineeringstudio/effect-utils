@@ -2638,6 +2638,22 @@ describe('lock sync with nested megarepo.lock files', () => {
         )
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          ),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'main',
+                commit: 'cccccccccccccccccccccccccccccccccccccccc',
+              }),
+            },
+          },
+        })
 
         const config: typeof MegarepoConfig.Type = {
           members: {
@@ -2865,6 +2881,27 @@ describe('lock sync with nested megarepo.lock files', () => {
         )
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          ),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib-main': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'main',
+                commit: 'cccccccccccccccccccccccccccccccccccccccc',
+              }),
+              'shared-lib-release': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'release',
+                commit: 'dddddddddddddddddddddddddddddddddddddddd',
+              }),
+            },
+          },
+        })
 
         const config: typeof MegarepoConfig.Type = {
           members: {
@@ -3002,6 +3039,27 @@ describe('lock sync with nested megarepo.lock files', () => {
         )
         yield* fs.makeDirectory(workspacePath, { recursive: true })
         yield* initGitRepo(workspacePath)
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          ),
+          lockFile: {
+            version: 1,
+            members: {
+              'shared-lib': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'main',
+                commit: 'cccccccccccccccccccccccccccccccccccccccc',
+              }),
+              'shared-lib-release': createLockedMember({
+                url: 'https://example.com/org/shared-lib',
+                ref: 'release',
+                commit: 'dddddddddddddddddddddddddddddddddddddddd',
+              }),
+            },
+          },
+        })
 
         const config: typeof MegarepoConfig.Type = {
           members: {
