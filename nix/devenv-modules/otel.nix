@@ -42,6 +42,7 @@
   # Mode: "auto" detects system stack, "local" always uses local, "system" always uses system
   mode ? "auto",
   # Pre-compiled project-specific dashboards to provision alongside built-in ones.
+  # Only used for local Grafana provisioning; OTEL_MODE=system requires explicit otel-cli sources.
   # Each entry: { name = "my-project"; path = <nix-store-path-with-json-files>; }
   # Use lib.buildOtelDashboards to compile Jsonnet sources into the expected format.
   extraDashboards ? [ ],
@@ -370,8 +371,6 @@ in
   ];
 
   env.OTEL_MODE = mode;
-  # Nix store path to compiled dashboard JSON files (built from jsonnet at eval time)
-  env.OTEL_DASHBOARDS_DIR = "${allDashboards}";
 
   # mkAfter ensures this runs after other enterShell code, so env vars
   # (including TRACEPARENT from setup:gate) are available.
@@ -391,26 +390,30 @@ in
     fi
 
     if [ "$OTEL_MODE" = "system" ]; then
-      # System stack provides all OTEL env vars via session variables (e.g. home-manager).
+      if [ -z "''${OTEL_STATE_DIR:-}" ]; then
+        echo "[otel] ERROR: OTEL_MODE=system requires OTEL_STATE_DIR" >&2
+        return 1 2>/dev/null || exit 1
+      fi
       if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-        echo "[otel] WARNING: OTEL_STATE_DIR is set but OTEL_EXPORTER_OTLP_ENDPOINT is missing" >&2
+        echo "[otel] ERROR: OTEL_MODE=system requires OTEL_EXPORTER_OTLP_ENDPOINT" >&2
+        return 1 2>/dev/null || exit 1
       fi
-      # Copy built-in dashboards to system stack for Grafana provisioning
-      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-        _project_name=$(basename "$DEVENV_ROOT")
-        _dash_target="$OTEL_STATE_DIR/dashboards/$_project_name"
-        mkdir -p "$_dash_target"
-        cp -f ${allDashboards}/*.json "$_dash_target/" 2>/dev/null || true
+      if ! command -v otel >/dev/null 2>&1; then
+        echo "[otel] ERROR: OTEL_MODE=system requires otel CLI for dashboard sync" >&2
+        return 1 2>/dev/null || exit 1
       fi
-      ${builtins.concatStringsSep "\n      " (
-        map (group: ''
-          # Copy extra dashboards: ${group.name}
-          if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-            mkdir -p "$OTEL_STATE_DIR/dashboards/${group.name}"
-            cp -f ${group.path}/*.json "$OTEL_STATE_DIR/dashboards/${group.name}/" 2>/dev/null || true
-          fi
-        '') extraDashboards
-      )}
+      if [ "${toString (builtins.length extraDashboards)}" -gt 0 ]; then
+        echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
+        return 1 2>/dev/null || exit 1
+      fi
+      _project_name=$(basename "$DEVENV_ROOT")
+      if ! otel dash sync \
+        --project "$_project_name" \
+        --source "${allDashboards}" \
+        --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
+        echo "[otel] ERROR: otel dash sync failed for $_project_name" >&2
+        return 1 2>/dev/null || exit 1
+      fi
       _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
     else
       # Local devenv stack — set env vars with local hash-derived ports

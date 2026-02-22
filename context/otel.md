@@ -47,7 +47,7 @@ mode = "auto" (default)
   └── not set?            → "local": starts per-project Collector/Tempo/Grafana
 ```
 
-When in system mode, project dashboards are automatically copied to `$OTEL_STATE_DIR/dashboards/{project}/` on each shell entry for the system Grafana to pick up.
+When in system mode, this module requires `OTEL_STATE_DIR`, `OTEL_EXPORTER_OTLP_ENDPOINT`, and the `otel` CLI. Shell entry fails immediately if any are missing. Dashboards are synced by invoking `otel dash sync` on shell entry, targeting `$OTEL_STATE_DIR/dashboards`.
 
 ## Environment Variables
 
@@ -190,7 +190,7 @@ jsonnet -J path/to/grafonnet dt-tasks.jsonnet | jq .
 
 ### Project Dashboards (`.otel/dashboards.json`)
 
-Projects define their own dashboards in `.otel/dashboards.json`. When a system-level OTEL stack is running, these are automatically copied to `$OTEL_STATE_DIR/dashboards/{project}/` on each shell entry for its Grafana to pick up.
+Projects define their own dashboards in `.otel/dashboards.json`. In system mode, dashboard syncing is delegated to `otel dash sync` on shell entry. `extraDashboards` is local-mode only and is rejected in system mode.
 
 ## Data Storage
 
