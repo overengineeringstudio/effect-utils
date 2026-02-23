@@ -46,7 +46,7 @@ export interface MegarepoSyncResult {
   readonly results: ReadonlyArray<MemberSyncResult>
   readonly nestedMegarepos: ReadonlyArray<string>
   readonly nestedResults: ReadonlyArray<MegarepoSyncResult>
-  /** Results from syncing Nix lock files (flake.lock, devenv.lock) */
+  /** Results from lock sync (flake.lock, devenv.lock, nested megarepo.lock in recursive mode) */
   readonly lockSyncResults?: NixLockSyncResult | undefined
 }
 

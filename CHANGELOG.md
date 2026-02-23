@@ -32,6 +32,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/megarepo**: Scope nested `megarepo.lock` reconciliation to recursive sync mode
+  - `mr sync` now syncs direct member lock artifacts only (`flake.lock` / `devenv.lock`)
+  - Nested `megarepo.lock` reconciliation now runs only with `mr sync --all`
+
 - **devenv/tasks/shared/megarepo.nix**: Make `megarepo:sync` always run with `--frozen`
   - Prevents shell-entry and routine task runs from rewriting `megarepo.lock`
   - Adds `megarepo:sync:update` for intentional non-frozen lockfile updates

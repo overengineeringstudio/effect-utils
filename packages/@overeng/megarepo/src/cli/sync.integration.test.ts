@@ -914,6 +914,168 @@ describe('--all sync deduplication', () => {
   )
 })
 
+const createNestedMegarepoLockSyncFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { storePath, worktreePaths } = yield* createStoreFixture([
+      {
+        host: 'example.com',
+        owner: 'acme',
+        repo: 'shared',
+        branches: ['main'],
+      },
+    ])
+
+    const sharedKey = 'example.com/acme/shared#main'
+    const sharedWorktreePath = worktreePaths[sharedKey]
+    if (sharedWorktreePath === undefined) {
+      throw new Error(`Missing worktree path for ${sharedKey}`)
+    }
+    const sharedCommit = yield* runGitCommand(sharedWorktreePath, 'rev-parse', 'HEAD')
+    const staleNestedCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    const childPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child/'))
+    yield* fs.makeDirectory(childPath, { recursive: true })
+    yield* initGitRepo(childPath)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+        members: {
+          shared: 'https://example.com/acme/shared#main',
+        },
+      })) + '\n',
+    )
+    let childLock = createEmptyLockFile()
+    childLock = updateLockedMember({
+      lockFile: childLock,
+      memberName: 'shared',
+      member: createLockedMember({
+        url: 'https://example.com/acme/shared',
+        ref: 'main',
+        commit: staleNestedCommit,
+      }),
+    })
+    yield* writeLockFile({
+      lockPath: EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+      lockFile: childLock,
+    })
+    yield* addCommit({ repoPath: childPath, message: 'Initialize nested megarepo' })
+
+    const parentPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('parent/'))
+    yield* fs.makeDirectory(parentPath, { recursive: true })
+    yield* initGitRepo(parentPath)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+        members: {
+          shared: 'https://example.com/acme/shared#main',
+          child: childPath,
+        },
+      })) + '\n',
+    )
+    let parentLock = createEmptyLockFile()
+    parentLock = updateLockedMember({
+      lockFile: parentLock,
+      memberName: 'shared',
+      member: createLockedMember({
+        url: 'https://example.com/acme/shared',
+        ref: 'main',
+        commit: sharedCommit,
+      }),
+    })
+    yield* writeLockFile({
+      lockPath: EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+      lockFile: parentLock,
+    })
+
+    yield* fs.writeFileString(
+      EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile('flake.lock')),
+      '{"nodes":{"root":{"inputs":{}}},"root":"root","version":7}\n',
+    )
+    yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
+
+    return {
+      parentPath,
+      childPath,
+      storePath,
+      sharedCommit,
+      staleNestedCommit,
+    }
+  })
+
+describe('nested megarepo.lock sync scope', () => {
+  it.effect(
+    'should not sync nested megarepo.lock in default mode',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, staleNestedCommit } =
+          yield* createNestedMegarepoLockSyncFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--output', 'json'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should sync nested megarepo.lock only when --all is set',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, sharedCommit, staleNestedCommit } =
+          yield* createNestedMegarepoLockSyncFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+})
+
 // =============================================================================
 // Default Mode Tests (lock updated from worktree HEADs)
 // =============================================================================

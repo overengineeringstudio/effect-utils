@@ -14,13 +14,20 @@ import {
   FileSystem,
   type Error as PlatformError,
 } from '@effect/platform'
-import { Effect, Schema, type ParseResult } from 'effect'
+import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
 import { getMemberPath, type MegarepoConfig } from '../config.ts'
-import type { LockFile, LockedMember } from '../lock.ts'
-import { matchLockedInputToMember, needsRevUpdate } from './matcher.ts'
+import {
+  LOCK_FILE_NAME,
+  readLockFile,
+  type LockFile,
+  type LockedMember,
+  upsertLockedMember,
+  writeLockFile,
+} from '../lock.ts'
+import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
 import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
 
 // =============================================================================
@@ -31,8 +38,8 @@ import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema
 export interface NixLockSyncFileResult {
   /** Path to the lock file */
   readonly path: AbsoluteFilePath
-  /** Type of lock file (flake.lock or devenv.lock) */
-  readonly type: 'flake.lock' | 'devenv.lock'
+  /** Type of lock file */
+  readonly type: 'flake.lock' | 'devenv.lock' | 'megarepo.lock'
   /** Inputs that were updated */
   readonly updatedInputs: ReadonlyArray<{
     /** Name of the input in the flake.lock */
@@ -69,6 +76,8 @@ export interface NixLockSyncOptions {
   readonly lockFile: LockFile
   /** Members to exclude from sync (opt-out) */
   readonly excludeMembers?: ReadonlySet<string>
+  /** Lock sync scope */
+  readonly scope?: 'direct' | 'recursive'
 }
 
 // =============================================================================
@@ -77,6 +86,8 @@ export interface NixLockSyncOptions {
 
 const FLAKE_LOCK = 'flake.lock'
 const DEVENV_LOCK = 'devenv.lock'
+
+const MEGAREPO_LOCK = LOCK_FILE_NAME
 
 /** Schema for raw flake lock JSON (used to preserve key order during manipulation) */
 const RawFlakeLockJson = Schema.parseJson(
@@ -404,6 +415,81 @@ const syncSingleLockFile = ({
   })
 
 // =============================================================================
+// Nested megarepo.lock Sync
+// =============================================================================
+
+const syncNestedMegarepoLockFile = ({
+  lockPath,
+  megarepoMembers,
+}: {
+  lockPath: AbsoluteFilePath
+  megarepoMembers: Record<string, LockedMember>
+}): Effect.Effect<
+  NixLockSyncFileResult,
+  PlatformError.PlatformError | ParseResult.ParseError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const nestedLockOpt = yield* readLockFile(lockPath)
+    if (Option.isNone(nestedLockOpt)) {
+      return {
+        path: lockPath,
+        type: 'megarepo.lock',
+        updatedInputs: [],
+      } satisfies NixLockSyncFileResult
+    }
+
+    let nestedLock = nestedLockOpt.value
+    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
+
+    for (const [nestedMemberName, nestedMember] of Object.entries(nestedLock.members)) {
+      if (nestedMember.pinned === true) {
+        continue
+      }
+
+      const parentMatch = Object.entries(megarepoMembers).find(([, parentMember]) =>
+        urlsMatch({ url1: nestedMember.url, url2: parentMember.url }),
+      )
+      if (parentMatch === undefined) {
+        continue
+      }
+
+      const [, parentMember] = parentMatch
+      if (nestedMember.commit === parentMember.commit) {
+        continue
+      }
+
+      updatedInputs.push({
+        inputName: nestedMemberName,
+        memberName: nestedMemberName,
+        oldRev: nestedMember.commit,
+        newRev: parentMember.commit,
+      })
+
+      nestedLock = upsertLockedMember({
+        lockFile: nestedLock,
+        memberName: nestedMemberName,
+        update: {
+          url: nestedMember.url,
+          ref: nestedMember.ref,
+          commit: parentMember.commit,
+          pinned: nestedMember.pinned,
+        },
+      })
+    }
+
+    if (updatedInputs.length > 0) {
+      yield* writeLockFile({ lockPath, lockFile: nestedLock })
+    }
+
+    return {
+      path: lockPath,
+      type: 'megarepo.lock',
+      updatedInputs,
+    } satisfies NixLockSyncFileResult
+  })
+
+// =============================================================================
 // Main Sync Function
 // =============================================================================
 
@@ -418,6 +504,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const excludeMembers = options.excludeMembers ?? new Set()
+    const scope = options.scope ?? 'direct'
 
     // Build a map of megarepo member URLs to their locked data
     const megarepoMembers = options.lockFile.members
@@ -500,6 +587,35 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
         if (result.updatedInputs.length > 0) {
           files.push(result)
           totalUpdates += result.updatedInputs.length
+        }
+      }
+
+      if (scope === 'recursive') {
+        const nestedMegarepoLockPath = EffectPath.ops.join(
+          memberPath,
+          EffectPath.unsafe.relativeFile(MEGAREPO_LOCK),
+        )
+        const hasNestedMegarepoLock = yield* fs.exists(nestedMegarepoLockPath)
+        if (hasNestedMegarepoLock === true) {
+          const result = yield* syncNestedMegarepoLockFile({
+            lockPath: nestedMegarepoLockPath,
+            megarepoMembers,
+          }).pipe(
+            Effect.catchTag('ParseError', (e) =>
+              Effect.gen(function* () {
+                yield* Effect.logWarning(`Failed to parse ${nestedMegarepoLockPath}: ${e.message}`)
+                return {
+                  path: nestedMegarepoLockPath,
+                  type: 'megarepo.lock' as const,
+                  updatedInputs: [],
+                } satisfies NixLockSyncFileResult
+              }),
+            ),
+          )
+          if (result.updatedInputs.length > 0) {
+            files.push(result)
+            totalUpdates += result.updatedInputs.length
+          }
         }
       }
 
