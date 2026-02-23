@@ -1004,6 +1004,121 @@ const createNestedMegarepoLockSyncFixture = () =>
     }
   })
 
+const createNestedMegarepoLockRefMatchFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
+      {
+        host: 'example.com',
+        owner: 'acme',
+        repo: 'shared',
+        branches: ['main', 'dev'],
+      },
+    ])
+
+    const mainKey = 'example.com/acme/shared#main'
+    const devKey = 'example.com/acme/shared#dev'
+    const mainWorktreePath = worktreePaths[mainKey]
+    const devWorktreePath = worktreePaths[devKey]
+    if (mainWorktreePath === undefined || devWorktreePath === undefined) {
+      throw new Error(`Missing worktree paths for ${mainKey} and/or ${devKey}`)
+    }
+
+    const mainCommit = yield* runGitCommand(mainWorktreePath, 'rev-parse', 'HEAD')
+    yield* fs.writeFileString(
+      EffectPath.ops.join(devWorktreePath, EffectPath.unsafe.relativeFile('dev-only.txt')),
+      'dev-only commit\n',
+    )
+    yield* addCommit({ repoPath: devWorktreePath, message: 'Add dev-only commit' })
+    const devCommit = yield* runGitCommand(devWorktreePath, 'rev-parse', 'HEAD')
+    const sharedRepoKey = 'example.com/acme/shared'
+    const sharedBareRepoPath = bareRepoPaths[sharedRepoKey]
+    if (sharedBareRepoPath === undefined) {
+      throw new Error(`Missing bare repo path for ${sharedRepoKey}`)
+    }
+    yield* runGitCommand(sharedBareRepoPath, 'update-ref', 'refs/heads/main', mainCommit)
+    yield* runGitCommand(sharedBareRepoPath, 'update-ref', 'refs/heads/dev', devCommit)
+
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+    const childPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('child/'))
+    yield* fs.makeDirectory(childPath, { recursive: true })
+    yield* initGitRepo(childPath)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+        members: {
+          'shared-dev': 'https://example.com/acme/shared#dev',
+        },
+      })) + '\n',
+    )
+    let childLock = createEmptyLockFile()
+    childLock = updateLockedMember({
+      lockFile: childLock,
+      memberName: 'shared-dev',
+      member: createLockedMember({
+        url: 'https://example.com/acme/shared',
+        ref: 'dev',
+        commit: mainCommit,
+      }),
+    })
+    yield* writeLockFile({
+      lockPath: EffectPath.ops.join(childPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+      lockFile: childLock,
+    })
+    yield* addCommit({ repoPath: childPath, message: 'Initialize nested megarepo' })
+
+    const parentPath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('parent/'))
+    yield* fs.makeDirectory(parentPath, { recursive: true })
+    yield* initGitRepo(parentPath)
+    yield* fs.writeFileString(
+      EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME)),
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))({
+        members: {
+          'shared-main': 'https://example.com/acme/shared#main',
+          'shared-dev': 'https://example.com/acme/shared#dev',
+          child: childPath,
+        },
+      })) + '\n',
+    )
+    let parentLock = createEmptyLockFile()
+    parentLock = updateLockedMember({
+      lockFile: parentLock,
+      memberName: 'shared-main',
+      member: createLockedMember({
+        url: 'https://example.com/acme/shared',
+        ref: 'main',
+        commit: mainCommit,
+      }),
+    })
+    parentLock = updateLockedMember({
+      lockFile: parentLock,
+      memberName: 'shared-dev',
+      member: createLockedMember({
+        url: 'https://example.com/acme/shared',
+        ref: 'dev',
+        commit: devCommit,
+      }),
+    })
+    yield* writeLockFile({
+      lockPath: EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME)),
+      lockFile: parentLock,
+    })
+
+    yield* fs.writeFileString(
+      EffectPath.ops.join(parentPath, EffectPath.unsafe.relativeFile('flake.lock')),
+      '{"nodes":{"root":{"inputs":{}}},"root":"root","version":7}\n',
+    )
+    yield* addCommit({ repoPath: parentPath, message: 'Initialize parent megarepo' })
+
+    return {
+      parentPath,
+      childPath,
+      storePath,
+      mainCommit,
+      devCommit,
+    }
+  })
+
 describe('nested megarepo.lock sync scope', () => {
   it.effect(
     'should not sync nested megarepo.lock in default mode',
@@ -1069,6 +1184,41 @@ describe('nested megarepo.lock sync scope', () => {
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should match nested megarepo.lock entries by ref when URL is shared across refs',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, mainCommit, devCommit } =
+          yield* createNestedMegarepoLockRefMatchFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared-dev']?.commit).toBe(mainCommit)
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared-dev']?.commit).toBe(devCommit)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

@@ -447,14 +447,17 @@ const syncNestedMegarepoLockFile = ({
         continue
       }
 
-      const parentMatch = Object.entries(megarepoMembers).find(([, parentMember]) =>
-        urlsMatch({ url1: nestedMember.url, url2: parentMember.url }),
-      )
-      if (parentMatch === undefined) {
+      const parentMatches = Object.entries(megarepoMembers).filter(([, parentMember]) => {
+        return (
+          urlsMatch({ url1: nestedMember.url, url2: parentMember.url }) &&
+          parentMember.ref === nestedMember.ref
+        )
+      })
+      if (parentMatches.length !== 1) {
         continue
       }
 
-      const [, parentMember] = parentMatch
+      const [, parentMember] = parentMatches[0]!
       if (nestedMember.commit === parentMember.commit) {
         continue
       }
