@@ -431,7 +431,7 @@ const syncNestedMegarepoLockFile = ({
 > =>
   Effect.gen(function* () {
     const nestedLockOpt = yield* readLockFile(lockPath)
-    if (Option.isNone(nestedLockOpt)) {
+    if (Option.isNone(nestedLockOpt) === true) {
       return {
         path: lockPath,
         type: 'megarepo.lock',
