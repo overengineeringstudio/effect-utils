@@ -886,7 +886,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 
 Megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in direct member repos to keep them in sync with `megarepo.lock`. Lock sync is **auto-detected**: it is enabled if `devenv.lock` or `flake.lock` exists in the megarepo root directory.
 
-Nested `megarepo.lock` reconciliation is scoped to recursive sync mode: it runs only with `mr sync --all`.
+`mr sync` applies lock sync in the current megarepo only. `mr sync --all` recurses into nested megarepos and applies lock sync there too, including nested `megarepo.lock` reconciliation.
 
 **The Problem:**
 
