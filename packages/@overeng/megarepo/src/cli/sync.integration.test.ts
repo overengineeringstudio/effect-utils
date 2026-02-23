@@ -1004,6 +1004,18 @@ const createNestedMegarepoLockSyncFixture = () =>
     }
   })
 
+const createNonMegarepoMemberWithMegarepoLockFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const fixture = yield* createNestedMegarepoLockSyncFixture()
+    const childConfigPath = EffectPath.ops.join(
+      fixture.childPath,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    yield* fs.remove(childConfigPath)
+    return fixture
+  })
+
 const createNestedMegarepoLockRefMatchFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1184,6 +1196,41 @@ describe('nested megarepo.lock sync scope', () => {
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should not sync member megarepo.lock in --all mode when member is not a megarepo',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, staleNestedCommit } =
+          yield* createNonMegarepoMemberWithMegarepoLockFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

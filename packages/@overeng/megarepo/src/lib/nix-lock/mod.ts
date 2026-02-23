@@ -18,7 +18,7 @@ import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
-import { getMemberPath, type MegarepoConfig } from '../config.ts'
+import { CONFIG_FILE_NAME, getMemberPath, type MegarepoConfig } from '../config.ts'
 import {
   LOCK_FILE_NAME,
   readLockFile,
@@ -598,8 +598,13 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           memberPath,
           EffectPath.unsafe.relativeFile(MEGAREPO_LOCK),
         )
+        const nestedMegarepoConfigPath = EffectPath.ops.join(
+          memberPath,
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        )
         const hasNestedMegarepoLock = yield* fs.exists(nestedMegarepoLockPath)
-        if (hasNestedMegarepoLock === true) {
+        const hasNestedMegarepoConfig = yield* fs.exists(nestedMegarepoConfigPath)
+        if (hasNestedMegarepoLock === true && hasNestedMegarepoConfig === true) {
           const result = yield* syncNestedMegarepoLockFile({
             lockPath: nestedMegarepoLockPath,
             megarepoMembers,
