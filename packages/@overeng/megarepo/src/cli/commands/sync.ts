@@ -393,6 +393,8 @@ export const syncMegarepo = <R = never>({
           config,
           lockFile,
           excludeMembers,
+          scope: all === true ? 'recursive' : 'direct',
+          recursiveMegarepoMembers: new Set(nestedMegarepos),
         })
         if (nixLockResult.totalUpdates > 0) {
           yield* Effect.logInfo(

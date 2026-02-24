@@ -61,7 +61,6 @@ export {
   type WorkspaceRootData,
 } from './external.ts'
 
-
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.
  *

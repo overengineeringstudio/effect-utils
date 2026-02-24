@@ -46,6 +46,9 @@ mr sync [--pull] [--force] [--frozen] [--all] [--only <members>] [--skip <member
 4. Create symlink under `repos/` pointing to the worktree
 5. Write updated lock file
 6. Run all configured generators (skipped for `--dry-run`)
+7. Lock sync scope:
+   - `mr sync` applies lock sync in the current megarepo only.
+   - `mr sync --all` recurses into nested megarepos and applies lock sync there too, including nested `megarepo.lock` reconciliation.
 
 **`--frozen` mode:**
 

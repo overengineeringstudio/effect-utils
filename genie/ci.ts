@@ -6,7 +6,10 @@
  */
 
 /** Runner profiles for multi-platform CI jobs */
-export const RUNNER_PROFILES = ['namespace-profile-linux-x86-64', 'namespace-profile-macos-arm64'] as const
+export const RUNNER_PROFILES = [
+  'namespace-profile-linux-x86-64',
+  'namespace-profile-macos-arm64',
+] as const
 export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /** CI job names (keys in the workflow jobs object) */

@@ -1,5 +1,8 @@
-import { githubRuleset, type GithubRulesetArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { requiredCIJobs } from '../genie/ci.ts'
+import {
+  githubRuleset,
+  type GithubRulesetArgs,
+} from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /**
  * GitHub Repository Ruleset for protecting the main branch.

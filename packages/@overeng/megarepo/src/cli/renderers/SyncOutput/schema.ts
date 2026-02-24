@@ -35,7 +35,7 @@ export type LockInputUpdate = Schema.Schema.Type<typeof LockInputUpdate>
 /** Schema for lock file sync result */
 export const LockFileSyncResult = Schema.Struct({
   /** Type of lock file */
-  type: Schema.Literal('flake.lock', 'devenv.lock'),
+  type: Schema.Literal('flake.lock', 'devenv.lock', 'megarepo.lock'),
   /** Inputs that were updated */
   updatedInputs: Schema.Array(LockInputUpdate),
 })
