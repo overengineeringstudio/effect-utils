@@ -28,10 +28,6 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   platformInfo = sources.${system} or (throw "Unsupported system: ${system}");
 
-  # CGO removed in v0.56 — only libc needed for dynamic linker on Linux
-  runtimeLibs = pkgs.lib.optionals pkgs.stdenv.isLinux [
-    pkgs.stdenv.cc.cc.lib
-  ];
 in
 pkgs.stdenv.mkDerivation {
   pname = "beads";
@@ -44,8 +40,10 @@ pkgs.stdenv.mkDerivation {
     inherit (platformInfo) url sha256;
   };
 
+  # v0.56+ is dynamically linked on Linux (needs libc.so.6) —
+  # autoPatchelfHook resolves the interpreter and rpath automatically.
   nativeBuildInputs = [ pkgs.gnutar pkgs.installShellFiles pkgs.makeWrapper ]
-    ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.patchelf ];
+    ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.autoPatchelfHook ];
 
   unpackPhase = ''
     mkdir -p source
@@ -59,21 +57,14 @@ pkgs.stdenv.mkDerivation {
     cp source/bd $out/bin/bd
     chmod +x $out/bin/bd
 
-    ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
-      patchelf \
-        --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" \
-        --set-rpath "${pkgs.lib.makeLibraryPath runtimeLibs}" \
-        $out/bin/bd
-    ''}
-
-    # bd auto-starts `dolt sql-server` — ensure dolt is in PATH
-    wrapProgram $out/bin/bd --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.dolt ]}
-    ln -s $out/bin/bd $out/bin/beads
-
     installShellCompletion --cmd bd \
       --fish <($out/bin/bd completion fish) \
       --bash <($out/bin/bd completion bash) \
       --zsh <($out/bin/bd completion zsh)
+
+    # bd auto-starts `dolt sql-server` — ensure dolt is in PATH
+    wrapProgram $out/bin/bd --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.dolt ]}
+    ln -s $out/bin/bd $out/bin/beads
 
     runHook postInstall
   '';
