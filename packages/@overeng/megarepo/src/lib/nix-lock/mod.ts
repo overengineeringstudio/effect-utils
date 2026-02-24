@@ -455,12 +455,19 @@ const syncNestedMegarepoLockFile = ({
           parentMember.ref === nestedMember.ref
         )
       })
-      if (parentMatches.length !== 1) {
+      if (parentMatches.length === 0) {
         continue
       }
 
-      const [, parentMember] = parentMatches[0]!
-      if (nestedMember.commit === parentMember.commit) {
+      const [, firstParentMember] = parentMatches[0]!
+      const hasConflictingParentCommit = parentMatches.some(([, parentMember]) => {
+        return parentMember.commit !== firstParentMember.commit
+      })
+      if (hasConflictingParentCommit === true) {
+        continue
+      }
+
+      if (nestedMember.commit === firstParentMember.commit) {
         continue
       }
 
@@ -468,7 +475,7 @@ const syncNestedMegarepoLockFile = ({
         inputName: nestedMemberName,
         memberName: nestedMemberName,
         oldRev: nestedMember.commit,
-        newRev: parentMember.commit,
+        newRev: firstParentMember.commit,
       })
 
       nestedLock = upsertLockedMember({
@@ -477,7 +484,7 @@ const syncNestedMegarepoLockFile = ({
         update: {
           url: nestedMember.url,
           ref: nestedMember.ref,
-          commit: parentMember.commit,
+          commit: firstParentMember.commit,
           pinned: nestedMember.pinned,
         },
       })

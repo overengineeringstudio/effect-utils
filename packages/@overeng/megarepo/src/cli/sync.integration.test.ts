@@ -1131,6 +1131,48 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     }
   })
 
+const createNestedMegarepoLockAliasMatchFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const fixture = yield* createNestedMegarepoLockSyncFixture()
+    const parentConfigPath = EffectPath.ops.join(
+      fixture.parentPath,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    )
+    const parentConfigContent = yield* fs.readFileString(parentConfigPath)
+    const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+      parentConfigContent,
+    )
+    parentConfig.members['shared-alias'] = 'https://example.com/acme/shared#main'
+    yield* fs.writeFileString(
+      parentConfigPath,
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(parentConfig)) + '\n',
+    )
+
+    const parentLockPath = EffectPath.ops.join(
+      fixture.parentPath,
+      EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+    )
+    const parentLockOpt = yield* readLockFile(parentLockPath)
+    const parentLock = Option.getOrThrow(parentLockOpt)
+    const sharedMember = parentLock.members['shared']
+    if (sharedMember === undefined) {
+      throw new Error('Missing shared member in parent lock fixture')
+    }
+    const parentLockWithAlias = updateLockedMember({
+      lockFile: parentLock,
+      memberName: 'shared-alias',
+      member: createLockedMember({
+        url: sharedMember.url,
+        ref: sharedMember.ref,
+        commit: sharedMember.commit,
+      }),
+    })
+    yield* writeLockFile({ lockPath: parentLockPath, lockFile: parentLockWithAlias })
+
+    return fixture
+  })
+
 describe('nested megarepo.lock sync scope', () => {
   it.effect(
     'should not sync nested megarepo.lock in default mode',
@@ -1301,6 +1343,41 @@ describe('nested megarepo.lock sync scope', () => {
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared-dev']?.commit).toBe(devCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should sync nested megarepo.lock when multiple parent aliases match URL/ref with same commit',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, sharedCommit, staleNestedCommit } =
+          yield* createNestedMegarepoLockAliasMatchFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const beforeNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(beforeNestedLockOpt)).toBe(true)
+        const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
+        expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--output', 'json', '--all'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+
+        const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(afterNestedLockOpt)).toBe(true)
+        const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
+        expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
