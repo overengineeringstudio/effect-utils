@@ -18,7 +18,7 @@ import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME, getMemberPath, type MegarepoConfig } from '../config.ts'
+import { getMemberPath, type MegarepoConfig } from '../config.ts'
 import {
   LOCK_FILE_NAME,
   readLockFile,
@@ -78,6 +78,8 @@ export interface NixLockSyncOptions {
   readonly excludeMembers?: ReadonlySet<string>
   /** Lock sync scope */
   readonly scope?: 'direct' | 'recursive'
+  /** Members already identified as nested megarepos (used in recursive mode) */
+  readonly recursiveMegarepoMembers?: ReadonlySet<string>
 }
 
 // =============================================================================
@@ -508,6 +510,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     const fs = yield* FileSystem.FileSystem
     const excludeMembers = options.excludeMembers ?? new Set()
     const scope = options.scope ?? 'direct'
+    const recursiveMegarepoMembers = options.recursiveMegarepoMembers
 
     // Build a map of megarepo member URLs to their locked data
     const megarepoMembers = options.lockFile.members
@@ -593,18 +596,13 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
         }
       }
 
-      if (scope === 'recursive') {
+      if (scope === 'recursive' && (recursiveMegarepoMembers?.has(memberName) ?? false) === true) {
         const nestedMegarepoLockPath = EffectPath.ops.join(
           memberPath,
           EffectPath.unsafe.relativeFile(MEGAREPO_LOCK),
         )
-        const nestedMegarepoConfigPath = EffectPath.ops.join(
-          memberPath,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
         const hasNestedMegarepoLock = yield* fs.exists(nestedMegarepoLockPath)
-        const hasNestedMegarepoConfig = yield* fs.exists(nestedMegarepoConfigPath)
-        if (hasNestedMegarepoLock === true && hasNestedMegarepoConfig === true) {
+        if (hasNestedMegarepoLock === true) {
           const result = yield* syncNestedMegarepoLockFile({
             lockPath: nestedMegarepoLockPath,
             megarepoMembers,

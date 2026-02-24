@@ -1,5 +1,3 @@
-import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { type CIJobName } from '../../genie/ci.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
@@ -13,6 +11,11 @@ import {
   namespaceRunner,
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
+import { type CIJobName } from '../../genie/ci.ts'
+import {
+  githubWorkflow,
+  type GitHubWorkflowArgs,
+} from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const baseSteps = [
   checkoutStep(),
@@ -104,7 +107,7 @@ const deployJobs = {
       },
       {
         name: 'Post deploy URLs',
-        if: "always() && !cancelled()",
+        if: 'always() && !cancelled()',
         shell: 'bash',
         env: {
           GH_TOKEN: '${{ github.token }}',
