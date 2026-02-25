@@ -16,7 +16,7 @@
 # The tasks will run as part of shell entry.
 #
 # Required tasks are hard dependencies of devenv:enterShell.
-# Optional tasks use the `@complete` suffix so failures don't block shell entry.
+# Optional tasks use the `@completed` suffix so failures don't block shell entry.
 #
 # ## Rebase Guard
 #
@@ -203,11 +203,11 @@ in
       };
 
       # Wire setup tasks to run during shell entry.
-      # Required tasks are hard dependencies; optional tasks use @complete so
+      # Required tasks are hard dependencies; optional tasks use @completed so
       # failures don't block shell entry.
       "devenv:enterShell" = {
         after = setupRequiredTasks
-          ++ (map (t: "${t}@complete") setupOptionalTasks);
+          ++ (map (t: "${t}@completed") setupOptionalTasks);
       };
 
       # Run setup tasks explicitly.

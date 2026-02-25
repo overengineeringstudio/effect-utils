@@ -5,6 +5,15 @@
 import { it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, test, expect } from 'vitest'
+
+import { resolveOutputMode } from '../../src/effect/cli.tsx'
+import {
+  // Detection (Node-only)
+  detectOutputMode,
+  isAgentEnv,
+  isPiped,
+  isRedirectedToFile,
+} from '../../src/effect/OutputMode.node.ts'
 import {
   OutputModeTag,
   // Presets
@@ -28,15 +37,6 @@ import {
   ttyLayer,
   jsonLayer,
 } from '../../src/effect/OutputMode.tsx'
-import {
-  // Detection (Node-only)
-  detectOutputMode,
-  isAgentEnv,
-  isPiped,
-  isRedirectedToFile,
-} from '../../src/effect/OutputMode.node.ts'
-
-import { resolveOutputMode } from '../../src/effect/cli.tsx'
 
 describe('OutputMode presets', () => {
   test('tty preset has correct config', () => {
