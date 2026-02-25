@@ -527,41 +527,12 @@ export const baseTsconfigCompilerOptions = {
 
 import type { OxlintOverride } from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
 
-/** Standard oxlint plugins for Effect/TypeScript projects (includes oxc for custom rules) */
-export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const
-
-/** Standard oxlint category severities */
-export const baseOxlintCategories = {
-  correctness: 'error',
-  suspicious: 'warn',
-  pedantic: 'off',
-  perf: 'warn',
-  style: 'off',
-  restriction: 'off',
-} as const satisfies OxlintConfigArgs['categories']
-
-/** Standard oxlint rules for Effect/TypeScript projects (includes custom overeng rules) */
-export const baseOxlintRules = {
-  // Disallow dynamic import() and require()
-  'import/no-dynamic-require': ['warn', { esmodule: true }],
-  // Disallow re-exports except in mod.ts entry points
-  'oxc/no-barrel-file': ['warn', { threshold: 0 }],
-  // Enforce named arguments (options objects) instead of positional parameters
-  'overeng/named-args': 'warn',
-  // Disallow CommonJS (require/module.exports) - enforce ESM
-  'import/no-commonjs': 'error',
-  // Detect circular dependencies
-  'import/no-cycle': 'warn',
-  // Prefer function expressions over declarations
-  'func-style': ['warn', 'expression', { allowArrowFunctions: true }],
-  // Enforce exported declarations come before non-exported declarations
-  'overeng/exports-first': 'warn',
-  // Require JSDoc comments on type/wildcard exports
-  'overeng/jsdoc-require-exports': 'warn',
-  // Basic quality rules
-  'no-unused-vars': 'warn',
-  eqeqeq: 'error',
-} as const satisfies OxlintConfigArgs['rules']
+export {
+  baseOxlintCategories,
+  baseOxlintIgnorePatterns,
+  baseOxlintPlugins,
+  baseOxlintRules,
+} from './oxlint-base.ts'
 
 /** Standard overrides for mod.ts entry point files */
 export const modEntryOxlintOverride = {
@@ -618,9 +589,6 @@ export const testFilesOxlintOverride = {
     'require-yield': 'off',
   },
 } as const satisfies OxlintOverride
-
-/** Re-export oxlint ignore patterns from oxlint-base */
-export { baseOxlintIgnorePatterns } from './oxlint-base.ts'
 
 // =============================================================================
 // CI Workflow Helpers
