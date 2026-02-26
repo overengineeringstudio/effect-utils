@@ -32,12 +32,9 @@ Vitest.describe('rewriteHelpSubcommand', () => {
     expect(rewriteHelpSubcommand(argv)).toEqual(argv)
   })
 
-  Vitest.it(
-    'only rewrites first token after help: `tool help sub1 sub2` → `tool sub1 --help`',
-    () => {
-      expect(
-        rewriteHelpSubcommand(['/usr/bin/node', '/app/cli.ts', 'help', 'sub1', 'sub2']),
-      ).toEqual(['/usr/bin/node', '/app/cli.ts', 'sub1', '--help'])
-    },
-  )
+  Vitest.it('preserves nested args: `tool help sub1 sub2` → `tool sub1 sub2 --help`', () => {
+    expect(rewriteHelpSubcommand(['/usr/bin/node', '/app/cli.ts', 'help', 'sub1', 'sub2'])).toEqual(
+      ['/usr/bin/node', '/app/cli.ts', 'sub1', 'sub2', '--help'],
+    )
+  })
 })
