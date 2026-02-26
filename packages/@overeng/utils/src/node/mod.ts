@@ -16,3 +16,6 @@ export * from './ActiveHandlesDebugger.ts'
 
 /** CLI version resolution with optional runtime stamp */
 export * from './cli-version.ts'
+
+/** Rewrite `help <subcmd>` → `<subcmd> --help` for @effect/cli compatibility */
+export * from './cli-help-rewrite.ts'
