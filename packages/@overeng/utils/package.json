@@ -12,6 +12,7 @@
       "default": "./src/cuid/mod.ts"
     },
     "./node": "./src/node/mod.ts",
+    "./node/cli-help-rewrite": "./src/node/cli-help-rewrite.ts",
     "./node/cli-version": "./src/node/cli-version.ts",
     "./node/otel": "./src/node/otel.ts",
     "./node/playwright": "./src/node/playwright/mod.ts",
@@ -24,6 +25,7 @@
     "exports": {
       ".": "./dist/isomorphic/mod.js",
       "./node": "./dist/node/mod.js",
+      "./node/cli-help-rewrite": "./dist/node/cli-help-rewrite.js",
       "./node/cli-version": "./dist/node/cli-version.js",
       "./node/otel": "./dist/node/otel.js",
       "./node/playwright": "./dist/node/playwright/mod.js",
