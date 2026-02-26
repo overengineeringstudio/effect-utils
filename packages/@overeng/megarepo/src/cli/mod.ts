@@ -7,6 +7,8 @@
 import * as Cli from '@effect/cli'
 import { Option } from 'effect'
 
+import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
+
 import { MR_VERSION } from '../lib/version.ts'
 // Import extracted commands
 import {
@@ -68,4 +70,4 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
 export const cli = Cli.Command.run(mrCommand, {
   name: 'mr',
   version: MR_VERSION,
-})(process.argv)
+})(rewriteHelpSubcommand(process.argv))

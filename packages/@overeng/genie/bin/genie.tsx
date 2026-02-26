@@ -6,6 +6,7 @@ import { Effect, Layer } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
+import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
@@ -27,4 +28,8 @@ const baseLayer = Layer.mergeAll(
 Cli.Command.run(genieCommand, {
   name: 'genie',
   version,
-})(process.argv).pipe(Effect.scoped, Effect.provide(baseLayer), runTuiMain(NodeRuntime))
+})(rewriteHelpSubcommand(process.argv)).pipe(
+  Effect.scoped,
+  Effect.provide(baseLayer),
+  runTuiMain(NodeRuntime),
+)

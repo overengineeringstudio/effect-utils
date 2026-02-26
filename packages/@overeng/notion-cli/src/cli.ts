@@ -5,6 +5,7 @@ import { NodeContext, NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Layer, Option } from 'effect'
 
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
+import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 
 import { dbCommand } from './commands/db/mod.ts'
 import { schemaCommand, SchemaDriftDetectedError } from './commands/schema/mod.ts'
@@ -32,7 +33,7 @@ const hasTag = (u: unknown): u is { readonly _tag: string } =>
   '_tag' in u &&
   typeof (u as { readonly _tag?: unknown })._tag === 'string'
 
-cli(process.argv).pipe(
+cli(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.tapErrorCause((cause) => {
     if (Cause.isInterruptedOnly(cause) === true) {
       return Effect.void
