@@ -8,14 +8,14 @@
  * ```ts
  * import {
  *   checkoutStep, installNixStep, cachixStep,
- *   installDevenvFromLockStep, runDevenvTasksBefore, standardCIEnv,
+ *   preparePinnedDevenvStep, runDevenvTasksBefore, standardCIEnv,
  * } from '../../repos/effect-utils/genie/ci-workflow.ts'
  *
  * const baseSteps = [
  *   checkoutStep(),
  *   installNixStep(),
  *   cachixStep({ name: 'my-cache' }),
- *   installDevenvFromLockStep,
+ *   preparePinnedDevenvStep,
  * ]
  * ```
  */
@@ -47,6 +47,16 @@ export const standardCIEnv = {
 } as const
 
 const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
+
+const resolveDevenvRevScript = `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+  exit 1
+fi`
+
+const resolveDevenvFnScript = `resolve_devenv() {
+  nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+}`
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
@@ -101,19 +111,18 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 })
 
 /**
- * Resolve lock-pinned devenv binary from devenv.lock.
+ * Prepare lock-pinned devenv metadata from devenv.lock.
  */
-export const installDevenvFromLockStep = {
+export const preparePinnedDevenvStep = {
   name: 'Use pinned devenv from lock',
-  run: `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
-if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-  exit 1
-fi
+  run: `${resolveDevenvRevScript}
 echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
 echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
+
+/** @deprecated Use `preparePinnedDevenvStep` */
+export const installDevenvFromLockStep = preparePinnedDevenvStep
 
 /** Install megarepo CLI from effect-utils */
 export const installMegarepoStep = {
@@ -164,15 +173,11 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
-if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-  exit 1
+  run: `if [ -z "${DEVENV_REV:-}" ]; then
+  ${resolveDevenvRevScript}
 fi
 
-resolve_devenv() {
-  nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
-}
+${resolveDevenvFnScript}
 
 if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
   echo "Nix store OK"

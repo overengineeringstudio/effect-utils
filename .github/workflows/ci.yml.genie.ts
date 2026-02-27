@@ -4,7 +4,7 @@ import {
   bashShellDefaults,
   cachixStep,
   checkoutStep,
-  installDevenvFromLockStep,
+  preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
   standardCIEnv,
@@ -21,7 +21,7 @@ const baseSteps = [
   checkoutStep(),
   installNixStep(),
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
-  installDevenvFromLockStep,
+  preparePinnedDevenvStep,
   validateNixStoreStep,
 ] as const
 
