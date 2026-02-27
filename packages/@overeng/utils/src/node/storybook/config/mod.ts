@@ -43,6 +43,15 @@ const applySharedConfig = (config: InlineConfig): void => {
     ...config.server,
     host: '0.0.0.0',
     allowedHosts: true,
+    /* Workaround: fsevents 2.3.3 pre-built native binary silently fails to deliver
+     * file-change events on macOS 26+, breaking Vite/Storybook HMR.
+     * Falls back to Node.js fs.watch (kqueue-based, event-driven — not polling).
+     *
+     * Root cause: https://github.com/fsevents/fsevents/issues/406
+     * Vite is stuck on chokidar v3 (which bundles fsevents) because chokidar v4
+     * causes EBADF on macOS: https://github.com/vitejs/vite/issues/18527
+     * Upstream tracker for @parcel/watcher alternative: https://github.com/vitejs/vite/issues/13593 */
+    watch: { ...config.server?.watch, useFsEvents: false },
   }
 
   config.esbuild = {
