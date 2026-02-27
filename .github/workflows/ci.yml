@@ -46,6 +46,8 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
+          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -58,7 +60,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -66,7 +68,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -116,6 +118,8 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
+          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -128,7 +132,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -136,7 +140,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -189,6 +193,8 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
+          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -201,7 +207,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -209,7 +215,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -262,6 +268,8 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
+          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -274,7 +282,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -282,7 +290,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -336,6 +344,8 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
+          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -348,7 +358,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -356,7 +366,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
