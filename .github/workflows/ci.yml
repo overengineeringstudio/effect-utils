@@ -48,10 +48,10 @@ jobs:
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
-            if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-              echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-              exit 1
-            fi
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
           fi
 
           resolve_devenv() {
@@ -118,10 +118,10 @@ jobs:
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
-            if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-              echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-              exit 1
-            fi
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
           fi
 
           resolve_devenv() {
@@ -191,10 +191,10 @@ jobs:
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
-            if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-              echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-              exit 1
-            fi
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
           fi
 
           resolve_devenv() {
@@ -264,10 +264,10 @@ jobs:
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
-            if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-              echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-              exit 1
-            fi
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
           fi
 
           resolve_devenv() {
@@ -338,10 +338,10 @@ jobs:
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
-            if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-              echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
-              exit 1
-            fi
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
           fi
 
           resolve_devenv() {

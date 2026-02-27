@@ -170,7 +170,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if [ -z "${DEVENV_REV:-}" ]; then
+  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
   ${resolveDevenvRevScript}
 fi
 
