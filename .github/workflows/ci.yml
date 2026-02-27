@@ -73,7 +73,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Type check
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
+        run: 'if [ -n "${DEVENV_BIN:-}" ]; then "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before; else nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" -- tasks run ts:check --mode before; fi'
       - name: Failure note
         if: failure()
         shell: bash
@@ -143,7 +143,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Format + lint
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
+        run: 'if [ -n "${DEVENV_BIN:-}" ]; then "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before; else nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" -- tasks run lint:check --mode before; fi'
       - name: Failure note
         if: failure()
         shell: bash
@@ -216,7 +216,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Unit tests
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
+        run: 'if [ -n "${DEVENV_BIN:-}" ]; then "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before; else nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" -- tasks run test:run --mode before; fi'
       - name: Failure note
         if: failure()
         shell: bash
@@ -289,7 +289,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Nix hash check
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
+        run: 'if [ -n "${DEVENV_BIN:-}" ]; then "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before; else nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" -- tasks run nix:check --mode before; fi'
       - name: Failure note
         if: failure()
         shell: bash
@@ -365,9 +365,9 @@ jobs:
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
+            if [ -n "${DEVENV_BIN:-}" ]; then "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before; else nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" -- tasks run netlify:deploy --input type=prod --mode before; fi
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
+            if [ -n "${DEVENV_BIN:-}" ]; then "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before; else nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" -- tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before; fi
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()

@@ -8,7 +8,7 @@
  * ```ts
  * import {
  *   checkoutStep, installNixStep, cachixStep,
- *   preparePinnedDevenvStep, runDevenvTasksBefore, standardCIEnv,
+ *   preparePinnedDevenvStep, validateNixStoreStep, runDevenvTasksBefore, standardCIEnv,
  * } from '../../repos/effect-utils/genie/ci-workflow.ts'
  *
  * const baseSteps = [
@@ -16,6 +16,7 @@
  *   installNixStep(),
  *   cachixStep({ name: 'my-cache' }),
  *   preparePinnedDevenvStep,
+ *   validateNixStoreStep,
  * ]
  * ```
  */
@@ -58,9 +59,12 @@ const resolveDevenvFnScript = `resolve_devenv() {
   nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
+const fallbackPinnedDevenvCmd =
+  'nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" --'
+
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `${devenvBinRef} tasks run ${args.join(' ')} --mode before`
+  `if [ -n "${'${DEVENV_BIN:-}'}" ]; then ${devenvBinRef} tasks run ${args.join(' ')} --mode before; else ${fallbackPinnedDevenvCmd} tasks run ${args.join(' ')} --mode before; fi`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
