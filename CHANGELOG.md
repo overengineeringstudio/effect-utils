@@ -32,6 +32,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **genie/ci-workflow**: Switch CI helpers to lock-pinned `DEVENV_BIN` instead of PATH `devenv`
+  - Replaced `installDevenvFromLockStep` with `preparePinnedDevenvStep` and made task commands use `"$DEVENV_BIN"`
+  - `validateNixStoreStep` now runs `devenv info` with `restrict-eval = false` appended in `NIX_CONFIG`
+
 - **@overeng/megarepo**: Scope nested `megarepo.lock` reconciliation to recursive sync mode
   - `mr sync` now syncs direct member lock artifacts only (`flake.lock` / `devenv.lock`)
   - Nested `megarepo.lock` reconciliation now runs only with `mr sync --all`

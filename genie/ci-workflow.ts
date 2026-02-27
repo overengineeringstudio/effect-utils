@@ -170,13 +170,21 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
+  run: `# Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+# used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+if [ -n "${'${NIX_CONFIG:-}'}" ]; then
+  NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'
+else
+  NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+fi
+
+if [ -z "${'${DEVENV_REV:-}'}" ]; then
   ${resolveDevenvRevScript}
 fi
 
 ${resolveDevenvFnScript}
 
-if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
+if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
   echo "Nix store OK"
 else
   echo "::warning::Nix store validation failed, repairing..."
@@ -184,7 +192,7 @@ else
   rm -rf ~/.cache/nix/eval-cache-*
   DEVENV_OUT=$(resolve_devenv)
   DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-  "$DEVENV_BIN" info > /dev/null
+  NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
 fi
 
 echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
