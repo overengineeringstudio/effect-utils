@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.
   - Replaced `installDevenvFromLockStep` with `preparePinnedDevenvStep` and made task commands use `"$DEVENV_BIN"`
   - `validateNixStoreStep` now runs `devenv info` with `restrict-eval = false` appended in `NIX_CONFIG`
   - `runDevenvTasksBefore` now forwards that unrestricted `NIX_CONFIG` to all `devenv tasks run ...` calls
+  - Added `withUnrestrictedEvalNixConfig(command)` so repos with custom CI shells can reuse the same override behavior without duplicating inline script snippets
 
 - **@overeng/megarepo**: Scope nested `megarepo.lock` reconciliation to recursive sync mode
   - `mr sync` now syncs direct member lock artifacts only (`flake.lock` / `devenv.lock`)

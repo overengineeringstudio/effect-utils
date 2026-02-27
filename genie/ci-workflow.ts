@@ -59,9 +59,16 @@ const resolveDevenvFnScript = `resolve_devenv() {
   nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
+const unrestrictedEvalInlineScript =
+  `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi`
+
+/** Prefix a command so it always runs with unrestricted eval in NIX_CONFIG. */
+export const withUnrestrictedEvalNixConfig = (command: string) =>
+  `${unrestrictedEvalInlineScript}; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" ${command}`
+
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" ${devenvBinRef} tasks run ${args.join(' ')} --mode before`
+  withUnrestrictedEvalNixConfig(`${devenvBinRef} tasks run ${args.join(' ')} --mode before`)
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -172,11 +179,7 @@ export const validateNixStoreStep = {
   name: 'Validate Nix store',
   run: `# Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
 # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-if [ -n "${'${NIX_CONFIG:-}'}" ]; then
-  NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'
-else
-  NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
-fi
+${unrestrictedEvalInlineScript}
 
 if [ -z "${'${DEVENV_REV:-}'}" ]; then
   ${resolveDevenvRevScript}
