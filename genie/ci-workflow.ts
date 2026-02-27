@@ -162,8 +162,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
 
 /**
  * Validate Nix store on namespace runners.
- * Runs `${devenvBinRef} shell -- true` to fully evaluate the devenv expression — this
- * catches stale store paths that a lightweight `${devenvBinRef} version` would miss.
+ * Runs `${devenvBinRef} info` to evaluate the devenv expression without entering shell hooks.
  * On failure, repairs the store AND clears the Nix eval cache (which may
  * reference GC'd paths), then retries.
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
@@ -177,7 +176,7 @@ fi
 
 ${resolveDevenvFnScript}
 
-if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
+if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
   echo "Nix store OK"
 else
   echo "::warning::Nix store validation failed, repairing..."
@@ -185,7 +184,7 @@ else
   rm -rf ~/.cache/nix/eval-cache-*
   DEVENV_OUT=$(resolve_devenv)
   DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-  "$DEVENV_BIN" shell -- true
+  "$DEVENV_BIN" info > /dev/null
 fi
 
 echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"

@@ -58,7 +58,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -66,7 +66,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" shell -- true
+            "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -128,7 +128,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -136,7 +136,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" shell -- true
+            "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -201,7 +201,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -209,7 +209,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" shell -- true
+            "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -274,7 +274,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -282,7 +282,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" shell -- true
+            "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
@@ -348,7 +348,7 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
@@ -356,7 +356,7 @@ jobs:
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv)
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            "$DEVENV_BIN" shell -- true
+            "$DEVENV_BIN" info > /dev/null
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
