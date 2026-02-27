@@ -61,7 +61,7 @@ const resolveDevenvFnScript = `resolve_devenv() {
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `${devenvBinRef} tasks run ${args.join(' ')} --mode before`
+  `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" ${devenvBinRef} tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
