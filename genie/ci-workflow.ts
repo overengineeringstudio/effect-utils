@@ -46,9 +46,12 @@ export const standardCIEnv = {
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
 
+const pinnedDevenvCmd =
+  'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" --'
+
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `devenv tasks run ${args.join(' ')} --mode before`
+  `${pinnedDevenvCmd} tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -99,12 +102,11 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 })
 
 /**
- * Install devenv pinned to the exact rev from devenv.lock.
- * Skips installation if devenv is already on PATH (e.g. self-hosted runners).
+ * Execute lock-pinned devenv directly from devenv.lock.
  */
 export const installDevenvFromLockStep = {
-  name: 'Install devenv if needed',
-  run: 'command -v devenv > /dev/null || nix profile install "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)"',
+  name: 'Use pinned devenv from lock',
+  run: `${pinnedDevenvCmd} version`,
   shell: 'bash',
 } as const
 
@@ -148,8 +150,8 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
 
 /**
  * Validate Nix store on namespace runners.
- * Runs `devenv shell -- true` to fully evaluate the devenv expression — this
- * catches stale store paths that a lightweight `devenv version` would miss.
+ * Runs `${pinnedDevenvCmd} shell -- true` to fully evaluate the devenv expression — this
+ * catches stale store paths that a lightweight `${pinnedDevenvCmd} version` would miss.
  * On failure, repairs the store AND clears the Nix eval cache (which may
  * reference GC'd paths), then retries.
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
@@ -157,13 +159,13 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if devenv shell -- true > /dev/null 2>&1; then
+  run: `if ${pinnedDevenvCmd} shell -- true > /dev/null 2>&1; then
   echo "Nix store OK"
 else
   echo "::warning::Nix store validation failed, repairing..."
   nix-store --verify --check-contents --repair 2>&1 | tail -20
   rm -rf ~/.cache/nix/eval-cache-*
-  devenv shell -- true
+  ${pinnedDevenvCmd} shell -- true
 fi`,
   shell: 'bash',
 } as const
