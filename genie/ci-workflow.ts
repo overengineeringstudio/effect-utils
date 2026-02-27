@@ -8,14 +8,15 @@
  * ```ts
  * import {
  *   checkoutStep, installNixStep, cachixStep,
- *   installDevenvFromLockStep, runDevenvTasksBefore, standardCIEnv,
+ *   preparePinnedDevenvStep, validateNixStoreStep, runDevenvTasksBefore, standardCIEnv,
  * } from '../../repos/effect-utils/genie/ci-workflow.ts'
  *
  * const baseSteps = [
  *   checkoutStep(),
  *   installNixStep(),
  *   cachixStep({ name: 'my-cache' }),
- *   installDevenvFromLockStep,
+ *   preparePinnedDevenvStep,
+ *   validateNixStoreStep,
  * ]
  * ```
  */
@@ -46,9 +47,21 @@ export const standardCIEnv = {
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
 
+const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
+
+const resolveDevenvRevScript = `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+  exit 1
+fi`
+
+const resolveDevenvFnScript = `resolve_devenv() {
+  nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+}`
+
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `devenv tasks run ${args.join(' ')} --mode before`
+  `${devenvBinRef} tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -99,12 +112,13 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 })
 
 /**
- * Install devenv pinned to the exact rev from devenv.lock.
- * Skips installation if devenv is already on PATH (e.g. self-hosted runners).
+ * Prepare lock-pinned devenv metadata from devenv.lock.
  */
-export const installDevenvFromLockStep = {
-  name: 'Install devenv if needed',
-  run: 'command -v devenv > /dev/null || nix profile install "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)"',
+export const preparePinnedDevenvStep = {
+  name: 'Use pinned devenv from lock',
+  run: `${resolveDevenvRevScript}
+echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
 
@@ -148,8 +162,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
 
 /**
  * Validate Nix store on namespace runners.
- * Runs `devenv shell -- true` to fully evaluate the devenv expression — this
- * catches stale store paths that a lightweight `devenv version` would miss.
+ * Runs `${devenvBinRef} info` to evaluate the devenv expression without entering shell hooks.
  * On failure, repairs the store AND clears the Nix eval cache (which may
  * reference GC'd paths), then retries.
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
@@ -157,13 +170,24 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if devenv shell -- true > /dev/null 2>&1; then
+  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
+  ${resolveDevenvRevScript}
+fi
+
+${resolveDevenvFnScript}
+
+if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" info > /dev/null 2>&1; then
   echo "Nix store OK"
 else
   echo "::warning::Nix store validation failed, repairing..."
   nix-store --verify --check-contents --repair 2>&1 | tail -20
   rm -rf ~/.cache/nix/eval-cache-*
-  devenv shell -- true
-fi`,
+  DEVENV_OUT=$(resolve_devenv)
+  DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+  "$DEVENV_BIN" info > /dev/null
+fi
+
+echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+"$DEVENV_BIN" version`,
   shell: 'bash',
 } as const

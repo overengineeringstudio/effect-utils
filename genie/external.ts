@@ -598,7 +598,7 @@ export {
   bashShellDefaults,
   checkoutStep,
   cachixStep,
-  installDevenvFromLockStep,
+  preparePinnedDevenvStep,
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
