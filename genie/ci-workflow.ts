@@ -40,11 +40,15 @@ export const bashShellDefaults = {
 /**
  * Standard CI environment variables.
  * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
+ * We default to unrestricted Nix eval on CI because namespace runners enforce
+ * restrict-eval=true, which breaks .devenv bootstrap evaluation used by
+ * `devenv info` and `devenv tasks run ...` across downstream repos.
  */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
+  NIX_CONFIG: 'restrict-eval = false',
 } as const
 
 const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
@@ -59,16 +63,9 @@ const resolveDevenvFnScript = `resolve_devenv() {
   nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
-const unrestrictedEvalInlineScript =
-  `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi`
-
-/** Prefix a command so it always runs with unrestricted eval in NIX_CONFIG. */
-export const withUnrestrictedEvalNixConfig = (command: string) =>
-  `${unrestrictedEvalInlineScript}; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" ${command}`
-
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  withUnrestrictedEvalNixConfig(`${devenvBinRef} tasks run ${args.join(' ')} --mode before`)
+  `${devenvBinRef} tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -177,15 +174,14 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `# Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-# used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-${unrestrictedEvalInlineScript}
-
-if [ -z "${'${DEVENV_REV:-}'}" ]; then
+  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
   ${resolveDevenvRevScript}
 fi
 
 ${resolveDevenvFnScript}
+
+# NIX_CONFIG defaults to restrict-eval=false via standardCIEnv for CI jobs.
+NIX_CONFIG_WITH_UNRESTRICTED_EVAL=${'${NIX_CONFIG:-restrict-eval = false}'}
 
 if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
   echo "Nix store OK"
