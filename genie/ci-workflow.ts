@@ -170,7 +170,13 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'\${NIX_CONFIG:+$NIX_CONFIG\\n}restrict-eval = false'
+  run: `# Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+# used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+if [ -n "${'${NIX_CONFIG:-}'}" ]; then
+  NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'
+else
+  NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+fi
 
 if [ -z "${'${DEVENV_REV:-}'}" ]; then
   ${resolveDevenvRevScript}

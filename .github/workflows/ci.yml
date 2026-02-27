@@ -46,7 +46,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
@@ -118,7 +124,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
@@ -193,7 +205,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
@@ -268,7 +286,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
@@ -344,7 +368,13 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=$'${NIX_CONFIG:+$NIX_CONFIG\n}restrict-eval = false'
+          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
+          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
