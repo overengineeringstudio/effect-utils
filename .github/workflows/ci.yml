@@ -35,21 +35,30 @@ jobs:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Use pinned devenv from lock
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- version'
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
+          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Validate Nix store
         run: |
-          if nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true > /dev/null 2>&1; then
+          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true
+            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
           fi
         shell: bash
       - name: Type check
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- tasks run ts:check --mode before'
+        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -81,21 +90,30 @@ jobs:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Use pinned devenv from lock
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- version'
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
+          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Validate Nix store
         run: |
-          if nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true > /dev/null 2>&1; then
+          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true
+            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
           fi
         shell: bash
       - name: Format + lint
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- tasks run lint:check --mode before'
+        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -130,21 +148,30 @@ jobs:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Use pinned devenv from lock
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- version'
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
+          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Validate Nix store
         run: |
-          if nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true > /dev/null 2>&1; then
+          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true
+            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
           fi
         shell: bash
       - name: Unit tests
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- tasks run test:run --mode before'
+        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -179,21 +206,30 @@ jobs:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Use pinned devenv from lock
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- version'
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
+          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Validate Nix store
         run: |
-          if nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true > /dev/null 2>&1; then
+          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true
+            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
           fi
         shell: bash
       - name: Nix hash check
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- tasks run nix:check --mode before'
+        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
       - name: Failure note
         if: failure()
         shell: bash
@@ -229,25 +265,34 @@ jobs:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Use pinned devenv from lock
-        run: 'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- version'
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
+          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Validate Nix store
         run: |
-          if nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true > /dev/null 2>&1; then
+          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- shell -- true
+            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
           fi
         shell: bash
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- tasks run netlify:deploy --input type=prod --mode before
+            "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" -- tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
+            "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()

@@ -46,12 +46,11 @@ export const standardCIEnv = {
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
 
-const pinnedDevenvCmd =
-  'nix run "github:cachix/devenv/$(jq -r .nodes.devenv.locked.rev devenv.lock)" --'
+const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `${pinnedDevenvCmd} tasks run ${args.join(' ')} --mode before`
+  `${devenvBinRef} tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -102,11 +101,19 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 })
 
 /**
- * Execute lock-pinned devenv directly from devenv.lock.
+ * Resolve lock-pinned devenv binary from devenv.lock.
  */
 export const installDevenvFromLockStep = {
   name: 'Use pinned devenv from lock',
-  run: `${pinnedDevenvCmd} version`,
+  run: `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+  exit 1
+fi
+DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
+DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+"$DEVENV_BIN" version`,
   shell: 'bash',
 } as const
 
@@ -150,8 +157,8 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
 
 /**
  * Validate Nix store on namespace runners.
- * Runs `${pinnedDevenvCmd} shell -- true` to fully evaluate the devenv expression — this
- * catches stale store paths that a lightweight `${pinnedDevenvCmd} version` would miss.
+ * Runs `${devenvBinRef} shell -- true` to fully evaluate the devenv expression — this
+ * catches stale store paths that a lightweight `${devenvBinRef} version` would miss.
  * On failure, repairs the store AND clears the Nix eval cache (which may
  * reference GC'd paths), then retries.
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
@@ -159,13 +166,13 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if ${pinnedDevenvCmd} shell -- true > /dev/null 2>&1; then
+  run: `if ${devenvBinRef} shell -- true > /dev/null 2>&1; then
   echo "Nix store OK"
 else
   echo "::warning::Nix store validation failed, repairing..."
   nix-store --verify --check-contents --repair 2>&1 | tail -20
   rm -rf ~/.cache/nix/eval-cache-*
-  ${pinnedDevenvCmd} shell -- true
+  ${devenvBinRef} shell -- true
 fi`,
   shell: 'bash',
 } as const
