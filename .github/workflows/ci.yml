@@ -41,21 +41,34 @@ jobs:
             echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
             exit 1
           fi
-          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
-          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Validate Nix store
         run: |
-          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
+          DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+
+          resolve_devenv() {
+            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+          }
+
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
+            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+            "$DEVENV_BIN" shell -- true
           fi
+
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Type check
         run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
@@ -96,21 +109,34 @@ jobs:
             echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
             exit 1
           fi
-          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
-          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Validate Nix store
         run: |
-          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
+          DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+
+          resolve_devenv() {
+            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+          }
+
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
+            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+            "$DEVENV_BIN" shell -- true
           fi
+
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Format + lint
         run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
@@ -154,21 +180,34 @@ jobs:
             echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
             exit 1
           fi
-          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
-          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Validate Nix store
         run: |
-          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
+          DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+
+          resolve_devenv() {
+            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+          }
+
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
+            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+            "$DEVENV_BIN" shell -- true
           fi
+
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Unit tests
         run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
@@ -212,21 +251,34 @@ jobs:
             echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
             exit 1
           fi
-          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
-          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Validate Nix store
         run: |
-          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
+          DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+
+          resolve_devenv() {
+            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+          }
+
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
+            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+            "$DEVENV_BIN" shell -- true
           fi
+
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Nix hash check
         run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
@@ -271,21 +323,34 @@ jobs:
             echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
             exit 1
           fi
-          DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
-          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
       - name: Validate Nix store
         run: |
-          if "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true > /dev/null 2>&1; then
+          DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+
+          resolve_devenv() {
+            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+          }
+
+          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
             echo "Nix store OK"
           else
             echo "::warning::Nix store validation failed, repairing..."
             nix-store --verify --check-contents --repair 2>&1 | tail -20
             rm -rf ~/.cache/nix/eval-cache-*
-            "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- true
+            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+            "$DEVENV_BIN" shell -- true
           fi
+
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version
         shell: bash
       - name: Deploy storybooks to Netlify
         run: |

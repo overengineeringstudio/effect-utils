@@ -110,10 +110,8 @@ if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
   echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
   exit 1
 fi
-DEVENV_OUT=$(nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv")
-DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-"$DEVENV_BIN" version`,
+echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
 
@@ -166,13 +164,28 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `if ${devenvBinRef} shell -- true > /dev/null 2>&1; then
+  run: `DEVENV_REV="${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}"
+if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+  exit 1
+fi
+
+resolve_devenv() {
+  nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+}
+
+if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && "$DEVENV_BIN" shell -- true > /dev/null 2>&1; then
   echo "Nix store OK"
 else
   echo "::warning::Nix store validation failed, repairing..."
   nix-store --verify --check-contents --repair 2>&1 | tail -20
   rm -rf ~/.cache/nix/eval-cache-*
-  ${devenvBinRef} shell -- true
-fi`,
+  DEVENV_OUT=$(resolve_devenv)
+  DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+  "$DEVENV_BIN" shell -- true
+fi
+
+echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+"$DEVENV_BIN" version`,
   shell: 'bash',
 } as const
