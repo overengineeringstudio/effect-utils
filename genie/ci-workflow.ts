@@ -59,12 +59,9 @@ const resolveDevenvFnScript = `resolve_devenv() {
   nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
-const fallbackPinnedDevenvCmd =
-  'nix run "github:cachix/devenv/${DEVENV_REV:-$(jq -r .nodes.devenv.locked.rev devenv.lock)}" --'
-
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `if [ -n "${'${DEVENV_BIN:-}'}" ]; then ${devenvBinRef} tasks run ${args.join(' ')} --mode before; else ${fallbackPinnedDevenvCmd} tasks run ${args.join(' ')} --mode before; fi`
+  `${devenvBinRef} tasks run ${args.join(' ')} --mode before`
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -124,9 +121,6 @@ echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
 echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
-
-/** @deprecated Use `preparePinnedDevenvStep` */
-export const installDevenvFromLockStep = preparePinnedDevenvStep
 
 /** Install megarepo CLI from effect-utils */
 export const installMegarepoStep = {

@@ -599,7 +599,6 @@ export {
   checkoutStep,
   cachixStep,
   preparePinnedDevenvStep,
-  installDevenvFromLockStep,
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
