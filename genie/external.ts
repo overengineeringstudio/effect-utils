@@ -603,6 +603,7 @@ export {
   installNixStep,
   namespaceRunner,
   runDevenvTasksBefore,
+  uploadNixStoreDiagnosticsArtifactStep,
   validateNixStoreStep,
   standardCIEnv,
   syncMegarepoStep,

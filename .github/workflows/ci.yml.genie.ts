@@ -9,6 +9,7 @@ import {
   runDevenvTasksBefore,
   standardCIEnv,
   namespaceRunner,
+  uploadNixStoreDiagnosticsArtifactStep,
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
@@ -99,22 +100,6 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
-/**
- * Temporary artifact upload for #272 root-cause analysis.
- * Remove together with `nixDiagnosticsSummaryStep` after the issue class is resolved.
- */
-const nixDiagnosticsArtifactStep = {
-  name: 'Upload Nix diagnostics artifact',
-  if: "failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''",
-  uses: 'actions/upload-artifact@v4',
-  with: {
-    name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
-    path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}',
-    'if-no-files-found': 'ignore',
-    'retention-days': 14,
-  },
-} as const
-
 const job = (step: { name: string; run: string }) => ({
   'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
   defaults: bashShellDefaults,
@@ -123,7 +108,7 @@ const job = (step: { name: string; run: string }) => ({
     ...baseSteps,
     step,
     nixDiagnosticsSummaryStep,
-    nixDiagnosticsArtifactStep,
+    uploadNixStoreDiagnosticsArtifactStep(),
     failureReminderStep,
   ],
 })
@@ -142,7 +127,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     ...baseSteps,
     step,
     nixDiagnosticsSummaryStep,
-    nixDiagnosticsArtifactStep,
+    uploadNixStoreDiagnosticsArtifactStep(),
     failureReminderStep,
   ],
 })
@@ -255,7 +240,7 @@ const deployJobs = {
         ].join('\n'),
       },
       nixDiagnosticsSummaryStep,
-      nixDiagnosticsArtifactStep,
+      uploadNixStoreDiagnosticsArtifactStep(),
       failureReminderStep,
     ],
   },
