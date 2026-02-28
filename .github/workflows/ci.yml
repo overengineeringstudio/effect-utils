@@ -59,8 +59,12 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          # NIX_CONFIG defaults to restrict-eval=false via standardCIEnv for CI jobs.
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=${NIX_CONFIG:-restrict-eval = false}
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -77,7 +81,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Type check
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run ts:check --mode before"
       - name: Failure note
         if: failure()
         shell: bash
@@ -133,8 +137,12 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          # NIX_CONFIG defaults to restrict-eval=false via standardCIEnv for CI jobs.
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=${NIX_CONFIG:-restrict-eval = false}
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -151,7 +159,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Format + lint
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
       - name: Failure note
         if: failure()
         shell: bash
@@ -210,8 +218,12 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          # NIX_CONFIG defaults to restrict-eval=false via standardCIEnv for CI jobs.
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=${NIX_CONFIG:-restrict-eval = false}
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -228,7 +240,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Unit tests
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run test:run --mode before"
       - name: Failure note
         if: failure()
         shell: bash
@@ -287,8 +299,12 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          # NIX_CONFIG defaults to restrict-eval=false via standardCIEnv for CI jobs.
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=${NIX_CONFIG:-restrict-eval = false}
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -305,7 +321,7 @@ jobs:
           "$DEVENV_BIN" version
         shell: bash
       - name: Nix hash check
-        run: '"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run nix:check --mode before"
       - name: Failure note
         if: failure()
         shell: bash
@@ -365,8 +381,12 @@ jobs:
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
-          # NIX_CONFIG defaults to restrict-eval=false via standardCIEnv for CI jobs.
-          NIX_CONFIG_WITH_UNRESTRICTED_EVAL=${NIX_CONFIG:-restrict-eval = false}
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -385,9 +405,9 @@ jobs:
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
+            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
+            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()
