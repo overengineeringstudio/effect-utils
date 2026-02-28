@@ -1143,10 +1143,16 @@ const createNestedMegarepoLockAliasMatchFixture = () =>
     const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
       parentConfigContent,
     )
-    parentConfig.members['shared-alias'] = 'https://example.com/acme/shared#main'
+    const updatedConfig = {
+      ...parentConfig,
+      members: {
+        ...parentConfig.members,
+        'shared-alias': 'https://example.com/acme/shared#main' as const,
+      },
+    }
     yield* fs.writeFileString(
       parentConfigPath,
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(parentConfig)) + '\n',
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) + '\n',
     )
 
     const parentLockPath = EffectPath.ops.join(

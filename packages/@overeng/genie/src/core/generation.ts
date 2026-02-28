@@ -139,7 +139,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   configPath,
 }: {
   configPath: Option.Option<string>
-}): Effect.Effect<Option.Option<OxfmtConfig>, PlatformError.PlatformError, FileSystem.FileSystem> {
+}) {
   if (Option.isNone(configPath) === true) {
     return Option.none()
   }
@@ -214,17 +214,13 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
-  const format = yield* Effect.tryPromise({
-    try: () => loadOxfmtFormat(),
-    catch: () => undefined,
-  })
+  const format = yield* Effect.promise(() => loadOxfmtFormat())
   const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.either)
 
   if (format !== undefined && Either.isRight(optionsResult) === true) {
-    const result = yield* Effect.tryPromise({
-      try: () => format(targetFilePath, content, Option.getOrUndefined(optionsResult.right)),
-      catch: () => undefined,
-    })
+    const result = yield* Effect.tryPromise(() =>
+      format(targetFilePath, content, Option.getOrUndefined(optionsResult.right)),
+    ).pipe(Effect.orElseSucceed(() => undefined))
 
     if (result !== undefined && result.errors.length === 0) {
       if (result.code.length === 0 && content.length > 0) {
@@ -330,7 +326,7 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
 }: {
   genieFilePath: string
   cwd: string
-}): Effect.Effect<LoadedGenieFile, GenieImportError, FileSystem.FileSystem> {
+}) {
   yield* ensureImportMapResolver
 
   const importPath = `${genieFilePath}?import=${Date.now()}`
@@ -410,11 +406,7 @@ export const getExpectedContent = ({
   cwd: string
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
-}): Effect.Effect<
-  { targetFilePath: string; content: string },
-  PlatformError.PlatformError | GenieImportError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
-> =>
+}) =>
   Effect.gen(function* () {
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const sourceFile = path.basename(genieFilePath)

@@ -164,7 +164,7 @@ const loadTsConfig = Effect.fnUntraced(function* (configPath: string) {
   })
 
   const config = module.default as unknown
-  if (config === undefined || typeof config !== 'object') {
+  if (config == null || typeof config !== 'object') {
     return yield* new ConfigParseError({
       message: 'Config file must export a default config object',
       path: configPath,

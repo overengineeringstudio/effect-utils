@@ -19,7 +19,7 @@ const makeText = (
   type: 'text',
   text: {
     content,
-    link: options.href !== undefined ? { url: options.href } : null,
+    link: options.href != null ? { url: options.href } : null,
   },
   annotations: {
     bold: options.bold ?? false,

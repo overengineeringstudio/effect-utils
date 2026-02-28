@@ -137,9 +137,11 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
   genieFiles?: ReadonlyArray<string>
   preloadedFiles?: ReadonlyArray<LoadedGenieFile>
 }) {
-  const validationResult = yield* runGenieValidation({ cwd, genieFiles, preloadedFiles }).pipe(
-    Effect.either,
-  )
+  const validationResult = yield* runGenieValidation({
+    cwd,
+    ...(genieFiles !== undefined ? { genieFiles } : {}),
+    ...(preloadedFiles !== undefined ? { preloadedFiles } : {}),
+  }).pipe(Effect.either)
   if (Either.isLeft(validationResult) === true) {
     const error = validationResult.left
     const message = error instanceof Error ? error.message : String(error)

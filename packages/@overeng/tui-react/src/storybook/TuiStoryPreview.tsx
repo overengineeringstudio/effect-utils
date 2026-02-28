@@ -655,8 +655,8 @@ const PlaybackControls = <A,>({
 
   // Get current event info
   const currentEvent = currentEventIndex >= 0 ? timeline[currentEventIndex] : null
-  const currentActionTag = currentEvent !== null ? formatActionTag(currentEvent.action) : 'Ready'
-  const currentActionDetails = currentEvent !== null ? getActionDetails(currentEvent.action) : null
+  const currentActionTag = currentEvent != null ? formatActionTag(currentEvent.action) : 'Ready'
+  const currentActionDetails = currentEvent != null ? getActionDetails(currentEvent.action) : null
 
   // Step to previous event
   const handlePrev = () => {
