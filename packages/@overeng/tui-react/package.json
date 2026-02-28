@@ -67,6 +67,8 @@
     "@effect/platform-node": "^0.104.1",
     "@opentui/core": "^0.1.74",
     "@opentui/react": "^0.1.74",
+    "@types/react": "^19.2.7",
+    "@types/react-reconciler": "^0.28.9",
     "effect": "^3.19.15",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

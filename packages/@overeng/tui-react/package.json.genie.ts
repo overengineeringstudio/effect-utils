@@ -6,6 +6,7 @@ import {
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 
+/** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
 const peerDepNames = [
   'effect',
   'react',
@@ -13,6 +14,9 @@ const peerDepNames = [
   'react-reconciler',
   '@effect/platform-node',
   '@effect/cli',
+  /** Required for consumers to type-check imported .tsx source (not compiled .d.ts) */
+  '@types/react',
+  '@types/react-reconciler',
 ] as const
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
+  - Consumers need these type packages to type-check the `.tsx` source exports
+
 ### Added
 
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
