@@ -40,6 +40,9 @@ export const bashShellDefaults = {
 /**
  * Standard CI environment variables.
  * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
+ * Nix eval policy is enforced at step runtime by helpers like
+ * `validateNixStoreStep` and `runDevenvTasksBefore`, which append
+ * `restrict-eval = false` while preserving inherited NIX_CONFIG values.
  */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
@@ -170,19 +173,18 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
-  run: `# Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-# used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
+  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
+  ${resolveDevenvRevScript}
+fi
+
+${resolveDevenvFnScript}
+
+# Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
 if [ -n "${'${NIX_CONFIG:-}'}" ]; then
   NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'
 else
   NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
 fi
-
-if [ -z "${'${DEVENV_REV:-}'}" ]; then
-  ${resolveDevenvRevScript}
-fi
-
-${resolveDevenvFnScript}
 
 if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
   echo "Nix store OK"

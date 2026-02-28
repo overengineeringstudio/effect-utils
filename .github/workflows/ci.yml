@@ -46,14 +46,6 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-          if [ -n "${NIX_CONFIG:-}" ]; then
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
-          else
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
-          fi
-
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -65,6 +57,13 @@ jobs:
           resolve_devenv() {
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
+
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -124,14 +123,6 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-          if [ -n "${NIX_CONFIG:-}" ]; then
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
-          else
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
-          fi
-
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -143,6 +134,13 @@ jobs:
           resolve_devenv() {
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
+
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -205,14 +203,6 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-          if [ -n "${NIX_CONFIG:-}" ]; then
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
-          else
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
-          fi
-
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -224,6 +214,13 @@ jobs:
           resolve_devenv() {
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
+
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -286,14 +283,6 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-          if [ -n "${NIX_CONFIG:-}" ]; then
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
-          else
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
-          fi
-
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -305,6 +294,13 @@ jobs:
           resolve_devenv() {
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
+
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
@@ -368,14 +364,6 @@ jobs:
         shell: bash
       - name: Validate Nix store
         run: |
-          # Namespace runners may enforce restrict-eval=true, which blocks absolute-path imports
-          # used by .devenv bootstrap evaluation; append restrict-eval=false for this check.
-          if [ -n "${NIX_CONFIG:-}" ]; then
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
-          else
-            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
-          fi
-
           if [ -z "${DEVENV_REV:-}" ]; then
             DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
           if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
@@ -387,6 +375,13 @@ jobs:
           resolve_devenv() {
             nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
           }
+
+          # Always append restrict-eval=false so caller-provided NIX_CONFIG keeps its settings.
+          if [ -n "${NIX_CONFIG:-}" ]; then
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\n''restrict-eval = false'
+          else
+            NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
+          fi
 
           if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
             echo "Nix store OK"
