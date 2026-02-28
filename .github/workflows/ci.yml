@@ -20,7 +20,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
-      NIX_CONFIG: restrict-eval = false
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -98,7 +97,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
-      NIX_CONFIG: restrict-eval = false
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -179,7 +177,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
-      NIX_CONFIG: restrict-eval = false
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -260,7 +257,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
-      NIX_CONFIG: restrict-eval = false
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -341,7 +337,6 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
-      NIX_CONFIG: restrict-eval = false
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
     steps:
       - uses: actions/checkout@v4

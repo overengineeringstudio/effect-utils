@@ -40,15 +40,14 @@ export const bashShellDefaults = {
 /**
  * Standard CI environment variables.
  * GITHUB_TOKEN is exported for tools that need it as a shell env var (e.g. gh CLI, nix auth).
- * We default to unrestricted Nix eval on CI because namespace runners enforce
- * restrict-eval=true, which breaks .devenv bootstrap evaluation used by
- * `devenv info` and `devenv tasks run ...` across downstream repos.
+ * Nix eval policy is enforced at step runtime by helpers like
+ * `validateNixStoreStep` and `runDevenvTasksBefore`, which append
+ * `restrict-eval = false` while preserving inherited NIX_CONFIG values.
  */
 export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
-  NIX_CONFIG: 'restrict-eval = false',
 } as const
 
 const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
