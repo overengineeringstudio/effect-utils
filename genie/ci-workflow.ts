@@ -168,8 +168,19 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  * Runs `${devenvBinRef} info` to evaluate the devenv expression without entering shell hooks.
  * On failure, repairs the store AND clears the Nix eval cache (which may
  * reference GC'd paths), then retries.
+ *
+ * Temporary diagnostics instrumentation for #272:
+ * - Captures full verify/repair/eval logs and runner fingerprint into a temp directory.
+ * - Exports `NIX_STORE_DIAGNOSTICS_DIR` for failure-only summary/artifact steps.
+ *
+ * Cleanup plan:
+ * - Once #201/#272 root cause is confirmed and flake rate is stable near zero,
+ *   remove the diagnostics capture + upload wiring and keep only the minimal
+ *   validation/repair flow for a simpler CI setup again.
+ *
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
  * @see https://github.com/overengineeringstudio/effect-utils/issues/201
+ * @see https://github.com/overengineeringstudio/effect-utils/issues/272
  */
 export const validateNixStoreStep = {
   name: 'Validate Nix store',
@@ -186,18 +197,57 @@ else
   NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
 fi
 
-if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
+# Temporary: capture complete diagnostics for #272 root-cause analysis.
+DIAG_ROOT="${'${RUNNER_TEMP:-/tmp}'}/nix-store-diagnostics-${'${GITHUB_JOB:-job}'}-${'${RUNNER_OS:-unknown}'}-${'${GITHUB_RUN_ATTEMPT:-0}'}"
+mkdir -p "$DIAG_ROOT"
+echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+{
+  echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "runner_name=${'${RUNNER_NAME:-unknown}'}"
+  echo "runner_os=${'${RUNNER_OS:-unknown}'}"
+  echo "runner_arch=${'${RUNNER_ARCH:-unknown}'}"
+  echo "github_job=${'${GITHUB_JOB:-unknown}'}"
+  echo "github_run_id=${'${GITHUB_RUN_ID:-unknown}'}"
+  echo "github_run_attempt=${'${GITHUB_RUN_ATTEMPT:-unknown}'}"
+  echo "nix_user_conf_files=${'${NIX_USER_CONF_FILES:-}'}"
+  echo ""
+  echo "== uname -a =="
+  uname -a || true
+  if command -v sw_vers > /dev/null 2>&1; then
+    echo ""
+    echo "== sw_vers =="
+    sw_vers || true
+  fi
+  echo ""
+  echo "== nix --version =="
+  nix --version || true
+} > "$DIAG_ROOT/environment.txt" 2>&1
+
+pre_resolve_log="$DIAG_ROOT/resolve-devenv-pre-repair.log"
+pre_info_log="$DIAG_ROOT/devenv-info-pre-repair.log"
+verify_log="$DIAG_ROOT/nix-store-verify-pre-repair.log"
+repair_log="$DIAG_ROOT/nix-store-verify-repair.log"
+post_resolve_log="$DIAG_ROOT/resolve-devenv-post-repair.log"
+post_info_log="$DIAG_ROOT/devenv-info-post-repair.log"
+
+if DEVENV_OUT=$(resolve_devenv 2>"$pre_resolve_log") && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$pre_info_log" 2>&1; then
   echo "Nix store OK"
 else
-  echo "::warning::Nix store validation failed, repairing..."
-  nix-store --verify --check-contents --repair 2>&1 | tail -20
+  echo "::warning::Nix store validation failed, collecting diagnostics and repairing..."
+  if ! nix-store --verify --check-contents > "$verify_log" 2>&1; then
+    echo "::warning::nix-store --verify --check-contents reported issues (see diagnostics artifact)"
+  fi
+  if ! nix-store --verify --check-contents --repair > "$repair_log" 2>&1; then
+    echo "::warning::nix-store --verify --check-contents --repair reported issues (see diagnostics artifact)"
+  fi
   rm -rf ~/.cache/nix/eval-cache-*
-  DEVENV_OUT=$(resolve_devenv)
+  DEVENV_OUT=$(resolve_devenv 2>"$post_resolve_log")
   DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-  NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
+  NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$post_info_log" 2>&1
 fi
 
 echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-"$DEVENV_BIN" version`,
+"$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"`,
   shell: 'bash',
 } as const

@@ -8,6 +8,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      debug_force_nix_diagnostics_failure:
+        description: 'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   typecheck:
@@ -65,27 +72,123 @@ jobs:
             NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
           fi
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
+          # Temporary: capture complete diagnostics for #272 root-cause analysis.
+          DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
+          mkdir -p "$DIAG_ROOT"
+          echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_name=${RUNNER_NAME:-unknown}"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "runner_arch=${RUNNER_ARCH:-unknown}"
+            echo "github_job=${GITHUB_JOB:-unknown}"
+            echo "github_run_id=${GITHUB_RUN_ID:-unknown}"
+            echo "github_run_attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
+            echo "nix_user_conf_files=${NIX_USER_CONF_FILES:-}"
+            echo ""
+            echo "== uname -a =="
+            uname -a || true
+            if command -v sw_vers > /dev/null 2>&1; then
+              echo ""
+              echo "== sw_vers =="
+              sw_vers || true
+            fi
+            echo ""
+            echo "== nix --version =="
+            nix --version || true
+          } > "$DIAG_ROOT/environment.txt" 2>&1
+
+          pre_resolve_log="$DIAG_ROOT/resolve-devenv-pre-repair.log"
+          pre_info_log="$DIAG_ROOT/devenv-info-pre-repair.log"
+          verify_log="$DIAG_ROOT/nix-store-verify-pre-repair.log"
+          repair_log="$DIAG_ROOT/nix-store-verify-repair.log"
+          post_resolve_log="$DIAG_ROOT/resolve-devenv-post-repair.log"
+          post_info_log="$DIAG_ROOT/devenv-info-post-repair.log"
+
+          if DEVENV_OUT=$(resolve_devenv 2>"$pre_resolve_log") && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$pre_info_log" 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, repairing..."
-            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            echo "::warning::Nix store validation failed, collecting diagnostics and repairing..."
+            if ! nix-store --verify --check-contents > "$verify_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents reported issues (see diagnostics artifact)"
+            fi
+            if ! nix-store --verify --check-contents --repair > "$repair_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents --repair reported issues (see diagnostics artifact)"
+            fi
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_OUT=$(resolve_devenv 2>"$post_resolve_log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$post_info_log" 2>&1
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Type check
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run ts:check --mode before"
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              sed -n "1,120p" "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}'
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Failure note
         if: failure()
         shell: bash
         run: |
-          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   lint:
     runs-on:
@@ -142,27 +245,123 @@ jobs:
             NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
           fi
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
+          # Temporary: capture complete diagnostics for #272 root-cause analysis.
+          DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
+          mkdir -p "$DIAG_ROOT"
+          echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_name=${RUNNER_NAME:-unknown}"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "runner_arch=${RUNNER_ARCH:-unknown}"
+            echo "github_job=${GITHUB_JOB:-unknown}"
+            echo "github_run_id=${GITHUB_RUN_ID:-unknown}"
+            echo "github_run_attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
+            echo "nix_user_conf_files=${NIX_USER_CONF_FILES:-}"
+            echo ""
+            echo "== uname -a =="
+            uname -a || true
+            if command -v sw_vers > /dev/null 2>&1; then
+              echo ""
+              echo "== sw_vers =="
+              sw_vers || true
+            fi
+            echo ""
+            echo "== nix --version =="
+            nix --version || true
+          } > "$DIAG_ROOT/environment.txt" 2>&1
+
+          pre_resolve_log="$DIAG_ROOT/resolve-devenv-pre-repair.log"
+          pre_info_log="$DIAG_ROOT/devenv-info-pre-repair.log"
+          verify_log="$DIAG_ROOT/nix-store-verify-pre-repair.log"
+          repair_log="$DIAG_ROOT/nix-store-verify-repair.log"
+          post_resolve_log="$DIAG_ROOT/resolve-devenv-post-repair.log"
+          post_info_log="$DIAG_ROOT/devenv-info-post-repair.log"
+
+          if DEVENV_OUT=$(resolve_devenv 2>"$pre_resolve_log") && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$pre_info_log" 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, repairing..."
-            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            echo "::warning::Nix store validation failed, collecting diagnostics and repairing..."
+            if ! nix-store --verify --check-contents > "$verify_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents reported issues (see diagnostics artifact)"
+            fi
+            if ! nix-store --verify --check-contents --repair > "$repair_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents --repair reported issues (see diagnostics artifact)"
+            fi
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_OUT=$(resolve_devenv 2>"$post_resolve_log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$post_info_log" 2>&1
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Format + lint
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              sed -n "1,120p" "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}'
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Failure note
         if: failure()
         shell: bash
         run: |
-          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   test:
     strategy:
@@ -222,27 +421,123 @@ jobs:
             NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
           fi
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
+          # Temporary: capture complete diagnostics for #272 root-cause analysis.
+          DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
+          mkdir -p "$DIAG_ROOT"
+          echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_name=${RUNNER_NAME:-unknown}"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "runner_arch=${RUNNER_ARCH:-unknown}"
+            echo "github_job=${GITHUB_JOB:-unknown}"
+            echo "github_run_id=${GITHUB_RUN_ID:-unknown}"
+            echo "github_run_attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
+            echo "nix_user_conf_files=${NIX_USER_CONF_FILES:-}"
+            echo ""
+            echo "== uname -a =="
+            uname -a || true
+            if command -v sw_vers > /dev/null 2>&1; then
+              echo ""
+              echo "== sw_vers =="
+              sw_vers || true
+            fi
+            echo ""
+            echo "== nix --version =="
+            nix --version || true
+          } > "$DIAG_ROOT/environment.txt" 2>&1
+
+          pre_resolve_log="$DIAG_ROOT/resolve-devenv-pre-repair.log"
+          pre_info_log="$DIAG_ROOT/devenv-info-pre-repair.log"
+          verify_log="$DIAG_ROOT/nix-store-verify-pre-repair.log"
+          repair_log="$DIAG_ROOT/nix-store-verify-repair.log"
+          post_resolve_log="$DIAG_ROOT/resolve-devenv-post-repair.log"
+          post_info_log="$DIAG_ROOT/devenv-info-post-repair.log"
+
+          if DEVENV_OUT=$(resolve_devenv 2>"$pre_resolve_log") && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$pre_info_log" 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, repairing..."
-            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            echo "::warning::Nix store validation failed, collecting diagnostics and repairing..."
+            if ! nix-store --verify --check-contents > "$verify_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents reported issues (see diagnostics artifact)"
+            fi
+            if ! nix-store --verify --check-contents --repair > "$repair_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents --repair reported issues (see diagnostics artifact)"
+            fi
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_OUT=$(resolve_devenv 2>"$post_resolve_log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$post_info_log" 2>&1
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Unit tests
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run test:run --mode before"
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              sed -n "1,120p" "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}'
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Failure note
         if: failure()
         shell: bash
         run: |
-          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   nix-check:
     strategy:
@@ -302,27 +597,123 @@ jobs:
             NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
           fi
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
+          # Temporary: capture complete diagnostics for #272 root-cause analysis.
+          DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
+          mkdir -p "$DIAG_ROOT"
+          echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_name=${RUNNER_NAME:-unknown}"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "runner_arch=${RUNNER_ARCH:-unknown}"
+            echo "github_job=${GITHUB_JOB:-unknown}"
+            echo "github_run_id=${GITHUB_RUN_ID:-unknown}"
+            echo "github_run_attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
+            echo "nix_user_conf_files=${NIX_USER_CONF_FILES:-}"
+            echo ""
+            echo "== uname -a =="
+            uname -a || true
+            if command -v sw_vers > /dev/null 2>&1; then
+              echo ""
+              echo "== sw_vers =="
+              sw_vers || true
+            fi
+            echo ""
+            echo "== nix --version =="
+            nix --version || true
+          } > "$DIAG_ROOT/environment.txt" 2>&1
+
+          pre_resolve_log="$DIAG_ROOT/resolve-devenv-pre-repair.log"
+          pre_info_log="$DIAG_ROOT/devenv-info-pre-repair.log"
+          verify_log="$DIAG_ROOT/nix-store-verify-pre-repair.log"
+          repair_log="$DIAG_ROOT/nix-store-verify-repair.log"
+          post_resolve_log="$DIAG_ROOT/resolve-devenv-post-repair.log"
+          post_info_log="$DIAG_ROOT/devenv-info-post-repair.log"
+
+          if DEVENV_OUT=$(resolve_devenv 2>"$pre_resolve_log") && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$pre_info_log" 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, repairing..."
-            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            echo "::warning::Nix store validation failed, collecting diagnostics and repairing..."
+            if ! nix-store --verify --check-contents > "$verify_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents reported issues (see diagnostics artifact)"
+            fi
+            if ! nix-store --verify --check-contents --repair > "$repair_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents --repair reported issues (see diagnostics artifact)"
+            fi
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_OUT=$(resolve_devenv 2>"$post_resolve_log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$post_info_log" 2>&1
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Nix hash check
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run nix:check --mode before"
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              sed -n "1,120p" "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}'
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Failure note
         if: failure()
         shell: bash
         run: |
-          echo "If this looks like Namespace macOS Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   deploy-storybooks:
     runs-on:
@@ -383,20 +774,72 @@ jobs:
             NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'
           fi
 
-          if DEVENV_OUT=$(resolve_devenv) && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null 2>&1; then
+          # Temporary: capture complete diagnostics for #272 root-cause analysis.
+          DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
+          mkdir -p "$DIAG_ROOT"
+          echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_name=${RUNNER_NAME:-unknown}"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "runner_arch=${RUNNER_ARCH:-unknown}"
+            echo "github_job=${GITHUB_JOB:-unknown}"
+            echo "github_run_id=${GITHUB_RUN_ID:-unknown}"
+            echo "github_run_attempt=${GITHUB_RUN_ATTEMPT:-unknown}"
+            echo "nix_user_conf_files=${NIX_USER_CONF_FILES:-}"
+            echo ""
+            echo "== uname -a =="
+            uname -a || true
+            if command -v sw_vers > /dev/null 2>&1; then
+              echo ""
+              echo "== sw_vers =="
+              sw_vers || true
+            fi
+            echo ""
+            echo "== nix --version =="
+            nix --version || true
+          } > "$DIAG_ROOT/environment.txt" 2>&1
+
+          pre_resolve_log="$DIAG_ROOT/resolve-devenv-pre-repair.log"
+          pre_info_log="$DIAG_ROOT/devenv-info-pre-repair.log"
+          verify_log="$DIAG_ROOT/nix-store-verify-pre-repair.log"
+          repair_log="$DIAG_ROOT/nix-store-verify-repair.log"
+          post_resolve_log="$DIAG_ROOT/resolve-devenv-post-repair.log"
+          post_info_log="$DIAG_ROOT/devenv-info-post-repair.log"
+
+          if DEVENV_OUT=$(resolve_devenv 2>"$pre_resolve_log") && DEVENV_BIN="$DEVENV_OUT/bin/devenv" && NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$pre_info_log" 2>&1; then
             echo "Nix store OK"
           else
-            echo "::warning::Nix store validation failed, repairing..."
-            nix-store --verify --check-contents --repair 2>&1 | tail -20
+            echo "::warning::Nix store validation failed, collecting diagnostics and repairing..."
+            if ! nix-store --verify --check-contents > "$verify_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents reported issues (see diagnostics artifact)"
+            fi
+            if ! nix-store --verify --check-contents --repair > "$repair_log" 2>&1; then
+              echo "::warning::nix-store --verify --check-contents --repair reported issues (see diagnostics artifact)"
+            fi
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv)
+            DEVENV_OUT=$(resolve_devenv 2>"$post_resolve_log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
-            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > /dev/null
+            NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" "$DEVENV_BIN" info > "$post_info_log" 2>&1
           fi
 
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
-          "$DEVENV_BIN" version
+          "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -457,3 +900,53 @@ jobs:
             gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
               || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
           fi
+      - name: Nix diagnostics summary
+        if: failure()
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
+          if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then
+            echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Nix Store Diagnostics"
+            echo ""
+            echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
+            echo ""
+            echo "- Diagnostics directory: \`$diag_dir\`"
+            echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
+
+          if [ -s "$markers_file" ]; then
+            {
+              echo ""
+              echo "### Signature markers"
+              echo '```text'
+              sed -n "1,120p" "$markers_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload Nix diagnostics artifact
+        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}'
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Failure note
+        if: failure()
+        shell: bash
+        run: |
+          echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
+          echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"

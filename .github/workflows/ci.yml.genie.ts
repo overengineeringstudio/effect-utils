@@ -23,6 +23,26 @@ const baseSteps = [
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
   validateNixStoreStep,
+  /**
+   * Temporary debug switch for #272 to validate failure-path diagnostics without waiting for a real flake.
+   * Remove once #201/#272 are root-caused and diagnostics instrumentation is removed.
+   */
+  {
+    name: 'Force diagnostics failure (debug)',
+    if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}",
+    shell: 'bash',
+    run: [
+      'diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"',
+      'mkdir -p "$diag_dir"',
+      'cat > "$diag_dir/synthetic-signature.log" <<\'EOF\'',
+      'Failed to convert config.cachix to JSON',
+      '... while evaluating the option `cachix.package`',
+      "error: path '/nix/store/synthetic-invalid-path' is not valid",
+      'EOF',
+      'echo "::warning::Intentional failure for diagnostics validation (#272)"',
+      'exit 1',
+    ].join('\n'),
+  },
 ] as const
 
 const failureReminderStep = {
@@ -30,16 +50,82 @@ const failureReminderStep = {
   if: 'failure()',
   shell: 'bash',
   run: [
-    'echo "If this looks like Namespace macOS Nix store corruption (e.g. \\"... is not valid\\", \\"config.cachix\\", \\"cachix.package\\"), add the run link + full nix-store output to:"',
+    'echo "If this looks like Namespace runner Nix store corruption (e.g. \\"... is not valid\\", \\"config.cachix\\", \\"cachix.package\\"), add the run link + full nix-store output to:"',
     'echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"',
   ].join('\n'),
+} as const
+
+/**
+ * Temporary diagnostics summary for #272.
+ * Remove once #201/#272 are root-caused and we can return to a minimal CI flow.
+ */
+const nixDiagnosticsSummaryStep = {
+  name: 'Nix diagnostics summary',
+  if: 'failure()',
+  shell: 'bash',
+  run: [
+    'diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"',
+    'if [ -z "$diag_dir" ] || [ ! -d "$diag_dir" ]; then',
+    '  echo "## Nix Store Diagnostics" >> "$GITHUB_STEP_SUMMARY"',
+    '  echo "" >> "$GITHUB_STEP_SUMMARY"',
+    '  echo "No diagnostics directory found (validation may have failed before capture)." >> "$GITHUB_STEP_SUMMARY"',
+    '  exit 0',
+    'fi',
+    '',
+    '{',
+    '  echo "## Nix Store Diagnostics"',
+    '  echo ""',
+    '  echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."',
+    '  echo ""',
+    '  echo "- Diagnostics directory: \\`$diag_dir\\`"',
+    '  echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"',
+    '} >> "$GITHUB_STEP_SUMMARY"',
+    '',
+    'markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"',
+    'grep -R -n -E "config\\\\.cachix|cachix\\\\.package|error: path \'/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true',
+    '',
+    'if [ -s "$markers_file" ]; then',
+    '  {',
+    '    echo ""',
+    '    echo "### Signature markers"',
+    "    echo '```text'",
+    '    sed -n "1,120p" "$markers_file"',
+    "    echo '```'",
+    '  } >> "$GITHUB_STEP_SUMMARY"',
+    'else',
+    '  echo "" >> "$GITHUB_STEP_SUMMARY"',
+    '  echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"',
+    'fi',
+  ].join('\n'),
+} as const
+
+/**
+ * Temporary artifact upload for #272 root-cause analysis.
+ * Remove together with `nixDiagnosticsSummaryStep` after the issue class is resolved.
+ */
+const nixDiagnosticsArtifactStep = {
+  name: 'Upload Nix diagnostics artifact',
+  if: "failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''",
+  uses: 'actions/upload-artifact@v4',
+  with: {
+    name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}',
+    'if-no-files-found': 'ignore',
+    'retention-days': 14,
+  },
 } as const
 
 const job = (step: { name: string; run: string }) => ({
   'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
   defaults: bashShellDefaults,
   env: standardCIEnv,
-  steps: [...baseSteps, step, failureReminderStep],
+  steps: [
+    ...baseSteps,
+    step,
+    nixDiagnosticsSummaryStep,
+    nixDiagnosticsArtifactStep,
+    failureReminderStep,
+  ],
 })
 
 const multiPlatformJob = (step: { name: string; run: string }) => ({
@@ -52,7 +138,13 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   'runs-on': namespaceRunner('${{ matrix.runner }}' as RunnerProfile, '${{ github.run_id }}'),
   defaults: bashShellDefaults,
   env: standardCIEnv,
-  steps: [...baseSteps, step, failureReminderStep],
+  steps: [
+    ...baseSteps,
+    step,
+    nixDiagnosticsSummaryStep,
+    nixDiagnosticsArtifactStep,
+    failureReminderStep,
+  ],
 })
 
 // Jobs keyed by CIJobName for type safety with required status checks
@@ -162,6 +254,9 @@ const deployJobs = {
           'fi',
         ].join('\n'),
       },
+      nixDiagnosticsSummaryStep,
+      nixDiagnosticsArtifactStep,
+      failureReminderStep,
     ],
   },
 } as const
@@ -171,6 +266,17 @@ export default githubWorkflow({
   on: {
     push: { branches: ['main'] },
     pull_request: { branches: ['main'] },
+    workflow_dispatch: {
+      inputs: {
+        debug_force_nix_diagnostics_failure: {
+          description:
+            'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary',
+          required: false,
+          default: false,
+          type: 'boolean',
+        },
+      },
+    },
   },
   jobs: { ...jobs, ...deployJobs },
 } satisfies GitHubWorkflowArgs)
