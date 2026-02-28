@@ -48,7 +48,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
   const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
   const problems = analyzeProblems({ members, lockStaleness })
   const hasNesting = members.some(
-    (m) => m.nestedMembers !== undefined && m.nestedMembers !== undefined.length > 0,
+    (m) => m.nestedMembers !== undefined && m.nestedMembers.length > 0,
   )
   const hasNestedMegarepos = members.some((m) => m.isMegarepo)
 

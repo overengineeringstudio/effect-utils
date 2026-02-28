@@ -40,7 +40,7 @@ export const runGenieValidation = ({
       const targetFilePath = genieFilePath.replace('.genie.ts', '')
       const isPackageJson = pathService.basename(targetFilePath) === 'package.json'
 
-      const loaded = yield* ((): Effect.Effect<LoadedGenieFile, GenieImportError> => {
+      const loaded = yield* (() => {
         const preloaded = preloadedByPath.get(genieFilePath)
         if (preloaded !== undefined) {
           return Effect.succeed(preloaded)

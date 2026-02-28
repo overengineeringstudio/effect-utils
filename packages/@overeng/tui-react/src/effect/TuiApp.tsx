@@ -554,7 +554,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
           // Only dispatch Interrupted when the fiber was actually interrupted (e.g. Ctrl+C),
           // not on normal scope close. Without this check, normal exits get exitCode 130.
           if (
-            interruptedAction !== undefined &&
+            interruptedAction != null &&
             exit._tag === 'Failure' &&
             Cause.isInterruptedOnly(exit.cause) === true
           ) {

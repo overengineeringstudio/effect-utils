@@ -182,8 +182,8 @@ in
 
   tasks = {
     "ts:check" = {
-      description = "Type check the whole workspace (tsc -p; emits by design with project references)";
-      exec = trace.exec "ts:check" (tscWithDiagnostics "-p ${tsconfigFile}" "--noEmit");
+      description = "Type check the whole workspace (tsc --build)";
+      exec = trace.exec "ts:check" (tscWithDiagnostics "--build ${tsconfigFile}" "");
       after = [
         "genie:run"
         "pnpm:install"

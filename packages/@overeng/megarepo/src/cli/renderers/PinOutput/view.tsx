@@ -116,7 +116,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
             )}
 
           {/* Lock changes */}
-          {state.lockChanges !== undefined && state.lockChanges !== undefined.length > 0 && (
+          {state.lockChanges !== undefined && state.lockChanges.length > 0 && (
             <Box flexDirection="row">
               <Text dim>{'  lock           '}</Text>
               <Text>{state.lockChanges.join(', ')}</Text>

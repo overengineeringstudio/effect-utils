@@ -315,8 +315,16 @@ export const parseSourceString = (sourceString: string): MemberSource | undefine
   // GitHub shorthand: owner/repo
   if (isGitHubShorthand(source) === true) {
     const parts = source.split('/')
-    if (parts.length === 2 && parts[0] !== '' && parts[1] !== '') {
-      return { type: 'github', owner: parts[0], repo: parts[1], ref }
+    const owner = parts[0]
+    const repo = parts[1]
+    if (
+      parts.length === 2 &&
+      owner !== undefined &&
+      owner !== '' &&
+      repo !== undefined &&
+      repo !== ''
+    ) {
+      return { type: 'github', owner, repo, ref }
     }
     return undefined
   }
