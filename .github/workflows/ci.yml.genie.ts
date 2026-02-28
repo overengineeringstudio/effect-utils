@@ -9,7 +9,7 @@ import {
   runDevenvTasksBefore,
   standardCIEnv,
   namespaceRunner,
-  uploadNixStoreDiagnosticsArtifactStep,
+  nixDiagnosticsArtifactStep,
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
@@ -108,7 +108,7 @@ const job = (step: { name: string; run: string }) => ({
     ...baseSteps,
     step,
     nixDiagnosticsSummaryStep,
-    uploadNixStoreDiagnosticsArtifactStep(),
+    nixDiagnosticsArtifactStep(),
     failureReminderStep,
   ],
 })
@@ -127,7 +127,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     ...baseSteps,
     step,
     nixDiagnosticsSummaryStep,
-    uploadNixStoreDiagnosticsArtifactStep(),
+    nixDiagnosticsArtifactStep(),
     failureReminderStep,
   ],
 })
@@ -240,7 +240,7 @@ const deployJobs = {
         ].join('\n'),
       },
       nixDiagnosticsSummaryStep,
-      uploadNixStoreDiagnosticsArtifactStep(),
+      nixDiagnosticsArtifactStep(),
       failureReminderStep,
     ],
   },

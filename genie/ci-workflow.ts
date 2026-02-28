@@ -8,7 +8,7 @@
  * ```ts
  * import {
  *   checkoutStep, installNixStep, cachixStep,
- *   preparePinnedDevenvStep, validateNixStoreStep, uploadNixStoreDiagnosticsArtifactStep,
+ *   preparePinnedDevenvStep, validateNixStoreStep, nixDiagnosticsArtifactStep,
  *   runDevenvTasksBefore, standardCIEnv,
  * } from '../../repos/effect-utils/genie/ci-workflow.ts'
  *
@@ -18,7 +18,7 @@
  *   cachixStep({ name: 'my-cache' }),
  *   preparePinnedDevenvStep,
  *   validateNixStoreStep,
- *   uploadNixStoreDiagnosticsArtifactStep(),
+ *   nixDiagnosticsArtifactStep(),
  * ]
  * ```
  */
@@ -258,7 +258,7 @@ echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
  * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.
  * Add this step after validation/task steps so failure-path data is retained.
  */
-export const uploadNixStoreDiagnosticsArtifactStep = (
+export const nixDiagnosticsArtifactStep = (
   opts?: { if?: string; retentionDays?: number },
 ) => ({
   name: 'Upload Nix diagnostics artifact',
