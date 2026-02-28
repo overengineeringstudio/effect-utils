@@ -157,20 +157,20 @@ jobs:
             echo ""
             echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
             echo ""
-            echo "- Diagnostics directory: `$diag_dir`"
+            echo "- Diagnostics directory: \`$diag_dir\`"
             echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          markers_file="$diag_dir/signature-markers.txt"
-          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" "$diag_dir" > "$markers_file" || true
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
 
           if [ -s "$markers_file" ]; then
             {
               echo ""
               echo "### Signature markers"
-              echo "```text"
+              echo '```text'
               sed -n "1,120p" "$markers_file"
-              echo "```"
+              echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -330,20 +330,20 @@ jobs:
             echo ""
             echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
             echo ""
-            echo "- Diagnostics directory: `$diag_dir`"
+            echo "- Diagnostics directory: \`$diag_dir\`"
             echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          markers_file="$diag_dir/signature-markers.txt"
-          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" "$diag_dir" > "$markers_file" || true
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
 
           if [ -s "$markers_file" ]; then
             {
               echo ""
               echo "### Signature markers"
-              echo "```text"
+              echo '```text'
               sed -n "1,120p" "$markers_file"
-              echo "```"
+              echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -506,20 +506,20 @@ jobs:
             echo ""
             echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
             echo ""
-            echo "- Diagnostics directory: `$diag_dir`"
+            echo "- Diagnostics directory: \`$diag_dir\`"
             echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          markers_file="$diag_dir/signature-markers.txt"
-          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" "$diag_dir" > "$markers_file" || true
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
 
           if [ -s "$markers_file" ]; then
             {
               echo ""
               echo "### Signature markers"
-              echo "```text"
+              echo '```text'
               sed -n "1,120p" "$markers_file"
-              echo "```"
+              echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -682,20 +682,20 @@ jobs:
             echo ""
             echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
             echo ""
-            echo "- Diagnostics directory: `$diag_dir`"
+            echo "- Diagnostics directory: \`$diag_dir\`"
             echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          markers_file="$diag_dir/signature-markers.txt"
-          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" "$diag_dir" > "$markers_file" || true
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
 
           if [ -s "$markers_file" ]; then
             {
               echo ""
               echo "### Signature markers"
-              echo "```text"
+              echo '```text'
               sed -n "1,120p" "$markers_file"
-              echo "```"
+              echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -917,20 +917,20 @@ jobs:
             echo ""
             echo "Temporary instrumentation for #272; remove after root cause is confirmed and CI is stable."
             echo ""
-            echo "- Diagnostics directory: `$diag_dir`"
+            echo "- Diagnostics directory: \`$diag_dir\`"
             echo "- Tracking issue: https://github.com/overengineeringstudio/effect-utils/issues/272"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          markers_file="$diag_dir/signature-markers.txt"
-          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" "$diag_dir" > "$markers_file" || true
+          markers_file="${RUNNER_TEMP:-/tmp}/nix-store-signature-markers.txt"
+          grep -R -n -E "config\\.cachix|cachix\\.package|error: path '/nix/store/.+ is not valid" --exclude="$(basename "$markers_file")" "$diag_dir" > "$markers_file" || true
 
           if [ -s "$markers_file" ]; then
             {
               echo ""
               echo "### Signature markers"
-              echo "```text"
+              echo '```text'
               sed -n "1,120p" "$markers_file"
-              echo "```"
+              echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "" >> "$GITHUB_STEP_SUMMARY"
