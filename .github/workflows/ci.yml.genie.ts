@@ -23,6 +23,26 @@ const baseSteps = [
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
   validateNixStoreStep,
+  /**
+   * Temporary debug switch for #272 to validate failure-path diagnostics without waiting for a real flake.
+   * Remove once #201/#272 are root-caused and diagnostics instrumentation is removed.
+   */
+  {
+    name: 'Force diagnostics failure (debug)',
+    if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}",
+    shell: 'bash',
+    run: [
+      'diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"',
+      'mkdir -p "$diag_dir"',
+      'cat > "$diag_dir/synthetic-signature.log" <<\'EOF\'',
+      'Failed to convert config.cachix to JSON',
+      '... while evaluating the option `cachix.package`',
+      "error: path '/nix/store/synthetic-invalid-path' is not valid",
+      'EOF',
+      'echo "::warning::Intentional failure for diagnostics validation (#272)"',
+      'exit 1',
+    ].join('\n'),
+  },
 ] as const
 
 const failureReminderStep = {
@@ -246,6 +266,17 @@ export default githubWorkflow({
   on: {
     push: { branches: ['main'] },
     pull_request: { branches: ['main'] },
+    workflow_dispatch: {
+      inputs: {
+        debug_force_nix_diagnostics_failure: {
+          description:
+            'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary',
+          required: false,
+          default: false,
+          type: 'boolean',
+        },
+      },
+    },
   },
   jobs: { ...jobs, ...deployJobs },
 } satisfies GitHubWorkflowArgs)

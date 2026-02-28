@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - **CI diagnostics**: add temporary root-cause instrumentation for Nix store corruption flakes (`#272`)
   - `validateNixStoreStep` now captures full verify/repair/devenv logs and runner fingerprint into a diagnostics directory
   - Failed jobs now add a compact diagnostics summary and upload a diagnostics artifact for triage
+  - Added a temporary `workflow_dispatch` debug switch to force a controlled CI failure and verify diagnostics summary/artifact behavior end-to-end
   - Marked as temporary with explicit cleanup intent once root cause is identified and CI is stable
 - **devenv/tasks/shared/ts.nix**: Fix `ts:emit` missing `--build` flag
   - `tscWithDiagnostics` was called without `--build`, causing tsc to treat `tsconfig.all.json` as a source file

@@ -8,6 +8,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      debug_force_nix_diagnostics_failure:
+        description: 'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   typecheck:
@@ -118,6 +125,19 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Type check
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run ts:check --mode before"
       - name: Nix diagnostics summary
@@ -278,6 +298,19 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Format + lint
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
       - name: Nix diagnostics summary
@@ -441,6 +474,19 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Unit tests
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run test:run --mode before"
       - name: Nix diagnostics summary
@@ -604,6 +650,19 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Nix hash check
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL=\"$NIX_CONFIG\"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_UNRESTRICTED_EVAL\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run nix:check --mode before"
       - name: Nix diagnostics summary
@@ -768,6 +827,19 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Deploy storybooks to Netlify
         run: |
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
