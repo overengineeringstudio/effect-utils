@@ -602,6 +602,7 @@ export {
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
+  nixDiagnosticsArtifactStep,
   runDevenvTasksBefore,
   validateNixStoreStep,
   standardCIEnv,

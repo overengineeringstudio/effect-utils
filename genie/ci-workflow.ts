@@ -8,7 +8,8 @@
  * ```ts
  * import {
  *   checkoutStep, installNixStep, cachixStep,
- *   preparePinnedDevenvStep, validateNixStoreStep, runDevenvTasksBefore, standardCIEnv,
+ *   preparePinnedDevenvStep, validateNixStoreStep, nixDiagnosticsArtifactStep,
+ *   runDevenvTasksBefore, standardCIEnv,
  * } from '../../repos/effect-utils/genie/ci-workflow.ts'
  *
  * const baseSteps = [
@@ -17,6 +18,7 @@
  *   cachixStep({ name: 'my-cache' }),
  *   preparePinnedDevenvStep,
  *   validateNixStoreStep,
+ *   nixDiagnosticsArtifactStep(),
  * ]
  * ```
  */
@@ -251,3 +253,21 @@ echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
 "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"`,
   shell: 'bash',
 } as const
+
+/**
+ * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.
+ * Add this step after validation/task steps so failure-path data is retained.
+ */
+export const nixDiagnosticsArtifactStep = (
+  opts?: { if?: string; retentionDays?: number },
+) => ({
+  name: 'Upload Nix diagnostics artifact',
+  if: opts?.if ?? "failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''",
+  uses: 'actions/upload-artifact@v4' as const,
+  with: {
+    name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}',
+    'if-no-files-found': 'ignore',
+    'retention-days': opts?.retentionDays ?? 14,
+  },
+})
