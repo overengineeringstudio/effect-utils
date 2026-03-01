@@ -16,9 +16,9 @@ let
     # Patches are in packages/@overeng/utils/patches/ (referenced by pnpm-lock.yaml)
     patchesDir = "packages/@overeng/utils/patches";
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
-    pnpmDepsHash = "sha256-E+B1Vs55WlPGey2t8m78iMW10AitWu9gTGFr9DdfWMg=";
-    lockfileHash = "sha256-00Oc2nVsEAMAQhfU6pd6Gd77TuQs7UKYWApGzfJsORY=";
-    packageJsonDepsHash = "sha256-7JopRQ37pnueHplkmYo8FBbv2fw3i4tQz3Hp4CVSCq8=";
+    pnpmDepsHash = "sha256-rxtjjOgNSo4l+7AZWr8AxRIEqZTKCWtNtfoUyLYyqBo=";
+    lockfileHash = "sha256-kvAHDxkegIKjSA9LmoaqaU1S/vvCl/x/lQKyoBs1mEM=";
+    packageJsonDepsHash = "sha256-kWcRTxOsjzVCYB7WyHeeXd39iaDM7YmgXuNFOwjxzTA=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
   };
