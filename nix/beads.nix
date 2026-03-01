@@ -39,10 +39,12 @@ pkgs.stdenv.mkDerivation {
     inherit (platformInfo) url sha256;
   };
 
-  # Dynamically linked on Linux (needs libc.so.6) —
-  # autoPatchelfHook resolves the interpreter and rpath automatically.
-  nativeBuildInputs = [ pkgs.gnutar pkgs.installShellFiles pkgs.makeWrapper ]
-    ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.autoPatchelfHook ];
+  nativeBuildInputs = [
+    pkgs.gnutar
+    pkgs.installShellFiles
+    pkgs.makeWrapper
+  ]
+  ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.patchelf ];
 
   unpackPhase = ''
     mkdir -p source
@@ -55,6 +57,10 @@ pkgs.stdenv.mkDerivation {
     mkdir -p $out/bin
     cp source/bd $out/bin/bd
     chmod +x $out/bin/bd
+
+    ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+      patchelf --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" $out/bin/bd
+    ''}
 
     installShellCompletion --cmd bd \
       --fish <($out/bin/bd completion fish) \
