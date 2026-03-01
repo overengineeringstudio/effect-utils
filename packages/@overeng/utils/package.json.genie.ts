@@ -85,6 +85,7 @@ export default packageJson({
       '@effect/vitest',
       '@overeng/utils-dev',
       '@types/node',
+      'storybook',
       '@storybook/react-vite',
       'vite',
       'vitest',
