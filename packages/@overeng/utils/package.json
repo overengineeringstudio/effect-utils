@@ -64,7 +64,7 @@
     "@opentelemetry/sdk-trace-web": "2.2.0",
     "@opentelemetry/semantic-conventions": "1.38.0",
     "@overeng/utils-dev": "workspace:*",
-    "@playwright/test": "1.57.0",
+    "@playwright/test": "1.58.0",
     "@storybook/react-vite": "10.2.3",
     "@types/node": "25.0.3",
     "effect": "3.19.15",
@@ -81,7 +81,7 @@
     "@effect/platform-node": "^0.104.1",
     "@effect/rpc": "^0.73.0",
     "@effect/workflow": "^0.16.0",
-    "@playwright/test": "^1.57.0",
+    "@playwright/test": "^1.58.0",
     "effect": "^3.19.15"
   },
   "pnpm": {
