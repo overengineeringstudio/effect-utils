@@ -271,3 +271,59 @@ export const nixDiagnosticsArtifactStep = (
     'retention-days': opts?.retentionDays ?? 14,
   },
 })
+
+/**
+ * Reusable step that writes a deployment summary and upserts a PR comment.
+ *
+ * The provided scripts run in order and must:
+ * - `modeScript`: set `label` (or `exit 0` for unsupported events)
+ * - `rowsScript`: set `rows` as markdown table rows (`| a | b |\n`)
+ */
+export const deployCommentStep = (opts: {
+  summaryTitle: string
+  tableHeaders: readonly [string, string]
+  modeScript: string
+  rowsScript: string
+  noRowsMessage: string
+  commentTitle?: string
+  if?: string
+}) => ({
+  name: 'Post deploy URLs',
+  if: opts.if ?? 'always() && !cancelled()',
+  shell: 'bash' as const,
+  env: {
+    GH_TOKEN: '${{ github.token }}',
+  },
+  run: [
+    opts.modeScript,
+    '',
+    opts.rowsScript,
+    '',
+    'if [ -z "$rows" ]; then',
+    `  echo "${opts.noRowsMessage}" >> "$GITHUB_STEP_SUMMARY"`,
+    '  exit 0',
+    'fi',
+    '',
+    '# Write job summary',
+    '{',
+    `  echo "## ${opts.summaryTitle} (\$label)"`,
+    '  echo ""',
+    `  echo "| ${opts.tableHeaders[0]} | ${opts.tableHeaders[1]} |"`,
+    '  echo "| --- | --- |"',
+    '  echo -e "$rows"',
+    '} >> "$GITHUB_STEP_SUMMARY"',
+    '',
+    '# Post/update PR comment',
+    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+    '  {',
+    `    echo "## ${opts.commentTitle ?? opts.summaryTitle}"`,
+    '    echo ""',
+    `    echo "| ${opts.tableHeaders[0]} | ${opts.tableHeaders[1]} |"`,
+    '    echo "| --- | --- |"',
+    '    echo -e "$rows"',
+    '  } > /tmp/comment.md',
+    '  gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
+    '    || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
+    'fi',
+  ].join('\n'),
+})

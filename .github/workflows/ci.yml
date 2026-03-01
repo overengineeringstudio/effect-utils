@@ -881,7 +881,7 @@ jobs:
 
           # Write job summary
           {
-            echo "## Storybook Previews (${label})"
+            echo "## Storybook Previews ($label)"
             echo ""
             echo "| Package | URL |"
             echo "| --- | --- |"
