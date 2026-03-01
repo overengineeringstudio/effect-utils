@@ -157,8 +157,11 @@ let
             "out"
           ];
           isExcluded = lib.elem baseName excludedNames;
-          # Include everything under the main package directory
-          isInPackage = lib.hasPrefix "${pkgDir}/" relPath || relPath == pkgDir;
+          # For deps fetching, only include deps-relevant files from the main package
+          # (source files are only needed in workspaceSrc for the build phase)
+          depsRelevantFiles = [ "pnpm-lock.yaml" "package.json" "pnpm-workspace.yaml" ".npmrc" ];
+          isPackageDir = relPath == pkgDir && type == "directory";
+          isPackageDepsFile = lib.any (fname: relPath == "${pkgDir}/${fname}") depsRelevantFiles;
           # Include parent directories needed for structure
           parts = lib.splitString "/" pkgDir;
           isParentDir = lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n parts)) (
@@ -190,7 +193,8 @@ let
         in
         !isExcluded
         && (
-          isInPackage
+          isPackageDir
+          || isPackageDepsFile
           || isInPatches
           || isParentDir
           || isWorkspaceMemberPackageJson
@@ -201,8 +205,7 @@ let
     };
 
   # Fetch pnpm dependencies using the shared helper.
-  # Uses --force --recursive because workspace member directories only contain
-  # package.json files (not full sources), and pnpm needs to handle them.
+  # Uses --force --recursive for workspace member handling.
   pnpmDeps = pnpmDepsHelper.mkDeps {
     inherit name pnpmDepsHash;
     src = mkPackageSource packageDir;
