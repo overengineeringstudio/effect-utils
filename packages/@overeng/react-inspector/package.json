@@ -26,8 +26,8 @@
   "devDependencies": {
     "@effect/language-service": "0.69.2",
     "@overeng/utils": "workspace:*",
-    "@storybook/react": "10.2.1",
-    "@storybook/react-vite": "10.2.1",
+    "@storybook/react": "10.2.3",
+    "@storybook/react-vite": "10.2.3",
     "@testing-library/react": "16.3.1",
     "@testing-library/user-event": "14.6.1",
     "@types/is-dom": "1.1.2",
@@ -37,7 +37,7 @@
     "happy-dom": "18.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "storybook": "10.2.1",
+    "storybook": "10.2.3",
     "typescript": "5.9.3",
     "vite": "7.3.0",
     "vitest": "3.2.4"
