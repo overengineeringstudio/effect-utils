@@ -7,10 +7,10 @@
 #     (inputs.effect-utils.devenvModules.tasks.vercel {
 #       deployments = [
 #         {
-#           name = "schickling-dev";
-#           path = "apps/schickling.dev";
+#           name = "web";
+#           path = "apps/web";
 #           outputDir = "dist";
-#           projectIdEnv = "VERCEL_PROJECT_ID_SCHICKLING_DEV";
+#           projectIdEnv = "VERCEL_PROJECT_ID_WEB";
 #         }
 #       ];
 #       buildTaskPrefix = "build";
@@ -18,9 +18,9 @@
 #   ];
 #
 # Deploy modes (via --input):
-#   dt vercel:deploy:schickling-dev                              # preview
-#   dt vercel:deploy:schickling-dev --input type=prod            # production
-#   dt vercel:deploy:schickling-dev --input type=pr --input pr=42
+#   dt vercel:deploy:web                              # preview
+#   dt vercel:deploy:web --input type=prod            # production
+#   dt vercel:deploy:web --input type=pr --input pr=42
 #
 # Provides:
 #   Tasks:
