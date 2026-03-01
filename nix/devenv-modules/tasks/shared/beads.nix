@@ -1,10 +1,7 @@
 # Beads devenv module — integrates beads issue tracking with devenv.
 #
-# Uses Dolt as backend. In embedded mode (default), bd manages the
-# database directly. In server mode, `bd dolt start` runs a Dolt SQL
-# server for multi-writer concurrency.
-#
-# Sets BEADS_DIR so `bd` works from anywhere without wrapper scripts.
+# v0.57+ self-manages dolt sql-server (auto-start with deterministic port).
+# This module sets BEADS_DIR and provides push/pull convenience tasks.
 { beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}" }:
 { pkgs, config, ... }:
 let
@@ -15,30 +12,6 @@ let
 in
 {
   env.BEADS_DIR = "${config.devenv.root}/${beadsRepoRelPath}/.beads";
-
-  tasks."beads:ensure" = {
-    description = "Ensure beads database is initialized";
-    after = [ "megarepo:sync" ];
-    exec = ''
-      if [ ! -d "$BEADS_DIR" ]; then
-        echo "[beads] Beads repo not materialized, skipping."
-        exit 0
-      fi
-
-      cd "''${BEADS_DIR%/.beads}"
-
-      # Bootstrap Dolt DB from JSONL on fresh checkout
-      # (`bd list` auto-creates the DB from JSONL as a side effect)
-      if [ ! -d "$BEADS_DIR/dolt" ] && [ -f "$BEADS_DIR/issues.jsonl" ]; then
-        echo "[beads] No database found, bootstrapping from JSONL..."
-        ${bd} list --quiet >/dev/null 2>&1 || true
-      fi
-    '';
-    status = ''
-      [ ! -d "$BEADS_DIR" ] && exit 0
-      [ -d "$BEADS_DIR/dolt" ]
-    '';
-  };
 
   tasks."beads:push" = {
     description = "Push beads changes to Dolt remote";

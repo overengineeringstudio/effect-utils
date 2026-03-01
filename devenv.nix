@@ -351,10 +351,6 @@ in
     description = "Apply .github/repo-settings.json to GitHub ruleset";
   };
 
-  # Wire beads:ensure directly to shell entry (not via optionalTasks)
-  # because the setup module's gitHashStatus cache isn't the right gate here.
-  tasks."devenv:enterShell".after = lib.mkAfter [ "beads:ensure" ];
-
   # Keep git-hook installation out of the shell-entry path.
   # If needed, install with `devenv tasks run devenv:git-hooks:install`.
   # TODO(cachix/git-hooks.nix#688): remove this once the upstream git-hooks.nix issue
