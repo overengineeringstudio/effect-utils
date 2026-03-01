@@ -10,6 +10,7 @@ import {
   standardCIEnv,
   namespaceRunner,
   nixDiagnosticsArtifactStep,
+  deployCommentStep,
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
@@ -157,7 +158,7 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
 const NETLIFY_SITE = 'overeng-utils'
 
 // Deploy job — NOT a required status check (separate from CIJobName)
-const deployJobs = {
+const deployJobs: Record<string, any> = {
   'deploy-storybooks': {
     'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
     // No `needs` — run in parallel with other jobs for faster feedback
@@ -182,14 +183,11 @@ const deployJobs = {
           'fi',
         ].join('\n'),
       },
-      {
-        name: 'Post deploy URLs',
-        if: 'always() && !cancelled()',
-        shell: 'bash',
-        env: {
-          GH_TOKEN: '${{ github.token }}',
-        },
-        run: [
+      deployCommentStep({
+        summaryTitle: 'Storybook Previews',
+        tableHeaders: ['Package', 'URL'],
+        noRowsMessage: 'No storybooks were deployed.',
+        modeScript: [
           `site="${NETLIFY_SITE}"`,
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
           '  suffix=""',
@@ -200,7 +198,8 @@ const deployJobs = {
           'else',
           '  exit 0',
           'fi',
-          '',
+        ].join('\n'),
+        rowsScript: [
           '# Collect deployed storybooks by checking for build output',
           'rows=""',
           'for dir in packages/@overeng/*/storybook-static; do',
@@ -210,35 +209,8 @@ const deployJobs = {
           '  url="https://${name}${suffix}--${site}.netlify.app"',
           '  rows="${rows}| ${name} | ${url} |\\n"',
           'done',
-          '',
-          'if [ -z "$rows" ]; then',
-          '  echo "No storybooks were deployed." >> "$GITHUB_STEP_SUMMARY"',
-          '  exit 0',
-          'fi',
-          '',
-          '# Write job summary',
-          '{',
-          '  echo "## Storybook Previews (${label})"',
-          '  echo ""',
-          '  echo "| Package | URL |"',
-          '  echo "| --- | --- |"',
-          '  echo -e "$rows"',
-          '} >> "$GITHUB_STEP_SUMMARY"',
-          '',
-          '# Post/update PR comment',
-          'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-          '  {',
-          '    echo "## Storybook Previews"',
-          '    echo ""',
-          '    echo "| Package | URL |"',
-          '    echo "| --- | --- |"',
-          '    echo -e "$rows"',
-          '  } > /tmp/comment.md',
-          '  gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
-          '    || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
-          'fi',
         ].join('\n'),
-      },
+      }),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
