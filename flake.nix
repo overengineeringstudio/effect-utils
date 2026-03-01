@@ -115,6 +115,7 @@
           test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
+          vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
@@ -138,7 +139,11 @@
       # Build Grafonnet dashboards against the shared OTEL dashboard library.
       # Returns a linkFarm (Nix store path) containing compiled JSON files.
       lib.buildOtelDashboards =
-        { pkgs, src, dashboardNames }:
+        {
+          pkgs,
+          src,
+          dashboardNames,
+        }:
         import ./nix/devenv-modules/otel/build-dashboards.nix { inherit pkgs src dashboardNames; };
 
       # Standalone otel-span CLI (run + emit subcommands).
