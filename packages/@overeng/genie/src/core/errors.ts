@@ -69,3 +69,11 @@ export class GenieNotImplementedError extends Schema.TaggedError<GenieNotImpleme
     message: Schema.String,
   },
 ) {}
+
+/** Error when oxfmt config JSON cannot be parsed */
+export class InvalidOxfmtConfigError extends Schema.TaggedError<InvalidOxfmtConfigError>()(
+  'InvalidOxfmtConfigError',
+  {
+    message: Schema.String,
+  },
+) {}

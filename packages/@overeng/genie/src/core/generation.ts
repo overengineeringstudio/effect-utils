@@ -16,7 +16,12 @@ import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
 import { ensureImportMapResolver } from './discovery.ts'
-import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
+import {
+  GenieCheckError,
+  GenieFileError,
+  GenieImportError,
+  InvalidOxfmtConfigError,
+} from './errors.ts'
 import type { GenerateSuccess, GenieContext } from './types.ts'
 
 /** Loaded genie module plus base context reused across check and validation phases. */
@@ -111,11 +116,6 @@ export const errorOriginatesInFile = ({
 const oxfmtSupportedExtensions = new Set(['.json', '.jsonc', '.yml', '.yaml'])
 
 type OxfmtConfig = Readonly<Record<string, unknown>>
-type InvalidOxfmtConfigError = {
-  readonly _tag: 'InvalidOxfmtConfigError'
-  readonly message: string
-}
-
 type OxfmtFormatResult = {
   code: string
   errors: ReadonlyArray<unknown>
@@ -153,10 +153,10 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   const raw = yield* fs.readFileString(configPath.value)
   const config = yield* Effect.try({
     try: () => JSON.parse(raw) as OxfmtConfig,
-    catch: (): InvalidOxfmtConfigError => ({
-      _tag: 'InvalidOxfmtConfigError',
-      message: 'Invalid oxfmt config JSON',
-    }),
+    catch: () =>
+      new InvalidOxfmtConfigError({
+        message: 'Invalid oxfmt config JSON',
+      }),
   })
 
   return Option.some(config)
