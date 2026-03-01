@@ -16,7 +16,12 @@ import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
 import { ensureImportMapResolver } from './discovery.ts'
-import { GenieCheckError, GenieFileError, GenieImportError } from './errors.ts'
+import {
+  GenieCheckError,
+  GenieFileError,
+  GenieImportError,
+  InvalidOxfmtConfigError,
+} from './errors.ts'
 import type { GenerateSuccess, GenieContext } from './types.ts'
 
 /** Loaded genie module plus base context reused across check and validation phases. */
@@ -148,7 +153,10 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   const raw = yield* fs.readFileString(configPath.value)
   const config = yield* Effect.try({
     try: () => JSON.parse(raw) as OxfmtConfig,
-    catch: () => new Error('Invalid oxfmt config JSON'),
+    catch: () =>
+      new InvalidOxfmtConfigError({
+        message: 'Invalid oxfmt config JSON',
+      }),
   })
 
   return Option.some(config)
@@ -396,7 +404,7 @@ const enrichPackageJsonMarker = ({
 }
 
 /** Generate expected content for a genie file (shared between generate and dry-run) */
-export const getExpectedContent = ({
+export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
@@ -406,28 +414,27 @@ export const getExpectedContent = ({
   cwd: string
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
-}) =>
-  Effect.gen(function* () {
-    const targetFilePath = genieFilePath.replace('.genie.ts', '')
-    const sourceFile = path.basename(genieFilePath)
-    const loaded =
-      loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
-    let rawContent = loaded.output.stringify(loaded.ctx)
+}) {
+  const targetFilePath = genieFilePath.replace('.genie.ts', '')
+  const sourceFile = path.basename(genieFilePath)
+  const loaded =
+    loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
+  let rawContent = loaded.output.stringify(loaded.ctx)
 
-    // For package.json files, enrich the $genie marker with source info
-    if (path.basename(targetFilePath) === 'package.json') {
-      rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
-    }
+  // For package.json files, enrich the $genie marker with source info
+  if (path.basename(targetFilePath) === 'package.json') {
+    rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
+  }
 
-    const header = getHeaderComment({ targetFilePath, sourceFile })
-    const formattedContent = yield* formatWithOxfmt({
-      targetFilePath,
-      content: rawContent,
-      configPath: oxfmtConfigPath,
-    })
+  const header = getHeaderComment({ targetFilePath, sourceFile })
+  const formattedContent = yield* formatWithOxfmt({
+    targetFilePath,
+    content: rawContent,
+    configPath: oxfmtConfigPath,
+  })
 
-    return { targetFilePath, content: header + formattedContent }
-  }).pipe(Effect.withSpan('getExpectedContent'))
+  return { targetFilePath, content: header + formattedContent }
+})
 
 /** Generate a brief diff summary showing line count changes */
 const generateDiffSummary = ({
