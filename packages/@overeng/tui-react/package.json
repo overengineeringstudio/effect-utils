@@ -41,7 +41,7 @@
     "@opentui/core": "0.1.74",
     "@opentui/react": "0.1.74",
     "@overeng/utils": "workspace:*",
-    "@playwright/test": "1.58.0",
+    "@playwright/test": "1.58.2",
     "@storybook/react": "10.2.3",
     "@storybook/react-vite": "10.2.3",
     "@types/node": "25.0.3",

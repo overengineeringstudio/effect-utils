@@ -197,7 +197,7 @@ export const catalog = defineCatalog({
 
   // Build tools
   typescript: '5.9.3',
-  '@playwright/test': '1.58.0',
+  '@playwright/test': '1.58.2',
   vite: '7.3.0',
   // TODO upgrade to 4.x once fixed https://github.com/Effect-TS/effect/issues/5976
   vitest: '3.2.4',
