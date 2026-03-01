@@ -1,27 +1,26 @@
 # Beads (bd) — pre-built binary package from GitHub releases.
-# v0.56+ removed embedded Dolt entirely (CGO_ENABLED=0, pure-Go MySQL protocol).
-# Requires an external `dolt sql-server` for database operations.
+# v0.57+ self-manages dolt sql-server per project (deterministic port from FNV hash of BEADS_DIR).
 { pkgs }:
 let
-  version = "0.56.1";
+  version = "0.57.0";
   tag = "v${version}";
 
   sources = {
     x86_64-linux = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_linux_amd64.tar.gz";
-      sha256 = "0p512lhdmv5h0bh1a77rn7343y5a3s80k42jzw9id8b58k26r7sg";
+      sha256 = "0jy0blh895iask2hi7gdkagnf78pvjnk88zr0rgx5mxy4xb9sqpq";
     };
     aarch64-linux = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_linux_arm64.tar.gz";
-      sha256 = "1l4v9cwnpksk1p9v0i0vj27x7drppkcacq1q8lfxj6988c7md656";
+      sha256 = "1a5gn5kn8gf8a1923z19h4wz8vc483vy51q71q591wyvd5dnpk44";
     };
     x86_64-darwin = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_darwin_amd64.tar.gz";
-      sha256 = "06w5rky4qdpiqvjxqyddjxj54yg0ajdknqfj4kmq91z9fwb911y9";
+      sha256 = "0x72ylyv0n8riy9d9kxylfrdcpdydsm589i5xkr9i8pag4ns76i8";
     };
     aarch64-darwin = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_darwin_arm64.tar.gz";
-      sha256 = "04h85wydl1hhi1jwv52w1a44afn5xln6afy0j1xc5f1avq4l72ma";
+      sha256 = "1vcc6dm85in4hb8ik6c863l76p9hhp14r7ckpqpzfafsckzvvg7v";
     };
   };
 
@@ -40,7 +39,7 @@ pkgs.stdenv.mkDerivation {
     inherit (platformInfo) url sha256;
   };
 
-  # v0.56+ is dynamically linked on Linux (needs libc.so.6) —
+  # Dynamically linked on Linux (needs libc.so.6) —
   # autoPatchelfHook resolves the interpreter and rpath automatically.
   nativeBuildInputs = [ pkgs.gnutar pkgs.installShellFiles pkgs.makeWrapper ]
     ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.autoPatchelfHook ];
