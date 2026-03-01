@@ -17,7 +17,7 @@ let
     extraExcludedSourceNames = [ "context" "scripts" ];
     # Managed by `dt nix:hash:genie` — do not edit manually.
     pnpmDepsHash = "sha256-fuvycq5/nEhtAmkq53irp+Tb8C/HpMiqRpo/6/7GKIs=";
-    lockfileHash = "sha256-NuDMqOpBq8lNNLxWTR9G/Q17003mPgQqXMMgmxiil7w=";
+    lockfileHash = "sha256-SeUHC5ufYtN7P7lvrouN2axYwtuhm5Y0ERt5IuqJBnQ=";
     packageJsonDepsHash = "sha256-3Wt/K6hl0Sv9/imzboMh2I7nHvxOMmnl3T/cTJCUH08=";
     inherit gitRev commitTs dirty;
   };
