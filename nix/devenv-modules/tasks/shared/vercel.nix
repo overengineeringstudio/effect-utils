@@ -83,7 +83,7 @@ let
           case "$deploy_type" in
             prod)
               echo "Deploying ${deployment.name} to production..."
-              ${pkgs.vercel}/bin/vercel deploy "$deploy_dir" --yes --prod --token "$VERCEL_TOKEN"
+              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --prod --token "$VERCEL_TOKEN"
               ;;
             pr|preview)
               pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
@@ -92,7 +92,7 @@ let
               else
                 echo "Deploying ${deployment.name} preview..."
               fi
-              ${pkgs.vercel}/bin/vercel deploy "$deploy_dir" --yes --token "$VERCEL_TOKEN"
+              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --token "$VERCEL_TOKEN"
               ;;
             *)
               echo "Error: Unknown deploy type '$deploy_type'. Use: prod, pr, preview" >&2
