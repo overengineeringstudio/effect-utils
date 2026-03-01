@@ -213,9 +213,9 @@ export const catalog = defineCatalog({
   '@tailwindcss/vite': '4.1.18',
 
   // Storybook
-  storybook: '10.2.1',
-  '@storybook/react': '10.2.1',
-  '@storybook/react-vite': '10.2.1',
+  storybook: '10.2.3',
+  '@storybook/react': '10.2.3',
+  '@storybook/react-vite': '10.2.3',
   'eslint-plugin-storybook': '10.2.3',
 
   // xterm (terminal emulator for browser/testing)
