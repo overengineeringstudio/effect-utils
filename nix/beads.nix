@@ -58,6 +58,8 @@ pkgs.stdenv.mkDerivation {
     cp source/bd $out/bin/bd
     chmod +x $out/bin/bd
 
+    # Patch the ELF interpreter before running the binary for completion generation.
+    # autoPatchelfHook can't be used here because it runs too late (after installPhase).
     ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
       patchelf --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" $out/bin/bd
     ''}
