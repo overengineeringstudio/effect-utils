@@ -34,7 +34,7 @@ export const dispatchAlignmentStep = (opts: {
   ({
     name: 'Dispatch alignment to coordinator',
     env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: `gh api repos/${opts.targetRepo}/dispatches -f "event_type=${opts.eventType ?? 'upstream-changed'}" -f 'client_payload={"source_repo":"'\\''\${{ github.repository }}'\\''","source_sha":"'\\''\${{ github.sha }}'\\''"}'`,
+    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | gh api repos/${opts.targetRepo}/dispatches --input -`,
     shell: 'bash',
   })
 
