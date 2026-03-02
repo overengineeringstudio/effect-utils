@@ -60,10 +60,6 @@ pkgs.stdenv.mkDerivation {
 
     ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
       patchelf --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" $out/bin/bd
-
-      echo "[beads-debug] marker=pr298-v2" >&2
-      echo "[beads-debug] linker=${pkgs.stdenv.cc.bintools.dynamicLinker}" >&2
-      patchelf --print-interpreter $out/bin/bd >&2 || true
     ''}
 
     $out/bin/bd --help >/dev/null
