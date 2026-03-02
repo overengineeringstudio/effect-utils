@@ -177,6 +177,10 @@ const deployJobs: Record<string, any> = {
       {
         name: 'Deploy storybooks to Netlify',
         run: [
+          'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then',
+          '  echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available, likely a fork PR)"',
+          '  exit 0',
+          'fi',
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
           `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=prod')}`,
           'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
