@@ -8,6 +8,18 @@ All notable changes to this project will be documented in this file.
 
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
+- **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails
+  - Captures Vercel CLI output inside task execution and extracts the deployment URL deterministically
+  - Writes `VERCEL_DEPLOY_URL` and `VERCEL_DEPLOY_URL_<DEPLOYMENT_NAME>` via `DEVENV_TASK_OUTPUT_FILE`
+  - Enables CI callers to consume deploy URLs from structured task output instead of brittle log scraping
+
+### Changed
+
+- **devenv/tasks/shared/vercel.nix**: Switch to prebuilt deploy mode (`vercel pull` -> `vercel build` -> `vercel deploy --prebuilt`)
+  - Replaces direct `vercel deploy <dir>` with local prebuilt workflow for deterministic deploys
+  - Replaces `path`/`outputDir` deployment config with `cwd` (defaults to `"."`)
+  - Adds `vercel pull` step to fetch project settings and env for the target environment
+  - Adds `vercel build` step to produce `.vercel/output` locally before deploying
 
 ### Added
 

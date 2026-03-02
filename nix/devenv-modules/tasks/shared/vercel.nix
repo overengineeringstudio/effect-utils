@@ -1,4 +1,4 @@
-# Vercel deploy tasks for prebuilt directories
+# Vercel deploy tasks using local prebuilt artifacts
 #
 # Deploy context is passed via DEVENV_TASK_INPUT (devenv --input flag).
 #
@@ -8,8 +8,6 @@
 #       deployments = [
 #         {
 #           name = "web";
-#           path = "apps/web";
-#           outputDir = "dist";
 #           projectIdEnv = "VERCEL_PROJECT_ID_WEB";
 #         }
 #       ];
@@ -24,7 +22,7 @@
 #
 # Provides:
 #   Tasks:
-#     - vercel:deploy:<name> - Deploy specific prebuilt directory to Vercel
+#     - vercel:deploy:<name> - Prebuild + deploy specific target to Vercel
 #     - vercel:deploy        - Aggregate: deploy all configured targets
 {
   deployments ? [ ],
@@ -39,7 +37,7 @@ let
     let
       orgIdEnv = deployment.orgIdEnv or "VERCEL_ORG_ID";
       projectIdEnv = deployment.projectIdEnv or "VERCEL_PROJECT_ID";
-      outputDir = deployment.outputDir or "dist";
+      cwd = deployment.cwd or ".";
       buildDeps = if buildTaskPrefix == null then [ ] else [ "${buildTaskPrefix}:${deployment.name}" ];
     in
     {
@@ -67,13 +65,6 @@ let
             exit 1
           fi
 
-          deploy_dir="${deployment.path}/${outputDir}"
-          if [ ! -d "$deploy_dir" ]; then
-            echo "Error: deploy directory not found: $deploy_dir" >&2
-            echo "Run the build task first or configure outputDir correctly." >&2
-            exit 1
-          fi
-
           input="''${DEVENV_TASK_INPUT:-"{}"}"
           deploy_type="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.type // "preview"')"
 
@@ -82,23 +73,80 @@ let
 
           case "$deploy_type" in
             prod)
-              echo "Deploying ${deployment.name} to production..."
-              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --prod --token "$VERCEL_TOKEN"
+              pull_env="production"
+              build_flag="--prod"
               ;;
             pr|preview)
-              pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
-              if [ -n "$pr_number" ]; then
-                echo "Deploying ${deployment.name} preview for PR #$pr_number..."
-              else
-                echo "Deploying ${deployment.name} preview..."
-              fi
-              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --token "$VERCEL_TOKEN"
+              pull_env="preview"
+              build_flag=""
               ;;
             *)
               echo "Error: Unknown deploy type '$deploy_type'. Use: prod, pr, preview" >&2
               exit 1
               ;;
           esac
+
+          echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
+          ${pkgs.bun}/bin/bunx vercel pull --cwd "${cwd}" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
+
+          echo "Building ${deployment.name} locally with vercel build..."
+          if [ -n "$build_flag" ]; then
+            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes $build_flag --token "$VERCEL_TOKEN"
+          else
+            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes --token "$VERCEL_TOKEN"
+          fi
+
+          if [ ! -d "${cwd}/.vercel/output" ]; then
+            echo "Error: Missing prebuilt output directory: ${cwd}/.vercel/output" >&2
+            exit 1
+          fi
+
+          case "$deploy_type" in
+            prod)
+              echo "Deploying ${deployment.name} prebuilt output to production..."
+              deploy_log="$(mktemp)"
+              trap 'rm -f "$deploy_log"' EXIT
+              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              deploy_exit=''${PIPESTATUS[0]}
+              ;;
+            pr|preview)
+              pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
+              if [ -n "$pr_number" ]; then
+                echo "Deploying ${deployment.name} prebuilt preview for PR #$pr_number..."
+              else
+                echo "Deploying ${deployment.name} prebuilt preview..."
+              fi
+              deploy_log="$(mktemp)"
+              trap 'rm -f "$deploy_log"' EXIT
+              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              deploy_exit=''${PIPESTATUS[0]}
+              ;;
+            *)
+              echo "Error: Unknown deploy type '$deploy_type'. Use: prod, pr, preview" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$deploy_exit" -ne 0 ]; then
+            exit "$deploy_exit"
+          fi
+
+          deploy_url="$(${pkgs.gnugrep}/bin/grep -Eo 'https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnugrep}/bin/grep -E 'vercel\.(app|com)' | tail -n 1 || true)"
+          if [ -z "$deploy_url" ]; then
+            echo "Error: Could not determine Vercel deploy URL from CLI output." >&2
+            exit 1
+          fi
+
+          deploy_key_suffix="$(printf '%s' '${deployment.name}' | tr '[:lower:]-' '[:upper:]_' | tr -cd 'A-Z0-9_')"
+          if [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
+            ${pkgs.jq}/bin/jq -n \
+              --arg genericKey "VERCEL_DEPLOY_URL" \
+              --arg scopedKey "VERCEL_DEPLOY_URL_''${deploy_key_suffix}" \
+              --arg deployUrl "$deploy_url" \
+              '{devenv:{env:{($genericKey):$deployUrl,($scopedKey):$deployUrl}}}' > "$DEVENV_TASK_OUTPUT_FILE"
+          fi
+
+          echo "Vercel deploy URL: $deploy_url"
         '';
       };
     };
