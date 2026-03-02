@@ -138,8 +138,8 @@ while IFS=' ' read -r member_name member_url; do
     cd "$member_dir"
     git checkout -B "$branch_name"
     git add -- *.lock */*.lock 2>/dev/null || git add -- *.lock
-    git -c user.name="megarepo-alignment[bot]" \\
-        -c user.email="alignment@megarepo.local" \\
+    git -c user.name="schickling-assistant" \\
+        -c user.email="schickling-assistant@users.noreply.github.com" \\
         commit -m "chore: align lock files (upstream update)"
     git push "https://x-access-token:\${GH_TOKEN}@github.com/$repo_slug.git" \\
         "$branch_name" --force
