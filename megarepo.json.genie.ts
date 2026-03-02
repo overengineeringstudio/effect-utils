@@ -5,7 +5,7 @@ import {
 
 export default megarepoJson({
   members: {
-    /** Secondary members — consumed via lock files but never modified during alignment. */
+    /** Secondary members */
     effect: 'effect-ts/effect',
     'overeng-beads-public': 'overengineeringstudio/overeng-beads-public',
   },
