@@ -5,6 +5,7 @@ import {
 
 export default megarepoJson({
   members: {
+    /** Secondary members */
     effect: 'effect-ts/effect',
     'overeng-beads-public': 'overengineeringstudio/overeng-beads-public',
   },
