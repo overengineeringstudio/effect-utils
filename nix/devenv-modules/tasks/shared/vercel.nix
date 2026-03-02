@@ -86,7 +86,7 @@ let
               ;;
           esac
 
-          echo "Pulling Vercel project settings and env for ${deployment.name} (${pull_env})..."
+          echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
           ${pkgs.bun}/bin/bunx vercel pull --cwd "$cwd" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
 
           echo "Building ${deployment.name} locally with vercel build..."
