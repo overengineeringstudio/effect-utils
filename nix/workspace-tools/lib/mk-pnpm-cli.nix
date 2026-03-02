@@ -67,10 +67,12 @@ let
   # ==========================================================================
   # Parse workspace members from pnpm-workspace.yaml
   # ==========================================================================
-  # Automatically extracts workspace members from pnpm-workspace.yaml instead of
-  # requiring manual specification. Handles the YAML flow syntax format:
-  #   packages: [., ../tui-core, ../tui-react]
-  # And resolves relative paths to workspace-root-relative paths.
+  # Automatically extracts workspace members from pnpm-workspace.yaml.
+  # Handles three YAML array formats:
+  #   1. Single-line flow:    packages: [., ../tui-core, ../tui-react]
+  #   2. Multi-line bracket:  packages:\n  [\n    .,\n    ../tui-core,\n  ]
+  #   3. Block/dash:          packages:\n  - .\n  - ../tui-core
+  # Resolves relative paths to workspace-root-relative paths.
 
   pnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
   pnpmWorkspaceYaml = builtins.readFile pnpmWorkspaceYamlPath;
@@ -79,14 +81,19 @@ let
   workspaceLines = lib.splitString "\n" pnpmWorkspaceYaml;
   packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" line) null workspaceLines;
 
-  # Parse the array: "packages: [., ../foo, ../bar]" -> [".", "../foo", "../bar"]
-  packagesArrayStr = lib.removePrefix "packages: " packagesLine;
-  packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
-  packagesItems = map (s: lib.trim s) (lib.splitString "," packagesInner);
-
-  # Filter out "." (main package itself)
+  # Detect format from the "packages:" line content
   packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
   isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
+
+  # Single-line flow: "packages: [., ../foo, ../bar]"
+  parsePackagesInline =
+    let
+      packagesArrayStr = lib.removePrefix "packages: " packagesLine;
+      packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
+    in
+    map (s: lib.trim s) (lib.splitString "," packagesInner);
+
+  # Collect indented lines after "packages:" header
   workspaceLinesAfterPackagesHeader =
     let
       dropUntilPackagesHeader =
@@ -99,29 +106,56 @@ let
           dropUntilPackagesHeader (lib.tail lines);
     in
     dropUntilPackagesHeader workspaceLines;
+
+  # Multi-line formats (block/dash or multi-line bracket)
   parsePackagesMultiline =
     let
-      parseLines =
-        lines:
-        if lines == [ ] then
-          [ ]
-        else
-          let
-            line = lib.trim (builtins.head lines);
-            rest = lib.tail lines;
-          in
-            if line == "" || lib.hasPrefix "#" line then
-              parseLines rest
-            else if lib.hasPrefix "- " line then
-              [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
-            else if lib.hasPrefix "-" line then
-              [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
-            else
-              [ ];
+      lines = workspaceLinesAfterPackagesHeader;
+      # Check format by looking at the first non-empty indented line
+      firstContentLine = lib.findFirst (line: lib.trim line != "") "" lines;
+      isBracketFormat = lib.hasInfix "[" firstContentLine;
     in
-    parseLines workspaceLinesAfterPackagesHeader;
+    if isBracketFormat then
+      # Multi-line bracket: "packages:\n  [\n    .,\n    ../foo,\n  ]"
+      let
+        # Only take indented lines (belonging to the packages block)
+        takeWhile = pred: lst:
+          if lst == [] then []
+          else if pred (builtins.head lst) then [ (builtins.head lst) ] ++ takeWhile pred (lib.tail lst)
+          else [];
+        indentedLines = takeWhile (line: lib.hasPrefix " " line || line == "") lines;
+        joined = builtins.concatStringsSep "\n" indentedLines;
+        # Extract everything between [ and ]
+        afterOpen = builtins.elemAt (lib.splitString "[" joined) 1;
+        inner = builtins.elemAt (lib.splitString "]" afterOpen) 0;
+        items = lib.splitString "," inner;
+      in
+      builtins.filter (s: s != "") (map (s: lib.trim (lib.removeSuffix "," (lib.trim s))) items)
+    else
+      # Block/dash: "packages:\n  - .\n  - ../foo"
+      let
+        parseLines =
+          remainingLines:
+          if remainingLines == [ ] then
+            [ ]
+          else
+            let
+              line = lib.trim (builtins.head remainingLines);
+              rest = lib.tail remainingLines;
+            in
+              if line == "" || lib.hasPrefix "#" line then
+                parseLines rest
+              else if lib.hasPrefix "- " line then
+                [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
+              else if lib.hasPrefix "-" line then
+                [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
+              else
+                [ ];
+      in
+      parseLines lines;
+
   workspaceMemberItems = builtins.filter builtins.isString (
-    if isPackagesInline then packagesItems else parsePackagesMultiline
+    if isPackagesInline then parsePackagesInline else parsePackagesMultiline
   );
 
   # Filter out "." (main package itself)
