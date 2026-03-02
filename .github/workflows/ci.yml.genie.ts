@@ -1,3 +1,4 @@
+import { dispatchAlignmentStep } from '../../genie/alignment.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
@@ -176,6 +177,10 @@ const deployJobs: Record<string, any> = {
       {
         name: 'Deploy storybooks to Netlify',
         run: [
+          'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then',
+          '  echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available, likely a fork PR)"',
+          '  exit 0',
+          'fi',
           'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
           `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=prod')}`,
           'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
@@ -218,6 +223,13 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
+const notifyAlignmentJob = {
+  'runs-on': 'ubuntu-latest' as const,
+  needs: [...Object.keys(jobs)],
+  if: "github.ref == 'refs/heads/main' && github.event_name == 'push'",
+  steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
+}
+
 export default githubWorkflow({
   name: 'CI',
   on: {
@@ -235,5 +247,5 @@ export default githubWorkflow({
       },
     },
   },
-  jobs: { ...jobs, ...deployJobs },
+  jobs: { ...jobs, ...deployJobs, 'notify-alignment': notifyAlignmentJob },
 } satisfies GitHubWorkflowArgs)
