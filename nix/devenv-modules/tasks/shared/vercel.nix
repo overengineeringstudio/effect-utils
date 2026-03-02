@@ -83,7 +83,10 @@ let
           case "$deploy_type" in
             prod)
               echo "Deploying ${deployment.name} to production..."
-              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --prod --token "$VERCEL_TOKEN"
+              deploy_log="$(mktemp)"
+              trap 'rm -f "$deploy_log"' EXIT
+              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              deploy_exit=''${PIPESTATUS[0]}
               ;;
             pr|preview)
               pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
@@ -92,13 +95,37 @@ let
               else
                 echo "Deploying ${deployment.name} preview..."
               fi
-              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --token "$VERCEL_TOKEN"
+              deploy_log="$(mktemp)"
+              trap 'rm -f "$deploy_log"' EXIT
+              ${pkgs.bun}/bin/bunx vercel deploy "$deploy_dir" --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              deploy_exit=''${PIPESTATUS[0]}
               ;;
             *)
               echo "Error: Unknown deploy type '$deploy_type'. Use: prod, pr, preview" >&2
               exit 1
               ;;
           esac
+
+          if [ "$deploy_exit" -ne 0 ]; then
+            exit "$deploy_exit"
+          fi
+
+          deploy_url="$(${pkgs.gnugrep}/bin/grep -Eo 'https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnugrep}/bin/grep -E 'vercel\.(app|com)' | tail -n 1 || true)"
+          if [ -z "$deploy_url" ]; then
+            echo "Error: Could not determine Vercel deploy URL from CLI output." >&2
+            exit 1
+          fi
+
+          deploy_key_suffix="$(printf '%s' '${deployment.name}' | tr '[:lower:]-' '[:upper:]_' | tr -cd 'A-Z0-9_')"
+          if [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
+            ${pkgs.jq}/bin/jq -n \
+              --arg genericKey "VERCEL_DEPLOY_URL" \
+              --arg scopedKey "VERCEL_DEPLOY_URL_''${deploy_key_suffix}" \
+              --arg deployUrl "$deploy_url" \
+              '{devenv:{env:{($genericKey):$deployUrl,($scopedKey):$deployUrl}}}' > "$DEVENV_TASK_OUTPUT_FILE"
+          fi
+
+          echo "Vercel deploy URL: $deploy_url"
         '';
       };
     };
