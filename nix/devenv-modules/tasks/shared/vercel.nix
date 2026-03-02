@@ -87,17 +87,17 @@ let
           esac
 
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
-          ${pkgs.bun}/bin/bunx vercel pull --cwd "$cwd" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
+          ${pkgs.bun}/bin/bunx vercel pull --cwd "${cwd}" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
 
           echo "Building ${deployment.name} locally with vercel build..."
           if [ -n "$build_flag" ]; then
-            ${pkgs.bun}/bin/bunx vercel build --cwd "$cwd" --yes $build_flag --token "$VERCEL_TOKEN"
+            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes $build_flag --token "$VERCEL_TOKEN"
           else
-            ${pkgs.bun}/bin/bunx vercel build --cwd "$cwd" --yes --token "$VERCEL_TOKEN"
+            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes --token "$VERCEL_TOKEN"
           fi
 
-          if [ ! -d "$cwd/.vercel/output" ]; then
-            echo "Error: Missing prebuilt output directory: $cwd/.vercel/output" >&2
+          if [ ! -d "${cwd}/.vercel/output" ]; then
+            echo "Error: Missing prebuilt output directory: ${cwd}/.vercel/output" >&2
             exit 1
           fi
 
@@ -106,7 +106,7 @@ let
               echo "Deploying ${deployment.name} prebuilt output to production..."
               deploy_log="$(mktemp)"
               trap 'rm -f "$deploy_log"' EXIT
-              ${pkgs.bun}/bin/bunx vercel deploy --cwd "$cwd" --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             pr|preview)
@@ -118,7 +118,7 @@ let
               fi
               deploy_log="$(mktemp)"
               trap 'rm -f "$deploy_log"' EXIT
-              ${pkgs.bun}/bin/bunx vercel deploy --cwd "$cwd" --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             *)
