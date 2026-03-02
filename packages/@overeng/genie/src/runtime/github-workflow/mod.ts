@@ -101,6 +101,10 @@ type WorkflowRunConfig = {
   'branches-ignore'?: string[]
 }
 
+type RepositoryDispatchConfig = {
+  types?: string[]
+}
+
 type OnConfig = {
   [K in EventTrigger]?: K extends 'push' | 'pull_request' | 'pull_request_target'
     ? PushPullRequestTriggerConfig | null
@@ -112,7 +116,9 @@ type OnConfig = {
           ? WorkflowCallConfig | null
           : K extends 'workflow_run'
             ? WorkflowRunConfig
-            : null
+            : K extends 'repository_dispatch'
+              ? RepositoryDispatchConfig | null
+              : null
 }
 
 type PermissionLevel = 'read' | 'write' | 'none'

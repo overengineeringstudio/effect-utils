@@ -1,3 +1,4 @@
+import { dispatchAlignmentStep } from '../../genie/alignment.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
@@ -218,6 +219,13 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
+const notifyAlignmentJob = {
+  'runs-on': 'ubuntu-latest' as const,
+  needs: [...Object.keys(jobs)],
+  if: "github.ref == 'refs/heads/main' && github.event_name == 'push'",
+  steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
+}
+
 export default githubWorkflow({
   name: 'CI',
   on: {
@@ -235,5 +243,5 @@ export default githubWorkflow({
       },
     },
   },
-  jobs: { ...jobs, ...deployJobs },
+  jobs: { ...jobs, ...deployJobs, 'notify-alignment': notifyAlignmentJob },
 } satisfies GitHubWorkflowArgs)
