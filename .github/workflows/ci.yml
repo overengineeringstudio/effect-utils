@@ -950,3 +950,13 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+  notify-alignment:
+    runs-on: ubuntu-latest
+    needs: [typecheck, lint, test, nix-check]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Dispatch alignment to coordinator
+        env:
+          GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}'
+        run: "gh api repos/schickling/megarepo-all/dispatches -f \"event_type=upstream-changed\" -f 'client_payload={\"source_repo\":\"'\\''${{ github.repository }}'\\''\",\"source_sha\":\"'\\''${{ github.sha }}'\\''\"}'"
+        shell: bash
