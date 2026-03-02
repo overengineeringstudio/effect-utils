@@ -92,6 +92,9 @@ const coordinatorScript = (excludeMembers: string[]) => ({
   shell: 'bash',
   run: `set -euo pipefail
 
+# Make gh CLI available via nix shell (not globally installed on self-hosted runners)
+GH_BIN=$(nix build nixpkgs#gh --no-link --print-out-paths)/bin/gh
+
 SOURCE_REPO="\${{ github.event.client_payload.source_repo || 'manual' }}"
 SOURCE_SHA="\${{ github.event.client_payload.source_sha || 'unknown' }}"
 BRANCH_PREFIX="auto/alignment"
@@ -154,28 +157,28 @@ Updates Nix lock files to match latest upstream commits.
 ---
 *Created by the megarepo alignment coordinator.*"
 
-  existing_pr=$(gh pr list --repo "$repo_slug" --head "$branch_name" --base "$member_ref" --state open --json number -q '.[0].number' 2>/dev/null || true)
+  existing_pr=$($GH_BIN pr list --repo "$repo_slug" --head "$branch_name" --base "$member_ref" --state open --json number -q '.[0].number' 2>/dev/null || true)
 
   if [ -n "$existing_pr" ]; then
     echo "Updating existing PR #$existing_pr"
   else
     echo "Creating new PR"
-    gh pr create --repo "$repo_slug" \\
+    $GH_BIN pr create --repo "$repo_slug" \\
       --head "$branch_name" \\
       --base "$member_ref" \\
       --title "$PR_TITLE" \\
       --body "$PR_BODY" 2>&1 || true
-    existing_pr=$(gh pr list --repo "$repo_slug" --head "$branch_name" --base "$member_ref" --state open --json number -q '.[0].number' 2>/dev/null || true)
+    existing_pr=$($GH_BIN pr list --repo "$repo_slug" --head "$branch_name" --base "$member_ref" --state open --json number -q '.[0].number' 2>/dev/null || true)
   fi
 
   # Auto-merge gate: only if diff is exclusively lock files
   if [ "$lock_only" = true ] && [ -n "$existing_pr" ]; then
     echo "Lock-only diff — enabling auto-merge"
-    gh pr merge "$existing_pr" --repo "$repo_slug" --auto --squash 2>/dev/null || \\
+    $GH_BIN pr merge "$existing_pr" --repo "$repo_slug" --auto --squash 2>/dev/null || \\
       echo "::warning::Could not enable auto-merge for $repo_slug#$existing_pr (may need branch protection)"
   elif [ -n "$existing_pr" ]; then
     echo "::warning::Non-lock files changed in $member_name — skipping auto-merge"
-    gh pr edit "$existing_pr" --repo "$repo_slug" --add-label "alignment-needs-review" 2>/dev/null || true
+    $GH_BIN pr edit "$existing_pr" --repo "$repo_slug" --add-label "alignment-needs-review" 2>/dev/null || true
   fi
 
   echo "::endgroup::"
