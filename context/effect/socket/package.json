@@ -9,7 +9,7 @@
     "effect": "3.19.15"
   },
   "devDependencies": {
-    "@types/node": "25.0.3"
+    "@types/node": "25.3.3"
   },
   "$genie": {
     "source": "package.json.genie.ts",
