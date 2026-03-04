@@ -4,6 +4,7 @@ import {
   bashShellDefaults,
   cachixStep,
   checkoutStep,
+  dispatchAlignmentStep,
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
@@ -226,14 +227,7 @@ const notifyAlignmentJob = {
   'runs-on': 'ubuntu-latest' as const,
   needs: [...Object.keys(jobs)],
   if: "github.ref == 'refs/heads/main' && github.event_name == 'push'",
-  steps: [
-    {
-      name: 'Dispatch alignment to coordinator',
-      env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-      run: `printf '{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | gh api repos/schickling/megarepo-all/dispatches --input -`,
-      shell: 'bash',
-    },
-  ],
+  steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
 }
 
 export default githubWorkflow({
