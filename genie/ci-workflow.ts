@@ -327,3 +327,22 @@ export const deployCommentStep = (opts: {
     'fi',
   ].join('\n'),
 })
+
+/**
+ * Step that dispatches `upstream-changed` repository_dispatch to a target repo.
+ * Add this to upstream CI workflows so merges to main trigger downstream alignment.
+ *
+ * Requires `MEGAREPO_ALIGNMENT_TOKEN` secret (fine-grained PAT with Contents + Pull Requests write).
+ */
+export const dispatchAlignmentStep = (opts: {
+  /** Target repo that receives the dispatch (e.g. 'schickling/megarepo-all') */
+  targetRepo: string
+  /** Event type sent in the dispatch (default: 'upstream-changed') */
+  eventType?: string
+}) =>
+  ({
+    name: 'Dispatch alignment to coordinator',
+    env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
+    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | gh api repos/${opts.targetRepo}/dispatches --input -`,
+    shell: 'bash',
+  })

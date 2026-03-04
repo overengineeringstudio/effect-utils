@@ -1,10 +1,10 @@
-import { dispatchAlignmentStep } from '../../genie/alignment.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
   bashShellDefaults,
   cachixStep,
   checkoutStep,
+  dispatchAlignmentStep,
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
