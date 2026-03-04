@@ -1,4 +1,3 @@
-import { dispatchAlignmentStep } from '../../genie/alignment.ts'
 import {
   RUNNER_PROFILES,
   type RunnerProfile,
@@ -227,7 +226,14 @@ const notifyAlignmentJob = {
   'runs-on': 'ubuntu-latest' as const,
   needs: [...Object.keys(jobs)],
   if: "github.ref == 'refs/heads/main' && github.event_name == 'push'",
-  steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
+  steps: [
+    {
+      name: 'Dispatch alignment to coordinator',
+      env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
+      run: `printf '{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | gh api repos/schickling/megarepo-all/dispatches --input -`,
+      shell: 'bash',
+    },
+  ],
 }
 
 export default githubWorkflow({
