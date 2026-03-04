@@ -406,12 +406,10 @@ in
         echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
         return 1 2>/dev/null || exit 1
       fi
-      _project_name=$(basename "$DEVENV_ROOT")
       if ! otel dash sync \
-        --project "$_project_name" \
         --source "${allDashboards}" \
         --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
-        echo "[otel] ERROR: otel dash sync failed for $_project_name" >&2
+        echo "[otel] ERROR: otel dash sync failed" >&2
         return 1 2>/dev/null || exit 1
       fi
       _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
