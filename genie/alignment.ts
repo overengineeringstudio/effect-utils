@@ -46,8 +46,8 @@ export const dispatchAlignmentStep = (opts: {
  * nix:hash), detects dirty files in member worktrees, and for each dirty member pushes an
  * alignment branch + creates/updates a PR.
  *
- * Auto-merges only when the diff is exclusively safe files (lock files, pnpm-lock.yaml,
- * build.nix). Non-safe changes are labeled `alignment-needs-review` for manual handling.
+ * Auto-merges only when the diff is exclusively safe files (lock files, Nix build hashes,
+ * genie-generated configs). Non-safe changes are labeled `alignment-needs-review` for manual handling.
  */
 export const alignmentCoordinatorWorkflow = (opts?: {
   /** Members to exclude from alignment (e.g. beads repos, reference repos) */
@@ -182,11 +182,12 @@ while IFS=' ' read -r member_name member_url; do
   [ -z "$files_changed" ] && continue
 
   # Determine if all changed files are safe for auto-merge
+  # Safe: lock files, Nix build hashes, or any file with a corresponding .genie.ts template
   safe_only=true
   while IFS= read -r f; do
     case "$f" in
       *.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|nix/build.nix|*/nix/build.nix) ;;
-      *) safe_only=false; break ;;
+      *) [ -f "$member_dir/\${f}.genie.ts" ] || { safe_only=false; break; } ;;
     esac
   done <<< "$files_changed"
 
@@ -237,7 +238,7 @@ Updates lock files and dependency hashes to match latest upstream commits.
     existing_pr=$($GH_BIN pr list --repo "$repo_slug" --head "$branch_name" --base "$member_ref" --state open --json number -q '.[0].number' 2>/dev/null || true)
   fi
 
-  # Auto-merge gate: only if all changed files are safe (lock files, pnpm-lock.yaml, build.nix)
+  # Auto-merge gate: only if all changed files are safe (lock files, Nix hashes, genie-generated configs)
   if [ "$safe_only" = true ] && [ -n "$existing_pr" ]; then
     echo "Safe-only diff — enabling auto-merge"
     $GH_BIN pr merge "$existing_pr" --repo "$repo_slug" --auto --squash 2>/dev/null || \\
