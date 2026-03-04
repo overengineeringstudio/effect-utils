@@ -117,6 +117,10 @@ const memberTasksStep = (
     shell: 'bash',
     run: `set -euo pipefail
 
+# Provide perl for nix:hash tasks (update-all-hashes script needs it)
+PERL_BIN=$(nix build nixpkgs#perl --no-link --print-out-paths)/bin
+export PATH="$PERL_BIN:$PATH"
+
 run_devenv_tasks() {
   local member_name="$1"; shift
   local member_dir="repos/$member_name"
@@ -142,7 +146,7 @@ run_devenv_tasks() {
     cd "$member_dir"
     for task in "$@"; do
       echo "  Running: $task"
-      NIX_CONFIG="restrict-eval = false" "$devenv_bin" tasks run "$task" --mode before || \\
+      CI= NIX_CONFIG="restrict-eval = false" "$devenv_bin" tasks run "$task" --mode before || \\
         echo "::warning::Task $task failed in $member_name"
     done
   )
