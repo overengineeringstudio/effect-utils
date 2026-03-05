@@ -53,6 +53,7 @@
 # Cache inputs (per package path):
 # - package.json contents
 # - pnpm-lock.yaml contents
+# - For packages with workspace members (pnpm-workspace.yaml): member package.json contents
 # - For packages with injected deps: source file contents (content-addressed)
 #
 # Cache files:
@@ -230,9 +231,33 @@ let
   #
   # Hash function that works on both Linux (sha256sum) and macOS (shasum)
   sha256sum = "${pkgs.coreutils}/bin/sha256sum";
+  yq = "${pkgs.yq-go}/bin/yq";
   computeHashFn = ''
     compute_hash() {
       ${sha256sum} | awk '{print $1}'
+    }
+  '';
+
+  # Compute a hash of workspace member package.json files from pnpm-workspace.yaml.
+  # When upstream workspace members change deps, pnpm install must re-run
+  # even if the local package.json and lockfile haven't changed.
+  computeWsHashFn = ''
+    compute_ws_hash() {
+      if [ ! -f pnpm-workspace.yaml ]; then
+        return
+      fi
+      local ws_content=""
+      while IFS= read -r pattern; do
+        [ "$pattern" = "." ] && continue
+        # Simple glob expansion (no recursive ** or negation — not needed since
+        # our genie-generated pnpm-workspace.yaml files use plain relative paths)
+        for dir in $pattern; do
+          [ -f "$dir/package.json" ] && ws_content="$ws_content$(cat "$dir/package.json")"
+        done
+      done < <(${yq} '.packages[]' pnpm-workspace.yaml 2>/dev/null)
+      if [ -n "$ws_content" ]; then
+        printf '%s' "$ws_content" | compute_hash
+      fi
     }
   '';
 
@@ -246,6 +271,8 @@ let
       else
         base_hash="$(cat package.json | compute_hash)"
       fi
+      ws_hash="$(compute_ws_hash)"
+      [ -n "$ws_hash" ] && base_hash="$base_hash $ws_hash"
       ${
         if injected == [ ] then
           ''
@@ -307,6 +334,7 @@ let
           fi
 
           ${computeHashFn}
+          ${computeWsHashFn}
           ${mkComputeCacheHash {
             inherit injected;
             resultVar = "cache_value";
@@ -327,6 +355,7 @@ let
             exit 1
           fi
           ${computeHashFn}
+          ${computeWsHashFn}
           ${mkComputeCacheHash {
             inherit injected;
             resultVar = "current_hash";
