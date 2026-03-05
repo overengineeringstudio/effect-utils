@@ -59,7 +59,7 @@
     "react-reconciler": "^0.33.0",
     "storybook": "10.2.3",
     "typescript": "5.9.3",
-    "vite": "7.3.0",
+    "vite": "7.3.1",
     "vitest": "3.2.4"
   },
   "dependenciesMeta": {
