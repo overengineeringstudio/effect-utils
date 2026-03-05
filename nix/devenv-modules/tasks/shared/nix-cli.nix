@@ -68,7 +68,7 @@ let
           echo "  (platform-specific: updating Darwin/then branch)"
           export HASH_KEY="$hashKey"
           export HASH_VALUE="$newValue"
-          perl -0777 -i -pe '
+          ${pkgs.perl}/bin/perl -0777 -i -pe '
             my $key = $ENV{"HASH_KEY"};
             my $val = $ENV{"HASH_VALUE"};
             # Match: pnpmDepsHash = if pkgs.stdenv.isDarwin\s+then "sha256-..."
@@ -78,7 +78,7 @@ let
           echo "  (platform-specific: updating Linux/else branch)"
           export HASH_KEY="$hashKey"
           export HASH_VALUE="$newValue"
-          perl -0777 -i -pe '
+          ${pkgs.perl}/bin/perl -0777 -i -pe '
             my $key = $ENV{"HASH_KEY"};
             my $val = $ENV{"HASH_VALUE"};
             # Match the else branch: ... then "sha256-..." else "sha256-..."
@@ -89,7 +89,7 @@ let
         # Simple single hash pattern
         export HASH_KEY="$hashKey"
         export HASH_VALUE="$newValue"
-        perl -0777 -i -pe '
+        ${pkgs.perl}/bin/perl -0777 -i -pe '
           my $key = $ENV{"HASH_KEY"};
           my $val = $ENV{"HASH_VALUE"};
           s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
@@ -101,10 +101,10 @@ let
     update_fingerprint_hashes() {
       if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
         # Update lockfileHash
-        newLockfileHash="sha256-$(nix-hash --type sha256 --base64 "$lockfile")"
+        newLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
         if grep -q "lockfileHash" "$buildNix"; then
           export NEW_LF_HASH="$newLockfileHash"
-          perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
+          ${pkgs.perl}/bin/perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
           echo "Updated lockfileHash to $newLockfileHash"
         fi
 
@@ -113,10 +113,10 @@ let
         if [ -f "$packageJson" ] && grep -q "packageJsonDepsHash" "$buildNix"; then
           tmpDeps=$(mktemp)
           ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-          newPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+          newPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
           rm "$tmpDeps"
           export NEW_PACKAGE_JSON_DEPS_HASH="$newPackageJsonDepsHash"
-          perl -i -pe 's/packageJsonDepsHash\s*=\s*"sha256-[^"]+"/packageJsonDepsHash = "$ENV{NEW_PACKAGE_JSON_DEPS_HASH}"/g' "$buildNix"
+          ${pkgs.perl}/bin/perl -i -pe 's/packageJsonDepsHash\s*=\s*"sha256-[^"]+"/packageJsonDepsHash = "$ENV{NEW_PACKAGE_JSON_DEPS_HASH}"/g' "$buildNix"
           echo "Updated packageJsonDepsHash to $newPackageJsonDepsHash"
         fi
       fi
@@ -138,7 +138,7 @@ let
     
     # Determine the main hash key (bunDepsHash or pnpmDepsHash)
     mainHashKey="bunDepsHash"
-    if rg -q "pnpmDepsHash" "$buildNix"; then
+    if ${pkgs.ripgrep}/bin/rg -q "pnpmDepsHash" "$buildNix"; then
       mainHashKey="pnpmDepsHash"
     fi
     
@@ -151,7 +151,7 @@ let
       echo "=== Iteration $iteration ==="
       
       set +e
-      output=$(nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1)
+      output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1)
       status=$?
       set -e
 
@@ -171,7 +171,7 @@ let
 
       if [ -n "$actualHash" ] && grep -q "lockfileHash" "$buildNix"; then
         export NEW_LF_HASH="$actualHash"
-        perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
+        ${pkgs.perl}/bin/perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
         echo "Updated lockfileHash to $actualHash"
         updated_any=true
         continue
@@ -206,11 +206,11 @@ let
       # Look for packages-*-pnpm-deps pattern in the error (indicates localDeps hash)
       if echo "$output" | grep -qE "packages-[a-zA-Z0-9_-]+-pnpm-deps"; then
         # Extract the encoded dir (e.g., "packages--overeng-utils")
-        encodedDir=$(echo "$output" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | sed 's/-pnpm-deps$//' || true)
+        encodedDir=$(echo "$output" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | ${pkgs.gnused}/bin/sed 's/-pnpm-deps$//' || true)
         if [ -n "$encodedDir" ]; then
           # Convert back to original path format
           # packages--overeng-utils -> packages/@overeng/utils
-          localDepDir=$(echo "$encodedDir" | sed 's/--/\/@/g; s/-/\//g')
+          localDepDir=$(echo "$encodedDir" | ${pkgs.gnused}/bin/sed 's/--/\/@/g; s/-/\//g')
           echo "Detected stale hash for localDep: $localDepDir"
         fi
       fi
@@ -222,7 +222,7 @@ let
         # Use perl to update the specific localDeps entry
         export LOCAL_DEP_DIR="$localDepDir"
         export NEW_HASH="$newHash"
-        perl -0777 -i -pe '
+        ${pkgs.perl}/bin/perl -0777 -i -pe '
           my $dir = $ENV{"LOCAL_DEP_DIR"};
           my $hash = $ENV{"NEW_HASH"};
           s/(\{\s*dir\s*=\s*"\Q$dir\E"\s*;\s*hash\s*=\s*)"sha256-[^"]+"/$1"$hash"/g;
@@ -256,7 +256,7 @@ let
     if [ -n "$buildNix" ] && [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
       packageJson="$(dirname "$lockfile")/package.json"
 
-      currentLockfileHash="sha256-$(nix-hash --type sha256 --base64 "$lockfile")"
+      currentLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
       storedLockfileHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
 
       if [ -z "$storedLockfileHash" ]; then
@@ -271,7 +271,7 @@ let
       if [ -f "$packageJson" ]; then
         tmpDeps=$(mktemp)
         ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-        currentPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+        currentPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
         rm "$tmpDeps"
 
         storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
@@ -301,20 +301,20 @@ let
     # production-ready — they eliminate FOD hash staleness entirely.
     # Track: NixOS/nix#6623
     if [ -n "''${CI:-}" ]; then
-      topDrv=$(nix path-info --derivation "$flakeRef" 2>/dev/null || true)
+      topDrv=$(${pkgs.nix}/bin/nix path-info --derivation "$flakeRef" 2>/dev/null || true)
       if [ -n "$topDrv" ]; then
-        for drv in $(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
-          for outPath in $(nix-store -q --outputs "$drv" 2>/dev/null || true); do
+        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
+          for outPath in $(${pkgs.nix}/bin/nix-store -q --outputs "$drv" 2>/dev/null || true); do
             if [ -e "$outPath" ]; then
               echo "  evicting cached: $(basename "$outPath")"
-              nix store delete "$outPath" 2>/dev/null || true
+              ${pkgs.nix}/bin/nix store delete "$outPath" 2>/dev/null || true
             fi
           done
         done
       fi
     fi
 
-    if output=$(nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
+    if output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
       echo "✓ $name: up to date"
       exit 0
     fi
@@ -387,7 +387,7 @@ let
     failed=false
 
     # Check 1: lockfileHash (lockfile changed without hash update)
-    currentLockfileHash=$(nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
+    currentLockfileHash=$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
     if [ -z "$currentLockfileHash" ]; then
       echo "⚠ $name: lockfile not found ($lockfile), skipping lockfile check"
     else
@@ -408,7 +408,7 @@ let
     if [ -f "$packageJson" ]; then
       tmpDeps=$(mktemp)
       ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-      currentPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+      currentPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
       rm "$tmpDeps"
 
       storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
@@ -465,7 +465,7 @@ let
   mkBuildTask = pkg: {
     "nix:build:${pkg.name}" = {
       description = "Build ${pkg.name} Nix package";
-      exec = trace.exec "nix:build:${pkg.name}" "nix build '${pkg.flakeRef}' --no-link -L";
+      exec = trace.exec "nix:build:${pkg.name}" "${pkgs.nix}/bin/nix build '${pkg.flakeRef}' --no-link -L";
     };
   };
 
@@ -530,7 +530,7 @@ in lib.mkIf hasPackages {
 
       "nix:flake:check" = {
         description = "Full nix flake validation (builds all flake packages)";
-        exec = trace.exec "nix:flake:check" "nix flake check";
+        exec = trace.exec "nix:flake:check" "${pkgs.nix}/bin/nix flake check";
       };
     }]
   );
