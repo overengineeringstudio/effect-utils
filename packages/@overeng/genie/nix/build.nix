@@ -16,9 +16,9 @@ let
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
     # Managed by `dt nix:hash:genie` — do not edit manually.
-    pnpmDepsHash = "sha256-IjXvo+rox3eylWYLlt/5kOYkHB4zqkqZkeMs+Iep2d4=";
-    lockfileHash = "sha256-X4TrzvCtLNAGV+LaNB+ps3HiCr6ip7mzwkMPmmEdk64=";
-    packageJsonDepsHash = "sha256-mCUgw8hk6ZZJDfqdc2uqC49gvg8MMlfsOQJ8pa/b9HU=";
+    pnpmDepsHash = "sha256-0OSGcThI7Q9YhYLhNmTpobn7/2IYnDg0ejmisZcaoSQ=";
+    lockfileHash = "sha256-wz/rAU1352qbOZJ0twlReP1tdGDuUEwqqcIZR28PEYU=";
+    packageJsonDepsHash = "sha256-tMch41qH+GilQSbIGitAHjKtPH2tb4h9uSwDW1peQDc=";
     inherit gitRev commitTs dirty;
   };
 in
