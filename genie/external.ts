@@ -191,7 +191,7 @@ export const catalog = defineCatalog({
   '@types/react': '19.2.7',
   '@types/react-dom': '19.2.3',
   '@types/node': '25.3.3',
-  '@types/bun': '1.3.5',
+  '@types/bun': '1.3.10',
   '@types/eslint': '9.6.1',
   '@types/is-dom': '1.1.2',
 
