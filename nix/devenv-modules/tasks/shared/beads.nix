@@ -35,6 +35,15 @@ in
         exit 1
       fi
       cd "''${BEADS_DIR%/.beads}"
+
+      # Auto-initialize from issues.jsonl if no Dolt database exists yet
+      if [ ! -d "$BEADS_DIR/dolt" ]; then
+        echo "[beads] No Dolt database found, initializing from issues.jsonl..."
+        ${bd} init --force --from-jsonl --prefix ${beadsPrefix} 2>&1
+        echo "[beads] Initialized with $(${bd} count 2>/dev/null || echo '?') issues"
+        exit 0
+      fi
+
       ${bd} dolt pull 2>&1
     '';
   };
