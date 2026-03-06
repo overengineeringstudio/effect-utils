@@ -17,7 +17,7 @@ let
     patchesDir = "packages/@overeng/utils/patches";
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     pnpmDepsHash = "sha256-Dk+XgTDM73qoHBAL90T2UNuEcUHb2iObo9FwC2jTfTE=";
-    lockfileHash = "sha256-cqXk41aoTk8DZOStnCOLp5LjgvhP5D0k7DZTCU2btrk=";
+    lockfileHash = "sha256-s3mK+bc5FIB2RI7ZOAUFIeQU7U3tL7tytpoEFfxkCy4=";
     packageJsonDepsHash = "sha256-dhrqTHhoUUk753oIk61dMTbxJ1ivA9UYEu6h9jM51qA=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;

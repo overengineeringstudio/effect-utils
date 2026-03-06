@@ -207,31 +207,6 @@ workspaceMembers = ["packages/@overeng/tui-core", ...];
 # (no workspaceMembers argument needed)
 ```
 
-## Setting: `sharedWorkspaceLockfile: false`
-
-All generated `pnpm-workspace.yaml` files set `sharedWorkspaceLockfile: false`.
-
-### Why?
-
-In the per-package workspace pattern, each package is its own workspace root with
-workspace members from external repos (e.g. `repos/livestore/packages/...`). With
-the default `sharedWorkspaceLockfile: true`, pnpm creates one lockfile per workspace
-root but validates ALL workspace members' `package.json` specifiers during
-`--frozen-lockfile`. When an upstream catalog bumps dependency versions in a workspace
-member (e.g. `@overeng/utils-dev`), the lockfile becomes stale even though the root
-package hasn't changed.
-
-Setting `sharedWorkspaceLockfile: false` tells pnpm to manage each workspace member's
-dependencies independently. The `--frozen-lockfile` check only validates the root
-package's lockfile, preventing false failures from workspace member drift.
-
-### Implications
-
-- After running `genie` to regenerate workspace configs, run `pnpm install` in each
-  package to regenerate lockfiles with the new setting
-- Lockfiles generated with `sharedWorkspaceLockfile: true` are incompatible — all
-  lockfiles must be regenerated when adopting this setting
-
 ## Future: Switch to Bun
 
 We're using pnpm temporarily due to bun bugs. Once fixed, we plan to switch back:

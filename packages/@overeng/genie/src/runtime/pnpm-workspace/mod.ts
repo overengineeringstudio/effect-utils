@@ -693,13 +693,12 @@ export interface PnpmWorkspaceData {
   /**
    * Each project in a workspace has its own lockfile instead of a shared one at the root.
    *
-   * Disabling shared lockfiles prevents `--frozen-lockfile` from failing when
-   * workspace-linked packages' specifiers drift (e.g. after an upstream catalog bump).
-   * This is the recommended setting for per-package workspace setups (megarepo pattern).
+   * WARNING: Setting to `false` causes TS2742 errors in `tsc --build` because
+   * each workspace member gets its own `.pnpm` store, creating different physical
+   * paths for the same package. TypeScript treats these as distinct types.
    *
-   * @default false
+   * @default true (pnpm default)
    * @see https://pnpm.io/settings#shared-workspace-lockfile
-   * @see context/workarounds/pnpm-issues.md — "Setting: sharedWorkspaceLockfile: false"
    */
   sharedWorkspaceLockfile?: boolean
 }
