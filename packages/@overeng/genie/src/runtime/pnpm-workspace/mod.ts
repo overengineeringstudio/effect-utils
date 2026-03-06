@@ -507,6 +507,15 @@ export interface PnpmWorkspaceData {
   patchedDependencies?: Record<string, string>
 
   /**
+   * When true, installation won't fail if some patches from `patchedDependencies`
+   * are not used by the current workspace member. Required for per-member lockfiles
+   * (`sharedWorkspaceLockfile: false`) where not every member depends on the patched package.
+   *
+   * @see https://pnpm.io/settings#allow-unused-patches
+   */
+  allowUnusedPatches?: boolean
+
+  /**
    * Extend or fix package.json of dependencies.
    * @see https://pnpm.io/pnpm-workspace_yaml#packageextensions
    */
@@ -680,6 +689,19 @@ export interface PnpmWorkspaceData {
    * @see https://pnpm.io/settings#save-workspace-protocol
    */
   saveWorkspaceProtocol?: boolean | 'rolling'
+
+  /**
+   * Each project in a workspace has its own lockfile instead of a shared one at the root.
+   *
+   * Disabling shared lockfiles prevents `--frozen-lockfile` from failing when
+   * workspace-linked packages' specifiers drift (e.g. after an upstream catalog bump).
+   * This is the recommended setting for per-package workspace setups (megarepo pattern).
+   *
+   * @default false
+   * @see https://pnpm.io/settings#shared-workspace-lockfile
+   * @see context/workarounds/pnpm-issues.md — "Setting: sharedWorkspaceLockfile: false"
+   */
+  sharedWorkspaceLockfile?: boolean
 }
 
 // =============================================================================
@@ -924,6 +946,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     })
   }
 
+  if (data.allowUnusedPatches !== undefined) {
+    result.allowUnusedPatches = data.allowUnusedPatches
+  }
+
   if (data.packageExtensions !== undefined) {
     result.packageExtensions = { ...data.packageExtensions }
   }
@@ -1015,6 +1041,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.saveWorkspaceProtocol !== undefined) {
     result.saveWorkspaceProtocol = data.saveWorkspaceProtocol
+  }
+
+  if (data.sharedWorkspaceLockfile !== undefined) {
+    result.sharedWorkspaceLockfile = data.sharedWorkspaceLockfile
   }
 
   return result

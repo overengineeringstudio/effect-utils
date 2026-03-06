@@ -9,6 +9,7 @@ import {
   catalog as externalCatalog,
   createWorkspaceDepsResolver,
   defineCatalog,
+  definePatchedDependencies,
   pnpmWorkspaceYaml,
   type GenieOutput,
   type PackageJsonData,
@@ -76,6 +77,38 @@ export const catalog = defineCatalog({
 })
 
 /**
+ * Patched dependencies for `@overeng/utils`.
+ * Shared across workspace yamls that include utils as a workspace member.
+ */
+export const utilsPatches = definePatchedDependencies({
+  location: 'packages/@overeng/utils',
+  patches: {
+    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+  },
+})
+
+/**
+ * Common pnpm workspace settings for all effect-utils packages.
+ *
+ * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
+ * so that lockfiles remain consistent when the same package appears in multiple workspaces.
+ *
+ * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
+ * Per-member lockfiles cause TS2742 errors in `tsc --build` because each workspace member
+ * gets its own `.pnpm` store, creating different physical paths for the same package.
+ * TypeScript treats these as distinct types, breaking project references.
+ */
+const commonWorkspaceSettings = {
+  patchedDependencies: utilsPatches,
+  allowUnusedPatches: true as const,
+  dedupePeerDependents: true as const,
+  supportedArchitectures: {
+    os: ['linux', 'darwin'],
+    cpu: ['x64', 'arm64'],
+  },
+}
+
+/**
  * Pnpm workspace with React hoisting for single-instance React in dev.
  *
  * Includes supportedArchitectures to download platform-specific binaries for all
@@ -85,11 +118,7 @@ export const pnpmWorkspaceReact = (packages: readonly string[]) =>
   pnpmWorkspaceYaml({
     packages: ['.', ...packages],
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
-    dedupePeerDependents: true,
-    supportedArchitectures: {
-      os: ['linux', 'darwin'],
-      cpu: ['x64', 'arm64'],
-    },
+    ...commonWorkspaceSettings,
   })
 
 type PkgInput = GenieOutput<PackageJsonData>
@@ -106,11 +135,7 @@ const resolveDeps = createWorkspaceDepsResolver({
 export const pnpmWorkspaceStandalone = () =>
   pnpmWorkspaceYaml({
     packages: ['.'],
-    dedupePeerDependents: true,
-    supportedArchitectures: {
-      os: ['linux', 'darwin'],
-      cpu: ['x64', 'arm64'],
-    },
+    ...commonWorkspaceSettings,
   })
 
 /**
@@ -121,11 +146,7 @@ export const pnpmWorkspaceStandaloneReact = () =>
   pnpmWorkspaceYaml({
     packages: ['.'],
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
-    dedupePeerDependents: true,
-    supportedArchitectures: {
-      os: ['linux', 'darwin'],
-      cpu: ['x64', 'arm64'],
-    },
+    ...commonWorkspaceSettings,
   })
 
 /**
@@ -155,11 +176,7 @@ export const pnpmWorkspaceWithDeps = ({
   const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
   return pnpmWorkspaceYaml({
     packages: ['.', ...packages],
-    dedupePeerDependents: true,
-    supportedArchitectures: {
-      os: ['linux', 'darwin'],
-      cpu: ['x64', 'arm64'],
-    },
+    ...commonWorkspaceSettings,
   })
 }
 

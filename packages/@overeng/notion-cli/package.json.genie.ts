@@ -18,11 +18,6 @@ export default packageJson({
     storybook: 'storybook dev -p 6012',
     'storybook:build': 'storybook build',
   },
-  pnpm: {
-    patchedDependencies: {
-      ...utilsPkg.data.pnpm?.patchedDependencies,
-    },
-  },
   exports: {
     '.': './src/mod.ts',
     './config': './src/config-def.ts',
