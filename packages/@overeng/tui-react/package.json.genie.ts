@@ -46,7 +46,17 @@ export default packageJson({
     },
   },
   dependencies: {
-    ...catalog.pick('yoga-layout', 'string-width', 'cli-truncate', '@overeng/tui-core'),
+    ...catalog.pick(
+      'yoga-layout',
+      'string-width',
+      'cli-truncate',
+      '@overeng/tui-core',
+      // xterm — required by ./storybook entry point (must be regular deps so
+      // consumers' per-member lockfiles include them transitively)
+      '@xterm/xterm',
+      '@xterm/headless',
+      '@xterm/addon-fit',
+    ),
   },
   devDependencies: {
     ...effectLspDevDeps(),
@@ -71,10 +81,6 @@ export default packageJson({
       'storybook',
       '@storybook/react',
       '@storybook/react-vite',
-      // xterm (terminal emulator for browser/testing)
-      '@xterm/xterm',
-      '@xterm/headless',
-      '@xterm/addon-fit',
       // Build tools
       'vite',
       '@vitejs/plugin-react',
