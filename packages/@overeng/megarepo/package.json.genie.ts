@@ -1,4 +1,5 @@
 import {
+  alignInstallDependencyVersions,
   bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
@@ -21,6 +22,36 @@ const peerDepNames = [
 ] as const
 
 const tuiReactPeerNames = Object.keys(tuiReactPkg.data.peerDependencies ?? {})
+
+const devDependencies = alignInstallDependencyVersions({
+  dependencies: {
+    ...catalog.pick(
+      // Peer deps (for testing)
+      ...peerDepNames,
+      ...tuiReactPeerNames,
+      // Testing
+      '@effect/vitest',
+      '@types/bun',
+      '@types/node',
+      '@types/react',
+      'vitest',
+      // Storybook
+      'storybook',
+      '@storybook/react',
+      '@storybook/react-vite',
+      // xterm (terminal emulator for Storybook)
+      '@xterm/xterm',
+      '@xterm/addon-fit',
+      // Build tools
+      'react-dom',
+      'react-reconciler', // Peer dep of @overeng/tui-react
+      'vite',
+      '@vitejs/plugin-react',
+    ),
+    ...effectLspDevDeps(),
+  },
+  peerSources: [utilsPkg.data, tuiReactPkg.data],
+})
 
 const data = {
   name: '@overeng/megarepo',
@@ -54,32 +85,7 @@ const data = {
   dependenciesMeta: {
     '@overeng/tui-react': { injected: true },
   },
-  devDependencies: {
-    ...catalog.pick(
-      // Peer deps (for testing)
-      ...peerDepNames,
-      ...tuiReactPeerNames,
-      // Testing
-      '@effect/vitest',
-      '@types/bun',
-      '@types/node',
-      '@types/react',
-      'vitest',
-      // Storybook
-      'storybook',
-      '@storybook/react',
-      '@storybook/react-vite',
-      // xterm (terminal emulator for Storybook)
-      '@xterm/xterm',
-      '@xterm/addon-fit',
-      // Build tools
-      'react-dom',
-      'react-reconciler', // Peer dep of @overeng/tui-react
-      'vite',
-      '@vitejs/plugin-react',
-    ),
-    ...effectLspDevDeps(),
-  },
+  devDependencies,
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)
     ...utilsPkg.data.peerDependencies,

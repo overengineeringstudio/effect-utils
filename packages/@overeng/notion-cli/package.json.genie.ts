@@ -1,4 +1,5 @@
 import {
+  alignInstallDependencyVersions,
   bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
@@ -16,6 +17,27 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Effect packages not already in @overeng/utils or @overeng/tui-react */
 const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
+
+const devDependencies = alignInstallDependencyVersions({
+  dependencies: {
+    ...utilsPkg.data.peerDependencies,
+    ...tuiReactPkg.data.peerDependencies,
+    ...catalog.pick(
+      ...ownPeerDepNames,
+      '@effect/vitest',
+      '@overeng/utils-dev',
+      '@storybook/react',
+      '@storybook/react-vite',
+      '@types/react',
+      '@vitejs/plugin-react',
+      'storybook',
+      'vite',
+      'vitest',
+    ),
+    ...effectLspDevDeps(),
+  },
+  peerSources: [utilsPkg.data, tuiReactPkg.data],
+})
 
 const data = {
   name: '@overeng/notion-cli',
@@ -62,23 +84,7 @@ const data = {
   dependenciesMeta: {
     '@overeng/tui-react': { injected: true },
   },
-  devDependencies: {
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
-    ...catalog.pick(
-      ...ownPeerDepNames,
-      '@effect/vitest',
-      '@overeng/utils-dev',
-      '@storybook/react',
-      '@storybook/react-vite',
-      '@types/react',
-      '@vitejs/plugin-react',
-      'storybook',
-      'vite',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
-  },
+  devDependencies,
   peerDependencies: {
     ...utilsPkg.data.peerDependencies,
     ...tuiReactPkg.data.peerDependencies,

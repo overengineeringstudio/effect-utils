@@ -1,4 +1,5 @@
 import {
+  alignInstallDependencyVersions,
   bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
@@ -9,6 +10,22 @@ import {
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
+
+const devDependencies = alignInstallDependencyVersions({
+  dependencies: {
+    ...catalog.pick(
+      '@effect/platform',
+      '@effect/vitest',
+      '@overeng/utils',
+      '@overeng/utils-dev',
+      '@types/node',
+      'effect',
+      'vitest',
+    ),
+    ...effectLspDevDeps(),
+  },
+  peerSources: [utilsPkg.data],
+})
 
 const data = {
   name: '@overeng/notion-effect-client',
@@ -26,18 +43,7 @@ const data = {
   dependencies: {
     ...catalog.pick('@overeng/notion-effect-schema'),
   },
-  devDependencies: {
-    ...catalog.pick(
-      '@effect/platform',
-      '@effect/vitest',
-      '@overeng/utils',
-      '@overeng/utils-dev',
-      '@types/node',
-      'effect',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
-  },
+  devDependencies,
   // Expose @overeng/utils peer deps transitively (consumers need them)
   peerDependencies: utilsPkg.data.peerDependencies,
 } satisfies PackageJsonData
