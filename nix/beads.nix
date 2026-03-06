@@ -2,25 +2,25 @@
 # v0.57+ self-manages dolt sql-server per project (deterministic port from FNV hash of BEADS_DIR).
 { pkgs }:
 let
-  version = "0.57.0";
+  version = "0.59.0";
   tag = "v${version}";
 
   sources = {
     x86_64-linux = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_linux_amd64.tar.gz";
-      sha256 = "0jy0blh895iask2hi7gdkagnf78pvjnk88zr0rgx5mxy4xb9sqpq";
+      sha256 = "0bvha0rz7qwd674s4m33f73awmx3jzmlxny3z182qcdn796mqffl";
     };
     aarch64-linux = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_linux_arm64.tar.gz";
-      sha256 = "1a5gn5kn8gf8a1923z19h4wz8vc483vy51q71q591wyvd5dnpk44";
+      sha256 = "17xm93db6rk537djaznsw68jy5cpnzrmdm9bpzb7vfvidn3pprrv";
     };
     x86_64-darwin = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_darwin_amd64.tar.gz";
-      sha256 = "0x72ylyv0n8riy9d9kxylfrdcpdydsm589i5xkr9i8pag4ns76i8";
+      sha256 = "0y2pp15g75dmij14as1vk5zr4qg1364h28xbqwzd8ar267w1bylf";
     };
     aarch64-darwin = {
       url = "https://github.com/steveyegge/beads/releases/download/${tag}/beads_${version}_darwin_arm64.tar.gz";
-      sha256 = "1vcc6dm85in4hb8ik6c863l76p9hhp14r7ckpqpzfafsckzvvg7v";
+      sha256 = "0ivsr00zvb2gqiyn69rhzi65jd42vvfr5dcjkxk3ny3m68s0fpmn";
     };
   };
 
