@@ -5,6 +5,7 @@
  */
 
 export { addCommand } from './add.ts'
+export { alignmentCommand } from './alignment/mod.ts'
 export { envCommand } from './env.ts'
 export { execCommand } from './exec.ts'
 export { initCommand } from './init.ts'

@@ -13,6 +13,7 @@ import { MR_VERSION } from '../lib/version.ts'
 // Import extracted commands
 import {
   addCommand,
+  alignmentCommand,
   envCommand,
   execCommand,
   generateCommand,
@@ -59,6 +60,7 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
     execCommand,
     storeCommand,
     generateCommand,
+    alignmentCommand,
   ]),
   Cli.Command.provide(({ cwd }) =>
     Option.isSome(cwd) === true ? Cwd.fromPath(cwd.value) : Cwd.live,

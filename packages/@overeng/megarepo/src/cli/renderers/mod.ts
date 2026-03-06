@@ -6,6 +6,7 @@
  */
 
 // TuiApp renderers
+export * from './AlignmentOutput/mod.ts'
 export * from './AddOutput/mod.ts'
 export * from './EnvOutput/mod.ts'
 export * from './ExecOutput/mod.ts'
