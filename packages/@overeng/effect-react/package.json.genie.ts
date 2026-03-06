@@ -33,6 +33,7 @@ export default packageJson({
       '@storybook/react',
       '@storybook/react-vite',
       '@types/react',
+      '@types/react-dom',
       '@vitejs/plugin-react',
       'storybook',
       'vite',

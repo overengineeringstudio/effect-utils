@@ -14,5 +14,5 @@ export default tsconfigJson({
     jsxImportSource: 'react',
     lib: [...domLib],
   },
-  include: ['src/**/*'],
+  include: ['src/**/*', 'test/**/*'],
 } satisfies TSConfigArgs)

@@ -14,6 +14,7 @@ bun add @overeng/effect-react effect react
 - **useEffectRunner** - Run effects with automatic error handling
 - **useEffectCallback** - Create stable callbacks that run effects
 - **useEffectOnMount** - Run effects when components mount
+- **useSubscriptionRef** - Subscribe React components to Effect-managed external state
 
 ## Usage
 
@@ -109,6 +110,22 @@ const App = () => (
   </EffectProvider>
 )
 ```
+
+### Subscribing To Effect State
+
+```tsx
+import { SubscriptionRef } from 'effect'
+import { useSubscriptionRef } from '@overeng/effect-react'
+
+const counterRef = yield* SubscriptionRef.make({ count: 0 })
+
+const Counter = () => {
+  const state = useSubscriptionRef(counterRef)
+  return <div>{state.count}</div>
+}
+```
+
+This is useful when state lives outside React, for example in a long-lived Effect service that updates a `SubscriptionRef`.
 
 ### Accessing the Runtime Directly
 
