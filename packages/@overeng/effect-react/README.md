@@ -117,7 +117,7 @@ const App = () => (
 import { SubscriptionRef } from 'effect'
 import { useSubscriptionRef } from '@overeng/effect-react'
 
-const counterRef = yield* SubscriptionRef.make({ count: 0 })
+const counterRef = yield * SubscriptionRef.make({ count: 0 })
 
 const Counter = () => {
   const state = useSubscriptionRef(counterRef)
