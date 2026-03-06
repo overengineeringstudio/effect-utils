@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/genie**: Encode strict internal install-time dependency alignment for workspace peer families
+  - Added a shared genie helper that overrides local install-time dependency versions with the exact versions pinned by source-imported workspace packages
+  - Applied the helper to packages that currently inherit peer surfaces from adjacent workspace packages while preserving ranged `peerDependencies` for consumers
 - **devenv/tasks/shared/vercel.nix**: Switch to prebuilt deploy mode (`vercel pull` -> `vercel build` -> `vercel deploy --prebuilt`)
   - Replaces direct `vercel deploy <dir>` with local prebuilt workflow for deterministic deploys
   - Replaces `path`/`outputDir` deployment config with `cwd` (defaults to `"."`)

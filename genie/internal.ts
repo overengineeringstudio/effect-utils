@@ -204,3 +204,76 @@ export const pnpmWorkspaceWithDepsReact = ({
   const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
   return pnpmWorkspaceReact(packages)
 }
+
+type DirectDependencySource = Pick<
+  PackageJsonData,
+  'name' | 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+>
+
+const resolveDirectDependencyVersion = ({
+  source,
+  dependencyName,
+}: {
+  source: DirectDependencySource
+  dependencyName: string
+}) => {
+  const version =
+    source.dependencies?.[dependencyName] ??
+    source.devDependencies?.[dependencyName] ??
+    source.optionalDependencies?.[dependencyName]
+
+  if (version !== undefined) {
+    return version
+  }
+
+  throw new Error(
+    [
+      `Cannot strictly align "${dependencyName}" from ${source.name ?? '<unknown package>'}.`,
+      'The package exposes it as a peer dependency but does not pin it in dependencies, devDependencies, or optionalDependencies.',
+    ].join(' '),
+  )
+}
+
+/**
+ * Keep local install-time dependency versions aligned with the exact versions
+ * already pinned by source-imported workspace packages, while leaving consumer
+ * peer dependency ranges unchanged.
+ */
+export const alignInstallDependencyVersions = ({
+  dependencies,
+  peerSources,
+}: {
+  dependencies: Record<string, string>
+  peerSources: readonly DirectDependencySource[]
+}) => {
+  const alignedVersions = new Map<string, string>()
+
+  for (const dependencyName of Object.keys(dependencies)) {
+    for (const source of peerSources) {
+      if (source.peerDependencies?.[dependencyName] === undefined) {
+        continue
+      }
+
+      const version = resolveDirectDependencyVersion({ source, dependencyName })
+      const existingVersion = alignedVersions.get(dependencyName)
+
+      if (existingVersion !== undefined && existingVersion !== version) {
+        throw new Error(
+          [
+            `Cannot strictly align "${dependencyName}".`,
+            `Conflicting versions detected: ${existingVersion} vs ${version}.`,
+          ].join(' '),
+        )
+      }
+
+      alignedVersions.set(dependencyName, version)
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(dependencies).map(([dependencyName, version]) => [
+      dependencyName,
+      alignedVersions.get(dependencyName) ?? version,
+    ]),
+  )
+}

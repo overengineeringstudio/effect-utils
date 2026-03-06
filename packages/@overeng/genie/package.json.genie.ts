@@ -1,4 +1,5 @@
 import {
+  alignInstallDependencyVersions,
   catalog,
   effectLspDevDeps,
   packageJson,
@@ -7,6 +8,37 @@ import {
 } from '../../../genie/internal.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
+
+const devDependencies = alignInstallDependencyVersions({
+  dependencies: {
+    ...utilsPkg.data.peerDependencies,
+    ...tuiReactPkg.data.peerDependencies,
+    ...catalog.pick(
+      '@overeng/utils',
+      '@overeng/utils-dev',
+      '@overeng/tui-react',
+      '@effect/cli',
+      '@effect/platform',
+      '@effect/platform-node',
+      '@effect/printer',
+      '@effect/printer-ansi',
+      '@effect/vitest',
+      '@types/node',
+      '@types/bun',
+      'vitest',
+      // Storybook (addon-essentials is built into storybook 10.x)
+      '@storybook/react',
+      '@storybook/react-vite',
+      'storybook',
+      '@types/react',
+      '@types/react-reconciler',
+      'prettier',
+      'oxfmt',
+    ),
+    ...effectLspDevDeps(),
+  },
+  peerSources: [utilsPkg.data, tuiReactPkg.data],
+})
 
 export default packageJson({
   name: '@overeng/genie',
@@ -36,33 +68,7 @@ export default packageJson({
   dependenciesMeta: {
     '@overeng/tui-react': { injected: true },
   },
-  devDependencies: {
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
-    ...catalog.pick(
-      '@overeng/utils',
-      '@overeng/utils-dev',
-      '@overeng/tui-react',
-      '@effect/cli',
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/printer',
-      '@effect/printer-ansi',
-      '@effect/vitest',
-      '@types/node',
-      '@types/bun',
-      'vitest',
-      // Storybook (addon-essentials is built into storybook 10.x)
-      '@storybook/react',
-      '@storybook/react-vite',
-      'storybook',
-      '@types/react',
-      '@types/react-reconciler',
-      'prettier',
-      'oxfmt',
-    ),
-    ...effectLspDevDeps(),
-  },
+  devDependencies,
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)
     ...utilsPkg.data.peerDependencies,
