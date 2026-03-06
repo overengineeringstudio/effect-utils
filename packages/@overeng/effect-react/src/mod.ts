@@ -49,6 +49,14 @@ export {
 } from './context.tsx'
 
 export {
+  type EffectExternalStore,
+  makeEffectExternalStore,
+  makeSubscriptionRefStore,
+  useEffectExternalStore,
+  useSubscriptionRef,
+} from './external-store.ts'
+
+export {
   type EffectButtonResult,
   type EffectButtonRunEffect,
   type EffectButtonState,
