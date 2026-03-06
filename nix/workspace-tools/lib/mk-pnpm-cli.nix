@@ -1,15 +1,17 @@
 # Build CLI binaries using pnpm + bun compile.
 #
-# This builder uses nixpkgs' fetchPnpmDeps for deterministic, reproducible
-# dependency fetching. Unlike the legacy approach, dependency hashes remain
-# stable across source changes (only lockfile changes require hash updates).
+# This builder stages a dedicated workspace closure for the target package,
+# restores a pnpm store from a fixed-output derivation, deploys the package from
+# that closure into an isolated directory, and finally compiles the deployed
+# entrypoint with Bun.
 #
 # Design:
-# - Uses fetchPnpmDeps (not our custom bun-deps.nix)
-# - Each package has its own pnpm-workspace.yaml listing its workspace members
-# - The package's pnpm-lock.yaml contains deps for all workspace members
-# - Single fetchPnpmDeps + single pnpm install handles everything
-# - Handles `patchedDependencies` by including patches directory in filtered source
+# - Dependency fetching stays store-based and deterministic via mk-pnpm-deps.nix
+# - The build phase stages only the target package and its workspace closure
+# - `pnpm deploy` materializes an isolated node_modules tree for the target
+# - The final Bun build runs from the deployed output, not from a raw recursive
+#   workspace install
+# - Handles `patchedDependencies` by including patches directories in the staged closure
 # - Workspace members are automatically parsed from pnpm-workspace.yaml (no manual list needed)
 #
 # Arguments:
@@ -203,11 +205,19 @@ let
 
   # Final workspace members list (workspace-root-relative paths)
   workspaceMembers = map (relPath: resolveRelativePath packageDir relPath) relativeWorkspaceMembers;
+  workspaceClosureDirs = [ packageDir ] ++ workspaceMembers;
 
-  # Create filtered source for fetching pnpm deps
-  # Includes the main package and ONLY package.json files from workspace members
-  # (not full directories) to let pnpm know what deps to fetch without trying
-  # to create node_modules in read-only sibling directories
+  parentDirsFor =
+    dir:
+    let
+      parts = lib.splitString "/" dir;
+    in
+    map (n: lib.concatStringsSep "/" (lib.take n parts)) (lib.range 1 (lib.length parts));
+
+  # Create filtered source for fetching pnpm deps.
+  # This keeps the main package manifest-only while including the full contents
+  # of workspace members, which is enough to populate the pnpm store without
+  # staging unrelated packages.
   mkPackageSource =
     pkgDir:
     lib.cleanSourceWith {
@@ -311,14 +321,33 @@ let
   };
 
   # Full workspace source for building
-  workspaceSrc = lib.cleanSourceWith {
+  workspaceClosureSrc = lib.cleanSourceWith {
     src = workspaceRootPath;
     filter =
       path: type:
       let
+        relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
         baseName = baseNameOf path;
+        isInWorkspaceClosure = lib.any (
+          dir: relPath == dir || lib.hasPrefix "${dir}/" relPath
+        ) workspaceClosureDirs;
+        isWorkspaceClosureParent =
+          type == "directory"
+          && lib.any (dir: lib.elem relPath (parentDirsFor dir)) workspaceClosureDirs;
+        isInPatches =
+          patchesDir != null
+          && (
+            lib.hasPrefix "${patchesDir}/" relPath
+            || relPath == patchesDir
+            || lib.any
+              (
+                memberDir:
+                lib.hasPrefix "${memberDir}/${patchesDir}/" relPath
+                || relPath == "${memberDir}/${patchesDir}"
+              )
+              workspaceMembers
+          );
       in
-      # Exclude common non-essential directories
       lib.cleanSourceFilter path type
       && !(lib.elem baseName (
         [
@@ -337,13 +366,19 @@ let
           "out"
         ]
         ++ extraExcludedSourceNames
-      ));
+      ))
+      && (isInWorkspaceClosure || isWorkspaceClosureParent || isInPatches);
   };
 
   # Read package.json for version
   packageJsonPath = workspaceRootPath + "/${packageDir}/package.json";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
   packageVersion = packageJson.version or "0.0.0";
+  entryRelativeToPackage =
+    if lib.hasPrefix "${packageDir}/" entry then
+      lib.removePrefix "${packageDir}/" entry
+    else
+      throw "mk-pnpm-cli: entry must be inside packageDir (${packageDir}): ${entry}";
 
   # Build NixStamp JSON for embedding in binary
   # Note: We manually construct the JSON to avoid escaping issues with builtins.toJSON
@@ -380,7 +415,7 @@ pkgs.stdenv.mkDerivation {
       if lockfileHash != null then
         ''
           # Validate lockfile hash (early failure with clear message)
-          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
+          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceClosureSrc}/${packageDir}/pnpm-lock.yaml)"
           if [ "$currentHash" != "${lockfileHash}" ]; then
             echo ""
             echo "error: lockfileHash is stale (run: dt nix:hash)"
@@ -396,34 +431,43 @@ pkgs.stdenv.mkDerivation {
 
     ${pnpmDepsHelper.mkRestoreScript { deps = pnpmDeps; }}
 
-    # Copy workspace source
-    echo "Copying workspace source..."
-    cp -r ${workspaceSrc} workspace
+    # Copy only the package's workspace closure into the build sandbox.
+    echo "Copying workspace closure..."
+    cp -r ${workspaceClosureSrc} workspace
     chmod -R +w workspace
     cd workspace
 
-    # Install deps for main package and all workspace members recursively
-    echo "Installing package deps..."
+    # Deploy the target package from the staged closure into an isolated output
+    # tree. This keeps build-time dependency resolution independent from the
+    # raw workspace layout used during development.
+    echo "Deploying package closure..."
+    deploy_dir="$PWD/.pnpm-deploy"
+    rm -rf "$deploy_dir"
     cd ${packageDir}
-    pnpm install --offline --frozen-lockfile --ignore-scripts --recursive
-    patchShebangs .
-    cd -
+    pnpm --config.inject-workspace-packages=true \
+      --filter . \
+      deploy \
+      --offline \
+      --frozen-lockfile \
+      --ignore-scripts \
+      "$deploy_dir"
+    cd "$deploy_dir"
 
     # Inject build stamp
-    if [ -f "${entry}" ]; then
-      substituteInPlace "${entry}" \
+    if [ -f "${entryRelativeToPackage}" ]; then
+      substituteInPlace "${entryRelativeToPackage}" \
         --replace-quiet "const buildStamp = '__CLI_BUILD_STAMP__'" "const buildStamp = '${nixStampJson}'"
     fi
 
     # Build the CLI
     echo "Building CLI..."
-    mkdir -p ${packageDir}/output
-    bun build ${entry} --compile ${lib.concatStringsSep " " extraBunBuildArgs} --outfile=${packageDir}/output/${binaryName}
+    mkdir -p output
+    bun build ${entryRelativeToPackage} --compile ${lib.concatStringsSep " " extraBunBuildArgs} --outfile=output/${binaryName}
 
     # Smoke test
     if [ -n "${smokeTestArgsStr}" ]; then
       echo "Running smoke test..."
-      ./${packageDir}/output/${binaryName} ${smokeTestArgsStr}
+      ./output/${binaryName} ${smokeTestArgsStr}
     fi
 
     runHook postBuild
@@ -433,8 +477,8 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/bin
-    # We're still in workspace/ from buildPhase
-    cp ${packageDir}/output/${binaryName} $out/bin/
+    # We're still in workspace/.pnpm-deploy from buildPhase
+    cp output/${binaryName} $out/bin/
 
     runHook postInstall
   '';

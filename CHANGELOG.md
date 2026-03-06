@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
+  - Stages only the target package and its workspace closure into the Nix build
+  - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree
+  - Compiles the deployed entrypoint with Bun, reducing coupling to the raw dev workspace layout
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
 - **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails
