@@ -1,12 +1,42 @@
 import {
+  alignInstallDependencyFamily,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
+  sourceTypedReactEffectFamily,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
+
+const baseDevDependencies = {
+  ...utilsPkg.data.peerDependencies,
+  ...tuiReactPkg.data.peerDependencies,
+  ...catalog.pick(
+    '@overeng/utils',
+    '@overeng/utils-dev',
+    '@overeng/tui-react',
+    '@effect/cli',
+    '@effect/platform',
+    '@effect/platform-node',
+    '@effect/printer',
+    '@effect/printer-ansi',
+    '@effect/vitest',
+    '@types/node',
+    '@types/bun',
+    'vitest',
+    // Storybook (addon-essentials is built into storybook 10.x)
+    '@storybook/react',
+    '@storybook/react-vite',
+    'storybook',
+    '@types/react',
+    '@types/react-reconciler',
+    'prettier',
+    'oxfmt',
+  ),
+  ...effectLspDevDeps(),
+}
 
 export default packageJson({
   name: '@overeng/genie',
@@ -37,31 +67,12 @@ export default packageJson({
     '@overeng/tui-react': { injected: true },
   },
   devDependencies: {
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
-    ...catalog.pick(
-      '@overeng/utils',
-      '@overeng/utils-dev',
-      '@overeng/tui-react',
-      '@effect/cli',
-      '@effect/platform',
-      '@effect/platform-node',
-      '@effect/printer',
-      '@effect/printer-ansi',
-      '@effect/vitest',
-      '@types/node',
-      '@types/bun',
-      'vitest',
-      // Storybook (addon-essentials is built into storybook 10.x)
-      '@storybook/react',
-      '@storybook/react-vite',
-      'storybook',
-      '@types/react',
-      '@types/react-reconciler',
-      'prettier',
-      'oxfmt',
-    ),
-    ...effectLspDevDeps(),
+    ...baseDevDependencies,
+    ...alignInstallDependencyFamily({
+      dependencies: baseDevDependencies,
+      dependencyNames: sourceTypedReactEffectFamily,
+      sources: [utilsPkg.data, tuiReactPkg.data],
+    }),
   },
   peerDependencies: {
     // Expose @overeng/utils peer deps transitively (consumers need them)

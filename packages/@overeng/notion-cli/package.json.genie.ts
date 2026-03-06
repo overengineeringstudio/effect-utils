@@ -1,8 +1,10 @@
 import {
+  alignInstallDependencyFamily,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
+  sourceTypedReactEffectFamily,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
@@ -10,6 +12,24 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Effect packages not already in @overeng/utils or @overeng/tui-react */
 const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
+
+const baseDevDependencies = {
+  ...utilsPkg.data.peerDependencies,
+  ...tuiReactPkg.data.peerDependencies,
+  ...catalog.pick(
+    ...ownPeerDepNames,
+    '@effect/vitest',
+    '@overeng/utils-dev',
+    '@storybook/react',
+    '@storybook/react-vite',
+    '@types/react',
+    '@vitejs/plugin-react',
+    'storybook',
+    'vite',
+    'vitest',
+  ),
+  ...effectLspDevDeps(),
+}
 
 export default packageJson({
   name: '@overeng/notion-cli',
@@ -49,21 +69,12 @@ export default packageJson({
     '@overeng/tui-react': { injected: true },
   },
   devDependencies: {
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
-    ...catalog.pick(
-      ...ownPeerDepNames,
-      '@effect/vitest',
-      '@overeng/utils-dev',
-      '@storybook/react',
-      '@storybook/react-vite',
-      '@types/react',
-      '@vitejs/plugin-react',
-      'storybook',
-      'vite',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
+    ...baseDevDependencies,
+    ...alignInstallDependencyFamily({
+      dependencies: baseDevDependencies,
+      dependencyNames: sourceTypedReactEffectFamily,
+      sources: [utilsPkg.data, tuiReactPkg.data],
+    }),
   },
   peerDependencies: {
     ...utilsPkg.data.peerDependencies,
