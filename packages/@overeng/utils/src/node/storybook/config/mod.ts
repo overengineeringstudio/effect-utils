@@ -79,9 +79,7 @@ const applySharedConfig = (config: InlineConfig): void => {
  * export default createDomStorybookConfig({})
  * ```
  */
-export const createDomStorybookConfig = (
-  options: DomStorybookConfigOptions = {},
-): StorybookConfig => {
+export const createDomStorybookConfig = (options: DomStorybookConfigOptions = {}) => {
   const {
     stories = ['../src/**/*.stories.@(ts|tsx)'],
     addons,
@@ -123,9 +121,7 @@ export const createDomStorybookConfig = (
  * })
  * ```
  */
-export const createTuiStorybookConfig = (
-  options: TuiStorybookConfigOptions = {},
-): StorybookConfig => {
+export const createTuiStorybookConfig = (options: TuiStorybookConfigOptions = {}) => {
   const {
     stories = ['../src/**/*.stories.@(ts|tsx)'],
     addons,
