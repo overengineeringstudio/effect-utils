@@ -19,7 +19,7 @@
 # - entry: CLI entry file relative to workspaceRoot.
 # - packageDir: Package directory relative to workspaceRoot.
 # - workspaceRoot: Workspace root (flake input or path).
-# - pnpmDepsHash: Hash for package's pnpm deps (includes all workspace members).
+# - pnpmDepsHash: Hash for the staged pnpm dependency fetch input.
 # - lockfileHash: SHA256 of lockfile for staleness check (optional, enables early validation).
 # - packageJsonDepsHash: SHA256 of package.json deps fields for fingerprinting (optional).
 #                        Not used by the builder itself; accepted for API compatibility.
@@ -215,9 +215,9 @@ let
     map (n: lib.concatStringsSep "/" (lib.take n parts)) (lib.range 1 (lib.length parts));
 
   # Create filtered source for fetching pnpm deps.
-  # This keeps the main package manifest-only while including the full contents
-  # of workspace members, which is enough to populate the pnpm store without
-  # staging unrelated packages.
+  # This keeps the staged fetch input limited to the target lockfile, the
+  # target package manifest/workspace config, workspace member manifests, and
+  # any referenced patch files.
   mkPackageSource =
     pkgDir:
     lib.cleanSourceWith {
@@ -274,8 +274,6 @@ let
           isWorkspaceMemberPackageJson = lib.any (
             memberDir: relPath == "${memberDir}/package.json"
           ) workspaceMembers;
-          # Include full workspace member contents for recursive installs
-          isInWorkspaceMember = lib.any (memberDir: lib.hasPrefix "${memberDir}/" relPath) workspaceMembers;
           isWorkspaceMemberDir =
             type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
           isWorkspaceMemberParentDir =
@@ -297,14 +295,12 @@ let
           || isInPatches
           || isParentDir
           || isWorkspaceMemberPackageJson
-          || isInWorkspaceMember
           || isWorkspaceMemberDir
           || isWorkspaceMemberParentDir
         );
     };
 
-  # Fetch pnpm dependencies using the shared helper.
-  # Uses --force --recursive for workspace member handling.
+  # Fetch pnpm dependencies from the staged lockfile + workspace member manifests.
   pnpmDeps = pnpmDepsHelper.mkDeps {
     inherit name pnpmDepsHash;
     src = mkPackageSource packageDir;
@@ -316,8 +312,6 @@ let
       chmod -R +w .
       cd "$NIX_BUILD_TOP/source/${packageDir}"
     '';
-    installFlags = "--force --recursive";
-    fetchFlags = "--recursive";
   };
 
   # Full workspace source for building
