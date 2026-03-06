@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - Compiles the deployed entrypoint with Bun, reducing coupling to the raw dev workspace layout
   - Narrows pnpm deps fetching to the target lockfile, workspace member manifests, and referenced patch files
   - Removes legacy `--force` / explicit `--recursive` fetch behavior and normalizes the store against the staged package lockfile
+  - Adds a small benchmark harness that compares the current worktree to a detached baseline worktree via repeated Nix builds after purging project-specific store paths
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
 - **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails
