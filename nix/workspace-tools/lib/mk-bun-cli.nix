@@ -15,10 +15,6 @@
 # - depsManager: Dependency installer to use ("bun" or "pnpm"). Defaults to "bun".
 # - pnpmDepsHash: Fixed-output hash for pnpm deps snapshot (used when depsManager = "pnpm").
 # - lockfileHash: SHA256 of lockfile for staleness check (optional, enables early validation).
-# - packageJsonDepsHash: SHA256 of package.json deps fields for fingerprinting (optional).
-#                        Not used by the builder itself; accepted for API compatibility.
-#                        Used externally by nix:check:quick to detect package.json changes
-#                        without lockfile update (e.g., forgetting to run `pnpm install`).
 # - binaryName: Output binary name (defaults to name).
 # - packageJsonPath: package.json path relative to workspaceRoot (defaults to <packageDir>/package.json).
 # - gitRev: Git short revision (defaults to "unknown").
@@ -41,7 +37,6 @@
   depsManager ? "bun",
   pnpmDepsHash ? null,
   lockfileHash ? null,
-  packageJsonDepsHash ? null,
   binaryName ? name,
   packageJsonPath ? "${packageDir}/package.json",
   gitRev ? "unknown",

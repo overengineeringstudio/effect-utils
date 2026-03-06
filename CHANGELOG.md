@@ -37,6 +37,9 @@ All notable changes to this project will be documented in this file.
   - Optional tasks now use native `@complete` dependency suffix instead of nested `devenv tasks run` wrappers
   - Eliminates 6x shell re-evaluation, ~5.9s trace gap, fork-bomb guards, and filesystem locks
   - The workaround for `cachix/devenv#2480` is no longer needed since we use `devenv shell` (not direnv)
+- **nix/workspace-tools**: Remove compatibility-only Nix surface from CLI builders/tasks
+  - Drops the dead `packageJsonDepsHash` argument from both `mk-pnpm-cli` and exported `mk-bun-cli`
+  - Removes the deprecated `devenvModules.tasks.git-hooks-fix` export and deletes its module
 
 ### Fixed
 
