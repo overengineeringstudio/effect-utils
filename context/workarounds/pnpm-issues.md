@@ -160,6 +160,25 @@ pnpmDeps = pkgs.stdenvNoCC.mkDerivation {
 };
 ```
 
+### Store Normalization Pipeline
+
+After `pnpm install`, the FOD runs a normalization pipeline (`mk-pnpm-deps.nix`) to ensure
+the archived store is deterministic across different build environments:
+
+1. **Phase 0 — Phantom package pruning**: `pnpm install --force` can non-deterministically
+   fetch packages not listed in the lockfile (e.g., older `@types/node` versions from
+   registry metadata). These "phantom" packages are pruned by parsing the lockfile's
+   `packages:` section and removing any store index file whose `pkg@version` doesn't match.
+2. **Phase 1 — CAS file inventory**: Builds a set of all content-addressable storage files
+   (source of truth for executable status via `-exec` filename suffix).
+3. **Phase 2 — Index JSON canonicalization**: Normalizes `mode` fields (derived from CAS
+   filename, not the non-deterministic index value), sorts keys, strips `sideEffects`/
+   `requiresBuild`, and zeroes `checkedAt` timestamps.
+4. **Phase 3 — Orphan CAS cleanup**: Removes CAS files not referenced by any remaining index.
+5. **Directory/permission normalization**: Removes empty dirs, non-essential store dirs
+   (`projects/`, `tmp/`), and normalizes permissions (dirs 755, files 444, exec files 555).
+6. **Deterministic tarball**: GNU tar with sorted names, epoch mtime, root ownership.
+
 ### Platform-Independent Hashes via supportedArchitectures
 
 To avoid needing separate hashes for Linux and macOS, we configure pnpm to download

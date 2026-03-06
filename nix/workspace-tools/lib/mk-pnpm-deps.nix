@@ -99,22 +99,30 @@ in
 
         pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
 
+        export LOCKFILE_DIR="$NIX_BUILD_TOP"
+
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
         #
-        # Key insight: the CAS file name (-exec suffix or not) is set during
-        # initial fetch from the tarball and is deterministic. But the index
-        # JSON mode field can change non-deterministically due to cross-partition
-        # hardlink behavior (pnpm flips exec bits on bin entries via hardlinks;
-        # on same-partition this propagates to the CAS file's mode, on cross-
-        # partition it doesn't). So we derive exec status from the CAS file
-        # name (deterministic source of truth), not the index mode.
+        # Pipeline overview:
+        #   Phase 0: Prune phantom index files not in lockfile (fixes --force non-determinism)
+        #   Phase 1: Build CAS file existence set (source of truth for exec status)
+        #   Phase 2: Canonicalize index JSON (deterministic mode from CAS filename)
+        #   Phase 3: Remove orphan CAS files (not referenced by any index)
+        #
+        # Phase 0 context: pnpm install --force can non-deterministically fetch
+        # "phantom" packages not listed in the lockfile (e.g., older @types/node
+        # versions from registry metadata). These phantom packages have valid
+        # index+CAS entries so the existing orphan cleanup doesn't remove them.
+        # We prune by parsing ALL lockfiles in the workspace (the root lockfile
+        # plus any workspace member lockfiles) as the source of truth for which
+        # pkg@version pairs should exist in the store.
 
-        # 1. Canonicalize index JSON and remove orphan CAS files.
         node -e '
           const fs = require("fs");
           const p = require("path");
           const sp = process.env.STORE_PATH;
+          const lockfileDir = process.env.LOCKFILE_DIR;
 
           function walk(dir, out) {
             for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
@@ -128,6 +136,55 @@ in
           if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
           const vdir = p.join(sp, vdirs[0]);
 
+          /* Phase 0: Prune phantom index files not in lockfiles.
+             Find ALL pnpm-lock.yaml files in the source tree (root + workspace members)
+             and collect their packages sections into a single allowlist. */
+          const allLockfiles = walk(lockfileDir, []).filter(
+            f => p.basename(f) === "pnpm-lock.yaml" && !f.includes("node_modules")
+          );
+
+          const Q = String.fromCharCode(39); /* single quote */
+          const pkgLineRe = new RegExp("^\\s+(" + Q + "?)(.+?)\\1:\\s*$");
+          const allowedPkgVersions = new Set();
+
+          for (const lf of allLockfiles) {
+            const lines = fs.readFileSync(lf, "utf8").split("\n");
+            let inPackages = false;
+            for (const line of lines) {
+              if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
+              if (inPackages) {
+                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                const m = pkgLineRe.exec(line);
+                if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
+              }
+            }
+          }
+          console.log("store-norm: parsed " + allLockfiles.length + " lockfile(s), found " + allowedPkgVersions.size + " unique packages");
+
+          if (allowedPkgVersions.size === 0) {
+            console.error("store-norm: FATAL — no packages parsed from " + allLockfiles.length + " lockfile(s)");
+            process.exit(1);
+          }
+
+          const indexDir = p.join(vdir, "index");
+          const allIndex = walk(indexDir, []).filter(f => f.endsWith(".json"));
+          let pruned = 0;
+          for (const ip of allIndex) {
+            /* Extract pkg@version from filename: {hash}-{pkg}@{ver}.json
+               Scoped packages use + instead of / in filenames. */
+            const basename = p.basename(ip, ".json");
+            const dashIdx = basename.indexOf("-");
+            if (dashIdx === -1) continue;
+            const pkgAtVersion = basename.slice(dashIdx + 1).replace(/\+/g, "/");
+            if (!allowedPkgVersions.has(pkgAtVersion)) {
+              fs.unlinkSync(ip);
+              pruned++;
+            }
+          }
+          const remaining = allIndex.length - pruned;
+          if (pruned) console.log("store-norm: pruned " + pruned + " phantom index files");
+          console.log("store-norm: " + remaining + " index files remain (from " + allowedPkgVersions.size + " lockfile packages)");
+
           /* Phase 1: Build CAS file existence set (source of truth for exec status) */
           const filesDir = p.join(vdir, "files");
           const casFiles = new Set();
@@ -135,10 +192,17 @@ in
             for (const f of walk(filesDir, [])) casFiles.add(f);
           }
 
-          /* Phase 2: Normalize index JSON using CAS file names for exec detection */
+          /* Phase 2: Normalize index JSON using CAS file names for exec detection.
+             Key insight: the CAS file name (-exec suffix or not) is set during
+             initial fetch from the tarball and is deterministic. But the index
+             JSON mode field can change non-deterministically due to cross-partition
+             hardlink behavior (pnpm flips exec bits on bin entries via hardlinks;
+             on same-partition this propagates to the CAS file mode, on cross-
+             partition it does not). So we derive exec status from the CAS file
+             name (deterministic source of truth), not the index mode. */
           const referenced = new Set();
-          const indexDir = p.join(vdir, "index");
-          const indexFiles = walk(indexDir, []).filter(f => f.endsWith(".json")).sort();
+          const indexDir2 = p.join(vdir, "index");
+          const indexFiles = walk(indexDir2, []).filter(f => f.endsWith(".json")).sort();
           for (const ip of indexFiles) {
             const d = JSON.parse(fs.readFileSync(ip, "utf8"));
             if (d.files) {

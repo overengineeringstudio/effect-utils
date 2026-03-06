@@ -22,23 +22,20 @@ Repos that depend on effect-utils via megarepo need to run `mr sync --frozen` in
   shell: bash
 ```
 
-### Issue: pnpm Deps Hash Mismatch
+### Issue: pnpm Deps Hash Mismatch (Root-Caused & Fixed)
 
-The megarepo Nix build uses `pnpmDepsHash` for reproducible builds. However, pnpm resolves slightly different content based on:
+The Nix build uses `pnpmDepsHash` for reproducible dependency fetching via fixed-output
+derivations (FODs). `pnpm install --force` can non-deterministically fetch "phantom" packages
+not listed in the lockfile — extra versions pulled from npm registry metadata during
+resolution (e.g., `@types/node@25.0.3` alongside the lockfile's `@types/node@25.3.3`).
 
-- pnpm version differences
-- npm registry state at fetch time
-- Platform/architecture differences
+This produces different FOD output hashes between builds even with identical inputs (same
+lockfile, same pnpm version, same platform). Confirmed by observing 3 different hashes for
+the same source fingerprint.
 
-This causes hash mismatches in CI:
-
-```
-error: hash mismatch in fixed-output derivation 'megarepo-pnpm-deps.drv':
-         specified: sha256-ABC...
-            got:    sha256-XYZ...
-```
-
-The hash keeps changing between local builds and CI environments, making the flake-based approach unreliable.
+**Fix**: `mk-pnpm-deps.nix` now prunes phantom packages by parsing the lockfile's `packages:`
+section as the source of truth and removing any store index file not in that set. See the
+store normalization pipeline docs in `context/workarounds/pnpm-issues.md`.
 
 ### Options
 
