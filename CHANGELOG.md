@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/genie**: Add an explicit helper for strict internal alignment of the source-typed React/Effect dependency family
+  - Keeps consumer-facing peer dependency ranges unchanged while pinning selected local install-time dependencies to the exact versions already used by adjacent workspace packages
 - **devenv/tasks/shared/vercel.nix**: Switch to prebuilt deploy mode (`vercel pull` -> `vercel build` -> `vercel deploy --prebuilt`)
   - Replaces direct `vercel deploy <dir>` with local prebuilt workflow for deterministic deploys
   - Replaces `path`/`outputDir` deployment config with `cwd` (defaults to `"."`)

@@ -204,3 +204,102 @@ export const pnpmWorkspaceWithDepsReact = ({
   const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
   return pnpmWorkspaceReact(packages)
 }
+
+type DirectDependencySource = Pick<
+  PackageJsonData,
+  'name' | 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+>
+
+/**
+ * Dependency family that acts as part of the internal type/runtime ABI for
+ * source-imported React/Effect workspaces.
+ */
+export const sourceTypedReactEffectFamily = [
+  '@effect-atom/atom',
+  '@effect-atom/atom-react',
+  'effect',
+  '@effect/platform',
+  '@effect/platform-node',
+  '@effect/rpc',
+  'react',
+  'react-dom',
+  'react-reconciler',
+  '@opentui/core',
+  '@opentui/react',
+  '@types/react',
+  '@types/react-reconciler',
+] as const
+
+const resolveDirectDependencyVersion = ({
+  source,
+  dependencyName,
+}: {
+  source: DirectDependencySource
+  dependencyName: string
+}) => {
+  const version =
+    source.dependencies?.[dependencyName] ??
+    source.devDependencies?.[dependencyName] ??
+    source.optionalDependencies?.[dependencyName]
+
+  if (version !== undefined) {
+    return version
+  }
+
+  throw new Error(
+    [
+      `Cannot align "${dependencyName}" from ${source.name ?? '<unknown package>'}.`,
+      'The dependency is exposed as a peer but is not pinned in dependencies, devDependencies, or optionalDependencies.',
+    ].join(' '),
+  )
+}
+
+/**
+ * Return exact install-time overrides for an explicitly named dependency family.
+ *
+ * Only dependency names that are:
+ * - listed in `dependencyNames`
+ * - present in `dependencies`
+ * - exposed as peer dependencies by at least one listed source
+ *
+ * are aligned to the upstream source package's exact direct pin.
+ */
+export const alignInstallDependencyFamily = ({
+  dependencies,
+  dependencyNames,
+  sources,
+}: {
+  dependencies: Record<string, string>
+  dependencyNames: readonly string[]
+  sources: readonly DirectDependencySource[]
+}) => {
+  const overrides = new Map<string, string>()
+
+  for (const dependencyName of dependencyNames) {
+    if (dependencies[dependencyName] === undefined) {
+      continue
+    }
+
+    for (const source of sources) {
+      if (source.peerDependencies?.[dependencyName] === undefined) {
+        continue
+      }
+
+      const version = resolveDirectDependencyVersion({ source, dependencyName })
+      const existingVersion = overrides.get(dependencyName)
+
+      if (existingVersion !== undefined && existingVersion !== version) {
+        throw new Error(
+          [
+            `Cannot align "${dependencyName}".`,
+            `Conflicting source versions detected: ${existingVersion} vs ${version}.`,
+          ].join(' '),
+        )
+      }
+
+      overrides.set(dependencyName, version)
+    }
+  }
+
+  return Object.fromEntries(overrides)
+}
