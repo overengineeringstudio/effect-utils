@@ -8,5 +8,6 @@ export type PackageInfo = {
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   peerDependenciesMeta?: Record<string, { optional?: boolean }>
+  patchedDependencies?: Record<string, string>
   pnpm?: { patchedDependencies?: Record<string, string> }
 }

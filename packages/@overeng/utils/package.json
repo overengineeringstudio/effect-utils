@@ -2,6 +2,10 @@
   "name": "@overeng/utils",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/isomorphic/mod.ts",
@@ -92,5 +96,8 @@
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"
+  },
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch"
   }
 }

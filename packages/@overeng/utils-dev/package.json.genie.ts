@@ -1,4 +1,5 @@
 import {
+  bunWorkspacesStandalone,
   catalog,
   effectLspDevDeps,
   packageJson,
@@ -18,6 +19,7 @@ const peerDepNames = [
 export default packageJson({
   name: '@overeng/utils-dev',
   ...privatePackageDefaults,
+  workspaces: bunWorkspacesStandalone(),
   exports: {
     './node-vitest': './src/node-vitest/mod.ts',
   },

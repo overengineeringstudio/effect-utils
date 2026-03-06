@@ -264,6 +264,8 @@ export type PackageJsonData = {
   funding?: Funding | Funding[]
   /** Package manager for corepack */
   packageManager?: string
+  /** Workspace configuration */
+  workspaces?: string[] | { packages?: string[]; catalog?: Record<string, string> }
   /**
    * Bun patched dependencies (top-level).
    *

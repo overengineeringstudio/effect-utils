@@ -20,6 +20,14 @@ All notable changes to this project will be documented in this file.
   - Replaces `path`/`outputDir` deployment config with `cwd` (defaults to `"."`)
   - Adds `vercel pull` step to fetch project settings and env for the target environment
   - Adds `vercel build` step to produce `.vercel/output` locally before deploying
+- **context/workarounds/bun-issues.md**: Refresh Bun migration status after testing Bun `1.3.10`
+  - Current blocker is Bun's inability to consume this repo's per-package `pnpm-workspace.yaml` / `pnpm.patchedDependencies` shape directly
+  - `workspace:*` and patched dependencies both work once Bun-native `workspaces` and top-level `patchedDependencies` are added explicitly
+  - The previous Bun hang and patched-dependency issues were not reproduced after that explicit metadata setup
+- **@overeng/genie**: Generate Bun-native `workspaces` and validate top-level `patchedDependencies` during the Phase 1 Bun migration investigation
+  - Added Bun `workspaces` support to generated package metadata while preserving existing pnpm fields
+  - Extended recomposition validation so Bun-style top-level `patchedDependencies` are checked alongside `pnpm.patchedDependencies`
+  - Validation showed Bun can install the migrated workspace shape, but still fails when nested workspace packages also carry Bun patch metadata
 
 ### Added
 

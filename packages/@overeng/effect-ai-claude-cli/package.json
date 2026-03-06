@@ -2,6 +2,10 @@
   "name": "@overeng/effect-ai-claude-cli",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.ts"

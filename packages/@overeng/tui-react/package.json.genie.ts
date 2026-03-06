@@ -1,10 +1,12 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import tuiCorePkg from '../tui-core/package.json.genie.ts'
 
 /** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
 const peerDepNames = [
@@ -21,7 +23,7 @@ const peerDepNames = [
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 
-export default packageJson({
+const data = {
   name: '@overeng/tui-react',
   ...privatePackageDefaults,
   exports: {
@@ -81,4 +83,14 @@ export default packageJson({
     ),
   },
   peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [tuiCorePkg],
+    location: 'packages/@overeng/tui-react',
+    extraPackages: ['../utils-dev'],
+  }),
 } satisfies PackageJsonData)

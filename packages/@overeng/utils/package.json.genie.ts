@@ -1,5 +1,6 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
+  bunWorkspacesWithDeps,
   catalog,
   definePatchedDependencies,
   effectLspDevDeps,
@@ -7,6 +8,7 @@ import {
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
@@ -28,9 +30,10 @@ const utilsPatches = definePatchedDependencies({
   },
 })
 
-export default packageJson({
+const data = {
   name: '@overeng/utils',
   ...privatePackageDefaults,
+  patchedDependencies: utilsPatches,
   pnpm: {
     patchedDependencies: utilsPatches,
   },
@@ -93,4 +96,13 @@ export default packageJson({
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [utilsDevPkg],
+    location: 'packages/@overeng/utils',
+  }),
 } satisfies PackageJsonData)

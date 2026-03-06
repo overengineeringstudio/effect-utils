@@ -1,13 +1,16 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-export default packageJson({
+const data = {
   name: '@overeng/notion-effect-client',
   ...privatePackageDefaults,
   exports: {
@@ -37,4 +40,13 @@ export default packageJson({
   },
   // Expose @overeng/utils peer deps transitively (consumers need them)
   peerDependencies: utilsPkg.data.peerDependencies,
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [notionEffectSchemaPkg, utilsDevPkg, utilsPkg],
+    location: 'packages/@overeng/notion-effect-client',
+  }),
 } satisfies PackageJsonData)

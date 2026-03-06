@@ -1,4 +1,5 @@
 import {
+  bunWorkspacesStandalone,
   catalog,
   packageJson,
   privatePackageDefaults,
@@ -8,6 +9,7 @@ import {
 export default packageJson({
   name: '@overeng/tui-core',
   ...privatePackageDefaults,
+  workspaces: bunWorkspacesStandalone(),
   exports: {
     '.': './src/mod.ts',
   },

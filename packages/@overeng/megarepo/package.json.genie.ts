@@ -1,10 +1,13 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import effectPathPkg from '../effect-path/package.json.genie.ts'
+import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -19,9 +22,13 @@ const peerDepNames = [
 
 const tuiReactPeerNames = Object.keys(tuiReactPkg.data.peerDependencies ?? {})
 
-export default packageJson({
+const data = {
   name: '@overeng/megarepo',
   ...privatePackageDefaults,
+  patchedDependencies: {
+    ...utilsPkg.data.patchedDependencies,
+    ...tuiReactPkg.data.patchedDependencies,
+  },
   scripts: {
     storybook: 'storybook dev -p 6007',
     'storybook:build': 'storybook build',
@@ -85,4 +92,13 @@ export default packageJson({
       ...tuiReactPkg.data.pnpm?.patchedDependencies,
     },
   },
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [effectPathPkg, tuiCorePkg, tuiReactPkg, utilsPkg],
+    location: 'packages/@overeng/megarepo',
+  }),
 } satisfies PackageJsonData)

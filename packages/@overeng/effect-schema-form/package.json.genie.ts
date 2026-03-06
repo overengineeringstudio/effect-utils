@@ -1,4 +1,5 @@
 import {
+  bunWorkspacesStandalone,
   catalog,
   effectLspDevDeps,
   packageJson,
@@ -11,6 +12,7 @@ const peerDepNames = ['effect', 'react'] as const
 export default packageJson({
   name: '@overeng/effect-schema-form',
   ...privatePackageDefaults,
+  workspaces: bunWorkspacesStandalone(),
   exports: {
     '.': './src/mod.ts',
   },

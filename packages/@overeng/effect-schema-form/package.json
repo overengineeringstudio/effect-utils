@@ -2,6 +2,9 @@
   "name": "@overeng/effect-schema-form",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "."
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.ts"

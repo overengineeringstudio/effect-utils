@@ -2,6 +2,14 @@
   "name": "@overeng/megarepo",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../effect-path",
+    "../tui-core",
+    "../tui-react",
+    "../utils",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
@@ -90,5 +98,8 @@
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"
+  },
+  "patchedDependencies": {
+    "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch"
   }
 }

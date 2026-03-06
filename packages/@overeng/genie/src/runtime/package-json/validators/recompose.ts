@@ -13,6 +13,13 @@ const hasOptionalPeer = ({
   name: string
 }): boolean => meta?.[name]?.optional === true
 
+const resolvePatches = (
+  pkg: Pick<PackageInfo, 'patchedDependencies' | 'pnpm'>,
+): Record<string, string> => ({
+  ...pkg.patchedDependencies,
+  ...pkg.pnpm?.patchedDependencies,
+})
+
 const validatePackageRecomposition = (args: {
   pkg: PackageInfo
   packageMap: Map<string, PackageInfo>
@@ -71,8 +78,8 @@ const validatePackageRecomposition = (args: {
       }
     }
 
-    const upstreamPatches = upstream.pnpm?.patchedDependencies ?? {}
-    const downstreamPatches = args.pkg.pnpm?.patchedDependencies ?? {}
+    const upstreamPatches = resolvePatches(upstream)
+    const downstreamPatches = resolvePatches(args.pkg)
     for (const patchName of Object.keys(upstreamPatches)) {
       if (!(patchName in downstreamPatches)) {
         issues.push({

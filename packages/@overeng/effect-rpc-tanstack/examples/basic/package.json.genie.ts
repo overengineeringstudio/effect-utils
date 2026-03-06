@@ -1,11 +1,13 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../../../genie/internal.ts'
+import utilsPkg from '../../../utils/package.json.genie.ts'
 
-export default packageJson({
+const data = {
   name: 'effect-rpc-tanstack-example-basic',
   ...privatePackageDefaults,
   scripts: {
@@ -38,4 +40,13 @@ export default packageJson({
       'vite',
     ),
   },
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [utilsPkg],
+    location: 'packages/@overeng/effect-rpc-tanstack/examples/basic',
+  }),
 } satisfies PackageJsonData)

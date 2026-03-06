@@ -2,6 +2,9 @@
   "name": "@overeng/utils-dev",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "."
+  ],
   "type": "module",
   "exports": {
     "./node-vitest": "./src/node-vitest/mod.ts"

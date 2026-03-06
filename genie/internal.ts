@@ -7,6 +7,7 @@
 
 import {
   catalog as externalCatalog,
+  computeRelativePath,
   createWorkspaceDepsResolver,
   defineCatalog,
   pnpmWorkspaceYaml,
@@ -187,3 +188,31 @@ export const pnpmWorkspaceWithDepsReact = ({
   const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
   return pnpmWorkspaceReact(packages)
 }
+
+const toPkgInput = (data: PackageJsonData): GenieOutput<PackageJsonData> => ({
+  data,
+  stringify: () => '',
+})
+
+const resolveBunWorkspaces = createWorkspaceDepsResolver({
+  prefixes: ['@overeng/'],
+  resolveWorkspacePath: (packageName, fromLocation) =>
+    computeRelativePath({
+      from: fromLocation,
+      to: `packages/@overeng/${packageName.split('/')[1]}`,
+    }),
+})
+
+export const bunWorkspacesStandalone = () => ['.']
+
+export const bunWorkspacesWithDeps = ({
+  pkg,
+  deps,
+  location,
+  extraPackages,
+}: {
+  pkg: PackageJsonData
+  deps: readonly PkgInput[]
+  location: string
+  extraPackages?: readonly string[]
+}) => ['.', ...resolveBunWorkspaces({ pkg: toPkgInput(pkg), deps, location, extraPackages })]

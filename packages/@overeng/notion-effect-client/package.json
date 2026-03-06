@@ -2,6 +2,12 @@
   "name": "@overeng/notion-effect-client",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../notion-effect-schema",
+    "../utils",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",

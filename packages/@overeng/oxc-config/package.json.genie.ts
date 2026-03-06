@@ -9,6 +9,7 @@
  * See `nix/oxlint-npm.nix` for update instructions when bumping oxlint version.
  */
 import {
+  bunWorkspacesStandalone,
   catalog,
   packageJson,
   privatePackageDefaults,
@@ -18,6 +19,7 @@ import {
 export default packageJson({
   name: '@overeng/oxc-config',
   ...privatePackageDefaults,
+  workspaces: bunWorkspacesStandalone(),
   exports: {
     './plugin': './src/mod.ts',
   },

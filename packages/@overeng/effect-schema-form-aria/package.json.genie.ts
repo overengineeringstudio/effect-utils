@@ -1,4 +1,5 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
@@ -6,10 +7,11 @@ import {
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import schemaFormPkg from '../effect-schema-form/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['react-aria-components', 'react-dom'] as const
 
-export default packageJson({
+const data = {
   name: '@overeng/effect-schema-form-aria',
   ...privatePackageDefaults,
   exports: {
@@ -52,4 +54,13 @@ export default packageJson({
     ...schemaFormPkg.data.peerDependencies,
     ...catalog.peers(...peerDepNames),
   },
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [schemaFormPkg, utilsPkg],
+    location: 'packages/@overeng/effect-schema-form-aria',
+  }),
 } satisfies PackageJsonData)

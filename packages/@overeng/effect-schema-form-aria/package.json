@@ -2,6 +2,12 @@
   "name": "@overeng/effect-schema-form-aria",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../effect-schema-form",
+    "../utils",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.ts"

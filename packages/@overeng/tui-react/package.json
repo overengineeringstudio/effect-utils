@@ -2,6 +2,12 @@
   "name": "@overeng/tui-react",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../tui-core",
+    "../utils",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.tsx",

@@ -1,13 +1,15 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react'] as const
 
-export default packageJson({
+const data = {
   name: '@overeng/react-inspector',
   /** Forked from react-inspector v8.0.0 (https://github.com/nicksenger/react-inspector) */
   version: '8.0.0',
@@ -58,4 +60,13 @@ export default packageJson({
       optional: true,
     },
   },
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [utilsPkg],
+    location: 'packages/@overeng/react-inspector',
+  }),
 } satisfies PackageJsonData)

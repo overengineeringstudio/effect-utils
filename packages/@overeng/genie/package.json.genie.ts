@@ -1,14 +1,17 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
-export default packageJson({
+const data = {
   name: '@overeng/genie',
   ...privatePackageDefaults,
   scripts: {
@@ -68,4 +71,13 @@ export default packageJson({
     ...utilsPkg.data.peerDependencies,
     ...catalog.peers('@effect/cli'),
   },
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
+    location: 'packages/@overeng/genie',
+  }),
 } satisfies PackageJsonData)

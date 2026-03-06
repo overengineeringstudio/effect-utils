@@ -2,6 +2,11 @@
   "name": "@overeng/effect-react",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../utils",
+    "../utils-dev"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",

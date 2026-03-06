@@ -2,6 +2,11 @@
   "name": "effect-rpc-tanstack-example-basic",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    ".",
+    "../../../utils",
+    "../../../utils-dev"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,14 +1,16 @@
 import {
+  bunWorkspacesWithDeps,
   catalog,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
 
-export default packageJson({
+const data = {
   name: '@overeng/effect-react',
   ...privatePackageDefaults,
   exports: {
@@ -41,4 +43,13 @@ export default packageJson({
     ...effectLspDevDeps(),
   },
   peerDependencies: catalog.peers(...peerDepNames),
+} satisfies PackageJsonData
+
+export default packageJson({
+  ...data,
+  workspaces: bunWorkspacesWithDeps({
+    pkg: data,
+    deps: [utilsPkg],
+    location: 'packages/@overeng/effect-react',
+  }),
 } satisfies PackageJsonData)
