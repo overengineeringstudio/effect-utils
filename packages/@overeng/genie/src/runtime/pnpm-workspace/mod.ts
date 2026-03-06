@@ -507,6 +507,15 @@ export interface PnpmWorkspaceData {
   patchedDependencies?: Record<string, string>
 
   /**
+   * When true, installation won't fail if some patches from `patchedDependencies`
+   * are not used by the current workspace member. Required for per-member lockfiles
+   * (`sharedWorkspaceLockfile: false`) where not every member depends on the patched package.
+   *
+   * @see https://pnpm.io/settings#allow-unused-patches
+   */
+  allowUnusedPatches?: boolean
+
+  /**
    * Extend or fix package.json of dependencies.
    * @see https://pnpm.io/pnpm-workspace_yaml#packageextensions
    */
@@ -680,6 +689,18 @@ export interface PnpmWorkspaceData {
    * @see https://pnpm.io/settings#save-workspace-protocol
    */
   saveWorkspaceProtocol?: boolean | 'rolling'
+
+  /**
+   * Each project in a workspace has its own lockfile instead of a shared one at the root.
+   *
+   * WARNING: Setting to `false` causes TS2742 errors in `tsc --build` because
+   * each workspace member gets its own `.pnpm` store, creating different physical
+   * paths for the same package. TypeScript treats these as distinct types.
+   *
+   * @default true (pnpm default)
+   * @see https://pnpm.io/settings#shared-workspace-lockfile
+   */
+  sharedWorkspaceLockfile?: boolean
 }
 
 // =============================================================================
@@ -924,6 +945,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     })
   }
 
+  if (data.allowUnusedPatches !== undefined) {
+    result.allowUnusedPatches = data.allowUnusedPatches
+  }
+
   if (data.packageExtensions !== undefined) {
     result.packageExtensions = { ...data.packageExtensions }
   }
@@ -1015,6 +1040,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.saveWorkspaceProtocol !== undefined) {
     result.saveWorkspaceProtocol = data.saveWorkspaceProtocol
+  }
+
+  if (data.sharedWorkspaceLockfile !== undefined) {
+    result.sharedWorkspaceLockfile = data.sharedWorkspaceLockfile
   }
 
   return result

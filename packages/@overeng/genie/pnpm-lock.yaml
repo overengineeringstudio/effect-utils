@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  effect-distributed-lock@0.0.11:
+    hash: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
+    path: ../utils/patches/effect-distributed-lock@0.0.11.patch
+
 importers:
 
   .:
@@ -134,6 +139,15 @@ importers:
       '@overeng/tui-core':
         specifier: workspace:*
         version: link:../tui-core
+      '@xterm/addon-fit':
+        specifier: 0.11.0
+        version: 0.11.0
+      '@xterm/headless':
+        specifier: 6.0.0
+        version: 6.0.0
+      '@xterm/xterm':
+        specifier: 6.0.0
+        version: 6.0.0
       cli-truncate:
         specifier: 5.1.1
         version: 5.1.1
@@ -195,15 +209,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: 5.1.2
         version: 5.1.2(vite@7.3.1(@types/node@25.3.3)(yaml@2.8.2))
-      '@xterm/addon-fit':
-        specifier: 0.11.0
-        version: 0.11.0
-      '@xterm/headless':
-        specifier: 6.0.0
-        version: 6.0.0
-      '@xterm/xterm':
-        specifier: 6.0.0
-        version: 6.0.0
       effect:
         specifier: 3.19.15
         version: 3.19.15
@@ -239,7 +244,7 @@ importers:
         version: 1.9.0
       effect-distributed-lock:
         specifier: 0.0.11
-        version: 0.0.11(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3)
+        version: 0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3)
       ioredis:
         specifier: 5.6.1
         version: 5.6.1
@@ -3257,6 +3262,9 @@ snapshots:
       '@overeng/tui-core': link:../tui-core
       '@types/react': 19.2.7
       '@types/react-reconciler': 0.28.9(@types/react@19.2.7)
+      '@xterm/addon-fit': 0.11.0
+      '@xterm/headless': 6.0.0
+      '@xterm/xterm': 6.0.0
       cli-truncate: 5.1.1
       effect: 3.19.15
       react: 19.2.3
@@ -3810,7 +3818,7 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
-  effect-distributed-lock@0.0.11(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3):
+  effect-distributed-lock@0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.19.15)(ioredis@5.6.1)(typescript@5.9.3):
     dependencies:
       effect: 3.19.15
       typescript: 5.9.3

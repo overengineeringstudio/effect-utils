@@ -15,9 +15,11 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     extraExcludedSourceNames = [ "context" "scripts" ];
+    # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
+    patchesDir = "packages/@overeng/utils/patches";
     # Managed by `dt nix:hash:genie` — do not edit manually.
     pnpmDepsHash = "sha256-0OSGcThI7Q9YhYLhNmTpobn7/2IYnDg0ejmisZcaoSQ=";
-    lockfileHash = "sha256-wz/rAU1352qbOZJ0twlReP1tdGDuUEwqqcIZR28PEYU=";
+    lockfileHash = "sha256-A8axH5fMO9VA3l9Sh68TdphefBGhcovgUwwy1tentsI=";
     packageJsonDepsHash = "sha256-tMch41qH+GilQSbIGitAHjKtPH2tb4h9uSwDW1peQDc=";
     inherit gitRev commitTs dirty;
   };

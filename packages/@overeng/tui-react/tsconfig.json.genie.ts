@@ -1,5 +1,6 @@
 import {
   baseTsconfigCompilerOptions,
+  domLib,
   packageTsconfigCompilerOptions,
   reactJsx,
 } from '../../../genie/internal.ts'
@@ -10,7 +11,7 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...reactJsx,
-    lib: ['ES2024'],
+    lib: domLib,
   },
   include: ['src/**/*', 'test/**/*', 'examples/**/*'],
   references: [{ path: '../tui-core' }, { path: '../utils' }],

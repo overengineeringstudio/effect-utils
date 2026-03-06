@@ -79,10 +79,4 @@ export default packageJson({
     ...tuiReactPkg.data.peerDependencies,
     ...catalog.peers(...peerDepNames),
   },
-  pnpm: {
-    patchedDependencies: {
-      ...utilsPkg.data.pnpm?.patchedDependencies,
-      ...tuiReactPkg.data.pnpm?.patchedDependencies,
-    },
-  },
 } satisfies PackageJsonData)

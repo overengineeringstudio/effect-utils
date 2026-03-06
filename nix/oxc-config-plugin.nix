@@ -34,7 +34,10 @@ let
     else
       builtins.toPath src;
 
-  # Filtered source: only the package directory (for pnpm dep fetching)
+  # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
+  patchesDir = "packages/@overeng/utils/patches";
+
+  # Filtered source: package directory + patches (for pnpm dep fetching)
   packageSrc = lib.cleanSourceWith {
     src = srcPath;
     filter =
@@ -44,10 +47,18 @@ let
       in
       lib.hasPrefix "${packageDir}/" relPath
       || relPath == packageDir
+      || lib.hasPrefix "${patchesDir}/" relPath
+      || relPath == patchesDir
       || (
         type == "directory"
         && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" packageDir))) (
           lib.range 1 (lib.length (lib.splitString "/" packageDir))
+        )
+      )
+      || (
+        type == "directory"
+        && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" patchesDir))) (
+          lib.range 1 (lib.length (lib.splitString "/" patchesDir))
         )
       );
   };
@@ -80,10 +91,18 @@ let
       && (
         lib.hasPrefix "${packageDir}/" relPath
         || relPath == packageDir
+        || lib.hasPrefix "${patchesDir}/" relPath
+        || relPath == patchesDir
         || (
           type == "directory"
           && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" packageDir))) (
             lib.range 1 (lib.length (lib.splitString "/" packageDir))
+          )
+        )
+        || (
+          type == "directory"
+          && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" patchesDir))) (
+            lib.range 1 (lib.length (lib.splitString "/" patchesDir))
           )
         )
       );
