@@ -322,8 +322,8 @@ export const deployCommentStep = (opts: {
     '    echo "| --- | --- |"',
     '    echo -e "$rows"',
     '  } > /tmp/comment.md',
-    '  gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
-    '    || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
+    '  nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
+    '    || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
     'fi',
   ].join('\n'),
 })
@@ -343,7 +343,7 @@ export const dispatchAlignmentStep = (opts: {
   ({
     name: 'Dispatch alignment to coordinator',
     env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | gh api repos/${opts.targetRepo}/dispatches --input -`,
+    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
     shell: 'bash',
   })
 
