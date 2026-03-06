@@ -373,7 +373,7 @@ export const netlifyDeployStep = () => ({
  * Discovers deployed storybooks by scanning for `storybook-static` build output
  * under `packages/@overeng/` and generates PR comments + job summaries with URLs.
  *
- * @param site - Netlify site name (e.g. 'overeng-utils', 'overeng-private-shared')
+ * @param site - Netlify site name (e.g. 'overeng-utils')
  */
 export const netlifyStorybookCommentStep = (site: string) =>
   deployCommentStep({
