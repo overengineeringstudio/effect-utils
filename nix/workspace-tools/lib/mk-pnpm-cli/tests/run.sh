@@ -56,6 +56,23 @@ fi
 build_and_smoke() {
   local attr="$1"
   local bin_name="$2"
+  local package_dir="$3"
+
+  echo "Deploy regression: $package_dir"
+  local scratch_dir
+  scratch_dir="$(mktemp -d)"
+  trap 'rm -rf "$scratch_dir"' RETURN
+  (
+    cd "$ROOT/$package_dir"
+    pnpm --config.inject-workspace-packages=true \
+      --filter . \
+      deploy \
+      --frozen-lockfile \
+      --ignore-scripts \
+      "$scratch_dir/deploy"
+  ) >/dev/null
+  rm -rf "$scratch_dir"
+  trap - RETURN
 
   echo "Build: $attr ($SYSTEM)"
   local out
@@ -69,11 +86,11 @@ build_and_smoke() {
 }
 
 if [ "$SKIP_GENIE" -eq 0 ]; then
-  build_and_smoke "genie" "genie"
+  build_and_smoke "genie" "genie" "packages/@overeng/genie"
 fi
 
 if [ "$SKIP_MEGAREPO" -eq 0 ]; then
-  build_and_smoke "megarepo" "mr"
+  build_and_smoke "megarepo" "mr" "packages/@overeng/megarepo"
 fi
 
 echo "mk-pnpm-cli smoke tests passed"

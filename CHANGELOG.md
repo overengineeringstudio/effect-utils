@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
   - Narrows pnpm deps fetching to the target lockfile, workspace member manifests, and referenced patch files
   - Removes legacy `--force` / explicit `--recursive` fetch behavior and normalizes the store against the staged package lockfile
   - Adds a small benchmark harness that compares the current worktree to a detached baseline worktree via repeated Nix builds after purging project-specific store paths
+  - Extends the smoke harness with a targeted regression check for `pnpm deploy --config.inject-workspace-packages=true --frozen-lockfile`
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
 - **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails
