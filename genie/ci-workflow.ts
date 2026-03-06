@@ -346,3 +346,60 @@ export const dispatchAlignmentStep = (opts: {
     run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | gh api repos/${opts.targetRepo}/dispatches --input -`,
     shell: 'bash',
   })
+
+/**
+ * Deploy step for Netlify storybooks via devenv tasks.
+ * Runs `netlify:deploy` with prod/PR mode based on the event trigger.
+ * Gracefully skips if NETLIFY_AUTH_TOKEN is not available.
+ */
+export const netlifyDeployStep = () => ({
+  name: 'Deploy storybooks to Netlify',
+  shell: 'bash' as const,
+  run: [
+    'if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then',
+    '  echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available)"',
+    '  exit 0',
+    'fi',
+    'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+    `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=prod')}`,
+    'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+    `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')}`,
+    'fi',
+  ].join('\n'),
+})
+
+/**
+ * Combined deploy comment step for Netlify storybook previews.
+ * Discovers deployed storybooks by scanning for `storybook-static` build output
+ * under `packages/@overeng/` and generates PR comments + job summaries with URLs.
+ *
+ * @param site - Netlify site name (e.g. 'overeng-utils')
+ */
+export const netlifyStorybookCommentStep = (site: string) =>
+  deployCommentStep({
+    summaryTitle: 'Storybook Previews',
+    tableHeaders: ['Package', 'URL'],
+    noRowsMessage: 'No storybooks were deployed.',
+    modeScript: [
+      `site="${site}"`,
+      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+      '  suffix=""',
+      '  label="prod"',
+      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+      '  suffix="-pr-${{ github.event.pull_request.number }}"',
+      '  label="PR #${{ github.event.pull_request.number }}"',
+      'else',
+      '  exit 0',
+      'fi',
+    ].join('\n'),
+    rowsScript: [
+      'rows=""',
+      'for dir in packages/@overeng/*/storybook-static; do',
+      '  [ -d "$dir" ] || continue',
+      '  name="${dir#packages/@overeng/}"',
+      '  name="${name%/storybook-static}"',
+      '  url="https://${name}${suffix}--${site}.netlify.app"',
+      '  rows="${rows}| ${name} | ${url} |\\n"',
+      'done',
+    ].join('\n'),
+  })
