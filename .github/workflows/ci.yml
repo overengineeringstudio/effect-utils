@@ -841,9 +841,10 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Deploy storybooks to Netlify
+        shell: bash
         run: |
           if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
-            echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available, likely a fork PR)"
+            echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available)"
             exit 0
           fi
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -868,7 +869,6 @@ jobs:
             exit 0
           fi
 
-          # Collect deployed storybooks by checking for build output
           rows=""
           for dir in packages/@overeng/*/storybook-static; do
             [ -d "$dir" ] || continue
