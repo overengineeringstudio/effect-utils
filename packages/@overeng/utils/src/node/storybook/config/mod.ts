@@ -82,10 +82,13 @@ const applySharedConfig = (config: InlineConfig): void => {
   }
 }
 
-const callUserViteFinal = async <TConfig extends object>(
-  config: InlineConfig,
-  viteFinal: StorybookViteFinal<TConfig> | undefined,
-): Promise<InlineConfig> => {
+const callUserViteFinal = async <TConfig extends object>({
+  config,
+  viteFinal,
+}: {
+  config: InlineConfig
+  viteFinal: StorybookViteFinal<TConfig> | undefined
+}): Promise<InlineConfig> => {
   if (viteFinal === undefined) {
     return config
   }
@@ -135,7 +138,7 @@ export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig exten
         typedConfig.build = { minify: false }
       }
 
-      return callUserViteFinal(typedConfig, viteFinal)
+      return callUserViteFinal({ config: typedConfig, viteFinal })
     },
   } satisfies StorybookConfig
 
@@ -225,7 +228,7 @@ export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig exten
         external: ['@opentui/core', '@opentui/react'],
       }
 
-      return callUserViteFinal(typedConfig, viteFinal)
+      return callUserViteFinal({ config: typedConfig, viteFinal })
     },
   } satisfies StorybookConfig
 
