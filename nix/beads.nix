@@ -91,6 +91,9 @@ pkgs.stdenv.mkDerivation {
       esac
     done
 
+    # TODO: Drop this detached-worktree normalization once beads#2439 is merged
+    # and released. Upstream beads should then resolve refs/commits/*/.beads to a
+    # stable same-commit branch worktree on its own.
     resolve_beads_dir() {
       local beads_dir="$1"
       local resolved_dir
@@ -128,6 +131,10 @@ pkgs.stdenv.mkDerivation {
         cd "''${BEADS_DIR%/.beads}"
       fi
 
+      # TODO: Re-check this explicit --db pin after beads#2439 is merged. The
+      # upstream PR fixes path identity, but external-store server-mode
+      # resolution still needs validation before this wrapper can collapse to a
+      # plain bd passthrough.
       if [ "''${has_explicit_db}" = false ] && [ -d "$BEADS_DIR/dolt" ] && should_pin_db "$BEADS_DIR"; then
         exec "$bd_real" --db "$BEADS_DIR/dolt" "$@"
       fi

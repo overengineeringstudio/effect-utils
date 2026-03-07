@@ -15,6 +15,9 @@ let
 in
 {
   env.BEADS_DIR = "${config.devenv.root}/${beadsRepoRelPath}/.beads";
+  # TODO: Remove BEADS_PRIMARY_REF after beads#2439 is merged and adopted.
+  # It is only threaded through today so the wrapper can rewrite detached
+  # refs/commits worktrees back to a stable branch worktree.
   env.BEADS_PRIMARY_REF = beadsRepoRef;
 
   tasks."beads:push" = {
