@@ -77,21 +77,7 @@ export const catalog = defineCatalog({
 })
 
 /**
- * Patched dependencies for `@overeng/utils`.
- * Shared across workspace yamls that include utils as a workspace member.
- */
-export const utilsPatches = definePatchedDependencies({
-  location: 'packages/@overeng/utils',
-  patches: {
-    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
-  },
-})
-
-/**
- * Common pnpm workspace settings for all effect-utils packages.
- *
- * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
- * so that lockfiles remain consistent when the same package appears in multiple workspaces.
+ * Common pnpm workspace settings for effect-utils packages.
  *
  * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
  * Per-member lockfiles cause TS2742 errors in `tsc --build` because each workspace member
@@ -99,7 +85,6 @@ export const utilsPatches = definePatchedDependencies({
  * TypeScript treats these as distinct types, breaking project references.
  */
 const commonWorkspaceSettings = {
-  patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
   dedupePeerDependents: true as const,
   supportedArchitectures: {

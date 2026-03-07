@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   effectLspDevDeps,
@@ -32,6 +33,9 @@ export default packageJson({
   },
   dependencies: {
     ...catalog.pick('is-dom'),
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     ...effectLspDevDeps(),
