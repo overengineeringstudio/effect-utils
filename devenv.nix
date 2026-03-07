@@ -11,6 +11,7 @@ let
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
     bun = pkgs.bun;
+    src = ./.;
   };
 
   # Shared task modules (from shared/ directory)
@@ -232,9 +233,15 @@ in
         "scripts"
         "context"
       ];
-      # Explicit patterns that avoid node_modules traversal
-      # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
+      # Explicit lint invalidation patterns with global excludes for vendored/generated trees.
       execIfModifiedPatterns = [
+        # Global excludes
+        "!**/node_modules/**"
+        "!**/.devenv/**"
+        "!**/.direnv/**"
+        "!**/dist/**"
+        "!**/coverage/**"
+        "!**/storybook-static/**"
         # packages: src directories (safe - no node_modules inside src)
         "packages/@overeng/*/src/**/*.ts"
         "packages/@overeng/*/src/**/*.tsx"
@@ -268,7 +275,7 @@ in
         "context/effect/socket/*.genie.ts"
         "context/effect/socket/examples/*.ts"
         "context/opentui/*.genie.ts"
-        # context: docs/config (safe; no node_modules under context/)
+        # context: docs/config
         "context/**/*.md"
         "context/**/*.json"
         # linter config files (changes should trigger lint)

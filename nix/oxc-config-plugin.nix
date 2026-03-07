@@ -140,7 +140,7 @@ pkgs.stdenv.mkDerivation {
     chmod -R +w workspace
     cd workspace/${packageDir}
 
-    pnpm install --offline --frozen-lockfile --ignore-scripts
+    CI=true pnpm install --offline --frozen-lockfile --ignore-scripts
 
     # Bundle into single JS file.
     # --external jiti: eslint's config loader uses jiti for dynamic imports, but
