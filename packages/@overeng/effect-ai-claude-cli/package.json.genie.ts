@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   effectLspDevDeps,
@@ -19,6 +20,9 @@ export default packageJson({
     exports: {
       '.': './dist/mod.js',
     },
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     ...catalog.pick(

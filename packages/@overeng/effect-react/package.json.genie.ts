@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   effectLspDevDeps,
@@ -25,6 +26,9 @@ export default packageJson({
   scripts: {
     storybook: 'storybook dev -p 6009',
     'storybook:build': 'storybook build',
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     ...catalog.pick(
