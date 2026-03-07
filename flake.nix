@@ -30,6 +30,7 @@
         pkgs = import nixpkgs { inherit system; };
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
+        yamlWasm = import ./nix/yaml-wasm/package.nix { inherit nixpkgs; };
         rootPath = self.outPath;
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -70,6 +71,7 @@
           cli-build-stamp = cliBuildStamp.package;
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
+          yaml-wasm = yamlWasm;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
           oxlint-npm = import ./nix/oxlint-npm.nix {
             inherit pkgs;
@@ -166,6 +168,12 @@
 
       # Usage: effectUtils.lib.mkBeads { inherit pkgs; }
       lib.mkBeads = { pkgs }: import ./nix/beads.nix { inherit pkgs; };
+
+      # Usage:
+      #   yaml = effectUtils.lib.yamlWasm {
+      #     wasmPath = "${effectUtils.packages.${system}.yaml-wasm}";
+      #   };
+      lib.yamlWasm = { wasmPath }: import ./nix/yaml-wasm/lib/yaml.nix { inherit wasmPath; };
 
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
