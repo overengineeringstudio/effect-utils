@@ -914,7 +914,7 @@ describe('--all sync deduplication', () => {
   )
 })
 
-const createPinnedStaleCommitPullFixture = () =>
+const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: boolean }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
@@ -953,6 +953,8 @@ const createPinnedStaleCommitPullFixture = () =>
     yield* runGitCommand(sourceRepoPath, 'branch', '-M', 'main')
     yield* runGitCommand(sourceRepoPath, 'push', '--force', 'origin', 'main')
     const currentCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+    const memberRef = options?.useCommitRef === true ? staleCommit : 'main'
+    const lockRef = memberRef
     /**
      * The fixture must remove the old object from the remote; otherwise a local clone
      * can still resolve the stale SHA and we would not exercise the recovery path.
@@ -979,12 +981,12 @@ const createPinnedStaleCommitPullFixture = () =>
 
     const { workspacePath } = yield* createWorkspaceWithLock({
       members: {
-        'test-repo': 'test-owner/test-repo#main',
+        'test-repo': `test-owner/test-repo#${memberRef}`,
       },
       lockEntries: {
         'test-repo': {
           url: 'https://github.com/test-owner/test-repo',
-          ref: 'main',
+          ref: lockRef,
           commit: staleCommit,
           pinned: true,
         },
@@ -2141,6 +2143,64 @@ describe('sync --pull mode', () => {
           const lockFile = Option.getOrThrow(lockFileOpt)
           expect(lockFile.members['test-repo']?.commit).toBe(currentCommit)
           expect(lockFile.members['test-repo']?.pinned).toBe(true)
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should fail pinned stale commit-SHA refs in --pull mode',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath, storePath, staleCommit } =
+            yield* createPinnedStaleCommitPullFixture({
+              useCommitRef: true,
+            })
+
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--pull', '--output', 'json'],
+            env: {
+              MEGAREPO_STORE: storePath.slice(0, -1),
+            },
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          expect(json.results).toHaveLength(1)
+          const memberResult = json.results[0]!
+          expect(memberResult.status).toBe('error')
+          expect(memberResult.message).toContain(`'${staleCommit.slice(0, 8)}'`)
+          expect(memberResult.message).toContain('not available locally or on the remote')
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should fail pinned stale commit-SHA refs in --pull --force mode',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath, storePath, staleCommit } =
+            yield* createPinnedStaleCommitPullFixture({
+              useCommitRef: true,
+            })
+
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--pull', '--force', '--output', 'json'],
+            env: {
+              MEGAREPO_STORE: storePath.slice(0, -1),
+            },
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          expect(json.results).toHaveLength(1)
+          const memberResult = json.results[0]!
+          expect(memberResult.status).toBe('error')
+          expect(memberResult.message).toContain(`'${staleCommit.slice(0, 8)}'`)
+          expect(memberResult.message).toContain('not available locally or on the remote')
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

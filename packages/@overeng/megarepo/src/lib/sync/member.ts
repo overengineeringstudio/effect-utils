@@ -518,7 +518,7 @@ export const syncMember = <R = never>({
     /**
      * A lock entry can point at an object that disappeared after a force-push.
      * In pull mode we can recover branch-based members by re-resolving `targetRef`,
-     * but immutable refs still need to fail or be skipped explicitly.
+     * but pinned commit-SHA refs remain hard failures because there is no mutable ref to follow.
      */
     if (dryRun === false && targetCommit !== undefined) {
       const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
@@ -533,19 +533,19 @@ export const syncMember = <R = never>({
           } satisfies MemberSyncResult
         }
 
-        if (lockedMember?.pinned === true) {
-          return {
-            name,
-            status: 'skipped',
-            message: `pinned commit '${shortCommit}' for ref '${targetRef}' is no longer available (use --force to update to the tracked ref or update megarepo.lock)`,
-          } satisfies MemberSyncResult
-        }
-
         if (isCommitSha(targetRef) === true) {
           return {
             name,
             status: 'error',
             message: `commit '${shortCommit}' is not available locally or on the remote`,
+          } satisfies MemberSyncResult
+        }
+
+        if (lockedMember?.pinned === true) {
+          return {
+            name,
+            status: 'skipped',
+            message: `pinned commit '${shortCommit}' for ref '${targetRef}' is no longer available (use --force to update to the tracked ref or update megarepo.lock)`,
           } satisfies MemberSyncResult
         }
 
@@ -686,6 +686,22 @@ export const syncMember = <R = never>({
             )
           }
         }
+      }
+    }
+
+    /**
+     * `--pull --force` can bypass the earlier pinned-commit guard and derive
+     * `targetCommit` directly from an immutable source ref. Re-check existence
+     * here so stale commit-SHA refs fail before worktree creation.
+     */
+    if (dryRun === false && targetCommit !== undefined && isCommitSha(targetRef) === true) {
+      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      if (commitExists === false) {
+        return {
+          name,
+          status: 'error',
+          message: `commit '${targetCommit.slice(0, 8)}' is not available locally or on the remote`,
+        } satisfies MemberSyncResult
       }
     }
 
