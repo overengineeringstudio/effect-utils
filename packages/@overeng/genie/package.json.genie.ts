@@ -8,6 +8,13 @@ import {
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
+const inheritedPeerDepNames = [
+  ...new Set([
+    ...Object.keys(utilsPkg.data.peerDependencies ?? {}),
+    ...Object.keys(tuiReactPkg.data.peerDependencies ?? {}),
+  ]),
+]
+
 export default packageJson({
   name: '@overeng/genie',
   ...privatePackageDefaults,
@@ -37,9 +44,8 @@ export default packageJson({
     '@overeng/tui-react': { injected: true },
   },
   devDependencies: {
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
     ...catalog.pick(
+      ...inheritedPeerDepNames,
       '@overeng/utils',
       '@overeng/utils-dev',
       '@overeng/tui-react',

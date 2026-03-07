@@ -10,6 +10,12 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Effect packages not already in @overeng/utils or @overeng/tui-react */
 const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
+const inheritedPeerDepNames = [
+  ...new Set([
+    ...Object.keys(utilsPkg.data.peerDependencies ?? {}),
+    ...Object.keys(tuiReactPkg.data.peerDependencies ?? {}),
+  ]),
+]
 
 export default packageJson({
   name: '@overeng/notion-cli',
@@ -49,9 +55,8 @@ export default packageJson({
     '@overeng/tui-react': { injected: true },
   },
   devDependencies: {
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
     ...catalog.pick(
+      ...inheritedPeerDepNames,
       ...ownPeerDepNames,
       '@effect/vitest',
       '@overeng/utils-dev',
