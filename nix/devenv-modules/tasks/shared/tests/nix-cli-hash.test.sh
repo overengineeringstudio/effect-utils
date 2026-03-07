@@ -56,6 +56,23 @@ assert_eq "" "$(extract_got_hash "$missing_output")" "missing_got"
 
 echo "Hash extraction tests passed"
 
+fingerprint_ref_for() {
+  local flakeRef="$1"
+  local flakeSource="${flakeRef%%#*}"
+
+  if [ -z "$flakeSource" ]; then
+    flakeSource="$flakeRef"
+  fi
+
+  printf '%s#fingerprint' "$flakeSource"
+}
+
+assert_eq ".#fingerprint" "$(fingerprint_ref_for ".#genie")" "flake_ref_attr_path"
+assert_eq "./flakes/agent-exporter#fingerprint" "$(fingerprint_ref_for "./flakes/agent-exporter")" "flake_ref_path"
+assert_eq "github:example/project#fingerprint" "$(fingerprint_ref_for "github:example/project#cli")" "flake_ref_remote"
+
+echo "Fingerprint ref normalization tests passed"
+
 # ============================================================================
 # Tests for update_hash_in_file helper (platform-specific hash support)
 # ============================================================================

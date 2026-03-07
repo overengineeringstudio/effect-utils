@@ -38,7 +38,8 @@
   name,
   entry,
   packageDir,
-  workspaceRoot,
+  workspaceRoot ? null,
+  preparedWorkspace ? null,
   pnpmDepsHash,
   lockfileHash ? null,
   packageJsonDepsHash ? null,
@@ -54,10 +55,25 @@
 
 let
   lib = pkgs.lib;
+  stripStoreHash =
+    source:
+    let
+      baseName = baseNameOf (toString source);
+      match = builtins.match "^[a-z0-9]{32}-(.*)$" baseName;
+    in
+    if match == null then baseName else builtins.head match;
+  effectivePackageDir =
+    if preparedWorkspace != null && preparedWorkspace ? packageDir then
+      preparedWorkspace.packageDir
+    else
+      packageDir;
 
-  # Convert workspaceRoot to path
-  workspaceRootPath =
-    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
+  legacyWorkspaceRootPath =
+    if preparedWorkspace != null then
+      null
+    else if workspaceRoot == null then
+      builtins.throw "mk-pnpm-cli.nix requires workspaceRoot or preparedWorkspace"
+    else if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
       workspaceRoot.outPath
     else if builtins.isPath workspaceRoot then
       workspaceRoot
@@ -74,11 +90,12 @@ let
   #   3. Block/dash:          packages:\n  - .\n  - ../tui-core
   # Resolves relative paths to workspace-root-relative paths.
 
-  pnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
-  pnpmWorkspaceYaml = builtins.readFile pnpmWorkspaceYamlPath;
+  pnpmWorkspaceYamlPath =
+    if preparedWorkspace != null then null else legacyWorkspaceRootPath + "/${effectivePackageDir}/pnpm-workspace.yaml";
+  pnpmWorkspaceYaml = if preparedWorkspace != null then "" else builtins.readFile pnpmWorkspaceYamlPath;
 
   # Extract "packages: [...]" line
-  workspaceLines = lib.splitString "\n" pnpmWorkspaceYaml;
+  workspaceLines = if preparedWorkspace != null then [ ] else lib.splitString "\n" pnpmWorkspaceYaml;
   packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" line) null workspaceLines;
 
   # Detect format from the "packages:" line content
@@ -154,9 +171,13 @@ let
       in
       parseLines lines;
 
-  workspaceMemberItems = builtins.filter builtins.isString (
-    if isPackagesInline then parsePackagesInline else parsePackagesMultiline
-  );
+  workspaceMemberItems =
+    if preparedWorkspace != null then
+      [ ]
+    else
+      builtins.filter builtins.isString (
+        if isPackagesInline then parsePackagesInline else parsePackagesMultiline
+      );
 
   # Filter out "." (main package itself)
   relativeWorkspaceMembers = builtins.filter (s: s != ".") workspaceMemberItems;
@@ -202,7 +223,11 @@ let
     lib.concatStringsSep "/" (resolvedBase ++ remainingParts);
 
   # Final workspace members list (workspace-root-relative paths)
-  workspaceMembers = map (relPath: resolveRelativePath packageDir relPath) relativeWorkspaceMembers;
+  workspaceMembers =
+    if preparedWorkspace != null then
+      preparedWorkspace.workspaceMembers or [ ]
+    else
+      map (relPath: resolveRelativePath effectivePackageDir relPath) relativeWorkspaceMembers;
 
   # Create filtered source for fetching pnpm deps
   # Includes the main package and ONLY package.json files from workspace members
@@ -211,11 +236,11 @@ let
   mkPackageSource =
     pkgDir:
     lib.cleanSourceWith {
-      src = workspaceRootPath;
+      src = legacyWorkspaceRootPath;
       filter =
         path: type:
         let
-          relPath = lib.removePrefix (toString workspaceRootPath + "/") (toString path);
+          relPath = lib.removePrefix (toString legacyWorkspaceRootPath + "/") (toString path);
           baseName = baseNameOf path;
           excludedNames = [
             ".git"
@@ -293,63 +318,81 @@ let
         );
     };
 
+  depsSource =
+    if preparedWorkspace != null then
+      preparedWorkspace.depsSource
+    else
+      mkPackageSource effectivePackageDir;
+
+  pnpmDepsWorkspaceRoot = stripStoreHash depsSource;
+  pnpmDepsSourceRoot = "${pnpmDepsWorkspaceRoot}/${effectivePackageDir}";
+
   # Fetch pnpm dependencies using the shared helper.
   # Uses --force --recursive for workspace member handling.
   pnpmDeps = pnpmDepsHelper.mkDeps {
     inherit name pnpmDepsHash;
-    src = mkPackageSource packageDir;
-    sourceRoot = "source/${packageDir}";
+    src = depsSource;
+    sourceRoot = pnpmDepsSourceRoot;
     # Make the entire source tree writable (critical for workspace members
     # whose directories are read-only in the Nix store)
     preInstall = ''
-      cd "$NIX_BUILD_TOP/source"
+      cd "$NIX_BUILD_TOP/${pnpmDepsWorkspaceRoot}"
       chmod -R +w .
-      cd "$NIX_BUILD_TOP/source/${packageDir}"
+      cd "$NIX_BUILD_TOP/${pnpmDepsSourceRoot}"
     '';
     installFlags = "--force --recursive";
     fetchFlags = "--recursive";
   };
 
   # Full workspace source for building
-  workspaceSrc = lib.cleanSourceWith {
-    src = workspaceRootPath;
-    filter =
-      path: type:
-      let
-        baseName = baseNameOf path;
-      in
-      # Exclude common non-essential directories
-      lib.cleanSourceFilter path type
-      && !(lib.elem baseName (
-        [
-          ".git"
-          ".direnv"
-          ".devenv"
-          ".cache"
-          ".turbo"
-          ".next"
-          ".bun"
-          "node_modules"
-          "dist"
-          "result"
-          "coverage"
-          "tmp"
-          "out"
-        ]
-        ++ extraExcludedSourceNames
-      ));
-  };
+  workspaceSrc =
+    if preparedWorkspace != null then
+      preparedWorkspace.workspaceSource
+    else
+      lib.cleanSourceWith {
+        src = legacyWorkspaceRootPath;
+        filter =
+          path: type:
+          let
+            baseName = baseNameOf path;
+          in
+          # Exclude common non-essential directories
+          lib.cleanSourceFilter path type
+          && !(lib.elem baseName (
+            [
+              ".git"
+              ".direnv"
+              ".devenv"
+              ".cache"
+              ".turbo"
+              ".next"
+              ".bun"
+              "node_modules"
+              "dist"
+              "result"
+              "coverage"
+              "tmp"
+              "out"
+            ]
+            ++ extraExcludedSourceNames
+          ));
+      };
 
-  # Read package.json for version
-  packageJsonPath = workspaceRootPath + "/${packageDir}/package.json";
-  packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
-  packageVersion = packageJson.version or "0.0.0";
+  resolvedPackageVersion =
+    if preparedWorkspace != null && preparedWorkspace ? packageVersion then
+      preparedWorkspace.packageVersion
+    else
+      let
+        packageJsonPath = legacyWorkspaceRootPath + "/${effectivePackageDir}/package.json";
+        packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
+      in
+      packageJson.version or "0.0.0";
 
   # Build NixStamp JSON for embedding in binary
   # Note: We manually construct the JSON to avoid escaping issues with builtins.toJSON
   # when the string is interpolated into shell scripts and substituteInPlace.
   dirtyStr = if dirty then "true" else "false";
-  nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
+  nixStampJson = ''{\"type\":\"nix\",\"version\":\"${resolvedPackageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
 
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs; };
@@ -365,7 +408,8 @@ pkgs.stdenv.mkDerivation {
     pkgs.cacert
     pkgs.zstd
   ]
-  ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
+  ++ lib.optionals (lockfileHash != null || packageJsonDepsHash != null) [ pkgs.nix ]
+  ++ lib.optionals (packageJsonDepsHash != null) [ pkgs.jq ];
 
   inherit pnpmDeps;
 
@@ -380,12 +424,33 @@ pkgs.stdenv.mkDerivation {
       if lockfileHash != null then
         ''
           # Validate lockfile hash (early failure with clear message)
-          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${packageDir}/pnpm-lock.yaml)"
+          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceSrc}/${effectivePackageDir}/pnpm-lock.yaml)"
           if [ "$currentHash" != "${lockfileHash}" ]; then
             echo ""
             echo "error: lockfileHash is stale (run: dt nix:hash)"
             echo "  expected: ${lockfileHash}"
             echo "  actual:   $currentHash"
+            echo ""
+            exit 1
+          fi
+        ''
+      else
+        ""
+    }
+
+    ${
+      if packageJsonDepsHash != null then
+        ''
+          # Validate package.json dependency fingerprint against the prepared workspace.
+          tmpDeps="$(mktemp)"
+          jq -cS '{dependencies, devDependencies, peerDependencies}' ${workspaceSrc}/${effectivePackageDir}/package.json > "$tmpDeps"
+          currentPackageJsonDepsHash="sha256-$(nix-hash --type sha256 --base64 "$tmpDeps")"
+          rm "$tmpDeps"
+          if [ "$currentPackageJsonDepsHash" != "${packageJsonDepsHash}" ]; then
+            echo ""
+            echo "error: packageJsonDepsHash is stale (run: pnpm install && dt nix:hash)"
+            echo "  expected: ${packageJsonDepsHash}"
+            echo "  actual:   $currentPackageJsonDepsHash"
             echo ""
             exit 1
           fi
@@ -404,7 +469,7 @@ pkgs.stdenv.mkDerivation {
 
     # Install deps for main package and all workspace members recursively
     echo "Installing package deps..."
-    cd ${packageDir}
+    cd ${effectivePackageDir}
     pnpm install --offline --frozen-lockfile --ignore-scripts --recursive
     patchShebangs .
     cd -
@@ -417,13 +482,13 @@ pkgs.stdenv.mkDerivation {
 
     # Build the CLI
     echo "Building CLI..."
-    mkdir -p ${packageDir}/output
-    bun build ${entry} --compile ${lib.concatStringsSep " " extraBunBuildArgs} --outfile=${packageDir}/output/${binaryName}
+    mkdir -p ${effectivePackageDir}/output
+    bun build ${entry} --compile ${lib.concatStringsSep " " extraBunBuildArgs} --outfile=${effectivePackageDir}/output/${binaryName}
 
     # Smoke test
     if [ -n "${smokeTestArgsStr}" ]; then
       echo "Running smoke test..."
-      ./${packageDir}/output/${binaryName} ${smokeTestArgsStr}
+      ./${effectivePackageDir}/output/${binaryName} ${smokeTestArgsStr}
     fi
 
     runHook postBuild
@@ -434,7 +499,7 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p $out/bin
     # We're still in workspace/ from buildPhase
-    cp ${packageDir}/output/${binaryName} $out/bin/
+    cp ${effectivePackageDir}/output/${binaryName} $out/bin/
 
     runHook postInstall
   '';

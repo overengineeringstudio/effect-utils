@@ -39,6 +39,49 @@
 { pkgs, lib, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  fingerprintHelpers = ''
+    preparedLockfileHash=""
+    preparedPackageJsonDepsHash=""
+
+    load_prepared_fingerprints() {
+      local flakeRef="$1"
+      local flakeSource="''${flakeRef%%#*}"
+      local fingerprintRef=""
+      local outPath=""
+
+      preparedLockfileHash=""
+      preparedPackageJsonDepsHash=""
+
+      if [ -z "$flakeSource" ]; then
+        flakeSource="$flakeRef"
+      fi
+
+      fingerprintRef="$flakeSource#fingerprint"
+
+      set +e
+      outPath=$(${pkgs.nix}/bin/nix build "$fingerprintRef" --no-link --print-out-paths 2>/dev/null)
+      local status=$?
+      set -e
+
+      if [ $status -ne 0 ] || [ -z "$outPath" ]; then
+        return 1
+      fi
+
+      if [ -f "$outPath/lockfileHash" ]; then
+        preparedLockfileHash="$(cat "$outPath/lockfileHash")"
+      fi
+
+      if [ -f "$outPath/packageJsonDepsHash" ]; then
+        preparedPackageJsonDepsHash="$(cat "$outPath/packageJsonDepsHash")"
+      fi
+
+      if [ -z "$preparedLockfileHash" ] && [ -z "$preparedPackageJsonDepsHash" ]; then
+        return 1
+      fi
+
+      return 0
+    }
+  '';
   # Script to update all hashes in a build.nix file
   # Handles pnpmDepsHash/bunDepsHash, lockfileHash, and packageJsonDepsHash
   # Iteratively updates hashes until build succeeds
@@ -52,6 +95,8 @@ let
 
     FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     MAX_ITERATIONS=20
+
+    ${fingerprintHelpers}
 
     # Helper function to update a hash value in build.nix
     # Handles both simple hashes and platform-specific (if isDarwin then/else) patterns
@@ -99,6 +144,21 @@ let
 
     # Helper to update lockfileHash and packageJsonDepsHash in build.nix
     update_fingerprint_hashes() {
+      if load_prepared_fingerprints "$flakeRef"; then
+        if [ -n "$preparedLockfileHash" ] && grep -q "lockfileHash" "$buildNix"; then
+          export NEW_LF_HASH="$preparedLockfileHash"
+          ${pkgs.perl}/bin/perl -i -pe 's/lockfileHash\s*=\s*"sha256-[^"]+"/lockfileHash = "$ENV{NEW_LF_HASH}"/g' "$buildNix"
+          echo "Updated lockfileHash to $preparedLockfileHash"
+        fi
+
+        if [ -n "$preparedPackageJsonDepsHash" ] && grep -q "packageJsonDepsHash" "$buildNix"; then
+          export NEW_PACKAGE_JSON_DEPS_HASH="$preparedPackageJsonDepsHash"
+          ${pkgs.perl}/bin/perl -i -pe 's/packageJsonDepsHash\s*=\s*"sha256-[^"]+"/packageJsonDepsHash = "$ENV{NEW_PACKAGE_JSON_DEPS_HASH}"/g' "$buildNix"
+          echo "Updated packageJsonDepsHash to $preparedPackageJsonDepsHash"
+        fi
+        return 0
+      fi
+
       if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
         # Update lockfileHash
         newLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
@@ -168,6 +228,18 @@ let
 
       newHash=$(extract_got_hash "$output")
       actualHash=$(extract_actual_hash "$output")
+
+      if echo "$output" | grep -q 'packageJsonDepsHash is stale'; then
+        update_fingerprint_hashes
+        updated_any=true
+        continue
+      fi
+
+      if echo "$output" | grep -q 'lockfileHash is stale'; then
+        update_fingerprint_hashes
+        updated_any=true
+        continue
+      fi
 
       if [ -n "$actualHash" ] && grep -q "lockfileHash" "$buildNix"; then
         export NEW_LF_HASH="$actualHash"
@@ -251,9 +323,27 @@ let
     buildNix="''${3-}"
     lockfile="''${4-}"
 
+    ${fingerprintHelpers}
+
     # Preflight: ensure lockfile/package.json fingerprints match build.nix
     # This avoids false passes on warmed Nix stores (R5: deterministic checks).
-    if [ -n "$buildNix" ] && [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
+    if [ -n "$buildNix" ] && load_prepared_fingerprints "$flakeRef"; then
+      storedLockfileHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+      if [ -n "$preparedLockfileHash" ] && [ -n "$storedLockfileHash" ] && [ "$preparedLockfileHash" != "$storedLockfileHash" ]; then
+        echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
+        echo "  stored:  $storedLockfileHash"
+        echo "  current: $preparedLockfileHash"
+        exit 1
+      fi
+
+      storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+      if [ -n "$preparedPackageJsonDepsHash" ] && [ -n "$storedPackageJsonDepsHash" ] && [ "$preparedPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
+        echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
+        echo "  stored:  $storedPackageJsonDepsHash"
+        echo "  current: $preparedPackageJsonDepsHash"
+        exit 1
+      fi
+    elif [ -n "$buildNix" ] && [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
       packageJson="$(dirname "$lockfile")/package.json"
 
       currentLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
@@ -338,6 +428,11 @@ let
       exit 1
     fi
 
+    if echo "$output" | grep -q 'packageJsonDepsHash is stale'; then
+      echo "✗ $name: packageJsonDepsHash is stale (run: pnpm install && dt nix:hash:$name)"
+      exit 1
+    fi
+
     # Check for custom bun.lock staleness
     if echo "$output" | grep -q 'deps hash is stale'; then
       echo "✗ $name: lockfile changed, deps hash is stale (run: dt nix:hash:$name)"
@@ -381,45 +476,66 @@ let
     name="$1"
     buildNix="$2"
     lockfile="$3"
+    flakeRef="$4"
+
+    ${fingerprintHelpers}
 
     # Derive package.json path from lockfile path
     packageJson="$(dirname "$lockfile")/package.json"
     failed=false
 
-    # Check 1: lockfileHash (lockfile changed without hash update)
-    currentLockfileHash=$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
-    if [ -z "$currentLockfileHash" ]; then
-      echo "⚠ $name: lockfile not found ($lockfile), skipping lockfile check"
-    else
-      currentLockfileHash="sha256-$currentLockfileHash"
+    if load_prepared_fingerprints "$flakeRef"; then
       storedLockfileHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
-
-      if [ -z "$storedLockfileHash" ]; then
-        echo "⚠ $name: no lockfileHash in build.nix, skipping lockfile check"
-      elif [ "$currentLockfileHash" != "$storedLockfileHash" ]; then
+      if [ -n "$preparedLockfileHash" ] && [ -n "$storedLockfileHash" ] && [ "$preparedLockfileHash" != "$storedLockfileHash" ]; then
         echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
         echo "  stored:  $storedLockfileHash"
-        echo "  current: $currentLockfileHash"
+        echo "  current: $preparedLockfileHash"
         failed=true
       fi
-    fi
-
-    # Check 2: packageJsonDepsHash (package.json deps changed without lockfile update)
-    if [ -f "$packageJson" ]; then
-      tmpDeps=$(mktemp)
-      ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-      currentPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
-      rm "$tmpDeps"
 
       storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
-
-      if [ -z "$storedPackageJsonDepsHash" ]; then
-        echo "⚠ $name: no packageJsonDepsHash in build.nix, skipping deps check"
-      elif [ "$currentPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
+      if [ -n "$preparedPackageJsonDepsHash" ] && [ -n "$storedPackageJsonDepsHash" ] && [ "$preparedPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
         echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
         echo "  stored:  $storedPackageJsonDepsHash"
-        echo "  current: $currentPackageJsonDepsHash"
+        echo "  current: $preparedPackageJsonDepsHash"
         failed=true
+      fi
+    else
+      # Check 1: lockfileHash (lockfile changed without hash update)
+      currentLockfileHash=$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
+      if [ -z "$currentLockfileHash" ]; then
+        echo "⚠ $name: lockfile not found ($lockfile), skipping lockfile check"
+      else
+        currentLockfileHash="sha256-$currentLockfileHash"
+        storedLockfileHash=$(grep -oE 'lockfileHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+
+        if [ -z "$storedLockfileHash" ]; then
+          echo "⚠ $name: no lockfileHash in build.nix, skipping lockfile check"
+        elif [ "$currentLockfileHash" != "$storedLockfileHash" ]; then
+          echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
+          echo "  stored:  $storedLockfileHash"
+          echo "  current: $currentLockfileHash"
+          failed=true
+        fi
+      fi
+
+      # Check 2: packageJsonDepsHash (package.json deps changed without lockfile update)
+      if [ -f "$packageJson" ]; then
+        tmpDeps=$(mktemp)
+        ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
+        currentPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
+        rm "$tmpDeps"
+
+        storedPackageJsonDepsHash=$(grep -oE 'packageJsonDepsHash\s*=\s*"sha256-[^"]+"' "$buildNix" | grep -oE 'sha256-[^"]+' | head -1 || echo "")
+
+        if [ -z "$storedPackageJsonDepsHash" ]; then
+          echo "⚠ $name: no packageJsonDepsHash in build.nix, skipping deps check"
+        elif [ "$currentPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
+          echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
+          echo "  stored:  $storedPackageJsonDepsHash"
+          echo "  current: $currentPackageJsonDepsHash"
+          failed=true
+        fi
       fi
     fi
 
@@ -485,7 +601,7 @@ let
   mkQuickCheckTask = pkg: lib.optionalAttrs (pkg ? lockfile) {
     "nix:check:quick:${pkg.name}" = {
       description = "Quick lockfile check for ${pkg.name}";
-      exec = trace.exec "nix:check:quick:${pkg.name}" "${quickCheckScript} '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile}'";
+      exec = trace.exec "nix:check:quick:${pkg.name}" "${quickCheckScript} '${pkg.name}' '${pkg.buildNix}' '${pkg.lockfile}' '${pkg.flakeRef}'";
     };
   };
 
