@@ -41,7 +41,7 @@ pub extern "C" fn fromYAML(arg: Value) -> Value {
 fn to_yaml(v: Value) -> Yaml {
     match v.get_type() {
         Type::Int => Yaml::Integer(v.get_int()),
-        Type::Float => Yaml::Real(format!("{}", v.get_float())),
+        Type::Float => Yaml::Real(format_yaml_float(v.get_float())),
         Type::Bool => Yaml::Boolean(v.get_bool()),
         Type::String => Yaml::String(v.get_string()),
         Type::Null => Yaml::Null,
@@ -56,6 +56,23 @@ fn to_yaml(v: Value) -> Yaml {
             "Nix type {} cannot be serialized to YAML",
             v.get_type() as u64
         ),
+    }
+}
+
+fn format_yaml_float(value: f64) -> String {
+    if value.is_nan() {
+        ".nan".to_string()
+    } else if value == f64::INFINITY {
+        ".inf".to_string()
+    } else if value == f64::NEG_INFINITY {
+        "-.inf".to_string()
+    } else {
+        let rendered = value.to_string();
+        if rendered.contains(['.', 'e', 'E']) {
+            rendered
+        } else {
+            format!("{rendered}.0")
+        }
     }
 }
 
@@ -134,7 +151,7 @@ pub extern "C" fn toYAML(arg: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::collapse_single_key_block_mappings;
+    use super::{collapse_single_key_block_mappings, format_yaml_float};
 
     #[test]
     fn collapses_single_key_mapping() {
@@ -148,5 +165,18 @@ mod tests {
         let input = "resolution:\n  integrity: sha512-abc\n  tarball: https://example.test\n";
         let output = collapse_single_key_block_mappings(input);
         assert_eq!(output, input);
+    }
+
+    #[test]
+    fn preserves_whole_number_float_scalars() {
+        assert_eq!(format_yaml_float(1.0), "1.0");
+        assert_eq!(format_yaml_float(-2.0), "-2.0");
+    }
+
+    #[test]
+    fn preserves_special_float_scalars() {
+        assert_eq!(format_yaml_float(f64::INFINITY), ".inf");
+        assert_eq!(format_yaml_float(f64::NEG_INFINITY), "-.inf");
+        assert_eq!(format_yaml_float(f64::NAN), ".nan");
     }
 }
