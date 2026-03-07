@@ -76,7 +76,8 @@ let
   # Replaces any existing jsPlugins in .oxlintrc.json with the Nix-provided paths.
   # This ensures stale/unresolvable source paths from the genie template are dropped.
   hasJsPlugins = jsPlugins != [ ];
-  jsPluginsJson = builtins.toJSON jsPlugins;
+  jsPluginsJson =
+    "[${builtins.concatStringsSep ", " (map (plugin: builtins.toJSON "${plugin}") jsPlugins)}]";
   mkOxlintCmd =
     extraFlags:
     let
