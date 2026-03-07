@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
+  - Stages only the target package and its workspace closure into the Nix build
+  - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree
+  - Compiles the deployed entrypoint with Bun, reducing coupling to the raw dev workspace layout
+  - Narrows pnpm deps fetching to the target lockfile, workspace member manifests, and referenced patch files
+  - Removes legacy `--force` / explicit `--recursive` fetch behavior and normalizes the store against the staged package lockfile
+  - Extends the smoke harness with a targeted regression check for `pnpm deploy --config.inject-workspace-packages=true --frozen-lockfile`
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
 - **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails
@@ -31,6 +38,9 @@ All notable changes to this project will be documented in this file.
   - Optional tasks now use native `@complete` dependency suffix instead of nested `devenv tasks run` wrappers
   - Eliminates 6x shell re-evaluation, ~5.9s trace gap, fork-bomb guards, and filesystem locks
   - The workaround for `cachix/devenv#2480` is no longer needed since we use `devenv shell` (not direnv)
+- **nix/workspace-tools**: Remove compatibility-only Nix surface from CLI builders/tasks
+  - Drops the dead `packageJsonDepsHash` argument from both `mk-pnpm-cli` and exported `mk-bun-cli`
+  - Removes the deprecated `devenvModules.tasks.git-hooks-fix` export and deletes its module
 
 ### Fixed
 

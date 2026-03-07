@@ -258,9 +258,7 @@ echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
  * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.
  * Add this step after validation/task steps so failure-path data is retained.
  */
-export const nixDiagnosticsArtifactStep = (
-  opts?: { if?: string; retentionDays?: number },
-) => ({
+export const nixDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?: number }) => ({
   name: 'Upload Nix diagnostics artifact',
   if: opts?.if ?? "failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''",
   uses: 'actions/upload-artifact@v4' as const,
@@ -306,7 +304,7 @@ export const deployCommentStep = (opts: {
     '',
     '# Write job summary',
     '{',
-    `  echo "## ${opts.summaryTitle} (\$label)"`,
+    `  echo "## ${opts.summaryTitle} ($label)"`,
     '  echo ""',
     `  echo "| ${opts.tableHeaders[0]} | ${opts.tableHeaders[1]} |"`,
     '  echo "| --- | --- |"',

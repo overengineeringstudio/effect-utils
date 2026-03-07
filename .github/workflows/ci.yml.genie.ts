@@ -186,7 +186,7 @@ const deployJobs: Record<string, any> = {
 
 const notifyAlignmentJob = {
   'runs-on': 'ubuntu-latest' as const,
-  needs: [...Object.keys(jobs)],
+  needs: Object.keys(jobs),
   if: "github.ref == 'refs/heads/main' && github.event_name == 'push'",
   steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
 }

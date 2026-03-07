@@ -3,7 +3,8 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that fetches pnpm dependencies
-#    with network access and archives them into a reproducible tarball.
+#    from a staged package lockfile and archives the resulting store into a
+#    reproducible tarball.
 #
 # 2. mkRestoreScript: Generates a shell script snippet that extracts the archived
 #    pnpm store and configures pnpm for offline installs during the build phase.
@@ -22,11 +23,10 @@ in
   # Arguments:
   #   name:           Derivation name prefix (e.g., "genie" or "oxc-config")
   #   src:            Filtered source containing package.json + pnpm-lock.yaml
-  #   sourceRoot:     Path within the source to cd into (e.g., "source/packages/@overeng/genie")
+  #   sourceRoot:     Path within the source to cd into (e.g., "source/packages/@overeng/genie").
+  #                   Must contain the staged pnpm-lock.yaml.
   #   pnpmDepsHash:   Expected hash of the FOD output
   #   preInstall:     Extra shell commands to run before pnpm install (e.g., chmod for workspace members)
-  #   installFlags:   Extra flags for pnpm install (e.g., "--force --recursive")
-  #   fetchFlags:     Extra flags for pnpm fetch (e.g., "--recursive")
   mkDeps =
     {
       name,
@@ -34,8 +34,6 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
-      installFlags ? "",
-      fetchFlags ? "",
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -97,32 +95,28 @@ in
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
-        pnpm install --frozen-lockfile --ignore-scripts ${installFlags}
+        pnpm install --frozen-lockfile --ignore-scripts
 
-        export LOCKFILE_DIR="$NIX_BUILD_TOP"
+        export LOCKFILE_PATH="$PWD/pnpm-lock.yaml"
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
         #
         # Pipeline overview:
-        #   Phase 0: Prune phantom index files not in lockfile (fixes --force non-determinism)
+        #   Phase 0: Prune phantom index files not in the staged lockfile
         #   Phase 1: Build CAS file existence set (source of truth for exec status)
         #   Phase 2: Canonicalize index JSON (deterministic mode from CAS filename)
         #   Phase 3: Remove orphan CAS files (not referenced by any index)
         #
-        # Phase 0 context: pnpm install --force can non-deterministically fetch
-        # "phantom" packages not listed in the lockfile (e.g., older @types/node
-        # versions from registry metadata). These phantom packages have valid
-        # index+CAS entries so the existing orphan cleanup doesn't remove them.
-        # We prune by parsing ALL lockfiles in the workspace (the root lockfile
-        # plus any workspace member lockfiles) as the source of truth for which
-        # pkg@version pairs should exist in the store.
+        # Phase 0 context: the staged package lockfile is the only dependency
+        # source of truth for this fetch input. Pruning any extra index files
+        # ensures the archived store cannot drift beyond that lockfile.
 
         node -e '
           const fs = require("fs");
           const p = require("path");
           const sp = process.env.STORE_PATH;
-          const lockfileDir = process.env.LOCKFILE_DIR;
+          const lockfilePath = process.env.LOCKFILE_PATH;
 
           function walk(dir, out) {
             for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
@@ -136,33 +130,32 @@ in
           if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
           const vdir = p.join(sp, vdirs[0]);
 
-          /* Phase 0: Prune phantom index files not in lockfiles.
-             Find ALL pnpm-lock.yaml files in the source tree (root + workspace members)
-             and collect their packages sections into a single allowlist. */
-          const allLockfiles = walk(lockfileDir, []).filter(
-            f => p.basename(f) === "pnpm-lock.yaml" && !f.includes("node_modules")
-          );
+          if (!lockfilePath || !fs.existsSync(lockfilePath)) {
+            console.error("store-norm: FATAL — staged pnpm-lock.yaml not found at " + lockfilePath);
+            process.exit(1);
+          }
+
+          /* Phase 0: Prune phantom index files not in the staged lockfile. */
+          const lockfile = fs.readFileSync(lockfilePath, "utf8");
 
           const Q = String.fromCharCode(39); /* single quote */
           const pkgLineRe = new RegExp("^\\s+(" + Q + "?)(.+?)\\1:\\s*$");
           const allowedPkgVersions = new Set();
 
-          for (const lf of allLockfiles) {
-            const lines = fs.readFileSync(lf, "utf8").split("\n");
-            let inPackages = false;
-            for (const line of lines) {
-              if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
-              if (inPackages) {
-                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
-                const m = pkgLineRe.exec(line);
-                if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
-              }
+          const lines = lockfile.split("\n");
+          let inPackages = false;
+          for (const line of lines) {
+            if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
+            if (inPackages) {
+              if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+              const m = pkgLineRe.exec(line);
+              if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
             }
           }
-          console.log("store-norm: parsed " + allLockfiles.length + " lockfile(s), found " + allowedPkgVersions.size + " unique packages");
+          console.log("store-norm: parsed staged lockfile, found " + allowedPkgVersions.size + " unique packages");
 
           if (allowedPkgVersions.size === 0) {
-            console.error("store-norm: FATAL — no packages parsed from " + allLockfiles.length + " lockfile(s)");
+            console.error("store-norm: FATAL — no packages parsed from staged pnpm-lock.yaml");
             process.exit(1);
           }
 

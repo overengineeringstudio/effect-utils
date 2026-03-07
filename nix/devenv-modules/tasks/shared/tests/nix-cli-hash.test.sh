@@ -241,6 +241,7 @@ cat > "$tmpfile" << 'EOF'
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
+  packageJsonDepsHash = "sha256-PACKAGEJSON12345678901234567890123456789=";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";
@@ -251,7 +252,6 @@ let
       then "sha256-OLDDDDDARWIN123456789012345678901234567890="
       else "sha256-OLDDDDDLINUX1234567890123456789012345678901=";
     lockfileHash = "sha256-LOCKFILE12345678901234567890123456789012=";
-    packageJsonDepsHash = "sha256-PACKAGEJSON12345678901234567890123456789=";
     inherit gitRev commitTs dirty;
   };
 in
