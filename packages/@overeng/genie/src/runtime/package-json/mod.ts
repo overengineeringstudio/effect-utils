@@ -611,6 +611,8 @@ const buildPackageJson = <T extends PackageJsonData>({
  *   peerDependencies: {
  *     ...utilsPkg.data.peerDependencies,  // Inherit peer deps
  *   },
+ *   // If the app also installs those peers locally, use catalog versions
+ *   // in dependencies/devDependencies instead of copying peer ranges.
  * })
  * ```
  */

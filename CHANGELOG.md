@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
+  - Allows ranged `peerDependencies`
+  - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`
 - **@overeng/megarepo**: Handle stale locked commits during `mr sync --pull`
   - Prevents recursive sync from aborting when nested pinned members reference commits that no longer exist
   - Allows `mr sync --pull --force` to recover pinned branch members by resolving the tracked ref head
