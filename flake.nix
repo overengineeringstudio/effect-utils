@@ -130,6 +130,10 @@
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
 
+      # Helper to assemble a canonical prepared pnpm workspace plus fingerprints.
+      lib.mkPreparedPnpmWorkspace =
+        { pkgs }: import ./nix/workspace-tools/lib/mk-prepared-pnpm-workspace.nix { inherit pkgs; };
+
       # Shell helper for runtime CLI build stamps.
       lib.cliBuildStamp =
         { pkgs }: import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
