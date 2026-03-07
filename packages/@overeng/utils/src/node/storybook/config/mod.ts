@@ -11,7 +11,7 @@
 import type { StorybookConfig } from '@storybook/react-vite'
 import type { InlineConfig } from 'vite'
 
-type StorybookViteFinal = (config: any) => any | Promise<any>
+type StorybookViteFinal<TConfig extends object> = (config: TConfig) => TConfig | Promise<TConfig>
 
 /** Options for `createDomStorybookConfig`. */
 export interface DomStorybookConfigOptions {
@@ -21,8 +21,14 @@ export interface DomStorybookConfigOptions {
   addons?: StorybookConfig['addons']
   /** Disable minification (useful for react-inspector to preserve function names) */
   disableMinify?: boolean
+}
+
+/** Use when the consuming workspace needs its own local Vite config type for `viteFinal`. */
+export interface DomStorybookConfigOptionsWithViteFinal<
+  TConfig extends object,
+> extends DomStorybookConfigOptions {
   /** Extension hook — runs after the factory transforms for custom overrides */
-  viteFinal?: StorybookViteFinal
+  viteFinal: StorybookViteFinal<TConfig>
 }
 
 /** Options for `createTuiStorybookConfig`. */
@@ -33,8 +39,14 @@ export interface TuiStorybookConfigOptions {
   addons?: StorybookConfig['addons']
   /** Additional entries merged into `optimizeDeps.include` (e.g. CJS transitive deps) */
   additionalOptimizeDepsInclude?: string[]
+}
+
+/** Use when the consuming workspace needs its own local Vite config type for `viteFinal`. */
+export interface TuiStorybookConfigOptionsWithViteFinal<
+  TConfig extends object,
+> extends TuiStorybookConfigOptions {
   /** Extension hook — runs after the factory transforms for custom overrides */
-  viteFinal?: StorybookViteFinal
+  viteFinal: StorybookViteFinal<TConfig>
 }
 
 const opentuiStubPath = new URL('../opentui-stub.ts', import.meta.url).pathname
@@ -70,6 +82,24 @@ const applySharedConfig = (config: InlineConfig): void => {
   }
 }
 
+const callUserViteFinal = async <TConfig extends object>(
+  config: InlineConfig,
+  viteFinal: StorybookViteFinal<TConfig> | undefined,
+): Promise<InlineConfig> => {
+  if (viteFinal === undefined) {
+    return config
+  }
+
+  return (await viteFinal(config as TConfig)) as InlineConfig
+}
+
+type CreateDomStorybookConfig = {
+  (options?: DomStorybookConfigOptions): StorybookConfig
+  <TConfig extends object>(
+    options: DomStorybookConfigOptionsWithViteFinal<TConfig>,
+  ): StorybookConfig
+}
+
 /**
  * Create a Storybook config for browser-rendered React packages.
  *
@@ -79,20 +109,24 @@ const applySharedConfig = (config: InlineConfig): void => {
  * export default createDomStorybookConfig({})
  * ```
  */
-export const createDomStorybookConfig = (options: DomStorybookConfigOptions = {}) => {
+export const createDomStorybookConfig: CreateDomStorybookConfig = <TConfig extends object>(
+  options: DomStorybookConfigOptions & {
+    viteFinal?: StorybookViteFinal<TConfig>
+  } = {},
+): StorybookConfig => {
   const {
     stories = ['../src/**/*.stories.@(ts|tsx)'],
     addons,
     disableMinify = false,
-    viteFinal: userViteFinal,
+    viteFinal,
   } = options
 
   const config = {
     stories,
     ...(addons !== undefined ? { addons } : {}),
     framework: { name: '@storybook/react-vite', options: {} },
-    viteFinal: async (config: any) => {
-      const typedConfig = config as InlineConfig
+    viteFinal: async (storybookConfig) => {
+      const typedConfig = storybookConfig as InlineConfig
       applySharedConfig(typedConfig)
 
       if (disableMinify === true && typedConfig.build !== undefined) {
@@ -101,11 +135,18 @@ export const createDomStorybookConfig = (options: DomStorybookConfigOptions = {}
         typedConfig.build = { minify: false }
       }
 
-      return userViteFinal !== undefined ? userViteFinal(typedConfig) : typedConfig
+      return callUserViteFinal(typedConfig, viteFinal)
     },
   } satisfies StorybookConfig
 
   return config
+}
+
+type CreateTuiStorybookConfig = {
+  (options?: TuiStorybookConfigOptions): StorybookConfig
+  <TConfig extends object>(
+    options: TuiStorybookConfigOptionsWithViteFinal<TConfig>,
+  ): StorybookConfig
 }
 
 /**
@@ -121,20 +162,24 @@ export const createDomStorybookConfig = (options: DomStorybookConfigOptions = {}
  * })
  * ```
  */
-export const createTuiStorybookConfig = (options: TuiStorybookConfigOptions = {}) => {
+export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig extends object>(
+  options: TuiStorybookConfigOptions & {
+    viteFinal?: StorybookViteFinal<TConfig>
+  } = {},
+): StorybookConfig => {
   const {
     stories = ['../src/**/*.stories.@(ts|tsx)'],
     addons,
     additionalOptimizeDepsInclude = [],
-    viteFinal: userViteFinal,
+    viteFinal,
   } = options
 
   const config = {
     stories,
     ...(addons !== undefined ? { addons } : {}),
     framework: { name: '@storybook/react-vite', options: {} },
-    viteFinal: async (config: any) => {
-      const typedConfig = config as InlineConfig
+    viteFinal: async (storybookConfig) => {
+      const typedConfig = storybookConfig as InlineConfig
       applySharedConfig(typedConfig)
 
       typedConfig.build = {
@@ -180,7 +225,7 @@ export const createTuiStorybookConfig = (options: TuiStorybookConfigOptions = {}
         external: ['@opentui/core', '@opentui/react'],
       }
 
-      return userViteFinal !== undefined ? userViteFinal(typedConfig) : typedConfig
+      return callUserViteFinal(typedConfig, viteFinal)
     },
   } satisfies StorybookConfig
 

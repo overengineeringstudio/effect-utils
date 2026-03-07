@@ -26,6 +26,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/utils**: Make Storybook `viteFinal` typing opt-in generic for linked Vite workspaces
+  - Keeps the default helper API free of foreign Vite types
+  - Lets consumers opt into their own local `vite` config type when they need a typed `viteFinal` hook
 - **devenv/tasks/shared/vercel.nix**: Switch to prebuilt deploy mode (`vercel pull` -> `vercel build` -> `vercel deploy --prebuilt`)
   - Replaces direct `vercel deploy <dir>` with local prebuilt workflow for deterministic deploys
   - Replaces `path`/`outputDir` deployment config with `cwd` (defaults to `"."`)
