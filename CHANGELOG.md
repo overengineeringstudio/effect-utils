@@ -46,6 +46,9 @@ All notable changes to this project will be documented in this file.
 - **genie/ci-workflow**: Add shared `nixExtraConf` and `runDevenvTasksBeforeWithWasmBuiltin` helpers
   - Lets downstream workflows enable `wasm-builtin` without repo-local `NIX_CONFIG` string assembly
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
+- **@overeng/genie**: Added `createMegarepoWorkspaceDepsResolver` with strict multi-root error handling
+  - Throws actionable errors for missing prefix mappings and same-scope ambiguous root matches
+  - Supports explicit package-level root overrides for deterministic cross-repo composition
 
 ### Removed
 
