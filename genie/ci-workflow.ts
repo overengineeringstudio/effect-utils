@@ -321,6 +321,7 @@ export const deployCommentStep = (opts: {
     '    echo "| --- | --- |"',
     '    echo -e "$rows"',
     '  } > /tmp/comment.md',
+    '  export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$\'\\n\'}access-tokens = github.com=${GH_TOKEN}"',
     '  nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \\',
     '    || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md',
     'fi',
@@ -342,7 +343,7 @@ export const dispatchAlignmentStep = (opts: {
   ({
     name: 'Dispatch alignment to coordinator',
     env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
+    run: `export NIX_CONFIG="\${NIX_CONFIG:+\$NIX_CONFIG\$'\\n'}access-tokens = github.com=\${GH_TOKEN}" && printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
     shell: 'bash',
   })
 
