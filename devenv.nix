@@ -11,6 +11,7 @@ let
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
     bun = pkgs.bun;
+    src = ./.;
   };
 
   # Shared task modules (from shared/ directory)

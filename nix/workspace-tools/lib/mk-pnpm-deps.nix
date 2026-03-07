@@ -86,6 +86,7 @@ in
 
         export HOME=$PWD
         export STORE_PATH=$PWD/.pnpm-store
+        export CI=true
         export NPM_CONFIG_PRODUCTION=false
         export npm_config_production=false
         export NODE_ENV=development
