@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
+  - Allows ranged `peerDependencies`
+  - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`
+
 - **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
   - Stages only the target package and its workspace closure into the Nix build
   - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree
