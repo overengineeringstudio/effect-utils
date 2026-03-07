@@ -901,8 +901,8 @@ jobs:
               echo "| --- | --- |"
               echo -e "$rows"
             } > /tmp/comment.md
-            gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
-              || gh pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
+            nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
+              || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
           fi
       - name: Nix diagnostics summary
         if: failure()
@@ -962,5 +962,5 @@ jobs:
       - name: Dispatch alignment to coordinator
         env:
           GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}'
-        run: 'printf ''{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}'' "${{ github.repository }}" "${{ github.sha }}" | gh api repos/schickling/megarepo-all/dispatches --input -'
+        run: 'printf ''{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}'' "${{ github.repository }}" "${{ github.sha }}" | nix run nixpkgs#gh -- api repos/schickling/megarepo-all/dispatches --input -'
         shell: bash
