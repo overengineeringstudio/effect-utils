@@ -54,11 +54,20 @@ This aligns with our pnpm pattern - see "Bun Workspace Pattern" section below.
 
 ---
 
-## Other Issues (non-blocking)
+## Additional Blocking Issues
 
 ### BUN-03: Bun patchedDependencies bug
 
 - [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531)
+- [Nested workspace package patchedDependencies break root install](https://github.com/oven-sh/bun/issues/27894)
+
+Validated on Bun `1.3.10`:
+
+- A workspace app root can install successfully when only the install root carries top-level `patchedDependencies`
+- The same install fails as soon as a nested workspace package also carries its own top-level `patchedDependencies`
+- A package like `@overeng/utils` still needs top-level `patchedDependencies` when it is installed as its own Bun root
+
+That means the remaining patch blocker is not just missing `workspaces` generation. Bun currently requires contradictory static manifest shapes depending on whether the same package is the install root or a nested workspace member.
 
 ---
 
@@ -117,7 +126,7 @@ Use these as concrete cleanup tasks once the corresponding Bun issues are resolv
 
 - **BUN-01**: Revert mk-bun-cli to bun-only installs (remove `depsManager`, `pnpmDepsHash`, pnpm install path).
 - **BUN-02**: Switch to `workspace:*` with per-package workspaces in `package.json`.
-- **BUN-03**: Re-enable bun patchedDependencies flow; remove postinstall patch workaround.
+- **BUN-03**: Re-enable bun patchedDependencies flow once Bun fixes both local path patching and nested workspace patch handling.
 - **All BUN issues resolved**:
   - Remove pnpm-specific code paths in `mk-bun-cli` and `mk-bun-cli/bun-deps.nix`.
   - Update genie to generate `workspaces` field in `package.json` instead of `pnpm-workspace.yaml`.

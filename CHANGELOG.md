@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.
 - **genie/ci-workflow**: Add shared `nixExtraConf` and `runDevenvTasksBeforeWithWasmBuiltin` helpers
   - Lets downstream workflows enable `wasm-builtin` without repo-local `NIX_CONFIG` string assembly
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
+- **docs/bun**: Document the upstream nested-workspace `patchedDependencies` blocker and link the Bun issue
 
 ### Removed
 
