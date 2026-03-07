@@ -1,6 +1,6 @@
 # Beads (bd) — pre-built binary package from GitHub releases.
 # v0.57+ self-manages dolt sql-server per project (deterministic port from FNV hash of BEADS_DIR).
-{ pkgs }:
+{ pkgs, beadsPrimaryRef ? "main" }:
 let
   version = "0.59.0";
   tag = "v${version}";
@@ -40,6 +40,7 @@ pkgs.stdenv.mkDerivation {
   };
 
   nativeBuildInputs = [
+    pkgs.bash
     pkgs.gnutar
     pkgs.installShellFiles
     pkgs.makeWrapper
@@ -55,24 +56,94 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
 
     mkdir -p $out/bin
-    cp source/bd $out/bin/bd
-    chmod +x $out/bin/bd
+    cp source/bd $out/bin/bd-real
+    chmod +x $out/bin/bd-real
 
     # Patch the ELF interpreter before running the binary for completion generation.
     # autoPatchelfHook can't be used here because it runs too late (after installPhase).
     ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
-      patchelf --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" $out/bin/bd
+      patchelf --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" $out/bin/bd-real
     ''}
 
-    $out/bin/bd --help >/dev/null
+    $out/bin/bd-real --help >/dev/null
 
     installShellCompletion --cmd bd \
-      --fish <($out/bin/bd completion fish) \
-      --bash <($out/bin/bd completion bash) \
-      --zsh <($out/bin/bd completion zsh)
+      --fish <($out/bin/bd-real completion fish) \
+      --bash <($out/bin/bd-real completion bash) \
+      --zsh <($out/bin/bd-real completion zsh)
 
-    # bd auto-starts `dolt sql-server` — ensure dolt is in PATH
-    wrapProgram $out/bin/bd --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.dolt ]}
+    wrapProgram $out/bin/bd-real --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.dolt ]}
+
+    cat > $out/bin/bd <<'EOF'
+    #!${pkgs.bash}/bin/bash
+    set -euo pipefail
+
+    realpath_bin="${pkgs.coreutils}/bin/realpath"
+    bd_real="${placeholder "out"}/bin/bd-real"
+    beads_primary_ref="''${BEADS_PRIMARY_REF:-${beadsPrimaryRef}}"
+
+    has_explicit_db=false
+    for arg in "$@"; do
+      case "$arg" in
+        --db|--db=*)
+          has_explicit_db=true
+          ;;
+      esac
+    done
+
+    # TODO: Drop this detached-worktree normalization once beads#2439 is merged
+    # and released. Upstream beads should then resolve refs/commits/*/.beads to a
+    # stable same-commit branch worktree on its own.
+    resolve_beads_dir() {
+      local beads_dir="$1"
+      local resolved_dir
+      local repo_root
+      local branch_dir
+
+      resolved_dir="$("$realpath_bin" "$beads_dir")"
+
+      case "$resolved_dir" in
+        */refs/commits/*/.beads)
+          repo_root="''${resolved_dir%%/refs/commits/*}"
+          branch_dir="''${repo_root}/refs/heads/''${beads_primary_ref}/.beads"
+          if [ -d "$branch_dir" ]; then
+            resolved_dir="$branch_dir"
+          fi
+          ;;
+      esac
+
+      printf '%s\n' "$resolved_dir"
+    }
+
+    should_pin_db() {
+      local metadata_file="$1/metadata.json"
+
+      [ -f "$metadata_file" ] || return 1
+
+      grep -Eq '"(backend|database)"[[:space:]]*:[[:space:]]*"dolt"' "$metadata_file" \
+        || grep -Eq '"dolt_database"[[:space:]]*:' "$metadata_file"
+    }
+
+    if [ -n "''${BEADS_DIR:-}" ] && [ -d "$BEADS_DIR" ]; then
+      export BEADS_DIR="$(resolve_beads_dir "$BEADS_DIR")"
+
+      if [ -d "''${BEADS_DIR%/.beads}" ]; then
+        cd "''${BEADS_DIR%/.beads}"
+      fi
+
+      # TODO: Re-check this explicit --db pin after beads#2439 is merged. The
+      # upstream PR fixes path identity, but external-store server-mode
+      # resolution still needs validation before this wrapper can collapse to a
+      # plain bd passthrough.
+      if [ "''${has_explicit_db}" = false ] && [ -d "$BEADS_DIR/dolt" ] && should_pin_db "$BEADS_DIR"; then
+        exec "$bd_real" --db "$BEADS_DIR/dolt" "$@"
+      fi
+    fi
+
+    exec "$bd_real" "$@"
+    EOF
+
+    chmod +x $out/bin/bd
     ln -s $out/bin/bd $out/bin/beads
 
     runHook postInstall
