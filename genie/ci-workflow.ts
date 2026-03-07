@@ -52,6 +52,12 @@ export const standardCIEnv = {
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
 
+type NixConfigOptions = {
+  unrestrictedEval?: boolean
+  wasmBuiltin?: boolean
+  extraLines?: readonly string[]
+}
+
 const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 
 const resolveDevenvRevScript = `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
@@ -64,9 +70,36 @@ const resolveDevenvFnScript = `resolve_devenv() {
   nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
+const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
+
+/** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
+export const nixExtraConf = (opts: NixConfigOptions = {}) =>
+  [
+    ...(opts.unrestrictedEval ? ['restrict-eval = false'] : []),
+    ...(opts.wasmBuiltin ? ['extra-experimental-features = wasm-builtin'] : []),
+    ...(opts.extraLines ?? []),
+  ].join('\n')
+
+const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => {
+  const extraConf = nixExtraConf(opts)
+  if (extraConf === '') {
+    return command
+  }
+
+  const quotedExtraConf = shellSingleQuote(extraConf)
+  return `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' "$NIX_CONFIG" ${quotedExtraConf}); else NIX_CONFIG_WITH_APPEND=${quotedExtraConf}; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" ${command}`
+}
+
+const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
+  withAppendedNixConfig(`${devenvBinRef} tasks run ${args.join(' ')} --mode before`, opts)
+
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_UNRESTRICTED_EVAL="$NIX_CONFIG"$'\\n''restrict-eval = false'; else NIX_CONFIG_WITH_UNRESTRICTED_EVAL='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_UNRESTRICTED_EVAL" ${devenvBinRef} tasks run ${args.join(' ')} --mode before`
+  runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)
+
+/** Build a command that runs devenv tasks with both unrestricted eval and wasm-builtin enabled. */
+export const runDevenvTasksBeforeWithWasmBuiltin = (...args: [string, ...string[]]) =>
+  runDevenvTasksBeforeWithOptions({ unrestrictedEval: true, wasmBuiltin: true }, ...args)
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -343,7 +376,10 @@ export const dispatchAlignmentStep = (opts: {
   ({
     name: 'Dispatch alignment to coordinator',
     env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: `export NIX_CONFIG="\${NIX_CONFIG:+\$NIX_CONFIG\$'\\n'}access-tokens = github.com=\${GH_TOKEN}" && printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "\${{ github.repository }}" "\${{ github.sha }}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
+    run: [
+      `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
+      `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
+    ].join(' && '),
     shell: 'bash',
   })
 
