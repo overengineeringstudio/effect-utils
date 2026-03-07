@@ -91,6 +91,8 @@ let
 
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
+        # TODO: Switch back to `bunx netlify-cli` once upstream fixes chalk v5/v4 ESM/CJS conflict
+        # See: https://github.com/netlify/cli/issues/7997
         # shellcheck disable=SC2086
         pnpm --package=netlify-cli dlx netlify deploy \
           --dir="$deploy_dir" \
