@@ -368,11 +368,13 @@ export const resolveRef = (args: { repoPath: string; ref: string }) =>
   })
 
 /**
- * Check if a ref exists in the repo
+ * Check if a ref resolves to an object that actually exists in the repo.
+ * `rev-parse --verify <sha>` accepts a syntactically valid 40-char SHA even when
+ * the object is missing, so we dereference to `^{object}` here.
  */
 export const refExists = (args: { repoPath: string; ref: string }) =>
   runGitCommand({
-    args: ['rev-parse', '--verify', args.ref],
+    args: ['rev-parse', '--verify', `${args.ref}^{object}`],
     cwd: args.repoPath,
   }).pipe(
     Effect.map(() => true),

@@ -319,7 +319,15 @@ export const syncMember = <R = never>({
       }
       targetRef = lockedMember.ref
       targetCommit = lockedMember.commit
-    } else if (lockedMember !== undefined && lockedMember.pinned === true) {
+      /**
+       * Keep pinned members on the exact locked commit unless the caller explicitly
+       * opted into overriding pins via `--pull --force`.
+       */
+    } else if (
+      lockedMember !== undefined &&
+      lockedMember.pinned === true &&
+      (pull === false || force === false)
+    ) {
       // Use pinned commit from lock
       targetRef = lockedMember.ref
       targetCommit = lockedMember.commit
@@ -507,6 +515,44 @@ export const syncMember = <R = never>({
       }
     }
 
+    /**
+     * A lock entry can point at an object that disappeared after a force-push.
+     * In pull mode we can recover branch-based members by re-resolving `targetRef`,
+     * but pinned commit-SHA refs remain hard failures because there is no mutable ref to follow.
+     */
+    if (dryRun === false && targetCommit !== undefined) {
+      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      if (commitExists === false) {
+        const shortCommit = targetCommit.slice(0, 8)
+
+        if (frozen === true) {
+          return {
+            name,
+            status: 'error',
+            message: `locked commit '${shortCommit}' for ref '${targetRef}' is not available locally or on the remote`,
+          } satisfies MemberSyncResult
+        }
+
+        if (isCommitSha(targetRef) === true) {
+          return {
+            name,
+            status: 'error',
+            message: `commit '${shortCommit}' is not available locally or on the remote`,
+          } satisfies MemberSyncResult
+        }
+
+        if (lockedMember?.pinned === true) {
+          return {
+            name,
+            status: 'skipped',
+            message: `pinned commit '${shortCommit}' for ref '${targetRef}' is no longer available (use --force to update to the tracked ref or update megarepo.lock)`,
+          } satisfies MemberSyncResult
+        }
+
+        targetCommit = undefined
+      }
+    }
+
     // Validate that the ref exists (for dry-run mode or before creating worktree)
     // Uses hybrid approach: check local bare repo if exists, otherwise query remote
     // Track whether we need to create the branch
@@ -640,6 +686,22 @@ export const syncMember = <R = never>({
             )
           }
         }
+      }
+    }
+
+    /**
+     * `--pull --force` can bypass the earlier pinned-commit guard and derive
+     * `targetCommit` directly from an immutable source ref. Re-check existence
+     * here so stale commit-SHA refs fail before worktree creation.
+     */
+    if (dryRun === false && targetCommit !== undefined && isCommitSha(targetRef) === true) {
+      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      if (commitExists === false) {
+        return {
+          name,
+          status: 'error',
+          message: `commit '${targetCommit.slice(0, 8)}' is not available locally or on the remote`,
+        } satisfies MemberSyncResult
       }
     }
 
