@@ -2,16 +2,20 @@
 #
 # v0.57+ self-manages dolt sql-server (auto-start with deterministic port).
 # This module sets BEADS_DIR and provides push/pull convenience tasks.
-{ beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}" }:
+{ beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}", beadsRepoRef ? "main" }:
 { pkgs, config, ... }:
 let
   git = "${pkgs.git}/bin/git";
-  bdPackage = import ../../../beads.nix { inherit pkgs; };
+  bdPackage = import ../../../beads.nix {
+    inherit pkgs;
+    beadsPrimaryRef = beadsRepoRef;
+  };
   bd = "${bdPackage}/bin/bd";
   beadsRepoRelPath = beadsRepoPath;
 in
 {
   env.BEADS_DIR = "${config.devenv.root}/${beadsRepoRelPath}/.beads";
+  env.BEADS_PRIMARY_REF = beadsRepoRef;
 
   tasks."beads:push" = {
     description = "Push beads changes to Dolt remote";
