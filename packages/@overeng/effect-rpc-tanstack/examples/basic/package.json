@@ -29,6 +29,11 @@
     "typescript": "5.9.3",
     "vite": "7.3.1"
   },
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.11": "../../../utils/patches/effect-distributed-lock@0.0.11.patch"
+    }
+  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"
