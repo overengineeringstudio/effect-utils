@@ -857,6 +857,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: '${{ github.token }}'
+          GH_REPO: '${{ github.repository }}'
         run: |
           site="overeng-utils"
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then

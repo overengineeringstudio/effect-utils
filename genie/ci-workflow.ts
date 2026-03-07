@@ -291,6 +291,7 @@ export const deployCommentStep = (opts: {
   shell: 'bash' as const,
   env: {
     GH_TOKEN: '${{ github.token }}',
+    GH_REPO: '${{ github.repository }}',
   },
   run: [
     opts.modeScript,
