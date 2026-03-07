@@ -92,7 +92,7 @@ let
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
         # shellcheck disable=SC2086
-        pnpm dlx netlify-cli deploy \
+        pnpm --package=netlify-cli dlx netlify deploy \
           --dir="$deploy_dir" \
           --site="${site}" \
           --no-build \
