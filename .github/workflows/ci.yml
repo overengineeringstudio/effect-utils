@@ -902,8 +902,19 @@ jobs:
               echo "| --- | --- |"
               echo -e "$rows"
             } > /tmp/comment.md
-            nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
-              || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
+            pr_number="${{ github.event.pull_request.number }}"
+            api_url="https://api.github.com/repos/$GH_REPO/issues/$pr_number/comments"
+            body=$(jq -Rs . < /tmp/comment.md)
+            # Try to update last bot comment, otherwise create new one
+            existing_id=$(curl -sf -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" \
+              "$api_url?per_page=100" | jq -r '[.[] | select(.user.login == "github-actions[bot]")] | last | .id // empty' 2>/dev/null) || true
+            if [ -n "$existing_id" ]; then
+              curl -sf -X PATCH -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" \
+                "$api_url/$existing_id" -d "{\"body\": $body}" > /dev/null
+            else
+              curl -sf -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" \
+                "$api_url" -d "{\"body\": $body}" > /dev/null
+            fi
           fi
       - name: Nix diagnostics summary
         if: failure()
@@ -963,5 +974,5 @@ jobs:
       - name: Dispatch alignment to coordinator
         env:
           GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}'
-        run: 'printf ''{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}'' "${{ github.repository }}" "${{ github.sha }}" | nix run nixpkgs#gh -- api repos/schickling/megarepo-all/dispatches --input -'
+        run: 'curl -sf -X POST -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/schickling/megarepo-all/dispatches" -d "$(printf ''{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}'' "${{ github.repository }}" "${{ github.sha }}")"'
         shell: bash
