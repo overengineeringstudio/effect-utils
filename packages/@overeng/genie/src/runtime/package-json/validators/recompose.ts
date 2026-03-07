@@ -5,6 +5,14 @@ import type { ValidationIssue } from '../validation.ts'
 const isWorkspaceSpec = (spec: string): boolean =>
   spec.startsWith('workspace:') || spec.startsWith('file:') || spec.startsWith('link:')
 
+const hasVersionRangeSyntax = (spec: string): boolean =>
+  spec.startsWith('^') ||
+  spec.startsWith('~') ||
+  spec.startsWith('>') ||
+  spec.startsWith('<') ||
+  spec.includes('||') ||
+  /\s-\s/.test(spec)
+
 const hasOptionalPeer = ({
   meta,
   name,
@@ -53,6 +61,24 @@ const validatePackageRecomposition = (args: {
         continue
       }
 
+      const localInstallSpec =
+        args.pkg.dependencies?.[peer] ??
+        args.pkg.devDependencies?.[peer] ??
+        args.pkg.optionalDependencies?.[peer]
+      if (
+        localInstallSpec !== undefined &&
+        isWorkspaceSpec(localInstallSpec) === false &&
+        hasVersionRangeSyntax(localInstallSpec) === true
+      ) {
+        issues.push({
+          severity: 'error',
+          packageName: args.pkg.name,
+          dependency: peer,
+          message: `Inherited peer "${peer}" from "${depName}" uses ranged local install spec "${localInstallSpec}". Use an explicit install version and keep the range only in peerDependencies.`,
+          rule: 'recompose-local-peer-range',
+        })
+      }
+
       /** Only check peerDependenciesMeta when the dep is actually in peerDependencies */
       const isInPeerDeps =
         args.pkg.peerDependencies !== undefined && peer in args.pkg.peerDependencies
@@ -94,6 +120,7 @@ const validatePackageRecomposition = (args: {
  *
  * For non-private (library) packages: upstream peer deps must appear in peerDependencies (delta pattern).
  * For private (app) packages: upstream peer deps must appear in dependencies, devDependencies, or peerDependencies.
+ * If they are installed locally via dependencies/devDependencies/optionalDependencies, their local install spec must be explicit.
  */
 export const validatePackageRecompositionForPackage = ({
   ctx,

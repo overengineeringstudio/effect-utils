@@ -110,7 +110,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*', react: '^19.0.0' },
+      dependencies: { '@test/utils': 'workspace:*', react: '19.0.0' },
       // no peerDependencies or peerDependenciesMeta — should be fine for private packages
     })
     const ctx = makeContext([upstream, downstream])
@@ -150,7 +150,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*', effect: '^3.0.0' },
+      dependencies: { '@test/utils': 'workspace:*', effect: '3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
 
@@ -169,7 +169,79 @@ describe('validatePackageRecompositionForPackage', () => {
       path: 'examples/my-example',
       private: true,
       dependencies: { '@test/utils': 'workspace:*' },
+      devDependencies: { effect: '3.0.0' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toEqual([])
+  })
+
+  it('private package: reports ranged devDependency for inherited peer install', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*' },
       devDependencies: { effect: '^3.0.0' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      severity: 'error',
+      packageName: '@test/example',
+      dependency: 'effect',
+      rule: 'recompose-local-peer-range',
+      message:
+        'Inherited peer "effect" from "@test/utils" uses ranged local install spec "^3.0.0". Use an explicit install version and keep the range only in peerDependencies.',
+    })
+  })
+
+  it('private package: reports ranged dependency for inherited peer install', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: {
+        '@test/utils': 'workspace:*',
+        effect: '^3.0.0',
+      },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/example' })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({
+      dependency: 'effect',
+      rule: 'recompose-local-peer-range',
+    })
+  })
+
+  it('private package: allows exact local install with ranged peerDependencies', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      peerDependencies: { effect: '^3.0.0' },
+    })
+    const downstream = makePackage({
+      name: '@test/example',
+      path: 'examples/my-example',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*' },
+      devDependencies: { effect: '3.0.0' },
+      peerDependencies: { effect: '^3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
 
