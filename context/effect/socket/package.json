@@ -11,6 +11,11 @@
   "devDependencies": {
     "@types/node": "25.3.3"
   },
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.11": "../../../packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch"
+    }
+  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

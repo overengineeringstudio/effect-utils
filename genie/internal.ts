@@ -10,10 +10,13 @@ import {
   createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
+  packageJson as externalPackageJson,
+  pnpmPatchedDependencies,
   pnpmWorkspaceYaml,
   type GenieOutput,
   type PackageJsonData,
 } from './external.ts'
+import type { Strict } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
 // Re-export from external for convenience (explicit exports to avoid barrel file)
@@ -35,7 +38,6 @@ export {
   megarepoJson,
   oxfmtConfig,
   oxlintConfig,
-  packageJson,
   packageTsconfigCompilerOptions,
   patchPostinstall,
   pnpmPatchedDependencies,
@@ -75,6 +77,17 @@ export const catalog = defineCatalog({
   extends: externalCatalog,
   packages: internalPackageCatalogEntries,
 })
+
+export const packageJson = <const T extends PackageJsonData>(
+  data: Strict<T, PackageJsonData>,
+) =>
+  externalPackageJson({
+    ...data,
+    pnpm: {
+      ...data.pnpm,
+      patchedDependencies: data.pnpm?.patchedDependencies ?? pnpmPatchedDependencies(),
+    },
+  })
 
 /**
  * Common pnpm workspace settings for effect-utils packages.
