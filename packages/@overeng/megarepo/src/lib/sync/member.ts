@@ -319,6 +319,10 @@ export const syncMember = <R = never>({
       }
       targetRef = lockedMember.ref
       targetCommit = lockedMember.commit
+      /**
+       * Keep pinned members on the exact locked commit unless the caller explicitly
+       * opted into overriding pins via `--pull --force`.
+       */
     } else if (
       lockedMember !== undefined &&
       lockedMember.pinned === true &&
@@ -511,6 +515,11 @@ export const syncMember = <R = never>({
       }
     }
 
+    /**
+     * A lock entry can point at an object that disappeared after a force-push.
+     * In pull mode we can recover branch-based members by re-resolving `targetRef`,
+     * but immutable refs still need to fail or be skipped explicitly.
+     */
     if (dryRun === false && targetCommit !== undefined) {
       const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
       if (commitExists === false) {

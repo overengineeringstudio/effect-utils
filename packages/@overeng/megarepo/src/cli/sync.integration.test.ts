@@ -953,6 +953,10 @@ const createPinnedStaleCommitPullFixture = () =>
     yield* runGitCommand(sourceRepoPath, 'branch', '-M', 'main')
     yield* runGitCommand(sourceRepoPath, 'push', '--force', 'origin', 'main')
     const currentCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+    /**
+     * The fixture must remove the old object from the remote; otherwise a local clone
+     * can still resolve the stale SHA and we would not exercise the recovery path.
+     */
     yield* runGitCommand(remoteRepoPath, 'reflog', 'expire', '--expire=now', '--all')
     yield* runGitCommand(remoteRepoPath, 'gc', '--prune=now')
 
@@ -963,6 +967,7 @@ const createPinnedStaleCommitPullFixture = () =>
     )
     const bareRepoPath = EffectPath.ops.join(repoBasePath, EffectPath.unsafe.relativeDir('.bare/'))
     yield* fs.makeDirectory(repoBasePath, { recursive: true })
+    /** Avoid local clone optimizations so the bare store repo reflects the pruned remote state. */
     yield* runGitCommand(tmpDir, 'clone', '--bare', '--no-local', remoteRepoPath, bareRepoPath)
     yield* runGitCommand(
       bareRepoPath,
