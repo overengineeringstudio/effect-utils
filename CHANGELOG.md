@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/lint**: Adopt `execIfModified` negation patterns and remove obsolete lint `pnpm:install` workaround deps
+  - Excludes vendored/generated trees like `node_modules` during lint cache invalidation
+  - Stops pulling full install work back into lint checks now that upstream negation support is available
 - **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
   - Stages only the target package and its workspace closure into the Nix build
   - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree

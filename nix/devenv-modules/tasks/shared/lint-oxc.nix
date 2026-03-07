@@ -6,14 +6,14 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.lint-oxc {
-#       # Explicit glob patterns for execIfModified (avoids node_modules traversal)
-#       # IMPORTANT: Use patterns that don't traverse into node_modules directories
-#       # Good: "packages/*/src/**/*.ts" (src/ never contains node_modules)
-#       # Bad:  "packages/**/*.ts" (traverses into packages/*/node_modules/)
+#       # Explicit glob patterns for execIfModified.
+#       # Use negation patterns to exclude vendored/generated trees globally.
 #       execIfModifiedPatterns = [
 #         "packages/*/src/**/*.ts"
 #         "packages/*/src/**/*.tsx"
 #         "packages/*/*.ts"  # root config files including *.genie.ts
+#         "!**/node_modules/**"
+#         "!**/dist/**"
 #       ];
 #       # Glob patterns for .genie.ts files (for genie check caching)
 #       # Should match all *.genie.ts files without traversing node_modules
@@ -109,28 +109,16 @@ in
     "lint:check:format" = {
       description = "Check code formatting with oxfmt";
       exec = trace.exec "lint:check:format" "oxfmt --check ${lintPathsArg}";
-      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
-      #   Upstream issue: https://github.com/cachix/devenv/issues/2422
-      #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
-      after = [ "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
       description = "Run oxlint linter";
       exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
-      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns (e.g. !**/node_modules/**)
-      #   Upstream issue: https://github.com/cachix/devenv/issues/2422
-      #   Upstream fix:   https://github.com/cachix/devenv/pull/2423
-      after = [ "pnpm:install" ];
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
-      # Strict mode: never auto-regenerate before checking drift.
-      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
-      #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
-      after = [ "pnpm:install" ];
       execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
@@ -184,9 +172,6 @@ in
     "lint:fix:format" = {
       description = "Fix code formatting with oxfmt";
       exec = trace.exec "lint:fix:format" "oxfmt ${lintPathsArg}";
-      # TODO: Drop "pnpm:install" dep once devenv supports glob negation patterns
-      #   See: https://github.com/cachix/devenv/issues/2422, https://github.com/cachix/devenv/pull/2423
-      after = [ "pnpm:install" ];
     };
     "lint:fix:oxlint" = {
       description = "Fix lint issues with oxlint";
