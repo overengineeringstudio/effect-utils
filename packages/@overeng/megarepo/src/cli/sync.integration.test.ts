@@ -914,6 +914,86 @@ describe('--all sync deduplication', () => {
   )
 })
 
+const createPinnedStaleCommitPullFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+    const sourceRepoPath = EffectPath.ops.join(
+      tmpDir,
+      EffectPath.unsafe.relativeDir('source-repo/'),
+    )
+    yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
+    yield* initGitRepo(sourceRepoPath)
+    yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
+      Effect.catchAll(() => Effect.void),
+    )
+    yield* fs.writeFileString(
+      EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
+      '# Initial history\n',
+    )
+    yield* addCommit({ repoPath: sourceRepoPath, message: 'Initial commit' })
+    const staleCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+
+    const remoteRepoPath = EffectPath.ops.join(
+      tmpDir,
+      EffectPath.unsafe.relativeDir('remote-repo.git/'),
+    )
+    yield* runGitCommand(tmpDir, 'init', '--bare', remoteRepoPath)
+    yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', remoteRepoPath)
+    yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main')
+
+    yield* runGitCommand(sourceRepoPath, 'checkout', '--orphan', 'rewritten-main')
+    yield* runGitCommand(sourceRepoPath, 'rm', '-rf', '.').pipe(Effect.catchAll(() => Effect.void))
+    yield* fs.writeFileString(
+      EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
+      '# Rewritten history\n',
+    )
+    yield* addCommit({ repoPath: sourceRepoPath, message: 'Rewrite history' })
+    yield* runGitCommand(sourceRepoPath, 'branch', '-M', 'main')
+    yield* runGitCommand(sourceRepoPath, 'push', '--force', 'origin', 'main')
+    const currentCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+    yield* runGitCommand(remoteRepoPath, 'reflog', 'expire', '--expire=now', '--all')
+    yield* runGitCommand(remoteRepoPath, 'gc', '--prune=now')
+
+    const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+    const repoBasePath = EffectPath.ops.join(
+      storePath,
+      EffectPath.unsafe.relativeDir('github.com/test-owner/test-repo/'),
+    )
+    const bareRepoPath = EffectPath.ops.join(repoBasePath, EffectPath.unsafe.relativeDir('.bare/'))
+    yield* fs.makeDirectory(repoBasePath, { recursive: true })
+    yield* runGitCommand(tmpDir, 'clone', '--bare', '--no-local', remoteRepoPath, bareRepoPath)
+    yield* runGitCommand(
+      bareRepoPath,
+      'config',
+      'remote.origin.fetch',
+      '+refs/heads/*:refs/remotes/origin/*',
+    )
+    yield* runGitCommand(bareRepoPath, 'fetch', '--tags', '--prune', 'origin')
+
+    const { workspacePath } = yield* createWorkspaceWithLock({
+      members: {
+        'test-repo': 'test-owner/test-repo#main',
+      },
+      lockEntries: {
+        'test-repo': {
+          url: 'https://github.com/test-owner/test-repo',
+          ref: 'main',
+          commit: staleCommit,
+          pinned: true,
+        },
+      },
+    })
+
+    return {
+      workspacePath,
+      storePath,
+      staleCommit,
+      currentCommit,
+    }
+  })
+
 const createNestedMegarepoLockSyncFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1244,6 +1324,48 @@ describe('nested megarepo.lock sync scope', () => {
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
         const afterNestedLock = Option.getOrThrow(afterNestedLockOpt)
         expect(afterNestedLock.members['shared']?.commit).toBe(sharedCommit)
+      },
+      Effect.provide(NodeContext.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'should not abort recursive --pull when nested pinned members reference stale commits',
+    Effect.fnUntraced(
+      function* () {
+        const { parentPath, childPath, storePath, staleNestedCommit } =
+          yield* createNestedMegarepoLockSyncFixture()
+
+        const nestedLockPath = EffectPath.ops.join(
+          childPath,
+          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+        )
+        const nestedLockOpt = yield* readLockFile(nestedLockPath)
+        expect(Option.isSome(nestedLockOpt)).toBe(true)
+
+        const nestedLock = updateLockedMember({
+          lockFile: Option.getOrThrow(nestedLockOpt),
+          memberName: 'shared',
+          member: createLockedMember({
+            url: 'https://example.com/acme/shared',
+            ref: 'main',
+            commit: staleNestedCommit,
+            pinned: true,
+          }),
+        })
+        yield* writeLockFile({ lockPath: nestedLockPath, lockFile: nestedLock })
+
+        const result = yield* runSyncCommand({
+          cwd: parentPath,
+          args: ['--pull', '--output', 'json', '--all'],
+          env: {
+            MEGAREPO_STORE: storePath.slice(0, -1),
+          },
+        })
+
+        expect(result.exitCode).toBe(0)
+        expect(result.stderr).not.toContain('invalid reference')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -1976,6 +2098,44 @@ describe('sync --pull mode', () => {
           // The sync should complete
           expect(json.results).toHaveLength(1)
           // Note: Local path sources behave differently, but this documents the behavior
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should recover pinned members with stale locked commits in --pull --force mode',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath, storePath, staleCommit, currentCommit } =
+            yield* createPinnedStaleCommitPullFixture()
+
+          const result = yield* runSyncCommand({
+            cwd: workspacePath,
+            args: ['--pull', '--force', '--output', 'json'],
+            env: {
+              MEGAREPO_STORE: storePath.slice(0, -1),
+            },
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          expect(result.exitCode).toBe(0)
+          expect(json.results).toHaveLength(1)
+          const memberResult = json.results[0]!
+          expect(memberResult.status).toBe('updated')
+          expect(memberResult.previousCommit).toBe(staleCommit)
+          expect(memberResult.commit).toBe(currentCommit)
+
+          const lockPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          )
+          const lockFileOpt = yield* readLockFile(lockPath)
+          expect(Option.isSome(lockFileOpt)).toBe(true)
+          const lockFile = Option.getOrThrow(lockFileOpt)
+          expect(lockFile.members['test-repo']?.commit).toBe(currentCommit)
+          expect(lockFile.members['test-repo']?.pinned).toBe(true)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

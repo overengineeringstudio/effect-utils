@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Handle stale locked commits during `mr sync --pull`
+  - Prevents recursive sync from aborting when nested pinned members reference commits that no longer exist
+  - Allows `mr sync --pull --force` to recover pinned branch members by resolving the tracked ref head
+  - Adds regression coverage for recursive `--pull --all` with nested stale pinned lock entries
 - **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
   - Stages only the target package and its workspace closure into the Nix build
   - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree

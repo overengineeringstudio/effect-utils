@@ -319,7 +319,11 @@ export const syncMember = <R = never>({
       }
       targetRef = lockedMember.ref
       targetCommit = lockedMember.commit
-    } else if (lockedMember !== undefined && lockedMember.pinned === true) {
+    } else if (
+      lockedMember !== undefined &&
+      lockedMember.pinned === true &&
+      (pull === false || force === false)
+    ) {
       // Use pinned commit from lock
       targetRef = lockedMember.ref
       targetCommit = lockedMember.commit
@@ -504,6 +508,39 @@ export const syncMember = <R = never>({
       const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
       if (commitExists === false) {
         yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+      }
+    }
+
+    if (dryRun === false && targetCommit !== undefined) {
+      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+      if (commitExists === false) {
+        const shortCommit = targetCommit.slice(0, 8)
+
+        if (frozen === true) {
+          return {
+            name,
+            status: 'error',
+            message: `locked commit '${shortCommit}' for ref '${targetRef}' is not available locally or on the remote`,
+          } satisfies MemberSyncResult
+        }
+
+        if (lockedMember?.pinned === true) {
+          return {
+            name,
+            status: 'skipped',
+            message: `pinned commit '${shortCommit}' for ref '${targetRef}' is no longer available (use --force to update to the tracked ref or update megarepo.lock)`,
+          } satisfies MemberSyncResult
+        }
+
+        if (isCommitSha(targetRef) === true) {
+          return {
+            name,
+            status: 'error',
+            message: `commit '${shortCommit}' is not available locally or on the remote`,
+          } satisfies MemberSyncResult
+        }
+
+        targetCommit = undefined
       }
     }
 
