@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
@@ -12,6 +13,9 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember('packages/@overeng/effect-schema-form-aria'),
   dependencies: {
     workspace: [schemaFormPkg],
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     workspace: [utilsPkg],

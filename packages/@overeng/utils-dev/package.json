@@ -30,6 +30,11 @@
     "effect": "^3.19.15",
     "vitest": "^3.2.4"
   },
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch"
+    }
+  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

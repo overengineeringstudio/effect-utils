@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
@@ -37,6 +38,9 @@ const runtimeDeps = catalog.compose({
       '@xterm/addon-fit',
       '@xterm/addon-webgl',
     ),
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     workspace: [utilsPkg, utilsDevPkg],

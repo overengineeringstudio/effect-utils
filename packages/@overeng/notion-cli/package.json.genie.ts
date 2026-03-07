@@ -1,3 +1,4 @@
+import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
@@ -25,6 +26,9 @@ const runtimeDeps = catalog.compose({
       tuiReactPkg,
       utilsPkg,
     ],
+  },
+  pnpm: {
+    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     workspace: [utilsDevPkg],
