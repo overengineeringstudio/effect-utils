@@ -27,6 +27,9 @@ All notable changes to this project will be documented in this file.
   - Replaces `path`/`outputDir` deployment config with `cwd` (defaults to `"."`)
   - Adds `vercel pull` step to fetch project settings and env for the target environment
   - Adds `vercel build` step to produce `.vercel/output` locally before deploying
+- **@overeng/genie / @overeng/notion-cli**: Source inherited install-time dependency versions from the Genie catalog instead of copied peer ranges
+  - Keeps `peerDependencies` ranged for consumers
+  - Makes the catalog the single source of truth for concrete local install versions
 
 ### Added
 
