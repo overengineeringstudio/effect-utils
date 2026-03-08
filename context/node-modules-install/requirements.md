@@ -114,12 +114,3 @@ install model must account for that.
   isolated package-closure materialization, and duplicate-instance detection.
   We also need at least one realistic multi-repo smoke test, not just minimal
   toy workspaces.
-
-## Current Findings To Respect
-
-- F1 - Bun workspace discovery works through explicit symlinked workspace
-  paths, but not through symlinked workspace globs.
-- F2 - Plain in-place mixed install ownership creates divergent
-  `node_modules` state.
-- F3 - A composed-root-owned model looks viable if install ownership is
-  centralized and nested source paths stay live-linked.
