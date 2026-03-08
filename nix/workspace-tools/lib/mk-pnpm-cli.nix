@@ -38,17 +38,14 @@ let
       builtins.toPath sourceRoot;
 
   workspaceSourceRoots = lib.mapAttrs (_: normalizeSourceRoot) workspaceSources;
-  workspaceSourceKinds = lib.mapAttrs (
-    _prefix: sourceRoot:
-    {
-      hasRepoRoot =
-        builtins.pathExists (sourceRoot + "/package.json")
-        && builtins.pathExists (sourceRoot + "/pnpm-workspace.yaml");
-    }
-  ) workspaceSourceRoots;
   workspaceSourcePrefixes = lib.sort (
     left: right: lib.stringLength left > lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
+
+  hasInstallRoot =
+    sourceRoot:
+    builtins.pathExists (sourceRoot + "/package.json")
+    && builtins.pathExists (sourceRoot + "/pnpm-lock.yaml");
 
   resolveSourceFor =
     relPath:
@@ -289,53 +286,88 @@ let
     relPath:
     let
       dir = resolveRelativePath packageDir relPath;
+      resolved = resolveSourceFor dir;
     in
     {
       inherit dir;
-      resolved = resolveSourceFor dir;
+      inherit resolved;
+      sourcePath =
+        if resolved.sourceRelPath == "." then
+          resolved.sourceRoot
+        else
+          resolved.sourceRoot + "/${resolved.sourceRelPath}";
     }
   ) relativeWorkspaceMembers;
 
   workspaceMembers = map (item: item.dir) resolvedWorkspaceMembers;
   workspaceClosureDirs = lib.unique ([ packageDir ] ++ workspaceMembers);
-  stagedWorkspaceMembers =
-    lib.unique (
-      [ packageDir ]
-      ++ builtins.filter (
-        dir:
-        let
-          resolved = resolveSourceFor dir;
-        in
-        resolved.prefix == null || !(workspaceSourceKinds.${resolved.prefix}.hasRepoRoot)
-      ) workspaceMembers
+  externalInstallRootItems =
+    builtins.filter (item: item != null) (
+      map
+        (
+          item:
+          let
+            prefixRootHasWorkspace =
+              item.resolved.prefix != null
+              && builtins.pathExists (item.resolved.sourceRoot + "/pnpm-workspace.yaml")
+              && hasInstallRoot item.resolved.sourceRoot;
+            memberHasInstallRoot = hasInstallRoot item.sourcePath;
+          in
+          if item.resolved.prefix == null then
+            null
+          else if prefixRootHasWorkspace then
+            {
+              installDir = item.resolved.prefix;
+              installSourceRoot = item.resolved.sourceRoot;
+              memberDir = item.dir;
+              sourceRelMemberDir = item.resolved.sourceRelPath;
+            }
+          else if memberHasInstallRoot then
+            {
+              installDir = item.dir;
+              installSourceRoot = item.sourcePath;
+              memberDir = item.dir;
+              sourceRelMemberDir = ".";
+            }
+          else
+            null
+        )
+        resolvedWorkspaceMembers
     );
 
   externalInstallRoots =
-    builtins.filter
-      (root: root.hasRepoRoot && root.memberDirs != [ ])
-      (map
-        (
-          prefix:
-          let
-            memberItems = builtins.filter (item: item.resolved.prefix == prefix) resolvedWorkspaceMembers;
-            sourceRoot = workspaceSourceRoots.${prefix};
-            hasRepoRoot = workspaceSourceKinds.${prefix}.hasRepoRoot;
-            sourcePnpmWorkspaceYaml =
-              if hasRepoRoot then builtins.readFile (sourceRoot + "/pnpm-workspace.yaml") else "";
-            sourcePnpmLock = if hasRepoRoot then builtins.readFile (sourceRoot + "/pnpm-lock.yaml") else "";
-          in
-          {
-            inherit prefix sourceRoot hasRepoRoot;
-            memberDirs = lib.unique (map (item: item.dir) memberItems);
-            sourceRelMemberDirs = lib.unique (map (item: item.resolved.sourceRelPath) memberItems);
-            patchedDependencyPaths = if hasRepoRoot then parsePatchedDependencyPaths sourcePnpmLock else [ ];
-            filteredPnpmWorkspaceYaml =
+    map
+      (
+        installDir:
+        let
+          items = builtins.filter (item: item.installDir == installDir) externalInstallRootItems;
+          installSourceRoot = (builtins.head items).installSourceRoot;
+          hasWorkspaceYaml = builtins.pathExists (installSourceRoot + "/pnpm-workspace.yaml");
+          sourcePnpmWorkspaceYaml =
+            if hasWorkspaceYaml then builtins.readFile (installSourceRoot + "/pnpm-workspace.yaml") else "";
+          sourcePnpmLock = builtins.readFile (installSourceRoot + "/pnpm-lock.yaml");
+        in
+        {
+          inherit installDir installSourceRoot;
+          memberDirs = lib.unique (map (item: item.memberDir) items);
+          sourceRelMemberDirs = lib.unique (map (item: item.sourceRelMemberDir) items);
+          patchedDependencyPaths = parsePatchedDependencyPaths sourcePnpmLock;
+          filteredPnpmWorkspaceYaml =
+            if hasWorkspaceYaml then
               formatWorkspaceYaml
-                (lib.unique (map (item: item.resolved.sourceRelPath) memberItems))
-                (if hasRepoRoot then workspaceSuffixLines sourcePnpmWorkspaceYaml else [ ]);
-          }
-        )
-        workspaceSourcePrefixes);
+                (lib.unique (map (item: item.sourceRelMemberDir) items))
+                (workspaceSuffixLines sourcePnpmWorkspaceYaml)
+            else
+              formatWorkspaceYaml [ "." ] [ ];
+        }
+      )
+      (lib.unique (map (item: item.installDir) externalInstallRootItems));
+
+  stagedWorkspaceMembers =
+    let
+      externallyOwnedDirs = lib.concatMap (root: root.memberDirs) externalInstallRoots;
+    in
+    lib.unique ([ packageDir ] ++ builtins.filter (dir: !(lib.elem dir externallyOwnedDirs)) workspaceMembers);
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
   rootPatchedDependencyPaths = parsePatchedDependencyPaths rootPnpmLock;
@@ -343,7 +375,7 @@ let
     lib.unique (
       rootPatchedDependencyPaths
       ++ lib.concatMap (
-        root: map (path: "${root.prefix}/${path}") root.patchedDependencyPaths
+        root: map (path: "${root.installDir}/${path}") root.patchedDependencyPaths
       ) externalInstallRoots
     );
 
@@ -404,12 +436,12 @@ EOF
           (
             root:
             builtins.concatStringsSep "\n" (
-              (map (file: copyFileCmd "${root.prefix}/${file}") rootWorkspaceFiles)
-              ++ (map (file: copyOptionalFileCmd "${root.prefix}/${file}") optionalRootWorkspaceFiles)
+              (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
+              ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
               ++ [
                 ''
-                  mkdir -p "$out/${root.prefix}"
-                  cat > "$out/${root.prefix}/pnpm-workspace.yaml" <<'EOF'
+                  mkdir -p "$out/${root.installDir}"
+                  cat > "$out/${root.installDir}/pnpm-workspace.yaml" <<'EOF'
 ${root.filteredPnpmWorkspaceYaml}
 EOF
                 ''
@@ -441,8 +473,8 @@ EOF
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
-    extraInstallRoots = map (root: root.prefix) externalInstallRoots;
-    lockfilePaths = [ "pnpm-lock.yaml" ] ++ map (root: "${root.prefix}/pnpm-lock.yaml") externalInstallRoots;
+    extraInstallRoots = map (root: root.installDir) externalInstallRoots;
+    lockfilePaths = [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots;
     preInstall = ''
       chmod -R +w .
     '';
@@ -513,9 +545,9 @@ pkgs.stdenv.mkDerivation {
         (
           root:
           ''
-            echo "Installing external workspace root: ${root.prefix}..."
+            echo "Installing external workspace root: ${root.installDir}..."
             (
-              cd ${lib.escapeShellArg root.prefix}
+              cd ${lib.escapeShellArg root.installDir}
               pnpm install --offline --frozen-lockfile --ignore-scripts
             )
           ''
