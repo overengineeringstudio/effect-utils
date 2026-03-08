@@ -6,9 +6,6 @@ repos and composed megarepos.
 It builds on
 [requirements.md](./requirements.md).
 
-Open design questions are tracked separately in
-[open-questions.md](./open-questions.md).
-
 ## Scope
 
 This spec defines:
