@@ -1,6 +1,7 @@
 # Context Reference
 
-This directory contains focused references for patterns and technologies used in this workspace.
+This directory contains focused references for patterns and technologies used
+in this workspace.
 
 ## Core Documentation
 
@@ -8,10 +9,13 @@ This directory contains focused references for patterns and technologies used in
 
 Nix and devenv setup, requirements, and patterns.
 
-- [setup-guide.md](./nix-devenv/setup-guide.md) - File templates and setup for new megarepos
-- [requirements.md](./nix-devenv/requirements.md) - Assumptions and requirements spec
+- [setup-guide.md](./nix-devenv/setup-guide.md) - File templates and setup
+  for new megarepos
+- [requirements.md](./nix-devenv/requirements.md) - Assumptions and
+  requirements spec
 - [tasks.md](./nix-devenv/tasks.md) - Devenv tasks, `dt` wrapper, shared modules
-- [flake-packages.md](./nix-devenv/flake-packages.md) - Flake package definitions
+- [flake-packages.md](./nix-devenv/flake-packages.md) - Flake package
+  definitions
 
 ### [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md)
 
@@ -20,6 +24,11 @@ Full megarepo specification.
 ### [bun-cli-build/](./bun-cli-build/)
 
 Building Bun-compiled TypeScript CLIs with Nix.
+
+### [node-modules-install/](./node-modules-install/)
+
+Requirements, specs, and investigations for standalone and composed
+`node_modules` install models.
 
 ### [cli-design/](./cli-design/)
 
@@ -38,14 +47,16 @@ Testing patterns and conventions.
 OpenTelemetry observability stack (Collector + Tempo + Grafana).
 
 - [README.md](./otel/README.md) - Quick start, env vars, shell helper
-- [spec.md](./otel/spec.md) - Architecture, port allocation, forward compatibility
+- [spec.md](./otel/spec.md) - Architecture, port allocation, forward
+  compatibility
 - [dashboards.md](./otel/dashboards.md) - Grafonnet dashboards, span conventions
 
 ## Workflows
 
 ### [workflows/](./workflows/)
 
-- [cron/](./workflows/cron/) - Consistency checks and dependency update workflows
+- [cron/](./workflows/cron/) - Consistency checks and dependency update
+  workflows
 
 ## Workarounds
 
