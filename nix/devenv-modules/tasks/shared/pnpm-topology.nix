@@ -116,7 +116,7 @@ let
     in
     lib.concatStringsSep "/" (resolvedBase ++ remainingParts);
 
-  trim = s: lib.removeSuffix "\r" (lib.removeSuffix "\n" (lib.trim s));
+  trimLine = s: lib.removeSuffix "\r" (lib.removeSuffix "\n" (lib.trim s));
 
   parseWorkspaceMembers =
     path:
@@ -134,7 +134,7 @@ let
           packagesArrayStr = lib.removePrefix "packages: " packagesLine;
           packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
         in
-        builtins.filter (s: s != "") (map trim (lib.splitString "," packagesInner));
+        builtins.filter (s: s != "") (builtins.map trimLine (lib.splitString "," packagesInner));
 
       dropUntilPackagesHeader =
         remainingLines:
@@ -169,7 +169,7 @@ let
             inner = builtins.elemAt (lib.splitString "]" afterOpen) 0;
             items = lib.splitString "," inner;
           in
-          builtins.filter (s: s != "") (map (s: trim (lib.removeSuffix "," (trim s))) items)
+          builtins.filter (s: s != "") (builtins.map (s: trimLine (lib.removeSuffix "," (trimLine s))) items)
         else
           let
             parseLines =
@@ -178,15 +178,15 @@ let
                 [ ]
               else
                 let
-                  line = trim (builtins.head remainingLines);
+                  line = trimLine (builtins.head remainingLines);
                   rest = lib.tail remainingLines;
                 in
                 if line == "" || lib.hasPrefix "#" line then
                   parseLines rest
                 else if lib.hasPrefix "- " line then
-                  [ trim (lib.removePrefix "- " line) ] ++ parseLines rest
+                  [ trimLine (lib.removePrefix "- " line) ] ++ parseLines rest
                 else if lib.hasPrefix "-" line then
-                  [ trim (lib.removePrefix "-" line) ] ++ parseLines rest
+                  [ trimLine (lib.removePrefix "-" line) ] ++ parseLines rest
                 else
                   [ ];
           in
