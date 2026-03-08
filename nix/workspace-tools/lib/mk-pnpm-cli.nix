@@ -369,6 +369,8 @@ let
     in
     lib.unique ([ packageDir ] ++ builtins.filter (dir: !(lib.elem dir externallyOwnedDirs)) workspaceMembers);
   externalInstallOwnedDirs = map (root: root.installDir) externalInstallRoots;
+  aggregateOwnedWorkspaceClosureDirs =
+    builtins.filter (dir: !(lib.elem dir externalInstallOwnedDirs)) workspaceClosureDirs;
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
   rootPatchedDependencyPaths = parsePatchedDependencyPaths rootPnpmLock;
@@ -437,8 +439,16 @@ EOF
           (
             root:
             builtins.concatStringsSep "\n" (
-              (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
-              ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+              (
+                if manifestOnly then
+                  (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
+                  ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+                else if lib.elem root.installDir root.memberDirs then
+                  [ (copyDirCmd root.installDir) ]
+                else
+                  (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
+                  ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+              )
               ++ [
                 ''
                   mkdir -p "$out/${root.installDir}"
@@ -455,9 +465,9 @@ EOF
         if manifestOnly then
           map
             (dir: copyFileCmd "${dir}/package.json")
-            (builtins.filter (dir: !(lib.elem dir externalInstallOwnedDirs)) workspaceClosureDirs)
+            aggregateOwnedWorkspaceClosureDirs
         else
-          map copyDirCmd workspaceClosureDirs
+          map copyDirCmd aggregateOwnedWorkspaceClosureDirs
       )
       + builtins.concatStringsSep "\n" (map copyFileCmd stagedPatchFiles)
     );
