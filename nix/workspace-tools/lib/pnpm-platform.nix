@@ -10,7 +10,7 @@
 #     pnpm install --frozen-lockfile
 #   ''
 {
-  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"]}'';
+  supportedArchitecturesJson = ''{"os":["linux","darwin"],"cpu":["x64","arm64"],"libc":["glibc","musl"]}'';
 
   # Shell script snippet that configures pnpm supportedArchitectures and verifies it.
   # Include this before pnpm install/fetch in both FOD and build phases.
@@ -22,9 +22,13 @@ supportedArchitectures[os][]=linux
 supportedArchitectures[os][]=darwin
 supportedArchitectures[cpu][]=x64
 supportedArchitectures[cpu][]=arm64
+supportedArchitectures[libc][]=glibc
+supportedArchitectures[libc][]=musl
 NPMRC
     if ! grep -q 'supportedArchitectures\[cpu\]\[\]=x64' "$HOME/.npmrc" ||
-       ! grep -q 'supportedArchitectures\[cpu\]\[\]=arm64' "$HOME/.npmrc"; then
+       ! grep -q 'supportedArchitectures\[cpu\]\[\]=arm64' "$HOME/.npmrc" ||
+       ! grep -q 'supportedArchitectures\[libc\]\[\]=glibc' "$HOME/.npmrc" ||
+       ! grep -q 'supportedArchitectures\[libc\]\[\]=musl' "$HOME/.npmrc"; then
       echo "error: pnpm supportedArchitectures not written to .npmrc"
       cat "$HOME/.npmrc"
       exit 1
