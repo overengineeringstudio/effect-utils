@@ -120,9 +120,6 @@ in
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
-      # genie is a source-mode CLI in this repo, so a fresh checkout needs its
-      # package-local workspace install before running the check.
-      after = [ "pnpm:install:genie" ];
       execIfModified = geniePatterns;
     };
     "lint:check:genie:coverage" = {
