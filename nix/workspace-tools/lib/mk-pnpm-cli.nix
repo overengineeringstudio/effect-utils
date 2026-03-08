@@ -188,6 +188,17 @@ let
 
   workspaceMembers = map (relPath: resolveRelativePath packageDir relPath) relativeWorkspaceMembers;
   workspaceClosureDirs = lib.unique ([ packageDir ] ++ workspaceMembers);
+  stagedWorkspaceMembers =
+    lib.unique (
+      [ packageDir ]
+      ++ builtins.filter (
+        dir:
+        let
+          resolved = resolveSourceFor dir;
+        in
+        toString resolved.sourceRoot == toString workspaceRootPath
+      ) workspaceMembers
+    );
 
   rootWorkspaceSuffixLines =
     let
@@ -218,7 +229,7 @@ let
 
   filteredRootPnpmWorkspaceYaml =
     let
-      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") workspaceClosureDirs);
+      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") stagedWorkspaceMembers);
       suffix = builtins.concatStringsSep "\n" rootWorkspaceSuffixLines;
     in
     if suffix == "" then
