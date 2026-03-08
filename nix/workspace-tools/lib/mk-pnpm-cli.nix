@@ -368,6 +368,7 @@ let
       externallyOwnedDirs = lib.concatMap (root: root.memberDirs) externalInstallRoots;
     in
     lib.unique ([ packageDir ] ++ builtins.filter (dir: !(lib.elem dir externallyOwnedDirs)) workspaceMembers);
+  externalInstallOwnedDirs = map (root: root.installDir) externalInstallRoots;
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
   rootPatchedDependencyPaths = parsePatchedDependencyPaths rootPnpmLock;
@@ -452,7 +453,9 @@ EOF
       )
       + builtins.concatStringsSep "\n" (
         if manifestOnly then
-          map (dir: copyFileCmd "${dir}/package.json") workspaceClosureDirs
+          map
+            (dir: copyFileCmd "${dir}/package.json")
+            (builtins.filter (dir: !(lib.elem dir externalInstallOwnedDirs)) workspaceClosureDirs)
         else
           map copyDirCmd workspaceClosureDirs
       )
