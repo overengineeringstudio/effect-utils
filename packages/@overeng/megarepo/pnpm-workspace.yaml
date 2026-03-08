@@ -18,3 +18,5 @@ supportedArchitectures:
 dedupePeerDependents: true
 
 publicHoistPattern: [react, react-dom, react-reconciler]
+
+sharedWorkspaceLockfile: true

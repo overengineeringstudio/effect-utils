@@ -90,13 +90,15 @@ export const packageJson = <const T extends PackageJsonData>(data: Strict<T, Pac
 /**
  * Common pnpm workspace settings for effect-utils packages.
  *
- * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
- * Per-member lockfiles cause TS2742 errors in `tsc --build` because each workspace member
+ * sharedWorkspaceLockfile is explicitly pinned to true so workspace lockfiles
+ * do not depend on developer-global pnpm config. Per-member lockfiles cause
+ * TS2742 errors in `tsc --build` because each workspace member
  * gets its own `.pnpm` store, creating different physical paths for the same package.
  * TypeScript treats these as distinct types, breaking project references.
  */
 const commonWorkspaceSettings = {
   allowUnusedPatches: true as const,
+  sharedWorkspaceLockfile: true as const,
   dedupePeerDependents: true as const,
   supportedArchitectures: {
     os: ['linux', 'darwin'],
