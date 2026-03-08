@@ -59,6 +59,7 @@ let
           lib.removePrefix "${prefix}/" relPath;
     in
     {
+      inherit prefix;
       inherit sourceRoot sourceRelPath;
     };
 
@@ -78,79 +79,123 @@ let
   packagePnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
   packagePnpmWorkspaceYaml = builtins.readFile packagePnpmWorkspaceYamlPath;
 
-  workspaceLines = lib.splitString "\n" packagePnpmWorkspaceYaml;
-  packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" line) null workspaceLines;
-  packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
-  isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
-
-  parsePackagesInline =
+  parseWorkspacePackages =
+    workspaceYaml:
     let
-      packagesArrayStr = lib.removePrefix "packages: " packagesLine;
-      packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
-    in
-    map (s: lib.trim s) (lib.splitString "," packagesInner);
+      workspaceLines = lib.splitString "\n" workspaceYaml;
+      packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" line) null workspaceLines;
+      packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
+      isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
 
-  workspaceLinesAfterPackagesHeader =
+      parsePackagesInline =
+        let
+          packagesArrayStr = lib.removePrefix "packages: " packagesLine;
+          packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
+        in
+        map (s: lib.trim s) (lib.splitString "," packagesInner);
+
+      workspaceLinesAfterPackagesHeader =
+        let
+          dropUntilPackagesHeader =
+            lines:
+            if lines == [ ] then
+              [ ]
+            else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
+              lib.tail lines
+            else
+              dropUntilPackagesHeader (lib.tail lines);
+        in
+        dropUntilPackagesHeader workspaceLines;
+
+      parsePackagesMultiline =
+        let
+          lines = workspaceLinesAfterPackagesHeader;
+          firstContentLine = lib.findFirst (line: lib.trim line != "") "" lines;
+          isBracketFormat = lib.hasInfix "[" firstContentLine;
+        in
+        if isBracketFormat then
+          let
+            takeWhile =
+              pred: lst:
+              if lst == [ ] then
+                [ ]
+              else if pred (builtins.head lst) then
+                [ (builtins.head lst) ] ++ takeWhile pred (lib.tail lst)
+              else
+                [ ];
+            indentedLines = takeWhile (line: lib.hasPrefix " " line || line == "") lines;
+            joined = builtins.concatStringsSep "\n" indentedLines;
+            afterOpen = builtins.elemAt (lib.splitString "[" joined) 1;
+            inner = builtins.elemAt (lib.splitString "]" afterOpen) 0;
+            items = lib.splitString "," inner;
+          in
+          builtins.filter (s: s != "") (map (s: lib.trim (lib.removeSuffix "," (lib.trim s))) items)
+        else
+          let
+            parseLines =
+              remainingLines:
+              if remainingLines == [ ] then
+                [ ]
+              else
+                let
+                  line = lib.trim (builtins.head remainingLines);
+                  rest = lib.tail remainingLines;
+                in
+                if line == "" || lib.hasPrefix "#" line then
+                  parseLines rest
+                else if lib.hasPrefix "- " line then
+                  [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
+                else if lib.hasPrefix "-" line then
+                  [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
+                else
+                  [ ];
+          in
+          parseLines lines;
+    in
+    builtins.filter builtins.isString (
+      if isPackagesInline then parsePackagesInline else parsePackagesMultiline
+    );
+
+  workspaceSuffixLines =
+    workspaceYaml:
     let
       dropUntilPackagesHeader =
         lines:
         if lines == [ ] then
-          [ ]
+          throw "mk-pnpm-cli: pnpm-workspace.yaml is missing packages:"
         else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
           lib.tail lines
         else
           dropUntilPackagesHeader (lib.tail lines);
-    in
-    dropUntilPackagesHeader workspaceLines;
 
-  parsePackagesMultiline =
+      dropPackageBlock =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else
+          let
+            line = builtins.head lines;
+            trimmed = lib.trim line;
+          in
+          if trimmed == "" || lib.hasPrefix "-" trimmed || lib.hasPrefix " " line then
+            dropPackageBlock (lib.tail lines)
+          else
+            lines;
+    in
+    dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml));
+
+  formatWorkspaceYaml =
+    packageDirs: suffixLines:
     let
-      lines = workspaceLinesAfterPackagesHeader;
-      firstContentLine = lib.findFirst (line: lib.trim line != "") "" lines;
-      isBracketFormat = lib.hasInfix "[" firstContentLine;
+      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs);
+      suffix = builtins.concatStringsSep "\n" suffixLines;
     in
-    if isBracketFormat then
-      let
-        takeWhile =
-          pred: lst:
-          if lst == [ ] then
-            [ ]
-          else if pred (builtins.head lst) then
-            [ (builtins.head lst) ] ++ takeWhile pred (lib.tail lst)
-          else
-            [ ];
-        indentedLines = takeWhile (line: lib.hasPrefix " " line || line == "") lines;
-        joined = builtins.concatStringsSep "\n" indentedLines;
-        afterOpen = builtins.elemAt (lib.splitString "[" joined) 1;
-        inner = builtins.elemAt (lib.splitString "]" afterOpen) 0;
-        items = lib.splitString "," inner;
-      in
-      builtins.filter (s: s != "") (map (s: lib.trim (lib.removeSuffix "," (lib.trim s))) items)
+    if suffix == "" then
+      "${packagesBlock}\n"
     else
-      let
-        parseLines =
-          remainingLines:
-          if remainingLines == [ ] then
-            [ ]
-          else
-            let
-              line = lib.trim (builtins.head remainingLines);
-              rest = lib.tail remainingLines;
-            in
-            if line == "" || lib.hasPrefix "#" line then
-              parseLines rest
-            else if lib.hasPrefix "- " line then
-              [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
-            else if lib.hasPrefix "-" line then
-              [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
-            else
-              [ ];
-      in
-      parseLines lines;
+      "${packagesBlock}\n\n${suffix}\n";
 
-  workspaceMemberItems = builtins.filter builtins.isString (
-    if isPackagesInline then parsePackagesInline else parsePackagesMultiline
-  );
+  workspaceMemberItems = parseWorkspacePackages packagePnpmWorkspaceYaml;
   relativeWorkspaceMembers = builtins.filter (s: s != ".") workspaceMemberItems;
 
   resolveRelativePath =
@@ -186,7 +231,18 @@ let
     in
     lib.concatStringsSep "/" (resolvedBase ++ remainingParts);
 
-  workspaceMembers = map (relPath: resolveRelativePath packageDir relPath) relativeWorkspaceMembers;
+  resolvedWorkspaceMembers = map (
+    relPath:
+    let
+      dir = resolveRelativePath packageDir relPath;
+    in
+    {
+      inherit dir;
+      resolved = resolveSourceFor dir;
+    }
+  ) relativeWorkspaceMembers;
+
+  workspaceMembers = map (item: item.dir) resolvedWorkspaceMembers;
   workspaceClosureDirs = lib.unique ([ packageDir ] ++ workspaceMembers);
   stagedWorkspaceMembers =
     lib.unique (
@@ -196,49 +252,37 @@ let
         let
           resolved = resolveSourceFor dir;
         in
-        toString resolved.sourceRoot == toString workspaceRootPath
+        resolved.prefix == null
       ) workspaceMembers
     );
 
-  rootWorkspaceSuffixLines =
-    let
-      dropUntilPackagesHeader =
-        lines:
-        if lines == [ ] then
-          throw "mk-pnpm-cli: root pnpm-workspace.yaml is missing packages:"
-        else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
-          lib.tail lines
-        else
-          dropUntilPackagesHeader (lib.tail lines);
-
-      dropPackageBlock =
-        lines:
-        if lines == [ ] then
-          [ ]
-        else
+  externalInstallRoots =
+    builtins.filter
+      (root: root.memberDirs != [ ])
+      (map
+        (
+          prefix:
           let
-            line = builtins.head lines;
-            trimmed = lib.trim line;
+            memberItems = builtins.filter (item: item.resolved.prefix == prefix) resolvedWorkspaceMembers;
+            sourceRoot = workspaceSourceRoots.${prefix};
+            sourcePnpmWorkspaceYaml = builtins.readFile (sourceRoot + "/pnpm-workspace.yaml");
           in
-          if trimmed == "" || lib.hasPrefix "-" trimmed || lib.hasPrefix " " line then
-            dropPackageBlock (lib.tail lines)
-          else
-            lines;
-    in
-    dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" rootPnpmWorkspaceYaml));
+          {
+            inherit prefix sourceRoot;
+            memberDirs = lib.unique (map (item: item.dir) memberItems);
+            sourceRelMemberDirs = lib.unique (map (item: item.resolved.sourceRelPath) memberItems);
+            filteredPnpmWorkspaceYaml =
+              formatWorkspaceYaml
+                (lib.unique (map (item: item.resolved.sourceRelPath) memberItems))
+                (workspaceSuffixLines sourcePnpmWorkspaceYaml);
+          }
+        )
+        workspaceSourcePrefixes);
 
-  filteredRootPnpmWorkspaceYaml =
-    let
-      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") stagedWorkspaceMembers);
-      suffix = builtins.concatStringsSep "\n" rootWorkspaceSuffixLines;
-    in
-    if suffix == "" then
-      "${packagesBlock}\n"
-    else
-      "${packagesBlock}\n\n${suffix}\n";
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
 
   rootWorkspaceFiles = [ "package.json" "pnpm-lock.yaml" ];
-  optionalRootWorkspaceFiles = [ ".npmrc" ];
+  optionalRootWorkspaceFiles = [ ".npmrc" "tsconfig.base.json" ];
 
   copyFileCmd =
     relPath:
@@ -261,6 +305,17 @@ let
       chmod -R +w "$out/${relPath}"
     '';
 
+  copyOptionalFileCmd =
+    relPath:
+    let
+      srcPath = absoluteSourcePathFor relPath;
+    in
+    ''
+      if [ -f ${lib.escapeShellArg (toString srcPath)} ]; then
+        ${copyFileCmd relPath}
+      fi
+    '';
+
   materializeWorkspace =
     {
       nameSuffix,
@@ -272,26 +327,31 @@ let
         mkdir -p "$out"
       ''
       + builtins.concatStringsSep "\n" (map copyFileCmd rootWorkspaceFiles)
-      + builtins.concatStringsSep "\n" (
-        map
-          (
-            relPath:
-            let
-              srcPath = workspaceRootPath + "/${relPath}";
-            in
-            ''
-              if [ -f ${lib.escapeShellArg (toString srcPath)} ]; then
-                ${copyFileCmd relPath}
-              fi
-            ''
-          )
-          optionalRootWorkspaceFiles
-      )
+      + builtins.concatStringsSep "\n" (map copyOptionalFileCmd optionalRootWorkspaceFiles)
       + ''
         cat > "$out/pnpm-workspace.yaml" <<'EOF'
 ${filteredRootPnpmWorkspaceYaml}
 EOF
       ''
+      + builtins.concatStringsSep "\n" (
+        map
+          (
+            root:
+            builtins.concatStringsSep "\n" (
+              (map (file: copyFileCmd "${root.prefix}/${file}") rootWorkspaceFiles)
+              ++ (map (file: copyOptionalFileCmd "${root.prefix}/${file}") optionalRootWorkspaceFiles)
+              ++ [
+                ''
+                  mkdir -p "$out/${root.prefix}"
+                  cat > "$out/${root.prefix}/pnpm-workspace.yaml" <<'EOF'
+${root.filteredPnpmWorkspaceYaml}
+EOF
+                ''
+              ]
+            )
+          )
+          externalInstallRoots
+      )
       + builtins.concatStringsSep "\n" (
         if manifestOnly then
           map (dir: copyFileCmd "${dir}/package.json") workspaceClosureDirs
@@ -317,6 +377,8 @@ EOF
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
+    extraInstallRoots = map (root: root.prefix) externalInstallRoots;
+    lockfilePaths = [ "pnpm-lock.yaml" ] ++ map (root: "${root.prefix}/pnpm-lock.yaml") externalInstallRoots;
     preInstall = ''
       chmod -R +w .
     '';
@@ -381,6 +443,21 @@ pkgs.stdenv.mkDerivation {
 
     echo "Installing aggregate workspace..."
     pnpm install --offline --frozen-lockfile --ignore-scripts
+
+    ${builtins.concatStringsSep "\n" (
+      map
+        (
+          root:
+          ''
+            echo "Installing external workspace root: ${root.prefix}..."
+            (
+              cd ${lib.escapeShellArg root.prefix}
+              pnpm install --offline --frozen-lockfile --ignore-scripts
+            )
+          ''
+        )
+        externalInstallRoots
+    )}
 
     cd ${packageDir}
 

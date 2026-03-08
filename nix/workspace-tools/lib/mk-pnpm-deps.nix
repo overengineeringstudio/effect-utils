@@ -16,6 +16,7 @@
 { pkgs }:
 
 let
+  lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
 in
 {
@@ -30,6 +31,12 @@ in
   #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
   #   preInstall:     Extra shell commands to run before pnpm install (e.g., chmod for workspace members)
+  #   extraInstallRoots:
+  #                   Extra repo roots to install after the main workspace root.
+  #                   Each path is relative to sourceRoot.
+  #   lockfilePaths:
+  #                   Lockfiles that define the allowed package set for store normalization.
+  #                   Each path is relative to sourceRoot.
   mkDeps =
     {
       name,
@@ -37,6 +44,8 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
+      extraInstallRoots ? [ ],
+      lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -104,6 +113,7 @@ in
         export NPM_CONFIG_PRODUCTION=false
         export npm_config_production=false
         export NODE_ENV=development
+        export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
         pnpm config set store-dir "$STORE_PATH"
         pnpm config set manage-package-manager-versions false
@@ -112,7 +122,21 @@ in
 
         pnpm install --frozen-lockfile --ignore-scripts
 
-        export LOCKFILE_PATH="$PWD/pnpm-lock.yaml"
+        ${builtins.concatStringsSep "\n" (
+          map
+            (
+              installRoot:
+              ''
+                if [ -f ${lib.escapeShellArg "${installRoot}/package.json"} ]; then
+                  (
+                    cd ${lib.escapeShellArg installRoot}
+                    pnpm install --frozen-lockfile --ignore-scripts
+                  )
+                fi
+              ''
+            )
+            extraInstallRoots
+        )}
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
@@ -131,7 +155,7 @@ in
           const fs = require("fs");
           const p = require("path");
           const sp = process.env.STORE_PATH;
-          const lockfilePath = process.env.LOCKFILE_PATH;
+          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
 
           function walk(dir, out) {
             for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
@@ -145,29 +169,35 @@ in
           if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
           const vdir = p.join(sp, vdirs[0]);
 
-          if (!lockfilePath || !fs.existsSync(lockfilePath)) {
-            console.error("store-norm: FATAL — staged pnpm-lock.yaml not found at " + lockfilePath);
+          if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
+            console.error("store-norm: FATAL — no staged lockfiles were provided");
             process.exit(1);
           }
 
           /* Phase 0: Prune phantom index files not in the staged lockfile. */
-          const lockfile = fs.readFileSync(lockfilePath, "utf8");
-
           const Q = String.fromCharCode(39); /* single quote */
           const pkgLineRe = new RegExp("^\\s+(" + Q + "?)(.+?)\\1:\\s*$");
           const allowedPkgVersions = new Set();
 
-          const lines = lockfile.split("\n");
-          let inPackages = false;
-          for (const line of lines) {
-            if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
-            if (inPackages) {
-              if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
-              const m = pkgLineRe.exec(line);
-              if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
+          for (const lockfilePath of lockfilePaths) {
+            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
+              console.error("store-norm: FATAL — staged lockfile not found at " + lockfilePath);
+              process.exit(1);
+            }
+
+            const lockfile = fs.readFileSync(lockfilePath, "utf8");
+            const lines = lockfile.split("\n");
+            let inPackages = false;
+            for (const line of lines) {
+              if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
+              if (inPackages) {
+                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                const m = pkgLineRe.exec(line);
+                if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
+              }
             }
           }
-          console.log("store-norm: parsed staged lockfile, found " + allowedPkgVersions.size + " unique packages");
+          console.log("store-norm: parsed staged lockfiles, found " + allowedPkgVersions.size + " unique packages");
 
           if (allowedPkgVersions.size === 0) {
             console.error("store-norm: FATAL — no packages parsed from staged pnpm-lock.yaml");
