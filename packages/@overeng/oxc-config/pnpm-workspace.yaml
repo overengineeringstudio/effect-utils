@@ -10,3 +10,5 @@ supportedArchitectures:
   cpu: [x64, arm64]
 
 dedupePeerDependents: true
+
+sharedWorkspaceLockfile: true
