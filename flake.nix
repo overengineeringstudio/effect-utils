@@ -31,6 +31,11 @@
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
+        oxlintNpm = import ./nix/oxlint-npm.nix {
+          inherit pkgs;
+          bun = pkgs.bun;
+          src = self;
+        };
         cliPackages = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
@@ -71,10 +76,10 @@
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
-          oxlint-npm = import ./nix/oxlint-npm.nix {
-            inherit pkgs;
-            bun = pkgs.bun;
-            src = self;
+          oxlint-npm = oxlintNpm;
+          # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
+          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
+            inherit pkgs oxlintNpm;
           };
         };
 
@@ -163,6 +168,17 @@
           src ? null,
         }:
         import ./nix/oxlint-npm.nix { inherit pkgs bun src; };
+
+      # oxlint wrapper that auto-injects the @overeng/oxc-config plugin when
+      # the project config contains overeng/* rules. Falls through to plain
+      # oxlint-npm otherwise.
+      # Usage: effectUtils.lib.mkOxlintWithPlugins { inherit pkgs; oxlintNpm = effectUtils.packages.\${system}.oxlint-npm; }
+      lib.mkOxlintWithPlugins =
+        {
+          pkgs,
+          oxlintNpm,
+        }:
+        import ./nix/oxlint-with-plugins.nix { inherit pkgs oxlintNpm; };
 
       # Usage: effectUtils.lib.mkBeads { inherit pkgs; }
       lib.mkBeads = { pkgs }: import ./nix/beads.nix { inherit pkgs; };
