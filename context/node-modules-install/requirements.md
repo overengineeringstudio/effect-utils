@@ -53,6 +53,10 @@ install model must account for that.
 - T2 - Keeping a per-package lockfile for standalone repos is acceptable, as
   long as a composed megarepo may also maintain its own aggregate lockfile
   for the composed topology.
+- T3 - Using an aggregate package or aggregate root manifest for the composed
+  topology is acceptable. Package managers are usually optimized for monorepos,
+  so a canonical aggregate root often gives the best install and update
+  performance as long as standalone repos remain valid.
 
 ## Requirements
 
@@ -78,34 +82,38 @@ install model must account for that.
   resolve to live source so source edits propagate without reinstall. Local
   dependency linking must be direct enough that code changes become visible
   to dependents without requiring another install step.
-- R5 - The model must work with symlinked `repos/*` entries as produced by
+- R5 - Each package must be self-contained in the sense that it and its local
+  workspace closure can be materialized into a minimal standalone workspace
+  that installs, builds, and runs correctly.
+- R6 - The model must work with symlinked `repos/*` entries as produced by
   megarepo. Workspace membership may be generated explicitly; the design must
   not depend on Bun discovering symlinked workspace globs.
-- R6 - The model must scale across multiple composition layers, for example
+- R7 - The model must scale across multiple composition layers, for example
   `repo-x -> repo-y -> repo-z`, without changing the core install semantics.
 
 ### Must be explicit and safe
 
-- R7 - The active install owner for a worktree must be explicit and
+- R8 - The active install owner for a worktree must be explicit and
   mechanically derivable from the workspace topology. Unsupported install
   entrypoints must fail fast instead of silently creating divergent local
   state.
-- R8 - If a dependency is intended to resolve to a local workspace member but
+- R9 - If a dependency is intended to resolve to a local workspace member but
   does not, the system must surface that mismatch clearly.
 
 ### Must avoid accidental dependency masking
 
-- R9 - The install model must not silently make undeclared dependencies
+- R10 - The install model must not silently make undeclared dependencies
   appear valid. If the chosen linker or layout weakens package isolation, the
   workspace must provide compensating checks so dependency declarations remain
   truthful.
 
 ### Must be verifiable
 
-- R10 - We need repro coverage for standalone installs, composed installs,
+- R11 - We need repro coverage for standalone installs, composed installs,
   mixed or incorrect install entrypoints, cross-repo live edit propagation,
-  and duplicate-instance detection. We also need at least one realistic
-  multi-repo smoke test, not just minimal toy workspaces.
+  isolated package-closure materialization, and duplicate-instance detection.
+  We also need at least one realistic multi-repo smoke test, not just minimal
+  toy workspaces.
 
 ## Current Findings To Respect
 
