@@ -58,6 +58,9 @@ lockfile that define installs for that workspace.
   workspace topology is acceptable. Package managers are usually optimized
   for monorepos, so a canonical aggregate root often gives the best install
   and update performance as long as standalone repos remain valid.
+- T4 - Using a hoisted linker is acceptable if the workspace provides
+  compensating checks for undeclared dependencies and preserves coherent
+  runtime resolution across standalone and composed topologies.
 
 ## Requirements
 
@@ -65,9 +68,10 @@ lockfile that define installs for that workspace.
 
 - R1 - Supported install flows must converge to one canonical final install
   state for a given worktree and workspace topology, independent of install
-  order or current working directory. In practice this means one active
-  install owner per physical worktree and no duplicate live instances of the
-  same dependency across one composed runtime graph.
+  order or current working directory. Multiple topologies may coexist
+  against the same physical source tree, but each topology must still have a
+  canonical final install state and there must be no duplicate live
+  instances of the same dependency across one composed runtime graph.
 - R2 - Lockfiles must be reproducible and checkout-portable: no absolute
   paths, machine-local paths, or hidden host-specific state. A composed
   lockfile may encode the composed workspace topology, but it must remain
@@ -95,9 +99,10 @@ lockfile that define installs for that workspace.
 ### Must be explicit and safe
 
 - R8 - The active install owner for a worktree must be explicit and
-  mechanically derivable from the workspace topology. Unsupported install
-  entrypoints must fail fast instead of silently creating divergent local
-  state.
+  mechanically derivable from the workspace topology. Install and runtime
+  entrypoints must be topology-aware, and ambiguous or unsupported
+  entrypoints must fail fast instead of silently materializing the wrong
+  topology.
 - R9 - If a dependency is intended to resolve to a local workspace member but
   does not, the system must surface that mismatch clearly.
 
