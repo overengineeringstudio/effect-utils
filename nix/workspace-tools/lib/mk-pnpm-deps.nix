@@ -63,7 +63,7 @@ in
       );
     in
     pkgs.stdenvNoCC.mkDerivation {
-      pname = "${name}-pnpm-deps-${srcFingerprint}";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v2";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -275,6 +275,13 @@ in
           --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
           | zstd -T1 -q -o $out/pnpm-store.tar.zst
 
+        metadata_dir="$HOME/.cache/pnpm"
+        mkdir -p "$metadata_dir"
+        cd "$metadata_dir"
+        LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+          --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
+          | zstd -T1 -q -o $out/pnpm-metadata.tar.zst
+
         runHook postInstall
       '';
 
@@ -302,6 +309,11 @@ in
       # Extract pnpm store
       zstd -d -c ${deps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
       chmod -R +w $STORE_PATH
+
+      export XDG_CACHE_HOME="$HOME/.cache"
+      mkdir -p "$XDG_CACHE_HOME/pnpm"
+      zstd -d -c ${deps}/pnpm-metadata.tar.zst | tar -xf - -C "$XDG_CACHE_HOME/pnpm"
+      chmod -R +w "$XDG_CACHE_HOME/pnpm"
 
       # Configure pnpm for offline install
       pnpm config set store-dir "$STORE_PATH"
