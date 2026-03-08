@@ -16,6 +16,10 @@ state.
 - A2 - The local workspace path remains the canonical source of truth. Build
   internals may materialize filtered inputs, but the user should not need to
   manage separate clean or dirty worktrees.
+- A3 - For the selected topology, the canonical manifests and lockfile are
+  already in a stable, self-contained state. A build-time install may realize
+  that dependency graph, but it should not need to rewrite the lockfile or
+  change dependency metadata to make the build work.
 
 ## Requirements
 
@@ -25,39 +29,33 @@ state.
   silently fall back to a git snapshot that drops local source changes.
 - R2 - The build must reuse the existing manifests and lockfiles for the
   selected topology instead of inventing bespoke build-only package metadata.
-- R3 - The CLI entrypoint must remain valid as part of its standalone repo
-  topology, including its standalone lockfile when one exists.
-- R4 - The build must respect the canonical megarepo workspace topology and
-  install-owner model. `mk-bun-cli` may materialize filtered build inputs,
-  but it must not create a second in-place install owner or depend on
-  synthetic workspace symlinks.
 
 ### Must be pure and deterministic
 
-- R5 - No `--impure` usage. Evaluation and builds must stay pure.
-- R6 - The build must not copy `node_modules` into outputs. It may
+- R3 - No `--impure` usage. Evaluation and builds must stay pure.
+- R4 - The build must not copy `node_modules` into outputs. It may
   materialize filtered inputs, but it must install its own dependencies
   inside the Nix build using the same package-manager mechanism as the normal
   workspace install model.
-- R7 - Build inputs must be deterministic. Hidden host paths, transient
+- R5 - Build inputs must be deterministic. Hidden host paths, transient
   caches, and ambient machine state must not influence the build graph.
-- R8 - The dependency hash must be stable and platform-agnostic. The same
+- R6 - The dependency hash must be stable and platform-agnostic. The same
   logical dependency inputs and selected topology must produce the same dep
   hash across supported systems.
-- R9 - Errors for stale `bunDepsHash`, lockfile drift, or wrong topology
+- R7 - Errors for stale `bunDepsHash`, lockfile drift, or wrong topology
   selection must be clear and actionable.
 
 ### Must be practical and reusable
 
-- R10 - Local builds should be fast and should avoid `path:.` hashing across
+- R8 - Local builds should be fast and should avoid `path:.` hashing across
   unnecessarily large trees.
-- R11 - The model must work in effect-utils and peer repos, via flakes and
+- R9 - The model must work in effect-utils and peer repos, via flakes and
   via devenv.
-- R12 - The build plumbing must be reusable across peer repos without
+- R10 - The build plumbing must be reusable across peer repos without
   copy-pasting or bespoke per-repo hacks.
-- R13 - No new global tooling requirements. The system should use the
+- R11 - No new global tooling requirements. The system should use the
   existing `nix`, `bun`, and `rsync` toolchain.
 
 ### Must be verifiable
 
-- R14 - A smoke test must run for each built CLI.
+- R12 - A smoke test must run for each built CLI.
