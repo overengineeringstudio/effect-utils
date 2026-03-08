@@ -264,10 +264,14 @@ let
                 )
                 workspaceMembers
             );
-          # Include workspace member package.json files (not full directories)
-          # Also include their parent directories as directories
-          isWorkspaceMemberPackageJson = lib.any (
-            memberDir: relPath == "${memberDir}/package.json"
+          # Include workspace member manifest files. Some downstream composed
+          # workspaces still rely on per-member pnpm files during staged
+          # installs, so package.json alone is not sufficient.
+          isWorkspaceMemberManifest = lib.any (
+            memberDir:
+            lib.any
+              (fileName: relPath == "${memberDir}/${fileName}")
+              [ "package.json" "pnpm-lock.yaml" "pnpm-workspace.yaml" ]
           ) workspaceMembers;
           isWorkspaceMemberDir =
             type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
@@ -289,7 +293,7 @@ let
           || isPackageDepsFile
           || isInPatches
           || isParentDir
-          || isWorkspaceMemberPackageJson
+          || isWorkspaceMemberManifest
           || isWorkspaceMemberDir
           || isWorkspaceMemberParentDir
         );
