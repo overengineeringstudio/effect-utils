@@ -69,6 +69,8 @@ let
 
   sanitize = s: builtins.replaceStrings [ "/" "." "@" ] [ "-" "-" "" ] s;
 
+  # Derive a human-readable default task name from the package path first.
+  # We only fall back to repo-qualified names when two paths would collide.
   baseName =
     path:
     let
@@ -125,6 +127,8 @@ let
         ${lib.concatStringsSep "\n" duplicateTaskNameLines}
       '';
 
+  # Map package.json names back to managed paths so `dependenciesMeta.*.injected`
+  # can pull the source of injected workspace deps into the cache key.
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
       map (
@@ -174,6 +178,8 @@ let
     }
   '';
 
+  # Runtime discovery keeps topology parsing out of Nix evaluation and lets the
+  # task reflect the current checked-out manifests/workspace files directly.
   mkRuntimeTopologyFns =
     path:
     ''
@@ -260,6 +266,8 @@ PY
     in
     ''
       ${mkRuntimeTopologyFns path}
+      # The cache key tracks the root manifest/lockfile plus copied peer package
+      # manifests and injected source files so we rerun installs on topology drift.
       if [ -f pnpm-lock.yaml ]; then
         base_hash="$(cat package.json pnpm-lock.yaml | compute_hash)"
       else
@@ -332,6 +340,8 @@ PY
         fi
       }
 
+      # Copied members should behave like dependencies owned by the projected
+      # root topology, not like nested install owners with their own pnpm state.
       sanitize_member() {
         local rel="$1"
         local member_dir="$topology_dir/$rel"
@@ -422,6 +432,8 @@ PY
             resultVar = "current_hash";
           }}
           stored_hash="$(cat "$hash_file")"
+          # Treat a stale topology hash the same as a missing install so devenv
+          # reruns the materialization/install instead of trusting raw node_modules.
           if [ "$current_hash" != "$stored_hash" ]; then
             exit 1
           fi
