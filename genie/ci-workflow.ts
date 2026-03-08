@@ -54,7 +54,6 @@ export const standardCIEnv = {
 
 type NixConfigOptions = {
   unrestrictedEval?: boolean
-  wasmBuiltin?: boolean
   extraLines?: readonly string[]
 }
 
@@ -76,7 +75,6 @@ const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>
   [
     ...(opts.unrestrictedEval ? ['restrict-eval = false'] : []),
-    ...(opts.wasmBuiltin ? ['extra-experimental-features = wasm-builtin'] : []),
     ...(opts.extraLines ?? []),
   ].join('\n')
 
@@ -96,10 +94,6 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
   runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)
-
-/** Build a command that runs devenv tasks with both unrestricted eval and wasm-builtin enabled. */
-export const runDevenvTasksBeforeWithWasmBuiltin = (...args: [string, ...string[]]) =>
-  runDevenvTasksBeforeWithOptions({ unrestrictedEval: true, wasmBuiltin: true }, ...args)
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.

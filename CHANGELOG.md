@@ -47,11 +47,6 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **nix/yaml-wasm**: Add reusable `builtins.wasm` YAML layer for downstream flake consumers
-  - Exposes `packages.<system>.yaml-wasm` and `lib.yamlWasm` from the root flake
-  - Vendors the Rust/WASM source and keeps the artifact content-addressed for cross-system reuse
-- **genie/ci-workflow**: Add shared `nixExtraConf` and `runDevenvTasksBeforeWithWasmBuiltin` helpers
-  - Lets downstream workflows enable `wasm-builtin` without repo-local `NIX_CONFIG` string assembly
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
 - **docs/bun**: Document the upstream nested-workspace `patchedDependencies` blocker and link the Bun issue
 - **docs/bun**: Note the Bun-only local workspace fork workaround for patched dependencies
