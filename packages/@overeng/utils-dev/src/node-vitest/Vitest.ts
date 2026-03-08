@@ -1,3 +1,4 @@
+/* oxlint-disable oxc(no-barrel-file) -- intentional facade over @effect/vitest */
 /**
  * Enhanced Vitest utilities for Effect-based testing.
  *
@@ -26,7 +27,6 @@ import {
   type Scope,
 } from 'effect'
 
-// oxlint-disable-next-line oxc(no-barrel-file) -- intentionally re-exports @effect/vitest for unified API
 export * from '@effect/vitest'
 
 // ============================================================================
