@@ -7,11 +7,13 @@
 }:
 let
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
-  # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
     bun = pkgs.bun;
     src = ./.;
+  };
+  oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
+    inherit pkgs oxlintNpm;
   };
 
   # Shared task modules (from shared/ directory)
@@ -193,7 +195,7 @@ in
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
     # Git hook: prevent commits on default branch + enforce linked worktrees
-    (taskModules.worktree-guard {})
+    (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { })
     # Playwright browser drivers and environment setup
@@ -227,7 +229,6 @@ in
       packages = packagesWithStorybook;
     })
     (taskModules.lint-oxc {
-      jsPlugins = lib.optionals (oxlintNpm.pluginPath != null) [ oxlintNpm.pluginPath ];
       lintPaths = [
         "packages"
         "scripts"
@@ -327,7 +328,7 @@ in
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
-    oxlintNpm
+    oxlintWithPlugins
     pkgs.oxfmt
     (mkSourceCli {
       name = "genie";

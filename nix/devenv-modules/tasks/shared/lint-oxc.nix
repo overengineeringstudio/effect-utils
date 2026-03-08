@@ -28,9 +28,6 @@
 #       genieCoverageFiles = [ "package.json" "tsconfig.json" ];  # optional
 #       # Path to tsconfig for type-aware linting (enables typescript/no-deprecated etc)
 #       tsconfig = "tsconfig.all.json";  # optional
-#       # Pre-built JS plugin paths to inject at runtime (for repos without node_modules)
-#       # These are merged into .oxlintrc.json's jsPlugins field at runtime.
-#       # jsPlugins = [ "${oxcConfigPlugin}/plugin.js" ];  # optional
 #       # Whether to fail on warnings (default: true for CI strictness)
 #       # denyWarnings = false;  # optional
 #     })
@@ -43,16 +40,14 @@
   geniePatterns,
   genieCoverageDirs,
   genieCoverageExcludes ? [ ],
-  genieCoverageFiles ? [ "package.json" "tsconfig.json" ],
+  genieCoverageFiles ? [
+    "package.json"
+    "tsconfig.json"
+  ],
   lintPaths ? [ "." ],
   # Type-aware linting: provide tsconfig to enable --type-aware flag.
   # Requires pkgs.tsgolint in devenv packages (auto-discovered on PATH by oxlint).
   tsconfig ? null,
-  # Pre-built JS plugin paths to inject into oxlint config at runtime.
-  # When provided, the oxlint task creates a temporary config merging these
-  # jsPlugins into the project's .oxlintrc.json, allowing overeng/* rules
-  # without needing effect-utils' node_modules installed.
-  jsPlugins ? [ ],
   # Whether to treat warnings as errors. Set to false for repos with many
   # existing warnings that can't be fixed immediately.
   denyWarnings ? true,
@@ -63,42 +58,31 @@ let
   git = "${pkgs.git}/bin/git";
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
   # Git pathspec exclusion patterns applied to coverage check (e.g. "packages/vendored/")
-  excludePathspecs = builtins.concatStringsSep " " (map (p: "':(exclude)${p}'") genieCoverageExcludes);
+  excludePathspecs = builtins.concatStringsSep " " (
+    map (p: "':(exclude)${p}'") genieCoverageExcludes
+  );
   # Bash case pattern matching config file names (e.g. "package.json|*/package.json|tsconfig.json|*/tsconfig.json")
-  coverageFilePattern = builtins.concatStringsSep "|" (lib.concatMap (f: [ f "*/${f}" ]) genieCoverageFiles);
+  coverageFilePattern = builtins.concatStringsSep "|" (
+    lib.concatMap (f: [
+      f
+      "*/${f}"
+    ]) genieCoverageFiles
+  );
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
 
   # Type-aware linting flags (enabled when tsconfig is provided)
   typeAwareFlags = if tsconfig != null then "--type-aware --tsconfig ${tsconfig}" else "";
   warningsFlag = if denyWarnings then "--deny-warnings" else "";
 
-  # When jsPlugins are provided, inject them into the config at runtime.
-  # Replaces any existing jsPlugins in .oxlintrc.json with the Nix-provided paths.
-  # This ensures stale/unresolvable source paths from the genie template are dropped.
-  hasJsPlugins = jsPlugins != [ ];
-  jsPluginsJson =
-    "[${builtins.concatStringsSep ", " (map (plugin: builtins.toJSON "${plugin}") jsPlugins)}]";
+  # Plugin injection is handled by oxlint-with-plugins wrapper on PATH.
+  # Consumers should add oxlint-with-plugins to devenv packages instead of
+  # passing jsPlugins here.
   mkOxlintCmd =
     extraFlags:
     let
       flags = "${warningsFlag} ${extraFlags}";
     in
-    if hasJsPlugins then
-      ''
-        set -euo pipefail
-        if [ ! -f .oxlintrc.json ]; then
-          echo "error: jsPlugins requires .oxlintrc.json but none was found" >&2
-          exit 1
-        fi
-        tmpconfig=$(${pkgs.coreutils}/bin/mktemp)
-        trap 'rm -f "$tmpconfig"' EXIT
-        ${pkgs.jq}/bin/jq --argjson plugins '${jsPluginsJson}' \
-          '.jsPlugins = $plugins' \
-          .oxlintrc.json > "$tmpconfig"
-        oxlint -c "$tmpconfig" --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}
-      ''
-    else
-      "oxlint --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}";
+    "oxlint --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}";
 in
 {
   # Provide tsgolint when type-aware linting is enabled
