@@ -16,6 +16,7 @@ let
   flock = "${pkgs.flock}/bin/flock";
   rsync = "${pkgs.rsync}/bin/rsync";
   jq = "${pkgs.jq}/bin/jq";
+  yq = "${pkgs.yq-go}/bin/yq";
   rm = "${pkgs.coreutils}/bin/rm";
   ln = "${pkgs.coreutils}/bin/ln";
   mkdir = "${pkgs.coreutils}/bin/mkdir";
@@ -82,192 +83,6 @@ let
         ${lib.concatStringsSep "\n" duplicateTaskNameLines}
       '';
 
-  resolveRelativePath =
-    basePath: relPath:
-    let
-      baseParts = lib.splitString "/" basePath;
-      relParts = lib.splitString "/" relPath;
-
-      countResult =
-        builtins.foldl'
-          (
-            acc: part:
-            if acc.done then
-              acc
-            else if part == ".." then
-              {
-                count = acc.count + 1;
-                done = false;
-              }
-            else
-              {
-                count = acc.count;
-                done = true;
-              }
-          )
-          {
-            count = 0;
-            done = false;
-          }
-          relParts;
-      upCount = countResult.count;
-      remainingParts = lib.drop upCount relParts;
-      resolvedBase = lib.take (lib.length baseParts - upCount) baseParts;
-    in
-    lib.concatStringsSep "/" (resolvedBase ++ remainingParts);
-
-  trimLine = s: lib.removeSuffix "\r" (lib.removeSuffix "\n" (lib.trim s));
-
-  parseWorkspaceMembers =
-    path:
-    let
-      yamlPath = "${config.devenv.root}/${path}/pnpm-workspace.yaml";
-      hasYaml = builtins.pathExists yamlPath;
-      content = if hasYaml then builtins.readFile yamlPath else "";
-      lines = lib.splitString "\n" content;
-      packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" (lib.trim line)) null lines;
-      packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
-      isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
-
-      parsePackagesInline =
-        let
-          packagesArrayStr = lib.removePrefix "packages: " packagesLine;
-          packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
-        in
-        builtins.filter (s: s != "") (builtins.map trimLine (lib.splitString "," packagesInner));
-
-      dropUntilPackagesHeader =
-        remainingLines:
-        if remainingLines == [ ] then
-          [ ]
-        else if lib.hasPrefix "packages:" (lib.trim (builtins.head remainingLines)) then
-          lib.tail remainingLines
-        else
-          dropUntilPackagesHeader (lib.tail remainingLines);
-
-      workspaceLinesAfterPackagesHeader = dropUntilPackagesHeader lines;
-
-      takeIndented =
-        remainingLines:
-        if remainingLines == [ ] then
-          [ ]
-        else if lib.hasPrefix " " (builtins.head remainingLines) || builtins.head remainingLines == "" then
-          [ (builtins.head remainingLines) ] ++ takeIndented (lib.tail remainingLines)
-        else
-          [ ];
-
-      parsePackagesMultiline =
-        let
-          firstContentLine = lib.findFirst (line: lib.trim line != "") "" workspaceLinesAfterPackagesHeader;
-          isBracketFormat = lib.hasInfix "[" firstContentLine;
-        in
-        if isBracketFormat then
-          let
-            indentedLines = takeIndented workspaceLinesAfterPackagesHeader;
-            joined = builtins.concatStringsSep "\n" indentedLines;
-            afterOpen = builtins.elemAt (lib.splitString "[" joined) 1;
-            inner = builtins.elemAt (lib.splitString "]" afterOpen) 0;
-            items = lib.splitString "," inner;
-          in
-          builtins.filter (s: s != "") (builtins.map (s: trimLine (lib.removeSuffix "," (trimLine s))) items)
-        else
-          let
-            parseLines =
-              remainingLines:
-              if remainingLines == [ ] then
-                [ ]
-              else
-                let
-                  line = trimLine (builtins.head remainingLines);
-                  rest = lib.tail remainingLines;
-                in
-                if line == "" || lib.hasPrefix "#" line then
-                  parseLines rest
-                else if lib.hasPrefix "- " line then
-                  [ trimLine (lib.removePrefix "- " line) ] ++ parseLines rest
-                else if lib.hasPrefix "-" line then
-                  [ trimLine (lib.removePrefix "-" line) ] ++ parseLines rest
-                else
-                  [ ];
-          in
-          parseLines workspaceLinesAfterPackagesHeader;
-
-      items =
-        if !hasYaml then
-          [ ]
-        else if isPackagesInline then
-          parsePackagesInline
-        else
-          parsePackagesMultiline;
-    in
-    builtins.filter (item: item != "." && item != "") (map (relPath: resolveRelativePath path relPath) items);
-
-  getPathDepValues =
-    deps:
-    let
-      names = builtins.attrNames deps;
-      values = map (name: deps.${name}) names;
-    in
-    builtins.filter (
-      value:
-      builtins.isString value
-      && (lib.hasPrefix "file:" value || lib.hasPrefix "link:" value)
-    ) values;
-
-  getLocalPathDeps =
-    path:
-    let
-      pkgJsonPath = "${config.devenv.root}/${path}/package.json";
-      pkgJson = builtins.fromJSON (builtins.readFile pkgJsonPath);
-      depValues =
-        builtins.concatLists [
-          (getPathDepValues (pkgJson.dependencies or { }))
-          (getPathDepValues (pkgJson.devDependencies or { }))
-          (getPathDepValues (pkgJson.optionalDependencies or { }))
-        ];
-      resolveSpec =
-        spec:
-        let
-          rel = lib.removePrefix "file:" (lib.removePrefix "link:" spec);
-          resolved = resolveRelativePath path rel;
-          packageJsonPath' = "${config.devenv.root}/${resolved}/package.json";
-        in
-        if builtins.pathExists packageJsonPath' then resolved else null;
-    in
-    builtins.filter (p: p != null) (map resolveSpec depValues);
-
-  supportPathsFor =
-    topologyPaths:
-    let
-      repoRoots = lib.unique (
-        builtins.filter (p: p != null) (
-          map (
-            path:
-            let
-              match = builtins.match "(repos/[^/]+).*" path;
-            in
-            if match == null then null else builtins.elemAt match 0
-          ) topologyPaths
-        )
-      );
-      maybeSupportPath =
-        repoRoot: name:
-        let
-          relPath = "${repoRoot}/${name}";
-        in
-        if builtins.pathExists "${config.devenv.root}/${relPath}" then relPath else null;
-    in
-    lib.unique (
-      builtins.filter (p: p != null) (
-        builtins.concatLists (
-          map (repoRoot: [
-            (maybeSupportPath repoRoot "tsconfig.base.json")
-            (maybeSupportPath repoRoot "patches")
-          ]) repoRoots
-        )
-      )
-    );
-
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
       map (
@@ -303,14 +118,8 @@ let
     assert ensureUniqueTaskNames;
     lib.imap0 (
       i: path:
-      let
-        workspaceMembers = parseWorkspaceMembers path;
-        localPathDeps = getLocalPathDeps path;
-        topologyPeers = lib.unique (workspaceMembers ++ localPathDeps);
-      in
       {
-        inherit path workspaceMembers localPathDeps topologyPeers;
-        supportPaths = supportPathsFor topologyPeers;
+        inherit path;
         name = toName path;
         prevName = if i == 0 then null else toName (builtins.elemAt packages (i - 1));
         injected = getInjectedDeps path;
@@ -323,17 +132,92 @@ let
     }
   '';
 
+  mkRuntimeTopologyFns =
+    path:
+    ''
+      resolve_rel_path() {
+        python3 - "$1" "$2" <<'PY'
+import os
+import sys
+print(os.path.normpath(os.path.join(os.path.dirname(sys.argv[1]), sys.argv[2])))
+PY
+      }
+
+      list_workspace_members() {
+        if [ ! -f "$DEVENV_ROOT/${path}/pnpm-workspace.yaml" ]; then
+          return
+        fi
+        while IFS= read -r rel; do
+          case "$rel" in
+            ""|".") continue ;;
+          esac
+          resolve_rel_path "${path}" "$rel"
+        done < <(${yq} '.packages[]' "$DEVENV_ROOT/${path}/pnpm-workspace.yaml" 2>/dev/null | tr -d '"')
+      }
+
+      list_local_path_deps() {
+        if [ ! -f "$DEVENV_ROOT/${path}/package.json" ]; then
+          return
+        fi
+        ${jq} -r '
+          [(.dependencies // {}), (.devDependencies // {}), (.optionalDependencies // {})]
+          | add
+          | to_entries[]
+          | select((.value | type) == "string")
+          | .value
+          | select(startswith("file:") or startswith("link:"))
+        ' "$DEVENV_ROOT/${path}/package.json" | while IFS= read -r spec; do
+          rel=''${spec#file:}
+          rel=''${rel#link:}
+          resolved="$(resolve_rel_path "${path}" "$rel")"
+          if [ -f "$DEVENV_ROOT/$resolved/package.json" ]; then
+            printf '%s\n' "$resolved"
+          fi
+        done
+      }
+
+      list_peer_package_jsons() {
+        { list_workspace_members; list_local_path_deps; } | awk '!seen[$0]++' | while IFS= read -r rel; do
+          [ -z "$rel" ] && continue
+          if [ -f "$DEVENV_ROOT/$rel/package.json" ]; then
+            printf '%s\n' "$rel/package.json"
+          fi
+        done
+      }
+
+      copy_repo_support_for_rel() {
+        local rel="$1"
+        local repo_root
+        case "$rel" in
+          repos/*/*) repo_root="$(printf '%s' "$rel" | cut -d/ -f1-2)" ;;
+          *) return ;;
+        esac
+        case " $copied_repo_roots " in
+          *" $repo_root "*) return ;;
+        esac
+        copied_repo_roots="$copied_repo_roots $repo_root"
+        for support in tsconfig.base.json patches; do
+          if [ -d "$DEVENV_ROOT/$repo_root/$support" ]; then
+            copy_tree "$repo_root/$support"
+          elif [ -f "$DEVENV_ROOT/$repo_root/$support" ]; then
+            ${mkdir} -p "$topology_dir/$(${dirnameBin} "$repo_root/$support")"
+            ${cp} "$DEVENV_ROOT/$repo_root/$support" "$topology_dir/$repo_root/$support"
+          fi
+        done
+      }
+    '';
+
   mkComputeCacheHash =
     {
-      peerPackageJsons,
+      path,
       injected,
       resultVar,
     }:
     let
-      peerFiles = lib.escapeShellArgs peerPackageJsons;
       injectedSrcs = lib.concatMapStringsSep " " (dep: "\"$DEVENV_ROOT/${dep}/src\"") injected;
     in
     ''
+      ${mkRuntimeTopologyFns path}
       if [ -f pnpm-lock.yaml ]; then
         base_hash="$(cat package.json pnpm-lock.yaml | compute_hash)"
       else
@@ -341,13 +225,15 @@ let
       fi
 
       peer_hash="$(
-        for rel in ${peerFiles}; do
+        for rel in $(list_peer_package_jsons); do
           if [ -f "$DEVENV_ROOT/$rel" ]; then
             cat "$DEVENV_ROOT/$rel"
           fi
         done | compute_hash
       )"
-      ${if peerPackageJsons == [ ] then "" else ''base_hash="$base_hash $peer_hash"''}
+      if [ -n "$peer_hash" ]; then
+        base_hash="$base_hash $peer_hash"
+      fi
 
       ${
         if injected == [ ] then
@@ -382,18 +268,11 @@ let
     {
       path,
       name,
-      workspaceMembers,
-      localPathDeps,
-      supportPaths,
     }:
-    let
-      workspaceArgs = lib.escapeShellArgs workspaceMembers;
-      localPathArgs = lib.escapeShellArgs localPathDeps;
-      supportArgs = lib.escapeShellArgs supportPaths;
-    in
     ''
       topology_dir="$DEVENV_ROOT/${topologyRoot}/${name}"
       package_dir="$topology_dir/${path}"
+      copied_repo_roots=""
 
       copy_tree() {
         local rel="$1"
@@ -422,18 +301,21 @@ let
         ${rm} -f "$member_dir/pnpm-lock.yaml" "$member_dir/pnpm-workspace.yaml" "$member_dir/.npmrc"
       }
 
+      ${mkRuntimeTopologyFns path}
+
       ${rm} -rf "$topology_dir"
       copy_tree "${path}"
-      for rel in ${workspaceArgs}; do
+      while IFS= read -r rel; do
+        [ -z "$rel" ] && continue
         copy_tree "$rel"
         sanitize_member "$rel"
-      done
-      for rel in ${localPathArgs}; do
+        copy_repo_support_for_rel "$rel"
+      done < <(list_workspace_members)
+      while IFS= read -r rel; do
+        [ -z "$rel" ] && continue
         copy_tree "$rel"
-      done
-      for rel in ${supportArgs}; do
-        copy_support "$rel"
-      done
+        copy_repo_support_for_rel "$rel"
+      done < <(list_local_path_deps)
     '';
 
   mkInstallTask =
@@ -448,10 +330,7 @@ let
       ...
     }:
     let
-      peerPackageJsons = map (rel: "${rel}/package.json") (lib.unique (workspaceMembers ++ localPathDeps));
-      materializeScript = mkMaterializeScript {
-        inherit path name workspaceMembers localPathDeps supportPaths;
-      };
+      materializeScript = mkMaterializeScript { inherit path name; };
     in
     {
       "pnpm:install:${name}" = {
@@ -482,7 +361,7 @@ let
 
           ${computeHashFn}
           ${mkComputeCacheHash {
-            inherit peerPackageJsons injected;
+            inherit path injected;
             resultVar = "cache_value";
           }}
           ${cache.writeCacheFile ''"$hash_file"''}
@@ -500,7 +379,7 @@ let
           fi
           ${computeHashFn}
           ${mkComputeCacheHash {
-            inherit peerPackageJsons injected;
+            inherit path injected;
             resultVar = "current_hash";
           }}
           stored_hash="$(cat "$hash_file")"
@@ -520,9 +399,7 @@ let
   mkUpdateStep =
     pkg:
     let
-      materializeScript = mkMaterializeScript {
-        inherit (pkg) path name workspaceMembers localPathDeps supportPaths;
-      };
+      materializeScript = mkMaterializeScript { inherit (pkg) path name; };
     in
     ''
       echo "Updating ${pkg.path}..."
