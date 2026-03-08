@@ -139,7 +139,7 @@ let
         python3 - "$1" "$2" <<'PY'
 import os
 import sys
-print(os.path.normpath(os.path.join(os.path.dirname(sys.argv[1]), sys.argv[2])))
+print(os.path.normpath(os.path.join(sys.argv[1], sys.argv[2])))
 PY
       }
 
