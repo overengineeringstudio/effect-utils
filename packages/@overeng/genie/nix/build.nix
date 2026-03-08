@@ -16,8 +16,6 @@ let
     binaryName = "genie";
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
-    # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
-    patchesDir = "packages/@overeng/utils/patches";
     # Managed by `dt nix:hash:genie` — do not edit manually.
     pnpmDepsHash = "sha256-iku+Q+kymlVWzIV0HE6uz0da0aHXbQgdCvooqWCb09Y=";
     inherit lockfileHash gitRev commitTs dirty;

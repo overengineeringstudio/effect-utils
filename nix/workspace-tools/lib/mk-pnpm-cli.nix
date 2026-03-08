@@ -8,7 +8,6 @@
   workspaceSources ? { },
   pnpmDepsHash,
   lockfileHash ? null,
-  patchesDir ? "patches",
   binaryName ? name,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -75,9 +74,56 @@ let
 
   rootPnpmWorkspaceYamlPath = workspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
+  rootPnpmLockPath = workspaceRootPath + "/pnpm-lock.yaml";
+  rootPnpmLock = builtins.readFile rootPnpmLockPath;
 
   packagePnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
   packagePnpmWorkspaceYaml = builtins.readFile packagePnpmWorkspaceYamlPath;
+
+  parsePatchedDependencyPaths =
+    lockfileYaml:
+    let
+      lockfileLines = lib.splitString "\n" lockfileYaml;
+
+      dropUntilPatchedDependencies =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else if lib.trim (builtins.head lines) == "patchedDependencies:" then
+          lib.tail lines
+        else
+          dropUntilPatchedDependencies (lib.tail lines);
+
+      takePatchedDependenciesBlock =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else
+          let
+            line = builtins.head lines;
+            trimmed = lib.trim line;
+          in
+          if trimmed != "" && !(lib.hasPrefix " " line) then
+            [ ]
+          else
+            [ line ] ++ takePatchedDependenciesBlock (lib.tail lines);
+    in
+    builtins.filter
+      (path: path != "")
+      (
+        map
+          (
+            line:
+            let
+              trimmed = lib.trim line;
+            in
+            if lib.hasPrefix "path:" trimmed then
+              lib.trim (lib.removePrefix "path:" trimmed)
+            else
+              ""
+          )
+          (takePatchedDependenciesBlock (dropUntilPatchedDependencies lockfileLines))
+      );
 
   parseWorkspacePackages =
     workspaceYaml:
@@ -266,11 +312,13 @@ let
             memberItems = builtins.filter (item: item.resolved.prefix == prefix) resolvedWorkspaceMembers;
             sourceRoot = workspaceSourceRoots.${prefix};
             sourcePnpmWorkspaceYaml = builtins.readFile (sourceRoot + "/pnpm-workspace.yaml");
+            sourcePnpmLock = builtins.readFile (sourceRoot + "/pnpm-lock.yaml");
           in
           {
             inherit prefix sourceRoot;
             memberDirs = lib.unique (map (item: item.dir) memberItems);
             sourceRelMemberDirs = lib.unique (map (item: item.resolved.sourceRelPath) memberItems);
+            patchedDependencyPaths = parsePatchedDependencyPaths sourcePnpmLock;
             filteredPnpmWorkspaceYaml =
               formatWorkspaceYaml
                 (lib.unique (map (item: item.resolved.sourceRelPath) memberItems))
@@ -280,6 +328,14 @@ let
         workspaceSourcePrefixes);
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
+  rootPatchedDependencyPaths = parsePatchedDependencyPaths rootPnpmLock;
+  stagedPatchFiles =
+    lib.unique (
+      rootPatchedDependencyPaths
+      ++ lib.concatMap (
+        root: map (path: "${root.prefix}/${path}") root.patchedDependencyPaths
+      ) externalInstallRoots
+    );
 
   rootWorkspaceFiles = [ "package.json" "pnpm-lock.yaml" ];
   optionalRootWorkspaceFiles = [ ".npmrc" "tsconfig.base.json" ];
@@ -358,9 +414,7 @@ EOF
         else
           map copyDirCmd workspaceClosureDirs
       )
-      + builtins.concatStringsSep "\n" (
-        if patchesDir == null then [ ] else [ (copyDirCmd patchesDir) ]
-      )
+      + builtins.concatStringsSep "\n" (map copyFileCmd stagedPatchFiles)
     );
 
   depsSrc = materializeWorkspace {

@@ -15,8 +15,6 @@ let
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    # Patches are in packages/@overeng/utils/patches/ (referenced by pnpm-lock.yaml)
-    patchesDir = "packages/@overeng/utils/patches";
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     pnpmDepsHash = "sha256-CCRab54XKkqIA9Zy/L/dXNLb4O8mXcXUSQE4WlEj5fk=";
     smokeTestArgs = [ "--help" ];
