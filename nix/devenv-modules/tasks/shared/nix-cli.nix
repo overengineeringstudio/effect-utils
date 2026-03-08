@@ -454,11 +454,9 @@ let
     "nix:hash:${pkg.name}" = {
       description = "Update Nix hashes for ${pkg.name}";
       exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.buildNix}' '${pkg.name}' '${pkg.lockfile or ""}'";
-      # pnpm:install ensures lockfile is current before we compute hashes.
-      # Hash computation reads the lockfile to update lockfileHash fingerprint.
-      # pnpmInstallTask allows overriding when the pnpm task name differs from pkg.name
-      # (e.g. oxlint-npm's deps come from pnpm:install:oxc-config).
-      after = [ "pnpm:install:${pkg.pnpmInstallTask or pkg.name}" ];
+      # pnpm:install refreshes the repo-root install state and package-closure
+      # lockfiles before we recompute hashes.
+      after = [ "pnpm:install" ];
     };
   };
 

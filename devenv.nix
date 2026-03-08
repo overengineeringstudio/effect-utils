@@ -7,13 +7,10 @@
 }:
 let
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
+  # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
     bun = pkgs.bun;
-    src = ./.;
-  };
-  oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
-    inherit pkgs oxlintNpm;
   };
 
   # Shared task modules (from shared/ directory)
@@ -63,12 +60,9 @@ let
     }
   ];
 
-  # All packages for per-package install tasks
+  # Explicit workspace members for the repo-root pnpm workspace.
   # NOTE: Using pnpm temporarily due to bun bugs. Plan to switch back once fixed.
   # See: context/workarounds/bun-issues.md
-  # NOTE: Order matters for sequential pnpm install chain.
-  # Packages near the front complete first, enabling dependent tasks to start sooner.
-  # utils is first because ts:patch-lsp depends on it (for Effect Language Service).
   allPackages = [
     "packages/@overeng/utils"
     "packages/@overeng/utils-dev"
@@ -195,25 +189,24 @@ in
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
     # Git hook: prevent commits on default branch + enforce linked worktrees
-    (taskModules.worktree-guard { })
+    (taskModules.worktree-guard {})
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { })
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
-    # Use package-local tsc patched by effect-language-service (same pattern as vitest in test.nix)
+    # Use the repo-root hoisted TypeScript install patched by effect-language-service.
     (taskModules.ts {
-      tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
-      lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
-      lspPatchDir = "packages/@overeng/utils/node_modules/typescript";
-      # Depend only on utils package install (not full pnpm:install) for faster parallel startup
-      lspPatchAfter = [ "pnpm:install:utils" ];
+      tscBin = "node_modules/.bin/tsc";
+      lspPatchCmd = "node_modules/.bin/effect-language-service patch --dir node_modules/typescript";
+      lspPatchDir = "node_modules/typescript";
+      lspPatchAfter = [ "pnpm:install" ];
     })
     (taskModules.megarepo { })
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
-    # Per-package pnpm install tasks
+    # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
     (taskModules.pnpm { packages = allPackages; })
     # Self-contained test tasks: each package uses its own vitest from node_modules
@@ -234,15 +227,9 @@ in
         "scripts"
         "context"
       ];
-      # Explicit lint invalidation patterns with global excludes for vendored/generated trees.
+      # Explicit patterns that avoid node_modules traversal
+      # Key insight: patterns like "packages/*/src/**" are safe because src/ never contains node_modules
       execIfModifiedPatterns = [
-        # Global excludes
-        "!**/node_modules/**"
-        "!**/.devenv/**"
-        "!**/.direnv/**"
-        "!**/dist/**"
-        "!**/coverage/**"
-        "!**/storybook-static/**"
         # packages: src directories (safe - no node_modules inside src)
         "packages/@overeng/*/src/**/*.ts"
         "packages/@overeng/*/src/**/*.tsx"
@@ -276,7 +263,7 @@ in
         "context/effect/socket/*.genie.ts"
         "context/effect/socket/examples/*.ts"
         "context/opentui/*.genie.ts"
-        # context: docs/config
+        # context: docs/config (safe; no node_modules under context/)
         "context/**/*.md"
         "context/**/*.json"
         # linter config files (changes should trigger lint)
@@ -328,7 +315,7 @@ in
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
-    oxlintWithPlugins
+    oxlintNpm
     pkgs.oxfmt
     (mkSourceCli {
       name = "genie";
@@ -343,11 +330,10 @@ in
 
   # Source-mode CLIs need pnpm install before running.
   # (The shared modules don't assume this — they work with Nix packages too.)
-  tasks."genie:run".after = [ "pnpm:install:genie" ];
-  tasks."genie:watch".after = [ "pnpm:install:genie" ];
-  tasks."genie:check".after = [ "pnpm:install:genie" ];
-  tasks."lint:check:genie".after = [ "pnpm:install:genie" ];
-  tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
+  tasks."genie:run".after = [ "pnpm:install" ];
+  tasks."genie:watch".after = [ "pnpm:install" ];
+  tasks."genie:check".after = [ "pnpm:install" ];
+  tasks."megarepo:sync".after = [ "pnpm:install" ];
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];

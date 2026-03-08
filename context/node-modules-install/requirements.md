@@ -53,7 +53,8 @@ lockfile that define installs for that workspace.
   is acceptable. We can generate the explicit member list via Genie.
 - T2 - Keeping a per-package lockfile for standalone repos is acceptable, as
   long as a composed megarepo may also maintain its own aggregate lockfile
-  for the composed workspace topology.
+  for the composed workspace topology. In the live worktree, package-level
+  lockfile refreshes may be lockfile-only.
 - T3 - Using an aggregate package or aggregate root manifest for the composed
   workspace topology is acceptable. Package managers are usually optimized
   for monorepos, so a canonical aggregate root often gives the best install
@@ -102,7 +103,8 @@ lockfile that define installs for that workspace.
   mechanically derivable from the workspace topology. Install and runtime
   entrypoints must be topology-aware, and ambiguous or unsupported
   entrypoints must fail fast instead of silently materializing the wrong
-  topology.
+  topology or creating package-local install state that belongs to a
+  different topology.
 - R9 - If a dependency is intended to resolve to a local workspace member but
   does not, the system must surface that mismatch clearly.
 

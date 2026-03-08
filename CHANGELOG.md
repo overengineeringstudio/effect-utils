@@ -33,6 +33,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **pnpm/dev workspace**: Switch dev installs to a generated repo-root hoisted pnpm workspace
+  - Adds generated root `package.json` and `pnpm-workspace.yaml` with explicit workspace members
+  - Makes `pnpm:install` own the repo-root install state and refresh package-closure lockfiles in lockfile-only mode
+  - Updates package-scoped task execution to use `pnpm exec` so Vitest, Storybook, and Vite resolve against the active workspace topology
+  - Keeps package-level `pnpm-workspace.yaml` files as package-closure metadata instead of package-local dev install roots
 - **@overeng/utils**: Make Storybook `viteFinal` typing opt-in generic for linked Vite workspaces
   - Keeps the default helper API free of foreign Vite types
   - Lets consumers opt into their own local `vite` config type when they need a typed `viteFinal` hook

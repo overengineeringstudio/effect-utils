@@ -45,5 +45,10 @@
     "noImplicitAny": false,
     "strictNullChecks": false
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../utils"
+    }
+  ]
 }

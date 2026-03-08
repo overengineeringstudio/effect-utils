@@ -7,6 +7,7 @@ import { Effect, Layer } from 'effect'
 import { describe, test, expect } from 'vitest'
 
 import { resolveOutputMode } from '../../src/effect/cli.tsx'
+
 import {
   // Detection (Node-only)
   detectOutputMode,

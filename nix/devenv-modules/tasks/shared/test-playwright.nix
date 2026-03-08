@@ -6,8 +6,8 @@
 #       packages = [
 #         { path = "apps/misc.schickling.dev"; name = "misc"; installName = "misc-schickling-dev"; }
 #       ];
-#       # Optional: install task prefix (default: pnpm:install)
-#       installTaskPrefix = "pnpm:install";
+#       # Optional: install task name (default: "pnpm:install")
+#       installTask = "pnpm:install";
 #       # Optional: custom playwright binary (default: playwright)
 #       playwrightBin = "node_modules/.bin/playwright";
 #     })
@@ -18,7 +18,7 @@
 #   - test:pw:<name> - Run playwright tests for specific package
 {
   packages,
-  installTaskPrefix ? "pnpm:install",
+  installTask ? "pnpm:install",
   playwrightBin ? "playwright",
 }:
 { lib, ... }:
@@ -29,7 +29,7 @@ let
       description = "Run playwright tests for ${pkg.name}";
       exec = trace.exec "test:pw:${pkg.name}" "${playwrightBin} test";
       cwd = pkg.path;
-      after = [ "${installTaskPrefix}:${pkg.installName or pkg.name}" ];
+      after = [ installTask ];
     };
   };
 

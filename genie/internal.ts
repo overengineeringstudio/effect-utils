@@ -65,8 +65,8 @@ export {
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.
  *
- * Internal packages use `workspace:*` protocol with per-package pnpm-workspace.yaml files.
- * Each package declares its siblings in its workspace, enabling proper symlink resolution.
+ * Internal packages use `workspace:*` inside the standalone repo topology.
+ * Cross-repo composition uses generated aggregate roots instead.
  *
  * Package list is derived from genie/packages.ts (single source of truth).
  * See: context/workarounds/pnpm-issues.md for full details
@@ -98,13 +98,16 @@ export const utilsPatches = definePatchedDependencies({
  * gets its own `.pnpm` store, creating different physical paths for the same package.
  * TypeScript treats these as distinct types, breaking project references.
  */
-const commonWorkspaceSettings = {
+export const commonPnpmWorkspaceData = {
   patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
   dedupePeerDependents: true as const,
   supportedArchitectures: {
     os: ['linux', 'darwin'],
     cpu: ['x64', 'arm64'],
+  },
+  settings: {
+    nodeLinker: 'hoisted' as const,
   },
 }
 
@@ -118,7 +121,7 @@ export const pnpmWorkspaceReact = (packages: readonly string[]) =>
   pnpmWorkspaceYaml({
     packages: ['.', ...packages],
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
-    ...commonWorkspaceSettings,
+    ...commonPnpmWorkspaceData,
   })
 
 type PkgInput = GenieOutput<PackageJsonData>
@@ -135,7 +138,7 @@ const resolveDeps = createWorkspaceDepsResolver({
 export const pnpmWorkspaceStandalone = () =>
   pnpmWorkspaceYaml({
     packages: ['.'],
-    ...commonWorkspaceSettings,
+    ...commonPnpmWorkspaceData,
   })
 
 /**
@@ -146,7 +149,7 @@ export const pnpmWorkspaceStandaloneReact = () =>
   pnpmWorkspaceYaml({
     packages: ['.'],
     publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
-    ...commonWorkspaceSettings,
+    ...commonPnpmWorkspaceData,
   })
 
 /**
@@ -176,7 +179,7 @@ export const pnpmWorkspaceWithDeps = ({
   const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
   return pnpmWorkspaceYaml({
     packages: ['.', ...packages],
-    ...commonWorkspaceSettings,
+    ...commonPnpmWorkspaceData,
   })
 }
 

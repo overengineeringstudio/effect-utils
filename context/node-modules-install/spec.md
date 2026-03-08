@@ -12,9 +12,11 @@ This spec defines:
 
 - standalone and composed workspace topology
 - aggregate topology generation
+- peer-sensitive package convergence
 - install ownership
 - local cross-repo resolution
 - linker and runtime behavior
+- package-closure lockfile refresh
 - lockfile and publish behavior
 - CI and validation expectations
 
@@ -34,6 +36,10 @@ This spec defines:
 - aggregate dependency closure:
   the external dependency set that must be installed at the aggregate root so
   that linked cross-repo packages resolve coherently at runtime
+- peer-sensitive package family:
+  a package family whose runtime identity matters and therefore must not split
+  across one composed runtime graph, for example React, Emotion, and similar
+  context- or singleton-bearing packages
 
 ## Topology Model
 
@@ -66,6 +72,25 @@ Version selection for the aggregate dependency closure must be deliberate and
 validated. The implementation must not silently let the aggregate root drift
 from what linked packages declare.
 
+## Peer-Sensitive Package Convergence
+
+- Peer-sensitive package families must converge at the aggregate root.
+- Convergence may be implemented with generated aggregate dependencies,
+  generated `pnpm.overrides`, or both.
+- Convergence is not satisfied merely by pinning some version. The selected
+  aggregate versions must be validated against the participating standalone
+  repos.
+- A convergence mechanism that forces one runtime instance of the wrong
+  version does not conform to this spec.
+
+At minimum, validation must prove:
+
+- all participating repos accept the selected versions structurally
+- the composed runtime resolves one live instance for each peer-sensitive
+  package family under test
+- the selected aggregate versions match the intended policy instead of
+  silently overriding it
+
 ## Install Ownership
 
 - Each standalone topology owns its own standalone install state.
@@ -88,8 +113,9 @@ from what linked packages declare.
 
 - The supported linker is `node-linker=hoisted`.
 - The hoisted linker applies to standalone and composed topologies.
-- Package-local `node_modules` inside workspace packages are not part of the
-  supported steady state.
+- Package-local `node_modules` inside workspace packages are acceptable only
+  as derived projection state of the active topology. They must not be
+  independently install-owned or allowed to diverge from the active topology.
 
 This linker choice is required because:
 
@@ -126,15 +152,32 @@ Managed tooling must provide topology-aware entrypoints for:
 
 - standalone install
 - composed install
+- package-closure lockfile refresh
 - composed runtime execution
 
 At minimum the managed wrappers must:
 
 - select the correct topology root
+- ensure nested standalone repos are ready before a composed install depends
+  on them
 - apply the required runtime symlink-preservation flags for composed
   execution
 - validate that aggregate topology generation and dependency closure are in
   sync before install and runtime execution
+
+Package-level install commands in the live worktree are not supported if they
+materialize package-local `node_modules`. Package-level closure refreshes in
+the live worktree must be lockfile-only.
+
+## Package-Closure Lockfile Refresh
+
+- Standalone repo roots own their normal install state and lockfiles.
+- Package-level `pnpm-workspace.yaml` files may remain as package-closure
+  metadata for builders and lockfile generation.
+- In the live worktree, package-level refreshes must use lockfile-only
+  commands and must not create or mutate package-local install ownership.
+- A package-level command that materializes fresh package-local install state
+  outside the active topology owner violates this spec.
 
 ## Lockfiles and Publishing
 
@@ -152,6 +195,7 @@ Composed validation must cover:
 
 - aggregate topology generation
 - aggregate dependency closure generation
+- peer-sensitive package convergence
 - standalone-first then composed install
 - composed-first then standalone install
 - standalone runtime coherence

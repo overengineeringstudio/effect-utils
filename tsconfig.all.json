@@ -51,10 +51,10 @@
       "path": "./packages/@overeng/react-inspector"
     },
     {
-      "path": "./packages/@overeng/tui-react"
+      "path": "./packages/@overeng/tui-core"
     },
     {
-      "path": "./packages/@overeng/tui-core"
+      "path": "./packages/@overeng/tui-react"
     },
     {
       "path": "./packages/@overeng/utils"

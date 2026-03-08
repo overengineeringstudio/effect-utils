@@ -12,4 +12,5 @@ export default tsconfigJson({
     jsx: 'react-jsx',
   },
   include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx'],
+  references: [{ path: '../tui-react' }, { path: '../utils' }, { path: '../utils-dev' }],
 } satisfies TSConfigArgs)
