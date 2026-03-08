@@ -264,14 +264,15 @@ let
                 )
                 workspaceMembers
             );
-          # Include workspace member manifest files. Some downstream composed
-          # workspaces still rely on per-member pnpm files during staged
-          # installs, so package.json alone is not sufficient.
+          # Include workspace member package manifests and lockfiles. Some
+          # downstream composed workspaces still rely on per-member lockfiles
+          # during staged installs, but including member pnpm-workspace files
+          # can reintroduce topology-specific config mismatches.
           isWorkspaceMemberManifest = lib.any (
             memberDir:
             lib.any
               (fileName: relPath == "${memberDir}/${fileName}")
-              [ "package.json" "pnpm-lock.yaml" "pnpm-workspace.yaml" ]
+              [ "package.json" "pnpm-lock.yaml" ]
           ) workspaceMembers;
           isWorkspaceMemberDir =
             type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
