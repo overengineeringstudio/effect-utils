@@ -38,6 +38,14 @@ let
       builtins.toPath sourceRoot;
 
   workspaceSourceRoots = lib.mapAttrs (_: normalizeSourceRoot) workspaceSources;
+  workspaceSourceKinds = lib.mapAttrs (
+    _prefix: sourceRoot:
+    {
+      hasRepoRoot =
+        builtins.pathExists (sourceRoot + "/package.json")
+        && builtins.pathExists (sourceRoot + "/pnpm-workspace.yaml");
+    }
+  ) workspaceSourceRoots;
   workspaceSourcePrefixes = lib.sort (
     left: right: lib.stringLength left > lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
@@ -298,31 +306,33 @@ let
         let
           resolved = resolveSourceFor dir;
         in
-        resolved.prefix == null
+        resolved.prefix == null || !(workspaceSourceKinds.${resolved.prefix}.hasRepoRoot)
       ) workspaceMembers
     );
 
   externalInstallRoots =
     builtins.filter
-      (root: root.memberDirs != [ ])
+      (root: root.hasRepoRoot && root.memberDirs != [ ])
       (map
         (
           prefix:
           let
             memberItems = builtins.filter (item: item.resolved.prefix == prefix) resolvedWorkspaceMembers;
             sourceRoot = workspaceSourceRoots.${prefix};
-            sourcePnpmWorkspaceYaml = builtins.readFile (sourceRoot + "/pnpm-workspace.yaml");
-            sourcePnpmLock = builtins.readFile (sourceRoot + "/pnpm-lock.yaml");
+            hasRepoRoot = workspaceSourceKinds.${prefix}.hasRepoRoot;
+            sourcePnpmWorkspaceYaml =
+              if hasRepoRoot then builtins.readFile (sourceRoot + "/pnpm-workspace.yaml") else "";
+            sourcePnpmLock = if hasRepoRoot then builtins.readFile (sourceRoot + "/pnpm-lock.yaml") else "";
           in
           {
-            inherit prefix sourceRoot;
+            inherit prefix sourceRoot hasRepoRoot;
             memberDirs = lib.unique (map (item: item.dir) memberItems);
             sourceRelMemberDirs = lib.unique (map (item: item.resolved.sourceRelPath) memberItems);
-            patchedDependencyPaths = parsePatchedDependencyPaths sourcePnpmLock;
+            patchedDependencyPaths = if hasRepoRoot then parsePatchedDependencyPaths sourcePnpmLock else [ ];
             filteredPnpmWorkspaceYaml =
               formatWorkspaceYaml
                 (lib.unique (map (item: item.resolved.sourceRelPath) memberItems))
-                (workspaceSuffixLines sourcePnpmWorkspaceYaml);
+                (if hasRepoRoot then workspaceSuffixLines sourcePnpmWorkspaceYaml else [ ]);
           }
         )
         workspaceSourcePrefixes);
