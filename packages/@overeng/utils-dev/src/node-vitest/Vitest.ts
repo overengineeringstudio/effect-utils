@@ -26,9 +26,6 @@ import {
   type Scope,
 } from 'effect'
 
-// oxlint-disable-next-line oxc(no-barrel-file) -- intentional facade over @effect/vitest
-export * from '@effect/vitest'
-
 // ============================================================================
 // Environment Detection
 // ============================================================================
