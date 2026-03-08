@@ -2,6 +2,16 @@
   Installs packages from an explicit local topology projection under `.topologies/`
   instead of running pnpm against the raw checked-out peer repos.
 
+  Relation to the requirements:
+  - aligns with node-modules-install R1/R8/R9 by making one install owner
+    explicit for the selected topology and failing in one predictable place
+  - aligns with R3/R4 because source repos still keep their standalone
+    manifests/lockfiles and live source remains in the current worktree
+  - aligns with R5 by materializing the package plus its local workspace
+    closure into a minimal installable topology
+  - aligns partly with bun-cli-build A2/R2 because the projection is derived
+    from the canonical worktree and checked-in topology files
+
   Why this exists:
   - downstream repos keep `workspace:*` / local path deps in source
   - pnpm installs become fragile when raw peer repos bring their own nested
@@ -18,6 +28,14 @@
     nested pnpm metadata so the root topology remains authoritative
   - runs `pnpm install --frozen-lockfile` inside that projection and then
     symlinks the original package's `node_modules` back to the projection
+
+  Follow-up work:
+  - downstream Nix builds still need to consume the same topology definition so
+    repo-side installs and build-time composition stop diverging
+  - the projection should become a first-class shared topology/materialization
+    API instead of each flake keeping bespoke build-side assembly logic
+  - the end state should rely less on projection-time metadata stripping so we
+    get closer to bun-cli-build A3 and reuse canonical manifests/lockfiles more directly
 
   This keeps local source editing ergonomic while making repo-side installs
   behave like the normalized composed workspace used by downstream builds.
