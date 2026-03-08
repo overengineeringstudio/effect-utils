@@ -44,7 +44,8 @@ install model must account for that.
 - A3 - Nested repos must remain valid standalone repos with their own
   manifests and lockfiles.
 - A4 - A composed megarepo may add an aggregate root manifest and lockfile
-  for the composed topology.
+  for the composed topology, because package managers are usually optimized
+  for monorepo-style installs and updates.
 
 ## Acceptable Tradeoffs
 
