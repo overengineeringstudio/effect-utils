@@ -11,6 +11,10 @@ let
   oxlintNpm = import ./nix/oxlint-npm.nix {
     inherit pkgs;
     bun = pkgs.bun;
+    src = ./.;
+  };
+  oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
+    inherit pkgs oxlintNpm;
   };
 
   # Shared task modules (from shared/ directory)
@@ -196,11 +200,11 @@ in
     inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
-    # Use the repo-root hoisted TypeScript install patched by effect-language-service.
+    # Use the package-local TypeScript install patched by effect-language-service.
     (taskModules.ts {
-      tscBin = "node_modules/.bin/tsc";
-      lspPatchCmd = "node_modules/.bin/effect-language-service patch --dir node_modules/typescript";
-      lspPatchDir = "node_modules/typescript";
+      tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
+      lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
+      lspPatchDir = "packages/@overeng/utils/node_modules/typescript";
       lspPatchAfter = [ "pnpm:install" ];
     })
     (taskModules.megarepo { })
@@ -315,7 +319,7 @@ in
     pkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
-    oxlintNpm
+    oxlintWithPlugins
     pkgs.oxfmt
     (mkSourceCli {
       name = "genie";
@@ -333,6 +337,7 @@ in
   tasks."genie:run".after = [ "pnpm:install" ];
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
+  tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."megarepo:sync".after = [ "pnpm:install" ];
 
   tasks."gh:apply-settings" = {
