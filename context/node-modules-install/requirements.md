@@ -37,15 +37,11 @@ install model must account for that.
 ## Assumptions
 
 - A1 - These requirements build on
-  [Nix & Devenv Specification](../nix-devenv/requirements.md).
+  [Nix & Devenv Specification](../nix-devenv/requirements.md) and the
+  [megarepo spec](../../packages/@overeng/megarepo/docs/spec.md).
 - A2 - The megarepo worktree path is canonical; we should not require copied
   dev worktrees or separate staged checkouts just to make local iteration
   safe.
-- A3 - Nested repos must remain valid standalone repos with their own
-  manifests and lockfiles.
-- A4 - A composed megarepo may add an aggregate root manifest and lockfile
-  for the composed topology, because package managers are usually optimized
-  for monorepo-style installs and updates.
 
 ## Acceptable Tradeoffs
 
