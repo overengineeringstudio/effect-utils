@@ -323,9 +323,6 @@ PY
       path,
       name,
       prevName,
-      workspaceMembers,
-      localPathDeps,
-      supportPaths,
       injected,
       ...
     }:
