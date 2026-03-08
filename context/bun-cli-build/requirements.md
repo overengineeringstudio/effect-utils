@@ -17,16 +17,6 @@ state.
   internals may materialize filtered inputs, but the user should not need to
   manage separate clean or dirty worktrees.
 
-## Acceptable Tradeoffs
-
-- T1 - Materializing filtered build inputs is acceptable if the materialized
-  view is derived mechanically from the canonical workspace topology.
-- T2 - Installing dependencies inside the Nix build is acceptable as long as
-  the build reuses the canonical manifests and lockfiles for the selected
-  topology instead of copying developer `node_modules`.
-- T3 - Standalone and composed topologies may use different lockfiles, as
-  long as the build selects the correct one explicitly and reproducibly.
-
 ## Requirements
 
 ### Must preserve source and topology semantics
