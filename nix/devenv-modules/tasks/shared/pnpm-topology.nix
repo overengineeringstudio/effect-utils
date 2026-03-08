@@ -54,6 +54,7 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cache = import ../lib/cache.nix { inherit config; };
+  workspaceProjection = import ../../../workspace-tools/lib/workspace-projection.nix { inherit pkgs; };
   cacheRoot = cache.mkCachePath "pnpm-topology-install";
   flock = "${pkgs.flock}/bin/flock";
   rsync = "${pkgs.rsync}/bin/rsync";
@@ -340,18 +341,7 @@ PY
         fi
       }
 
-      # Copied members should behave like dependencies owned by the projected
-      # root topology, not like nested install owners with their own pnpm state.
-      sanitize_member() {
-        local rel="$1"
-        local member_dir="$topology_dir/$rel"
-        if [ -f "$member_dir/package.json" ]; then
-          ${jq} '{name, version, type, exports} | with_entries(select(.value != null))' \
-            "$member_dir/package.json" > "$member_dir/package.json.tmp"
-          mv "$member_dir/package.json.tmp" "$member_dir/package.json"
-        fi
-        ${rm} -f "$member_dir/pnpm-lock.yaml" "$member_dir/pnpm-workspace.yaml" "$member_dir/.npmrc"
-      }
+      ${workspaceProjection.shellFns}
 
       ${mkRuntimeTopologyFns path}
 
@@ -360,7 +350,9 @@ PY
       while IFS= read -r rel; do
         [ -z "$rel" ] && continue
         copy_tree "$rel"
-        sanitize_member "$rel"
+        # Keep runtime dependency metadata for copied peers so live source imports
+        # can still resolve transitive packages from the projected root install.
+        project_workspace_member "$topology_dir/$rel" runtime
         copy_repo_support_for_rel "$rel"
       done < <(list_workspace_members)
       while IFS= read -r rel; do
