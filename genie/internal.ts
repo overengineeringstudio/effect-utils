@@ -5,6 +5,7 @@
  * For external/peer repo use, import from `./external.ts` instead.
  */
 
+import type { Strict } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   catalog as externalCatalog,
   createWorkspaceDepsResolver,
@@ -16,7 +17,6 @@ import {
   type GenieOutput,
   type PackageJsonData,
 } from './external.ts'
-import type { Strict } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
 // Re-export from external for convenience (explicit exports to avoid barrel file)
@@ -78,9 +78,7 @@ export const catalog = defineCatalog({
   packages: internalPackageCatalogEntries,
 })
 
-export const packageJson = <const T extends PackageJsonData>(
-  data: Strict<T, PackageJsonData>,
-) =>
+export const packageJson = <const T extends PackageJsonData>(data: Strict<T, PackageJsonData>) =>
   externalPackageJson({
     ...data,
     pnpm: {
