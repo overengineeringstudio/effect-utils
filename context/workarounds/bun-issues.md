@@ -77,6 +77,24 @@ For Bun-only evaluation/build flows, a local workspace fork looks credible:
 - apply the patch in that vendored package once, in source control
 - point Bun-specific manifests at it via `workspace:*`
 
+Example:
+
+```json
+// packages/vendor/effect-distributed-lock/package.json
+{
+  "name": "effect-distributed-lock",
+  "version": "0.0.11"
+}
+
+// Bun-only generated manifest
+{
+  "workspaces": [".", "../vendor/effect-distributed-lock"],
+  "dependencies": {
+    "effect-distributed-lock": "workspace:*"
+  }
+}
+```
+
 This avoids Bun `patchedDependencies` entirely while preserving the same import specifier. It is best suited for Bun-only staged installs or canary lanes, not as the single published manifest shape for the repo.
 
 ---
