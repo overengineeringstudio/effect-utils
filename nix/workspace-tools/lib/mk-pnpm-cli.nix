@@ -433,7 +433,11 @@ pkgs.stdenv.mkDerivation {
     deploy_dir="$PWD/.pnpm-deploy"
     rm -rf "$deploy_dir"
     cd ${packageDir}
+    # Shared-lockfile topologies still project workspace members without full
+    # member importer coverage, so pnpm's legacy deploy path remains the stable
+    # deploy mode until those topologies become fully canonical.
     pnpm --config.inject-workspace-packages=true \
+      --config.forceLegacyDeploy=true \
       --filter . \
       deploy \
       --offline \

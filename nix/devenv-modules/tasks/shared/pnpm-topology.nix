@@ -208,6 +208,9 @@ PY
         if [ ! -f "$DEVENV_ROOT/${path}/package.json" ]; then
           return
         fi
+        # `file:` / `link:` deps behave like extra local workspace edges for the
+        # topology cache key and projection, even though they are not declared in
+        # pnpm-workspace.yaml.
         ${jq} -r '
           [(.dependencies // {}), (.devDependencies // {}), (.optionalDependencies // {})]
           | add
@@ -245,6 +248,9 @@ PY
           *" $repo_root "*) return ;;
         esac
         copied_repo_roots="$copied_repo_roots $repo_root"
+        # Some projected packages rely on repo-level support files such as
+        # patches or shared tsconfig roots. Copy them once per source repo so
+        # the projected topology resolves the same ancillary paths as source.
         for support in tsconfig.base.json patches; do
           if [ -d "$DEVENV_ROOT/$repo_root/$support" ]; then
             copy_tree "$repo_root/$support"
@@ -328,6 +334,8 @@ PY
       copy_tree() {
         local rel="$1"
         ${mkdir} -p "$topology_dir/$(${dirnameBin} "$rel")"
+        # Follow symlinks so the projection is self-contained and does not
+        # accidentally resolve back into an unprojected peer repo at install time.
         ${rsync} -aL ${cleanExcludeArgs} "$DEVENV_ROOT/$rel/" "$topology_dir/$rel/"
       }
 
@@ -358,6 +366,9 @@ PY
       while IFS= read -r rel; do
         [ -z "$rel" ] && continue
         copy_tree "$rel"
+        # Local path deps keep their authored manifest because the root lockfile
+        # already models them as explicit file/link edges rather than workspace
+        # members that need to be sanitized.
         copy_repo_support_for_rel "$rel"
       done < <(list_local_path_deps)
     '';
@@ -391,6 +402,8 @@ PY
           ${materializeScript}
 
           cd "$topology_dir/${path}"
+          # CI stays strict with `--frozen-lockfile`; local runs keep the default
+          # install flow so developers can intentionally refresh lockfiles.
           if [ -n "''${CI:-}" ]; then
             pnpm install --config.confirmModulesPurge=false --frozen-lockfile
           else
@@ -398,6 +411,8 @@ PY
           fi
 
           ${rm} -rf "$DEVENV_ROOT/${path}/node_modules"
+          # Keep the developer-facing package path stable while making the
+          # projected topology the single owner of the actual install result.
           ${ln} -sfn "$topology_dir/${path}/node_modules" "$DEVENV_ROOT/${path}/node_modules"
 
           ${computeHashFn}
