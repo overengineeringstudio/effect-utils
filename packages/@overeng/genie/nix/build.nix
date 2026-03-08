@@ -20,7 +20,7 @@ let
     # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
     patchesDir = "packages/@overeng/utils/patches";
     # Managed by `dt nix:hash:genie` — do not edit manually.
-    pnpmDepsHash = "sha256-p9ZPQ8Gtnpaitmpx6YR8rPHrUy3oK20ojx2a6BZeb+E=";
+    pnpmDepsHash = "sha256-D0gp0mU9b9TpYgUuUN7CisXTiqEy0LMBohQQ1pmL8s4=";
     inherit lockfileHash gitRev commitTs dirty;
   };
 in
