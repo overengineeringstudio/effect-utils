@@ -69,6 +69,16 @@ Validated on Bun `1.3.10`:
 
 That means the remaining patch blocker is not just missing `workspaces` generation. Bun currently requires contradictory static manifest shapes depending on whether the same package is the install root or a nested workspace member.
 
+### Credible Interim Workaround
+
+For Bun-only evaluation/build flows, a local workspace fork looks credible:
+
+- vendor a local workspace package with the same package name as the patched dependency
+- apply the patch in that vendored package once, in source control
+- point Bun-specific manifests at it via `workspace:*`
+
+This avoids Bun `patchedDependencies` entirely while preserving the same import specifier. It is best suited for Bun-only staged installs or canary lanes, not as the single published manifest shape for the repo.
+
 ---
 
 ## Bun Workspace Pattern (Future)
