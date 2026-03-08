@@ -17,13 +17,13 @@ All notable changes to this project will be documented in this file.
   - Excludes vendored/generated trees like `node_modules` during lint cache invalidation
   - Keeps `oxlint` install-free by using the bundled Nix JS plugin instead of the source plugin path
   - Retains the package-local `genie` install dependency because `genie --check` still runs via the repo's source-mode CLI
-- **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
-  - Stages only the target package and its workspace closure into the Nix build
-  - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree
-  - Compiles the deployed entrypoint with Bun, reducing coupling to the raw dev workspace layout
-  - Narrows pnpm deps fetching to the target lockfile, workspace member manifests, and referenced patch files
-  - Removes legacy `--force` / explicit `--recursive` fetch behavior and normalizes the store against the staged package lockfile
-  - Extends the smoke harness with a targeted regression check for `pnpm deploy --config.inject-workspace-packages=true --frozen-lockfile`
+- **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from filtered aggregate-root workspaces instead of package-level deploy closures
+  - Stages the target package and its workspace closure under one canonical root workspace
+  - Installs dependencies at that staged root with the same aggregate lockfile model used by local dev
+  - Compiles the target entrypoint with Bun from the staged package directory, reducing coupling to bespoke deploy-time workspace surgery
+  - Narrows pnpm deps fetching to the staged root lockfile, closure package manifests, and referenced patch files
+  - Removes legacy deploy-specific behavior and normalizes the store against the staged aggregate workspace input
+  - Keeps the smoke harness focused on real Nix builds of the `genie` and `megarepo` packages
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
 - **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails

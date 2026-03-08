@@ -3,11 +3,12 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that fetches pnpm dependencies
-#    from a staged package lockfile and archives the resulting store into a
-#    reproducible tarball.
+#    from a staged aggregate workspace input and archives the resulting store
+#    into a reproducible tarball.
 #
-# 2. mkRestoreScript: Generates a shell script snippet that extracts the archived
-#    pnpm store and configures pnpm for offline installs during the build phase.
+# 2. mkRestoreScript: Generates a shell script snippet that extracts the
+#    archived pnpm store and configures pnpm for offline installs during the
+#    build phase.
 #
 # By centralizing this logic we avoid duplicating the ~50 lines of pnpm store
 # setup, timestamp normalization, and tarball creation across multiple builders.
@@ -22,9 +23,11 @@ in
   #
   # Arguments:
   #   name:           Derivation name prefix (e.g., "genie" or "oxc-config")
-  #   src:            Filtered source containing package.json + pnpm-lock.yaml
-  #   sourceRoot:     Path within the source to cd into (e.g., "source/packages/@overeng/genie").
-  #                   Must contain the staged pnpm-lock.yaml.
+  #   src:            Filtered source containing the staged workspace root
+  #                   package.json, pnpm-lock.yaml, pnpm-workspace.yaml, and
+  #                   relevant workspace member manifests / patches.
+  #   sourceRoot:     Path within the staged workspace root to cd into before
+  #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
   #   preInstall:     Extra shell commands to run before pnpm install (e.g., chmod for workspace members)
   mkDeps =
@@ -63,7 +66,7 @@ in
       );
     in
     pkgs.stdenvNoCC.mkDerivation {
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v2";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v3";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -76,10 +79,21 @@ in
         pkgs.findutils
       ];
 
+      dontUnpack = true;
       dontConfigure = true;
       dontBuild = true;
 
       installPhase = ''
+        mkdir source
+        cp -r "$src"/. source/
+        chmod -R +w source
+
+        if [ "$sourceRoot" = "." ]; then
+          cd source
+        else
+          cd "source/$sourceRoot"
+        fi
+
         runHook preInstall
 
         ${preInstall}
@@ -275,13 +289,6 @@ in
           --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
           | zstd -T1 -q -o $out/pnpm-store.tar.zst
 
-        metadata_dir="$HOME/.cache/pnpm"
-        mkdir -p "$metadata_dir"
-        cd "$metadata_dir"
-        LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-          --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
-          | zstd -T1 -q -o $out/pnpm-metadata.tar.zst
-
         runHook postInstall
       '';
 
@@ -309,11 +316,6 @@ in
       # Extract pnpm store
       zstd -d -c ${deps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
       chmod -R +w $STORE_PATH
-
-      export XDG_CACHE_HOME="$HOME/.cache"
-      mkdir -p "$XDG_CACHE_HOME/pnpm"
-      zstd -d -c ${deps}/pnpm-metadata.tar.zst | tar -xf - -C "$XDG_CACHE_HOME/pnpm"
-      chmod -R +w "$XDG_CACHE_HOME/pnpm"
 
       # Configure pnpm for offline install
       pnpm config set store-dir "$STORE_PATH"
