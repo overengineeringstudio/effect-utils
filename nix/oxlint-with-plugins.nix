@@ -1,7 +1,7 @@
 # Wrapper around oxlint-npm that auto-injects the @overeng/oxc-config JS plugin.
 #
 # When the project's .oxlintrc.json (or an explicit -c config) contains overeng/*
-# rules but no jsPlugins field, this wrapper transparently injects the plugin path
+# rules, this wrapper transparently injects (or replaces) the plugin path
 # via a temporary config copy. Projects without overeng rules get plain pass-through.
 #
 # Usage:
@@ -33,8 +33,8 @@ pkgs.writeShellApplication {
       config_file=".oxlintrc.json"
     fi
 
-    # If config has overeng rules and no jsPlugins already, inject plugin path via temp config
-    if [ -n "$config_file" ] && grep -q '"overeng/' "$config_file" 2>/dev/null && ! grep -q '"jsPlugins"' "$config_file" 2>/dev/null; then
+    # If config has overeng rules, inject the Nix-built plugin path (replaces any existing jsPlugins)
+    if [ -n "$config_file" ] && grep -q '"overeng/' "$config_file" 2>/dev/null; then
       tmpconfig=$(mktemp)
       trap 'rm -f "$tmpconfig"' EXIT
       jq --argjson plugins "[\"$pluginPath\"]" '.jsPlugins = $plugins' "$config_file" > "$tmpconfig"
