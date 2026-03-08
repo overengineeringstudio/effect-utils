@@ -1,3 +1,27 @@
+/*
+  Installs packages from an explicit local topology projection under `.topologies/`
+  instead of running pnpm against the raw checked-out peer repos.
+
+  Why this exists:
+  - downstream repos keep `workspace:*` / local path deps in source
+  - pnpm installs become fragile when raw peer repos bring their own nested
+    `pnpm-workspace.yaml` / `pnpm-lock.yaml`
+  - the projection makes the selected flake/package root the single install owner
+    while still reusing sources from the current worktree
+
+  What the task does:
+  - copies the requested package into `.topologies/<task-name>/...`
+  - discovers local workspace members and `file:` / `link:` package deps
+  - copies those peer packages plus repo-level support files like `patches/`
+    and `tsconfig.base.json`
+  - strips copied peer package manifests to a minimal exported shape and removes
+    nested pnpm metadata so the root topology remains authoritative
+  - runs `pnpm install --frozen-lockfile` inside that projection and then
+    symlinks the original package's `node_modules` back to the projection
+
+  This keeps local source editing ergonomic while making repo-side installs
+  behave like the normalized composed workspace used by downstream builds.
+*/
 {
   packages,
   globalCache ? true,
