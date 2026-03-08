@@ -20,7 +20,8 @@
       "@effect/platform": "0.94.2",
       "@effect/experimental": "0.58.0",
       "@effect/rpc": "0.73.0"
-    }
+    },
+    "patchedDependencies": {}
   },
   "$genie": {
     "source": "package.json.genie.ts",

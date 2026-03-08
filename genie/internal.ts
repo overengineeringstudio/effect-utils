@@ -5,11 +5,14 @@
  * For external/peer repo use, import from `./external.ts` instead.
  */
 
+import type { Strict } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   catalog as externalCatalog,
   createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
+  packageJson as externalPackageJson,
+  pnpmPatchedDependencies,
   pnpmWorkspaceYaml,
   type GenieOutput,
   type PackageJsonData,
@@ -35,7 +38,6 @@ export {
   megarepoJson,
   oxfmtConfig,
   oxlintConfig,
-  packageJson,
   packageTsconfigCompilerOptions,
   patchPostinstall,
   pnpmPatchedDependencies,
@@ -76,31 +78,27 @@ export const catalog = defineCatalog({
   packages: internalPackageCatalogEntries,
 })
 
-/**
- * Patched dependencies for `@overeng/utils`.
- * Shared across workspace yamls that include utils as a workspace member.
- */
-export const utilsPatches = definePatchedDependencies({
-  location: 'packages/@overeng/utils',
-  patches: {
-    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
-  },
-})
+export const packageJson = <const T extends PackageJsonData>(data: Strict<T, PackageJsonData>) =>
+  externalPackageJson({
+    ...data,
+    pnpm: {
+      ...data.pnpm,
+      patchedDependencies: data.pnpm?.patchedDependencies ?? pnpmPatchedDependencies(),
+    },
+  })
 
 /**
- * Common pnpm workspace settings for all effect-utils packages.
+ * Common pnpm workspace settings for effect-utils packages.
  *
- * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
- * so that lockfiles remain consistent when the same package appears in multiple workspaces.
- *
- * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
- * Per-member lockfiles cause TS2742 errors in `tsc --build` because each workspace member
+ * sharedWorkspaceLockfile is explicitly pinned to true so workspace lockfiles
+ * do not depend on developer-global pnpm config. Per-member lockfiles cause
+ * TS2742 errors in `tsc --build` because each workspace member
  * gets its own `.pnpm` store, creating different physical paths for the same package.
  * TypeScript treats these as distinct types, breaking project references.
  */
 const commonWorkspaceSettings = {
-  patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
+  sharedWorkspaceLockfile: true as const,
   dedupePeerDependents: true as const,
   supportedArchitectures: {
     os: ['linux', 'darwin'],

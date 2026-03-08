@@ -25,5 +25,6 @@ export default packageJson({
       // https://github.com/tim-smart/effect-atom/issues/401
       ...catalog.pick('effect', '@effect/platform', '@effect/experimental', '@effect/rpc'),
     },
+    patchedDependencies: {},
   },
 } satisfies PackageJsonData)
