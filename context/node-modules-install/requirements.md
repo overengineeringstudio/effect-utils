@@ -1,0 +1,117 @@
+# Node Modules Install Requirements
+
+## Context
+
+We want a principled `node_modules` install model for standalone repos and
+composed megarepos. Megarepo composition exposes nested repos through
+symlinked `repos/*` entries, but each worktree still has one canonical
+physical location in the filesystem.
+
+The install model must support standalone repo development, composed
+cross-repo development, and live source iteration across repo boundaries
+without leaving the worktree in a divergent or order-dependent install
+state.
+
+## Example Layout
+
+```text
+~/.megarepo/.../composed-root/refs/heads/main/
+  package.json                  # composed aggregate root
+  packages/
+    app/
+  repos/
+    repo-a -> ~/.megarepo/.../repo-a/refs/heads/main
+    repo-b -> ~/.megarepo/.../repo-b/refs/heads/main
+
+~/.megarepo/.../repo-a/refs/heads/main/
+  package.json                  # standalone repo root
+  packages/
+    core/
+```
+
+The important property is that
+`~/.megarepo/.../composed-root/refs/heads/main/repos/repo-a/...` and the
+standalone `repo-a` worktree path refer to the same physical files. Any
+install model must account for that.
+
+## Assumptions
+
+- A1 - These requirements build on
+  [Nix & Devenv Specification](../nix-devenv/requirements.md).
+- A2 - The megarepo worktree path is canonical; we should not require copied
+  dev worktrees or separate staged checkouts just to make local iteration
+  safe.
+- A3 - Nested repos must remain valid standalone repos with their own
+  manifests and lockfiles.
+- A4 - A composed megarepo may add an aggregate root manifest and lockfile
+  for the composed topology.
+
+## Acceptable Tradeoffs
+
+- T1 - Listing workspace members explicitly instead of using workspace globs
+  is acceptable. We can generate the explicit member list via Genie.
+- T2 - Keeping a per-package lockfile for standalone repos is acceptable, as
+  long as a composed megarepo may also maintain its own aggregate lockfile
+  for the composed topology.
+
+## Requirements
+
+### Must be deterministic
+
+- R1 - Supported install flows must converge to one canonical final install
+  state for a given worktree and topology, independent of install order or
+  current working directory. In practice this means one active install owner
+  per physical worktree and no duplicate live instances of the same
+  dependency across one composed runtime graph.
+- R2 - Lockfiles must be reproducible and checkout-portable: no absolute
+  paths, machine-local paths, or hidden host-specific state. A composed
+  lockfile may encode the composed topology, but it must remain stable across
+  machines and fresh checkouts of that topology.
+
+### Must preserve standalone and composed validity in megarepo
+
+- R3 - Every repo must remain a valid standalone repo with its own manifests
+  and lockfiles. Composition must not require composed-only manifest
+  conventions that break standalone installs.
+- R4 - In a composed worktree, nested repos must remain runnable and hackable
+  through `repos/<repo>` paths, and cross-repo local dependencies must
+  resolve to live source so source edits propagate without reinstall. Local
+  dependency linking must be direct enough that code changes become visible
+  to dependents without requiring another install step.
+- R5 - The model must work with symlinked `repos/*` entries as produced by
+  megarepo. Workspace membership may be generated explicitly; the design must
+  not depend on Bun discovering symlinked workspace globs.
+- R6 - The model must scale across multiple composition layers, for example
+  `repo-x -> repo-y -> repo-z`, without changing the core install semantics.
+
+### Must be explicit and safe
+
+- R7 - The active install owner for a worktree must be explicit and
+  mechanically derivable from the workspace topology. Unsupported install
+  entrypoints must fail fast instead of silently creating divergent local
+  state.
+- R8 - If a dependency is intended to resolve to a local workspace member but
+  does not, the system must surface that mismatch clearly.
+
+### Must avoid accidental dependency masking
+
+- R9 - The install model must not silently make undeclared dependencies
+  appear valid. If the chosen linker or layout weakens package isolation, the
+  workspace must provide compensating checks so dependency declarations remain
+  truthful.
+
+### Must be verifiable
+
+- R10 - We need repro coverage for standalone installs, composed installs,
+  mixed or incorrect install entrypoints, cross-repo live edit propagation,
+  and duplicate-instance detection. We also need at least one realistic
+  multi-repo smoke test, not just minimal toy workspaces.
+
+## Current Findings To Respect
+
+- F1 - Bun workspace discovery works through explicit symlinked workspace
+  paths, but not through symlinked workspace globs.
+- F2 - Plain in-place mixed install ownership creates divergent
+  `node_modules` state.
+- F3 - A composed-root-owned model looks viable if install ownership is
+  centralized and nested source paths stay live-linked.
