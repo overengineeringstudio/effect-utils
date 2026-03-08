@@ -345,6 +345,7 @@ in
   tasks."genie:run".after = [ "pnpm:install:genie" ];
   tasks."genie:watch".after = [ "pnpm:install:genie" ];
   tasks."genie:check".after = [ "pnpm:install:genie" ];
+  tasks."lint:check:genie".after = [ "pnpm:install:genie" ];
   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
 
   tasks."gh:apply-settings" = {
