@@ -16,19 +16,20 @@ state.
 - A2 - The local workspace path remains the canonical source of truth. Build
   internals may materialize filtered inputs, but the user should not need to
   manage separate clean or dirty worktrees.
-- A3 - For the selected topology, the canonical manifests and lockfile are
-  already in a stable, self-contained state. A build-time install may realize
-  that dependency graph, but it should not need to rewrite the lockfile or
-  change dependency metadata to make the build work.
+- A3 - For the selected workspace topology, the canonical manifests and
+  lockfile are already in a stable, self-contained state. A build-time
+  install may realize that dependency graph, but it should not need to
+  rewrite the lockfile or change dependency metadata to make the build work.
 
 ## Requirements
 
-### Must preserve source and topology semantics
+### Must preserve source and workspace topology semantics
 
 - R1 - Uncommitted files must be visible to the build. The build must not
   silently fall back to a git snapshot that drops local source changes.
 - R2 - The build must reuse the existing manifests and lockfiles for the
-  selected topology instead of inventing bespoke build-only package metadata.
+  selected workspace topology instead of inventing bespoke build-only
+  package metadata.
 
 ### Must be pure and deterministic
 
@@ -40,10 +41,10 @@ state.
 - R5 - Build inputs must be deterministic. Hidden host paths, transient
   caches, and ambient machine state must not influence the build graph.
 - R6 - The dependency hash must be stable and platform-agnostic. The same
-  logical dependency inputs and selected topology must produce the same dep
-  hash across supported systems.
-- R7 - Errors for stale `bunDepsHash`, lockfile drift, or wrong topology
-  selection must be clear and actionable.
+  logical dependency inputs and selected workspace topology must produce the
+  same dep hash across supported systems.
+- R7 - Errors for stale `bunDepsHash`, lockfile drift, or wrong workspace
+  topology selection must be clear and actionable.
 
 ### Must be practical and reusable
 

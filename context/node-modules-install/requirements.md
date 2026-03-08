@@ -34,6 +34,10 @@ The important property is that
 standalone `repo-a` worktree path refer to the same physical files. Any
 install model must account for that.
 
+In these requirements, a `workspace topology` means the chosen workspace
+root, its workspace member packages, and the canonical manifests and
+lockfile that define installs for that workspace.
+
 ## Assumptions
 
 - A1 - These requirements build on
@@ -49,25 +53,25 @@ install model must account for that.
   is acceptable. We can generate the explicit member list via Genie.
 - T2 - Keeping a per-package lockfile for standalone repos is acceptable, as
   long as a composed megarepo may also maintain its own aggregate lockfile
-  for the composed topology.
+  for the composed workspace topology.
 - T3 - Using an aggregate package or aggregate root manifest for the composed
-  topology is acceptable. Package managers are usually optimized for monorepos,
-  so a canonical aggregate root often gives the best install and update
-  performance as long as standalone repos remain valid.
+  workspace topology is acceptable. Package managers are usually optimized
+  for monorepos, so a canonical aggregate root often gives the best install
+  and update performance as long as standalone repos remain valid.
 
 ## Requirements
 
 ### Must be deterministic
 
 - R1 - Supported install flows must converge to one canonical final install
-  state for a given worktree and topology, independent of install order or
-  current working directory. In practice this means one active install owner
-  per physical worktree and no duplicate live instances of the same
-  dependency across one composed runtime graph.
+  state for a given worktree and workspace topology, independent of install
+  order or current working directory. In practice this means one active
+  install owner per physical worktree and no duplicate live instances of the
+  same dependency across one composed runtime graph.
 - R2 - Lockfiles must be reproducible and checkout-portable: no absolute
   paths, machine-local paths, or hidden host-specific state. A composed
-  lockfile may encode the composed topology, but it must remain stable across
-  machines and fresh checkouts of that topology.
+  lockfile may encode the composed workspace topology, but it must remain
+  stable across machines and fresh checkouts of that workspace topology.
 
 ### Must preserve standalone and composed validity in megarepo
 
