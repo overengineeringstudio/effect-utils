@@ -33,8 +33,8 @@ in
               module,
               types,
               browser,
-              react-native,
-              sideEffects,
+              "react-native": ."react-native",
+              sideEffects: .sideEffects,
               files,
               dependencies,
               optionalDependencies,
@@ -57,8 +57,8 @@ in
               module,
               types,
               browser,
-              react-native,
-              sideEffects,
+              "react-native": ."react-native",
+              sideEffects: .sideEffects,
               files
             }
             | with_entries(select(.value != null))
