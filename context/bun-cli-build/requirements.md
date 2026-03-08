@@ -1,36 +1,73 @@
 # Local Build Requirements
 
-Scope: local builds for Bun-compiled CLIs in megarepo workspaces.
+## Context
 
-Assumptions:
+These requirements cover local Nix builds for Bun-compiled CLIs in megarepo
+workspaces.
 
-- These requirements build on
+They define how `mk-bun-cli` and related build plumbing should reuse the
+workspace install model without depending on developer-owned `node_modules`
+state.
+
+## Assumptions
+
+- A1 - These requirements build on
   [Node Modules Install Requirements](../node-modules-install/requirements.md).
+- A2 - The local workspace path remains the canonical source of truth. Build
+  internals may materialize filtered inputs, but the user should not need to
+  manage separate clean or dirty worktrees.
 
-1. Uncommitted files must be visible to the build (no git+file snapshot loss).
-2. No `--impure` usage; evaluation and builds stay pure.
-3. The build must reuse the existing manifests and lockfiles for the selected
-   topology instead of inventing bespoke build-only package metadata.
-4. The CLI entrypoint must remain valid as part of its standalone repo
-   topology, including its standalone lockfile when one exists.
-5. No copying `node_modules` into outputs. The build may materialize filtered
-   inputs, but it must install its own dependencies inside the Nix build
-   using the same package-manager mechanism as the normal workspace install
-   model.
-6. Works in effect-utils and peer repos, via flakes and via devenv.
-7. Respects the canonical megarepo workspace topology and install-owner
-   model. `mk-bun-cli` may materialize filtered build inputs, but it must not
-   create a second in-place install owner or depend on synthetic workspace
-   symlinks.
-8. Deterministic inputs; no hidden host paths or transient caches in the
-   build graph.
-9. Local builds should be fast by avoiding `path:.` hashing on large trees.
-10. Clear, actionable errors for stale `bunDepsHash` or lockfile drift, and
-    for selecting the wrong lockfile for the current topology.
-11. A smoke test must run for each built CLI.
-12. No new global tooling requirements; use existing `nix`, `bun`, `rsync`.
-13. Reusable/composable: peer repos can share the same staging/build plumbing
-    without copy-pasting or bespoke per-repo hacks.
-14. Prefer a single canonical local workspace source of truth. Internal build
-    staging or filtering is acceptable as an implementation detail, but the
-    system must not require separate user-managed clean/dirty worktrees.
+## Acceptable Tradeoffs
+
+- T1 - Materializing filtered build inputs is acceptable if the materialized
+  view is derived mechanically from the canonical workspace topology.
+- T2 - Installing dependencies inside the Nix build is acceptable as long as
+  the build reuses the canonical manifests and lockfiles for the selected
+  topology instead of copying developer `node_modules`.
+- T3 - Standalone and composed topologies may use different lockfiles, as
+  long as the build selects the correct one explicitly and reproducibly.
+
+## Requirements
+
+### Must preserve source and topology semantics
+
+- R1 - Uncommitted files must be visible to the build. The build must not
+  silently fall back to a git snapshot that drops local source changes.
+- R2 - The build must reuse the existing manifests and lockfiles for the
+  selected topology instead of inventing bespoke build-only package metadata.
+- R3 - The CLI entrypoint must remain valid as part of its standalone repo
+  topology, including its standalone lockfile when one exists.
+- R4 - The build must respect the canonical megarepo workspace topology and
+  install-owner model. `mk-bun-cli` may materialize filtered build inputs,
+  but it must not create a second in-place install owner or depend on
+  synthetic workspace symlinks.
+
+### Must be pure and deterministic
+
+- R5 - No `--impure` usage. Evaluation and builds must stay pure.
+- R6 - The build must not copy `node_modules` into outputs. It may
+  materialize filtered inputs, but it must install its own dependencies
+  inside the Nix build using the same package-manager mechanism as the normal
+  workspace install model.
+- R7 - Build inputs must be deterministic. Hidden host paths, transient
+  caches, and ambient machine state must not influence the build graph.
+- R8 - The dependency hash must be stable and platform-agnostic. The same
+  logical dependency inputs and selected topology must produce the same dep
+  hash across supported systems.
+- R9 - Errors for stale `bunDepsHash`, lockfile drift, or wrong topology
+  selection must be clear and actionable.
+
+### Must be practical and reusable
+
+- R10 - Local builds should be fast and should avoid `path:.` hashing across
+  unnecessarily large trees.
+- R11 - The model must work in effect-utils and peer repos, via flakes and
+  via devenv.
+- R12 - The build plumbing must be reusable across peer repos without
+  copy-pasting or bespoke per-repo hacks.
+- R13 - No new global tooling requirements. The system should use the
+  existing `nix`, `bun`, and `rsync` toolchain.
+
+### Must be verifiable
+
+- R14 - A smoke test must run for each built CLI.
