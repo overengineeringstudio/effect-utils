@@ -264,10 +264,12 @@ let
                 )
                 workspaceMembers
             );
-          # Include workspace member package.json files (not full directories)
-          # Also include their parent directories as directories
-          isWorkspaceMemberPackageJson = lib.any (
-            memberDir: relPath == "${memberDir}/package.json"
+          # Include workspace member deps-relevant files (not full directories).
+          # package.json is always needed; pnpm-lock.yaml and .npmrc are needed
+          # when shared-workspace-lockfile=false so each member manages its own lockfile.
+          memberDepsFiles = [ "package.json" "pnpm-lock.yaml" ".npmrc" ];
+          isWorkspaceMemberDepsFile = lib.any (
+            memberDir: lib.any (fname: relPath == "${memberDir}/${fname}") memberDepsFiles
           ) workspaceMembers;
           isWorkspaceMemberDir =
             type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
@@ -289,7 +291,7 @@ let
           || isPackageDepsFile
           || isInPatches
           || isParentDir
-          || isWorkspaceMemberPackageJson
+          || isWorkspaceMemberDepsFile
           || isWorkspaceMemberDir
           || isWorkspaceMemberParentDir
         );
