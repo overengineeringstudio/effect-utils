@@ -72,7 +72,7 @@ let
       if [ -f "$path/pnpm-workspace.yaml" ]; then
         (
           cd "$path"
-          pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false --config.manage-package-manager-versions=false
+          pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false
         )
       fi
     done
@@ -81,6 +81,7 @@ in
 {
   enterShell = lib.mkIf globalCache ''
     export npm_config_cache="$HOME/.cache/pnpm"
+    export npm_config_manage_package_manager_versions=false
   '';
 
   tasks = {
@@ -99,12 +100,14 @@ in
           exit 1
         fi
 
+        export npm_config_manage_package_manager_versions=false
+
         if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-          pnpm install --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --frozen-lockfile
-        else if [ -n "''${CI:-}" ]; then
-          pnpm install --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --no-frozen-lockfile
+          pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+        elif [ -n "''${CI:-}" ]; then
+          pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
         else
-          pnpm install --config.confirmModulesPurge=false --config.manage-package-manager-versions=false
+          pnpm install --config.confirmModulesPurge=false
         fi
 
         ${refreshPackageLockfilesScript}
@@ -144,7 +147,8 @@ in
       after = [ "genie:run" ];
       exec = trace.exec "pnpm:update" ''
         set -euo pipefail
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.manage-package-manager-versions=false
+        export npm_config_manage_package_manager_versions=false
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false
         ${lib.replaceStrings [ "--lockfile-only --ignore-scripts" ] [ "--lockfile-only --fix-lockfile --ignore-scripts" ] refreshPackageLockfilesScript}
         echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
       '';
