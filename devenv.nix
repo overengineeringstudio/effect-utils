@@ -46,19 +46,19 @@ let
     {
       name = "genie";
       flakeRef = ".#genie";
-      buildNix = "packages/@overeng/genie/nix/build.nix";
+      hashSource = "packages/@overeng/genie/nix/build.nix";
       lockfile = "pnpm-lock.yaml";
     }
     {
       name = "megarepo";
       flakeRef = ".#megarepo";
-      buildNix = "packages/@overeng/megarepo/nix/build.nix";
+      hashSource = "packages/@overeng/megarepo/nix/build.nix";
       lockfile = "pnpm-lock.yaml";
     }
     {
       name = "oxlint-npm";
       flakeRef = ".#oxlint-npm";
-      buildNix = "nix/oxc-config-plugin.nix";
+      hashSource = "nix/oxc-config-plugin.nix";
       lockfile = "pnpm-lock.yaml";
       pnpmInstallTask = "oxc-config";
     }
