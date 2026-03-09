@@ -264,10 +264,12 @@ let
                 )
                 workspaceMembers
             );
-          # Include workspace member package.json files (not full directories)
-          # Also include their parent directories as directories
-          isWorkspaceMemberPackageJson = lib.any (
-            memberDir: relPath == "${memberDir}/package.json"
+          # Include workspace member deps-relevant files (not full directories).
+          # package.json is always needed; pnpm-lock.yaml and .npmrc are needed
+          # when shared-workspace-lockfile=false so each member manages its own lockfile.
+          memberDepsFiles = [ "package.json" "pnpm-lock.yaml" ".npmrc" ];
+          isWorkspaceMemberDepsFile = lib.any (
+            memberDir: lib.any (fname: relPath == "${memberDir}/${fname}") memberDepsFiles
           ) workspaceMembers;
           isWorkspaceMemberDir =
             type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
@@ -289,7 +291,7 @@ let
           || isPackageDepsFile
           || isInPatches
           || isParentDir
-          || isWorkspaceMemberPackageJson
+          || isWorkspaceMemberDepsFile
           || isWorkspaceMemberDir
           || isWorkspaceMemberParentDir
         );
@@ -429,6 +431,25 @@ pkgs.stdenv.mkDerivation {
     # Deploy the target package from the staged closure into an isolated output
     # tree. This keeps build-time dependency resolution independent from the
     # raw workspace layout used during development.
+    #
+    # Uses a two-step process:
+    # 1. pnpm install populates node_modules and metadata cache from the store
+    # 2. pnpm deploy creates an isolated deployment from the installed tree
+    echo "Installing dependencies offline..."
+    cd ${packageDir}
+    pnpm install --offline --frozen-lockfile --ignore-scripts
+    cd "$OLDPWD"
+
+    # Restore full workspace member package.jsons (with runtime dependencies)
+    # before deploy. During install, stripped package.jsons + stub lockfiles
+    # pass --frozen-lockfile validation. For deploy, full deps are needed so
+    # pnpm includes transitive npm deps (e.g. cli-truncate via tui-react).
+    ${lib.concatMapStringsSep "\n" (memberDir: ''
+      if [ -f "${memberDir}/.package.json.full" ]; then
+        cp "${memberDir}/.package.json.full" "${memberDir}/package.json"
+      fi
+    '') workspaceMembers}
+
     echo "Deploying package closure..."
     deploy_dir="$PWD/.pnpm-deploy"
     rm -rf "$deploy_dir"
@@ -436,7 +457,6 @@ pkgs.stdenv.mkDerivation {
     pnpm --config.inject-workspace-packages=true \
       --filter . \
       deploy \
-      --offline \
       --frozen-lockfile \
       --ignore-scripts \
       "$deploy_dir"
