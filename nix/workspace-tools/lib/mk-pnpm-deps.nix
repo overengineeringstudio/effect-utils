@@ -120,6 +120,15 @@ in
         node -e '
           const fs = require("fs");
 
+          const splitNameVersion = (spec) => {
+            const atIndex = spec.startsWith("@")
+              ? spec.indexOf("@", 1)
+              : spec.indexOf("@");
+            return atIndex === -1
+              ? undefined
+              : [spec.slice(0, atIndex), spec.slice(atIndex + 1)];
+          };
+
           const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
           const specs = new Set();
 
@@ -142,14 +151,23 @@ in
                 const m = /^\s{2}("|\x27)?(.+?)\1:\s*$/.exec(line);
                 if (!m) continue;
                 const key = m[2];
-                if (
-                  key.startsWith("file:")
-                  || key.startsWith("link:")
-                  || key.startsWith("workspace:")
-                  || !key.includes("@")
-                ) continue;
                 const spec = key.split("(")[0];
-                if (spec.includes("@")) specs.add(spec);
+                const nameVersion = splitNameVersion(spec);
+                if (!nameVersion) continue;
+                const [pkgName, version] = nameVersion;
+                if (
+                  !pkgName
+                  || !version
+                  || version.startsWith("file:")
+                  || version.startsWith("link:")
+                  || version.startsWith("workspace:")
+                  || version.startsWith("patch:")
+                  || version.startsWith("git+")
+                  || version.startsWith("http:")
+                  || version.startsWith("https:")
+                  || version.startsWith("npm:")
+                ) continue;
+                specs.add("${pkgName}@${version}");
               }
             }
           }
