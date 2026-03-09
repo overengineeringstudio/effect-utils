@@ -8,7 +8,7 @@
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
   lockfileHash = "sha256-JXJwN/b9Og/DOcMQjTlmKi5+FvW/vS8KJstqmDpF1lg=";
-  packageJsonDepsHash = "sha256-oIabbkCL0q04Ty89gwHEQ0ft/ZININkKIZcw5XvV/nc=";
+  packageJsonDepsHash = "sha256-dhrqTHhoUUk753oIk61dMTbxJ1ivA9UYEu6h9jM51qA=";
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";

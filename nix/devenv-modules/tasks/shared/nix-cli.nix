@@ -125,6 +125,7 @@ let
     hashSource="$2"
     name="$3"
     lockfile="$4"
+    packageJson="''${5-}"
 
     FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     MAX_ITERATIONS=20
@@ -142,7 +143,9 @@ let
         fi
 
         # Update packageJsonDepsHash (package.json deps fingerprint)
-        packageJson="$(dirname "$lockfile")/package.json"
+        if [ -z "$packageJson" ]; then
+          packageJson="$(dirname "$lockfile")/package.json"
+        fi
         if [ -f "$packageJson" ] && [ -n "$(read_hash_from_file "packageJsonDepsHash" "$hashSource" "$name")" ]; then
           tmpDeps=$(mktemp)
           ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
@@ -287,13 +290,16 @@ let
     name="$2"
     hashSource="''${3-}"
     lockfile="''${4-}"
+    packageJson="''${5-}"
 
     ${hashSourceHelpers}
 
     # Preflight: ensure lockfile/package.json fingerprints match hashSource
     # This avoids false passes on warmed Nix stores (R5: deterministic checks).
     if [ -n "$hashSource" ] && [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
-      packageJson="$(dirname "$lockfile")/package.json"
+      if [ -z "$packageJson" ]; then
+        packageJson="$(dirname "$lockfile")/package.json"
+      fi
 
       currentLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
       storedLockfileHash=$(read_hash_from_file "lockfileHash" "$hashSource" "$name")
@@ -420,11 +426,13 @@ let
     name="$1"
     hashSource="$2"
     lockfile="$3"
+    packageJson="''${4-}"
 
     ${hashSourceHelpers}
 
-    # Derive package.json path from lockfile path
-    packageJson="$(dirname "$lockfile")/package.json"
+    if [ -z "$packageJson" ]; then
+      packageJson="$(dirname "$lockfile")/package.json"
+    fi
     failed=false
 
     # Check 1: lockfileHash (lockfile changed without hash update)
@@ -494,7 +502,7 @@ let
   mkHashTask = pkg: {
       "nix:hash:${pkg.name}" = {
         description = "Update Nix hashes for ${pkg.name}";
-        exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.hashSource}' '${pkg.name}' '${pkg.lockfile or ""}'";
+        exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.hashSource}' '${pkg.name}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
         # pnpm:install refreshes the repo-root install state and package-closure
         # lockfiles before we recompute hashes.
         after = [ "pnpm:install" ];
@@ -511,7 +519,7 @@ let
   mkCheckTask = pkg: {
       "nix:check:${pkg.name}" = {
         description = "Check if ${pkg.name} hash is stale (full build)";
-        exec = trace.exec "nix:check:${pkg.name}" "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}'";
+        exec = trace.exec "nix:check:${pkg.name}" "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
         # Depends on full workspace pnpm:install (not per-package).
       # Nix builds stage the entire workspace, so any stale lockfile in any package
       # breaks the build. Per-package install only updates that package's lockfile,
@@ -524,7 +532,7 @@ let
   mkQuickCheckTask = pkg: lib.optionalAttrs (pkg ? lockfile) {
     "nix:check:quick:${pkg.name}" = {
       description = "Quick lockfile check for ${pkg.name}";
-      exec = trace.exec "nix:check:quick:${pkg.name}" "${quickCheckScript} '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile}'";
+      exec = trace.exec "nix:check:quick:${pkg.name}" "${quickCheckScript} '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile}' '${pkg.packageJson or ""}'";
     };
   };
 
