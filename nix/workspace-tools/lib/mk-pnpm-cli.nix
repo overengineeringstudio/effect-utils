@@ -431,6 +431,15 @@ pkgs.stdenv.mkDerivation {
     # Deploy the target package from the staged closure into an isolated output
     # tree. This keeps build-time dependency resolution independent from the
     # raw workspace layout used during development.
+    #
+    # Uses a two-step process:
+    # 1. pnpm install populates node_modules and metadata cache from the store
+    # 2. pnpm deploy creates an isolated deployment from the installed tree
+    echo "Installing dependencies offline..."
+    cd ${packageDir}
+    pnpm install --offline --frozen-lockfile --ignore-scripts
+    cd "$OLDPWD"
+
     echo "Deploying package closure..."
     deploy_dir="$PWD/.pnpm-deploy"
     rm -rf "$deploy_dir"
@@ -438,7 +447,6 @@ pkgs.stdenv.mkDerivation {
     pnpm --config.inject-workspace-packages=true \
       --filter . \
       deploy \
-      --offline \
       --frozen-lockfile \
       --ignore-scripts \
       "$deploy_dir"
