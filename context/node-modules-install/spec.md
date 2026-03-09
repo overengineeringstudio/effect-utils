@@ -30,6 +30,9 @@ This spec defines:
   lockfile
 - aggregate root:
   the generated root package for a composed topology
+- aggregate root inputs:
+  the generated aggregate root manifest set for a composed topology,
+  including its `package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml`
 - composition-local link:
   private composed-topology metadata that resolves a package name to a local
   source path across a repo boundary
@@ -55,6 +58,10 @@ This spec defines:
 - The aggregate root lists workspace members explicitly.
 - Cross-repo links are expressed only in generated composed-topology state.
 - `workspace:` is not used across repo boundaries.
+- The composed topology owns its own aggregate root inputs.
+- A composed topology must not treat an upstream repo's aggregate lockfile as
+  authoritative for the composed topology unless the generated aggregate root
+  inputs are byte-for-byte identical.
 
 ## Aggregate Topology Generation
 
@@ -63,6 +70,16 @@ The aggregate root is generated from the composed topology and must include:
 - the explicit workspace member list for the composed topology
 - composition-local `link:` dependencies for cross-repo local packages
 - the aggregate dependency closure for linked cross-repo packages
+- a composition-local aggregate lockfile derived from the composed topology
+
+Aggregate topology generation is topology-local:
+
+- reusable upstream task and builder semantics may be shared across repos
+- aggregate root inputs are generated per composed repo
+- a downstream composed repo must not import an upstream aggregate lockfile as
+  its canonical lockfile
+- a standalone repo's own lockfile remains authoritative only for its
+  standalone topology
 
 The aggregate dependency closure must contain the external packages needed so
 that linked packages resolve their direct and shared runtime dependencies from
@@ -99,6 +116,8 @@ At minimum, validation must prove:
   physical source tree.
 - A composed install must not mutate nested repo root lockfiles or nested repo
   root `node_modules`.
+- A composed install must be derived from that composed topology's own
+  aggregate root inputs, not from an upstream repo's aggregate lockfile.
 
 ## Local Cross-Repo Resolution
 
@@ -154,10 +173,19 @@ Managed tooling must provide topology-aware entrypoints for:
 - composed install
 - package-closure lockfile refresh
 - composed runtime execution
+- aggregate topology generation
+
+Managed tooling must distinguish between:
+
+- shared implementation logic reused across repos
+- topology-local generated inputs owned by a specific standalone or composed
+  repo
 
 At minimum the managed wrappers must:
 
 - select the correct topology root
+- generate or validate the aggregate root inputs for the selected composed
+  topology before install
 - ensure nested standalone repos are ready before a composed install depends
   on them
 - apply the required runtime symlink-preservation flags for composed
@@ -186,6 +214,8 @@ the live worktree must be lockfile-only.
 - Both lockfile kinds must stay checkout-portable and topology-specific.
 - Publishable standalone manifests must remain free of composition-local link
   metadata.
+- Reusing a standalone repo's aggregate lockfile inside another composed repo
+  is non-conforming unless the composed topology is identical.
 
 ## Validation and CI
 
@@ -193,6 +223,7 @@ CI must validate standalone and composed topologies separately.
 
 Composed validation must cover:
 
+- aggregate root inputs are generated locally for the composed repo
 - aggregate topology generation
 - aggregate dependency closure generation
 - peer-sensitive package convergence
