@@ -12,6 +12,7 @@
 {
   packages,
   globalCache ? true,
+  frozenInCi ? true,
 }:
 {
   lib,
@@ -98,7 +99,7 @@ in
           exit 1
         fi
 
-        if [ -n "''${CI:-}" ]; then
+        if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
           pnpm install --config.confirmModulesPurge=false --frozen-lockfile
         else
           pnpm install --config.confirmModulesPurge=false
