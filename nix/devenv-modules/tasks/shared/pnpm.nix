@@ -101,6 +101,8 @@ in
 
         if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
           pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+        else if [ -n "''${CI:-}" ]; then
+          pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
         else
           pnpm install --config.confirmModulesPurge=false
         fi
