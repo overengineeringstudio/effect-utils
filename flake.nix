@@ -124,6 +124,7 @@
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
+          pnpm-topology = import ./nix/devenv-modules/tasks/shared/pnpm-topology.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
           beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow

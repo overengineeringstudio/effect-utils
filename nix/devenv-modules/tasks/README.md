@@ -37,6 +37,7 @@ imports = [
 - `megarepo.nix` - Megarepo workspace tasks
 - `nix-cli.nix` - Nix CLI build tasks (nix:hash, nix:build, nix:flake:check)
 - `pnpm.nix` - pnpm install tasks
+- `pnpm-topology.nix` - pnpm installs through explicit local topology projections
 - `setup.nix` - Setup tasks
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
