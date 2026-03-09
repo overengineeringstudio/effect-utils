@@ -440,6 +440,16 @@ pkgs.stdenv.mkDerivation {
     pnpm install --offline --frozen-lockfile --ignore-scripts
     cd "$OLDPWD"
 
+    # Restore full workspace member package.jsons (with runtime dependencies)
+    # before deploy. During install, stripped package.jsons + stub lockfiles
+    # pass --frozen-lockfile validation. For deploy, full deps are needed so
+    # pnpm includes transitive npm deps (e.g. cli-truncate via tui-react).
+    ${lib.concatMapStringsSep "\n" (memberDir: ''
+      if [ -f "${memberDir}/.package.json.full" ]; then
+        cp "${memberDir}/.package.json.full" "${memberDir}/package.json"
+      fi
+    '') workspaceMembers}
+
     echo "Deploying package closure..."
     deploy_dir="$PWD/.pnpm-deploy"
     rm -rf "$deploy_dir"
