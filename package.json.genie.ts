@@ -4,6 +4,6 @@ import { workspaceMemberPaths } from './genie/packages.ts'
 export default workspaceRoot({
   name: 'effect-utils-workspace',
   private: true,
-  packageManager: 'pnpm@10.28.0',
+  packageManager: 'pnpm@10.29.2',
   workspaces: [...workspaceMemberPaths],
 })
