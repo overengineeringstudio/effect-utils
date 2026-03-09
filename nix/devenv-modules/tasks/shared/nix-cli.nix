@@ -50,12 +50,12 @@ let
       local hashSourcePath="$2"
       local packageName="$3"
 
-      if grep -qE "\"$packageName\"\\s*=" "$hashSourcePath"; then
+      if grep -qE "(^|[[:space:]])(\"$packageName\"|$packageName)\\s*=" "$hashSourcePath"; then
         HASH_KEY="$hashKey" PKG_NAME="$packageName" ${pkgs.perl}/bin/perl -0777 -ne '
           my $pkg = $ENV{"PKG_NAME"};
           my $key = $ENV{"HASH_KEY"};
-          my $attr = qq{"$pkg"};
-          if (/(\Q$attr\E\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"([^"]+)"/s) {
+          my $attr = qr/(?:\Q$pkg\E|"\Q$pkg\E")/;
+          if (/($attr\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"([^"]+)"/s) {
             print $2;
           }
         ' "$hashSourcePath"
@@ -74,15 +74,15 @@ let
       export HASH_VALUE="$newValue"
       export PKG_NAME="$packageName"
 
-      if grep -qE "\"$packageName\"\\s*=" "$hashSourcePath"; then
+      if grep -qE "(^|[[:space:]])(\"$packageName\"|$packageName)\\s*=" "$hashSourcePath"; then
         ${pkgs.perl}/bin/perl -0777 -i -pe '
           my $pkg = $ENV{"PKG_NAME"};
           my $key = $ENV{"HASH_KEY"};
           my $val = $ENV{"HASH_VALUE"};
-          my $attr = qq{"$pkg"};
+          my $attr = qr/(?:\Q$pkg\E|"\Q$pkg\E")/;
 
-          if (/(\Q$attr\E\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"sha256-[^"]+"/s) {
-            s/(\Q$attr\E\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"sha256-[^"]+"/$1"$val"/s;
+          if (/($attr\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"sha256-[^"]+"/s) {
+            s/($attr\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"sha256-[^"]+"/$1"$val"/s;
           } else {
             die "Could not find scoped hash $key for package $pkg in $ARGV\n";
           }
