@@ -138,6 +138,7 @@ in
               }
               if (inPackages) {
                 if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
                 const m = /^\s{2}("|\x27)?(.+?)\1:\s*$/.exec(line);
                 if (!m) continue;
                 const key = m[2];
@@ -222,6 +223,7 @@ in
               if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
               if (inPackages) {
                 if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
                 const m = pkgLineRe.exec(line);
                 if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
               }
