@@ -173,6 +173,12 @@ let
     if [ -n "$(read_hash_from_file "pnpmDepsHash" "$hashSource" "$name")" ]; then
       mainHashKey="pnpmDepsHash"
     fi
+
+    currentMainHash="$(read_hash_from_file "$mainHashKey" "$hashSource" "$name")"
+    if [ -n "$currentMainHash" ] && [ "$currentMainHash" != "$FAKE_HASH" ]; then
+      echo "Resetting $mainHashKey to trigger a fresh fixed-output hash check..."
+      update_hash_in_file "$mainHashKey" "$FAKE_HASH" "$hashSource" "$name"
+    fi
     
     updated_any=false
     iteration=0
