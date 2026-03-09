@@ -72,7 +72,7 @@ let
       if [ -f "$path/pnpm-workspace.yaml" ]; then
         (
           cd "$path"
-          pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false
+          pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false --config.manage-package-manager-versions=false
         )
       fi
     done
@@ -100,11 +100,11 @@ in
         fi
 
         if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-          pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+          pnpm install --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --frozen-lockfile
         else if [ -n "''${CI:-}" ]; then
-          pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
+          pnpm install --config.confirmModulesPurge=false --config.manage-package-manager-versions=false --no-frozen-lockfile
         else
-          pnpm install --config.confirmModulesPurge=false
+          pnpm install --config.confirmModulesPurge=false --config.manage-package-manager-versions=false
         fi
 
         ${refreshPackageLockfilesScript}
@@ -144,7 +144,7 @@ in
       after = [ "genie:run" ];
       exec = trace.exec "pnpm:update" ''
         set -euo pipefail
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.manage-package-manager-versions=false
         ${lib.replaceStrings [ "--lockfile-only --ignore-scripts" ] [ "--lockfile-only --fix-lockfile --ignore-scripts" ] refreshPackageLockfilesScript}
         echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
       '';
