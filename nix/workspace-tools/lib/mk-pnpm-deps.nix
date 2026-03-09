@@ -167,7 +167,7 @@ in
                   || version.startsWith("https:")
                   || version.startsWith("npm:")
                 ) continue;
-                specs.add("${pkgName}@${version}");
+                specs.add(pkgName + "@" + version);
               }
             }
           }
