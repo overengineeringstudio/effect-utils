@@ -487,7 +487,6 @@ EOF
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
-    extraInstallRoots = lib.sort (left: right: left < right) (map (root: root.installDir) externalInstallRoots);
     lockfilePaths =
       lib.sort (left: right: left < right) (
         [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots

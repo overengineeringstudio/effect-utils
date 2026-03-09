@@ -6,9 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- **nix/workspace-tools/mk-pnpm-deps**: Stabilize pnpm deps FOD input ordering and store import method
+- **nix/workspace-tools/mk-pnpm-deps**: Make pnpm deps hashes platform-agnostic by fetching the lockfile package set directly into the store
+  - Replaces host-sensitive `pnpm install`-based FOD generation with lockfile-driven `pnpm store add`
+  - Keeps store normalization deterministic by zeroing `checkedAt`, sorting file maps, and pruning orphan CAS files
+  - Produces the same normalized store hash across `x86_64-linux` and `aarch64-linux` for the validated package set
+- **nix/workspace-tools/mk-pnpm-deps**: Stabilize pnpm deps FOD input ordering and store normalization
   - Sorts staged external install roots and lockfile inputs before dependency fetch
-  - Forces `package-import-method=copy` during the fixed-output deps build to avoid store mutations from import hardlinks
   - Fails fast if store normalization encounters multiple `v*` roots or leftover symlinks
 - **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
   - Allows ranged `peerDependencies`

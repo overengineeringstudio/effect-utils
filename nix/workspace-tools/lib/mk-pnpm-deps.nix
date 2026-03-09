@@ -3,8 +3,8 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that fetches pnpm dependencies
-#    from a staged aggregate workspace input and archives the resulting store
-#    into a reproducible tarball.
+#    from staged lockfiles by adding their external package set to the pnpm
+#    store and archiving the normalized result into a reproducible tarball.
 #
 # 2. mkRestoreScript: Generates a shell script snippet that extracts the
 #    archived pnpm store and configures pnpm for offline installs during the
@@ -30,10 +30,7 @@ in
   #   sourceRoot:     Path within the staged workspace root to cd into before
   #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
-  #   preInstall:     Extra shell commands to run before pnpm install (e.g., chmod for workspace members)
-  #   extraInstallRoots:
-  #                   Extra repo roots to install after the main workspace root.
-  #                   Each path is relative to sourceRoot.
+  #   preInstall:     Extra shell commands to run before lockfile parsing
   #   lockfilePaths:
   #                   Lockfiles that define the allowed package set for store normalization.
   #                   Each path is relative to sourceRoot.
@@ -44,7 +41,6 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
-      extraInstallRoots ? [ ],
       lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
@@ -117,28 +113,56 @@ in
         export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
         pnpm config set store-dir "$STORE_PATH"
-        pnpm config set package-import-method copy
         pnpm config set manage-package-manager-versions false
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
-        pnpm install --frozen-lockfile --ignore-scripts
+        node -e '
+          const fs = require("fs");
 
-        ${builtins.concatStringsSep "\n" (
-          map
-            (
-              installRoot:
-              ''
-                if [ -f ${lib.escapeShellArg "${installRoot}/package.json"} ]; then
-                  (
-                    cd ${lib.escapeShellArg installRoot}
-                    pnpm install --frozen-lockfile --ignore-scripts
-                  )
-                fi
-              ''
-            )
-            extraInstallRoots
-        )}
+          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
+          const specs = new Set();
+
+          for (const lockfilePath of lockfilePaths) {
+            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
+              console.error("store-fetch: FATAL — staged lockfile not found at " + lockfilePath);
+              process.exit(1);
+            }
+
+            const lines = fs.readFileSync(lockfilePath, "utf8").split("\n");
+            let inPackages = false;
+            for (const line of lines) {
+              if (/^packages:\s*$/.test(line)) {
+                inPackages = true;
+                continue;
+              }
+              if (inPackages) {
+                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                const m = /^\s{2}("|\x27)?(.+?)\1:\s*$/.exec(line);
+                if (!m) continue;
+                const key = m[2];
+                if (
+                  key.startsWith("file:")
+                  || key.startsWith("link:")
+                  || key.startsWith("workspace:")
+                  || !key.includes("@")
+                ) continue;
+                const spec = key.split("(")[0];
+                if (spec.includes("@")) specs.add(spec);
+              }
+            }
+          }
+
+          const sortedSpecs = Array.from(specs).sort();
+          if (sortedSpecs.length === 0) {
+            console.error("store-fetch: FATAL — no external package specs parsed from staged lockfiles");
+            process.exit(1);
+          }
+          fs.writeFileSync(".pnpm-store-specs.txt", sortedSpecs.join("\n") + "\n");
+          console.log("store-fetch: parsed " + sortedSpecs.length + " unique external package specs");
+        '
+
+        xargs -r -a .pnpm-store-specs.txt -n 50 pnpm store add
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
