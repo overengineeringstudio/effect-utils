@@ -112,6 +112,7 @@ in
         export CI=true
         export NPM_CONFIG_PRODUCTION=false
         export npm_config_production=false
+        export npm_config_manage_package_manager_versions=false
         export NODE_ENV=development
         export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
@@ -341,6 +342,7 @@ in
       export STORE_PATH=$(mktemp -d)
       export NPM_CONFIG_PRODUCTION=false
       export npm_config_production=false
+      export npm_config_manage_package_manager_versions=false
       export NODE_ENV=development
 
       # Extract pnpm store
