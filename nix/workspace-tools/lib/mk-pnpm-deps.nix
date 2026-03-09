@@ -117,6 +117,7 @@ in
         export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
         pnpm config set store-dir "$STORE_PATH"
+        pnpm config set package-import-method copy
         pnpm config set manage-package-manager-versions false
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
@@ -166,8 +167,12 @@ in
             return out;
           }
 
-          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d));
+          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d)).sort();
           if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
+          if (vdirs.length !== 1) {
+            console.error("store-norm: FATAL — expected exactly one v* dir, found: " + vdirs.join(", "));
+            process.exit(1);
+          }
           const vdir = p.join(sp, vdirs[0]);
 
           if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
@@ -313,6 +318,12 @@ in
         echo "store-diag: symlink-count=$(find "$STORE_PATH" -type l | wc -l)"
         echo "store-diag: exec-files-count=$(find "$STORE_PATH"/v*/files -name '*-exec' | wc -l)"
         echo "store-diag: total-size=$(du -sb "$STORE_PATH" | cut -f1)"
+
+        if find "$STORE_PATH" -type l | grep -q .; then
+          echo "store-norm: FATAL — symlinks remain after normalization"
+          find "$STORE_PATH" -type l
+          exit 1
+        fi
 
         mkdir -p $out
         cd $STORE_PATH

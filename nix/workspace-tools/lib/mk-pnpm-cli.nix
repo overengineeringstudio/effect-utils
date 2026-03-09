@@ -336,6 +336,7 @@ let
     );
 
   externalInstallRoots =
+    lib.sort (left: right: left.installDir < right.installDir) (
     map
       (
         installDir:
@@ -361,7 +362,7 @@ let
               formatWorkspaceYaml [ "." ] [ ];
         }
       )
-      (lib.unique (map (item: item.installDir) externalInstallRootItems));
+      (lib.sort (left: right: left < right) (lib.unique (map (item: item.installDir) externalInstallRootItems))));
 
   stagedWorkspaceMembers =
     let
@@ -486,8 +487,11 @@ EOF
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
-    extraInstallRoots = map (root: root.installDir) externalInstallRoots;
-    lockfilePaths = [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots;
+    extraInstallRoots = lib.sort (left: right: left < right) (map (root: root.installDir) externalInstallRoots);
+    lockfilePaths =
+      lib.sort (left: right: left < right) (
+        [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots
+      );
     preInstall = ''
       chmod -R +w .
     '';

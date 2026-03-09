@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **nix/workspace-tools/mk-pnpm-deps**: Stabilize pnpm deps FOD input ordering and store import method
+  - Sorts staged external install roots and lockfile inputs before dependency fetch
+  - Forces `package-import-method=copy` during the fixed-output deps build to avoid store mutations from import hardlinks
+  - Fails fast if store normalization encounters multiple `v*` roots or leftover symlinks
 - **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
   - Allows ranged `peerDependencies`
   - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`
