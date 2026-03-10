@@ -178,9 +178,26 @@ let
     fi
 
     currentMainHash="$(read_hash_from_file "$mainHashKey" "$hashSource" "$name")"
+    restoreMainHashOnExit=false
+    success=false
+
+    restore_main_hash() {
+      if [ "$restoreMainHashOnExit" != true ] || [ "$success" = true ]; then
+        return
+      fi
+
+      if [ -n "$currentMainHash" ] && [ "$currentMainHash" != "$FAKE_HASH" ]; then
+        echo "Restoring $mainHashKey to $currentMainHash"
+        update_hash_in_file "$mainHashKey" "$currentMainHash" "$hashSource" "$name"
+      fi
+    }
+
+    trap restore_main_hash EXIT
+
     if [ -n "$currentMainHash" ] && [ "$currentMainHash" != "$FAKE_HASH" ]; then
       echo "Resetting $mainHashKey to trigger a fresh fixed-output hash check..."
       update_hash_in_file "$mainHashKey" "$FAKE_HASH" "$hashSource" "$name"
+      restoreMainHashOnExit=true
     fi
     
     updated_any=false
@@ -204,6 +221,7 @@ let
           echo "✓ $name: all hashes up to date"
         fi
         update_fingerprint_hashes
+        success=true
         exit 0
       fi
 
@@ -273,6 +291,7 @@ let
         # Assume it is the main hash (pnpmDepsHash/bunDepsHash)
         echo "Updating $mainHashKey to $newHash..."
         update_hash_in_file "$mainHashKey" "$newHash" "$hashSource" "$name"
+        restoreMainHashOnExit=false
         updated_any=true
       fi
     done

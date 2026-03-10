@@ -142,7 +142,11 @@ let
       if [ -f "$path/pnpm-workspace.yaml" ]; then
         (
           cd "$path"
-          pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false
+          if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
+            pnpm install --lockfile-only --ignore-scripts --frozen-lockfile --config.confirmModulesPurge=false
+          else
+            pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false
+          fi
         )
       fi
     done
