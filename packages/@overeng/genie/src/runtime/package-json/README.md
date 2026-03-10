@@ -1,81 +1,63 @@
 # package-json
 
-Generate `package.json` files with proper field ordering and formatting.
+Generate `package.json` files from typed data.
 
-## Functions
+## Mental Model
 
-### `packageJSON`
+- first argument: canonical emitted `package.json` data
+- second argument: optional non-emitted metadata
 
-Basic package.json generator with validation warnings.
+The generated file only contains the first argument. The second argument is for
+composition by other Genie files.
+
+## Usage
 
 ```ts
-import { packageJSON } from '@overeng/genie/lib'
+import utilsPkg from '../utils/package.json.genie.ts'
+import { catalog, packageJson } from '../../../genie/internal.ts'
 
-export default packageJSON({
-  name: '@myorg/my-package',
-  version: '1.0.0',
-  private: true,
-  type: 'module',
-  exports: { '.': './src/mod.ts' },
-  dependencies: { effect: '^3.12.0' },
-  devDependencies: { typescript: '^5.9.0' },
+const deps = catalog.compose({
+  dir: import.meta.dirname,
+  workspace: [utilsPkg],
+  external: catalog.pick('react'),
 })
-```
 
-### `packageJsonWithContext`
-
-Advanced generator with dependency inference from catalog and workspace packages.
-
-```ts
-import { packageJsonWithContext } from '@overeng/genie/lib'
-import { catalog, workspacePackagePatterns } from '../../../genie/repo.ts'
-
-export default packageJsonWithContext({
-  config: {
-    name: '@myorg/my-package',
+export default packageJson(
+  {
+    name: '@myorg/app',
     version: '1.0.0',
-    type: 'module',
-    exports: { '.': './src/mod.ts' },
-    // Dependencies as array - resolved to catalog: or workspace:*
-    dependencies: ['effect', '@effect/platform', '@myorg/utils'],
-    devDependencies: ['vitest', 'typescript'],
-    // Peer deps with range expansion
-    peerDependencies: { effect: '^', react: '~' },
+    dependencies: deps.dependencies,
   },
-  context: { catalog, workspacePackages: workspacePackagePatterns },
-})
+  {
+    workspace: deps.workspace,
+  },
+)
 ```
 
-## Features
+## Composition
 
-- **Field ordering**: Fields sorted in conventional order (name, version, type, exports, dependencies, ...)
-- **Export condition ordering**: Conditions sorted (types first, default last)
-- **Dependency inference**: `string[]` dependencies resolved to `catalog:` or `workspace:*`
-- **Peer dep expansion**: `'^'` or `'~'` expanded to catalog version with range prefix
-- **Validation**: Warns on missing name/version for non-private packages
-- **Error on unknown deps**: Catches typos by throwing on unresolved dependencies
+Importing another package's Genie file gives access to:
 
-## Context
+- `pkg.data` for emitted `package.json` data
+- `pkg.meta` when that file provided metadata
 
-The `packageJsonWithContext` function requires a context object:
+This is useful for:
 
-```ts
-type PackageJsonContext = {
-  /** Catalog of package versions (package name -> version string) */
-  catalog: Record<string, string>
-  /** List of workspace package name patterns (e.g., '@myorg/*') */
-  workspacePackages: readonly string[]
-}
-```
+- workspace dependency recomposition
+- aggregate workspace generation
+- inheriting peer dependency declarations
 
-Typically defined in `genie/repo.ts`:
+## Catalog Helpers
 
-```ts
-export const catalog = {
-  effect: '3.12.0',
-  '@effect/platform': '0.90.0',
-  // ...
-}
+Use:
 
-export const workspacePackagePatterns = ['@myorg/*'] as const
-```
+- `catalog.pick(...)` for external dependency versions
+- `catalog.compose({ dir, workspace, external })` to derive:
+  - emitted `dependencies`
+  - non-emitted workspace metadata
+
+Pass `external` as the result of `catalog.pick(...)`, not as catalog keys.
+
+`catalog.compose(...)` expects imported workspace package modules, not package
+names. This avoids a second registry and keeps package-local definitions as the
+source of truth.

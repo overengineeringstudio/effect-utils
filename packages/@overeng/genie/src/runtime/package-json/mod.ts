@@ -7,7 +7,10 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
-import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
+import path from 'node:path'
+
+import { createGenieOutput } from '../core.ts'
+import type { GenieContext, GenieOutput, Strict } from '../core.ts'
 import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
@@ -330,6 +333,39 @@ export type WorkspaceRootData = PackageJsonData & {
   catalogs?: Record<string, Record<string, string>>
 }
 
+/** Static workspace-composition metadata stored in non-emitted generator meta. */
+export type WorkspaceMetadata = {
+  sourceDir: string
+  deps: readonly WorkspacePackageLike[]
+}
+
+/** Package-level metadata wrapper attached to generators that participate in workspace recomposition. */
+export type WorkspaceMeta = {
+  workspace: WorkspaceMetadata
+}
+
+/** Minimal shape needed to compose emitted package data with non-emitted workspace metadata. */
+export type WorkspacePackageLike = {
+  data: PackageJsonData
+  meta: WorkspaceMeta
+}
+
+/** Package.json genie output that carries workspace-composition metadata. */
+export type WorkspacePackage = GenieOutput<PackageJsonData, WorkspaceMeta>
+
+/** Define non-emitted workspace composition metadata for a package generator. */
+export const defineWorkspaceMetadata = ({
+  dir,
+  deps = [],
+}: {
+  dir: string
+  deps?: readonly WorkspacePackageLike[]
+}) =>
+  ({
+    sourceDir: dir,
+    deps,
+  }) satisfies WorkspaceMetadata
+
 /**
  * Sort object keys according to a defined order.
  * Keys in the order array appear first (in that order), then remaining keys alphabetically.
@@ -370,8 +406,8 @@ const sortExports = (
     return a.localeCompare(b)
   })
 
-  for (const path of paths) {
-    sorted[path] = sortExportConditions(exports[path]!)
+  for (const exportPath of paths) {
+    sorted[exportPath] = sortExportConditions(exports[exportPath]!)
   }
   return sorted
 }
@@ -405,6 +441,62 @@ const computeRelativePath = ({ from, to }: { from: string; to: string }): string
 
   return relativePath || '.'
 }
+
+const sortStrings = (values: Iterable<string>) =>
+  [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
+
+const workspaceMemberPathFromPackage = ({
+  rootDir,
+  pkg,
+}: {
+  rootDir: string
+  pkg: WorkspacePackageLike
+}) => {
+  const relative = path.relative(rootDir, pkg.meta.workspace.sourceDir)
+  return relative === '' ? '.' : relative
+}
+
+const collectWorkspaceMembersRecursive = ({
+  packages,
+  rootDir,
+  visited = new Set<string>(),
+}: {
+  packages: readonly WorkspacePackageLike[]
+  rootDir: string
+  visited?: Set<string>
+}): string[] => {
+  const members = new Set<string>()
+
+  for (const pkg of packages) {
+    const pkgName = pkg.data.name
+    if (pkgName === undefined || visited.has(pkgName) === true) continue
+    visited.add(pkgName)
+
+    members.add(workspaceMemberPathFromPackage({ rootDir, pkg }))
+
+    for (const dep of collectWorkspaceMembersRecursive({
+      packages: pkg.meta.workspace.deps,
+      rootDir,
+      visited,
+    })) {
+      members.add(dep)
+    }
+  }
+
+  return sortStrings(members)
+}
+
+/** Recompose canonical root-relative workspace member paths from package metadata. */
+export const workspaceMemberPathsFromPackages = ({
+  dir,
+  packages,
+  extraPackages = [],
+}: {
+  dir: string
+  packages: readonly WorkspacePackageLike[]
+  extraPackages?: readonly string[]
+}) =>
+  sortStrings([...collectWorkspaceMembersRecursive({ packages, rootDir: dir }), ...extraPackages])
 
 /** Prefix for internal file dependencies that use absolute repo paths */
 const INTERNAL_FILE_PREFIX = 'file:packages/'
@@ -475,15 +567,17 @@ const resolvePatchPaths = ({
   if (patches === undefined) return undefined
 
   const resolved: Record<string, string> = {}
-  for (const [pkg, path] of Object.entries(patches).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (path.startsWith('./') === true || path.startsWith('../') === true) {
+  for (const [pkg, patchPath] of Object.entries(patches).toSorted(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (patchPath.startsWith('./') === true || patchPath.startsWith('../') === true) {
       // Already relative to current package
-      resolved[pkg] = path
+      resolved[pkg] = patchPath
     } else {
       // Repo-relative path - compute relative path from current location
       const relativePath = computeRelativePath({
         from: currentLocation,
-        to: path,
+        to: patchPath,
       })
       resolved[pkg] = relativePath
     }
@@ -616,17 +710,30 @@ const buildPackageJson = <T extends PackageJsonData>({
  * })
  * ```
  */
-export const packageJson = <const T extends PackageJsonData>(
+export function packageJson<const T extends PackageJsonData>(
   data: Strict<T, PackageJsonData>,
-): GenieOutput<T> => ({
-  data,
-  stringify: (ctx) =>
-    JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-  validate: (ctx: GenieContext) =>
-    data.name !== undefined
-      ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name })
-      : [],
-})
+): GenieOutput<T>
+export function packageJson<const T extends PackageJsonData, const TMeta>(
+  data: Strict<T, PackageJsonData>,
+  meta: TMeta,
+): GenieOutput<T, TMeta>
+/** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
+// oxlint-disable-next-line overeng/named-args
+export function packageJson<const T extends PackageJsonData, const TMeta>(
+  data: Strict<T, PackageJsonData>,
+  meta?: TMeta,
+) {
+  return createGenieOutput({
+    data,
+    stringify: (ctx: GenieContext) =>
+      JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
+    validate: (ctx: GenieContext) =>
+      data.name !== undefined
+        ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name })
+        : [],
+    ...(meta === undefined ? {} : { meta }),
+  })
+}
 
 /**
  * Creates a package.json configuration for a workspace root.
@@ -656,10 +763,43 @@ export const packageJson = <const T extends PackageJsonData>(
  * })
  * ```
  */
-export const workspaceRoot = <const T extends WorkspaceRootData>(
+export function workspaceRoot<const T extends WorkspaceRootData>(
   data: Strict<T, WorkspaceRootData>,
-): GenieOutput<T> => ({
-  data,
-  stringify: (ctx) =>
-    JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-})
+): GenieOutput<T>
+export function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
+  data: Strict<T, WorkspaceRootData>,
+  meta: TMeta,
+): GenieOutput<T, TMeta>
+/** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
+// oxlint-disable-next-line overeng/named-args
+export function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
+  data: Strict<T, WorkspaceRootData>,
+  meta?: TMeta,
+) {
+  return createGenieOutput({
+    data,
+    stringify: (ctx: GenieContext) =>
+      JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
+    ...(meta === undefined ? {} : { meta }),
+  })
+}
+
+/** Build a root workspace package.json from package metadata instead of a handwritten member list. */
+export const workspaceRootFromPackages = ({
+  dir,
+  packages,
+  extraWorkspaces = [],
+  ...data
+}: {
+  dir: string
+  packages: readonly WorkspacePackageLike[]
+  extraWorkspaces?: readonly string[]
+} & Omit<WorkspaceRootData, 'workspaces'>) =>
+  workspaceRoot({
+    ...data,
+    workspaces: workspaceMemberPathsFromPackages({
+      dir,
+      packages,
+      extraPackages: extraWorkspaces,
+    }),
+  })

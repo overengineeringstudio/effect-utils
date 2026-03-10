@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
-import { computeRelativePath, createWorkspaceDepsResolver } from './mod.ts'
+import { workspaceRootFromPackages } from '../package-json/mod.ts'
+import {
+  computeRelativePath,
+  createWorkspaceDepsResolver,
+  pnpmWorkspaceYamlFromPackage,
+  pnpmWorkspaceYamlFromPackages,
+} from './mod.ts'
 
 // =============================================================================
 // Helper: create a minimal package.json genie output for testing
@@ -343,5 +349,72 @@ describe('createWorkspaceDepsResolver', () => {
       const paths = resolveDeps({ pkg: app, deps: [dep1, shared], location: '.' })
       expect(paths).toEqual(['../shared'])
     })
+  })
+})
+
+describe('metadata-based workspace projections', () => {
+  const utils = packageJson(
+    {
+      name: '@test/utils',
+      version: '1.0.0',
+    },
+    {
+      workspace: {
+        sourceDir: '/workspace/packages/utils',
+        deps: [],
+      },
+    },
+  )
+  const app = packageJson(
+    {
+      name: '@test/app',
+      version: '1.0.0',
+      dependencies: {
+        '@test/utils': 'workspace:*',
+      },
+    },
+    {
+      workspace: {
+        sourceDir: '/workspace/packages/app',
+        deps: [utils],
+      },
+    },
+  )
+
+  it('projects package-local workspace members from package metadata', () => {
+    const workspace = pnpmWorkspaceYamlFromPackage({
+      pkg: app,
+      extraPackages: ['../examples'],
+      dedupePeerDependents: true,
+    })
+
+    expect(workspace.data.packages).toEqual(['.', '../examples', '../utils'])
+  })
+
+  it('projects root workspace members recursively from package metadata', () => {
+    const workspace = pnpmWorkspaceYamlFromPackages({
+      dir: '/workspace',
+      packages: [app],
+      extraPackages: ['packages/examples'],
+      dedupePeerDependents: true,
+    })
+
+    expect(workspace.data.packages).toEqual(['packages/app', 'packages/examples', 'packages/utils'])
+  })
+
+  it('projects workspace root workspaces from package metadata', () => {
+    const workspaceRoot = workspaceRootFromPackages({
+      dir: '/workspace',
+      packages: [app],
+      extraWorkspaces: ['packages/examples'],
+      name: 'workspace-root',
+      private: true,
+    })
+
+    expect(workspaceRoot.data.workspaces).toEqual([
+      'packages/app',
+      'packages/examples',
+      'packages/utils',
+    ])
   })
 })

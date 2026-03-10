@@ -5,8 +5,15 @@
  * Reference: https://pnpm.io/pnpm-workspace_yaml
  */
 
-import type { GenieOutput, Strict } from '../mod.ts'
-import type { PackageJsonData } from '../package-json/mod.ts'
+import path from 'node:path'
+
+import { createGenieOutput } from '../core.ts'
+import type { GenieContext, GenieOutput, Strict } from '../core.ts'
+import {
+  workspaceMemberPathsFromPackages,
+  type PackageJsonData,
+  type WorkspacePackageLike,
+} from '../package-json/mod.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 
@@ -756,13 +763,15 @@ const resolvePatchPaths = ({
   if (patches === undefined) return undefined
 
   const resolved: Record<string, string> = {}
-  for (const [pkg, path] of Object.entries(patches).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (path.startsWith('./') === true || path.startsWith('../') === true) {
-      resolved[pkg] = path
+  for (const [pkg, patchPath] of Object.entries(patches).toSorted(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (patchPath.startsWith('./') === true || patchPath.startsWith('../') === true) {
+      resolved[pkg] = patchPath
     } else {
       const relativePath = computeRelativePath({
         from: currentLocation,
-        to: path,
+        to: patchPath,
       })
       resolved[pkg] = relativePath
     }
@@ -872,8 +881,8 @@ export const createWorkspaceDepsResolver = (config: {
           location,
           visited,
         })
-        for (const path of transitiveDeps) {
-          result.add(path)
+        for (const dependencyPath of transitiveDeps) {
+          result.add(dependencyPath)
         }
       }
     }
@@ -892,8 +901,8 @@ export const createWorkspaceDepsResolver = (config: {
 
     for (const p of [args.pkg, ...args.deps]) {
       const paths = collectWorkspacePackagesRecursive({ pkg: p, registry, location: args.location })
-      for (const path of paths) {
-        workspacePaths.add(path)
+      for (const workspacePath of paths) {
+        workspacePaths.add(workspacePath)
       }
     }
 
@@ -1099,13 +1108,84 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
  * })
  * ```
  */
-export const pnpmWorkspaceYaml = <const T extends PnpmWorkspaceData>(
+export function pnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
   config: Strict<T, PnpmWorkspaceData>,
-): GenieOutput<T> => ({
-  data: config,
-  stringify: (ctx) => stringify(buildPnpmWorkspaceYaml({ data: config, location: ctx.location })),
-  validate: (ctx) => validatePnpmWorkspaceData({ data: config, location: ctx.location }),
-})
+): GenieOutput<T>
+export function pnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
+  config: Strict<T, PnpmWorkspaceData>,
+  meta: TMeta,
+): GenieOutput<T, TMeta>
+/** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
+// oxlint-disable-next-line overeng/named-args
+export function pnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
+  config: Strict<T, PnpmWorkspaceData>,
+  meta?: TMeta,
+) {
+  return createGenieOutput({
+    data: config,
+    stringify: (ctx: GenieContext) =>
+      stringify(buildPnpmWorkspaceYaml({ data: config, location: ctx.location })),
+    validate: (ctx: GenieContext) =>
+      validatePnpmWorkspaceData({ data: config, location: ctx.location }),
+    ...(meta === undefined ? {} : { meta }),
+  })
+}
+
+const sortStrings = (values: Iterable<string>) =>
+  [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
+
+const relativePathForPackage = ({
+  fromDir,
+  pkg,
+}: {
+  fromDir: string
+  pkg: WorkspacePackageLike
+}) => {
+  const relative = path.relative(fromDir, pkg.meta.workspace.sourceDir) || '.'
+  return relative.startsWith('.') === true ? relative : `./${relative}`
+}
+
+/** Build a package-local pnpm-workspace projection from a package's non-emitted workspace metadata. */
+export const pnpmWorkspaceYamlFromPackage = ({
+  pkg,
+  extraPackages = [],
+  ...config
+}: {
+  pkg: WorkspacePackageLike
+  extraPackages?: readonly string[]
+} & Omit<PnpmWorkspaceData, 'packages'>) =>
+  pnpmWorkspaceYaml({
+    ...config,
+    packages: [
+      '.',
+      ...sortStrings([
+        ...pkg.meta.workspace.deps.map((dep) =>
+          relativePathForPackage({ fromDir: pkg.meta.workspace.sourceDir, pkg: dep }),
+        ),
+        ...extraPackages,
+      ]),
+    ],
+  })
+
+/** Build a root pnpm-workspace.yaml by recomposing package metadata instead of maintaining member lists manually. */
+export const pnpmWorkspaceYamlFromPackages = ({
+  dir,
+  packages,
+  extraPackages = [],
+  ...config
+}: {
+  dir: string
+  packages: readonly WorkspacePackageLike[]
+  extraPackages?: readonly string[]
+} & Omit<PnpmWorkspaceData, 'packages'>) =>
+  pnpmWorkspaceYaml({
+    ...config,
+    packages: workspaceMemberPathsFromPackages({
+      dir,
+      packages,
+      extraPackages,
+    }),
+  })
 
 // =============================================================================
 // Validation

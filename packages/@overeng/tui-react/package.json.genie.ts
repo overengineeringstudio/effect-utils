@@ -5,6 +5,8 @@ import {
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import tuiCorePkg from '../tui-core/package.json.genie.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
 const peerDepNames = [
@@ -21,70 +23,71 @@ const peerDepNames = [
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 
-export default packageJson({
-  name: '@overeng/tui-react',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/mod.tsx',
-    './node': './src/node/mod.ts',
-    './storybook': './src/storybook/mod.tsx',
-    './opentui': './src/effect/opentui/mod.tsx',
-  },
-  scripts: {
-    storybook: 'storybook dev -p 6006',
-    'storybook:build': 'storybook build',
-    'test:e2e': 'playwright test',
-    'test:e2e:ui': 'playwright test --ui',
-  },
-  publishConfig: {
-    access: 'public',
+const deps = catalog.compose({
+  dir: import.meta.dirname,
+  workspace: [tuiCorePkg],
+  external: catalog.pick(
+    'yoga-layout',
+    'string-width',
+    'cli-truncate',
+    '@xterm/xterm',
+    '@xterm/headless',
+    '@xterm/addon-fit',
+  ),
+  workspaceSupport: [utilsDevPkg],
+})
+
+export default packageJson(
+  {
+    name: '@overeng/tui-react',
+    ...privatePackageDefaults,
     exports: {
-      '.': './dist/mod.js',
-      './node': './dist/node/mod.js',
-      './storybook': './dist/storybook/mod.js',
-      './opentui': './dist/effect/opentui/mod.js',
+      '.': './src/mod.tsx',
+      './node': './src/node/mod.ts',
+      './storybook': './src/storybook/mod.tsx',
+      './opentui': './src/effect/opentui/mod.tsx',
     },
+    scripts: {
+      storybook: 'storybook dev -p 6006',
+      'storybook:build': 'storybook build',
+      'test:e2e': 'playwright test',
+      'test:e2e:ui': 'playwright test --ui',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+        './node': './dist/node/mod.js',
+        './storybook': './dist/storybook/mod.js',
+        './opentui': './dist/effect/opentui/mod.js',
+      },
+    },
+    dependencies: deps.dependencies,
+    devDependencies: {
+      ...effectLspDevDeps(),
+      ...catalog.pick(
+        ...peerDepNames,
+        '@types/node',
+        '@types/react',
+        '@types/react-reconciler',
+        'vitest',
+        '@effect/vitest',
+        '@playwright/test',
+        '@overeng/utils',
+        'effect',
+        '@effect/platform',
+        ...effectAtomDeps,
+        ...opentuiDeps,
+        'storybook',
+        '@storybook/react',
+        '@storybook/react-vite',
+        'vite',
+        '@vitejs/plugin-react',
+      ),
+    },
+    peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
+  } satisfies PackageJsonData,
+  {
+    workspace: deps.workspace,
   },
-  dependencies: {
-    ...catalog.pick(
-      'yoga-layout',
-      'string-width',
-      'cli-truncate',
-      '@overeng/tui-core',
-      // xterm — required by ./storybook entry point (must be regular deps so
-      // consumers' per-member lockfiles include them transitively)
-      '@xterm/xterm',
-      '@xterm/headless',
-      '@xterm/addon-fit',
-    ),
-  },
-  devDependencies: {
-    ...effectLspDevDeps(),
-    ...catalog.pick(
-      ...peerDepNames,
-      // TypeScript & testing
-      '@types/node',
-      '@types/react',
-      '@types/react-reconciler',
-      'vitest',
-      '@effect/vitest',
-      '@playwright/test',
-      '@overeng/utils',
-      // Effect ecosystem
-      'effect',
-      '@effect/platform',
-      // Effect Atom (state management)
-      ...effectAtomDeps,
-      // OpenTUI (alternate screen mode - requires Bun)
-      ...opentuiDeps,
-      // Storybook
-      'storybook',
-      '@storybook/react',
-      '@storybook/react-vite',
-      // Build tools
-      'vite',
-      '@vitejs/plugin-react',
-    ),
-  },
-  peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
-} satisfies PackageJsonData)
+)

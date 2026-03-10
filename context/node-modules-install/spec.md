@@ -122,6 +122,10 @@ The aggregate root is generated from the composed topology and must include:
 - the aggregate dependency closure for linked cross-repo packages
 - a composition-local aggregate lockfile derived from the composed topology
 
+Aggregate workspace files should be recomposed from package-local Genie outputs
+and their non-emitted metadata, not maintained as a second handwritten member
+list.
+
 Aggregate generation is topology-local:
 
 - repos may share task and builder code

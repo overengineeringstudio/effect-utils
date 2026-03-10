@@ -13,6 +13,7 @@ import {
   createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
+  defineWorkspaceMetadata,
   githubRuleset,
   githubWorkflow,
   megarepoJson,
@@ -20,8 +21,12 @@ import {
   oxlintConfig,
   packageJson,
   pnpmWorkspaceYaml,
+  pnpmWorkspaceYamlFromPackage,
+  pnpmWorkspaceYamlFromPackages,
   tsconfigJson,
+  workspaceMemberPathsFromPackages,
   workspaceRoot,
+  workspaceRootFromPackages,
   type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
@@ -35,6 +40,10 @@ import {
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
+  type WorkspaceMeta,
+  type WorkspaceMetadata,
+  type WorkspacePackageLike,
+  type WorkspacePackage,
   type WorkspaceRootData,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
@@ -45,6 +54,7 @@ export {
   createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
+  defineWorkspaceMetadata,
   githubRuleset,
   githubWorkflow,
   megarepoJson,
@@ -52,8 +62,12 @@ export {
   oxlintConfig,
   packageJson,
   pnpmWorkspaceYaml,
+  pnpmWorkspaceYamlFromPackage,
+  pnpmWorkspaceYamlFromPackages,
   tsconfigJson,
+  workspaceMemberPathsFromPackages,
   workspaceRoot,
+  workspaceRootFromPackages,
 }
 export type {
   GenieOutput,
@@ -69,6 +83,10 @@ export type {
   ScriptValue,
   TSConfigArgs,
   TSConfigCompilerOptions,
+  WorkspaceMeta,
+  WorkspaceMetadata,
+  WorkspacePackageLike,
+  WorkspacePackage,
   WorkspaceRootData,
 }
 

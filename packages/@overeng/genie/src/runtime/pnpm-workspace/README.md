@@ -1,41 +1,43 @@
 # pnpm-workspace
 
-Generate `pnpm-workspace.yaml` files for pnpm monorepos.
+Generate `pnpm-workspace.yaml` files.
+
+## Mental Model
+
+- `pnpmWorkspaceYaml(...)` expects canonical emitted YAML data
+- `pnpmWorkspaceYamlFromPackage(...)` and
+  `pnpmWorkspaceYamlFromPackages(...)` are projection helpers that derive that
+  emitted data from package metadata
 
 ## Usage
 
-```ts
-import { pnpmWorkspace } from '@overeng/genie/lib'
-import { catalog, workspacePackages, onlyBuiltDependencies } from './genie/repo.ts'
+### Package-level projection
 
-export default pnpmWorkspace({
-  packages: workspacePackages,
-  catalog,
-  onlyBuiltDependencies,
+```ts
+import pkg from './package.json.genie.ts'
+import { pnpmWorkspaceYamlFromPackage } from '../../../genie/internal.ts'
+
+export default pnpmWorkspaceYamlFromPackage({
+  pkg,
 })
 ```
 
-## Features
-
-- **Workspace packages**: Define which directories contain workspace packages
-- **Catalog**: Centralized version management for dependencies
-- **Build-only dependencies**: Configure packages that should only be built (not hoisted)
-
-## Configuration
-
-Typically used with a `genie/repo.ts` file:
+### Root aggregate projection
 
 ```ts
-// genie/repo.ts
-export const workspacePackages = ['packages/*', 'apps/*'] as const
+import appPkg from './packages/app/package.json.genie.ts'
+import sharedPkg from './packages/shared/package.json.genie.ts'
+import { pnpmWorkspaceYamlFromPackages } from './genie/internal.ts'
 
-export const catalog = {
-  effect: '3.12.0',
-  '@effect/platform': '0.90.0',
-  typescript: '5.9.0',
-  vitest: '3.0.0',
-  // ...
-}
-
-export const onlyBuiltDependencies = ['esbuild', '@esbuild/*'] as const
+export default pnpmWorkspaceYamlFromPackages({
+  dir: import.meta.dirname,
+  packages: [appPkg, sharedPkg],
+  dedupePeerDependents: true,
+})
 ```
+
+## Why wrappers exist
+
+The wrapper helpers keep `pnpmWorkspaceYaml(...)` focused on canonical emitted
+YAML while still allowing aggregate workspace files to be recomposed from
+package-local Genie outputs and their metadata.

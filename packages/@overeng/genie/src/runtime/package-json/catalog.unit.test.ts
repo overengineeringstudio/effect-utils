@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { CatalogConflictError, defineCatalog } from './catalog.ts'
+import { packageJson } from './mod.ts'
 
 describe('defineCatalog', () => {
   describe('standalone catalog', () => {
@@ -264,6 +265,85 @@ describe('defineCatalog', () => {
 
       expect(catalog['@effect/platform']).toBe('0.94.1')
       expect(catalog['@types/node']).toBe('25.0.3')
+    })
+  })
+
+  describe('compose', () => {
+    const catalog = defineCatalog({
+      effect: '3.19.14',
+      react: '19.2.3',
+    })
+
+    it('derives emitted dependencies and workspace metadata from imported packages', () => {
+      const utils = packageJson(
+        {
+          name: '@test/utils',
+          version: '1.0.0',
+        },
+        {
+          workspace: {
+            sourceDir: '/workspace/packages/utils',
+            deps: [],
+          },
+        },
+      )
+      const core = packageJson(
+        {
+          name: '@test/core',
+          version: '1.0.0',
+        },
+        {
+          workspace: {
+            sourceDir: '/workspace/packages/core',
+            deps: [utils],
+          },
+        },
+      )
+
+      const composed = catalog.compose({
+        dir: '/workspace/packages/app',
+        workspace: [core],
+        external: catalog.pick('effect', 'react'),
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@test/core': 'workspace:*',
+        effect: '3.19.14',
+        react: '19.2.3',
+      })
+      expect(composed.workspace).toEqual({
+        sourceDir: '/workspace/packages/app',
+        deps: [core],
+      })
+    })
+
+    it('adds workspaceSupport packages only to metadata', () => {
+      const utils = packageJson(
+        {
+          name: '@test/utils',
+          version: '1.0.0',
+        },
+        {
+          workspace: {
+            sourceDir: '/workspace/packages/utils',
+            deps: [],
+          },
+        },
+      )
+
+      const composed = catalog.compose({
+        dir: '/workspace/packages/app',
+        external: catalog.pick('effect'),
+        workspaceSupport: [utils],
+      })
+
+      expect(composed.dependencies).toEqual({
+        effect: '3.19.14',
+      })
+      expect(composed.workspace).toEqual({
+        sourceDir: '/workspace/packages/app',
+        deps: [utils],
+      })
     })
   })
 })

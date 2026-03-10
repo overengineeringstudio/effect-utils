@@ -148,6 +148,27 @@ describe('packageJson', () => {
       react: '^19.0.0',
     })
   })
+
+  it('preserves non-emitted metadata when provided as the second argument', () => {
+    const result = packageJson(
+      {
+        name: '@test/package',
+        version: '1.0.0',
+      },
+      {
+        workspace: {
+          sourceDir: '/workspace/packages/@test/package',
+          deps: [],
+        },
+      },
+    )
+
+    expect(result.meta.workspace).toEqual({
+      sourceDir: '/workspace/packages/@test/package',
+      deps: [],
+    })
+    expect(JSON.parse(result.stringify(mockGenieContext))).not.toHaveProperty('meta')
+  })
 })
 
 describe('packageJson with function scripts', () => {
@@ -278,6 +299,26 @@ describe('packageJson validate hook', () => {
     const result = packageJson({ version: '1.0.0' })
     const ctx = makeValidationContext([])
     expect(result.validate!(ctx)).toEqual([])
+  })
+})
+
+describe('workspaceRoot', () => {
+  it('preserves non-emitted metadata when provided as the second argument', () => {
+    const result = workspaceRoot(
+      {
+        name: 'workspace-root',
+        private: true,
+        workspaces: ['packages/*'],
+      },
+      {
+        packages: ['packages/app'],
+      },
+    )
+
+    expect(result.meta).toEqual({
+      packages: ['packages/app'],
+    })
+    expect(JSON.parse(result.stringify(mockWorkspaceRootContext))).not.toHaveProperty('meta')
   })
 })
 

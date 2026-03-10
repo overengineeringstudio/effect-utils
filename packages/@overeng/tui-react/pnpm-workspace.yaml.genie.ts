@@ -1,9 +1,8 @@
-import { pnpmWorkspaceWithDepsReact } from '../../../genie/internal.ts'
-import tuiCorePkg from '../tui-core/package.json.genie.ts'
+import { commonPnpmWorkspaceData, pnpmWorkspaceYamlFromPackage } from '../../../genie/internal.ts'
 import pkg from './package.json.genie.ts'
 
-export default pnpmWorkspaceWithDepsReact({
+export default pnpmWorkspaceYamlFromPackage({
   pkg,
-  deps: [tuiCorePkg],
-  extraPackages: ['../utils-dev'],
+  ...commonPnpmWorkspaceData,
+  publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
 })

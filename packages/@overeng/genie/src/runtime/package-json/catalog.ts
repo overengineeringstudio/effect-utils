@@ -6,8 +6,33 @@
  * - Conflict: same package + different version → error
  */
 
+import type { WorkspaceMetadata, WorkspacePackageLike } from './mod.ts'
+
 /** Base catalog type - a record of package names to version strings */
 export type CatalogInput = Record<string, string>
+
+type WorkspaceDependencyMap<TWorkspace extends readonly WorkspacePackageLike[]> = {
+  [TPkg in TWorkspace[number] as Extract<TPkg['data']['name'], string>]: 'workspace:*'
+}
+
+type ComposeArgs<
+  TWorkspace extends readonly WorkspacePackageLike[],
+  TExternal extends CatalogInput,
+> = {
+  dir: string
+  workspace?: TWorkspace
+  /** Already-picked external dependencies, typically from `catalog.pick(...)`. */
+  external?: TExternal
+  workspaceSupport?: readonly WorkspacePackageLike[]
+}
+
+type ComposeResult<
+  TWorkspace extends readonly WorkspacePackageLike[],
+  TExternal extends CatalogInput,
+> = {
+  dependencies: TExternal & WorkspaceDependencyMap<TWorkspace>
+  workspace: WorkspaceMetadata
+}
 
 /**
  * Type-level brand key for catalogs.
@@ -49,6 +74,16 @@ export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
    * ```
    */
   peers<K extends keyof T>(...keys: K[]): { [P in K]: string }
+  /**
+   * Compose emitted dependencies and non-emitted workspace metadata from imported
+   * workspace packages plus external catalog entries.
+   */
+  compose<
+    const TWorkspace extends readonly WorkspacePackageLike[],
+    const TExternal extends CatalogInput,
+  >(
+    args: ComposeArgs<TWorkspace, TExternal>,
+  ): ComposeResult<TWorkspace, TExternal>
 }
 
 /** Configuration for extending an existing catalog */
@@ -99,6 +134,34 @@ const createPeersFn =
     return result
   }
 
+/** Creates a composition helper for a catalog object */
+const createComposeFn =
+  () =>
+  <const TWorkspace extends readonly WorkspacePackageLike[], const TExternal extends CatalogInput>({
+    dir,
+    workspace = [] as unknown as TWorkspace,
+    external = {} as TExternal,
+    workspaceSupport = [],
+  }: ComposeArgs<TWorkspace, TExternal>): ComposeResult<TWorkspace, TExternal> => {
+    const externalDependencies = external
+    const workspaceDependencies = Object.fromEntries(
+      workspace.flatMap((pkg) =>
+        pkg.data.name === undefined ? [] : [[pkg.data.name, 'workspace:*'] as const],
+      ),
+    ) as WorkspaceDependencyMap<TWorkspace>
+
+    return {
+      dependencies: {
+        ...externalDependencies,
+        ...workspaceDependencies,
+      },
+      workspace: {
+        sourceDir: dir,
+        deps: [...workspace, ...workspaceSupport],
+      },
+    }
+  }
+
 /** Adds pick/peers methods as non-enumerable properties and freezes the catalog */
 const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
   Object.defineProperty(catalog, 'pick', {
@@ -109,6 +172,12 @@ const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
   })
   Object.defineProperty(catalog, 'peers', {
     value: createPeersFn(catalog),
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+  Object.defineProperty(catalog, 'compose', {
+    value: createComposeFn(),
     enumerable: false,
     writable: false,
     configurable: false,

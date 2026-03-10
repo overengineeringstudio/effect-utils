@@ -1,5 +1,6 @@
 import {
   catalog,
+  defineWorkspaceMetadata,
   effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
@@ -15,22 +16,29 @@ const peerDepNames = [
   'vitest',
 ] as const
 
-export default packageJson({
-  name: '@overeng/utils-dev',
-  ...privatePackageDefaults,
-  exports: {
-    './node-vitest': './src/node-vitest/mod.ts',
-  },
-  publishConfig: {
-    access: 'public',
+export default packageJson(
+  {
+    name: '@overeng/utils-dev',
+    ...privatePackageDefaults,
     exports: {
-      './node-vitest': './dist/node-vitest/mod.js',
+      './node-vitest': './src/node-vitest/mod.ts',
     },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        './node-vitest': './dist/node-vitest/mod.js',
+      },
+    },
+    dependencies: {},
+    devDependencies: {
+      ...catalog.pick(...peerDepNames, '@types/node'),
+      ...effectLspDevDeps(),
+    },
+    peerDependencies: catalog.peers(...peerDepNames),
   },
-  dependencies: {},
-  devDependencies: {
-    ...catalog.pick(...peerDepNames, '@types/node'),
-    ...effectLspDevDeps(),
+  {
+    workspace: defineWorkspaceMetadata({
+      dir: import.meta.dirname,
+    }),
   },
-  peerDependencies: catalog.peers(...peerDepNames),
-})
+)
