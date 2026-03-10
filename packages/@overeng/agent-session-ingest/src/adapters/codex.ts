@@ -93,6 +93,19 @@ const LegacySessionMetaRecord = Schema.Struct({
   git: Schema.optional(Schema.Unknown),
 })
 
+const LegacyStateRecord = Schema.Struct({
+  record_type: Schema.String,
+})
+
+const LegacyTopLevelRecord = Schema.Struct({
+  type: Schema.String,
+  timestamp: Schema.optional(Schema.DateTimeUtc),
+  id: Schema.optional(Schema.NullOr(Schema.String)),
+  role: Schema.optional(Schema.String),
+  content: Schema.optional(Schema.Unknown),
+  payload: Schema.optional(Schema.Unknown),
+})
+
 const TokenCountInfo = Schema.Struct({
   total_token_usage: Schema.optional(Schema.Unknown),
   last_token_usage: Schema.optional(Schema.Unknown),
@@ -101,6 +114,8 @@ const TokenCountInfo = Schema.Struct({
 
 export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
+  LegacyStateRecord,
+  LegacyTopLevelRecord,
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
     type: Schema.Literal('session_meta'),
