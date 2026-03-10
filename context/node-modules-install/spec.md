@@ -67,6 +67,33 @@ Reason:
 If the composed root imports `repo-a`'s aggregate lockfile as authoritative,
 pnpm is being asked to validate the wrong workspace shape.
 
+## Repo Composition Principle
+
+Composition should reuse upstream repo definitions instead of re-describing
+them locally.
+
+This applies to:
+
+- `devenv` task definitions and task dependencies
+- Genie-generated workspace and package metadata
+- CI helper logic
+- builder and hash-update entrypoints
+
+A composed repo may add topology-local orchestration, but it should do so by
+depending on upstream repo-local entrypoints rather than copying upstream
+definitions into the composed repo.
+
+For example:
+
+```text
+dotfiles pnpm:install
+  -> depends on repos/livestore pnpm:install
+  -> test:oi-unit depends only on dotfiles pnpm:install
+```
+
+This keeps repo ownership explicit while still letting the composed repo
+present one local entrypoint.
+
 ## Topology Model
 
 ### Standalone topology
@@ -207,11 +234,20 @@ At minimum the managed wrappers must:
 - generate or validate the aggregate root inputs for the selected composed
   topology before install
 - ensure nested standalone repos are ready before a composed install depends
-  on them
+  on them, preferably by depending on their own repo-local install tasks
 - apply the required runtime symlink-preservation flags for composed
   execution
 - validate that aggregate topology generation and dependency closure are in
   sync before install and runtime execution
+
+Managed tooling should prefer:
+
+- reusing upstream repo-local task entrypoints over reimplementing raw package
+  manager commands in the composed repo
+- reusing upstream Genie definitions over duplicating package and workspace
+  metadata locally
+- reusing shared CI helpers while keeping generated aggregate files
+  topology-local
 
 Package-level install commands in the live worktree are not supported if they
 materialize package-local `node_modules`. Package-level closure refreshes in

@@ -13,6 +13,10 @@
   packages,
   globalCache ? true,
   frozenInCi ? true,
+  installAfter ? [],
+  updateAfter ? [],
+  cleanAfter ? [],
+  resetLockFilesAfter ? [],
 }:
 {
   lib,
@@ -161,6 +165,7 @@ in
   tasks = {
     "pnpm:install" = {
       description = "Install repo-root pnpm workspace and refresh package lockfiles";
+      after = installAfter;
       exec = trace.exec "pnpm:install" ''
         set -euo pipefail
         mkdir -p "${cacheRoot}"
@@ -220,7 +225,7 @@ in
 
     "pnpm:update" = {
       description = "Update repo-root and package-closure pnpm lockfiles";
-      after = [ "genie:run" ];
+      after = [ "genie:run" ] ++ updateAfter;
       exec = trace.exec "pnpm:update" ''
         set -euo pipefail
         export npm_config_manage_package_manager_versions=false
@@ -232,6 +237,7 @@ in
 
     "pnpm:clean" = {
       description = "Remove repo-root and package-level node_modules";
+      after = cleanAfter;
       exec = trace.exec "pnpm:clean" ''
         rm -rf "node_modules" ${nodeModulesPaths}
       '';
@@ -239,6 +245,7 @@ in
 
     "pnpm:reset-lock-files" = {
       description = "Remove repo-root and package-level pnpm lock files (last resort)";
+      after = resetLockFilesAfter;
       exec = trace.exec "pnpm:reset-lock-files" ''
         rm -f ${lockFilePaths}
       '';
