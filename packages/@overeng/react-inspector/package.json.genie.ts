@@ -1,4 +1,3 @@
-import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
@@ -14,9 +13,6 @@ const workspaceDeps = catalog.compose({
     external: {
       ...catalog.pick('is-dom'),
     },
-  },
-  pnpm: {
-    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     workspace: [utilsPkg],
