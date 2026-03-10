@@ -86,6 +86,13 @@ const SessionMetaPayload = Schema.Struct({
   instructions: Schema.optional(Schema.String),
 })
 
+const LegacySessionMetaRecord = Schema.Struct({
+  id: Schema.String,
+  timestamp: Schema.DateTimeUtc,
+  instructions: Schema.optional(Schema.NullOr(Schema.String)),
+  git: Schema.optional(Schema.Unknown),
+})
+
 const TokenCountInfo = Schema.Struct({
   total_token_usage: Schema.optional(Schema.Unknown),
   last_token_usage: Schema.optional(Schema.Unknown),
@@ -93,6 +100,7 @@ const TokenCountInfo = Schema.Struct({
 })
 
 export const CodexSessionRecord = Schema.Union(
+  LegacySessionMetaRecord,
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
     type: Schema.Literal('session_meta'),
