@@ -17,10 +17,17 @@ const TextPart = Schema.Struct({
   text: Schema.String,
 })
 
+const InputImagePart = Schema.Struct({
+  type: Schema.Literal('input_image'),
+  image_url: Schema.optional(Schema.Unknown),
+  file_id: Schema.optional(Schema.String),
+  detail: Schema.optional(Schema.String),
+})
+
 const MessageResponsePayload = Schema.Struct({
   type: Schema.Literal('message'),
   role: Schema.Literal('assistant', 'developer', 'system', 'user'),
-  content: Schema.Array(TextPart),
+  content: Schema.Array(Schema.Union(TextPart, InputImagePart)),
 })
 
 const ReasoningSummaryPart = Schema.Struct({
@@ -33,6 +40,28 @@ const ReasoningPayload = Schema.Struct({
   summary: Schema.Array(ReasoningSummaryPart),
   content: Schema.NullOr(Schema.Unknown),
   encrypted_content: Schema.optional(Schema.String),
+})
+
+const CustomToolCallPayload = Schema.Struct({
+  type: Schema.Literal('custom_tool_call'),
+  call_id: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
+  input: Schema.optional(Schema.Unknown),
+  arguments: Schema.optional(Schema.String),
+})
+
+const CustomToolCallOutputPayload = Schema.Struct({
+  type: Schema.Literal('custom_tool_call_output'),
+  call_id: Schema.optional(Schema.String),
+  output: Schema.optional(Schema.Unknown),
+})
+
+const GhostSnapshotPayload = Schema.Struct({
+  type: Schema.Literal('ghost_snapshot'),
+})
+
+const WebSearchCallPayload = Schema.Struct({
+  type: Schema.Literal('web_search_call'),
 })
 
 const FunctionCallPayload = Schema.Struct({
@@ -77,6 +106,10 @@ export const CodexSessionRecord = Schema.Union(
       FunctionCallPayload,
       FunctionCallOutputPayload,
       ReasoningPayload,
+      CustomToolCallPayload,
+      CustomToolCallOutputPayload,
+      GhostSnapshotPayload,
+      WebSearchCallPayload,
     ),
   }),
   Schema.Struct({
