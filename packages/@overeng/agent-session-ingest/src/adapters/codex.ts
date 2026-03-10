@@ -12,15 +12,27 @@ import { readAppendOnlyTextFileSince } from '../files/append-only.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
 import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
 
-const OutputTextPart = Schema.Struct({
-  type: Schema.Literal('output_text'),
+const TextPart = Schema.Struct({
+  type: Schema.Literal('input_text', 'output_text'),
   text: Schema.String,
 })
 
 const MessageResponsePayload = Schema.Struct({
   type: Schema.Literal('message'),
-  role: Schema.Literal('assistant', 'user'),
-  content: Schema.Array(OutputTextPart),
+  role: Schema.Literal('assistant', 'developer', 'system', 'user'),
+  content: Schema.Array(TextPart),
+})
+
+const ReasoningSummaryPart = Schema.Struct({
+  type: Schema.String,
+  text: Schema.String,
+})
+
+const ReasoningPayload = Schema.Struct({
+  type: Schema.Literal('reasoning'),
+  summary: Schema.Array(ReasoningSummaryPart),
+  content: Schema.NullOr(Schema.Unknown),
+  encrypted_content: Schema.optional(Schema.String),
 })
 
 const FunctionCallPayload = Schema.Struct({
@@ -60,7 +72,12 @@ export const CodexSessionRecord = Schema.Union(
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
     type: Schema.Literal('response_item'),
-    payload: Schema.Union(MessageResponsePayload, FunctionCallPayload, FunctionCallOutputPayload),
+    payload: Schema.Union(
+      MessageResponsePayload,
+      FunctionCallPayload,
+      FunctionCallOutputPayload,
+      ReasoningPayload,
+    ),
   }),
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
