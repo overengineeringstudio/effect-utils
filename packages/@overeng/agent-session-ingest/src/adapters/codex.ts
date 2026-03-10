@@ -112,6 +112,7 @@ const TokenCountInfo = Schema.Struct({
   model_context_window: Schema.optional(Schema.Number),
 })
 
+/** Source-of-truth record union for Codex session JSONL artifacts. */
 export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
   LegacyStateRecord,
@@ -159,6 +160,7 @@ export const CodexSessionRecord = Schema.Union(
 ).annotations({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
+/** Source-of-truth entry from the Codex session discovery index. */
 export const CodexSessionIndexEntry = Schema.Struct({
   id: Schema.String,
   thread_name: Schema.String,
@@ -166,45 +168,49 @@ export const CodexSessionIndexEntry = Schema.Struct({
 }).annotations({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
 export type CodexSessionIndexEntry = typeof CodexSessionIndexEntry.Type
 
-const listJsonlFiles = Effect.fn(
-  'AgentSessionIngest.Codex.listJsonlFiles',
-)((options: { root: string; discoverySinceEpochMs?: number }) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const exists = yield* fs.exists(options.root)
-    if (!exists) return [] as Array<string>
+const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(
+  (options: { root: string; discoverySinceEpochMs?: number }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const exists = yield* fs.exists(options.root)
+      if (exists !== true) return [] as Array<string>
 
-    const directories = [options.root]
-    const files: Array<string> = []
+      const directories = [options.root]
+      const files: Array<string> = []
 
-    while (directories.length > 0) {
-      const currentDir = directories.pop()
-      if (currentDir === undefined) continue
+      while (directories.length > 0) {
+        const currentDir = directories.pop()
+        if (currentDir === undefined) continue
 
-      const entries = yield* fs.readDirectory(currentDir)
-      for (const entry of entries) {
-        const path = nodePath.join(currentDir, entry)
-        const info = yield* fs.stat(path)
-        if (info.type === 'Directory') {
-          directories.push(path)
-          continue
-        }
-        const modifiedAtEpochMs = Option.getOrUndefined(info.mtime)?.getTime()
-        const isRecentEnough =
-          options.discoverySinceEpochMs === undefined ||
-          modifiedAtEpochMs === undefined ||
-          modifiedAtEpochMs >= options.discoverySinceEpochMs
+        const entries = yield* fs.readDirectory(currentDir)
+        for (const entry of entries) {
+          const path = nodePath.join(currentDir, entry)
+          const info = yield* fs.stat(path)
+          if (info.type === 'Directory') {
+            directories.push(path)
+            continue
+          }
+          const modifiedAtEpochMs = Option.getOrUndefined(info.mtime)?.getTime()
+          const isRecentEnough =
+            options.discoverySinceEpochMs === undefined ||
+            modifiedAtEpochMs === undefined ||
+            modifiedAtEpochMs >= options.discoverySinceEpochMs
 
-        if (info.type === 'File' && entry.endsWith('.jsonl') && isRecentEnough) {
-          files.push(path)
+          if (
+            info.type === 'File' &&
+            entry.endsWith('.jsonl') === true &&
+            isRecentEnough === true
+          ) {
+            files.push(path)
+          }
         }
       }
-    }
 
-    return files.toSorted()
-  }),
+      return files.toSorted()
+    }),
 )
 
+/** Adapter for incremental ingestion of Codex session JSONL artifacts. */
 export const makeCodexAdapter = (options: {
   readonly sessionsRoot: string
   readonly sourceId?: string

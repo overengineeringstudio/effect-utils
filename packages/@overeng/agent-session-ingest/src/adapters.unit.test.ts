@@ -1,5 +1,5 @@
-import * as nodePath from 'node:path'
 import { utimesSync } from 'node:fs'
+import * as nodePath from 'node:path'
 
 import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
@@ -95,7 +95,9 @@ Vitest.describe('agent-session-ingest adapters', () => {
       })
       expect(second.records).toHaveLength(1)
       const record = second.records[0]
-      expect(record && 'type' in record ? record.type : undefined).toBe('turn_context')
+      expect(record !== undefined && 'type' in record ? record.type : undefined).toBe(
+        'turn_context',
+      )
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 
@@ -171,7 +173,9 @@ Vitest.describe('agent-session-ingest adapters', () => {
       const ingested = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
       expect(ingested.records).toHaveLength(1)
       const record = ingested.records[0]
-      expect(record && 'payload' in record ? record.payload : undefined).toMatchObject({
+      expect(
+        record !== undefined && 'payload' in record ? record.payload : undefined,
+      ).toMatchObject({
         type: 'function_call_output',
         output: 'recent',
       })

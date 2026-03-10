@@ -10,6 +10,7 @@ import { IngestionCheckpointJsonLine } from '../schema/core.ts'
 const buildCheckpointKey = (descriptor: Pick<ArtifactDescriptor, 'sourceId' | 'artifactId'>) =>
   `${descriptor.sourceId}:${descriptor.artifactId}`
 
+/** Service for loading and saving deduped ingestion checkpoints. */
 export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointStore')<
   CheckpointStore,
   {

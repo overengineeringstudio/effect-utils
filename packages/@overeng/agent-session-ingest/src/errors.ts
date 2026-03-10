@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+/** Raised when session artifact bytes cannot be read from disk. */
 export class SessionArtifactReadError extends Schema.TaggedError<SessionArtifactReadError>()(
   'SessionArtifactReadError',
   {
@@ -9,6 +10,7 @@ export class SessionArtifactReadError extends Schema.TaggedError<SessionArtifact
   },
 ) {}
 
+/** Raised when a source record cannot be decoded into its source-of-truth schema. */
 export class SessionArtifactDecodeError extends Schema.TaggedError<SessionArtifactDecodeError>()(
   'SessionArtifactDecodeError',
   {
@@ -20,6 +22,7 @@ export class SessionArtifactDecodeError extends Schema.TaggedError<SessionArtifa
   },
 ) {}
 
+/** Raised when persisted checkpoint state cannot be decoded back into structured data. */
 export class SessionCheckpointDecodeError extends Schema.TaggedError<SessionCheckpointDecodeError>()(
   'SessionCheckpointDecodeError',
   {
@@ -29,6 +32,7 @@ export class SessionCheckpointDecodeError extends Schema.TaggedError<SessionChec
   },
 ) {}
 
+/** Raised when checkpoint state cannot be encoded or written back to disk. */
 export class SessionCheckpointWriteError extends Schema.TaggedError<SessionCheckpointWriteError>()(
   'SessionCheckpointWriteError',
   {
@@ -38,6 +42,7 @@ export class SessionCheckpointWriteError extends Schema.TaggedError<SessionCheck
   },
 ) {}
 
+/** Raised when source artifact discovery fails before ingestion can begin. */
 export class SessionSourceDiscoveryError extends Schema.TaggedError<SessionSourceDiscoveryError>()(
   'SessionSourceDiscoveryError',
   {
@@ -47,6 +52,7 @@ export class SessionSourceDiscoveryError extends Schema.TaggedError<SessionSourc
   },
 ) {}
 
+/** Union of all ingest-time failures emitted by the shared session ingestion core. */
 export type SessionIngestError =
   | SessionArtifactDecodeError
   | SessionArtifactReadError
