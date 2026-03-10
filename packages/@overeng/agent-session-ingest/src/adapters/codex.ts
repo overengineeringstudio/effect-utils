@@ -3,7 +3,11 @@ import * as nodePath from 'node:path'
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
-import { SessionArtifactDecodeError, SessionSourceDiscoveryError } from '../errors.ts'
+import {
+  SessionArtifactDecodeError,
+  SessionCheckpointDecodeError,
+  SessionSourceDiscoveryError,
+} from '../errors.ts'
 import { readAppendOnlyTextFileSince } from '../files/append-only.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
 import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
@@ -95,29 +99,28 @@ const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')((roo
     const exists = yield* fs.exists(root)
     if (!exists) return [] as Array<string>
 
-    const walk: (currentDir: string) => Effect.Effect<Array<string>, unknown, never> = (
-      currentDir,
-    ) =>
-      Effect.gen(function* () {
-        const entries = yield* fs.readDirectory(currentDir)
-        const files: Array<string> = []
+    const directories = [root]
+    const files: Array<string> = []
 
-        for (const entry of entries) {
-          const path = nodePath.join(currentDir, entry)
-          const info = yield* fs.stat(path)
-          if (info.type === 'Directory') {
-            files.push(...(yield* walk(path)))
-            continue
-          }
-          if (info.type === 'File' && entry.endsWith('.jsonl')) {
-            files.push(path)
-          }
+    while (directories.length > 0) {
+      const currentDir = directories.pop()
+      if (currentDir === undefined) continue
+
+      const entries = yield* fs.readDirectory(currentDir)
+      for (const entry of entries) {
+        const path = nodePath.join(currentDir, entry)
+        const info = yield* fs.stat(path)
+        if (info.type === 'Directory') {
+          directories.push(path)
+          continue
         }
+        if (info.type === 'File' && entry.endsWith('.jsonl')) {
+          files.push(path)
+        }
+      }
+    }
 
-        return files
-      })
-
-    return (yield* walk(root)).toSorted()
+    return files.toSorted()
   }),
 )
 
@@ -177,7 +180,7 @@ export const makeCodexAdapter = (options: {
       return {
         artifact,
         records,
-        checkpoint: Schema.decodeUnknownSync(IngestionCheckpoint)({
+        checkpoint: yield* Schema.decodeUnknown(IngestionCheckpoint)({
           sourceId: artifact.sourceId,
           artifactId: artifact.artifactId,
           path: artifact.path,
@@ -188,7 +191,16 @@ export const makeCodexAdapter = (options: {
             contentVersion: read.contentVersion,
           },
           updatedAtEpochMs: Date.now(),
-        }),
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new SessionCheckpointDecodeError({
+                message: 'Failed to decode Codex ingestion checkpoint',
+                path: artifact.path,
+                cause,
+              }),
+          ),
+        ),
       }
     }),
 })
