@@ -171,6 +171,9 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
 
+export const jobLocalMegarepoStore =
+  '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
+
 /** Install megarepo CLI from effect-utils */
 export const installMegarepoStep = {
   name: 'Install megarepo CLI',
@@ -185,7 +188,10 @@ export const syncMegarepoStep = (opts?: { frozen?: boolean; skip?: string[] }) =
   if (opts?.skip) for (const s of opts.skip) args.push('--skip', s)
   return {
     name: 'Sync megarepo dependencies',
-    run: args.join(' '),
+    env: { MEGAREPO_STORE: jobLocalMegarepoStore },
+    run: `mkdir -p "$MEGAREPO_STORE"
+echo "Using job-local megarepo store: $MEGAREPO_STORE"
+${args.join(' ')}`,
     shell: 'bash',
   }
 }
@@ -199,11 +205,14 @@ export const syncMegarepoFromLockStep = (opts?: { skip?: string[] }) => {
   const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
   return {
     name: 'Sync megarepo dependencies',
+    env: { MEGAREPO_STORE: jobLocalMegarepoStore },
     run: `EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
 if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
   echo '::error::megarepo.lock missing members["effect-utils"].commit'
   exit 1
 fi
+mkdir -p "$MEGAREPO_STORE"
+echo "Using job-local megarepo store: $MEGAREPO_STORE"
 nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --frozen${skipArgs ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
