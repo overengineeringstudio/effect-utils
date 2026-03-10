@@ -1,4 +1,3 @@
-import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   effectLspDevDeps,
@@ -58,9 +57,6 @@ export default packageJson({
       '@xterm/headless',
       '@xterm/addon-fit',
     ),
-  },
-  pnpm: {
-    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     ...effectLspDevDeps(),

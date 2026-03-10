@@ -78,12 +78,28 @@ export const catalog = defineCatalog({
   packages: internalPackageCatalogEntries,
 })
 
+const inferDefaultPatchedDependencies = (data: PackageJsonData) => {
+  const dependencyNames = new Set([
+    ...Object.keys(data.dependencies ?? {}),
+    ...Object.keys(data.devDependencies ?? {}),
+    ...Object.keys(data.optionalDependencies ?? {}),
+    ...Object.keys(data.peerDependencies ?? {}),
+  ])
+
+  return Object.fromEntries(
+    Object.entries(pnpmPatchedDependencies()).filter(([specifier]) => {
+      const packageName = specifier.replace(/@[^@]+$/, '')
+      return dependencyNames.has(packageName)
+    }),
+  )
+}
+
 export const packageJson = <const T extends PackageJsonData>(data: Strict<T, PackageJsonData>) =>
   externalPackageJson({
     ...data,
     pnpm: {
       ...data.pnpm,
-      patchedDependencies: data.pnpm?.patchedDependencies ?? pnpmPatchedDependencies(),
+      patchedDependencies: data.pnpm?.patchedDependencies ?? inferDefaultPatchedDependencies(data),
     },
   })
 
