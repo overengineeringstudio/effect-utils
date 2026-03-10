@@ -3,7 +3,11 @@ import * as nodePath from 'node:path'
 import { FileSystem } from '@effect/platform'
 import { Effect, Schema } from 'effect'
 
-import { SessionArtifactDecodeError, SessionSourceDiscoveryError } from '../errors.ts'
+import {
+  SessionArtifactDecodeError,
+  SessionCheckpointDecodeError,
+  SessionSourceDiscoveryError,
+} from '../errors.ts'
 import { readAppendOnlyTextFileSince } from '../files/append-only.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
 import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
@@ -80,7 +84,7 @@ export const makeCcSafetyNetAdapter = (options: {
       return {
         artifact,
         records,
-        checkpoint: Schema.decodeUnknownSync(IngestionCheckpoint)({
+        checkpoint: yield* Schema.decodeUnknown(IngestionCheckpoint)({
           sourceId: artifact.sourceId,
           artifactId: artifact.artifactId,
           path: artifact.path,
@@ -91,7 +95,16 @@ export const makeCcSafetyNetAdapter = (options: {
             contentVersion: read.contentVersion,
           },
           updatedAtEpochMs: Date.now(),
-        }),
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new SessionCheckpointDecodeError({
+                message: 'Failed to decode cc-safety-net ingestion checkpoint',
+                path: artifact.path,
+                cause,
+              }),
+          ),
+        ),
       }
     }),
 })
