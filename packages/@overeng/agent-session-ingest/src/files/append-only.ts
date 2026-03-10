@@ -1,3 +1,5 @@
+import { open as openFile } from 'node:fs/promises'
+
 import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
@@ -25,9 +27,29 @@ const buildContentVersion = (options: {
     tailHash: hashText(options.tailSample),
   })
 
+const readByteAt = (options: { path: string; offsetBytes: number }) =>
+  Effect.tryPromise({
+    try: async () => {
+      const handle = await openFile(options.path, 'r')
+      try {
+        const buffer = Buffer.alloc(1)
+        const { bytesRead } = await handle.read(buffer, 0, 1, options.offsetBytes)
+        return bytesRead === 0 ? undefined : buffer.toString('utf8', 0, 1)
+      } finally {
+        await handle.close()
+      }
+    },
+    catch: (cause) =>
+      new SessionArtifactReadError({
+        message: 'Failed to read append-only artifact boundary byte',
+        path: options.path,
+        cause,
+      }),
+  })
+
 export const readAppendOnlyTextFileSince = Effect.fn(
   'AgentSessionIngest.readAppendOnlyTextFileSince',
-)((options: { path: string; offsetBytes: number }) =>
+)((options: { path: string; offsetBytes: number; initialReadMaxBytes?: number }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const info = yield* fs.stat(options.path).pipe(
@@ -43,19 +65,76 @@ export const readAppendOnlyTextFileSince = Effect.fn(
 
     const sizeBytes = Number(info.size)
     const normalizedOffsetBytes = sizeBytes < options.offsetBytes ? 0 : options.offsetBytes
-    const fullText = yield* fs.readFileString(options.path).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SessionArtifactReadError({
-            message: 'Failed to read append-only artifact',
-            path: options.path,
-            cause,
-          }),
-      ),
-    )
+    const boundedInitialOffsetBytes =
+      normalizedOffsetBytes === 0 &&
+      options.offsetBytes === 0 &&
+      options.initialReadMaxBytes !== undefined &&
+      sizeBytes > options.initialReadMaxBytes
+        ? sizeBytes - options.initialReadMaxBytes
+        : normalizedOffsetBytes
 
-    const nextText = fullText.slice(normalizedOffsetBytes)
-    const tailSample = fullText.slice(Math.max(0, fullText.length - 512))
+    const readText = yield* Effect.tryPromise({
+      try: async () => {
+        const length = Math.max(0, sizeBytes - boundedInitialOffsetBytes)
+        if (length === 0) return ''
+
+        const handle = await openFile(options.path, 'r')
+        try {
+          const buffer = Buffer.alloc(length)
+          const { bytesRead } = await handle.read(buffer, 0, length, boundedInitialOffsetBytes)
+          return buffer.subarray(0, bytesRead).toString('utf8')
+        } finally {
+          await handle.close()
+        }
+      },
+      catch: (cause) =>
+        new SessionArtifactReadError({
+          message: 'Failed to read append-only artifact',
+          path: options.path,
+          cause,
+        }),
+    })
+
+    const tailSample = yield* Effect.tryPromise({
+      try: async () => {
+        const length = Math.min(512, sizeBytes)
+        if (length === 0) return ''
+
+        const handle = await openFile(options.path, 'r')
+        try {
+          const buffer = Buffer.alloc(length)
+          const { bytesRead } = await handle.read(buffer, 0, length, sizeBytes - length)
+          return buffer.subarray(0, bytesRead).toString('utf8')
+        } finally {
+          await handle.close()
+        }
+      },
+      catch: (cause) =>
+        new SessionArtifactReadError({
+          message: 'Failed to read append-only artifact tail sample',
+          path: options.path,
+          cause,
+        }),
+    })
+
+    const startedFromTail = boundedInitialOffsetBytes > 0 && options.offsetBytes === 0
+    const beginsOnLineBoundary =
+      startedFromTail !== true
+        ? false
+        : boundedInitialOffsetBytes === 0
+          ? true
+          : (yield* readByteAt({
+              path: options.path,
+              offsetBytes: boundedInitialOffsetBytes - 1,
+            })) === '\n'
+    const nextText = startedFromTail
+      ? beginsOnLineBoundary
+        ? readText
+        : (() => {
+          const firstNewlineIndex = readText.indexOf('\n')
+          return firstNewlineIndex === -1 ? '' : readText.slice(firstNewlineIndex + 1)
+        })()
+      : readText
 
     return {
       text: nextText,

@@ -34,6 +34,25 @@ Vitest.describe('agent-session-ingest file readers', () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 
+  Vitest.it.effect('can seed an append-only read from the tail on the first pass', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tempDir = yield* fs.makeTempDirectoryScoped()
+      const path = nodePath.join(tempDir, 'session.jsonl')
+
+      yield* fs.writeFileString(path, 'old-line\nrecent-line\n')
+      const result = yield* readAppendOnlyTextFileSince({
+        path,
+        offsetBytes: 0,
+        initialReadMaxBytes: 12,
+      })
+
+      expect(result.text).toBe('recent-line\n')
+      expect(result.nextOffsetBytes).toBeGreaterThan(0)
+      expect(result.resetToStart).toBe(false)
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
   Vitest.it.effect('detects mutable file changes from content version', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
