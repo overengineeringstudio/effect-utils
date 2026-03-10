@@ -20,6 +20,9 @@ export default packageJson({
       '.': './dist/mod.js',
     },
   },
+  pnpm: {
+    patchedDependencies: {},
+  },
   devDependencies: {
     ...catalog.pick(
       ...peerDepNames,
