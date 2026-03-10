@@ -1,0 +1,39 @@
+{
+  "name": "@overeng/agent-session-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "devDependencies": {
+    "@effect/language-service": "0.69.2",
+    "@effect/platform": "0.94.2",
+    "@effect/platform-node": "0.104.1",
+    "@effect/vitest": "0.27.0",
+    "@overeng/utils-dev": "workspace:*",
+    "@types/node": "25.3.3",
+    "effect": "3.19.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "peerDependencies": {
+    "@effect/platform": "^0.94.2",
+    "effect": "^3.19.15"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch"
+    }
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  }
+}
