@@ -46,9 +46,7 @@
     "react-dom": "^19.2.3"
   },
   "pnpm": {
-    "patchedDependencies": {
-      "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch"
-    }
+    "patchedDependencies": {}
   },
   "$genie": {
     "source": "package.json.genie.ts",
