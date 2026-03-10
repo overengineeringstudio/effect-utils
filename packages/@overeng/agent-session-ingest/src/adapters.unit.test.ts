@@ -93,7 +93,8 @@ Vitest.describe('agent-session-ingest adapters', () => {
         checkpoint: first.checkpoint,
       })
       expect(second.records).toHaveLength(1)
-      expect(second.records[0]?.type).toBe('turn_context')
+      const record = second.records[0]
+      expect(record && 'type' in record ? record.type : undefined).toBe('turn_context')
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 
