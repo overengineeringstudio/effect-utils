@@ -61,7 +61,7 @@ let
       name = "oxlint-npm";
       flakeRef = ".#oxlint-npm";
       hashSource = "nix/oxc-config-plugin.nix";
-      lockfile = "pnpm-lock.yaml";
+      lockfile = "packages/@overeng/oxc-config/pnpm-lock.yaml";
       packageJson = "packages/@overeng/oxc-config/package.json";
       pnpmInstallTask = "oxc-config";
     }

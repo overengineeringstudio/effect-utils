@@ -28,6 +28,42 @@ let
   sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   flock = "${pkgs.flock}/bin/flock";
 
+  packageNameToPath = builtins.listToAttrs (
+    builtins.filter (x: x != null) (
+      map (
+        path:
+        let
+          pkgJsonPath = "${config.devenv.root}/${path}/package.json";
+          pkgJsonExists = builtins.pathExists pkgJsonPath;
+          pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else { };
+          name = pkgJson.name or null;
+        in
+        if name != null then
+          {
+            inherit name;
+            value = path;
+          }
+        else
+          null
+      ) packages
+    )
+  );
+
+  getInjectedDeps =
+    path:
+    let
+      pkgJsonPath = "${config.devenv.root}/${path}/package.json";
+      pkgJsonExists = builtins.pathExists pkgJsonPath;
+      pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else { };
+      depsMeta = pkgJson.dependenciesMeta or { };
+      injectedNames = builtins.filter (name: (depsMeta.${name}.injected or false) == true) (
+        builtins.attrNames depsMeta
+      );
+    in
+    builtins.filter (p: p != null) (map (name: packageNameToPath.${name} or null) injectedNames);
+
+  injectedSourcePaths = lib.unique (lib.concatMap getInjectedDeps packages);
+
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
   packageWorkspacePaths =
     lib.concatMapStringsSep " " (
@@ -43,11 +79,41 @@ let
     }
   '';
 
+  emitDirStateFn = ''
+    emit_dir_state() {
+      local dir="$1"
+
+      if [ ! -d "$dir" ]; then
+        return
+      fi
+
+      find "$dir" \
+        \( \
+          -name .git -o \
+          -name .direnv -o \
+          -name .devenv -o \
+          -name .turbo -o \
+          -name .cache -o \
+          -name node_modules -o \
+          -name dist -o \
+          -name coverage -o \
+          -name result -o \
+          -name tmp \
+        \) -prune -o -type f -print \
+        | LC_ALL=C sort \
+        | while IFS= read -r file; do
+          printf '%s ' "''${file#"$dir"/}"
+          ${sha256sum} "$file" | awk '{print $1}'
+        done
+    }
+  '';
+
   computeWorkspaceStateHash = ''
     compute_workspace_state_hash() {
       {
         cat package.json
         cat pnpm-workspace.yaml
+        cat pnpm-lock.yaml
         if [ -f .npmrc ]; then
           cat .npmrc
         fi
@@ -62,6 +128,10 @@ let
           if [ -f "$workspace_file" ]; then
             cat "$workspace_file"
           fi
+        done
+
+        for injected_dir in ${lib.concatMapStringsSep " " (path: ''"${path}"'') injectedSourcePaths}; do
+          emit_dir_state "$injected_dir"
         done
       } | compute_hash
     }
@@ -113,6 +183,7 @@ in
         ${refreshPackageLockfilesScript}
 
         ${computeHashFn}
+        ${emitDirStateFn}
         ${computeWorkspaceStateHash}
         cache_value="$(compute_workspace_state_hash)"
         ${cache.writeCacheFile ''"$hash_file"''}
@@ -132,6 +203,7 @@ in
         done
 
         ${computeHashFn}
+        ${emitDirStateFn}
         ${computeWorkspaceStateHash}
         current_hash="$(compute_workspace_state_hash)"
         stored_hash="$(cat "$hash_file")"
