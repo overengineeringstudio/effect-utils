@@ -25,14 +25,15 @@ const buildContentVersion = (options: {
     tailHash: hashText(options.tailSample),
   })
 
-const isSameContentVersion = (
-  previous: ContentVersionCursor['contentVersion'] | undefined,
-  next: typeof ContentVersion.Type,
-) =>
-  previous?.sizeBytes === next.sizeBytes &&
-  previous.modifiedAtEpochMs === next.modifiedAtEpochMs &&
-  previous.tailHash === next.tailHash
+const isSameContentVersion = (options: {
+  previous: ContentVersionCursor['contentVersion'] | undefined
+  next: typeof ContentVersion.Type
+}) =>
+  options.previous?.sizeBytes === options.next.sizeBytes &&
+  options.previous?.modifiedAtEpochMs === options.next.modifiedAtEpochMs &&
+  options.previous?.tailHash === options.next.tailHash
 
+/** Reads a mutable artifact only when its content version changed since the last checkpoint. */
 export const readMutableTextFileIfChanged = Effect.fn(
   'AgentSessionIngest.readMutableTextFileIfChanged',
 )((options: { path: string; previous: ContentVersionCursor | undefined }) =>
@@ -69,7 +70,11 @@ export const readMutableTextFileIfChanged = Effect.fn(
     return {
       content,
       contentVersion,
-      changed: !isSameContentVersion(options.previous?.contentVersion, contentVersion),
+      changed:
+        isSameContentVersion({
+          previous: options.previous?.contentVersion,
+          next: contentVersion,
+        }) !== true,
     } satisfies MutableReadResult
   }),
 )

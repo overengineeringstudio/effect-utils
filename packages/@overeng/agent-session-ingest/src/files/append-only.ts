@@ -47,6 +47,7 @@ const readByteAt = (options: { path: string; offsetBytes: number }) =>
       }),
   })
 
+/** Reads the unread tail of an append-only text artifact and returns the next stable cursor. */
 export const readAppendOnlyTextFileSince = Effect.fn(
   'AgentSessionIngest.readAppendOnlyTextFileSince',
 )((options: { path: string; offsetBytes: number; initialReadMaxBytes?: number }) =>
@@ -127,14 +128,15 @@ export const readAppendOnlyTextFileSince = Effect.fn(
               path: options.path,
               offsetBytes: boundedInitialOffsetBytes - 1,
             })) === '\n'
-    const nextText = startedFromTail
-      ? beginsOnLineBoundary
-        ? readText
-        : (() => {
-          const firstNewlineIndex = readText.indexOf('\n')
-          return firstNewlineIndex === -1 ? '' : readText.slice(firstNewlineIndex + 1)
-        })()
-      : readText
+    const nextText =
+      startedFromTail === true
+        ? beginsOnLineBoundary === true
+          ? readText
+          : (() => {
+              const firstNewlineIndex = readText.indexOf('\n')
+              return firstNewlineIndex === -1 ? '' : readText.slice(firstNewlineIndex + 1)
+            })()
+        : readText
 
     return {
       text: nextText,

@@ -12,6 +12,7 @@ import { readAppendOnlyTextFileSince } from '../files/append-only.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
 import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
 
+/** Source-of-truth record emitted by cc-safety-net command guard logs. */
 export const CcSafetyNetEntry = Schema.Struct({
   ts: Schema.DateTimeUtc,
   command: Schema.NonEmptyTrimmedString,
@@ -21,6 +22,7 @@ export const CcSafetyNetEntry = Schema.Struct({
 }).annotations({ identifier: 'AgentSessionIngest.CcSafetyNetEntry' })
 export type CcSafetyNetEntry = typeof CcSafetyNetEntry.Type
 
+/** Adapter for incremental ingestion of cc-safety-net JSONL logs. */
 export const makeCcSafetyNetAdapter = (options: {
   readonly logsDir: string
   readonly sourceId?: string
@@ -29,7 +31,7 @@ export const makeCcSafetyNetAdapter = (options: {
   discoverArtifacts: Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const exists = yield* fs.exists(options.logsDir)
-    if (!exists) return [] as Array<typeof ArtifactDescriptor.Type>
+    if (exists !== true) return [] as Array<typeof ArtifactDescriptor.Type>
 
     const entries = yield* fs.readDirectory(options.logsDir)
     return entries
