@@ -1,7 +1,7 @@
 import * as nodePath from 'node:path'
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
 import {
   SessionArtifactDecodeError,
@@ -166,13 +166,15 @@ export const CodexSessionIndexEntry = Schema.Struct({
 }).annotations({ identifier: 'AgentSessionIngest.CodexSessionIndexEntry' })
 export type CodexSessionIndexEntry = typeof CodexSessionIndexEntry.Type
 
-const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')((root: string) =>
+const listJsonlFiles = Effect.fn(
+  'AgentSessionIngest.Codex.listJsonlFiles',
+)((options: { root: string; discoverySinceEpochMs?: number }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const exists = yield* fs.exists(root)
+    const exists = yield* fs.exists(options.root)
     if (!exists) return [] as Array<string>
 
-    const directories = [root]
+    const directories = [options.root]
     const files: Array<string> = []
 
     while (directories.length > 0) {
@@ -187,7 +189,13 @@ const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')((roo
           directories.push(path)
           continue
         }
-        if (info.type === 'File' && entry.endsWith('.jsonl')) {
+        const modifiedAtEpochMs = Option.getOrUndefined(info.mtime)?.getTime()
+        const isRecentEnough =
+          options.discoverySinceEpochMs === undefined ||
+          modifiedAtEpochMs === undefined ||
+          modifiedAtEpochMs >= options.discoverySinceEpochMs
+
+        if (info.type === 'File' && entry.endsWith('.jsonl') && isRecentEnough) {
           files.push(path)
         }
       }
@@ -200,9 +208,16 @@ const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')((roo
 export const makeCodexAdapter = (options: {
   readonly sessionsRoot: string
   readonly sourceId?: string
+  readonly discoverySinceEpochMs?: number
+  readonly initialReadMaxBytes?: number
 }): SessionSourceAdapter<CodexSessionRecord> => ({
   sourceId: Schema.decodeUnknownSync(SourceId)(options.sourceId ?? 'codex'),
-  discoverArtifacts: listJsonlFiles(options.sessionsRoot).pipe(
+  discoverArtifacts: listJsonlFiles({
+    root: options.sessionsRoot,
+    ...(options.discoverySinceEpochMs !== undefined && {
+      discoverySinceEpochMs: options.discoverySinceEpochMs,
+    }),
+  }).pipe(
     Effect.mapError(
       (cause) =>
         new SessionSourceDiscoveryError({
@@ -228,6 +243,9 @@ export const makeCodexAdapter = (options: {
         path: artifact.path,
         offsetBytes:
           checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
+        ...(options.initialReadMaxBytes !== undefined && {
+          initialReadMaxBytes: options.initialReadMaxBytes,
+        }),
       })
 
       const records = yield* Effect.forEach(
