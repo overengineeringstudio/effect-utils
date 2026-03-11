@@ -375,6 +375,15 @@ export type VercelProject = {
   projectId: string
 }
 
+/** Configure git author so Vercel associates the deploy with a team member. */
+export const vercelGitAuthorStep = (opts: { name: string; email: string }) => ({
+  name: 'Configure git author for Vercel',
+  run: [
+    `git config user.name "${opts.name}"`,
+    `git config user.email "${opts.email}"`,
+  ].join('\n'),
+})
+
 /** Validate the Vercel token works for the given org. Fails fast before attempting a deploy. */
 export const vercelTokenValidationStep = (orgId: string) => ({
   name: 'Validate Vercel token',
@@ -403,13 +412,17 @@ export const vercelDeployStep = (project: VercelProject, orgId: string) => ({
   },
 })
 
-/** Create a complete Vercel deploy job for a project. */
-export const vercelDeployJob = (opts: {
+type VercelDeployOpts = {
   project: VercelProject
   orgId: string
   /** CI job names that must succeed before deploying */
   needs: readonly string[]
-}) => ({
+  /** Git author for Vercel team association (Vercel checks git author email) */
+  gitAuthor: { name: string; email: string }
+}
+
+/** Create a complete Vercel deploy job for a project. */
+export const vercelDeployJob = (opts: VercelDeployOpts) => ({
   needs: [...opts.needs],
   if: [
     'always()',
@@ -418,6 +431,7 @@ export const vercelDeployJob = (opts: {
   'runs-on': 'ubuntu-latest',
   steps: [
     checkoutStep(),
+    vercelGitAuthorStep(opts.gitAuthor),
     vercelTokenValidationStep(opts.orgId),
     vercelDeployStep(opts.project, opts.orgId),
   ],
@@ -428,9 +442,10 @@ export const vercelDeployJobs = (opts: {
   projects: readonly VercelProject[]
   orgId: string
   needs: readonly string[]
+  gitAuthor: { name: string; email: string }
 }) =>
   Object.fromEntries(
-    opts.projects.map((p) => [p.key, vercelDeployJob({ project: p, orgId: opts.orgId, needs: opts.needs })]),
+    opts.projects.map((p) => [p.key, vercelDeployJob({ ...opts, project: p })]),
   )
 
 // =============================================================================
