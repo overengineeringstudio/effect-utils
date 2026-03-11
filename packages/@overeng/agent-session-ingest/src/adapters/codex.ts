@@ -3,14 +3,10 @@ import * as nodePath from 'node:path'
 import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
-import {
-  SessionArtifactDecodeError,
-  SessionCheckpointDecodeError,
-  SessionSourceDiscoveryError,
-} from '../errors.ts'
-import { readAppendOnlyTextFileSince, splitCompleteJsonlRecords } from '../files/append-only.ts'
+import { SessionSourceDiscoveryError } from '../errors.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
-import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
+import { ArtifactDescriptor, SourceId } from '../schema/core.ts'
+import { makeAppendOnlyJsonlAdapter } from './jsonl.ts'
 
 const TextPart = Schema.Struct({
   type: Schema.Literal('input_text', 'output_text'),
@@ -240,86 +236,38 @@ export const makeCodexAdapter = (options: {
   readonly sourceId?: string
   readonly discoverySinceEpochMs?: number
   readonly initialReadMaxBytes?: number
-}): SessionSourceAdapter<CodexSessionRecord> => ({
-  sourceId: Schema.decodeUnknownSync(SourceId)(options.sourceId ?? 'codex'),
-  discoverArtifacts: listJsonlFiles({
-    root: options.sessionsRoot,
-    ...(options.discoverySinceEpochMs !== undefined && {
-      discoverySinceEpochMs: options.discoverySinceEpochMs,
-    }),
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new SessionSourceDiscoveryError({
-          message: 'Failed to discover Codex sessions',
-          sourceId: options.sourceId ?? 'codex',
-          cause,
-        }),
-    ),
-    Effect.map((paths) =>
-      paths.map((path: string) =>
-        Schema.decodeUnknownSync(ArtifactDescriptor)({
-          sourceId: options.sourceId ?? 'codex',
-          artifactId: toCodexArtifactId({ sessionsRoot: options.sessionsRoot, path }),
-          path,
-          status: 'stable',
-        }),
+}): SessionSourceAdapter<CodexSessionRecord> =>
+  makeAppendOnlyJsonlAdapter({
+    sourceId: Schema.decodeUnknownSync(SourceId)(options.sourceId ?? 'codex'),
+    discoverArtifacts: listJsonlFiles({
+      root: options.sessionsRoot,
+      ...(options.discoverySinceEpochMs !== undefined && {
+        discoverySinceEpochMs: options.discoverySinceEpochMs,
+      }),
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SessionSourceDiscoveryError({
+            message: 'Failed to discover Codex sessions',
+            sourceId: options.sourceId ?? 'codex',
+            cause,
+          }),
+      ),
+      Effect.map((paths) =>
+        paths.map((path: string) => ({
+          artifact: Schema.decodeUnknownSync(ArtifactDescriptor)({
+            sourceId: options.sourceId ?? 'codex',
+            artifactId: toCodexArtifactId({ sessionsRoot: options.sessionsRoot, path }),
+            path,
+            status: 'stable',
+          }),
+          ...(options.initialReadMaxBytes !== undefined && {
+            initialReadMaxBytes: options.initialReadMaxBytes,
+          }),
+        })),
       ),
     ),
-  ),
-  ingestArtifact: ({ artifact, checkpoint }) =>
-    Effect.gen(function* () {
-      const read = yield* readAppendOnlyTextFileSince({
-        path: artifact.path,
-        offsetBytes:
-          checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
-        ...(checkpoint?.cursor._tag === 'AppendOnlyCursor' && {
-          previousContentVersion: checkpoint.cursor.contentVersion,
-        }),
-        ...(options.initialReadMaxBytes !== undefined && {
-          initialReadMaxBytes: options.initialReadMaxBytes,
-        }),
-      })
-
-      const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-        Schema.decodeUnknown(Schema.parseJson(CodexSessionRecord))(line).pipe(
-          Effect.mapError(
-            (cause) =>
-              new SessionArtifactDecodeError({
-                message: 'Failed to decode Codex session record',
-                sourceId: artifact.sourceId,
-                artifactId: artifact.artifactId,
-                rawRecord: line,
-                cause,
-              }),
-          ),
-        ),
-      )
-
-      return {
-        artifact,
-        records,
-        checkpoint: yield* Schema.decodeUnknown(IngestionCheckpoint)({
-          sourceId: artifact.sourceId,
-          artifactId: artifact.artifactId,
-          path: artifact.path,
-          status: artifact.status,
-          cursor: {
-            _tag: 'AppendOnlyCursor',
-            offsetBytes: read.nextOffsetBytes,
-            contentVersion: read.contentVersion,
-          },
-          updatedAtEpochMs: Date.now(),
-        }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new SessionCheckpointDecodeError({
-                message: 'Failed to decode Codex ingestion checkpoint',
-                path: artifact.path,
-                cause,
-              }),
-          ),
-        ),
-      }
-    }),
-})
+    recordSchema: CodexSessionRecord,
+    decodeErrorMessage: 'Failed to decode Codex session record',
+    checkpointErrorMessage: 'Failed to decode Codex ingestion checkpoint',
+  })

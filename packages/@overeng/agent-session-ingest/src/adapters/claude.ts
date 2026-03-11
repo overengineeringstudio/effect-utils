@@ -3,14 +3,10 @@ import * as nodePath from 'node:path'
 import { FileSystem } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
-import {
-  SessionArtifactDecodeError,
-  SessionCheckpointDecodeError,
-  SessionSourceDiscoveryError,
-} from '../errors.ts'
-import { readAppendOnlyTextFileSince, splitCompleteJsonlRecords } from '../files/append-only.ts'
+import { SessionSourceDiscoveryError } from '../errors.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
-import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
+import { ArtifactDescriptor, SourceId } from '../schema/core.ts'
+import { makeAppendOnlyJsonlAdapter } from './jsonl.ts'
 
 const QueueOperationRecord = Schema.Struct({
   type: Schema.Literal('queue-operation'),
@@ -191,87 +187,39 @@ export const makeClaudeAdapter = (options: {
   readonly sourceId?: string
   readonly discoverySinceEpochMs?: number
   readonly initialReadMaxBytes?: number
-}): SessionSourceAdapter<ClaudeSessionRecord> => ({
-  sourceId: Schema.decodeUnknownSync(SourceId)(options.sourceId ?? 'claude'),
-  discoverArtifacts: listClaudeJsonlFiles({
-    root: options.projectsRoot,
-    ...(options.discoverySinceEpochMs !== undefined && {
-      discoverySinceEpochMs: options.discoverySinceEpochMs,
-    }),
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new SessionSourceDiscoveryError({
-          message: 'Failed to discover Claude project transcripts',
-          sourceId: options.sourceId ?? 'claude',
-          cause,
-        }),
-    ),
-    Effect.map((paths) =>
-      paths.map((path) =>
-        Schema.decodeUnknownSync(ArtifactDescriptor)({
-          sourceId: options.sourceId ?? 'claude',
-          artifactId: toClaudeArtifactId({ projectsRoot: options.projectsRoot, path }),
-          path,
-          status:
-            path.includes(`${nodePath.sep}subagents${nodePath.sep}`) === true ? 'open' : 'stable',
-        }),
+}): SessionSourceAdapter<ClaudeSessionRecord> =>
+  makeAppendOnlyJsonlAdapter({
+    sourceId: Schema.decodeUnknownSync(SourceId)(options.sourceId ?? 'claude'),
+    discoverArtifacts: listClaudeJsonlFiles({
+      root: options.projectsRoot,
+      ...(options.discoverySinceEpochMs !== undefined && {
+        discoverySinceEpochMs: options.discoverySinceEpochMs,
+      }),
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SessionSourceDiscoveryError({
+            message: 'Failed to discover Claude project transcripts',
+            sourceId: options.sourceId ?? 'claude',
+            cause,
+          }),
+      ),
+      Effect.map((paths) =>
+        paths.map((path) => ({
+          artifact: Schema.decodeUnknownSync(ArtifactDescriptor)({
+            sourceId: options.sourceId ?? 'claude',
+            artifactId: toClaudeArtifactId({ projectsRoot: options.projectsRoot, path }),
+            path,
+            status:
+              path.includes(`${nodePath.sep}subagents${nodePath.sep}`) === true ? 'open' : 'stable',
+          }),
+          ...(options.initialReadMaxBytes !== undefined && {
+            initialReadMaxBytes: options.initialReadMaxBytes,
+          }),
+        })),
       ),
     ),
-  ),
-  ingestArtifact: ({ artifact, checkpoint }) =>
-    Effect.gen(function* () {
-      const read = yield* readAppendOnlyTextFileSince({
-        path: artifact.path,
-        offsetBytes:
-          checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
-        ...(checkpoint?.cursor._tag === 'AppendOnlyCursor' && {
-          previousContentVersion: checkpoint.cursor.contentVersion,
-        }),
-        ...(options.initialReadMaxBytes !== undefined && {
-          initialReadMaxBytes: options.initialReadMaxBytes,
-        }),
-      })
-
-      const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-        Schema.decodeUnknown(Schema.parseJson(ClaudeSessionRecord))(line).pipe(
-          Effect.mapError(
-            (cause) =>
-              new SessionArtifactDecodeError({
-                message: 'Failed to decode Claude session record',
-                sourceId: artifact.sourceId,
-                artifactId: artifact.artifactId,
-                rawRecord: line,
-                cause,
-              }),
-          ),
-        ),
-      )
-
-      return {
-        artifact,
-        records,
-        checkpoint: yield* Schema.decodeUnknown(IngestionCheckpoint)({
-          sourceId: artifact.sourceId,
-          artifactId: artifact.artifactId,
-          path: artifact.path,
-          status: artifact.status,
-          cursor: {
-            _tag: 'AppendOnlyCursor',
-            offsetBytes: read.nextOffsetBytes,
-            contentVersion: read.contentVersion,
-          },
-          updatedAtEpochMs: Date.now(),
-        }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new SessionCheckpointDecodeError({
-                message: 'Failed to decode Claude ingestion checkpoint',
-                path: artifact.path,
-                cause,
-              }),
-          ),
-        ),
-      }
-    }),
-})
+    recordSchema: ClaudeSessionRecord,
+    decodeErrorMessage: 'Failed to decode Claude session record',
+    checkpointErrorMessage: 'Failed to decode Claude ingestion checkpoint',
+  })
