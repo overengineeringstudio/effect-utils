@@ -7,8 +7,10 @@ import { SessionCheckpointDecodeError, SessionCheckpointWriteError } from '../er
 import type { ArtifactDescriptor, IngestionCheckpoint } from '../schema/core.ts'
 import { IngestionCheckpointJsonLine } from '../schema/core.ts'
 
-const buildCheckpointKey = (descriptor: Pick<ArtifactDescriptor, 'sourceId' | 'artifactId'>) =>
-  `${descriptor.sourceId}:${descriptor.artifactId}`
+/** Builds an unambiguous composite key for persisted checkpoints. */
+export const buildCheckpointKey = (
+  descriptor: Pick<ArtifactDescriptor, 'sourceId' | 'artifactId'>,
+) => JSON.stringify([descriptor.sourceId, descriptor.artifactId] as const)
 
 /** Service for loading and saving deduped ingestion checkpoints. */
 export class CheckpointStore extends Context.Tag('AgentSessionIngest/CheckpointStore')<

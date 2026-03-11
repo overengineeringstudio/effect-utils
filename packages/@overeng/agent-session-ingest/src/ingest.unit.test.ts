@@ -77,4 +77,27 @@ Vitest.describe('agent-session-ingest file readers', () => {
       expect(third.changed).toBe(true)
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
+
+  Vitest.it.effect('resets append-only offsets after a non-truncating rewrite', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tempDir = yield* fs.makeTempDirectoryScoped()
+      const path = nodePath.join(tempDir, 'session.jsonl')
+      const firstPrefix = 'a'.repeat(640)
+      const secondPrefix = 'b'.repeat(640)
+
+      yield* fs.writeFileString(path, `${firstPrefix}\nalpha\nbeta\n`)
+      const first = yield* readAppendOnlyTextFileSince({ path, offsetBytes: 0 })
+
+      yield* fs.writeFileString(path, `${secondPrefix}\ngamma\ndelta\n`)
+      const second = yield* readAppendOnlyTextFileSince({
+        path,
+        offsetBytes: first.nextOffsetBytes,
+        previousContentVersion: first.contentVersion,
+      })
+
+      expect(second.resetToStart).toBe(true)
+      expect(second.text).toBe(`${secondPrefix}\ngamma\ndelta\n`)
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
 })

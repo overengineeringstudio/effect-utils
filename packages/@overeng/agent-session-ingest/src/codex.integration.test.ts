@@ -1,12 +1,14 @@
 import { utimesSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
+import { FileSystem } from '@effect/platform'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import {
+  appendJsonlArtifact,
   TestLayer,
   expectSingleArtifact,
   makeTempJsonlArtifact,
@@ -48,27 +50,9 @@ Vitest.describe('codex adapter integration', () => {
       const first = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
       expect(first.records).toHaveLength(2)
 
-      yield* rewriteJsonlArtifact({
+      yield* appendJsonlArtifact({
         path: artifactPath,
         records: [
-          {
-            timestamp: '2026-03-10T10:00:00.000Z',
-            type: 'session_meta',
-            payload: {
-              id: 'sess_1',
-              timestamp: '2026-03-10T10:00:00.000Z',
-              cwd: '/tmp/repo',
-            },
-          },
-          {
-            timestamp: '2026-03-10T10:00:01.000Z',
-            type: 'response_item',
-            payload: {
-              type: 'function_call_output',
-              call_id: 'call_1',
-              output: 'done',
-            },
-          },
           {
             timestamp: '2026-03-10T10:00:02.000Z',
             type: 'turn_context',
@@ -167,5 +151,56 @@ Vitest.describe('codex adapter integration', () => {
         output: 'recent',
       })
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
+  Vitest.it.effect(
+    'skips incomplete trailing Codex JSONL records and keeps unique artifact ids',
+    () =>
+      Effect.gen(function* () {
+        const { root: sessionsRoot } = yield* makeTempJsonlArtifact({
+          rootDirectoryName: 'sessions',
+          relativeDirectory: '2026/03/10',
+          filename: 'shared.jsonl',
+          records: [
+            {
+              timestamp: '2026-03-10T10:00:00.000Z',
+              type: 'turn_context',
+              payload: { cwd: '/tmp/repo-a' },
+            },
+          ],
+        })
+
+        const nestedDirectory = nodePath.join(sessionsRoot, '2026', '03', '11')
+        const artifactPath = nodePath.join(nestedDirectory, 'shared.jsonl')
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.makeDirectory(nestedDirectory, { recursive: true })
+        yield* fs.writeFileString(
+          artifactPath,
+          `${JSON.stringify({
+            timestamp: '2026-03-11T10:00:00.000Z',
+            type: 'turn_context',
+            payload: { cwd: '/tmp/repo-b' },
+          })}\n{"timestamp":"2026-03-11T10:00:01.000Z","type":"response_item"`,
+        )
+
+        const adapter = makeCodexAdapter({ sessionsRoot })
+        const artifacts = yield* adapter.discoverArtifacts
+        expect(artifacts).toHaveLength(2)
+        expect(new Set(artifacts.map((artifact) => artifact.artifactId)).size).toBe(2)
+
+        const targetArtifact = artifacts.find((artifact) => artifact.path === artifactPath)
+        if (targetArtifact === undefined) {
+          return yield* Effect.die('Expected nested Codex artifact to exist')
+        }
+
+        const ingested = yield* adapter.ingestArtifact({
+          artifact: targetArtifact,
+          checkpoint: undefined,
+        })
+        expect(ingested.records).toHaveLength(1)
+        expect(ingested.records[0]).toMatchObject({
+          type: 'turn_context',
+        })
+      }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 })
