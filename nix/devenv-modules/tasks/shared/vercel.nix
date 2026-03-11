@@ -89,9 +89,15 @@ let
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
           ${pkgs.bun}/bin/bunx vercel pull --cwd "${cwd}" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
 
-          # Override installCommand to no-op — dependencies are managed by devenv tasks,
-          # and vercel build runs installCommand via `sh -c` which fails on NixOS runners
-          # that lack /bin/sh.
+          # Clear rootDirectory from pulled settings to prevent path doubling with --cwd.
+          # When both --cwd and rootDirectory are set, vercel build joins them into a
+          # non-existent path (e.g. packages/app/packages/app) causing spawn sh ENOENT.
+          if [ -f "${cwd}/.vercel/project.json" ]; then
+            ${pkgs.jq}/bin/jq '.settings.rootDirectory = null' "${cwd}/.vercel/project.json" > "${cwd}/.vercel/project.json.tmp" \
+              && mv "${cwd}/.vercel/project.json.tmp" "${cwd}/.vercel/project.json"
+          fi
+
+          # Override installCommand to no-op — dependencies are managed by devenv tasks.
           vercel_json="${cwd}/vercel.json"
           original_vercel_json=""
           cleanup_vercel_json() {
