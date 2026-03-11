@@ -89,12 +89,44 @@ let
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
           ${pkgs.bun}/bin/bunx vercel pull --cwd "${cwd}" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
 
+          # Override installCommand to no-op — dependencies are managed by devenv tasks,
+          # and vercel build runs installCommand via `sh -c` which fails on NixOS runners
+          # that lack /bin/sh.
+          vercel_json="${cwd}/vercel.json"
+          original_vercel_json=""
+          cleanup_vercel_json() {
+            if [ -n "$original_vercel_json" ]; then
+              echo "$original_vercel_json" > "$vercel_json"
+            elif [ -f "$vercel_json" ] && [ "''${_vercel_json_created:-}" = "1" ]; then
+              rm -f "$vercel_json"
+            fi
+          }
+
+          deploy_log=""
+          cleanup() {
+            cleanup_vercel_json
+            if [ -n "$deploy_log" ]; then
+              rm -f "$deploy_log"
+            fi
+          }
+          trap cleanup EXIT
+
+          if [ -f "$vercel_json" ]; then
+            original_vercel_json="$(cat "$vercel_json")"
+            ${pkgs.jq}/bin/jq '. + {"installCommand": "true"}' "$vercel_json" > "$vercel_json.tmp" && mv "$vercel_json.tmp" "$vercel_json"
+          else
+            echo '{"installCommand":"true"}' > "$vercel_json"
+            _vercel_json_created=1
+          fi
+
           echo "Building ${deployment.name} locally with vercel build..."
           if [ -n "$build_flag" ]; then
             ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes $build_flag --token "$VERCEL_TOKEN"
           else
             ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes --token "$VERCEL_TOKEN"
           fi
+
+          cleanup_vercel_json
 
           if [ ! -d "${cwd}/.vercel/output" ]; then
             echo "Error: Missing prebuilt output directory: ${cwd}/.vercel/output" >&2
@@ -105,7 +137,6 @@ let
             prod)
               echo "Deploying ${deployment.name} prebuilt output to production..."
               deploy_log="$(mktemp)"
-              trap 'rm -f "$deploy_log"' EXIT
               ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
@@ -117,7 +148,6 @@ let
                 echo "Deploying ${deployment.name} prebuilt preview..."
               fi
               deploy_log="$(mktemp)"
-              trap 'rm -f "$deploy_log"' EXIT
               ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
