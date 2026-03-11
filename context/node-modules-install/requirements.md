@@ -122,3 +122,22 @@ lockfile that define installs for that workspace.
   isolated package-closure materialization, and duplicate-instance detection.
   We also need at least one realistic multi-repo smoke test, not just minimal
   toy workspaces.
+
+### Must be fast and cache-friendly
+
+- R12 - Dependency installs must not become a routine bottleneck for local
+  iteration or CI. The install model should maximize reuse of previously
+  materialized dependency artifacts and avoid unnecessary re-resolution,
+  re-fetching, or re-linking work when the effective dependency inputs have
+  not changed.
+- R13 - For the supported pnpm live-worktree install model, equivalent
+  standalone and composed dependency graphs for the same physical source tree
+  must converge on one physical instance of each package or dependency. This
+  is required both for JavaScript runtime identity, including singleton-,
+  symbol-, and context-bearing packages, and for TypeScript type identity.
+  The supported model must therefore use pnpm's shared
+  content-addressable store together with the global virtual store instead of
+  allowing topology-local duplicate instances to emerge.
+- R14 - If higher-level tooling adds portable dependency caching above the live
+  pnpm install model, it must prefer immutable, content-addressable artifacts
+  rather than machine-local mutable install state.

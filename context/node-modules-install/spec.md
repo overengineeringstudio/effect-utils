@@ -1,4 +1,4 @@
-# pnpm Repo-Boundary Hoisted Spec
+# pnpm Single-Instance Repo-Boundary Spec
 
 This document specifies the intended `pnpm` install and runtime model for
 standalone repos and composed megarepos.
@@ -6,19 +6,44 @@ standalone repos and composed megarepos.
 It builds on
 [requirements.md](./requirements.md).
 
+Its purpose is to ensure that equivalent standalone and composed views of the
+same physical source tree resolve each dependency to one physical package
+instance.
+
 ## Scope
 
 This spec defines:
 
+- the core invariants of the supported pnpm live-worktree model
 - standalone and composed workspace topology
 - aggregate topology generation
-- peer-sensitive package convergence
 - install ownership
 - local cross-repo resolution
 - linker and runtime behavior
 - package-closure lockfile refresh
 - lockfile and publish behavior
-- CI and validation expectations
+- managed tooling and validation expectations
+
+## Core Invariants
+
+- Identity convergence:
+  equivalent standalone and composed dependency graphs for the same physical
+  source tree must converge to one physical instance of each dependency.
+- JavaScript runtime identity:
+  singleton-, symbol-, or context-bearing packages must resolve one live
+  definition across standalone and composed execution.
+- TypeScript type identity:
+  the same package must not appear through divergent physical paths that create
+  distinct type identities or regressions such as `TS2742`.
+- Explicit ownership:
+  only the selected standalone or composed root owns install state.
+- Live source linkage:
+  cross-repo local dependencies resolve to the real source files exposed
+  through `repos/*`.
+
+Within the supported pnpm live-worktree model, only pnpm's global virtual
+store provides the path-collapsing needed to preserve that identity-
+convergence invariant.
 
 ## Terminology
 
@@ -36,63 +61,26 @@ This spec defines:
 - aggregate dependency closure:
   the external dependency set that must be installed at the aggregate root so
   that linked cross-repo packages resolve coherently at runtime
+- effective dependency inputs:
+  the canonical dependency-relevant inputs for a selected topology, for example
+  manifests, lockfiles, patches, install settings, and generated aggregate
+  inputs, that determine dependency materialization and whether equivalent
+  graphs collapse to the same global virtual store entries
+- pnpm content-addressable store:
+  pnpm's global file store containing the package files from which virtual
+  store entries are materialized
+- global virtual store:
+  the central virtual store at `<store-path>/links` used when
+  `enableGlobalVirtualStore` is enabled; entries are keyed by dependency graph
+  hash and hard linked from the pnpm content-addressable store
+- projection state:
+  topology-local derived install state, such as linked workspace
+  `node_modules`, rendered from the selected topology's virtual store and not
+  independently authoritative
 - peer-sensitive package family:
   a package family whose runtime identity matters and therefore must not split
   across one composed runtime graph, for example React, Emotion, and similar
   context- or singleton-bearing packages
-
-## Example
-
-```text
-standalone repo-a
-  package.json
-  pnpm-workspace.yaml
-  pnpm-lock.yaml
-
-composed root
-  package.json
-  pnpm-workspace.yaml
-  pnpm-lock.yaml
-  repos/repo-a -> ~/.megarepo/.../repo-a/refs/heads/main
-```
-
-The composed root may reuse the same task and builder implementation as
-`repo-a`, but it does not reuse `repo-a`'s `pnpm-lock.yaml`.
-
-Reason:
-
-- `repo-a/pnpm-lock.yaml` describes the standalone topology
-- `composed-root/pnpm-lock.yaml` describes the composed topology
-
-If the composed root imports `repo-a`'s aggregate lockfile as authoritative,
-pnpm is being asked to validate the wrong workspace shape.
-
-## Repo Composition Principle
-
-Composition should reuse upstream repo definitions instead of re-describing
-them locally.
-
-This applies to:
-
-- `devenv` task definitions and task dependencies
-- Genie-generated workspace and package metadata
-- CI helper logic
-- builder and hash-update entrypoints
-
-A composed repo may add topology-local orchestration, but it should do so by
-depending on upstream repo-local entrypoints rather than copying upstream
-definitions into the composed repo.
-
-For example:
-
-```text
-dotfiles pnpm:install
-  -> depends on repos/livestore pnpm:install
-  -> test:oi-unit depends only on dotfiles pnpm:install
-```
-
-This keeps repo ownership explicit while still letting the composed repo
-present one local entrypoint.
 
 ## Topology Model
 
@@ -113,6 +101,20 @@ present one local entrypoint.
 - A composed topology must not treat an upstream repo's aggregate lockfile as
   authoritative unless the topology is actually identical.
 
+## Identity Convergence
+
+- The supported pnpm live-worktree model is `node-linker=hoisted` with
+  `enableGlobalVirtualStore=true`.
+- The reason is not merely performance. The same physical source tree may be
+  viewed through standalone and composed topology roots at the same time, and
+  that must not produce different physical instances of the same dependency.
+- That convergence is required both for JavaScript runtime identity and for
+  TypeScript type identity.
+- Within pnpm, GVS is the required path-collapsing primitive that makes
+  equivalent graphs point at one physical dependency instance.
+- GVS is not the install ownership model. Ownership still comes from the
+  selected standalone or composed root.
+
 ## Aggregate Topology Generation
 
 The aggregate root is generated from the composed topology and must include:
@@ -126,11 +128,26 @@ Aggregate workspace files should be recomposed from package-local Genie outputs
 and their non-emitted metadata, not maintained as a second handwritten member
 list.
 
+That package-local metadata must remain static and import-time safe. Runtime
+generation context is used only by projection helpers when rendering aggregate
+or package-level workspace files.
+
 Aggregate generation is topology-local:
 
 - repos may share task and builder code
 - each composed repo generates its own aggregate root files
 - standalone repo lockfiles remain authoritative only for standalone topologies
+
+The generated aggregate root files and aggregate dependency closure together
+form the effective dependency inputs for the composed topology.
+
+Those inputs must be stable and canonical enough that equivalent standalone and
+composed graphs for the same physical source tree collapse to the same global
+virtual store entries instead of materializing path-local duplicates.
+
+In particular, machine-local checkout paths, megarepo store paths, and other
+non-semantic filesystem details must not perturb the effective dependency
+inputs.
 
 The aggregate dependency closure must contain the external packages needed so
 that linked packages resolve their direct and shared runtime dependencies from
@@ -141,6 +158,9 @@ validated. The implementation must not silently let the aggregate root drift
 from what linked packages declare.
 
 ## Peer-Sensitive Package Convergence
+
+Peer-sensitive package convergence is a special case of the identity-convergence
+invariant.
 
 - Peer-sensitive package families must converge at the aggregate root.
 - Convergence may be implemented with generated aggregate dependencies,
@@ -169,6 +189,9 @@ At minimum, validation must prove:
   root `node_modules`.
 - A composed install must use that composed topology's own generated aggregate
   root files.
+- Package-local `node_modules` inside workspace packages are acceptable only as
+  derived projection state of the active topology. They must not be
+  independently install-owned or allowed to diverge from the active topology.
 
 ## Local Cross-Repo Resolution
 
@@ -179,22 +202,21 @@ At minimum, validation must prove:
 - If a dependency is intended to resolve locally but does not, the mismatch
   must be surfaced explicitly.
 
-## Linker Model
-
-- The supported linker is `node-linker=hoisted`.
-- The hoisted linker applies to standalone and composed topologies.
-- Package-local `node_modules` inside workspace packages are acceptable only
-  as derived projection state of the active topology. They must not be
-  independently install-owned or allowed to diverge from the active topology.
+## Linker and Runtime Model
 
 This linker choice is required because:
 
 - it prevents package-local install state from leaking back into linked
   packages in the way the isolated linker does
 - it allows standalone and composed topologies to coexist in the same source
-  tree when combined with the runtime model below
+  tree
+- it makes equivalent standalone and composed graphs converge to one physical
+  dependency instance instead of resolving the same package through divergent
+  topology-local virtual store paths
 
-## Runtime Model
+The model must not depend on undeclared imports being satisfied accidentally by
+hoisting. If such an edge exists, it must be fixed in dependency metadata or
+with explicit package-manager metadata such as `packageExtensions`.
 
 ### Composed runtime
 
@@ -214,7 +236,7 @@ paths.
 ### Standalone runtime
 
 Standalone runtime entrypoints run against the standalone topology and remain
-coherent under the same hoisted linker model.
+coherent under the same hoisted + GVS model.
 
 ## Managed Tooling
 
@@ -237,8 +259,13 @@ At minimum the managed wrappers must:
 - select the correct topology root
 - generate or validate the aggregate root inputs for the selected composed
   topology before install
+- compute or validate the effective dependency inputs for the selected topology
+  before dependency materialization
+- enforce the supported hoisted + GVS live-worktree install settings
 - ensure nested standalone repos are ready before a composed install depends
   on them, preferably by depending on their own repo-local install tasks
+- keep topology-local projection state distinct from reusable pnpm store and
+  global virtual store state
 - apply the required runtime symlink-preservation flags for composed
   execution
 - validate that aggregate topology generation and dependency closure are in
@@ -281,16 +308,24 @@ the live worktree must be lockfile-only.
 
 CI must validate standalone and composed topologies separately.
 
+Any CI job that validates the supported pnpm live-worktree model must enable
+GVS explicitly.
+
 Composed validation must cover:
 
 - aggregate root inputs are generated locally for the composed repo
 - aggregate topology generation
 - aggregate dependency closure generation
+- effective dependency inputs remain stable across equivalent checkouts
+- equivalent standalone and composed graphs for the same physical source tree
+  converge to one package instance under GVS
 - peer-sensitive package convergence
 - standalone-first then composed install
 - composed-first then standalone install
 - standalone runtime coherence
 - composed runtime coherence
+- TypeScript / project-reference coherence with no duplicate-path identity
+  regressions such as `TS2742`
 - duplicate-instance detection for shared runtime dependencies
 - live cross-repo edit propagation
 
