@@ -222,6 +222,12 @@ const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(
     }),
 )
 
+const toCodexArtifactId = (options: { readonly sessionsRoot: string; readonly path: string }) =>
+  nodePath
+    .relative(options.sessionsRoot, options.path)
+    .replaceAll(nodePath.sep, '/')
+    .replace(/\.jsonl$/u, '')
+
 /**
  * Adapter for incremental ingestion of Codex rollout JSONL transcripts.
  *
@@ -254,10 +260,7 @@ export const makeCodexAdapter = (options: {
       paths.map((path: string) =>
         Schema.decodeUnknownSync(ArtifactDescriptor)({
           sourceId: options.sourceId ?? 'codex',
-          artifactId: nodePath
-            .relative(options.sessionsRoot, path)
-            .replaceAll(nodePath.sep, '__')
-            .replace(/\.jsonl$/u, ''),
+          artifactId: toCodexArtifactId({ sessionsRoot: options.sessionsRoot, path }),
           path,
           status: 'stable',
         }),

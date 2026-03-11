@@ -176,6 +176,9 @@ const listClaudeJsonlFiles = Effect.fn('AgentSessionIngest.Claude.listClaudeJson
     }),
 )
 
+const toClaudeArtifactId = (options: { readonly projectsRoot: string; readonly path: string }) =>
+  nodePath.relative(options.projectsRoot, options.path).replaceAll(nodePath.sep, '/')
+
 /**
  * Adapter for incremental ingestion of Claude project transcript JSONL artifacts.
  *
@@ -208,7 +211,7 @@ export const makeClaudeAdapter = (options: {
       paths.map((path) =>
         Schema.decodeUnknownSync(ArtifactDescriptor)({
           sourceId: options.sourceId ?? 'claude',
-          artifactId: path.slice(options.projectsRoot.length + 1).replaceAll(nodePath.sep, '__'),
+          artifactId: toClaudeArtifactId({ projectsRoot: options.projectsRoot, path }),
           path,
           status:
             path.includes(`${nodePath.sep}subagents${nodePath.sep}`) === true ? 'open' : 'stable',
