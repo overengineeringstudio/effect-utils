@@ -53,6 +53,28 @@ Vitest.describe('agent-session-ingest file readers', () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 
+  Vitest.it.effect('does not checkpoint past an incomplete trailing append-only fragment', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tempDir = yield* fs.makeTempDirectoryScoped()
+      const path = nodePath.join(tempDir, 'session.jsonl')
+
+      yield* fs.writeFileString(path, '{"line":1}\n{"line":2')
+      const first = yield* readAppendOnlyTextFileSince({ path, offsetBytes: 0 })
+      expect(first.text).toBe('{"line":1}\n')
+      expect(first.nextOffsetBytes).toBe(Buffer.byteLength('{"line":1}\n'))
+
+      yield* fs.writeFileString(path, '{"line":1}\n{"line":2}\n')
+      const second = yield* readAppendOnlyTextFileSince({
+        path,
+        offsetBytes: first.nextOffsetBytes,
+        previousContentVersion: first.contentVersion,
+      })
+      expect(second.text).toBe('{"line":2}\n')
+      expect(second.resetToStart).toBe(false)
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
   Vitest.it.effect('detects mutable file changes from content version', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem

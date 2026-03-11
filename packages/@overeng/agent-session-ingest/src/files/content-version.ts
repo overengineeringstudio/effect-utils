@@ -32,6 +32,27 @@ export const buildContentVersion = (options: {
     tailHash: options.tailHash,
   })
 
+/** Builds a stable content version from an in-memory text snapshot. */
+export const buildContentVersionFromText = (options: {
+  readonly content: string
+  readonly modifiedAtEpochMs: number
+}) => {
+  const buffer = Buffer.from(options.content)
+  const sizeBytes = buffer.byteLength
+  const headHash =
+    sizeBytes < stableHeadSampleBytes
+      ? undefined
+      : hashBytes(buffer.subarray(0, stableHeadSampleBytes))
+  const tailStart = Math.max(0, sizeBytes - stableHeadSampleBytes)
+
+  return buildContentVersion({
+    sizeBytes,
+    modifiedAtEpochMs: options.modifiedAtEpochMs,
+    ...(headHash !== undefined && { headHash }),
+    tailHash: hashBytes(buffer.subarray(tailStart)),
+  }) satisfies ContentVersion
+}
+
 /** Computes a stable content version for any file by hashing its trailing bytes plus stat metadata. */
 export const readFileContentVersion = Effect.fn('AgentSessionIngest.readFileContentVersion')(
   (path: string) =>

@@ -13,11 +13,19 @@ export default packageJson({
   ...privatePackageDefaults,
   exports: {
     '.': './src/mod.ts',
+    './codex': './src/adapters/codex.ts',
+    './claude': './src/adapters/claude.ts',
+    './opencode': './src/adapters/opencode.ts',
+    './jsonl': './src/adapters/jsonl.ts',
   },
   publishConfig: {
     access: 'public',
     exports: {
       '.': './dist/mod.js',
+      './codex': './dist/adapters/codex.js',
+      './claude': './dist/adapters/claude.js',
+      './opencode': './dist/adapters/opencode.js',
+      './jsonl': './dist/adapters/jsonl.js',
     },
   },
   pnpm: {
