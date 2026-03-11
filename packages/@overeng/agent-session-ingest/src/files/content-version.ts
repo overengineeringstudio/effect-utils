@@ -16,15 +16,19 @@ const hashBytes = (buffer: Buffer) => {
   return `fnv1a:${(hash >>> 0).toString(16)}`
 }
 
+const stableHeadSampleBytes = 512
+
 /** Builds a validated content-version value from precomputed file metadata. */
 export const buildContentVersion = (options: {
   readonly sizeBytes: number
   readonly modifiedAtEpochMs: number
+  readonly headHash?: string
   readonly tailHash: string
 }) =>
   Schema.decodeUnknownSync(ContentVersionSchema)({
     sizeBytes: options.sizeBytes,
     modifiedAtEpochMs: options.modifiedAtEpochMs,
+    ...(options.headHash !== undefined && { headHash: options.headHash }),
     tailHash: options.tailHash,
   })
 
@@ -45,31 +49,56 @@ export const readFileContentVersion = Effect.fn('AgentSessionIngest.readFileCont
       )
 
       const sizeBytes = Number(info.size)
-      const tailHash = yield* Effect.tryPromise({
-        try: async () => {
-          const length = Math.min(512, sizeBytes)
-          if (length === 0) return hashBytes(Buffer.alloc(0))
+      const [headHash, tailHash] = yield* Effect.all([
+        Effect.tryPromise({
+          try: async () => {
+            if (sizeBytes < stableHeadSampleBytes) return undefined
 
-          const handle = await openFile(path, 'r')
-          try {
-            const buffer = Buffer.alloc(length)
-            const { bytesRead } = await handle.read(buffer, 0, length, sizeBytes - length)
-            return hashBytes(buffer.subarray(0, bytesRead))
-          } finally {
-            await handle.close()
-          }
-        },
-        catch: (cause) =>
-          new SessionArtifactReadError({
-            message: 'Failed to read artifact tail sample',
-            path,
-            cause,
-          }),
-      })
+            const length = stableHeadSampleBytes
+
+            const handle = await openFile(path, 'r')
+            try {
+              const buffer = Buffer.alloc(length)
+              const { bytesRead } = await handle.read(buffer, 0, length, 0)
+              return hashBytes(buffer.subarray(0, bytesRead))
+            } finally {
+              await handle.close()
+            }
+          },
+          catch: (cause) =>
+            new SessionArtifactReadError({
+              message: 'Failed to read artifact head sample',
+              path,
+              cause,
+            }),
+        }),
+        Effect.tryPromise({
+          try: async () => {
+            const length = Math.min(stableHeadSampleBytes, sizeBytes)
+            if (length === 0) return hashBytes(Buffer.alloc(0))
+
+            const handle = await openFile(path, 'r')
+            try {
+              const buffer = Buffer.alloc(length)
+              const { bytesRead } = await handle.read(buffer, 0, length, sizeBytes - length)
+              return hashBytes(buffer.subarray(0, bytesRead))
+            } finally {
+              await handle.close()
+            }
+          },
+          catch: (cause) =>
+            new SessionArtifactReadError({
+              message: 'Failed to read artifact tail sample',
+              path,
+              cause,
+            }),
+        }),
+      ])
 
       return buildContentVersion({
         sizeBytes,
         modifiedAtEpochMs: Option.getOrUndefined(info.mtime)?.getTime() ?? 0,
+        ...(headHash !== undefined && { headHash }),
         tailHash,
       }) satisfies ContentVersion
     }),

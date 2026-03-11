@@ -11,6 +11,7 @@ const isSameContentVersion = (options: {
 }) =>
   options.previous?.sizeBytes === options.next.sizeBytes &&
   options.previous?.modifiedAtEpochMs === options.next.modifiedAtEpochMs &&
+  options.previous?.headHash === options.next.headHash &&
   options.previous?.tailHash === options.next.tailHash
 
 /** Reads a mutable artifact only when its content version changed since the last checkpoint. */

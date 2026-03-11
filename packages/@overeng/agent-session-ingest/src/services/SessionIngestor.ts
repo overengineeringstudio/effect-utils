@@ -1,10 +1,7 @@
 import { Effect } from 'effect'
 
 import type { IngestedArtifact, SessionSourceAdapter } from '../schema/core.ts'
-import { CheckpointStore } from './CheckpointStore.ts'
-
-const buildCheckpointKey = (options: { readonly sourceId: string; readonly artifactId: string }) =>
-  `${options.sourceId}:${options.artifactId}`
+import { buildCheckpointKey, CheckpointStore } from './CheckpointStore.ts'
 
 /** Ingest all artifacts from a source using stored checkpoints for incremental reads. */
 export const ingestSource = Effect.fn('AgentSessionIngest.SessionIngestor.ingestSource')(
@@ -29,7 +26,14 @@ export const ingestSource = Effect.fn('AgentSessionIngest.SessionIngestor.ingest
         }),
       )
 
-      yield* checkpointStore.saveAll(ingested.map((entry) => entry.checkpoint))
+      const mergedCheckpoints = new Map(
+        checkpoints.map((checkpoint) => [buildCheckpointKey(checkpoint), checkpoint] as const),
+      )
+      for (const entry of ingested) {
+        mergedCheckpoints.set(buildCheckpointKey(entry.checkpoint), entry.checkpoint)
+      }
+
+      yield* checkpointStore.saveAll([...mergedCheckpoints.values()])
 
       return ingested satisfies ReadonlyArray<IngestedArtifact<TRecord>>
     }),

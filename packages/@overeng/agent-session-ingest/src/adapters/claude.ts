@@ -8,7 +8,7 @@ import {
   SessionCheckpointDecodeError,
   SessionSourceDiscoveryError,
 } from '../errors.ts'
-import { readAppendOnlyTextFileSince } from '../files/append-only.ts'
+import { readAppendOnlyTextFileSince, splitCompleteJsonlRecords } from '../files/append-only.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
 import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
 
@@ -222,29 +222,27 @@ export const makeClaudeAdapter = (options: {
         path: artifact.path,
         offsetBytes:
           checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
+        ...(checkpoint?.cursor._tag === 'AppendOnlyCursor' && {
+          previousContentVersion: checkpoint.cursor.contentVersion,
+        }),
         ...(options.initialReadMaxBytes !== undefined && {
           initialReadMaxBytes: options.initialReadMaxBytes,
         }),
       })
 
-      const records = yield* Effect.forEach(
-        read.text
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0),
-        (line) =>
-          Schema.decodeUnknown(Schema.parseJson(ClaudeSessionRecord))(line).pipe(
-            Effect.mapError(
-              (cause) =>
-                new SessionArtifactDecodeError({
-                  message: 'Failed to decode Claude session record',
-                  sourceId: artifact.sourceId,
-                  artifactId: artifact.artifactId,
-                  rawRecord: line,
-                  cause,
-                }),
-            ),
+      const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
+        Schema.decodeUnknown(Schema.parseJson(ClaudeSessionRecord))(line).pipe(
+          Effect.mapError(
+            (cause) =>
+              new SessionArtifactDecodeError({
+                message: 'Failed to decode Claude session record',
+                sourceId: artifact.sourceId,
+                artifactId: artifact.artifactId,
+                rawRecord: line,
+                cause,
+              }),
           ),
+        ),
       )
 
       return {

@@ -175,6 +175,35 @@ const withReadonlyDb = <TValue>(options: {
       }),
   })
 
+const buildOpenCodeRecordKey = (options: {
+  readonly kind: 'message' | 'part' | 'session'
+  readonly id: string
+}) => `${options.kind}:${options.id}`
+
+const rankOpenCodeRecord = (record: OpenCodeRecord) =>
+  record._tag === 'OpenCodeSession' ? 0 : record._tag === 'OpenCodeMessage' ? 1 : 2
+
+const parseOpenCodeRowData = Effect.fn('AgentSessionIngest.OpenCode.parseOpenCodeRowData')(
+  (options: {
+    readonly sourceId: string
+    readonly artifactId: string
+    readonly rawRow: unknown
+    readonly rawData: unknown
+    readonly message: string
+  }) =>
+    Effect.try({
+      try: () => JSON.parse(String(options.rawData)),
+      catch: (cause) =>
+        new SessionArtifactDecodeError({
+          message: options.message,
+          sourceId: options.sourceId,
+          artifactId: options.artifactId,
+          rawRecord: JSON.stringify(options.rawRow),
+          cause,
+        }),
+    }),
+)
+
 /**
  * Adapter for incremental ingestion of OpenCode session records from the local SQLite store.
  *
@@ -249,6 +278,9 @@ export const makeOpenCodeAdapter = (options: {
             cursor: {
               _tag: 'UpdatedAtCursor',
               updatedAtEpochMs: previousCursor?.updatedAtEpochMs ?? 0,
+              ...(previousCursor?.lastRecordKey !== undefined && {
+                lastRecordKey: previousCursor.lastRecordKey,
+              }),
               contentVersion,
             },
             updatedAtEpochMs: Date.now(),
@@ -278,42 +310,9 @@ export const makeOpenCodeAdapter = (options: {
         ),
       )
 
-      const sameContentVersion =
-        previousCursor?.contentVersion.sizeBytes === contentVersion.sizeBytes &&
-        previousCursor?.contentVersion.modifiedAtEpochMs === contentVersion.modifiedAtEpochMs &&
-        previousCursor?.contentVersion.tailHash === contentVersion.tailHash
-
       const resetToFullReplay =
         previousCursor !== undefined && session.time_updated < previousCursor.updatedAtEpochMs
       const watermark = resetToFullReplay === true ? 0 : (previousCursor?.updatedAtEpochMs ?? 0)
-
-      if (sameContentVersion === true) {
-        return {
-          artifact,
-          records: [] as Array<OpenCodeRecord>,
-          checkpoint: yield* Schema.decodeUnknown(IngestionCheckpoint)({
-            sourceId: artifact.sourceId,
-            artifactId: artifact.artifactId,
-            path: artifact.path,
-            status: artifact.status,
-            cursor: {
-              _tag: 'UpdatedAtCursor',
-              updatedAtEpochMs: previousCursor?.updatedAtEpochMs ?? session.time_updated,
-              contentVersion,
-            },
-            updatedAtEpochMs: Date.now(),
-          }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new SessionCheckpointDecodeError({
-                  message: 'Failed to decode unchanged OpenCode checkpoint',
-                  path: artifact.path,
-                  cause,
-                }),
-            ),
-          ),
-        }
-      }
 
       const messageRows = yield* withReadonlyDb({
         path: artifact.path,
@@ -323,7 +322,7 @@ export const makeOpenCodeAdapter = (options: {
               `
                 select id, session_id, time_created, time_updated, data
                 from message
-                where session_id = ? and time_updated > ?
+                where session_id = ? and time_updated >= ?
                 order by time_updated asc, id asc
               `,
             )
@@ -338,7 +337,7 @@ export const makeOpenCodeAdapter = (options: {
               `
                 select id, session_id, time_created, time_updated, data
                 from part
-                where session_id = ? and time_updated > ?
+                where session_id = ? and time_updated >= ?
                 order by time_updated asc, id asc
               `,
             )
@@ -362,14 +361,23 @@ export const makeOpenCodeAdapter = (options: {
       )
 
       const messageRecords = yield* Effect.forEach(messageRows, (row) =>
-        Schema.decodeUnknown(OpenCodeMessageRecord)({
-          _tag: 'OpenCodeMessage',
-          id: row.id,
-          sessionId: row.session_id,
-          timeCreated: row.time_created,
-          timeUpdated: row.time_updated,
-          data: JSON.parse(String(row.data)),
+        parseOpenCodeRowData({
+          sourceId: artifact.sourceId,
+          artifactId: artifact.artifactId,
+          rawRow: row,
+          rawData: row.data,
+          message: 'Failed to parse OpenCode message record JSON',
         }).pipe(
+          Effect.flatMap((data) =>
+            Schema.decodeUnknown(OpenCodeMessageRecord)({
+              _tag: 'OpenCodeMessage',
+              id: row.id,
+              sessionId: row.session_id,
+              timeCreated: row.time_created,
+              timeUpdated: row.time_updated,
+              data,
+            }),
+          ),
           Effect.mapError(
             (cause) =>
               new SessionArtifactDecodeError({
@@ -384,14 +392,23 @@ export const makeOpenCodeAdapter = (options: {
       )
 
       const partRecords = yield* Effect.forEach(partRows, (row) =>
-        Schema.decodeUnknown(OpenCodePartRecord)({
-          _tag: 'OpenCodePart',
-          id: row.id,
-          sessionId: row.session_id,
-          timeCreated: row.time_created,
-          timeUpdated: row.time_updated,
-          data: JSON.parse(String(row.data)),
+        parseOpenCodeRowData({
+          sourceId: artifact.sourceId,
+          artifactId: artifact.artifactId,
+          rawRow: row,
+          rawData: row.data,
+          message: 'Failed to parse OpenCode part record JSON',
         }).pipe(
+          Effect.flatMap((data) =>
+            Schema.decodeUnknown(OpenCodePartRecord)({
+              _tag: 'OpenCodePart',
+              id: row.id,
+              sessionId: row.session_id,
+              timeCreated: row.time_created,
+              timeUpdated: row.time_updated,
+              data,
+            }),
+          ),
           Effect.mapError(
             (cause) =>
               new SessionArtifactDecodeError({
@@ -405,12 +422,57 @@ export const makeOpenCodeAdapter = (options: {
         ),
       )
 
-      const records =
-        previousCursor === undefined ||
+      const orderedRecords = [
+        ...(previousCursor === undefined ||
         resetToFullReplay === true ||
         session.time_updated > watermark
-          ? [sessionRecord, ...messageRecords, ...partRecords]
-          : [...messageRecords, ...partRecords]
+          ? [sessionRecord]
+          : []),
+        ...messageRecords,
+        ...partRecords,
+      ].toSorted((left, right) => {
+        const leftTime =
+          left._tag === 'OpenCodeSession' ? left.session.time_updated : left.timeUpdated
+        const rightTime =
+          right._tag === 'OpenCodeSession' ? right.session.time_updated : right.timeUpdated
+        if (leftTime !== rightTime) return leftTime - rightTime
+
+        const rankDiff = rankOpenCodeRecord(left) - rankOpenCodeRecord(right)
+        if (rankDiff !== 0) return rankDiff
+
+        const leftKey =
+          left._tag === 'OpenCodeSession'
+            ? buildOpenCodeRecordKey({ kind: 'session', id: left.session.id })
+            : buildOpenCodeRecordKey({
+                kind: left._tag === 'OpenCodeMessage' ? 'message' : 'part',
+                id: left.id,
+              })
+        const rightKey =
+          right._tag === 'OpenCodeSession'
+            ? buildOpenCodeRecordKey({ kind: 'session', id: right.session.id })
+            : buildOpenCodeRecordKey({
+                kind: right._tag === 'OpenCodeMessage' ? 'message' : 'part',
+                id: right.id,
+              })
+        return leftKey.localeCompare(rightKey)
+      })
+
+      const records = orderedRecords.filter((record) => {
+        const recordTime =
+          record._tag === 'OpenCodeSession' ? record.session.time_updated : record.timeUpdated
+        const recordKey =
+          record._tag === 'OpenCodeSession'
+            ? buildOpenCodeRecordKey({ kind: 'session', id: record.session.id })
+            : buildOpenCodeRecordKey({
+                kind: record._tag === 'OpenCodeMessage' ? 'message' : 'part',
+                id: record.id,
+              })
+
+        return (
+          recordTime > watermark ||
+          (recordTime === watermark && recordKey > (previousCursor?.lastRecordKey ?? ''))
+        )
+      })
 
       const nextWatermark = Math.max(
         session.time_updated,
@@ -418,6 +480,19 @@ export const makeOpenCodeAdapter = (options: {
         ...partRecords.map((record) => record.timeUpdated),
         previousCursor?.updatedAtEpochMs ?? 0,
       )
+      const lastRecordKey =
+        records.length === 0
+          ? previousCursor?.lastRecordKey
+          : (() => {
+              const lastRecord = records[records.length - 1]
+              if (lastRecord === undefined) return previousCursor?.lastRecordKey
+              return lastRecord._tag === 'OpenCodeSession'
+                ? buildOpenCodeRecordKey({ kind: 'session', id: lastRecord.session.id })
+                : buildOpenCodeRecordKey({
+                    kind: lastRecord._tag === 'OpenCodeMessage' ? 'message' : 'part',
+                    id: lastRecord.id,
+                  })
+            })()
 
       return {
         artifact,
@@ -430,6 +505,7 @@ export const makeOpenCodeAdapter = (options: {
           cursor: {
             _tag: 'UpdatedAtCursor',
             updatedAtEpochMs: nextWatermark,
+            ...(lastRecordKey !== undefined && { lastRecordKey }),
             contentVersion,
           },
           updatedAtEpochMs: Date.now(),

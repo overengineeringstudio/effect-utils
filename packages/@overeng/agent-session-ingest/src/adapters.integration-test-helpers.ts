@@ -1,3 +1,4 @@
+import { appendFile } from 'node:fs/promises'
 import * as nodePath from 'node:path'
 
 import { FileSystem } from '@effect/platform'
@@ -53,4 +54,17 @@ export const rewriteJsonlArtifact = Effect.fn('AgentSessionIngest.Tests.rewriteJ
       [...options.records.map((record) => JSON.stringify(record)), ''].join('\n'),
     )
   },
+)
+
+/** Appends one or more JSONL records without rewriting the existing artifact. */
+export const appendJsonlArtifact = Effect.fn('AgentSessionIngest.Tests.appendJsonlArtifact')(
+  (options: { readonly path: string; readonly records: ReadonlyArray<unknown> }) =>
+    Effect.tryPromise({
+      try: () =>
+        appendFile(
+          options.path,
+          [...options.records.map((record) => JSON.stringify(record)), ''].join('\n'),
+        ),
+      catch: (cause) => cause,
+    }),
 )

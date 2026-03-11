@@ -8,7 +8,7 @@ import {
   SessionCheckpointDecodeError,
   SessionSourceDiscoveryError,
 } from '../errors.ts'
-import { readAppendOnlyTextFileSince } from '../files/append-only.ts'
+import { readAppendOnlyTextFileSince, splitCompleteJsonlRecords } from '../files/append-only.ts'
 import type { SessionSourceAdapter } from '../schema/core.ts'
 import { ArtifactDescriptor, IngestionCheckpoint, SourceId } from '../schema/core.ts'
 
@@ -120,9 +120,6 @@ const TokenCountInfo = Schema.Struct({
  * - Discovery index: `state_5.sqlite` / `threads.rollout_path`
  */
 export const CodexSessionRecord = Schema.Union(
-  LegacySessionMetaRecord,
-  LegacyStateRecord,
-  LegacyTopLevelRecord,
   Schema.Struct({
     timestamp: Schema.DateTimeUtc,
     type: Schema.Literal('session_meta'),
@@ -163,6 +160,9 @@ export const CodexSessionRecord = Schema.Union(
       summary: Schema.optional(Schema.String),
     }),
   }),
+  LegacySessionMetaRecord,
+  LegacyStateRecord,
+  LegacyTopLevelRecord,
 ).annotations({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
@@ -254,7 +254,10 @@ export const makeCodexAdapter = (options: {
       paths.map((path: string) =>
         Schema.decodeUnknownSync(ArtifactDescriptor)({
           sourceId: options.sourceId ?? 'codex',
-          artifactId: nodePath.basename(path, '.jsonl'),
+          artifactId: nodePath
+            .relative(options.sessionsRoot, path)
+            .replaceAll(nodePath.sep, '__')
+            .replace(/\.jsonl$/u, ''),
           path,
           status: 'stable',
         }),
@@ -267,29 +270,27 @@ export const makeCodexAdapter = (options: {
         path: artifact.path,
         offsetBytes:
           checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
+        ...(checkpoint?.cursor._tag === 'AppendOnlyCursor' && {
+          previousContentVersion: checkpoint.cursor.contentVersion,
+        }),
         ...(options.initialReadMaxBytes !== undefined && {
           initialReadMaxBytes: options.initialReadMaxBytes,
         }),
       })
 
-      const records = yield* Effect.forEach(
-        read.text
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0),
-        (line) =>
-          Schema.decodeUnknown(Schema.parseJson(CodexSessionRecord))(line).pipe(
-            Effect.mapError(
-              (cause) =>
-                new SessionArtifactDecodeError({
-                  message: 'Failed to decode Codex session record',
-                  sourceId: artifact.sourceId,
-                  artifactId: artifact.artifactId,
-                  rawRecord: line,
-                  cause,
-                }),
-            ),
+      const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
+        Schema.decodeUnknown(Schema.parseJson(CodexSessionRecord))(line).pipe(
+          Effect.mapError(
+            (cause) =>
+              new SessionArtifactDecodeError({
+                message: 'Failed to decode Codex session record',
+                sourceId: artifact.sourceId,
+                artifactId: artifact.artifactId,
+                rawRecord: line,
+                cause,
+              }),
           ),
+        ),
       )
 
       return {

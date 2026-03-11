@@ -46,6 +46,7 @@ export type ArtifactDescriptor = typeof ArtifactDescriptor.Type
 export const ContentVersion = Schema.Struct({
   sizeBytes: Schema.NonNegativeInt,
   modifiedAtEpochMs: Schema.NonNegativeInt,
+  headHash: Schema.optional(Schema.NonEmptyTrimmedString),
   tailHash: Schema.NonEmptyTrimmedString,
 }).annotations({ identifier: 'AgentSessionIngest.ContentVersion' })
 export type ContentVersion = typeof ContentVersion.Type
@@ -66,6 +67,7 @@ export type ContentVersionCursor = typeof ContentVersionCursor.Type
 /** Cursor for ordered mutable artifacts that support incremental replay via an update watermark. */
 export const UpdatedAtCursor = Schema.TaggedStruct('UpdatedAtCursor', {
   updatedAtEpochMs: Schema.NonNegativeInt,
+  lastRecordKey: Schema.optional(Schema.String),
   contentVersion: ContentVersion,
 }).annotations({ identifier: 'AgentSessionIngest.UpdatedAtCursor' })
 export type UpdatedAtCursor = typeof UpdatedAtCursor.Type
