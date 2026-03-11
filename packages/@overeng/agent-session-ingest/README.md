@@ -2,77 +2,94 @@
 
 Reusable Effect primitives for incrementally ingesting coding-agent session artifacts.
 
-## Scope
+## Overview
 
-This package owns only the deterministic ingestion layer:
+`@overeng/agent-session-ingest` provides the deterministic ingestion layer for
+native coding-agent session stores. It is designed for consumers that need to
+process large local session histories incrementally without re-reading every
+artifact on every run.
+
+The package owns:
 
 - source-specific 1:1 decoding
 - append-only and mutable artifact readers
 - checkpoint persistence
 - incremental reprocessing
 
-It does **not** own higher-level janitor logic such as:
+It does not own higher-level analysis such as:
 
 - friction detection
 - finding synthesis
-- Beads integration
 - AI prompting
+- issue tracking integration
 
 ## Adapters
 
-- `codex` via native rollout/session `JSONL`
-- `claude` via native project/subagent `JSONL` under `~/.claude/projects -> ~/.claude-shared/projects`
-- `opencode` via native SQLite state at `~/.local/share/opencode/opencode.db`
-
-## Merge policy
-
-This package is intended to provide first-class adapter parity for:
-
-- `codex`
-- `claude`
-- `opencode`
-
-The PR stays open until all three adapters meet the same bar:
-
-- real source-of-truth artifact discovery
-- faithful 1:1 Effect schemas
-- incremental ingestion semantics
-- replay/fixture coverage
-- live local verification
-
-Merge remains blocked until all three adapters are verified to the same quality bar in CI and with local smoke checks.
+- `codex` via native rollout/session `jsonl`
+- `claude` via native project/subagent `jsonl`
+- `opencode` via native SQLite state
 
 ## Source strategy
 
 ### Codex
 
-- Discovery can optionally use SQLite state/indexes.
-- Canonical transcript ingestion uses rollout/session `JSONL`.
-- This is the preferred source because it preserves the full append-only event stream.
+- Discovery can optionally use SQLite state or filesystem scanning.
+- Canonical transcript ingestion uses rollout/session `jsonl`.
+- This preserves the append-only event stream directly.
 
 ### Claude
 
-- Canonical transcript ingestion uses project/subagent `JSONL` under `~/.claude/projects`.
+- Canonical transcript ingestion uses project/subagent `jsonl` under
+  `~/.claude/projects`.
 - On this machine that path is a symlink to `~/.claude-shared/projects`.
-- `history.jsonl`, `tasks`, `todos`, and `debug` are ancillary and should not be used as the primary adapter source.
+- `history.jsonl`, `tasks`, `todos`, and `debug` are ancillary and are not the
+  primary adapter source.
 
 ### OpenCode
 
 - Canonical transcript ingestion uses the local SQLite database at `~/.local/share/opencode/opencode.db`.
 - Rich structured records live in the `session`, `message`, and `part` tables.
-- `opencode export` is still useful as a debugging and verification oracle, but it is not the primary adapter source.
+- `opencode export` is useful as a debugging and verification oracle, but it is
+  not the primary adapter source.
 
-## Adapter criteria
+## Package boundary
 
-An adapter belongs in this package only when the source provides:
+This package expects adapters to model the underlying source faithfully. Each
+adapter should use 1:1 Effect schemas over the provider's native record format
+before any downstream normalization happens.
 
-1. a stable native source-of-truth artifact format
-2. enough execution detail to justify 1:1 schemas
-3. incremental ingestion semantics that are reliable enough for checkpointed processing
+This package is a good fit for:
 
-If a source is primarily metadata, summaries, or debug text, it should stay out of this package until we identify a better underlying artifact.
+- discovering native session artifacts
+- decoding provider-native records
+- reading only new or changed content
+- persisting ingestion checkpoints
+
+This package is not a good fit for:
+
+- provider-agnostic semantic event modeling
+- clustering or ranking issues
+- AI synthesis over session history
+
+## Core model
+
+The core data flow is:
+
+```text
+artifact discovery
+  -> provider-native record decode
+  -> checkpoint-aware ingest
+  -> consumer-specific normalization or analysis
+```
+
+The package supports two main artifact shapes:
+
+- append-only text artifacts such as `jsonl`
+- mutable artifacts such as SQLite-backed stores
 
 ## Usage
+
+Example using the Claude adapter and a file-backed checkpoint store:
 
 ```ts
 import { Effect } from 'effect'
@@ -87,7 +104,18 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(FileCheckpointStore({ path: '/tmp/agent-session-checkpoints.jsonl' })))
 ```
 
-## Design
+## Choosing a source
+
+Prefer the most faithful native source that the provider exposes:
+
+1. native transcript/event files
+2. native structured state stores
+3. discovery indexes only when they point to a richer transcript source
+
+Avoid building adapters over debug logs, prompt history, or weak metadata if a
+better native source exists.
+
+## Layering
 
 The intended layering is:
 
@@ -98,4 +126,6 @@ source artifact
   -> consumer-specific normalization / analysis
 ```
 
-Consumers such as janitor should build their own shared abstraction on top of this package instead of pushing source-specific or AI-specific logic down into the ingestion layer.
+Consumers should build their own domain abstractions on top of this package
+instead of pushing source-specific or AI-specific logic down into the ingestion
+layer.
