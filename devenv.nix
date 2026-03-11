@@ -30,6 +30,7 @@ let
     storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
+    lint-effect-lsp = import ./nix/devenv-modules/tasks/shared/lint-effect-lsp.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
@@ -203,13 +204,7 @@ in
     inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
-    # Use the package-local TypeScript install patched by effect-language-service.
-    (taskModules.ts {
-      tscBin = "packages/@overeng/utils/node_modules/.bin/tsc";
-      lspPatchCmd = "packages/@overeng/utils/node_modules/.bin/effect-language-service patch --dir packages/@overeng/utils/node_modules/typescript";
-      lspPatchDir = "packages/@overeng/utils/node_modules/typescript";
-      lspPatchAfter = [ "pnpm:install" ];
-    })
+    (taskModules.ts { })
     (taskModules.megarepo { })
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
@@ -291,6 +286,7 @@ in
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.all.json";
     })
+    (taskModules.lint-effect-lsp { })
     # Setup task (auto-runs in enterShell)
     # Context example tasks
     taskModules.context
@@ -302,7 +298,6 @@ in
         "pnpm:install"
         "genie:run"
         "megarepo:sync"
-        "ts:patch-lsp"
         "ts:emit"
       ];
       completionsCliNames = [
@@ -317,6 +312,7 @@ in
   ];
 
   packages = [
+    inputs.tsgo.packages.${pkgs.system}.effect-tsgo
     pkgs.pnpm
     pkgs.nodejs_24
     pkgs.bun
