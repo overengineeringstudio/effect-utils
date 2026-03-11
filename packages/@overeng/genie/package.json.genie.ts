@@ -1,4 +1,3 @@
-import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   effectLspDevDeps,
@@ -43,9 +42,6 @@ export default packageJson({
   // See: requirements.md R8 (singleton runtimes)
   dependenciesMeta: {
     '@overeng/tui-react': { injected: true },
-  },
-  pnpm: {
-    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     ...catalog.pick(

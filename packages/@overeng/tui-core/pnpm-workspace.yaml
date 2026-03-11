@@ -3,6 +3,9 @@
 
 packages: [.]
 
+patchedDependencies:
+  effect-distributed-lock@0.0.11: ../utils/patches/effect-distributed-lock@0.0.11.patch
+
 allowUnusedPatches: true
 
 supportedArchitectures:
@@ -10,5 +13,3 @@ supportedArchitectures:
   cpu: [x64, arm64]
 
 dedupePeerDependents: true
-
-sharedWorkspaceLockfile: true

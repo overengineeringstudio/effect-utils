@@ -10,7 +10,4 @@ export default packageJson({
   devDependencies: {
     ...catalog.pick('@types/node'),
   },
-  pnpm: {
-    patchedDependencies: {},
-  },
 } satisfies PackageJsonData)

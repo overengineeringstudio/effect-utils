@@ -74,9 +74,6 @@
     "react-dom": "^19.2.3",
     "react-reconciler": "^0.33.0"
   },
-  "pnpm": {
-    "patchedDependencies": {}
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

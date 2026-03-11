@@ -24,9 +24,6 @@
     "effect": "^3.19.15",
     "react": "^19.2.3"
   },
-  "pnpm": {
-    "patchedDependencies": {}
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

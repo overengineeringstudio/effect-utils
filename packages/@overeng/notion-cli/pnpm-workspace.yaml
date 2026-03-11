@@ -11,6 +11,9 @@ packages:
   - ../utils
   - ../utils-dev
 
+patchedDependencies:
+  effect-distributed-lock@0.0.11: ../utils/patches/effect-distributed-lock@0.0.11.patch
+
 allowUnusedPatches: true
 
 supportedArchitectures:
@@ -20,5 +23,3 @@ supportedArchitectures:
 dedupePeerDependents: true
 
 publicHoistPattern: [react, react-dom, react-reconciler]
-
-sharedWorkspaceLockfile: true
