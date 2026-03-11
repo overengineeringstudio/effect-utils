@@ -437,7 +437,6 @@ pkgs.stdenv.mkDerivation {
     pnpm --config.inject-workspace-packages=true \
       --filter . \
       deploy \
-      --offline \
       --frozen-lockfile \
       --ignore-scripts \
       "$deploy_dir"
