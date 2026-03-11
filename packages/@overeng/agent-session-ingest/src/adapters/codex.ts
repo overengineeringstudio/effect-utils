@@ -210,7 +210,7 @@ const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(
     }),
 )
 
-/** Adapter for incremental ingestion of Codex session JSONL artifacts. */
+/** Adapter for incremental ingestion of Codex rollout JSONL transcripts. */
 export const makeCodexAdapter = (options: {
   readonly sessionsRoot: string
   readonly sourceId?: string

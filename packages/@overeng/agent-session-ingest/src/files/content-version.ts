@@ -1,0 +1,76 @@
+import { open as openFile } from 'node:fs/promises'
+
+import { FileSystem } from '@effect/platform'
+import { Effect, Option, Schema } from 'effect'
+
+import { SessionArtifactReadError } from '../errors.ts'
+import type { ContentVersion } from '../schema/core.ts'
+import { ContentVersion as ContentVersionSchema } from '../schema/core.ts'
+
+const hashBytes = (buffer: Buffer) => {
+  let hash = 2166136261
+  for (const value of buffer.values()) {
+    hash ^= value
+    hash = Math.imul(hash, 16777619)
+  }
+  return `fnv1a:${(hash >>> 0).toString(16)}`
+}
+
+/** Builds a validated content-version value from precomputed file metadata. */
+export const buildContentVersion = (options: {
+  readonly sizeBytes: number
+  readonly modifiedAtEpochMs: number
+  readonly tailHash: string
+}) =>
+  Schema.decodeUnknownSync(ContentVersionSchema)({
+    sizeBytes: options.sizeBytes,
+    modifiedAtEpochMs: options.modifiedAtEpochMs,
+    tailHash: options.tailHash,
+  })
+
+/** Computes a stable content version for any file by hashing its trailing bytes plus stat metadata. */
+export const readFileContentVersion = Effect.fn('AgentSessionIngest.readFileContentVersion')(
+  (path: string) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const info = yield* fs.stat(path).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SessionArtifactReadError({
+              message: 'Failed to stat artifact for content version',
+              path,
+              cause,
+            }),
+        ),
+      )
+
+      const sizeBytes = Number(info.size)
+      const tailHash = yield* Effect.tryPromise({
+        try: async () => {
+          const length = Math.min(512, sizeBytes)
+          if (length === 0) return hashBytes(Buffer.alloc(0))
+
+          const handle = await openFile(path, 'r')
+          try {
+            const buffer = Buffer.alloc(length)
+            const { bytesRead } = await handle.read(buffer, 0, length, sizeBytes - length)
+            return hashBytes(buffer.subarray(0, bytesRead))
+          } finally {
+            await handle.close()
+          }
+        },
+        catch: (cause) =>
+          new SessionArtifactReadError({
+            message: 'Failed to read artifact tail sample',
+            path,
+            cause,
+          }),
+      })
+
+      return buildContentVersion({
+        sizeBytes,
+        modifiedAtEpochMs: Option.getOrUndefined(info.mtime)?.getTime() ?? 0,
+        tailHash,
+      }) satisfies ContentVersion
+    }),
+)

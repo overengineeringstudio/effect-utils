@@ -18,9 +18,11 @@ It does **not** own higher-level janitor logic such as:
 - Beads integration
 - AI prompting
 
-## Current adapters
+## Adapters
 
-- `codex`
+- `codex` via native rollout/session `JSONL`
+- `claude` via native project/subagent `JSONL` under `~/.claude/projects -> ~/.claude-shared/projects`
+- `opencode` via native SQLite state at `~/.local/share/opencode/opencode.db`
 
 ## Merge policy
 
@@ -38,45 +40,33 @@ The PR stays open until all three adapters meet the same bar:
 - replay/fixture coverage
 - live local verification
 
-Today, only `codex` currently meets that bar.
+Merge remains blocked until all three adapters are verified to the same quality bar in CI and with local smoke checks.
 
-## Why only Codex today
+## Source strategy
 
-Codex sessions are currently the strongest verified source-of-truth input for this package:
+### Codex
 
-- append-only JSONL artifacts
-- execution-rich records (`response_item`, `function_call`, `function_call_output`, `turn_context`, `event_msg`)
-- straightforward incremental tailing semantics
-
-Claude and OpenCode are intentionally not included yet.
+- Discovery can optionally use SQLite state/indexes.
+- Canonical transcript ingestion uses rollout/session `JSONL`.
+- This is the preferred source because it preserves the full append-only event stream.
 
 ### Claude
 
-The currently observed local artifacts are not a strong source-of-truth execution log:
-
-- `~/.claude/history.jsonl` is prompt history
-- `~/.claude/tasks/*/*.json` are task records
-- `~/.claude/debug/*.txt` is useful debugging output, but it is noisy and not a stable execution schema
-- `~/.claude/session-env/*` currently does not look like a session transcript source
-
-That means a faithful 1:1 adapter is not obvious yet. We likely need a different Claude artifact source before adding support here.
+- Canonical transcript ingestion uses project/subagent `JSONL` under `~/.claude/projects`.
+- On this machine that path is a symlink to `~/.claude-shared/projects`.
+- `history.jsonl`, `tasks`, `todos`, and `debug` are ancillary and should not be used as the primary adapter source.
 
 ### OpenCode
 
-The currently observed `~/.local/share/opencode/storage/session/*.json` and `message/*.json` files look metadata-heavy:
-
-- session metadata
-- message metadata
-- finish reasons
-- token/cost accounting
-
-They do not yet look like a reliable execution-rich source-of-truth artifact for incremental ingestion. We should first identify the real tool/event transcript source before adding an adapter.
+- Canonical transcript ingestion uses the local SQLite database at `~/.local/share/opencode/opencode.db`.
+- Rich structured records live in the `session`, `message`, and `part` tables.
+- `opencode export` is still useful as a debugging and verification oracle, but it is not the primary adapter source.
 
 ## Adapter criteria
 
 An adapter belongs in this package only when the source provides:
 
-1. a stable source-of-truth artifact format
+1. a stable native source-of-truth artifact format
 2. enough execution detail to justify 1:1 schemas
 3. incremental ingestion semantics that are reliable enough for checkpointed processing
 
@@ -86,11 +76,11 @@ If a source is primarily metadata, summaries, or debug text, it should stay out 
 
 ```ts
 import { Effect } from 'effect'
-import { FileCheckpointStore, ingestSource, makeCodexAdapter } from '@overeng/agent-session-ingest'
+import { FileCheckpointStore, ingestSource, makeClaudeAdapter } from '@overeng/agent-session-ingest'
 
 const program = Effect.gen(function* () {
-  const adapter = makeCodexAdapter({
-    sessionsRoot: '/path/to/codex/sessions',
+  const adapter = makeClaudeAdapter({
+    projectsRoot: '/path/to/.claude-shared/projects',
   })
 
   return yield* ingestSource(adapter)
