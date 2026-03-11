@@ -1,5 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
-
 import { Effect, Schema } from 'effect'
 
 import {
@@ -23,6 +21,27 @@ const OpenCodeSessionRow = Schema.Struct({
   time_archived: Schema.optional(Schema.NullOr(Schema.NonNegativeInt)),
 }).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionRow' })
 
+const OpenCodeSessionDiscoveryRow = Schema.Struct({
+  id: Schema.String,
+  time_archived: Schema.NullOr(Schema.NonNegativeInt),
+}).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionDiscoveryRow' })
+
+const OpenCodeMessageRow = Schema.Struct({
+  id: Schema.String,
+  session_id: Schema.String,
+  time_created: Schema.NonNegativeInt,
+  time_updated: Schema.NonNegativeInt,
+  data: Schema.Unknown,
+}).annotations({ identifier: 'AgentSessionIngest.OpenCodeMessageRow' })
+
+const OpenCodePartRow = Schema.Struct({
+  id: Schema.String,
+  session_id: Schema.String,
+  time_created: Schema.NonNegativeInt,
+  time_updated: Schema.NonNegativeInt,
+  data: Schema.Unknown,
+}).annotations({ identifier: 'AgentSessionIngest.OpenCodePartRow' })
+
 const OpenCodeMessageData = Schema.Struct({
   role: Schema.String,
   time: Schema.optional(Schema.Unknown),
@@ -40,8 +59,7 @@ const OpenCodeMessageData = Schema.Struct({
   summary: Schema.optional(Schema.Unknown),
 }).annotations({ identifier: 'AgentSessionIngest.OpenCodeMessageData' })
 
-const OpenCodeMessageRecord = Schema.Struct({
-  _tag: Schema.Literal('OpenCodeMessage'),
+const OpenCodeMessageRecord = Schema.TaggedStruct('OpenCodeMessage', {
   id: Schema.String,
   sessionId: Schema.String,
   timeCreated: Schema.NonNegativeInt,
@@ -126,8 +144,7 @@ const OpenCodePartData = Schema.Union(
   OpenCodePartGenericData,
 ).annotations({ identifier: 'AgentSessionIngest.OpenCodePartData' })
 
-const OpenCodePartRecord = Schema.Struct({
-  _tag: Schema.Literal('OpenCodePart'),
+const OpenCodePartRecord = Schema.TaggedStruct('OpenCodePart', {
   id: Schema.String,
   sessionId: Schema.String,
   timeCreated: Schema.NonNegativeInt,
@@ -135,8 +152,7 @@ const OpenCodePartRecord = Schema.Struct({
   data: OpenCodePartData,
 }).annotations({ identifier: 'AgentSessionIngest.OpenCodePartRecord' })
 
-const OpenCodeSessionRecord = Schema.Struct({
-  _tag: Schema.Literal('OpenCodeSession'),
+const OpenCodeSessionRecord = Schema.TaggedStruct('OpenCodeSession', {
   session: OpenCodeSessionRow,
 }).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionRecord' })
 
@@ -154,26 +170,121 @@ export const OpenCodeRecord = Schema.Union(
 ).annotations({ identifier: 'AgentSessionIngest.OpenCodeRecord' })
 export type OpenCodeRecord = typeof OpenCodeRecord.Type
 
+type SqliteValue = string | number | bigint | Uint8Array | null
+
+interface ReadonlySqliteDatabase {
+  readonly get: (sql: string, params?: ReadonlyArray<SqliteValue>) => unknown
+  readonly all: (sql: string, params?: ReadonlyArray<SqliteValue>) => ReadonlyArray<unknown>
+  readonly close: () => void
+}
+
+interface BunSqliteQuery {
+  readonly get: (...params: ReadonlyArray<SqliteValue>) => unknown
+  readonly all: (...params: ReadonlyArray<SqliteValue>) => ReadonlyArray<unknown>
+}
+
+interface BunSqliteDatabase {
+  readonly query: (sql: string) => BunSqliteQuery
+  readonly close: () => void
+}
+
+interface BunSqliteModule {
+  readonly Database: new (
+    path: string,
+    options: {
+      readonly: boolean
+    },
+  ) => BunSqliteDatabase
+}
+
+const hasBunRuntime = () => 'Bun' in globalThis
+
+const loadBunSqliteModule = () =>
+  Function('return import("bun:sqlite")')() as Promise<BunSqliteModule>
+
+const openReadonlySqliteDatabase = Effect.fn(
+  'AgentSessionIngest.OpenCode.openReadonlySqliteDatabase',
+)(
+  (path: string): Effect.Effect<ReadonlySqliteDatabase, SessionArtifactReadError> =>
+    Effect.tryPromise({
+      try: async () => {
+        if (hasBunRuntime()) {
+          const { Database } = await loadBunSqliteModule()
+          const database = new Database(path, { readonly: true })
+          const runQuery = <TValue>(
+            sql: string,
+            params: ReadonlyArray<SqliteValue> | undefined,
+            run: (query: BunSqliteQuery) => TValue,
+            runWithOne: (query: BunSqliteQuery, first: SqliteValue) => TValue,
+            runWithTwo: (query: BunSqliteQuery, first: SqliteValue, second: SqliteValue) => TValue,
+          ) => {
+            const query = database.query(sql)
+            if (params === undefined || params.length === 0) return run(query)
+            if (params.length === 1) return runWithOne(query, params[0]!)
+            if (params.length === 2) return runWithTwo(query, params[0]!, params[1]!)
+
+            throw new Error('OpenCode adapter only supports up to two SQLite bind parameters')
+          }
+
+          return {
+            get: (sql, params) =>
+              runQuery(
+                sql,
+                params,
+                (query) => query.get(),
+                (query, first) => query.get(first),
+                (query, first, second) => query.get(first, second),
+              ),
+            all: (sql, params) =>
+              runQuery(
+                sql,
+                params,
+                (query) => query.all(),
+                (query, first) => query.all(first),
+                (query, first, second) => query.all(first, second),
+              ),
+            close: () => database.close(),
+          } satisfies ReadonlySqliteDatabase
+        }
+
+        const { DatabaseSync } = await import('node:sqlite')
+        const database = new DatabaseSync(path, { readOnly: true })
+        return {
+          get: (sql, params) => database.prepare(sql).get(...(params ?? [])),
+          all: (sql, params) => database.prepare(sql).all(...(params ?? [])),
+          close: () => database.close(),
+        } satisfies ReadonlySqliteDatabase
+      },
+      catch: (cause) =>
+        new SessionArtifactReadError({
+          message: 'Failed to open OpenCode session database',
+          path,
+          cause,
+        }),
+    }),
+)
+
 const withReadonlyDb = <TValue>(options: {
   readonly path: string
-  readonly f: (database: DatabaseSync) => TValue
+  readonly f: (database: ReadonlySqliteDatabase) => TValue
 }): Effect.Effect<TValue, SessionArtifactReadError> =>
-  Effect.try({
-    try: () => {
-      const database = new DatabaseSync(options.path, { readOnly: true })
-      try {
-        return options.f(database)
-      } finally {
-        database.close()
-      }
-    },
-    catch: (cause) =>
-      new SessionArtifactReadError({
-        message: 'Failed to query OpenCode session database',
-        path: options.path,
-        cause,
+  Effect.acquireUseRelease(
+    openReadonlySqliteDatabase(options.path),
+    (database) =>
+      Effect.try({
+        try: () => options.f(database),
+        catch: (cause) =>
+          new SessionArtifactReadError({
+            message: 'Failed to query OpenCode session database',
+            path: options.path,
+            cause,
+          }),
       }),
-  })
+    (database) =>
+      Effect.sync(() => {
+        database.close()
+      }),
+  )
 
 const buildOpenCodeRecordKey = (options: {
   readonly kind: 'message' | 'part' | 'session'
@@ -213,17 +324,18 @@ const parseOpenCodeRowData = Effect.fn('AgentSessionIngest.OpenCode.parseOpenCod
     readonly rawData: unknown
     readonly message: string
   }) =>
-    Effect.try({
-      try: () => JSON.parse(String(options.rawData)),
-      catch: (cause) =>
-        new SessionArtifactDecodeError({
-          message: options.message,
-          sourceId: options.sourceId,
-          artifactId: options.artifactId,
-          rawRecord: JSON.stringify(options.rawRow),
-          cause,
-        }),
-    }),
+    Schema.decodeUnknown(Schema.parseJson(Schema.Unknown))(String(options.rawData)).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SessionArtifactDecodeError({
+            message: options.message,
+            sourceId: options.sourceId,
+            artifactId: options.artifactId,
+            rawRecord: JSON.stringify(options.rawRow),
+            cause,
+          }),
+      ),
+    ),
 )
 
 /**
@@ -242,22 +354,22 @@ export const makeOpenCodeAdapter = (options: {
     path: options.databasePath,
     f: (database) =>
       database
-        .prepare(
+        .all(
           `
-            select id, time_archived
-            from session
-            order by time_updated desc
-          `,
+          select id, time_archived
+          from session
+          order by time_updated desc
+        `,
         )
-        .all()
-        .map((row) =>
-          Schema.decodeUnknownSync(ArtifactDescriptor)({
+        .map((rawRow) => {
+          const row = Schema.decodeUnknownSync(OpenCodeSessionDiscoveryRow)(rawRow)
+          return Schema.decodeUnknownSync(ArtifactDescriptor)({
             sourceId: options.sourceId ?? 'opencode',
             artifactId: String(row.id),
             path: options.databasePath,
             status: row.time_archived === null ? 'stable' : 'finalized',
-          }),
-        ),
+          })
+        }),
   }).pipe(
     Effect.mapError(
       (cause) =>
@@ -277,15 +389,14 @@ export const makeOpenCodeAdapter = (options: {
       const sessionRow = yield* withReadonlyDb({
         path: artifact.path,
         f: (database) =>
-          database
-            .prepare(
-              `
-                select id, slug, directory, title, version, time_created, time_updated, time_archived
-                from session
-                where id = ?
-              `,
-            )
-            .get(artifact.artifactId),
+          database.get(
+            `
+              select id, slug, directory, title, version, time_created, time_updated, time_archived
+              from session
+              where id = ?
+            `,
+            [artifact.artifactId],
+          ),
       })
 
       if (sessionRow === undefined) {
@@ -339,31 +450,29 @@ export const makeOpenCodeAdapter = (options: {
       const messageRows = yield* withReadonlyDb({
         path: artifact.path,
         f: (database) =>
-          database
-            .prepare(
-              `
-                select id, session_id, time_created, time_updated, data
-                from message
-                where session_id = ? and time_updated >= ?
-                order by time_updated asc, id asc
-              `,
-            )
-            .all(artifact.artifactId, watermark),
+          database.all(
+            `
+              select id, session_id, time_created, time_updated, data
+              from message
+              where session_id = ? and time_updated >= ?
+              order by time_updated asc, id asc
+            `,
+            [artifact.artifactId, watermark],
+          ),
       })
 
       const partRows = yield* withReadonlyDb({
         path: artifact.path,
         f: (database) =>
-          database
-            .prepare(
-              `
-                select id, session_id, time_created, time_updated, data
-                from part
-                where session_id = ? and time_updated >= ?
-                order by time_updated asc, id asc
-              `,
-            )
-            .all(artifact.artifactId, watermark),
+          database.all(
+            `
+              select id, session_id, time_created, time_updated, data
+              from part
+              where session_id = ? and time_updated >= ?
+              order by time_updated asc, id asc
+            `,
+            [artifact.artifactId, watermark],
+          ),
       })
 
       const sessionRecord = yield* Schema.decodeUnknown(OpenCodeSessionRecord)({
@@ -382,8 +491,9 @@ export const makeOpenCodeAdapter = (options: {
         ),
       )
 
-      const messageRecords = yield* Effect.forEach(messageRows, (row) =>
-        parseOpenCodeRowData({
+      const messageRecords = yield* Effect.forEach(messageRows, (rawRow) => {
+        const row = Schema.decodeUnknownSync(OpenCodeMessageRow)(rawRow)
+        return parseOpenCodeRowData({
           sourceId: artifact.sourceId,
           artifactId: artifact.artifactId,
           rawRow: row,
@@ -410,11 +520,12 @@ export const makeOpenCodeAdapter = (options: {
                 cause,
               }),
           ),
-        ),
-      )
+        )
+      })
 
-      const partRecords = yield* Effect.forEach(partRows, (row) =>
-        parseOpenCodeRowData({
+      const partRecords = yield* Effect.forEach(partRows, (rawRow) => {
+        const row = Schema.decodeUnknownSync(OpenCodePartRow)(rawRow)
+        return parseOpenCodeRowData({
           sourceId: artifact.sourceId,
           artifactId: artifact.artifactId,
           rawRow: row,
@@ -441,8 +552,8 @@ export const makeOpenCodeAdapter = (options: {
                 cause,
               }),
           ),
-        ),
-      )
+        )
+      })
 
       const orderedRecords = [
         ...(previousCursor === undefined ||
