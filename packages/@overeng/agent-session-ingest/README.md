@@ -22,6 +22,24 @@ It does **not** own higher-level janitor logic such as:
 
 - `codex`
 
+## Merge policy
+
+This package is intended to provide first-class adapter parity for:
+
+- `codex`
+- `claude`
+- `opencode`
+
+The PR stays open until all three adapters meet the same bar:
+
+- real source-of-truth artifact discovery
+- faithful 1:1 Effect schemas
+- incremental ingestion semantics
+- replay/fixture coverage
+- live local verification
+
+Today, only `codex` currently meets that bar.
+
 ## Why only Codex today
 
 Codex sessions are currently the strongest verified source-of-truth input for this package:
@@ -39,6 +57,7 @@ The currently observed local artifacts are not a strong source-of-truth executio
 - `~/.claude/history.jsonl` is prompt history
 - `~/.claude/tasks/*/*.json` are task records
 - `~/.claude/debug/*.txt` is useful debugging output, but it is noisy and not a stable execution schema
+- `~/.claude/session-env/*` currently does not look like a session transcript source
 
 That means a faithful 1:1 adapter is not obvious yet. We likely need a different Claude artifact source before adding support here.
 
