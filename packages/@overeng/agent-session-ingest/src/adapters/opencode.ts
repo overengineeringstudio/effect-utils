@@ -197,10 +197,28 @@ interface BunSqliteModule {
   ) => BunSqliteDatabase
 }
 
+interface RunQueryOptions<TValue> {
+  readonly sql: string
+  readonly params: ReadonlyArray<SqliteValue> | undefined
+  readonly run: (query: BunSqliteQuery) => TValue
+  readonly runWithOne: (query: BunSqliteQuery, first: SqliteValue) => TValue
+  readonly runWithTwo: (query: BunSqliteQuery, first: SqliteValue, second: SqliteValue) => TValue
+}
+
+interface SqliteQueryRunner {
+  readonly get: (options: {
+    readonly sql: string
+    readonly params: ReadonlyArray<SqliteValue> | undefined
+  }) => unknown
+  readonly all: (options: {
+    readonly sql: string
+    readonly params: ReadonlyArray<SqliteValue> | undefined
+  }) => ReadonlyArray<unknown>
+}
+
 const hasBunRuntime = () => 'Bun' in globalThis
 
-const loadBunSqliteModule = () =>
-  Function('return import("bun:sqlite")')() as Promise<BunSqliteModule>
+const loadBunSqliteModule = () => import('bun:sqlite' as string) as Promise<BunSqliteModule>
 
 const openReadonlySqliteDatabase = Effect.fn(
   'AgentSessionIngest.OpenCode.openReadonlySqliteDatabase',
@@ -208,50 +226,56 @@ const openReadonlySqliteDatabase = Effect.fn(
   (path: string): Effect.Effect<ReadonlySqliteDatabase, SessionArtifactReadError> =>
     Effect.tryPromise({
       try: async () => {
-        if (hasBunRuntime()) {
+        if (hasBunRuntime() === true) {
           const { Database } = await loadBunSqliteModule()
           const database = new Database(path, { readonly: true })
-          const runQuery = <TValue>(
-            sql: string,
-            params: ReadonlyArray<SqliteValue> | undefined,
-            run: (query: BunSqliteQuery) => TValue,
-            runWithOne: (query: BunSqliteQuery, first: SqliteValue) => TValue,
-            runWithTwo: (query: BunSqliteQuery, first: SqliteValue, second: SqliteValue) => TValue,
-          ) => {
-            const query = database.query(sql)
-            if (params === undefined || params.length === 0) return run(query)
-            if (params.length === 1) return runWithOne(query, params[0]!)
-            if (params.length === 2) return runWithTwo(query, params[0]!, params[1]!)
+          const runQuery = <TValue>(options: RunQueryOptions<TValue>) => {
+            const query = database.query(options.sql)
+            if (options.params === undefined || options.params.length === 0)
+              return options.run(query)
+            if (options.params.length === 1) return options.runWithOne(query, options.params[0]!)
+            if (options.params.length === 2) {
+              return options.runWithTwo(query, options.params[0]!, options.params[1]!)
+            }
 
             throw new Error('OpenCode adapter only supports up to two SQLite bind parameters')
           }
 
+          const queryRunner: SqliteQueryRunner = {
+            get: ({ sql, params }) =>
+              runQuery({
+                sql,
+                params,
+                run: (query) => query.get(),
+                runWithOne: (query, first) => query.get(first),
+                runWithTwo: (query, first, second) => query.get(first, second),
+              }),
+            all: ({ sql, params }) =>
+              runQuery({
+                sql,
+                params,
+                run: (query) => query.all(),
+                runWithOne: (query, first) => query.all(first),
+                runWithTwo: (query, first, second) => query.all(first, second),
+              }),
+          }
+
           return {
-            get: (sql, params) =>
-              runQuery(
-                sql,
-                params,
-                (query) => query.get(),
-                (query, first) => query.get(first),
-                (query, first, second) => query.get(first, second),
-              ),
-            all: (sql, params) =>
-              runQuery(
-                sql,
-                params,
-                (query) => query.all(),
-                (query, first) => query.all(first),
-                (query, first, second) => query.all(first, second),
-              ),
+            get: (sql, params) => queryRunner.get({ sql, params }),
+            all: (sql, params) => queryRunner.all({ sql, params }),
             close: () => database.close(),
           } satisfies ReadonlySqliteDatabase
         }
 
         const { DatabaseSync } = await import('node:sqlite')
         const database = new DatabaseSync(path, { readOnly: true })
+        const queryRunner: SqliteQueryRunner = {
+          get: ({ sql, params }) => database.prepare(sql).get(...(params ?? [])),
+          all: ({ sql, params }) => database.prepare(sql).all(...(params ?? [])),
+        }
         return {
-          get: (sql, params) => database.prepare(sql).get(...(params ?? [])),
-          all: (sql, params) => database.prepare(sql).all(...(params ?? [])),
+          get: (sql, params) => queryRunner.get({ sql, params }),
+          all: (sql, params) => queryRunner.all({ sql, params }),
           close: () => database.close(),
         } satisfies ReadonlySqliteDatabase
       },
