@@ -112,7 +112,13 @@ const TokenCountInfo = Schema.Struct({
   model_context_window: Schema.optional(Schema.Number),
 })
 
-/** Source-of-truth record union for Codex session JSONL artifacts. */
+/**
+ * Source-of-truth record union for Codex rollout/session JSONL artifacts.
+ *
+ * References:
+ * - Native transcript store: `~/.codex-<profile>/sessions/(nested path).jsonl`
+ * - Discovery index: `state_5.sqlite` / `threads.rollout_path`
+ */
 export const CodexSessionRecord = Schema.Union(
   LegacySessionMetaRecord,
   LegacyStateRecord,
@@ -160,7 +166,13 @@ export const CodexSessionRecord = Schema.Union(
 ).annotations({ identifier: 'AgentSessionIngest.CodexSessionRecord' })
 export type CodexSessionRecord = typeof CodexSessionRecord.Type
 
-/** Source-of-truth entry from the Codex session discovery index. */
+/**
+ * Source-of-truth entry from the Codex session discovery index.
+ *
+ * References:
+ * - SQLite table: `threads`
+ * - Column used for transcript lookup: `rollout_path`
+ */
 export const CodexSessionIndexEntry = Schema.Struct({
   id: Schema.String,
   thread_name: Schema.String,
@@ -210,7 +222,13 @@ const listJsonlFiles = Effect.fn('AgentSessionIngest.Codex.listJsonlFiles')(
     }),
 )
 
-/** Adapter for incremental ingestion of Codex rollout JSONL transcripts. */
+/**
+ * Adapter for incremental ingestion of Codex rollout JSONL transcripts.
+ *
+ * References:
+ * - Transcript artifact: `~/.codex-<profile>/sessions/(nested path).jsonl`
+ * - Optional discovery helper: `~/.codex-<profile>/state_5.sqlite`
+ */
 export const makeCodexAdapter = (options: {
   readonly sessionsRoot: string
   readonly sourceId?: string

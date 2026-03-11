@@ -36,6 +36,9 @@ It does not own higher-level analysis such as:
 - Discovery can optionally use SQLite state or filesystem scanning.
 - Canonical transcript ingestion uses rollout/session `jsonl`.
 - This preserves the append-only event stream directly.
+- References:
+  - [Codex adapter](./src/adapters/codex.ts)
+  - [Codex transcript schema](./src/adapters/codex.ts)
 
 ### Claude
 
@@ -44,6 +47,9 @@ It does not own higher-level analysis such as:
 - On this machine that path is a symlink to `~/.claude-shared/projects`.
 - `history.jsonl`, `tasks`, `todos`, and `debug` are ancillary and are not the
   primary adapter source.
+- References:
+  - [Claude adapter](./src/adapters/claude.ts)
+  - [Claude transcript schema](./src/adapters/claude.ts)
 
 ### OpenCode
 
@@ -51,6 +57,9 @@ It does not own higher-level analysis such as:
 - Rich structured records live in the `session`, `message`, and `part` tables.
 - `opencode export` is useful as a debugging and verification oracle, but it is
   not the primary adapter source.
+- References:
+  - [OpenCode adapter](./src/adapters/opencode.ts)
+  - [OpenCode record schema](./src/adapters/opencode.ts)
 
 ## Package boundary
 
@@ -114,6 +123,19 @@ Prefer the most faithful native source that the provider exposes:
 
 Avoid building adapters over debug logs, prompt history, or weak metadata if a
 better native source exists.
+
+## Validation
+
+Each adapter should be verified in two ways:
+
+- fixture-backed integration tests for discovery and incremental ingestion
+- live local smoke checks against the native source when available
+
+Current adapter-specific integration coverage lives in:
+
+- [Codex integration test](./src/codex.integration.test.ts)
+- [Claude integration test](./src/claude.integration.test.ts)
+- [OpenCode integration test](./src/opencode.integration.test.ts)
 
 ## Layering
 

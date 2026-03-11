@@ -116,7 +116,13 @@ const GenericClaudeRecord = Schema.Struct({
   timestamp: Schema.optional(Schema.DateTimeUtc),
 }).annotations({ identifier: 'AgentSessionIngest.ClaudeGenericRecord' })
 
-/** Source-of-truth record union for Claude project/subagent transcript JSONL artifacts. */
+/**
+ * Source-of-truth record union for Claude project/subagent transcript JSONL artifacts.
+ *
+ * References:
+ * - Native transcript store: `~/.claude/projects/(nested path).jsonl`
+ * - Common shared-store target: `~/.claude-shared/projects/(nested path).jsonl`
+ */
 export const ClaudeSessionRecord = Schema.Union(
   QueueOperationRecord,
   ProgressRecord,
@@ -170,7 +176,13 @@ const listClaudeJsonlFiles = Effect.fn('AgentSessionIngest.Claude.listClaudeJson
     }),
 )
 
-/** Adapter for incremental ingestion of Claude project transcript JSONL artifacts. */
+/**
+ * Adapter for incremental ingestion of Claude project transcript JSONL artifacts.
+ *
+ * References:
+ * - Canonical transcript root: `~/.claude/projects`
+ * - Shared transcript root: `~/.claude-shared/projects`
+ */
 export const makeClaudeAdapter = (options: {
   readonly projectsRoot: string
   readonly sourceId?: string

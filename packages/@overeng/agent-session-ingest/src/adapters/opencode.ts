@@ -140,7 +140,13 @@ const OpenCodeSessionRecord = Schema.Struct({
   session: OpenCodeSessionRow,
 }).annotations({ identifier: 'AgentSessionIngest.OpenCodeSessionRecord' })
 
-/** Source-of-truth record union for OpenCode session storage. */
+/**
+ * Source-of-truth record union for OpenCode native SQLite session storage.
+ *
+ * References:
+ * - Database: `~/.local/share/opencode/opencode.db`
+ * - Tables: `session`, `message`, `part`
+ */
 export const OpenCodeRecord = Schema.Union(
   OpenCodeSessionRecord,
   OpenCodeMessageRecord,
@@ -169,7 +175,13 @@ const withReadonlyDb = <TValue>(options: {
       }),
   })
 
-/** Adapter for incremental ingestion of OpenCode session records from the local SQLite store. */
+/**
+ * Adapter for incremental ingestion of OpenCode session records from the local SQLite store.
+ *
+ * References:
+ * - Native database: `~/.local/share/opencode/opencode.db`
+ * - Source tables: `session`, `message`, `part`
+ */
 export const makeOpenCodeAdapter = (options: {
   readonly databasePath: string
   readonly sourceId?: string
