@@ -448,6 +448,30 @@ export const vercelDeployJobs = (opts: {
     opts.projects.map((p) => [p.key, vercelDeployJob({ ...opts, project: p })]),
   )
 
+/** Post deploy URLs for one or more Vercel projects as a PR comment + job summary. */
+export const vercelDeployCommentStep = (projects: readonly { name: string; urlEnvKey: string }[]) =>
+  deployCommentStep({
+    summaryTitle: 'Vercel Deploy',
+    tableHeaders: ['Target', 'URL'],
+    noRowsMessage: 'No Vercel deploy URLs detected.',
+    modeScript: [
+      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+      '  label="prod"',
+      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+      '  label="PR #${{ github.event.pull_request.number }}"',
+      'else',
+      '  exit 0',
+      'fi',
+    ].join('\n'),
+    rowsScript: projects
+      .map(
+        (p) =>
+          `if [ -n "\${${p.urlEnvKey}:-}" ]; then\n  rows="\${rows}| ${p.name} | \${${p.urlEnvKey}} |\\n"\nfi`,
+      )
+      .join('\n'),
+    commentTitle: 'Vercel Preview',
+  })
+
 // =============================================================================
 // Netlify Deploy Helpers
 // =============================================================================
