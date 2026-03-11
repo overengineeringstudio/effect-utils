@@ -183,6 +183,28 @@ const buildOpenCodeRecordKey = (options: {
 const rankOpenCodeRecord = (record: OpenCodeRecord) =>
   record._tag === 'OpenCodeSession' ? 0 : record._tag === 'OpenCodeMessage' ? 1 : 2
 
+const buildOpenCodeOrderKey = (options: { readonly rank: number; readonly recordKey: string }) =>
+  `${String(options.rank).padStart(2, '0')}:${options.recordKey}`
+
+const normalizeOpenCodeOrderKey = (lastRecordKey: string | undefined) => {
+  if (lastRecordKey === undefined) return undefined
+  if (/^\d{2}:/.test(lastRecordKey) === true) return lastRecordKey
+
+  if (lastRecordKey.startsWith('session:') === true) {
+    return buildOpenCodeOrderKey({ rank: 0, recordKey: lastRecordKey })
+  }
+
+  if (lastRecordKey.startsWith('message:') === true) {
+    return buildOpenCodeOrderKey({ rank: 1, recordKey: lastRecordKey })
+  }
+
+  if (lastRecordKey.startsWith('part:') === true) {
+    return buildOpenCodeOrderKey({ rank: 2, recordKey: lastRecordKey })
+  }
+
+  return lastRecordKey
+}
+
 const parseOpenCodeRowData = Effect.fn('AgentSessionIngest.OpenCode.parseOpenCodeRowData')(
   (options: {
     readonly sourceId: string
@@ -456,6 +478,7 @@ export const makeOpenCodeAdapter = (options: {
               })
         return leftKey.localeCompare(rightKey)
       })
+      const previousOrderKey = normalizeOpenCodeOrderKey(previousCursor?.lastRecordKey)
 
       const records = orderedRecords.filter((record) => {
         const recordTime =
@@ -467,10 +490,14 @@ export const makeOpenCodeAdapter = (options: {
                 kind: record._tag === 'OpenCodeMessage' ? 'message' : 'part',
                 id: record.id,
               })
+        const orderKey = buildOpenCodeOrderKey({
+          rank: rankOpenCodeRecord(record),
+          recordKey,
+        })
 
         return (
           recordTime > watermark ||
-          (recordTime === watermark && recordKey > (previousCursor?.lastRecordKey ?? ''))
+          (recordTime === watermark && orderKey > (previousOrderKey ?? ''))
         )
       })
 
@@ -486,12 +513,17 @@ export const makeOpenCodeAdapter = (options: {
           : (() => {
               const lastRecord = records[records.length - 1]
               if (lastRecord === undefined) return previousCursor?.lastRecordKey
-              return lastRecord._tag === 'OpenCodeSession'
-                ? buildOpenCodeRecordKey({ kind: 'session', id: lastRecord.session.id })
-                : buildOpenCodeRecordKey({
-                    kind: lastRecord._tag === 'OpenCodeMessage' ? 'message' : 'part',
-                    id: lastRecord.id,
-                  })
+              const recordKey =
+                lastRecord._tag === 'OpenCodeSession'
+                  ? buildOpenCodeRecordKey({ kind: 'session', id: lastRecord.session.id })
+                  : buildOpenCodeRecordKey({
+                      kind: lastRecord._tag === 'OpenCodeMessage' ? 'message' : 'part',
+                      id: lastRecord.id,
+                    })
+              return buildOpenCodeOrderKey({
+                rank: rankOpenCodeRecord(lastRecord),
+                recordKey,
+              })
             })()
 
       return {

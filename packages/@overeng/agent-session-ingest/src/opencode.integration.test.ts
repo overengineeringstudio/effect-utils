@@ -232,4 +232,87 @@ Vitest.describe('opencode adapter integration', () => {
       expect(second.records[0]?._tag).toBe('OpenCodePart')
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
+
+  Vitest.it.effect('replays same-timestamp OpenCode rows using rank-aware ordering', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const tempDir = yield* fs.makeTempDirectoryScoped()
+      const databasePath = nodePath.join(tempDir, 'opencode.db')
+
+      yield* Effect.sync(() => {
+        const db = new DatabaseSync(databasePath)
+        try {
+          db.exec(`
+            create table session (
+              id text primary key,
+              project_id text not null,
+              parent_id text,
+              slug text not null,
+              directory text not null,
+              title text not null,
+              version text not null,
+              share_url text,
+              summary_additions integer,
+              summary_deletions integer,
+              summary_files integer,
+              summary_diffs text,
+              revert text,
+              permission text,
+              time_created integer not null,
+              time_updated integer not null,
+              time_compacting integer,
+              time_archived integer,
+              workspace_id text
+            );
+            create table message (
+              id text primary key,
+              session_id text not null,
+              time_created integer not null,
+              time_updated integer not null,
+              data text not null
+            );
+            create table part (
+              id text primary key,
+              message_id text not null,
+              session_id text not null,
+              time_created integer not null,
+              time_updated integer not null,
+              data text not null
+            );
+          `)
+          db.prepare(
+            `insert into session (id, project_id, slug, directory, title, version, time_created, time_updated)
+             values (?, 'proj_1', ?, ?, ?, ?, ?, ?)`,
+          ).run('ses_3', 'ranked-pond', '/tmp/repo', 'Rank order session', '1.2.15', 1000, 3000)
+        } finally {
+          db.close()
+        }
+      })
+
+      const adapter = makeOpenCodeAdapter({ databasePath })
+      const artifact = yield* expectSingleArtifact(adapter)
+      const first = yield* adapter.ingestArtifact({ artifact, checkpoint: undefined })
+      expect(first.records).toHaveLength(1)
+      expect(first.records[0]?._tag).toBe('OpenCodeSession')
+
+      yield* Effect.sync(() => {
+        const db = new DatabaseSync(databasePath)
+        try {
+          db.prepare(
+            `insert into message (id, session_id, time_created, time_updated, data)
+             values (?, ?, ?, ?, ?)`,
+          ).run('msg_late', 'ses_3', 1001, 3000, JSON.stringify({ role: 'assistant' }))
+        } finally {
+          db.close()
+        }
+      })
+
+      const second = yield* adapter.ingestArtifact({
+        artifact,
+        checkpoint: first.checkpoint,
+      })
+      expect(second.records).toHaveLength(1)
+      expect(second.records[0]?._tag).toBe('OpenCodeMessage')
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
 })

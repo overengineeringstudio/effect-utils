@@ -68,6 +68,31 @@ export const splitCompleteJsonlRecords = (text: string) => {
   return completeLines.map((line) => line.trim()).filter((line) => line.length > 0)
 }
 
+const sliceStableAppendOnlyText = (options: {
+  readonly text: string
+  readonly startedFromTail: boolean
+  readonly beginsOnLineBoundary: boolean
+}) => {
+  const leadingDiscardBytes =
+    options.startedFromTail === true && options.beginsOnLineBoundary !== true
+      ? (() => {
+          const firstNewlineIndex = options.text.indexOf('\n')
+          return firstNewlineIndex === -1 ? 0 : firstNewlineIndex + 1
+        })()
+      : 0
+  const windowText =
+    leadingDiscardBytes === 0 ? options.text : options.text.slice(leadingDiscardBytes)
+  const stableWindowBytes =
+    windowText.endsWith('\n') === true
+      ? windowText.length
+      : Math.max(0, windowText.lastIndexOf('\n') + 1)
+
+  return {
+    text: windowText.slice(0, stableWindowBytes),
+    stableBytesConsumed: leadingDiscardBytes + stableWindowBytes,
+  }
+}
+
 /** Reads the unread suffix of a JSONL-like append-only artifact and returns the next stable cursor. */
 export const readAppendOnlyTextFileSince = Effect.fn(
   'AgentSessionIngest.readAppendOnlyTextFileSince',
@@ -196,19 +221,15 @@ export const readAppendOnlyTextFileSince = Effect.fn(
                 path: options.path,
                 offsetBytes: effectiveOffsetBytes - 1,
               })) === '\n'
-      const nextText =
-        startedFromTail === true
-          ? beginsOnLineBoundary === true
-            ? readText
-            : (() => {
-                const firstNewlineIndex = readText.indexOf('\n')
-                return firstNewlineIndex === -1 ? '' : readText.slice(firstNewlineIndex + 1)
-              })()
-          : readText
+      const { text: nextText, stableBytesConsumed } = sliceStableAppendOnlyText({
+        text: readText,
+        startedFromTail,
+        beginsOnLineBoundary,
+      })
 
       return {
         text: nextText,
-        nextOffsetBytes: sizeBytes,
+        nextOffsetBytes: effectiveOffsetBytes + stableBytesConsumed,
         resetToStart:
           (normalizedOffsetBytes === 0 && options.offsetBytes > 0) ||
           resetToStartBecauseRewrite === true,
