@@ -1,4 +1,4 @@
-import { otelSdkDeps, pnpmPatchedDependencies } from '../../../genie/external.ts'
+import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
   utilsPatches,
@@ -31,9 +31,6 @@ const runtimeDeps = catalog.compose({
       'effect-distributed-lock',
       'ioredis',
     ),
-  },
-  pnpm: {
-    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     workspace: [utilsDevPkg],

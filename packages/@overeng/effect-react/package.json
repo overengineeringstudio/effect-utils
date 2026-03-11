@@ -40,9 +40,6 @@
     "react-aria-components": "^1.14.0",
     "react-dom": "^19.2.3"
   },
-  "pnpm": {
-    "patchedDependencies": {}
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

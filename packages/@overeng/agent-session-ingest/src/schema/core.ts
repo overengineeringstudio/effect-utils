@@ -4,7 +4,7 @@ import { Schema } from 'effect'
 
 import type { SessionIngestError, SessionSourceDiscoveryError } from '../errors.ts'
 
-/** Stable logical identifier for a session source such as `codex` or `cc-safety-net`. */
+/** Stable logical identifier for a session source such as `codex`. */
 export const SourceId = Schema.String.pipe(
   Schema.minLength(1),
   Schema.brand('SourceId'),

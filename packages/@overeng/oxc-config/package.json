@@ -19,9 +19,6 @@
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
-  "pnpm": {
-    "patchedDependencies": {}
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

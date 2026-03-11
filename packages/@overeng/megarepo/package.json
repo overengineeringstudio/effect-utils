@@ -96,11 +96,6 @@
     "react-dom": "^19.2.3",
     "react-reconciler": "^0.33.0"
   },
-  "pnpm": {
-    "patchedDependencies": {
-      "effect-distributed-lock@0.0.11": "../utils/patches/effect-distributed-lock@0.0.11.patch"
-    }
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

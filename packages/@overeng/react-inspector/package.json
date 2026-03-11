@@ -50,9 +50,6 @@
       "optional": true
     }
   },
-  "pnpm": {
-    "patchedDependencies": {}
-  },
   "$genie": {
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten"

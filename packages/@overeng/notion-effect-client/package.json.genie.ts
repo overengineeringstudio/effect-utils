@@ -1,4 +1,3 @@
-import { pnpmPatchedDependencies } from '../../../genie/external.ts'
 import {
   catalog,
   workspaceMember,
@@ -13,9 +12,6 @@ const runtimeDeps = catalog.compose({
   workspace: workspaceMember('packages/@overeng/notion-effect-client'),
   dependencies: {
     workspace: [notionEffectSchemaPkg],
-  },
-  pnpm: {
-    patchedDependencies: pnpmPatchedDependencies(),
   },
   devDependencies: {
     workspace: [utilsDevPkg, utilsPkg],
