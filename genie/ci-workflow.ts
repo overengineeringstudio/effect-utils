@@ -360,6 +360,81 @@ export const dispatchAlignmentStep = (opts: {
     shell: 'bash',
   })
 
+// =============================================================================
+// Vercel Deploy Helpers
+// =============================================================================
+
+export type VercelProject = {
+  /** Job key in the workflow (e.g. 'deploy-website') */
+  key: string
+  /** Human-readable name (e.g. 'website') */
+  name: string
+  /** Vercel project ID (prj_...) */
+  projectId: string
+}
+
+/** Validate the Vercel token works for the given org. Fails fast before attempting a deploy. */
+export const vercelTokenValidationStep = (orgId: string) => ({
+  name: 'Validate Vercel token',
+  run: `npx vercel whoami --token "$VERCEL_TOKEN" --scope "${orgId}"`,
+  env: {
+    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
+  },
+})
+
+/** Deploy a single Vercel project. Prod on push-to-main/schedule/dispatch, preview on PRs. */
+export const vercelDeployStep = (project: VercelProject, orgId: string) => ({
+  name: `Deploy ${project.name} to Vercel`,
+  id: 'deploy',
+  run: [
+    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+    '  DEPLOY_URL=$(npx vercel deploy --token "$VERCEL_TOKEN")',
+    'else',
+    '  DEPLOY_URL=$(npx vercel deploy --prod --token "$VERCEL_TOKEN")',
+    'fi',
+    'echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"',
+  ].join('\n'),
+  env: {
+    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
+    VERCEL_ORG_ID: orgId,
+    VERCEL_PROJECT_ID: project.projectId,
+  },
+})
+
+/** Create a complete Vercel deploy job for a project. */
+export const vercelDeployJob = (opts: {
+  project: VercelProject
+  orgId: string
+  /** CI job names that must succeed before deploying */
+  needs: readonly string[]
+}) => ({
+  needs: [...opts.needs],
+  if: [
+    'always()',
+    `(github.event_name == 'schedule' || (${opts.needs.map((j) => `needs.${j}.result == 'success'`).join(' && ')}))`,
+  ].join(' && '),
+  'runs-on': 'ubuntu-latest',
+  steps: [
+    checkoutStep(),
+    vercelTokenValidationStep(opts.orgId),
+    vercelDeployStep(opts.project, opts.orgId),
+  ],
+})
+
+/** Generate deploy jobs for multiple Vercel projects. Returns object keyed by project.key. */
+export const vercelDeployJobs = (opts: {
+  projects: readonly VercelProject[]
+  orgId: string
+  needs: readonly string[]
+}) =>
+  Object.fromEntries(
+    opts.projects.map((p) => [p.key, vercelDeployJob({ project: p, orgId: opts.orgId, needs: opts.needs })]),
+  )
+
+// =============================================================================
+// Netlify Deploy Helpers
+// =============================================================================
+
 /**
  * Deploy step for Netlify storybooks via devenv tasks.
  * Runs `netlify:deploy` with prod/PR mode based on the event trigger.
