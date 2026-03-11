@@ -63,10 +63,19 @@ export const ContentVersionCursor = Schema.TaggedStruct('ContentVersionCursor', 
 }).annotations({ identifier: 'AgentSessionIngest.ContentVersionCursor' })
 export type ContentVersionCursor = typeof ContentVersionCursor.Type
 
+/** Cursor for ordered mutable artifacts that support incremental replay via an update watermark. */
+export const UpdatedAtCursor = Schema.TaggedStruct('UpdatedAtCursor', {
+  updatedAtEpochMs: Schema.NonNegativeInt,
+  contentVersion: ContentVersion,
+}).annotations({ identifier: 'AgentSessionIngest.UpdatedAtCursor' })
+export type UpdatedAtCursor = typeof UpdatedAtCursor.Type
+
 /** Unified cursor union used by checkpoint persistence. */
-export const ArtifactCursor = Schema.Union(AppendOnlyCursor, ContentVersionCursor).annotations({
-  identifier: 'AgentSessionIngest.ArtifactCursor',
-})
+export const ArtifactCursor = Schema.Union(
+  AppendOnlyCursor,
+  ContentVersionCursor,
+  UpdatedAtCursor,
+).annotations({ identifier: 'AgentSessionIngest.ArtifactCursor' })
 export type ArtifactCursor = typeof ArtifactCursor.Type
 
 /** Persisted checkpoint entry for one source artifact. */
