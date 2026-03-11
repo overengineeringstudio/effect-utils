@@ -366,87 +366,46 @@ export const dispatchAlignmentStep = (opts: {
 // Vercel Deploy Helpers
 // =============================================================================
 
-export type VercelProject = {
-  /** Job key in the workflow (e.g. 'deploy-website') */
-  key: string
-  /** Human-readable name (e.g. 'website') */
-  name: string
-  /** Vercel project ID (prj_...) */
-  projectId: string
-}
+/**
+ * Deploy a single Vercel project via devenv task.
+ * Prod on push-to-main/schedule/dispatch, preview on PRs.
+ * Captures deploy URL from task output and exports it to GITHUB_ENV.
+ */
+export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) => ({
+  name: `Deploy ${project.name} to Vercel`,
+  shell: 'bash' as const,
+  run: [
+    'if [ -z "${VERCEL_TOKEN:-}" ]; then',
+    '  echo "::error::VERCEL_TOKEN is not set"',
+    '  exit 1',
+    'fi',
+    'tmp_log="$(mktemp)"',
+    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')} 2>&1 | tee "$tmp_log"`,
+    'else',
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
+    'fi',
+    'deploy_exit=${PIPESTATUS[0]}',
+    'url="$(grep -Eo \'https://[^[:space:]"'"'"\'},]+\' "$tmp_log" | grep -E \'vercel\\.(app|com)\' | tail -n 1 || true)"',
+    `if [ -n "$url" ]; then echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"; fi`,
+    'rm -f "$tmp_log"',
+    'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',
+  ].join('\n'),
+})
 
-/** Configure git author so Vercel associates the deploy with a team member. */
+/**
+ * Configure git author so Vercel Deployment Protection
+ * associates the deploy with a team member.
+ */
 export const vercelGitAuthorStep = (opts: { name: string; email: string }) => ({
   name: 'Configure git author for Vercel',
+  shell: 'bash' as const,
   run: [
     `git config user.name "${opts.name}"`,
     `git config user.email "${opts.email}"`,
+    'git commit --amend --no-edit --reset-author',
   ].join('\n'),
 })
-
-/** Validate the Vercel token works for the given org. Fails fast before attempting a deploy. */
-export const vercelTokenValidationStep = (orgId: string) => ({
-  name: 'Validate Vercel token',
-  run: `npx vercel whoami --token "$VERCEL_TOKEN" --scope "${orgId}"`,
-  env: {
-    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
-  },
-})
-
-/** Deploy a single Vercel project. Prod on push-to-main/schedule/dispatch, preview on PRs. */
-export const vercelDeployStep = (project: VercelProject, orgId: string) => ({
-  name: `Deploy ${project.name} to Vercel`,
-  id: 'deploy',
-  run: [
-    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-    '  DEPLOY_URL=$(npx vercel deploy --token "$VERCEL_TOKEN")',
-    'else',
-    '  DEPLOY_URL=$(npx vercel deploy --prod --token "$VERCEL_TOKEN")',
-    'fi',
-    'echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"',
-  ].join('\n'),
-  env: {
-    VERCEL_TOKEN: '${{ secrets.VERCEL_TOKEN }}',
-    VERCEL_ORG_ID: orgId,
-    VERCEL_PROJECT_ID: project.projectId,
-  },
-})
-
-type VercelDeployOpts = {
-  project: VercelProject
-  orgId: string
-  /** CI job names that must succeed before deploying */
-  needs: readonly string[]
-  /** Git author for Vercel team association (Vercel checks git author email) */
-  gitAuthor: { name: string; email: string }
-}
-
-/** Create a complete Vercel deploy job for a project. */
-export const vercelDeployJob = (opts: VercelDeployOpts) => ({
-  needs: [...opts.needs],
-  if: [
-    'always()',
-    `(github.event_name == 'schedule' || (${opts.needs.map((j) => `needs.${j}.result == 'success'`).join(' && ')}))`,
-  ].join(' && '),
-  'runs-on': 'ubuntu-latest',
-  steps: [
-    checkoutStep(),
-    vercelGitAuthorStep(opts.gitAuthor),
-    vercelTokenValidationStep(opts.orgId),
-    vercelDeployStep(opts.project, opts.orgId),
-  ],
-})
-
-/** Generate deploy jobs for multiple Vercel projects. Returns object keyed by project.key. */
-export const vercelDeployJobs = (opts: {
-  projects: readonly VercelProject[]
-  orgId: string
-  needs: readonly string[]
-  gitAuthor: { name: string; email: string }
-}) =>
-  Object.fromEntries(
-    opts.projects.map((p) => [p.key, vercelDeployJob({ ...opts, project: p })]),
-  )
 
 /** Post deploy URLs for one or more Vercel projects as a PR comment + job summary. */
 export const vercelDeployCommentStep = (projects: readonly { name: string; urlEnvKey: string }[]) =>
