@@ -75,12 +75,14 @@ in
     # Quick: Fast feedback for development (genie, typecheck, lint, nix fingerprint only)
     "check:quick" = {
       description = "Fast checks for development (ts:check${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
+      exec = "true";
       after = [ "ts:check" "megarepo:check" ] ++ lintTask ++ nixQuickTask ++ extraChecks;
     };
 
     # All: Comprehensive pre-push validation (includes full nix flake check)
     "check:all" = {
       description = "All checks (ts:check${extraDesc})";
+      exec = "true";
       after = [ "ts:check" "megarepo:check" ] ++ extraChecks ++ lintTask ++ nixFullTask ++ testTasks;
     };
   };

@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
   - Excludes vendored/generated trees like `node_modules` during lint cache invalidation
   - Keeps `oxlint` install-free by using the bundled Nix JS plugin instead of the source plugin path
   - Retains the package-local `genie` install dependency because `genie --check` still runs via the repo's source-mode CLI
+- **devenv/tasks/shared/check.nix**: Give aggregate check tasks explicit no-op commands so `devenv tasks run check:*` actually traverses their dependencies
+  - Prevents current `devenv` from treating `check:quick` / `check:all` as skipped `No command` wrappers
+  - Restores the intended shared quick-check entrypoint for downstream repos
 - **Effect TypeScript tooling**: Pin the exported `effect-tsgo` flake input back to the last known-good upstream revision
   - Reverts the `tsgo` flake lock refresh after confirming `Effect-TS/tsgo@df2eaaa` currently fails to build its own `effect-tsgo` package
   - Keeps downstream `devenv` shells green until the upstream patch set catches up again
