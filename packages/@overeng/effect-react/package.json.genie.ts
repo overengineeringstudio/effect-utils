@@ -1,5 +1,6 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -8,7 +9,7 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-aria-components', 'react-dom'] as const
 const workspaceDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/effect-react'),
   devDependencies: {
     workspace: [utilsPkg],
     external: {

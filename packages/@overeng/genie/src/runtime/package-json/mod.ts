@@ -285,53 +285,32 @@ export type PackageJsonData = {
   }
 }
 
-/** Workspace root package.json data (includes workspace-specific fields) */
-export type WorkspaceRootData = PackageJsonData & {
-  /** Workspace configuration */
-  workspaces?: string[] | { packages?: string[]; catalog?: Record<string, string> }
-  /** pnpm-specific configuration */
-  pnpm?: {
-    overrides?: Record<string, string>
-    patchedDependencies?: Record<string, string>
-    onlyBuiltDependencies?: readonly string[]
-    neverBuiltDependencies?: readonly string[]
-    packageExtensions?: Record<
-      string,
-      {
-        dependencies?: Record<string, string>
-        peerDependencies?: Record<string, string>
-      }
-    >
-    peerDependencyRules?: {
-      allowedVersions?: Record<string, string>
-      ignoreMissing?: readonly string[]
-      allowAny?: readonly string[]
-    }
-    allowedDeprecatedVersions?: Record<string, string>
-    requiredScripts?: readonly string[]
-    updateConfig?: {
-      ignoreDependencies?: readonly string[]
-    }
-  }
-  /** Yarn/npm resolutions */
-  resolutions?: Record<string, string>
-  /** Bun trusted dependencies */
-  trustedDependencies?: string[]
-  /** Bun/npm overrides */
-  overrides?: Record<string, string>
-  /** Bun/pnpm patched dependencies */
-  patchedDependencies?: Record<string, string>
-  /** Bun version catalog */
-  catalog?: Record<string, string>
-  /** Bun named version catalogs */
-  catalogs?: Record<string, Record<string, string>>
+/** Stable workspace identity used during import-time package composition. */
+export type WorkspaceIdentity = {
+  repoName: string
+  memberPath: string
 }
 
 /** Static workspace-composition metadata stored in non-emitted generator meta. */
-export type WorkspaceMetadata = {
-  repoName: string
-  memberPath: string
+export type WorkspaceMetadata = WorkspaceIdentity & {
   deps: readonly WorkspacePackageLike[]
+}
+
+/**
+ * Author input for a repository aggregate manifest.
+ *
+ * Aggregate manifests are intentionally constrained: they only declare the
+ * workspace member set and do not act like normal package manifests.
+ */
+export type AggregatePackageJsonInput = {
+  name: string
+  workspaces: readonly string[]
+}
+
+/** Emitted repository aggregate manifest shape. */
+export type AggregatePackageJsonData = AggregatePackageJsonInput & {
+  private: true
+  packageManager: string
 }
 
 /** Package-level metadata wrapper attached to generators that participate in workspace recomposition. */
@@ -614,7 +593,10 @@ const buildPackageJson = <T extends PackageJsonData>({
  * import { catalog, packageJson } from '@overeng/genie'
  *
  * const composition = catalog.compose({
- *   dir: import.meta.dirname,
+ *   workspace: {
+ *     repoName: 'my-repo',
+ *     memberPath: 'packages/app',
+ *   },
  *   dependencies: {
  *     workspace: [utilsPkg],
  *     external: catalog.pick('effect'),
@@ -630,14 +612,14 @@ const buildPackageJson = <T extends PackageJsonData>({
  * )
  * ```
  */
-export function packageJson<const T extends PackageJsonData>(
+function createPackageJson<const T extends PackageJsonData>(
   data: Strict<T, PackageJsonData>,
 ): GenieOutput<T>
-export function packageJson<const T extends PackageJsonComposedData>(
+function createPackageJson<const T extends PackageJsonComposedData>(
   data: Strict<T, PackageJsonComposedData>,
   composition: PackageJsonComposition,
 ): GenieOutput<T, WorkspaceMeta>
-export function packageJson<const T extends PackageJsonData, const TMeta extends object>(
+function createPackageJson<const T extends PackageJsonData, const TMeta extends object>(
   data: Strict<T, PackageJsonData>,
   meta: PackageJsonMetadataInput<TMeta>,
 ): GenieOutput<T, TMeta>
@@ -651,7 +633,7 @@ export function packageJson<const T extends PackageJsonData, const TMeta extends
  * for unrelated concerns.
  */
 // oxlint-disable-next-line overeng/named-args
-export function packageJson<const T extends PackageJsonData, const TMeta>(
+function createPackageJson<const T extends PackageJsonData, const TMeta>(
   data: Strict<T, PackageJsonData>,
   meta?: TMeta,
 ) {
@@ -769,55 +751,65 @@ export function packageJson<const T extends PackageJsonData, const TMeta>(
 }
 
 /**
- * Creates a package.json configuration for a workspace root.
+ * Default package manager emitted for aggregate manifests.
  *
- * Similar to `packageJson` but includes workspace-specific fields like
- * `workspaces`, `pnpm`, `resolutions`, etc.
- *
- * Returns a `GenieOutput` with the structured data accessible via `.data`
- * for composition with other genie files.
- *
- * Prefer `workspaceRootFromPackages(...)` when deriving a root workspace from
- * package metadata. The low-level emitted-data constructor stays internal so
- * root authoring flows through metadata-driven projection.
+ * Aggregates are repository coordination files, not package-level authoring
+ * surfaces, so this stays centralized instead of being repeated by callers.
  */
-function workspaceRoot<const T extends WorkspaceRootData>(
-  data: Strict<T, WorkspaceRootData>,
-): GenieOutput<T>
-function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
-  data: Strict<T, WorkspaceRootData>,
-  meta: TMeta,
-): GenieOutput<T, TMeta>
-/** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
-// oxlint-disable-next-line overeng/named-args
-function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
-  data: Strict<T, WorkspaceRootData>,
-  meta?: TMeta,
-) {
+const DEFAULT_AGGREGATE_PACKAGE_MANAGER = 'pnpm@10.29.2'
+
+/**
+ * Create a repository aggregate manifest.
+ *
+ * The aggregate manifest is not a runnable package and does not own
+ * dependencies, scripts, exports, or publish settings. It exists only to
+ * declare related workspace members. Constraining it prevents root-level
+ * dependency and tooling creep, while actual package ownership remains with
+ * real workspace packages.
+ */
+const createAggregatePackageJson = <const T extends AggregatePackageJsonInput>(
+  data: Strict<T, AggregatePackageJsonInput>,
+) => {
+  const aggregate: AggregatePackageJsonData = {
+    name: data.name,
+    private: true,
+    packageManager: DEFAULT_AGGREGATE_PACKAGE_MANAGER,
+    workspaces: [...data.workspaces],
+  }
+
   return createGenieOutput({
-    data,
+    data: aggregate,
     stringify: (ctx: GenieContext) =>
-      JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-    ...(meta === undefined ? {} : { meta }),
+      JSON.stringify(buildPackageJson({ data: aggregate, location: ctx.location }), null, 2) + '\n',
   })
 }
 
-/** Build a root workspace package.json by projecting package metadata instead of maintaining member lists manually. */
-export const workspaceRootFromPackages = ({
+/** Project an aggregate manifest from package metadata instead of maintaining member lists manually. */
+const aggregatePackageJsonFromPackages = ({
   dir,
   packages,
   extraWorkspaces = [],
-  ...data
+  name,
 }: {
   dir: string
   packages: readonly WorkspacePackageLike[]
   extraWorkspaces?: readonly string[]
-} & Omit<WorkspaceRootData, 'workspaces'>) =>
-  workspaceRoot({
-    ...data,
+  name: string
+}) =>
+  createAggregatePackageJson({
+    name,
     workspaces: rootWorkspaceMemberPathsFromPackages({
       dir,
       packages,
       extraPackages: extraWorkspaces,
     }),
   })
+
+/** Package manifest authoring API plus constrained aggregate manifest helpers. */
+export const packageJson = Object.assign(createPackageJson, {
+  aggregate: createAggregatePackageJson,
+  aggregateFromPackages: aggregatePackageJsonFromPackages,
+}) as typeof createPackageJson & {
+  aggregate: typeof createAggregatePackageJson
+  aggregateFromPackages: typeof aggregatePackageJsonFromPackages
+}

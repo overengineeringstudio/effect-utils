@@ -13,7 +13,8 @@ export {
   defineOverrides,
   definePatchedDependencies,
   packageJson,
-  workspaceRootFromPackages,
+  type AggregatePackageJsonData,
+  type AggregatePackageJsonInput,
   type Catalog,
   type CatalogInput,
   type ExtendedOverridesInput,
@@ -21,10 +22,14 @@ export {
   type PackageJsonData,
   type PatchesRegistry,
   type ScriptValue,
+  type WorkspaceIdentity,
+  type WorkspaceMeta,
+  type WorkspaceMetadata,
+  type WorkspacePackage,
+  type WorkspacePackageLike,
 } from './package-json/mod.ts'
 export {
-  pnpmWorkspaceYamlFromPackage,
-  pnpmWorkspaceYamlFromPackages,
+  pnpmWorkspaceYaml,
   type PnpmSettings,
   type PnpmWorkspaceData,
 } from './pnpm-workspace/mod.ts'

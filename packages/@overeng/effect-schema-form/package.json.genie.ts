@@ -1,5 +1,6 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -7,7 +8,7 @@ import {
 
 const peerDepNames = ['effect', 'react'] as const
 const deps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/effect-schema-form'),
   devDependencies: {
     external: {
       ...catalog.pick(...peerDepNames, '@types/react', 'typescript', 'vitest'),

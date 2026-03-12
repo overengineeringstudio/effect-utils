@@ -898,21 +898,21 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
  *
  * @see https://pnpm.io/pnpm-workspace_yaml
  *
- * Prefer `pnpmWorkspaceYamlFromPackage(...)` and
- * `pnpmWorkspaceYamlFromPackages(...)` for metadata-driven projections.
+ * Prefer `pnpmWorkspaceYaml.package(...)` and
+ * `pnpmWorkspaceYaml.root(...)` for metadata-driven projections.
  * The low-level emitted-data constructor stays internal so normal authoring
  * flows through metadata-driven projection.
  */
-function pnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
+function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
   config: Strict<T, PnpmWorkspaceData>,
 ): GenieOutput<T>
-function pnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
+function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
   config: Strict<T, PnpmWorkspaceData>,
   meta: TMeta,
 ): GenieOutput<T, TMeta>
 /** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
 // oxlint-disable-next-line overeng/named-args
-function pnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
+function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
   config: Strict<T, PnpmWorkspaceData>,
   meta?: TMeta,
 ) {
@@ -990,7 +990,7 @@ const collectRelativeWorkspaceDepsRecursive = ({
 }
 
 /** Project a package-local pnpm-workspace.yaml from a package's non-emitted workspace metadata. */
-export const pnpmWorkspaceYamlFromPackage = ({
+const packagePnpmWorkspaceYaml = ({
   pkg,
   extraPackages = [],
   ...config
@@ -998,7 +998,7 @@ export const pnpmWorkspaceYamlFromPackage = ({
   pkg: WorkspacePackageLike
   extraPackages?: readonly string[]
 } & Omit<PnpmWorkspaceData, 'packages'>) =>
-  pnpmWorkspaceYaml({
+  createPnpmWorkspaceYaml({
     ...config,
     packages: [
       '.',
@@ -1013,7 +1013,7 @@ export const pnpmWorkspaceYamlFromPackage = ({
   })
 
 /** Project a root pnpm-workspace.yaml by recomposing package metadata instead of maintaining member lists manually. */
-export const pnpmWorkspaceYamlFromPackages = ({
+const rootPnpmWorkspaceYaml = ({
   dir,
   packages,
   extraPackages = [],
@@ -1023,7 +1023,7 @@ export const pnpmWorkspaceYamlFromPackages = ({
   packages: readonly WorkspacePackageLike[]
   extraPackages?: readonly string[]
 } & Omit<PnpmWorkspaceData, 'packages'>) =>
-  pnpmWorkspaceYaml({
+  createPnpmWorkspaceYaml({
     ...config,
     packages: rootWorkspaceMemberPathsFromPackages({
       dir,
@@ -1031,6 +1031,12 @@ export const pnpmWorkspaceYamlFromPackages = ({
       extraPackages,
     }),
   })
+
+/** Public pnpm workspace projection API for package-local and aggregate views. */
+export const pnpmWorkspaceYaml = {
+  package: packagePnpmWorkspaceYaml,
+  root: rootPnpmWorkspaceYaml,
+} as const
 
 // =============================================================================
 // Validation

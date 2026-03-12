@@ -1,4 +1,9 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  workspaceMember,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
@@ -11,7 +16,7 @@ const peerDepNames = [
 ] as const
 
 const deps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/utils-dev'),
   devDependencies: {
     external: {
       ...catalog.pick(...peerDepNames, '@types/node', 'typescript'),

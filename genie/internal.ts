@@ -26,12 +26,12 @@ export {
   packageTsconfigCompilerOptions,
   patchPostinstall,
   pnpmPatchedDependencies,
-  pnpmWorkspaceYamlFromPackage,
-  pnpmWorkspaceYamlFromPackages,
+  pnpmWorkspaceYaml,
   privatePackageDefaults,
   reactJsx,
   tsconfigJson,
-  workspaceRootFromPackages,
+  type AggregatePackageJsonData,
+  type AggregatePackageJsonInput,
   type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
@@ -45,6 +45,11 @@ export {
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
+  type WorkspaceIdentity,
+  type WorkspaceMeta,
+  type WorkspaceMetadata,
+  type WorkspacePackage,
+  type WorkspacePackageLike,
 } from './external.ts'
 
 /**
@@ -60,6 +65,14 @@ export const catalog = defineCatalog({
   extends: externalCatalog,
   packages: internalPackageCatalogEntries,
 })
+
+const WORKSPACE_REPO_NAME = 'effect-utils'
+
+export const workspaceMember = (memberPath: string) =>
+  ({
+    repoName: WORKSPACE_REPO_NAME,
+    memberPath,
+  }) as const
 
 /**
  * Patched dependencies for `@overeng/utils`.

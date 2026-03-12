@@ -28,7 +28,10 @@ import utilsPkg from '../utils/package.json.genie.ts'
 import { catalog, packageJson } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: {
+    repoName: 'my-repo',
+    memberPath: 'packages/app',
+  },
   dependencies: {
     workspace: [utilsPkg],
     external: catalog.pick('react'),
@@ -70,8 +73,8 @@ This is useful for:
 Use:
 
 - `catalog.pick(...)` for external dependency versions
-- `catalog.compose({ dir, dependencies, devDependencies, peerDependencies, mode })` to derive one
-  coupled package composition object
+- `catalog.compose({ workspace, dependencies, devDependencies, peerDependencies, mode })`
+  to derive one coupled package composition object
 
 Use `mode: 'manifest'` for normal package manifest composition.
 Use `mode: 'install'` for private/app-style install composition when inherited
@@ -107,11 +110,17 @@ The metadata contains stable composition facts such as logical workspace
 identity (`repoName`, `memberPath`) and imported workspace deps. Projection
 helpers receive `ctx` later when they need to render relative paths.
 
-For projections, keep using the dedicated wrappers:
+For repository aggregates and projections, keep using the dedicated helpers:
 
-- `workspaceRootFromPackages(...)`
-- `pnpmWorkspaceYamlFromPackage(...)`
-- `pnpmWorkspaceYamlFromPackages(...)`
+- `packageJson.aggregate(...)`
+- `packageJson.aggregateFromPackages(...)`
+- `pnpmWorkspaceYaml.package(...)`
+- `pnpmWorkspaceYaml.root(...)`
+
+Treat aggregate manifests as coordination files, not packages. They only
+declare related workspace members and automatically emit `private: true` plus
+the required `packageManager`. They do not own dependencies, scripts, exports,
+or publish settings.
 
 Do not treat lower-level workspace graph internals as co-equal authoring APIs.
 Those helpers are intentionally internal adapter code for the composed-root

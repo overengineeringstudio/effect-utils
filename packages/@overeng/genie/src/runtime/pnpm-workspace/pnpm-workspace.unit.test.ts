@@ -6,8 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
-import { workspaceRootFromPackages } from '../package-json/mod.ts'
-import { pnpmWorkspaceYamlFromPackage, pnpmWorkspaceYamlFromPackages } from './mod.ts'
+import { pnpmWorkspaceYaml } from './mod.ts'
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-workspace-'))
@@ -26,11 +25,19 @@ const createTempRepo = (...memberPaths: string[]) => {
   }
 }
 
+const workspace = ({ repoName, memberPath }: { repoName: string; memberPath: string }) => ({
+  repoName,
+  memberPath,
+})
+
 describe('metadata-based workspace projections', () => {
   const repo = createTempRepo('packages/utils', 'packages/app')
   const catalog = defineCatalog({})
   const utilsComposition = catalog.compose({
-    dir: repo.memberDirs['packages/utils']!,
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/utils',
+    }),
   })
   const utils = packageJson(
     {
@@ -40,7 +47,10 @@ describe('metadata-based workspace projections', () => {
     utilsComposition,
   )
   const appComposition = catalog.compose({
-    dir: repo.memberDirs['packages/app']!,
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/app',
+    }),
     dependencies: {
       workspace: [utils],
     },
@@ -54,33 +64,36 @@ describe('metadata-based workspace projections', () => {
   )
 
   it('projects package-local workspace members from package metadata', () => {
-    const workspace = pnpmWorkspaceYamlFromPackage({
+    const workspaceFile = pnpmWorkspaceYaml.package({
       pkg: app,
       extraPackages: ['../examples'],
       dedupePeerDependents: true,
     })
 
-    expect(workspace.data.packages).toEqual(['.', '../examples', '../utils'])
+    expect(workspaceFile.data.packages).toEqual(['.', '../examples', '../utils'])
   })
 
   it('projects root workspace members recursively from package metadata', () => {
-    const workspace = pnpmWorkspaceYamlFromPackages({
+    const workspaceFile = pnpmWorkspaceYaml.root({
       dir: repo.repoRoot,
       packages: [app],
       extraPackages: ['packages/examples'],
       dedupePeerDependents: true,
     })
 
-    expect(workspace.data.packages).toEqual(['packages/app', 'packages/examples', 'packages/utils'])
+    expect(workspaceFile.data.packages).toEqual([
+      'packages/app',
+      'packages/examples',
+      'packages/utils',
+    ])
   })
 
   it('projects workspace root workspaces from package metadata', () => {
-    const workspaceRoot = workspaceRootFromPackages({
+    const workspaceRoot = packageJson.aggregateFromPackages({
       dir: repo.repoRoot,
       packages: [app],
       extraWorkspaces: ['packages/examples'],
       name: 'workspace-root',
-      private: true,
     })
 
     expect(workspaceRoot.data.workspaces).toEqual([

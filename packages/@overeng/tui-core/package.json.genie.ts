@@ -1,12 +1,13 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/tui-core'),
   devDependencies: {
     external: {
       ...catalog.pick('@types/node', 'typescript', 'vitest'),

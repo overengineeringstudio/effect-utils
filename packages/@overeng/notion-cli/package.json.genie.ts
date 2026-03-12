@@ -1,4 +1,9 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  workspaceMember,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
@@ -10,7 +15,7 @@ import utilsPkg from '../utils/package.json.genie.ts'
 /** Effect packages not already in @overeng/utils or @overeng/tui-react */
 const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
 const runtimeDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/notion-cli'),
   dependencies: {
     workspace: [
       effectPathPkg,

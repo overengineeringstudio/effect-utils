@@ -16,16 +16,16 @@ import {
   oxfmtConfig,
   oxlintConfig,
   packageJson,
-  pnpmWorkspaceYamlFromPackage,
-  pnpmWorkspaceYamlFromPackages,
+  pnpmWorkspaceYaml,
   tsconfigJson,
-  workspaceRootFromPackages,
   type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
   type MegarepoConfigArgs,
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
+  type AggregatePackageJsonData,
+  type AggregatePackageJsonInput,
   type PackageJsonData,
   type PatchesRegistry,
   type PnpmSettings,
@@ -33,6 +33,11 @@ import {
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
+  type WorkspaceIdentity,
+  type WorkspaceMeta,
+  type WorkspaceMetadata,
+  type WorkspacePackage,
+  type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { relativeRepoPath } from '../packages/@overeng/genie/src/runtime/workspace-graph.ts'
 
@@ -46,12 +51,12 @@ export {
   oxfmtConfig,
   oxlintConfig,
   packageJson,
-  pnpmWorkspaceYamlFromPackage,
-  pnpmWorkspaceYamlFromPackages,
+  pnpmWorkspaceYaml,
   tsconfigJson,
-  workspaceRootFromPackages,
 }
 export type {
+  AggregatePackageJsonData,
+  AggregatePackageJsonInput,
   GenieOutput,
   GithubRulesetArgs,
   GitHubWorkflowArgs,
@@ -65,6 +70,11 @@ export type {
   ScriptValue,
   TSConfigArgs,
   TSConfigCompilerOptions,
+  WorkspaceIdentity,
+  WorkspaceMeta,
+  WorkspaceMetadata,
+  WorkspacePackage,
+  WorkspacePackageLike,
 }
 
 /**
@@ -301,9 +311,9 @@ const generatePatchCommands = ({
       if (parsed === undefined) return undefined
       const [pkgName] = parsed
       const relativePath =
-          patchPath.startsWith('./') === true || patchPath.startsWith('../') === true
-            ? patchPath
-            : relativeRepoPath({ from: location, to: patchPath })
+        patchPath.startsWith('./') === true || patchPath.startsWith('../') === true
+          ? patchPath
+          : relativeRepoPath({ from: location, to: patchPath })
       return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`
     })
     .filter((x): x is string => x !== undefined)

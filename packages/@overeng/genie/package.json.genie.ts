@@ -1,11 +1,16 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  workspaceMember,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const supportDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/genie'),
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
     external: {

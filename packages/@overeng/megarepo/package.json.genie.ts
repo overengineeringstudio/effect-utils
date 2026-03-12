@@ -1,4 +1,9 @@
-import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
+import {
+  catalog,
+  workspaceMember,
+  packageJson,
+  privatePackageDefaults,
+} from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
@@ -14,7 +19,7 @@ const peerDepNames = [
 ] as const
 
 const runtimeDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/megarepo'),
   dependencies: {
     workspace: [effectPathPkg, tuiReactPkg, utilsPkg],
     external: catalog.pick('react'),

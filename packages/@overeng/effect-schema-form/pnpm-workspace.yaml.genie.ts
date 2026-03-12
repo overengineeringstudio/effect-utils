@@ -1,7 +1,7 @@
-import { commonPnpmWorkspaceData, pnpmWorkspaceYamlFromPackage } from '../../../genie/internal.ts'
+import { commonPnpmWorkspaceData, pnpmWorkspaceYaml } from '../../../genie/internal.ts'
 import pkg from './package.json.genie.ts'
 
-export default pnpmWorkspaceYamlFromPackage({
+export default pnpmWorkspaceYaml.package({
   pkg,
   publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
   ...commonPnpmWorkspaceData,

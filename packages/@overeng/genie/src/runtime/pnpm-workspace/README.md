@@ -4,9 +4,9 @@ Generate `pnpm-workspace.yaml` files.
 
 ## Mental Model
 
-- `pnpmWorkspaceYamlFromPackage(...)` projects a package-local
+- `pnpmWorkspaceYaml.package(...)` projects a package-local
   `pnpm-workspace.yaml` from package metadata
-- `pnpmWorkspaceYamlFromPackages(...)` projects a root aggregate
+- `pnpmWorkspaceYaml.root(...)` projects a root aggregate
   `pnpm-workspace.yaml` from multiple package outputs
 - package metadata must already contain static import-time workspace facts;
   runtime `ctx` is only used during projection
@@ -15,8 +15,8 @@ Generate `pnpm-workspace.yaml` files.
 projection helpers. Treat it as internal/low-level. Normal authoring should use
 only:
 
-- `pnpmWorkspaceYamlFromPackage(...)`
-- `pnpmWorkspaceYamlFromPackages(...)`
+- `pnpmWorkspaceYaml.package(...)`
+- `pnpmWorkspaceYaml.root(...)`
 
 Keep lower-level workspace graph traversal and path derivation internal. The
 public story is package-level projection and root aggregate projection.
@@ -27,9 +27,9 @@ public story is package-level projection and root aggregate projection.
 
 ```ts
 import pkg from './package.json.genie.ts'
-import { pnpmWorkspaceYamlFromPackage } from '../../../genie/internal.ts'
+import { pnpmWorkspaceYaml } from '../../../genie/internal.ts'
 
-export default pnpmWorkspaceYamlFromPackage({
+export default pnpmWorkspaceYaml.package({
   pkg,
 })
 ```
@@ -39,9 +39,9 @@ export default pnpmWorkspaceYamlFromPackage({
 ```ts
 import appPkg from './packages/app/package.json.genie.ts'
 import sharedPkg from './packages/shared/package.json.genie.ts'
-import { pnpmWorkspaceYamlFromPackages } from './genie/internal.ts'
+import { pnpmWorkspaceYaml } from './genie/internal.ts'
 
-export default pnpmWorkspaceYamlFromPackages({
+export default pnpmWorkspaceYaml.root({
   dir: import.meta.dirname,
   packages: [appPkg, sharedPkg],
   dedupePeerDependents: true,

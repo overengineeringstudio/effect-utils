@@ -1,6 +1,7 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -21,7 +22,7 @@ const peerDepNames = [
 ] as const
 
 const runtimeDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/utils'),
   dependencies: {
     external: catalog.pick(
       '@noble/hashes',

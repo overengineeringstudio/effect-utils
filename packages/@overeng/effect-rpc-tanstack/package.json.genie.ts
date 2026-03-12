@@ -1,5 +1,6 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -17,7 +18,7 @@ const peerDepNames = [
   'react-dom',
 ] as const
 const workspaceDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/effect-rpc-tanstack'),
   devDependencies: {
     workspace: [utilsPkg],
     external: {

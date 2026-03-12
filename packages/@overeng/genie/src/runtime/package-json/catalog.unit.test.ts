@@ -24,6 +24,11 @@ const createTempRepo = (...memberPaths: string[]) => {
   }
 }
 
+const workspace = ({ repoName, memberPath }: { repoName: string; memberPath: string }) => ({
+  repoName,
+  memberPath,
+})
+
 describe('defineCatalog', () => {
   describe('standalone catalog', () => {
     it('returns frozen catalog object', () => {
@@ -299,7 +304,10 @@ describe('defineCatalog', () => {
 
     it('derives emitted dependencies and workspace metadata from imported packages', () => {
       const utilsComposition = catalog.compose({
-        dir: repo.memberDirs['packages/utils']!,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
       })
       const utils = packageJson(
         {
@@ -309,7 +317,10 @@ describe('defineCatalog', () => {
         utilsComposition,
       )
       const coreComposition = catalog.compose({
-        dir: repo.memberDirs['packages/core']!,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/core',
+        }),
         dependencies: {
           workspace: [utils],
         },
@@ -322,10 +333,11 @@ describe('defineCatalog', () => {
         coreComposition,
       )
 
-      const appDir = repo.memberDirs['packages/app']!
-
       const composed = catalog.compose({
-        dir: appDir,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
         dependencies: {
           workspace: [core],
           external: catalog.pick('effect', 'react'),
@@ -346,7 +358,10 @@ describe('defineCatalog', () => {
 
     it('installs inherited peers explicitly in install mode', () => {
       const utilsComposition = catalog.compose({
-        dir: repo.memberDirs['packages/utils']!,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
         peerDependencies: {
           external: catalog.pick('effect', '@effect/platform'),
         },
@@ -359,10 +374,11 @@ describe('defineCatalog', () => {
         utilsComposition,
       )
 
-      const appDir = repo.memberDirs['packages/app']!
-
       const composed = catalog.compose({
-        dir: appDir,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
         dependencies: {
           workspace: [utils],
           external: catalog.pick('react'),
@@ -380,7 +396,10 @@ describe('defineCatalog', () => {
 
     it('collects inherited peers transitively in install mode', () => {
       const utilsComposition = catalog.compose({
-        dir: repo.memberDirs['packages/utils']!,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
         peerDependencies: {
           external: catalog.pick('effect'),
         },
@@ -393,7 +412,10 @@ describe('defineCatalog', () => {
         utilsComposition,
       )
       const coreComposition = catalog.compose({
-        dir: repo.memberDirs['packages/core']!,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/core',
+        }),
         dependencies: {
           workspace: [utils],
         },
@@ -405,11 +427,11 @@ describe('defineCatalog', () => {
         },
         coreComposition,
       )
-
-      const appDir = repo.memberDirs['packages/app']!
-
       const composed = catalog.compose({
-        dir: appDir,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
         dependencies: {
           workspace: [core],
         },
@@ -424,7 +446,10 @@ describe('defineCatalog', () => {
 
     it('throws when install mode cannot resolve an inherited peer version', () => {
       const appComposition = catalog.compose({
-        dir: repo.memberDirs['packages/app']!,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
         peerDependencies: {
           external: {
             missing: '1.0.0',
@@ -439,11 +464,12 @@ describe('defineCatalog', () => {
         appComposition,
       )
 
-      const appDir = repo.memberDirs['packages/app']!
-
       expect(() =>
         catalog.compose({
-          dir: appDir,
+          workspace: workspace({
+            repoName: repo.repoName,
+            memberPath: 'packages/app',
+          }),
           dependencies: {
             workspace: [app],
           },
@@ -453,10 +479,11 @@ describe('defineCatalog', () => {
     })
 
     it('returns empty workspace metadata when no workspace packages are provided', () => {
-      const appDir = repo.memberDirs['packages/app']!
-
       const composed = catalog.compose({
-        dir: appDir,
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
         dependencies: {
           external: catalog.pick('effect'),
         },

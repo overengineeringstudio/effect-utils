@@ -1,5 +1,6 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -7,7 +8,7 @@ import {
 import utilsPkg from '../../../utils/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/effect-rpc-tanstack/examples/basic'),
   dependencies: {
     external: {
       ...catalog.pick(

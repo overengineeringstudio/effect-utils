@@ -6,8 +6,7 @@
  * - Conflict: same package + different version → error
  */
 
-import { workspaceMetadataFromDir } from '../workspace-graph.ts'
-import type { WorkspaceMetadata, WorkspacePackageLike } from './mod.ts'
+import type { WorkspaceIdentity, WorkspaceMetadata, WorkspacePackageLike } from './mod.ts'
 
 /** Base catalog type - a record of package names to version strings */
 export type CatalogInput = Record<string, string>
@@ -37,7 +36,7 @@ type ComposeArgs<
   TPeerDependenciesWorkspace extends readonly WorkspacePackageLike[],
   TPeerDependenciesExternal extends CatalogInput,
 > = {
-  dir: string
+  workspace: WorkspaceIdentity
   dependencies?: DependencyBucket<TDependenciesWorkspace, TDependenciesExternal>
   devDependencies?: DependencyBucket<TDevDependenciesWorkspace, TDevDependenciesExternal>
   peerDependencies?: DependencyBucket<TPeerDependenciesWorkspace, TPeerDependenciesExternal>
@@ -284,7 +283,7 @@ const createComposeFn =
     const TPeerDependenciesWorkspace extends readonly WorkspacePackageLike[],
     const TPeerDependenciesExternal extends CatalogInput,
   >({
-    dir,
+    workspace,
     dependencies,
     devDependencies,
     peerDependencies,
@@ -345,10 +344,10 @@ const createComposeFn =
         ...supportWorkspaceDependencies,
       },
       peerDependencies: peerDependencyEntries,
-      workspace: workspaceMetadataFromDir({
-        dir,
+      workspace: {
+        ...workspace,
         deps: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
-      }),
+      },
       [PackageJsonCompositionBrand]: true as const,
     }
   }

@@ -1,9 +1,14 @@
-import { catalog, packageJson, type PackageJsonData } from '../../../genie/internal.ts'
+import {
+  catalog,
+  workspaceMember,
+  packageJson,
+  type PackageJsonData,
+} from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react'] as const
 const workspaceDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/react-inspector'),
   dependencies: {
     external: {
       ...catalog.pick('is-dom'),

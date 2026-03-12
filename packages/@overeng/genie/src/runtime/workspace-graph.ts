@@ -12,15 +12,15 @@
  *
  * - `catalog.compose(...)`
  * - `packageJson(data, composition)`
- * - projection wrappers such as `pnpmWorkspaceYamlFromPackage(...)`
- *   and `pnpmWorkspaceYamlFromPackages(...)`
+ * - projection wrappers such as `pnpmWorkspaceYaml.package(...)`
+ *   and `pnpmWorkspaceYaml.root(...)`
  *
  * Do not build new public authoring APIs on top of this module.
  */
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { WorkspaceMetadata, WorkspacePackageLike } from './package-json/mod.ts'
+import type { WorkspacePackageLike } from './package-json/mod.ts'
 
 const normalizeLogicalPath = (value: string) => {
   const normalized = value.split(path.sep).join(path.posix.sep)
@@ -113,24 +113,6 @@ const collectWorkspaceMembersRecursive = ({
   }
 
   return sortStrings(members)
-}
-
-/** Derive package workspace metadata from a real repo checkout path. */
-export const workspaceMetadataFromDir = ({
-  dir,
-  deps = [],
-}: {
-  dir: string
-  deps?: readonly WorkspacePackageLike[]
-}): WorkspaceMetadata => {
-  const sourceDir = fs.realpathSync(path.resolve(dir))
-  const repoRoot = findRepoRootFromDir(sourceDir)
-
-  return {
-    repoName: repoNameFromRepoRoot(repoRoot),
-    memberPath: normalizeLogicalPath(path.relative(repoRoot, sourceDir)),
-    deps,
-  }
 }
 
 /** Project root workspace member paths from package metadata for the current repo view. */

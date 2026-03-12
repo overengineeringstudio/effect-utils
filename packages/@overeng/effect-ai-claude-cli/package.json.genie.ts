@@ -1,5 +1,6 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -8,7 +9,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['@effect/ai', '@effect/platform', 'effect'] as const
 const workspaceDeps = catalog.compose({
-  dir: import.meta.dirname,
+  workspace: workspaceMember('packages/@overeng/effect-ai-claude-cli'),
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {

@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 
 import { packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
-import { workspaceRootFromPackages } from './mod.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -26,6 +25,7 @@ const createTempRepo = (...memberPaths: string[]) => {
 
   return {
     repoRoot,
+    repoName: path.basename(repoRoot),
     memberDirs: Object.fromEntries(
       memberPaths.map((memberPath) => {
         const memberDir = path.join(repoRoot, memberPath)
@@ -35,6 +35,11 @@ const createTempRepo = (...memberPaths: string[]) => {
     ) as Record<string, string>,
   }
 }
+
+const workspace = ({ repoName, memberPath }: { repoName: string; memberPath: string }) => ({
+  repoName,
+  memberPath,
+})
 
 const testCatalog = defineCatalog({
   effect: '3.19.14',
@@ -193,7 +198,10 @@ describe('packageJson', () => {
     fs.mkdirSync(packageDir, { recursive: true })
 
     const composition = testCatalog.compose({
-      dir: packageDir,
+      workspace: {
+        repoName: path.basename(repo),
+        memberPath: 'packages/@test/package',
+      },
       dependencies: {
         external: testCatalog.pick('react'),
       },
@@ -360,13 +368,19 @@ describe('packageJson validate hook', () => {
   it('returns no issues when recomposition is correct', () => {
     const repo = createTempRepo('packages/utils', 'packages/app')
     const utilsComposition = validationCatalog.compose({
-      dir: repo.memberDirs['packages/utils']!,
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/utils',
+      }),
       peerDependencies: {
         external: validationCatalog.pick('effect'),
       },
     })
     const appComposition = validationCatalog.compose({
-      dir: repo.memberDirs['packages/app']!,
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/app',
+      }),
       dependencies: {
         workspace: [
           packageJson(
@@ -409,13 +423,19 @@ describe('packageJson validate hook', () => {
   it('reports issues when peer deps are missing', () => {
     const repo = createTempRepo('packages/utils', 'packages/app')
     const utilsComposition = validationCatalog.compose({
-      dir: repo.memberDirs['packages/utils']!,
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/utils',
+      }),
       peerDependencies: {
         external: validationCatalog.pick('effect'),
       },
     })
     const appComposition = validationCatalog.compose({
-      dir: repo.memberDirs['packages/app']!,
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/app',
+      }),
       dependencies: {
         workspace: [
           packageJson(
@@ -463,10 +483,13 @@ describe('packageJson validate hook', () => {
   })
 })
 
-describe('workspaceRootFromPackages', () => {
+describe('packageJson.aggregateFromPackages', () => {
   const repo = createTempRepo('packages/app')
   const appComposition = testCatalog.compose({
-    dir: repo.memberDirs['packages/app']!,
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/app',
+    }),
   })
   const appPkg = packageJson(
     {
@@ -477,28 +500,27 @@ describe('workspaceRootFromPackages', () => {
   )
 
   it('returns GenieOutput with projected workspaces and stringify', () => {
-    const result = workspaceRootFromPackages({
+    const result = packageJson.aggregateFromPackages({
       dir: repo.repoRoot,
       packages: [appPkg],
       extraWorkspaces: ['packages/examples'],
       name: 'my-monorepo',
-      private: true,
     })
 
     expect(result.data).toEqual({
       name: 'my-monorepo',
       private: true,
+      packageManager: 'pnpm@10.29.2',
       workspaces: ['packages/app', 'packages/examples'],
     })
     expect(typeof result.stringify).toBe('function')
   })
 
   it('stringify produces valid JSON with $genie marker', () => {
-    const result = workspaceRootFromPackages({
+    const result = packageJson.aggregateFromPackages({
       dir: repo.repoRoot,
       packages: [appPkg],
       name: 'my-monorepo',
-      private: true,
     })
 
     const json = result.stringify(mockWorkspaceRootContext)
@@ -507,70 +529,21 @@ describe('workspaceRootFromPackages', () => {
     expect(parsed.$genie).toBe(true)
     expect(parsed.name).toBe('my-monorepo')
     expect(parsed.private).toBe(true)
+    expect(parsed.packageManager).toBe('pnpm@10.29.2')
     expect(parsed.workspaces).toEqual(['packages/app'])
   })
 
-  it('supports pnpm namespace', () => {
-    const result = workspaceRootFromPackages({
-      dir: repo.repoRoot,
-      packages: [appPkg],
+  it('creates an aggregate directly from explicit workspaces', () => {
+    const result = packageJson.aggregate({
+      name: 'my-monorepo',
+      workspaces: ['packages/app', 'packages/examples'],
+    })
+
+    expect(result.data).toEqual({
       name: 'my-monorepo',
       private: true,
-      pnpm: {
-        patchedDependencies: {
-          'some-pkg@1.0.0': 'patches/some-pkg.patch',
-        },
-      },
+      packageManager: 'pnpm@10.29.2',
+      workspaces: ['packages/app', 'packages/examples'],
     })
-
-    const json = result.stringify(mockWorkspaceRootContext)
-    const parsed = JSON.parse(json)
-    expect(parsed.pnpm.patchedDependencies).toEqual({
-      'some-pkg@1.0.0': 'patches/some-pkg.patch',
-    })
-  })
-
-  it('supports Bun catalogs', () => {
-    const result = workspaceRootFromPackages({
-      dir: repo.repoRoot,
-      packages: [appPkg],
-      name: 'my-monorepo',
-      private: true,
-      catalog: {
-        effect: '3.0.0',
-        react: '19.0.0',
-      },
-      catalogs: {
-        testing: {
-          vitest: '4.0.0',
-        },
-      },
-    })
-
-    const json = result.stringify(mockWorkspaceRootContext)
-    const parsed = JSON.parse(json)
-    expect(parsed.catalog).toEqual({
-      effect: '3.0.0',
-      react: '19.0.0',
-    })
-    expect(parsed.catalogs).toEqual({
-      testing: {
-        vitest: '4.0.0',
-      },
-    })
-  })
-
-  it('supports trustedDependencies', () => {
-    const result = workspaceRootFromPackages({
-      dir: repo.repoRoot,
-      packages: [appPkg],
-      name: 'my-monorepo',
-      private: true,
-      trustedDependencies: ['esbuild', 'sharp'],
-    })
-
-    const json = result.stringify(mockWorkspaceRootContext)
-    const parsed = JSON.parse(json)
-    expect(parsed.trustedDependencies).toEqual(['esbuild', 'sharp'])
   })
 })

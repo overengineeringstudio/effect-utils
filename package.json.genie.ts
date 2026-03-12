@@ -1,4 +1,4 @@
-import { workspaceRootFromPackages } from './genie/internal.ts'
+import { packageJson } from './genie/internal.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
@@ -39,18 +39,13 @@ export const rootWorkspacePackages = [
   utilsDevPkg,
 ] as const
 
-export const rootWorkspaceExtraMembers = [
-  'context/effect/socket',
-  'context/opentui',
-] as const
+export const rootWorkspaceExtraMembers = ['context/effect/socket', 'context/opentui'] as const
 
-const rootWorkspace = workspaceRootFromPackages({
+const rootWorkspace = packageJson.aggregateFromPackages({
   dir: import.meta.dirname,
   packages: rootWorkspacePackages,
   extraWorkspaces: rootWorkspaceExtraMembers,
   name: 'effect-utils-workspace',
-  private: true,
-  packageManager: 'pnpm@10.29.2',
 })
 
 export const rootWorkspaceMemberPaths = rootWorkspace.data.workspaces

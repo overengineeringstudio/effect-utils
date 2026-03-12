@@ -53,6 +53,7 @@ Genie uses `Strict<T, TBase>` generics to catch typos (extra properties) at comp
 For workspace root and pnpm workspace projections, prefer the composition
 wrappers:
 
-- `workspaceRootFromPackages(...)`
-- `pnpmWorkspaceYamlFromPackage(...)`
-- `pnpmWorkspaceYamlFromPackages(...)`
+- `packageJson.aggregate(...)`
+- `packageJson.aggregateFromPackages(...)`
+- `pnpmWorkspaceYaml.package(...)`
+- `pnpmWorkspaceYaml.root(...)`
