@@ -5,24 +5,24 @@
  * Handles all output modes: TTY, CI, JSON, NDJSON.
  */
 
-import { createTuiApp } from "@overeng/tui-react";
+import { createTuiApp } from '@overeng/tui-react'
 
-import { SyncState, SyncAction, syncReducer } from "./schema.ts";
+import { SyncState, SyncAction, syncReducer } from './schema.ts'
 
 /**
  * Initial empty state for sync output.
  */
 export const createInitialSyncState = (params: {
-  workspaceName: string;
-  workspaceRoot: string;
+  workspaceName: string
+  workspaceRoot: string
 }): typeof SyncState.Type => ({
-  _tag: "Syncing",
+  _tag: 'Syncing',
   workspace: {
     name: params.workspaceName,
     root: params.workspaceRoot,
   },
   options: {
-    mode: "workspace",
+    mode: 'workspace',
     dryRun: false,
     all: false,
   },
@@ -42,7 +42,7 @@ export const createInitialSyncState = (params: {
   },
   syncErrors: [],
   syncErrorCount: 0,
-});
+})
 
 /**
  * TuiApp for sync output.
@@ -63,11 +63,11 @@ export const createInitialSyncState = (params: {
 export const SyncApp = createTuiApp({
   stateSchema: SyncState,
   actionSchema: SyncAction,
-  initial: createInitialSyncState({ workspaceName: "", workspaceRoot: "" }),
+  initial: createInitialSyncState({ workspaceName: '', workspaceRoot: '' }),
   reducer: syncReducer,
   exitCode: (state) => {
-    if (state._tag === "Interrupted") return 130; // SIGINT
-    if (state._tag === "Error") return 1;
-    return 0;
+    if (state._tag === 'Interrupted') return 130 // SIGINT
+    if (state._tag === 'Error') return 1
+    return 0
   },
-});
+})

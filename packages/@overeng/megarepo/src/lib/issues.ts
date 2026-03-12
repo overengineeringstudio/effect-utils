@@ -5,13 +5,10 @@
  * Used by both sync and status commands.
  */
 
-import { FileSystem } from "@effect/platform";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Schema } from 'effect'
 
-import type { MemberSource } from "./config.ts";
-import * as Git from "./git.ts";
-import { classifyRef, extractRefFromSymlinkPath } from "./ref.ts";
-import { Store } from "./store.ts";
+import * as Git from './git.ts'
+import { extractRefFromSymlinkPath } from './ref.ts'
 
 // =============================================================================
 // RefMismatch Schema (Issue #88)
@@ -41,27 +38,10 @@ export const RefMismatch = Schema.Struct({
   actualRef: Schema.String,
   /** True if the worktree is in detached HEAD state */
   isDetached: Schema.Boolean,
-});
+})
 
 /** Inferred type for worktree ref mismatch. */
-export type RefMismatch = Schema.Schema.Type<typeof RefMismatch>;
-
-// =============================================================================
-// DuplicateWorktree Schema
-// =============================================================================
-
-/**
- * Schema for a legacy unencoded branch worktree that collides with the canonical encoded path.
- */
-export const DuplicateWorktree = Schema.Struct({
-  ref: Schema.String,
-  canonicalPath: Schema.String,
-  legacyPath: Schema.String,
-  canonicalExists: Schema.Boolean,
-});
-
-/** Inferred type for a duplicate legacy branch worktree. */
-export type DuplicateWorktree = Schema.Schema.Type<typeof DuplicateWorktree>;
+export type RefMismatch = Schema.Schema.Type<typeof RefMismatch>
 
 // =============================================================================
 // Detection Functions
@@ -89,24 +69,24 @@ export const detectRefMismatch = ({
   worktreePath,
   symlinkTarget,
 }: {
-  worktreePath: string;
-  symlinkTarget: string;
+  worktreePath: string
+  symlinkTarget: string
 }) =>
   Effect.gen(function* () {
     // Extract ref info from the symlink target path
-    const extracted = extractRefFromSymlinkPath(symlinkTarget);
-    if (extracted === undefined) return undefined;
+    const extracted = extractRefFromSymlinkPath(symlinkTarget)
+    if (extracted === undefined) return undefined
 
     // Only check for branches - tags and commits are immutable
     // (they're expected to be in detached HEAD state)
-    if (extracted.type !== "branch") return undefined;
+    if (extracted.type !== 'branch') return undefined
 
-    const expectedRef = extracted.ref;
+    const expectedRef = extracted.ref
 
     // Get the actual git branch from the worktree
     const actualBranchOpt = yield* Git.getCurrentBranch(worktreePath).pipe(
       Effect.catchAll(() => Effect.succeed(Option.none<string>())),
-    );
+    )
 
     // If detached HEAD in a branch worktree, that's a mismatch
     // (user ran `git checkout <sha>` in a branch-based worktree)
@@ -114,27 +94,27 @@ export const detectRefMismatch = ({
       // Get the short commit SHA for display
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(
         Effect.map((sha) => sha.slice(0, 7)),
-        Effect.catchAll(() => Effect.succeed("unknown")),
-      );
+        Effect.catchAll(() => Effect.succeed('unknown')),
+      )
 
       return {
         expectedRef,
         actualRef: commitSha,
         isDetached: true,
-      } satisfies RefMismatch;
+      } satisfies RefMismatch
     }
 
-    const actualRef = actualBranchOpt.value;
+    const actualRef = actualBranchOpt.value
 
     // If they match, no mismatch
-    if (actualRef === expectedRef) return undefined;
+    if (actualRef === expectedRef) return undefined
 
     return {
       expectedRef,
       actualRef,
       isDetached: false,
-    } satisfies RefMismatch;
-  });
+    } satisfies RefMismatch
+  })
 
 /**
  * Format a ref mismatch into a human-readable message with hint.
@@ -143,8 +123,8 @@ export const formatRefMismatchMessage = ({
   refMismatch,
   memberName,
 }: {
-  refMismatch: RefMismatch;
-  memberName: string;
+  refMismatch: RefMismatch
+  memberName: string
 }): string => {
   if (refMismatch.isDetached === true) {
     // Detached HEAD case
@@ -152,8 +132,8 @@ export const formatRefMismatchMessage = ({
       `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree is detached at ${refMismatch.actualRef}`,
       `  hint: use 'mr pin ${memberName} -c ${refMismatch.actualRef}' to pin this commit,`,
       `        or 'git checkout ${refMismatch.expectedRef}' to restore expected state`,
-    ];
-    return lines.join("\n");
+    ]
+    return lines.join('\n')
   }
 
   // Different branch case
@@ -161,47 +141,6 @@ export const formatRefMismatchMessage = ({
     `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree HEAD is '${refMismatch.actualRef}'`,
     `  hint: use 'mr pin ${memberName} -c ${refMismatch.actualRef}' to create proper worktree,`,
     `        or 'git checkout ${refMismatch.expectedRef}' to restore expected state`,
-  ];
-  return lines.join("\n");
-};
-
-/**
- * Detect a duplicate branch worktree where the canonical encoded path and a legacy
- * unencoded slash path both exist for the same branch ref.
- */
-export const detectDuplicateBranchWorktree = ({
-  source,
-  ref,
-}: {
-  source: MemberSource;
-  ref: string;
-}) =>
-  Effect.gen(function* () {
-    if (classifyRef(ref) !== "branch" || ref.includes("/") === false) {
-      return undefined;
-    }
-
-    const store = yield* Store;
-    const fs = yield* FileSystem.FileSystem;
-
-    const canonicalPath = store.getWorktreePath({ source, ref, refType: "branch" });
-    const legacyPath = store.getLegacyBranchWorktreePath({ source, ref });
-
-    if (canonicalPath === legacyPath) {
-      return undefined;
-    }
-
-    const canonicalExists = yield* fs.exists(canonicalPath);
-    const legacyExists = yield* fs.exists(legacyPath);
-
-    if (legacyExists === false) {
-      return undefined;
-    }
-
-    return {
-      ref,
-      canonicalPath,
-      legacyPath,
-      canonicalExists,
-    } satisfies DuplicateWorktree;
-  });
+  ]
+  return lines.join('\n')
+}

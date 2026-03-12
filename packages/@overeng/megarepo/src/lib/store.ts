@@ -20,13 +20,13 @@
  * ```
  */
 
-import { FileSystem, type Error as PlatformError } from "@effect/platform";
-import { Context, Effect, Layer, Option } from "effect";
+import { FileSystem, type Error as PlatformError } from '@effect/platform'
+import { Context, Effect, Layer, Option } from 'effect'
 
-import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from "@overeng/effect-path";
+import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
-import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from "./config.ts";
-import { classifyRef, encodeRef, refTypeToPathSegment, type RefType } from "./ref.ts";
+import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
+import { classifyRef, refTypeToPathSegment, type RefType } from './ref.ts'
 
 // =============================================================================
 // Store Service
@@ -34,86 +34,74 @@ import { classifyRef, encodeRef, refTypeToPathSegment, type RefType } from "./re
 
 /** Store configuration */
 export interface StoreConfig {
-  readonly basePath: AbsoluteDirPath;
+  readonly basePath: AbsoluteDirPath
 }
 
 /** Store service interface */
 export interface MegarepoStore {
   /** Get the store base path */
-  readonly basePath: AbsoluteDirPath;
+  readonly basePath: AbsoluteDirPath
 
   /** Get the base path for a repo in the store (without .bare or refs) */
-  readonly getRepoBasePath: (source: MemberSource) => AbsoluteDirPath;
+  readonly getRepoBasePath: (source: MemberSource) => AbsoluteDirPath
 
   /** Get the path to the bare repo (.bare directory) */
-  readonly getBareRepoPath: (source: MemberSource) => AbsoluteDirPath;
+  readonly getBareRepoPath: (source: MemberSource) => AbsoluteDirPath
 
   /** Get the path to a specific worktree for a ref.
    * If refType is not provided, uses heuristic-based classification.
    * For accurate classification, provide the refType from remote/local query.
    */
   readonly getWorktreePath: (args: {
-    source: MemberSource;
-    ref: string;
-    refType?: RefType;
-  }) => AbsoluteDirPath;
-
-  /** Get the legacy unencoded branch worktree path for a slash branch ref. */
-  readonly getLegacyBranchWorktreePath: (args: {
-    source: MemberSource;
-    ref: string;
-  }) => AbsoluteDirPath;
+    source: MemberSource
+    ref: string
+    refType?: RefType
+  }) => AbsoluteDirPath
 
   /** Check if a bare repo exists in the store */
   readonly hasBareRepo: (
     source: MemberSource,
-  ) => Effect.Effect<boolean, PlatformError.PlatformError>;
+  ) => Effect.Effect<boolean, PlatformError.PlatformError>
 
   /** Check if a worktree exists for a specific ref.
    * If refType is not provided, uses heuristic-based classification.
    */
   readonly hasWorktree: (args: {
-    source: MemberSource;
-    ref: string;
-    refType?: RefType;
-  }) => Effect.Effect<boolean, PlatformError.PlatformError>;
-
-  /** Check if a legacy unencoded branch worktree exists. */
-  readonly hasLegacyBranchWorktree: (args: {
-    source: MemberSource;
-    ref: string;
-  }) => Effect.Effect<boolean, PlatformError.PlatformError>;
+    source: MemberSource
+    ref: string
+    refType?: RefType
+  }) => Effect.Effect<boolean, PlatformError.PlatformError>
 
   /** List all repos in the store */
   readonly listRepos: () => Effect.Effect<
     ReadonlyArray<{
-      readonly relativePath: RelativeDirPath;
-      readonly fullPath: AbsoluteDirPath;
+      readonly relativePath: RelativeDirPath
+      readonly fullPath: AbsoluteDirPath
     }>,
     PlatformError.PlatformError
-  >;
+  >
 
   /** List all worktrees for a repo */
   readonly listWorktrees: (source: MemberSource) => Effect.Effect<
     ReadonlyArray<{
-      readonly ref: string;
-      readonly refType: RefType;
-      readonly path: AbsoluteDirPath;
+      readonly ref: string
+      readonly refType: RefType
+      readonly path: AbsoluteDirPath
     }>,
     PlatformError.PlatformError
-  >;
+  >
 
   // === Legacy compatibility (deprecated) ===
 
   /** @deprecated Use getRepoBasePath instead */
-  readonly getRepoPath: (source: MemberSource) => AbsoluteDirPath;
+  readonly getRepoPath: (source: MemberSource) => AbsoluteDirPath
 
   /** @deprecated Use hasBareRepo instead */
-  readonly hasRepo: (source: MemberSource) => Effect.Effect<boolean, PlatformError.PlatformError>;
+  readonly hasRepo: (source: MemberSource) => Effect.Effect<boolean, PlatformError.PlatformError>
 }
 
 /** Store service tag */
-export class Store extends Context.Tag("megarepo/Store")<Store, MegarepoStore>() {}
+export class Store extends Context.Tag('megarepo/Store')<Store, MegarepoStore>() {}
 
 // =============================================================================
 // Store Implementation
@@ -123,58 +111,96 @@ const make = ({
   config,
   fs,
 }: {
-  config: StoreConfig;
-  fs: FileSystem.FileSystem;
+  config: StoreConfig
+  fs: FileSystem.FileSystem
 }): MegarepoStore => {
-  const basePath = config.basePath;
+  const basePath = config.basePath
 
   const getRepoBasePath = (source: MemberSource): AbsoluteDirPath => {
-    const relativePath = getStorePath(source);
-    return EffectPath.ops.join(basePath, relativePath);
-  };
+    const relativePath = getStorePath(source)
+    return EffectPath.ops.join(basePath, relativePath)
+  }
 
   const getBareRepoPath = (source: MemberSource): AbsoluteDirPath => {
-    const repoBase = getRepoBasePath(source);
-    return EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir(".bare/"));
-  };
+    const repoBase = getRepoBasePath(source)
+    return EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('.bare/'))
+  }
 
   const getWorktreePath = ({
     source,
     ref,
     refType,
   }: {
-    source: MemberSource;
-    ref: string;
-    refType?: RefType;
+    source: MemberSource
+    ref: string
+    refType?: RefType
   }): AbsoluteDirPath => {
-    const repoBase = getRepoBasePath(source);
+    const repoBase = getRepoBasePath(source)
     // Use provided refType or fall back to heuristic classification
-    const effectiveRefType = refType ?? classifyRef(ref);
-    const pathSegment = refTypeToPathSegment(effectiveRefType);
-    const encodedRef = encodeRef(ref);
+    const effectiveRefType = refType ?? classifyRef(ref)
+    const pathSegment = refTypeToPathSegment(effectiveRefType)
     return EffectPath.ops.join(
       repoBase,
-      EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${encodedRef}/`),
-    );
-  };
+      EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${ref}/`),
+    )
+  }
 
-  const getLegacyBranchWorktreePath = ({
-    source,
-    ref,
+  const collectNestedWorktrees = ({
+    refTypePath,
+    currentPath,
+    refType,
   }: {
-    source: MemberSource;
-    ref: string;
-  }): AbsoluteDirPath => {
-    const repoBase = getRepoBasePath(source);
-    return EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir(`refs/heads/${ref}/`));
-  };
+    refTypePath: AbsoluteDirPath
+    currentPath: AbsoluteDirPath
+    refType: RefType
+  }): Effect.Effect<
+    Array<{
+      ref: string
+      refType: RefType
+      path: AbsoluteDirPath
+    }>,
+    PlatformError.PlatformError
+  > =>
+    Effect.gen(function* () {
+      const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
+      const isWorktree = yield* fs.exists(gitPath)
+      if (isWorktree === true) {
+        const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
+        return [{ ref, refType, path: currentPath }]
+      }
+
+      const entries = yield* fs.readDirectory(currentPath)
+      const nestedResults: Array<{ ref: string; refType: RefType; path: AbsoluteDirPath }> = []
+
+      for (const entry of entries) {
+        if (entry.startsWith('.') === true) continue
+
+        const entryPath = EffectPath.ops.join(
+          currentPath,
+          EffectPath.unsafe.relativeDir(`${entry}/`),
+        )
+        const entryStat = yield* fs
+          .stat(entryPath)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (entryStat?.type !== 'Directory') continue
+
+        nestedResults.push(
+          ...(yield* collectNestedWorktrees({
+            refTypePath,
+            currentPath: entryPath,
+            refType,
+          })),
+        )
+      }
+
+      return nestedResults
+    })
 
   return {
     basePath,
     getRepoBasePath,
     getBareRepoPath,
     getWorktreePath,
-    getLegacyBranchWorktreePath,
 
     // Legacy compatibility
     getRepoPath: getRepoBasePath,
@@ -183,151 +209,138 @@ const make = ({
 
     hasWorktree: (args) => fs.exists(getWorktreePath(args)),
 
-    hasLegacyBranchWorktree: (args) => fs.exists(getLegacyBranchWorktreePath(args)),
-
     // Legacy compatibility
     hasRepo: (source) => fs.exists(getBareRepoPath(source)),
 
     listRepos: () =>
       Effect.gen(function* () {
-        const exists = yield* fs.exists(basePath);
+        const exists = yield* fs.exists(basePath)
         if (exists === false) {
-          return [];
+          return []
         }
 
         const result: Array<{
-          relativePath: RelativeDirPath;
-          fullPath: AbsoluteDirPath;
-        }> = [];
+          relativePath: RelativeDirPath
+          fullPath: AbsoluteDirPath
+        }> = []
 
         // Walk the store directory (2 levels deep for host/owner/repo structure)
-        const hosts = yield* fs.readDirectory(basePath);
+        const hosts = yield* fs.readDirectory(basePath)
         for (const host of hosts) {
           // Skip hidden files/directories (like .DS_Store)
-          if (host.startsWith(".") === true) continue;
+          if (host.startsWith('.') === true) continue
 
-          const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`));
+          const hostPath = EffectPath.ops.join(basePath, EffectPath.unsafe.relativeDir(`${host}/`))
           const hostStat = yield* fs
             .stat(hostPath)
-            .pipe(Effect.catchAll(() => Effect.succeed(null)));
-          if (hostStat?.type !== "Directory") continue;
+            .pipe(Effect.catchAll(() => Effect.succeed(null)))
+          if (hostStat?.type !== 'Directory') continue
 
-          const owners = yield* fs.readDirectory(hostPath);
+          const owners = yield* fs.readDirectory(hostPath)
           for (const owner of owners) {
             // Skip hidden files/directories
-            if (owner.startsWith(".") === true) continue;
+            if (owner.startsWith('.') === true) continue
 
             const ownerPath = EffectPath.ops.join(
               hostPath,
               EffectPath.unsafe.relativeDir(`${owner}/`),
-            );
+            )
             const ownerStat = yield* fs
               .stat(ownerPath)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)));
-            if (ownerStat?.type !== "Directory") continue;
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            if (ownerStat?.type !== 'Directory') continue
 
-            const repos = yield* fs.readDirectory(ownerPath);
+            const repos = yield* fs.readDirectory(ownerPath)
             for (const repo of repos) {
               // Skip hidden files/directories
-              if (repo.startsWith(".") === true) continue;
+              if (repo.startsWith('.') === true) continue
 
               const repoPath = EffectPath.ops.join(
                 ownerPath,
                 EffectPath.unsafe.relativeDir(`${repo}/`),
-              );
+              )
               const repoStat = yield* fs
                 .stat(repoPath)
-                .pipe(Effect.catchAll(() => Effect.succeed(null)));
-              if (repoStat?.type !== "Directory") continue;
+                .pipe(Effect.catchAll(() => Effect.succeed(null)))
+              if (repoStat?.type !== 'Directory') continue
 
               // Only include repos that have a .bare directory
               const barePath = EffectPath.ops.join(
                 repoPath,
-                EffectPath.unsafe.relativeDir(".bare/"),
-              );
-              const hasBare = yield* fs.exists(barePath);
-              if (hasBare === false) continue;
+                EffectPath.unsafe.relativeDir('.bare/'),
+              )
+              const hasBare = yield* fs.exists(barePath)
+              if (hasBare === false) continue
 
               result.push({
                 relativePath: EffectPath.unsafe.relativeDir(`${host}/${owner}/${repo}/`),
                 fullPath: repoPath,
-              });
+              })
             }
           }
         }
 
-        return result;
+        return result
       }),
 
     listWorktrees: (source) =>
       Effect.gen(function* () {
-        const repoBase = getRepoBasePath(source);
-        const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir("refs/"));
+        const repoBase = getRepoBasePath(source)
+        const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('refs/'))
 
-        const exists = yield* fs.exists(refsDir);
+        const exists = yield* fs.exists(refsDir)
         if (exists === false) {
-          return [];
+          return []
         }
 
         const result: Array<{
-          ref: string;
-          refType: RefType;
-          path: AbsoluteDirPath;
-        }> = [];
+          ref: string
+          refType: RefType
+          path: AbsoluteDirPath
+        }> = []
 
-        // Walk refs/{heads,tags,commits}/{encoded-ref}/
-        const refTypes = yield* fs.readDirectory(refsDir);
+        // Walk refs/{heads,tags,commits}/** and treat any directory with a .git file as a worktree.
+        const refTypes = yield* fs.readDirectory(refsDir)
         for (const refTypeDir of refTypes) {
-          const refType = pathSegmentToRefType(refTypeDir);
-          if (refType === undefined) continue;
+          const refType = pathSegmentToRefType(refTypeDir)
+          if (refType === undefined) continue
 
           const refTypePath = EffectPath.ops.join(
             refsDir,
             EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
-          );
-          const refTypeStat = yield* fs.stat(refTypePath);
-          if (refTypeStat.type !== "Directory") continue;
+          )
+          const refTypeStat = yield* fs.stat(refTypePath)
+          if (refTypeStat.type !== 'Directory') continue
 
-          const encodedRefs = yield* fs.readDirectory(refTypePath);
-          for (const encodedRef of encodedRefs) {
-            const worktreePath = EffectPath.ops.join(
+          result.push(
+            ...(yield* collectNestedWorktrees({
               refTypePath,
-              EffectPath.unsafe.relativeDir(`${encodedRef}/`),
-            );
-            const worktreeStat = yield* fs.stat(worktreePath);
-            if (worktreeStat.type !== "Directory") continue;
-
-            // Decode the ref name
-            const ref = decodeURIComponent(encodedRef);
-
-            result.push({
-              ref,
+              currentPath: refTypePath,
               refType,
-              path: worktreePath,
-            });
-          }
+            })),
+          )
         }
 
-        return result;
+        return result
       }),
-  };
-};
+  }
+}
 
 /**
  * Map path segment back to ref type
  */
 const pathSegmentToRefType = (segment: string): RefType | undefined => {
   switch (segment) {
-    case "heads":
-      return "branch";
-    case "tags":
-      return "tag";
-    case "commits":
-      return "commit";
+    case 'heads':
+      return 'branch'
+    case 'tags':
+      return 'tag'
+    case 'commits':
+      return 'commit'
     default:
-      return undefined;
+      return undefined
   }
-};
+}
 
 // =============================================================================
 // Store Layer
@@ -337,10 +350,10 @@ const pathSegmentToRefType = (segment: string): RefType | undefined => {
  * Expand ~ to home directory and ensure trailing slash for directory path
  */
 const expandStorePath = (path: string): AbsoluteDirPath => {
-  const expanded = path.replace(/^~/, process.env.HOME ?? "~");
-  const withTrailingSlash = expanded.endsWith("/") === true ? expanded : `${expanded}/`;
-  return EffectPath.unsafe.absoluteDir(withTrailingSlash);
-};
+  const expanded = path.replace(/^~/, process.env.HOME ?? '~')
+  const withTrailingSlash = expanded.endsWith('/') === true ? expanded : `${expanded}/`
+  return EffectPath.unsafe.absoluteDir(withTrailingSlash)
+}
 
 /**
  * Create a Store layer with explicit configuration
@@ -349,10 +362,10 @@ export const makeStoreLayer = (config: StoreConfig) =>
   Layer.effect(
     Store,
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      return make({ config, fs });
+      const fs = yield* FileSystem.FileSystem
+      return make({ config, fs })
     }),
-  );
+  )
 
 /**
  * Create a Store layer from environment (MEGAREPO_STORE) or default
@@ -360,11 +373,11 @@ export const makeStoreLayer = (config: StoreConfig) =>
 export const StoreLayer = Layer.effect(
   Store,
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
+    const fs = yield* FileSystem.FileSystem
     const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
       Option.getOrElse(() => DEFAULT_STORE_PATH),
-    );
-    const basePath = expandStorePath(storePathRaw);
-    return make({ config: { basePath }, fs });
+    )
+    const basePath = expandStorePath(storePathRaw)
+    return make({ config: { basePath }, fs })
   }),
-);
+)

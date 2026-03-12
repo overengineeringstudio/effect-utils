@@ -5,9 +5,9 @@
  * Used for JSON serialization in CLI output and Storybook.
  */
 
-import { Schema } from "effect";
+import { Schema } from 'effect'
 
-import { RefMismatch } from "../issues.ts";
+import { RefMismatch } from '../issues.ts'
 
 // =============================================================================
 // Member Sync Result
@@ -15,22 +15,22 @@ import { RefMismatch } from "../issues.ts";
 
 /** Member sync status */
 export const MemberSyncStatus = Schema.Literal(
-  "cloned",
-  "synced",
-  "already_synced",
-  "skipped",
-  "error",
-  "updated",
-  "locked",
-  "removed",
-);
+  'cloned',
+  'synced',
+  'already_synced',
+  'skipped',
+  'error',
+  'updated',
+  'locked',
+  'removed',
+)
 /** Inferred type for the possible outcomes of syncing a single member. */
-export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>;
+export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
 
 /** Sync mode. */
-export const SyncMode = Schema.Literal("workspace", "lock_sync", "lock_update", "lock_apply");
+export const SyncMode = Schema.Literal('workspace', 'lock_sync', 'lock_update', 'lock_apply')
 /** Inferred type for sync mode. */
-export type SyncMode = Schema.Schema.Type<typeof SyncMode>;
+export type SyncMode = Schema.Schema.Type<typeof SyncMode>
 
 /** Sync result for a single member */
 export const MemberSyncResult = Schema.Struct({
@@ -46,9 +46,9 @@ export const MemberSyncResult = Schema.Struct({
    * This happens when a user runs `git checkout <branch>` directly in the worktree.
    */
   refMismatch: Schema.optional(RefMismatch),
-});
+})
 /** Inferred type for a member's sync result including status, commit info, and optional message. */
-export type MemberSyncResult = Schema.Schema.Type<typeof MemberSyncResult>;
+export type MemberSyncResult = Schema.Schema.Type<typeof MemberSyncResult>
 
 // =============================================================================
 // Sync Options (flags)
@@ -63,16 +63,16 @@ export const SyncOptions = Schema.Struct({
   verbose: Schema.optional(Schema.Boolean),
   /** Members skipped via --only or --skip */
   skippedMembers: Schema.optional(Schema.Array(Schema.String)),
-});
+})
 /** Inferred type for sync command options. */
-export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>;
+export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>
 
 /** Default sync options */
 export const defaultSyncOptions: SyncOptions = {
-  mode: "workspace",
+  mode: 'workspace',
   dryRun: false,
   all: false,
-};
+}
 
 // =============================================================================
 // Sync Summary (computed from results)
@@ -89,9 +89,9 @@ export const SyncSummary = Schema.Struct({
   errors: Schema.Number,
   removed: Schema.Number,
   total: Schema.Number,
-});
+})
 /** Inferred type for aggregated sync summary counts. */
-export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>;
+export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>
 
 // =============================================================================
 // Nested Sync Tree (for --all)
@@ -99,11 +99,11 @@ export type SyncSummary = Schema.Schema.Type<typeof SyncSummary>;
 
 /** Recursive schema for nested megarepo sync results. */
 export type MegarepoSyncTree = {
-  readonly root: string;
-  readonly results: readonly MemberSyncResult[];
-  readonly nestedMegarepos: readonly string[];
-  readonly nestedResults: readonly MegarepoSyncTree[];
-};
+  readonly root: string
+  readonly results: readonly MemberSyncResult[]
+  readonly nestedMegarepos: readonly string[]
+  readonly nestedResults: readonly MegarepoSyncTree[]
+}
 
 /** Recursive schema for nested megarepo sync results. */
 export const MegarepoSyncTree: Schema.Schema<MegarepoSyncTree> = Schema.suspend(() =>
@@ -113,55 +113,55 @@ export const MegarepoSyncTree: Schema.Schema<MegarepoSyncTree> = Schema.suspend(
     nestedMegarepos: Schema.Array(Schema.String),
     nestedResults: Schema.Array(MegarepoSyncTree),
   }),
-);
+)
 
 /** Flattened error item (includes nested megarepo root). */
 export const SyncErrorItem = Schema.Struct({
   megarepoRoot: Schema.String,
   memberName: Schema.String,
   message: Schema.NullOr(Schema.String),
-});
+})
 
 /** Inferred type for a flattened sync error item. */
-export type SyncErrorItem = Schema.Schema.Type<typeof SyncErrorItem>;
+export type SyncErrorItem = Schema.Schema.Type<typeof SyncErrorItem>
 
 /** Compute summary from results */
 export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSummary => {
-  let cloned = 0;
-  let synced = 0;
-  let updated = 0;
-  let locked = 0;
-  let alreadySynced = 0;
-  let skipped = 0;
-  let errors = 0;
-  let removed = 0;
+  let cloned = 0
+  let synced = 0
+  let updated = 0
+  let locked = 0
+  let alreadySynced = 0
+  let skipped = 0
+  let errors = 0
+  let removed = 0
 
   for (const r of results) {
     switch (r.status) {
-      case "cloned":
-        cloned++;
-        break;
-      case "synced":
-        synced++;
-        break;
-      case "updated":
-        updated++;
-        break;
-      case "locked":
-        locked++;
-        break;
-      case "already_synced":
-        alreadySynced++;
-        break;
-      case "skipped":
-        skipped++;
-        break;
-      case "error":
-        errors++;
-        break;
-      case "removed":
-        removed++;
-        break;
+      case 'cloned':
+        cloned++
+        break
+      case 'synced':
+        synced++
+        break
+      case 'updated':
+        updated++
+        break
+      case 'locked':
+        locked++
+        break
+      case 'already_synced':
+        alreadySynced++
+        break
+      case 'skipped':
+        skipped++
+        break
+      case 'error':
+        errors++
+        break
+      case 'removed':
+        removed++
+        break
     }
   }
 
@@ -175,5 +175,5 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
     errors,
     removed,
     total: results.length,
-  };
-};
+  }
+}

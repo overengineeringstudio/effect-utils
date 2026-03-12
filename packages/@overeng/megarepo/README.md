@@ -23,12 +23,12 @@ mr lock sync
 
 ## Command Model
 
-| Command | Purpose |
-| --- | --- |
-| `mr sync` | Reconcile `repos/*` and store worktrees to `megarepo.json` without changing `megarepo.lock` |
-| `mr lock sync` | Record the current synced workspace state into `megarepo.lock` |
-| `mr lock update` | Fetch configured refs, update workspace worktrees, and write the new lock |
-| `mr lock apply` | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI |
+| Command          | Purpose                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| `mr sync`        | Reconcile `repos/*` and store worktrees to `megarepo.json` without changing `megarepo.lock` |
+| `mr lock sync`   | Record the current synced workspace state into `megarepo.lock`                              |
+| `mr lock update` | Fetch configured refs, update workspace worktrees, and write the new lock                   |
+| `mr lock apply`  | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI                   |
 
 ## Typical Flow
 
@@ -68,7 +68,7 @@ my-megarepo/
     └── local-lib -> ./packages/local-lib
 ```
 
-Branch worktrees are canonicalized under percent-encoded paths in the store, for example `feature/foo` becomes `refs/heads/feature%2Ffoo/`.
+Branch worktrees use raw Git ref paths in the store, for example `feature/foo` becomes `refs/heads/feature/foo/`.
 
 ## Documentation
 

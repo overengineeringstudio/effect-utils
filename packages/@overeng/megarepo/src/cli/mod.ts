@@ -4,12 +4,12 @@
  * Main CLI entry point for the `mr` command.
  */
 
-import * as Cli from "@effect/cli";
-import { Option } from "effect";
+import * as Cli from '@effect/cli'
+import { Option } from 'effect'
 
-import { rewriteHelpSubcommand } from "@overeng/utils/node/cli-help-rewrite";
+import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 
-import { MR_VERSION } from "../lib/version.ts";
+import { MR_VERSION } from '../lib/version.ts'
 // Import extracted commands
 import {
   addCommand,
@@ -25,7 +25,7 @@ import {
   statusCommand,
   storeCommand,
   syncCommand,
-} from "./commands/mod.ts";
+} from './commands/mod.ts'
 
 // Re-export context for use by other modules
 export {
@@ -36,17 +36,17 @@ export {
   findNearestMegarepoRoot,
   outputOption,
   verboseOption,
-} from "./context.ts";
+} from './context.ts'
 
 // Import Cwd and cwdOption for CLI assembly
-import { Cwd, cwdOption } from "./context.ts";
+import { Cwd, cwdOption } from './context.ts'
 
 // =============================================================================
 // Main CLI
 // =============================================================================
 
 /** Root CLI command */
-export const mrCommand = Cli.Command.make("mr", { cwd: cwdOption }).pipe(
+export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
   Cli.Command.withSubcommands([
     initCommand,
     rootCommand,
@@ -65,11 +65,11 @@ export const mrCommand = Cli.Command.make("mr", { cwd: cwdOption }).pipe(
   Cli.Command.provide(({ cwd }) =>
     Option.isSome(cwd) === true ? Cwd.fromPath(cwd.value) : Cwd.live,
   ),
-  Cli.Command.withDescription("Multi-repo workspace management tool"),
-);
+  Cli.Command.withDescription('Multi-repo workspace management tool'),
+)
 
 /** Exported CLI for external use */
 export const cli = Cli.Command.run(mrCommand, {
-  name: "mr",
+  name: 'mr',
   version: MR_VERSION,
-})(rewriteHelpSubcommand(process.argv));
+})(rewriteHelpSubcommand(process.argv))

@@ -45,32 +45,28 @@ The store uses **bare repos with worktrees per ref**:
         refs/
           heads/
             main/                       # worktree for 'main' branch
-            feature%2Ffoo/              # worktree for 'feature/foo' (URL-encoded)
+            feature/
+              foo/                      # worktree for 'feature/foo'
           tags/
             v1.0.0/                     # worktree for tag
           commits/
             abc123def456.../            # worktree for specific commit
 ```
 
-**Path structure:** `refs/{type}/{encoded-ref}/`
+**Path structure:** `refs/{type}/{raw-ref-path}/`
 
 The path reveals:
 
 1. **Mutability** - `refs/heads/*` is mutable (branches), everything else is immutable
 2. **Type** - `heads` (branch), `tags` (tag), `commits` (detached commit)
-3. **Ref identity** - URL-encoded ref name
+3. **Ref identity** - raw git ref path segments
 
-**Ref encoding:** Use percent-encoding (URL encoding) for ref names:
-
-- `/` → `%2F`
-- `%` → `%25`
-
-| Git Ref        | Store Path                   |
-| -------------- | ---------------------------- |
-| `main`         | `refs/heads/main/`           |
-| `feature/auth` | `refs/heads/feature%2Fauth/` |
-| `v1.0.0`       | `refs/tags/v1.0.0/`          |
-| `abc123...`    | `refs/commits/abc123.../`    |
+| Git Ref        | Store Path                 |
+| -------------- | -------------------------- |
+| `main`         | `refs/heads/main/`         |
+| `feature/auth` | `refs/heads/feature/auth/` |
+| `v1.0.0`       | `refs/tags/v1.0.0/`        |
+| `abc123...`    | `refs/commits/abc123.../`  |
 
 **Key implication:** Each ref has its own isolated worktree. Switching between refs (via `mr pin -c`) updates the symlink to point to a different worktree—it does NOT modify files in place like `git checkout`. This means uncommitted changes in one worktree are preserved when you switch to another ref.
 
@@ -394,7 +390,7 @@ This distinction prevents silent "already synced" messages and provides targeted
 
 **Options:**
 
-- `--force` / `-f` - Repair duplicate legacy branch worktrees
+- `--force` / `-f` - Force updates for pinned members
 - `--all` - Recursively sync nested megarepos
 - `--only <members>` - Only sync specified members (comma-separated, mutually exclusive with `--skip`)
 - `--skip <members>` - Skip specified members (comma-separated, mutually exclusive with `--only`)
@@ -488,10 +484,10 @@ mr pin effect -c abc123def    # pin to specific commit
 The ref type determines mutability, not the `pin` command itself:
 
 | Ref Type | Example                 | Mutability | Behavior on `mr lock update` (if unpinned) |
-| -------- | ----------------------- | ---------- | -------------------------------------------- |
-| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                     |
-| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                       |
-| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                        |
+| -------- | ----------------------- | ---------- | ------------------------------------------ |
+| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                   |
+| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                     |
+| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                      |
 
 When pinned, the member stays at its current commit regardless of ref type.
 
@@ -899,7 +895,7 @@ These can drift, causing CI reproducibility issues and confusion.
 
 **The Solution:**
 
-During `mr sync`, after `megarepo.lock` is updated, megarepo scans each direct member repo for `flake.lock` and `devenv.lock` files. For any input that matches another megarepo member (by URL), it updates the `rev` to match `megarepo.lock`.
+During `mr lock sync`, `mr lock update`, and `mr lock apply`, once `megarepo.lock` is the active source of truth, megarepo scans each direct member repo for `flake.lock` and `devenv.lock` files. For any input that matches another megarepo member (by URL), it updates the `rev` to match `megarepo.lock`.
 
 **How it works:**
 
@@ -961,7 +957,7 @@ And `repos/my-app/flake.lock` with an input referencing effect-utils at a differ
 }
 ```
 
-After `mr sync`, the flake.lock will be updated to:
+After a lock-writing or lock-applying command, the flake.lock will be updated to:
 
 ```json
 {

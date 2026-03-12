@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
@@ -28,6 +28,64 @@ import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../cont
 import { StoreCommandError } from '../../errors.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type { StoreWorktreeStatus, StoreWorktreeIssue } from '../../renderers/StoreOutput/mod.ts'
+
+const collectStoreWorktrees = ({
+  fs,
+  refTypePath,
+  currentPath,
+  refType,
+}: {
+  fs: FileSystem.FileSystem
+  refTypePath: AbsoluteDirPath
+  currentPath: AbsoluteDirPath
+  refType: 'heads' | 'tags' | 'commits'
+}): Effect.Effect<
+  Array<{
+    ref: string
+    refType: 'heads' | 'tags' | 'commits'
+    path: AbsoluteDirPath
+  }>,
+  PlatformError.PlatformError
+> =>
+  Effect.gen(function* () {
+    const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
+    const isWorktree = yield* fs.exists(gitPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    if (isWorktree === true) {
+      return [
+        {
+          ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
+          refType,
+          path: currentPath,
+        },
+      ] as const
+    }
+
+    const entries = yield* fs.readDirectory(currentPath)
+    const result: Array<{
+      ref: string
+      refType: 'heads' | 'tags' | 'commits'
+      path: AbsoluteDirPath
+    }> = []
+
+    for (const entry of entries) {
+      if (entry.startsWith('.') === true) continue
+
+      const entryPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeDir(`${entry}/`))
+      const entryStat = yield* fs.stat(entryPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (entryStat?.type !== 'Directory') continue
+
+      result.push(
+        ...(yield* collectStoreWorktrees({
+          fs,
+          refTypePath,
+          currentPath: entryPath,
+          refType,
+        })),
+      )
+    }
+
+    return result
+  })
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
@@ -124,19 +182,14 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           .pipe(Effect.catchAll(() => Effect.succeed(null)))
         if (refTypeStat?.type !== 'Directory') continue
 
-        const encodedRefs = yield* fs.readDirectory(refTypePath)
-        for (const encodedRef of encodedRefs) {
-          const worktreePath = EffectPath.ops.join(
-            refTypePath,
-            EffectPath.unsafe.relativeDir(`${encodedRef}/`),
-          ) as AbsoluteDirPath
-          const worktreeStat = yield* fs
-            .stat(worktreePath)
-            .pipe(Effect.catchAll(() => Effect.succeed(null)))
-          if (worktreeStat?.type !== 'Directory') continue
-
+        const worktrees = yield* collectStoreWorktrees({
+          fs,
+          refTypePath,
+          currentPath: refTypePath,
+          refType: refTypeDir,
+        })
+        for (const { path: worktreePath, ref: expectedRef } of worktrees) {
           totalWorktreeCount++
-          const expectedRef = decodeURIComponent(encodedRef)
           const issues: StoreWorktreeIssue[] = []
 
           // Check for missing bare repo
@@ -389,7 +442,7 @@ const storeGcCommand = Cli.Command.make(
 
           const result: Array<{
             ref: string
-            refType: string
+            refType: 'heads' | 'tags' | 'commits'
             path: AbsoluteDirPath
           }> = []
 
@@ -407,20 +460,14 @@ const storeGcCommand = Cli.Command.make(
               .pipe(Effect.catchAll(() => Effect.succeed(null)))
             if (refTypeStat?.type !== 'Directory') continue
 
-            const encodedRefs = yield* fs.readDirectory(refTypePath)
-            for (const encodedRef of encodedRefs) {
-              const worktreePath = EffectPath.ops.join(
+            result.push(
+              ...(yield* collectStoreWorktrees({
+                fs,
                 refTypePath,
-                EffectPath.unsafe.relativeDir(`${encodedRef}/`),
-              )
-              const worktreeStat = yield* fs
-                .stat(worktreePath)
-                .pipe(Effect.catchAll(() => Effect.succeed(null)))
-              if (worktreeStat?.type !== 'Directory') continue
-
-              const ref = decodeURIComponent(encodedRef)
-              result.push({ ref, refType: refTypeDir, path: worktreePath })
-            }
+                currentPath: refTypePath,
+                refType: refTypeDir,
+              })),
+            )
           }
 
           return result

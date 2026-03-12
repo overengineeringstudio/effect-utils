@@ -5,23 +5,23 @@
  * Handles all output modes: TTY, CI, JSON, NDJSON.
  */
 
-import { createTuiApp } from "@overeng/tui-react";
+import { createTuiApp } from '@overeng/tui-react'
 
-import { StatusState, StatusAction, statusReducer } from "./schema.ts";
+import { StatusState, StatusAction, statusReducer } from './schema.ts'
 
 /**
  * Initial empty state for status output.
  */
 export const createInitialStatusState = (): typeof StatusState.Type => ({
-  name: "",
-  root: "",
+  name: '',
+  root: '',
   syncNeeded: false,
   workspaceSyncNeeded: false,
   lockSyncNeeded: false,
   syncReasons: [],
   members: [],
   all: false,
-});
+})
 
 /**
  * TuiApp for status output.
@@ -42,4 +42,4 @@ export const StatusApp = createTuiApp({
   initial: createInitialStatusState(),
   reducer: statusReducer,
   exitCode: () => 0, // Status errors handled via Effect errors, not state
-});
+})

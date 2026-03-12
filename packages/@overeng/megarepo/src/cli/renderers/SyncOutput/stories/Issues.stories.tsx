@@ -2,61 +2,61 @@
  * Issue/error/skipped stories for SyncOutput.
  */
 
-import type { Meta, StoryObj } from "@storybook/react";
-import React, { useMemo } from "react";
+import type { Meta, StoryObj } from '@storybook/react'
+import React, { useMemo } from 'react'
 
 import {
   ALL_OUTPUT_TABS,
   commonArgTypes,
   defaultStoryArgs,
   TuiStoryPreview,
-} from "@overeng/tui-react/storybook";
+} from '@overeng/tui-react/storybook'
 
-import type { MemberSyncResult } from "../../../../lib/sync/schema.ts";
-import { SyncApp } from "../mod.ts";
-import { SyncView } from "../view.tsx";
-import * as fixtures from "./_fixtures.ts";
+import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
+import { SyncApp } from '../mod.ts'
+import { SyncView } from '../view.tsx'
+import * as fixtures from './_fixtures.ts'
 
 type StoryArgs = {
-  height: number;
-  interactive: boolean;
-  playbackSpeed: number;
-  dryRun: boolean;
-  mode: "workspace" | "lock_sync" | "lock_update" | "lock_apply";
-  all: boolean;
-};
+  height: number
+  interactive: boolean
+  playbackSpeed: number
+  dryRun: boolean
+  mode: 'workspace' | 'lock_sync' | 'lock_update' | 'lock_apply'
+  all: boolean
+}
 
 export default {
   component: SyncView,
-  title: "CLI/Sync/Issues",
+  title: 'CLI/Sync/Issues',
   parameters: {
-    layout: "fullscreen",
+    layout: 'fullscreen',
   },
   args: {
     ...defaultStoryArgs,
     dryRun: false,
-    mode: "workspace",
+    mode: 'workspace',
     all: false,
   },
   argTypes: {
     ...commonArgTypes,
     dryRun: {
-      description: "--dry-run flag: show what would happen without making changes",
-      control: { type: "boolean" },
+      description: '--dry-run flag: show what would happen without making changes',
+      control: { type: 'boolean' },
     },
     mode: {
-      description: "Sync mode for the example state",
-      control: { type: "select" },
-      options: ["workspace", "lock_sync", "lock_update", "lock_apply"],
+      description: 'Sync mode for the example state',
+      control: { type: 'select' },
+      options: ['workspace', 'lock_sync', 'lock_update', 'lock_apply'],
     },
     all: {
-      description: "--all flag: sync nested megarepos recursively",
-      control: { type: "boolean" },
+      description: '--all flag: sync nested megarepos recursively',
+      control: { type: 'boolean' },
     },
   },
-} satisfies Meta;
+} satisfies Meta
 
-type Story = StoryObj<StoryArgs>;
+type Story = StoryObj<StoryArgs>
 
 /** Some members failed with errors */
 export const WithErrors: Story = {
@@ -68,13 +68,13 @@ export const WithErrors: Story = {
         members: fixtures.exampleSyncResultsWithErrors.map((r) => r.name),
       }),
       [args.dryRun, args.mode, args.all],
-    );
+    )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: "Success" } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
@@ -82,9 +82,9 @@ export const WithErrors: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
-    );
+    )
   },
-};
+}
 
 /** All members failed */
 export const AllErrors: Story = {
@@ -93,21 +93,21 @@ export const AllErrors: Story = {
       () => ({
         options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
         results: [
-          { name: "effect", status: "error" as const, message: "network timeout" },
-          { name: "effect-utils", status: "error" as const, message: "authentication failed" },
-          { name: "livestore", status: "error" as const, message: "repository not found" },
-          { name: "private-repo", status: "error" as const, message: "permission denied" },
+          { name: 'effect', status: 'error' as const, message: 'network timeout' },
+          { name: 'effect-utils', status: 'error' as const, message: 'authentication failed' },
+          { name: 'livestore', status: 'error' as const, message: 'repository not found' },
+          { name: 'private-repo', status: 'error' as const, message: 'permission denied' },
         ],
-        members: ["effect", "effect-utils", "livestore", "private-repo"],
+        members: ['effect', 'effect-utils', 'livestore', 'private-repo'],
       }),
       [args.dryRun, args.mode, args.all],
-    );
+    )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: "Success" } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
@@ -115,9 +115,9 @@ export const AllErrors: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
-    );
+    )
   },
-};
+}
 
 /** Members skipped for various reasons */
 export const SkippedMembers: Story = {
@@ -126,21 +126,21 @@ export const SkippedMembers: Story = {
       () => ({
         options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
         results: [
-          { name: "effect", status: "synced" as const, ref: "main" },
-          { name: "dirty-repo", status: "skipped" as const, message: "dirty worktree" },
-          { name: "pinned-repo", status: "skipped" as const, message: "pinned" },
-          { name: "private-repo", status: "skipped" as const, message: "authentication required" },
+          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: 'dirty-repo', status: 'skipped' as const, message: 'dirty worktree' },
+          { name: 'pinned-repo', status: 'skipped' as const, message: 'pinned' },
+          { name: 'private-repo', status: 'skipped' as const, message: 'authentication required' },
         ] satisfies MemberSyncResult[],
-        members: ["effect", "dirty-repo", "pinned-repo", "private-repo"],
+        members: ['effect', 'dirty-repo', 'pinned-repo', 'private-repo'],
       }),
       [args.dryRun, args.mode, args.all],
-    );
+    )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: "Success" } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
@@ -148,9 +148,9 @@ export const SkippedMembers: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
-    );
+    )
   },
-};
+}
 
 /** Mixed skipped reasons */
 export const MixedSkipped: Story = {
@@ -159,22 +159,22 @@ export const MixedSkipped: Story = {
       () => ({
         options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
         results: [
-          { name: "effect", status: "already_synced" as const },
-          { name: "dirty-repo", status: "skipped" as const, message: "5 uncommitted changes" },
-          { name: "pinned-repo", status: "skipped" as const, message: "pinned to v1.0.0" },
-          { name: "auth-repo", status: "skipped" as const, message: "authentication required" },
-          { name: "missing-ref", status: "skipped" as const, message: "ref feature/x not found" },
+          { name: 'effect', status: 'already_synced' as const },
+          { name: 'dirty-repo', status: 'skipped' as const, message: '5 uncommitted changes' },
+          { name: 'pinned-repo', status: 'skipped' as const, message: 'pinned to v1.0.0' },
+          { name: 'auth-repo', status: 'skipped' as const, message: 'authentication required' },
+          { name: 'missing-ref', status: 'skipped' as const, message: 'ref feature/x not found' },
         ] satisfies MemberSyncResult[],
-        members: ["effect", "dirty-repo", "pinned-repo", "auth-repo", "missing-ref"],
+        members: ['effect', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
       }),
       [args.dryRun, args.mode, args.all],
-    );
+    )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: "Success" } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
@@ -182,9 +182,9 @@ export const MixedSkipped: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
-    );
+    )
   },
-};
+}
 
 /** Issue #88: Ref mismatch detection */
 export const RefMismatchDetected: Story = {
@@ -194,37 +194,37 @@ export const RefMismatchDetected: Story = {
       () => ({
         options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
         results: [
-          { name: "effect", status: "synced" as const, ref: "main" },
+          { name: 'effect', status: 'synced' as const, ref: 'main' },
           {
-            name: "effect-utils",
-            status: "skipped" as const,
+            name: 'effect-utils',
+            status: 'skipped' as const,
             refMismatch: {
-              expectedRef: "main",
-              actualRef: "feature-branch",
+              expectedRef: 'main',
+              actualRef: 'feature-branch',
               isDetached: false,
             },
           },
           {
-            name: "livestore",
-            status: "skipped" as const,
+            name: 'livestore',
+            status: 'skipped' as const,
             refMismatch: {
-              expectedRef: "main",
-              actualRef: "abc1234",
+              expectedRef: 'main',
+              actualRef: 'abc1234',
               isDetached: true,
             },
           },
-          { name: "other-repo", status: "synced" as const, ref: "develop" },
+          { name: 'other-repo', status: 'synced' as const, ref: 'develop' },
         ] satisfies MemberSyncResult[],
-        members: ["effect", "effect-utils", "livestore", "other-repo"],
+        members: ['effect', 'effect-utils', 'livestore', 'other-repo'],
       }),
       [args.dryRun, args.mode, args.all],
-    );
+    )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: "Success" } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
@@ -232,9 +232,9 @@ export const RefMismatchDetected: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
-    );
+    )
   },
-};
+}
 
 /** Sync interrupted */
 export const Interrupted: Story = {
@@ -242,21 +242,21 @@ export const Interrupted: Story = {
     const stateConfig = useMemo(
       () => ({
         options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
-        _tag: "Interrupted" as const,
-        members: ["effect", "effect-utils", "livestore", "dotfiles"],
+        _tag: 'Interrupted' as const,
+        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         results: [
-          { name: "effect", status: "synced" as const, ref: "main" },
-          { name: "effect-utils", status: "cloned" as const, ref: "main" },
+          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
         ] satisfies MemberSyncResult[],
       }),
       [args.dryRun, args.mode, args.all],
-    );
+    )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: "Success" } : stateConfig,
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
@@ -264,6 +264,6 @@ export const Interrupted: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
       />
-    );
+    )
   },
-};
+}

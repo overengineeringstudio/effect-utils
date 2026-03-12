@@ -4,68 +4,68 @@
  * Type definitions for sync operations.
  */
 
-import type { AbsoluteDirPath } from "@overeng/effect-path";
+import type { AbsoluteDirPath } from '@overeng/effect-path'
 
-import type { RefMismatch } from "../issues.ts";
-import type { NixLockSyncResult } from "../nix-lock/mod.ts";
+import type { RefMismatch } from '../issues.ts'
+import type { NixLockSyncResult } from '../nix-lock/mod.ts'
 
 /** Member sync result status */
 export type MemberSyncStatus =
-  | "cloned"
-  | "synced"
-  | "already_synced"
-  | "skipped"
-  | "error"
-  | "updated"
-  | "locked"
-  | "removed";
+  | 'cloned'
+  | 'synced'
+  | 'already_synced'
+  | 'skipped'
+  | 'error'
+  | 'updated'
+  | 'locked'
+  | 'removed'
 
 /** Member sync result */
 export interface MemberSyncResult {
-  readonly name: string;
-  readonly status: MemberSyncStatus;
-  readonly message?: string | undefined;
+  readonly name: string
+  readonly status: MemberSyncStatus
+  readonly message?: string | undefined
   /** Resolved commit for lock file (remote sources only) */
-  readonly commit?: string | undefined;
+  readonly commit?: string | undefined
   /** Previous commit (for showing changes) */
-  readonly previousCommit?: string | undefined;
+  readonly previousCommit?: string | undefined
   /** Resolved ref for lock file */
-  readonly ref?: string | undefined;
+  readonly ref?: string | undefined
   /** Whether the lock was updated for this member */
-  readonly lockUpdated?: boolean | undefined;
+  readonly lockUpdated?: boolean | undefined
   /**
    * Present when worktree git HEAD differs from store path ref (Issue #88).
    * This happens when a user runs `git checkout <branch>` directly in the worktree.
    */
-  readonly refMismatch?: RefMismatch | undefined;
+  readonly refMismatch?: RefMismatch | undefined
 }
 
 /** Result of syncing a megarepo (including nested) */
 export interface MegarepoSyncResult {
-  readonly root: AbsoluteDirPath;
-  readonly results: ReadonlyArray<MemberSyncResult>;
-  readonly nestedMegarepos: ReadonlyArray<string>;
-  readonly nestedResults: ReadonlyArray<MegarepoSyncResult>;
+  readonly root: AbsoluteDirPath
+  readonly results: ReadonlyArray<MemberSyncResult>
+  readonly nestedMegarepos: ReadonlyArray<string>
+  readonly nestedResults: ReadonlyArray<MegarepoSyncResult>
   /** Results from lock sync (flake.lock, devenv.lock, nested megarepo.lock in recursive mode) */
-  readonly lockSyncResults?: NixLockSyncResult | undefined;
+  readonly lockSyncResults?: NixLockSyncResult | undefined
 }
 
 /** A member sync error with megarepo root context (includes nested megarepos). */
 export interface SyncMemberError {
-  readonly megarepoRoot: AbsoluteDirPath;
-  readonly member: MemberSyncResult;
+  readonly megarepoRoot: AbsoluteDirPath
+  readonly member: MemberSyncResult
 }
 
 /** Sync command mode. */
-export type SyncMode = "workspace" | "lock_sync" | "lock_update" | "lock_apply";
+export type SyncMode = 'workspace' | 'lock_sync' | 'lock_update' | 'lock_apply'
 
 /** Options for sync operations */
 export interface SyncOptions {
-  readonly json: boolean;
-  readonly mode: SyncMode;
-  readonly dryRun: boolean;
-  readonly force: boolean;
-  readonly all: boolean;
+  readonly json: boolean
+  readonly mode: SyncMode
+  readonly dryRun: boolean
+  readonly force: boolean
+  readonly all: boolean
 }
 
 /** Flatten nested sync results for JSON output */
@@ -74,28 +74,28 @@ export const flattenSyncResults = (result: MegarepoSyncResult): object => ({
   results: result.results,
   nestedMegarepos: result.nestedMegarepos,
   nestedResults: result.nestedResults.map(flattenSyncResults),
-});
+})
 
 /** Count sync results including nested megarepos */
 export const countSyncResults = (
   r: MegarepoSyncResult,
 ): {
-  synced: number;
-  updated: number;
-  locked: number;
-  already: number;
-  errors: number;
-  removed: number;
+  synced: number
+  updated: number
+  locked: number
+  already: number
+  errors: number
+  removed: number
 } => {
-  const synced = r.results.filter((m) => m.status === "cloned" || m.status === "synced").length;
-  const updated = r.results.filter((m) => m.status === "updated").length;
-  const locked = r.results.filter((m) => m.status === "locked").length;
-  const already = r.results.filter((m) => m.status === "already_synced").length;
-  const errors = r.results.filter((m) => m.status === "error").length;
-  const removed = r.results.filter((m) => m.status === "removed").length;
+  const synced = r.results.filter((m) => m.status === 'cloned' || m.status === 'synced').length
+  const updated = r.results.filter((m) => m.status === 'updated').length
+  const locked = r.results.filter((m) => m.status === 'locked').length
+  const already = r.results.filter((m) => m.status === 'already_synced').length
+  const errors = r.results.filter((m) => m.status === 'error').length
+  const removed = r.results.filter((m) => m.status === 'removed').length
   const nested = r.nestedResults.reduce(
     (acc, nr) => {
-      const nc = countSyncResults(nr);
+      const nc = countSyncResults(nr)
       return {
         synced: acc.synced + nc.synced,
         updated: acc.updated + nc.updated,
@@ -103,10 +103,10 @@ export const countSyncResults = (
         already: acc.already + nc.already,
         errors: acc.errors + nc.errors,
         removed: acc.removed + nc.removed,
-      };
+      }
     },
     { synced: 0, updated: 0, locked: 0, already: 0, errors: 0, removed: 0 },
-  );
+  )
   return {
     synced: synced + nested.synced,
     updated: updated + nested.updated,
@@ -114,21 +114,21 @@ export const countSyncResults = (
     already: already + nested.already,
     errors: errors + nested.errors,
     removed: removed + nested.removed,
-  };
-};
+  }
+}
 
 /** Collect all member errors across the full nested sync tree. */
 export const collectSyncErrors = (r: MegarepoSyncResult): ReadonlyArray<SyncMemberError> => {
   const current: SyncMemberError[] = r.results
-    .filter((m) => m.status === "error")
-    .map((member) => ({ megarepoRoot: r.root, member }));
+    .filter((m) => m.status === 'error')
+    .map((member) => ({ megarepoRoot: r.root, member }))
 
-  const nested = r.nestedResults.flatMap((nr) => collectSyncErrors(nr));
-  return [...current, ...nested];
-};
+  const nested = r.nestedResults.flatMap((nr) => collectSyncErrors(nr))
+  return [...current, ...nested]
+}
 
 /** Collect all member results across the full nested sync tree. */
 export const collectAllMemberResults = (r: MegarepoSyncResult): ReadonlyArray<MemberSyncResult> => {
-  const nested = r.nestedResults.flatMap((nr) => collectAllMemberResults(nr));
-  return [...r.results, ...nested];
-};
+  const nested = r.nestedResults.flatMap((nr) => collectAllMemberResults(nr))
+  return [...r.results, ...nested]
+}
