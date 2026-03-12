@@ -12,6 +12,8 @@ Generate `pnpm-workspace.yaml` files.
   non-package workspaces that cannot be modeled from package seeds
 - package metadata must already contain static import-time workspace facts;
   runtime `ctx` is only used during projection
+- package-local `pnpm-workspace.yaml` may remain as projection metadata, but
+  package-local `pnpm-lock.yaml` is not part of the intended model
 
 Normal authoring should use only:
 

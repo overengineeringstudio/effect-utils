@@ -512,8 +512,9 @@ export interface PnpmWorkspaceData {
 
   /**
    * When true, installation won't fail if some patches from `patchedDependencies`
-   * are not used by the current workspace member. Required for per-member lockfiles
-   * (`sharedWorkspaceLockfile: false`) where not every member depends on the patched package.
+   * are not used by the current projected workspace. Useful when shared patch
+   * metadata is reused across package-local and aggregate workspace
+   * projections.
    *
    * @see https://pnpm.io/settings#allow-unused-patches
    */

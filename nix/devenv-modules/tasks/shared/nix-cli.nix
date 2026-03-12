@@ -8,7 +8,7 @@
 #           name = "genie";
 #           flakeRef = ".#genie";
 #           hashSource = "packages/@overeng/genie/nix/build.nix";
-#           lockfile = "packages/@overeng/genie/pnpm-lock.yaml";
+#           lockfile = "pnpm-lock.yaml";
 #         }
 #       ];
 #     })
@@ -413,7 +413,7 @@ let
       echo "✗ $name: pnpm lockfile is stale (new deps added but not locked)"
       echo ""
       echo "To fix:"
-      echo "  1. Run: dt pnpm:update     # Update all lockfiles"
+      echo "  1. Run: dt pnpm:update     # Update the repo-root pnpm lockfile"
       echo "  2. Run: dt nix:hash:$name  # Update Nix hashes"
       echo "  3. Commit: pnpm-lock.yaml changes and hashSource updates"
       echo ""
@@ -522,8 +522,8 @@ let
       "nix:hash:${pkg.name}" = {
         description = "Update Nix hashes for ${pkg.name}";
         exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.hashSource}' '${pkg.name}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
-        # pnpm:install refreshes the repo-root install state and package-closure
-        # lockfiles before we recompute hashes.
+        # pnpm:install refreshes the repo-root install state from the
+        # authoritative root lockfile before we recompute hashes.
         after = [ "pnpm:install" ];
     };
   };
@@ -537,12 +537,10 @@ let
 
   mkCheckTask = pkg: {
       "nix:check:${pkg.name}" = {
-        description = "Check if ${pkg.name} hash is stale (full build)";
-        exec = trace.exec "nix:check:${pkg.name}" "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
-        # Depends on full workspace pnpm:install (not per-package).
-      # Nix builds stage the entire workspace, so any stale lockfile in any package
-      # breaks the build. Per-package install only updates that package's lockfile,
-      # but Nix sees the whole workspace including stale packages like tui-react.
+      description = "Check if ${pkg.name} hash is stale (full build)";
+      exec = trace.exec "nix:check:${pkg.name}" "${checkHashScript} '${pkg.flakeRef}' '${pkg.name}' '${pkg.hashSource}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
+      # Depends on the full workspace pnpm:install so the staged build inputs
+      # stay synchronized with the authoritative repo-root lockfile.
       after = lib.optional (pkg ? lockfile) "pnpm:install";
     };
   };

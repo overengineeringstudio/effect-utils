@@ -51,10 +51,11 @@ lockfile that define installs for that workspace.
 
 - T1 - Listing workspace members explicitly instead of using workspace globs
   is acceptable. We can generate the explicit member list via Genie.
-- T2 - Keeping a per-package lockfile for standalone repos is acceptable, as
-  long as a composed megarepo may also maintain its own aggregate lockfile
-  for the composed workspace topology. In the live worktree, package-level
-  lockfile refreshes may be lockfile-only.
+- T2 - Keeping one lockfile per standalone repo root is acceptable, as long
+  as a composed megarepo may also maintain its own aggregate lockfile for
+  the composed workspace topology. Package-level workspace metadata may
+  exist, but package-local lockfiles inside workspace members are not part of
+  the supported live-worktree model.
 - T3 - Using an aggregate package or aggregate root manifest for the composed
   workspace topology is acceptable. Package managers are usually optimized
   for monorepos, so a canonical aggregate root often gives the best install

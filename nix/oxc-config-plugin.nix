@@ -24,7 +24,7 @@ let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-gYT55AH7iYJYnQ2CItuP2k63t6NWDqW6SalpZ3cYKA0=";
+  pnpmDepsHash = "sha256-WZUubgXZunmOYARSjnPtIQtV96b1DPRnPLKW4taPydk=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -37,30 +37,116 @@ let
   # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
   patchesDir = "packages/@overeng/utils/patches";
 
-  # Filtered source: package directory + patches (for pnpm dep fetching)
-  packageSrc = lib.cleanSourceWith {
-    src = srcPath;
-    filter =
-      path: type:
-      let
-        relPath = lib.removePrefix (toString srcPath + "/") (toString path);
-      in
-      lib.hasPrefix "${packageDir}/" relPath
-      || relPath == packageDir
-      || lib.hasPrefix "${patchesDir}/" relPath
-      || relPath == patchesDir
-      || (
-        type == "directory"
-        && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" packageDir))) (
-          lib.range 1 (lib.length (lib.splitString "/" packageDir))
-        )
+  rootPnpmWorkspaceYamlPath = srcPath + "/pnpm-workspace.yaml";
+  rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
+
+  hasPathPrefix =
+    relPath: prefix:
+    relPath == prefix
+    || lib.hasPrefix "${prefix}/" relPath
+    || (
+      relPath != ""
+      && builtins.elem relPath (
+        lib.genList
+          (index: lib.concatStringsSep "/" (lib.take (index + 1) (lib.splitString "/" prefix)))
+          (lib.length (lib.splitString "/" prefix) - 1)
       )
-      || (
-        type == "directory"
-        && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" patchesDir))) (
-          lib.range 1 (lib.length (lib.splitString "/" patchesDir))
-        )
-      );
+    );
+
+  workspaceSuffixLines =
+    workspaceYaml:
+    let
+      dropUntilPackagesHeader =
+        lines:
+        if lines == [ ] then
+          throw "oxc-config-plugin: pnpm-workspace.yaml is missing packages:"
+        else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
+          lib.tail lines
+        else
+          dropUntilPackagesHeader (lib.tail lines);
+
+      dropPackageBlock =
+        lines:
+        if lines == [ ] then
+          [ ]
+        else
+          let
+            line = builtins.head lines;
+            trimmed = lib.trim line;
+          in
+          if trimmed == "" || lib.hasPrefix "-" trimmed || lib.hasPrefix " " line then
+            dropPackageBlock (lib.tail lines)
+          else
+            lines;
+    in
+    dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml));
+
+  formatWorkspaceYaml =
+    packageDirs: suffixLines:
+    let
+      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs);
+      suffix = builtins.concatStringsSep "\n" suffixLines;
+    in
+    if suffix == "" then
+      "${packagesBlock}\n"
+    else
+      "${packagesBlock}\n\n${suffix}\n";
+
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml [ packageDir ] (workspaceSuffixLines rootPnpmWorkspaceYaml);
+
+  copyFileCmd =
+    relPath:
+    ''
+      mkdir -p "$out/$(dirname "${relPath}")"
+      cp "$src/${relPath}" "$out/${relPath}"
+    '';
+
+  copyDirCmd =
+    relPath:
+    ''
+      mkdir -p "$out/$(dirname "${relPath}")"
+      cp -R "$src/${relPath}" "$out/$(dirname "${relPath}")/"
+      chmod -R +w "$out/${relPath}"
+    '';
+
+  copyOptionalFileCmd =
+    relPath:
+    ''
+      if [ -f "$src/${relPath}" ]; then
+        ${copyFileCmd relPath}
+      fi
+    '';
+
+  materializeWorkspace =
+    {
+      nameSuffix,
+      manifestOnly,
+    }:
+    pkgs.runCommand "oxc-config-${nameSuffix}" { src = srcPath; } (
+      ''
+        set -euo pipefail
+        mkdir -p "$out"
+      ''
+      + builtins.concatStringsSep "\n" (map copyFileCmd [ "package.json" "pnpm-lock.yaml" ])
+      + builtins.concatStringsSep "\n" (map copyOptionalFileCmd [ ".npmrc" "tsconfig.base.json" ])
+      + ''
+        cat > "$out/pnpm-workspace.yaml" <<'EOF'
+${filteredRootPnpmWorkspaceYaml}
+EOF
+      ''
+      + (
+        if manifestOnly then
+          copyFileCmd "${packageDir}/package.json"
+        else
+          copyDirCmd packageDir
+      )
+      + "\n"
+      + copyDirCmd patchesDir
+    );
+
+  depsSrc = materializeWorkspace {
+    nameSuffix = "pnpm-deps-src";
+    manifestOnly = true;
   };
 
   # Full source for building (includes .ts files, excludes node_modules etc.)
@@ -89,29 +175,16 @@ let
       in
       !(lib.elem baseName excludedNames)
       && (
-        lib.hasPrefix "${packageDir}/" relPath
-        || relPath == packageDir
-        || lib.hasPrefix "${patchesDir}/" relPath
-        || relPath == patchesDir
-        || (
-          type == "directory"
-          && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" packageDir))) (
-            lib.range 1 (lib.length (lib.splitString "/" packageDir))
-          )
-        )
-        || (
-          type == "directory"
-          && lib.any (n: relPath == lib.concatStringsSep "/" (lib.take n (lib.splitString "/" patchesDir))) (
-            lib.range 1 (lib.length (lib.splitString "/" patchesDir))
-          )
-        )
+        builtins.elem relPath [ "package.json" "pnpm-lock.yaml" ".npmrc" "tsconfig.base.json" ]
+        || hasPathPrefix relPath packageDir
+        || hasPathPrefix relPath patchesDir
       );
   };
 
   pnpmDeps = pnpmDepsHelper.mkDeps {
     name = "oxc-config";
-    src = packageSrc;
-    sourceRoot = packageDir;
+    src = depsSrc;
+    sourceRoot = ".";
     inherit pnpmDepsHash;
   };
 
@@ -138,9 +211,14 @@ pkgs.stdenv.mkDerivation {
 
     cp -r ${buildSrc} workspace
     chmod -R +w workspace
-    cd workspace/${packageDir}
+    cat > workspace/pnpm-workspace.yaml <<'EOF'
+${filteredRootPnpmWorkspaceYaml}
+EOF
+    cd workspace
 
     CI=true pnpm install --offline --frozen-lockfile --ignore-scripts
+
+    cd ${packageDir}
 
     # Bundle into single JS file.
     # --external jiti: eslint's config loader uses jiti for dynamic imports, but

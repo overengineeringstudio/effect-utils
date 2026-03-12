@@ -274,8 +274,12 @@ export type PackageJsonData = {
   /**
    * pnpm-specific configuration.
    *
-   * For self-contained packages with their own pnpm-lock.yaml, use this field
-   * to configure pnpm-specific options like patchedDependencies.
+   * Use this field to configure pnpm-specific options like
+   * `patchedDependencies`.
+   *
+   * In the current workspace model, the authoritative `pnpm-lock.yaml` lives
+   * at the selected topology root rather than inside workspace member
+   * packages.
    */
   pnpm?: {
     overrides?: Record<string, string>

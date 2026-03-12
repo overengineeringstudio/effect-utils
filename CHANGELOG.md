@@ -40,6 +40,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/tasks/shared/lint-effect-lsp.nix**: document the tracked future unification of the standalone Effect LSP task with `ts:check`
+  - Adds a linked TODO for collapsing the separate task once the main workspace TypeScript check becomes `Effect-TS/tsgo`-backed
 - **@overeng/genie**: tighten pnpm workspace SSOT around package seeds
   - Removes `extraPackages` from `pnpmWorkspaceYaml.root(...)` and the matching `additionalMemberPaths` graph helper escape hatch
   - Keeps explicit non-package workspace manifests on `pnpmWorkspaceYaml.manual(...)` instead of overloading root projection
@@ -50,9 +52,9 @@ All notable changes to this project will be documented in this file.
   - Keeps the `@effect/language-service` tsconfig plugin entry only as the current upstream tsgo configuration channel
 - **pnpm/dev workspace**: Switch dev installs to a generated repo-root hoisted pnpm workspace
   - Adds generated root `package.json` and `pnpm-workspace.yaml` with explicit workspace members
-  - Makes `pnpm:install` own the repo-root install state and refresh package-closure lockfiles in lockfile-only mode
+  - Makes `pnpm:install` own the repo-root install state and keeps the repo-root `pnpm-lock.yaml` as the only authoritative lockfile
   - Updates package-scoped task execution to use `pnpm exec` so Vitest, Storybook, and Vite resolve against the active workspace topology
-  - Keeps package-level `pnpm-workspace.yaml` files as package-closure metadata instead of package-local dev install roots
+  - Keeps package-level `pnpm-workspace.yaml` files only as package-closure metadata instead of package-local dev install roots or lock owners
 - **@overeng/utils**: Make Storybook `viteFinal` typing opt-in generic for linked Vite workspaces
   - Keeps the default helper API free of foreign Vite types
   - Lets consumers opt into their own local `vite` config type when they need a typed `viteFinal` hook
@@ -67,9 +69,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **devenv/tasks/shared/lint-effect-lsp.nix**: add reusable `lint:check:effect-lsp` tsgo diagnostics task
+- **devenv/tasks/shared/lint-effect-lsp.nix**: add reusable `ts:check:effect-lsp` tsgo diagnostics task
   - Exports `effect-tsgo` from the flake package set for downstream devenv consumers
-  - Wires the task into `lint:check` so `check:quick` picks up Effect diagnostics through the lint group
+  - Keeps the task standalone so repos can opt into Effect diagnostics without conflating them with stylistic lint
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
 - **docs/bun**: Document the upstream nested-workspace `patchedDependencies` blocker and link the Bun issue
 - **docs/bun**: Note the Bun-only local workspace fork workaround for patched dependencies

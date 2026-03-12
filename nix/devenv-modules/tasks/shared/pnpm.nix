@@ -1,8 +1,9 @@
 # pnpm install tasks
 #
 # effect-utils now uses a repo-root pnpm workspace for dev installs.
-# Package-level pnpm-workspace.yaml files remain only as package-closure build
-# metadata and lockfile generation inputs.
+# Package-level pnpm-workspace.yaml files remain only as package-closure
+# projection metadata. The repo-root pnpm-lock.yaml is the only authoritative
+# lockfile for this live-worktree model.
 #
 # Provides:
 # - pnpm:install
@@ -69,13 +70,9 @@ let
   injectedSourcePaths = lib.unique (lib.concatMap getInjectedDeps packages);
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
-  packageWorkspacePaths =
-    lib.concatMapStringsSep " " (
-      path: ''"${path}/pnpm-workspace.yaml" "${path}/pnpm-lock.yaml"''
-    ) packages;
+  packageWorkspacePaths = lib.concatMapStringsSep " " (path: ''"${path}/pnpm-workspace.yaml"'') packages;
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
-  lockFilePaths =
-    lib.concatStringsSep " " ([ ''"pnpm-lock.yaml"'' ] ++ map (path: ''"${path}/pnpm-lock.yaml"'') packages);
+  lockFilePaths = ''"pnpm-lock.yaml"'';
 
   computeHashFn = ''
     compute_hash() {
@@ -141,20 +138,6 @@ let
     }
   '';
 
-  refreshPackageLockfilesScript = ''
-    for path in ${lib.concatMapStringsSep " " (path: ''"${path}"'') packages}; do
-      if [ -f "$path/pnpm-workspace.yaml" ]; then
-        (
-          cd "$path"
-          if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-            pnpm install --lockfile-only --ignore-scripts --frozen-lockfile --config.confirmModulesPurge=false
-          else
-            pnpm install --lockfile-only --ignore-scripts --config.confirmModulesPurge=false
-          fi
-        )
-      fi
-    done
-  '';
 in
 {
   enterShell = lib.mkIf globalCache ''
@@ -164,7 +147,7 @@ in
 
   tasks = {
     "pnpm:install" = {
-      description = "Install repo-root pnpm workspace and refresh package lockfiles";
+      description = "Install the repo-root pnpm workspace from the authoritative root lockfile";
       after = installAfter;
       exec = trace.exec "pnpm:install" ''
         set -euo pipefail
@@ -189,8 +172,6 @@ in
           pnpm install --config.confirmModulesPurge=false
         fi
 
-        ${refreshPackageLockfilesScript}
-
         ${computeHashFn}
         ${emitDirStateFn}
         ${computeWorkspaceStateHash}
@@ -205,12 +186,6 @@ in
           exit 1
         fi
 
-        for path in ${lib.concatMapStringsSep " " (path: ''"${path}"'') packages}; do
-          if [ -f "$path/pnpm-workspace.yaml" ] && [ ! -f "$path/pnpm-lock.yaml" ]; then
-            exit 1
-          fi
-        done
-
         ${computeHashFn}
         ${emitDirStateFn}
         ${computeWorkspaceStateHash}
@@ -224,14 +199,13 @@ in
     };
 
     "pnpm:update" = {
-      description = "Update repo-root and package-closure pnpm lockfiles";
+      description = "Update the authoritative repo-root pnpm lockfile";
       after = [ "genie:run" ] ++ updateAfter;
       exec = trace.exec "pnpm:update" ''
         set -euo pipefail
         export npm_config_manage_package_manager_versions=false
         pnpm install --fix-lockfile --config.confirmModulesPurge=false
-        ${lib.replaceStrings [ "--lockfile-only --ignore-scripts" ] [ "--lockfile-only --fix-lockfile --ignore-scripts" ] refreshPackageLockfilesScript}
-        echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
+        echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
       '';
     };
 
@@ -244,7 +218,7 @@ in
     };
 
     "pnpm:reset-lock-files" = {
-      description = "Remove repo-root and package-level pnpm lock files (last resort)";
+      description = "Remove the repo-root pnpm lock file (last resort)";
       after = resetLockFilesAfter;
       exec = trace.exec "pnpm:reset-lock-files" ''
         rm -f ${lockFilePaths}

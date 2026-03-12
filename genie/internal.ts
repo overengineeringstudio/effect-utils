@@ -89,12 +89,15 @@ export const utilsPatches = definePatchedDependencies({
  * Common pnpm workspace settings for all effect-utils packages.
  *
  * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
- * so that lockfiles remain consistent when the same package appears in multiple workspaces.
+ * so that package-local workspace projections and the aggregate root stay on
+ * the same patch metadata.
  *
  * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
- * Per-member lockfiles cause TS2742 errors in `tsc --build` because each workspace member
- * gets its own `.pnpm` store, creating different physical paths for the same package.
- * TypeScript treats these as distinct types, breaking project references.
+ * Package-local projections do not own lockfiles, and reintroducing per-member
+ * lock ownership would cause TS2742 errors in `tsc --build` because each
+ * workspace member gets its own `.pnpm` store, creating different physical
+ * paths for the same package. TypeScript treats these as distinct types,
+ * breaking project references.
  */
 export const commonPnpmWorkspaceData = {
   patchedDependencies: utilsPatches,

@@ -20,7 +20,7 @@ This spec defines:
 - install ownership
 - local cross-repo resolution
 - linker and runtime behavior
-- package-closure lockfile refresh
+- package-level workspace projection metadata
 - lockfile and publish behavior
 - managed tooling and validation expectations
 
@@ -141,6 +141,10 @@ Aggregate generation is topology-local:
 The generated aggregate root files and aggregate dependency closure together
 form the effective dependency inputs for the composed topology.
 
+Package-level `pnpm-workspace.yaml` projections may remain as package-closure
+metadata for builders, but package-level `pnpm-lock.yaml` files are not part
+of the authoritative topology model.
+
 Those inputs must be stable and canonical enough that equivalent standalone and
 composed graphs for the same physical source tree collapse to the same global
 virtual store entries instead of materializing path-local duplicates.
@@ -244,7 +248,7 @@ Managed tooling must provide topology-aware entrypoints for:
 
 - standalone install
 - composed install
-- package-closure lockfile refresh
+- package-level workspace projection metadata
 - composed runtime execution
 - aggregate topology generation
 
@@ -281,24 +285,27 @@ Managed tooling should prefer:
   topology-local
 
 Package-level install commands in the live worktree are not supported if they
-materialize package-local `node_modules`. Package-level closure refreshes in
-the live worktree must be lockfile-only.
+materialize package-local `node_modules` or package-local `pnpm-lock.yaml`
+files.
 
-## Package-Closure Lockfile Refresh
+## Package-Level Workspace Projections
 
 - Standalone repo roots own their normal install state and lockfiles.
 - Package-level `pnpm-workspace.yaml` files may remain as package-closure
-  metadata for builders and lockfile generation.
-- In the live worktree, package-level refreshes must use lockfile-only
-  commands and must not create or mutate package-local install ownership.
+  metadata for builders and projection helpers.
+- Those projections must not own or refresh package-local `pnpm-lock.yaml`
+  files.
 - A package-level command that materializes fresh package-local install state
-  outside the active topology owner violates this spec.
+  or package-local lockfiles outside the active topology owner violates this
+  spec.
 
 ## Lockfiles and Publishing
 
 - Standalone repos keep their own standalone lockfiles.
 - A composed topology keeps its own aggregate lockfile.
 - Both lockfile kinds must stay checkout-portable and topology-specific.
+- Package-local lockfiles inside workspace members are non-conforming in this
+  live-worktree model.
 - Publishable standalone manifests must remain free of composition-local link
   metadata.
 - Reusing a standalone repo's aggregate lockfile inside another composed repo
