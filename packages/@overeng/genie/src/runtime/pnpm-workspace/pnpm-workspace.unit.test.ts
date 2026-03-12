@@ -38,7 +38,7 @@ const workspace = ({
 }) => ({
   repoName,
   memberPath,
-  pnpmPackageClosure,
+  ...(pnpmPackageClosure !== undefined ? { pnpmPackageClosure } : {}),
 })
 
 describe('metadata-based workspace projections', () => {
