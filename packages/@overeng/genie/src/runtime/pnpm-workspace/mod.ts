@@ -996,11 +996,7 @@ const collectLogicalWorkspaceDepsRecursive = ({
   return sortStrings(members)
 }
 
-export const projectPnpmPackageClosure = ({
-  pkg,
-}: {
-  pkg: WorkspacePackageLike
-}) => {
+export const projectPnpmPackageClosure = ({ pkg }: { pkg: WorkspacePackageLike }) => {
   const packageDir = pkg.meta.workspace.memberPath
   const currentRepoName = pkg.meta.workspace.repoName
   const { extraMemberPaths = [] } = pkg.meta.workspace.pnpmPackageClosure ?? {}
