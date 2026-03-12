@@ -277,7 +277,7 @@ export const genieCommand: Cli.Command.Command<
               }).pipe(
                 Effect.ensuring(
                   Effect.gen(function* () {
-                    yield* Fiber.interrupt(consumerFiber)
+                    const _ = yield* Fiber.interrupt(consumerFiber)
                     const pendingEvents = yield* Queue.takeAll(sub)
                     for (const event of pendingEvents) {
                       yield* Effect.sync(() => dispatchEvent(tui, event))

@@ -296,7 +296,7 @@ export const useOpenTuiRenderer = <S>(
         (key) => {
           if (eventPubSub !== undefined) {
             const event = bridgeKeyEvent(key)
-            Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
+            void Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
           }
         },
         { release: false },
@@ -306,7 +306,7 @@ export const useOpenTuiRenderer = <S>(
       reactLib.useOnResize((width, height) => {
         if (eventPubSub !== undefined) {
           const event = bridgeResizeEvent({ width, height })
-          Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
+          void Runtime.runFork(runtime)(PubSub.publish(eventPubSub, event))
         }
       })
 

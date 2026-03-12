@@ -82,7 +82,7 @@ const runStressTest = (durationMs: number) => {
         }
 
         // Cancel animation fiber
-        yield* Fiber.interrupt(animationFiber)
+        const _ = yield* Fiber.interrupt(animationFiber)
       }),
     { view: <StressTestView stateAtom={StressTestApp.stateAtom} /> },
   )

@@ -29,7 +29,7 @@ export const makeEffectExternalStore = <TSnapshot>({
     )
 
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      void Effect.runFork(Fiber.interrupt(fiber))
     }
   }
 
