@@ -708,6 +708,7 @@ export interface PnpmWorkspaceData {
   sharedWorkspaceLockfile?: boolean
 }
 
+/** Per-package config for computing the pnpm workspace closure (transitive workspace deps). */
 export type PnpmPackageClosureConfig = {
   extraMemberPaths?: readonly string[]
 }
@@ -996,6 +997,7 @@ const collectLogicalWorkspaceDepsRecursive = ({
   return sortStrings(members)
 }
 
+/** Compute the workspace member closure for a package's pnpm install boundary. */
 export const projectPnpmPackageClosure = ({ pkg }: { pkg: WorkspacePackageLike }) => {
   const packageDir = pkg.meta.workspace.memberPath
   const currentRepoName = pkg.meta.workspace.repoName

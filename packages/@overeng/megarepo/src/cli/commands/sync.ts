@@ -516,6 +516,7 @@ const createMissingRefPrompt = (
     )
   })
 
+/** Execute a megarepo sync with the given CLI options, rendering progress via TUI or structured output. */
 export const runSyncCommand = ({
   mode,
   output,
@@ -659,7 +660,7 @@ export const runSyncCommand = ({
       })
     }
 
-    if (!json && isTTY() === true) {
+    if (json === false && isTTY() === true) {
       const ui = yield* startSyncUI({
         workspaceName,
         workspaceRoot: root.value,

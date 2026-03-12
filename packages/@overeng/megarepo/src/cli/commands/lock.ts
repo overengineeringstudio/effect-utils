@@ -107,6 +107,7 @@ const lockApplyCommand = Cli.Command.make(
   ),
 )
 
+/** CLI command group for megarepo.lock operations (sync, update, apply). */
 export const lockCommand = Cli.Command.make('lock', {}).pipe(
   Cli.Command.withSubcommands([lockSyncCommand, lockUpdateCommand, lockApplyCommand]),
   Cli.Command.withDescription('Manage megarepo.lock and lock-driven workspace operations'),
