@@ -2,24 +2,24 @@
  * Header Stories
  */
 
-import type { Meta, StoryObj } from '@storybook/react'
-import React from 'react'
+import type { Meta, StoryObj } from "@storybook/react";
+import React from "react";
 
-import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { createStaticApp, TuiStoryPreview } from "@overeng/tui-react/storybook";
 
-const StaticApp = createStaticApp()
+const StaticApp = createStaticApp();
 
-import { Header } from './Header.tsx'
+import { Header } from "./Header.tsx";
 
 // =============================================================================
 // Meta
 // =============================================================================
 
 export default {
-  title: 'Components/Header',
+  title: "Components/Header",
   component: Header,
   parameters: {
-    layout: 'fullscreen',
+    layout: "fullscreen",
     docs: {
       description: {
         component: `
@@ -35,9 +35,9 @@ mr-workspace
       },
     },
   },
-} satisfies Meta<typeof Header>
+} satisfies Meta<typeof Header>;
 
-type Story = StoryObj<typeof Header>
+type Story = StoryObj<typeof Header>;
 
 // =============================================================================
 // Stories
@@ -51,19 +51,19 @@ export const Default: Story = {
       initialState={null}
     />
   ),
-}
+};
 
 export const WithModes: Story = {
   render: () => (
     <TuiStoryPreview
       app={StaticApp}
       View={() => (
-        <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'frozen']} />
+        <Header name="mr-workspace" root="/Users/dev/workspace" modes={["dry run", "lock apply"]} />
       )}
       initialState={null}
     />
   ),
-}
+};
 
 export const NameOnly: Story = {
   render: () => (
@@ -73,4 +73,4 @@ export const NameOnly: Story = {
       initialState={null}
     />
   ),
-}
+};

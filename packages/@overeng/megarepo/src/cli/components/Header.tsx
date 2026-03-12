@@ -4,9 +4,9 @@
  * Workspace header with name, path, and mode indicators.
  */
 
-import React from 'react'
+import React from "react";
 
-import { Box, Text } from '@overeng/tui-react'
+import { Box, Text } from "@overeng/tui-react";
 
 // =============================================================================
 // Types
@@ -15,11 +15,11 @@ import { Box, Text } from '@overeng/tui-react'
 /** Props for the Header component that renders workspace name, path, and mode indicators. */
 export interface HeaderProps {
   /** Workspace name (bold) */
-  name: string
+  name: string;
   /** Workspace root path */
-  root?: string
-  /** Mode indicators (e.g., "dry run", "frozen", "pull") */
-  modes?: readonly string[]
+  root?: string;
+  /** Mode indicators (e.g., "workspace", "dry run") */
+  modes?: readonly string[];
 }
 
 // =============================================================================
@@ -46,15 +46,15 @@ export const Header = ({ name, root, modes }: HeaderProps) => (
     <Text bold>{name}</Text>
     {root && (
       <Box flexDirection="row">
-        <Text dim>{'  root: '}</Text>
+        <Text dim>{"  root: "}</Text>
         <Text>{root}</Text>
       </Box>
     )}
     {modes && modes.length > 0 && (
       <Text dim>
-        {'  mode: '}
-        {modes.join(', ')}
+        {"  mode: "}
+        {modes.join(", ")}
       </Text>
     )}
   </Box>
-)
+);

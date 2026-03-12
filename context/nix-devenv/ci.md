@@ -4,11 +4,11 @@
 
 ### Problem
 
-Repos that depend on effect-utils via megarepo need to run `mr sync --frozen` in CI before devenv is available. This creates a chicken-and-egg problem:
+Repos that depend on effect-utils via megarepo need to run `mr lock apply` in CI before devenv is available. This creates a chicken-and-egg problem:
 
 1. `mr` CLI comes from devenv (via `cliPackages.megarepo`)
 2. devenv needs effect-utils to be synced first (for imports in `devenv.nix`)
-3. We can't run `mr sync` without `mr`
+3. We can't run `mr lock apply` without `mr`
 
 ### Attempted Solution: Install `mr` from effect-utils Flake
 
@@ -18,7 +18,7 @@ Repos that depend on effect-utils via megarepo need to run `mr sync --frozen` in
   shell: bash
 
 - name: Sync megarepo dependencies
-  run: mr sync --frozen
+  run: mr lock apply
   shell: bash
 ```
 
@@ -47,7 +47,7 @@ Install bun in CI and run megarepo via bunx:
 - uses: oven-sh/setup-bun@v1
 
 - name: Sync megarepo dependencies
-  run: bunx @overeng/megarepo sync --frozen
+  run: bunx @overeng/megarepo lock apply
   shell: bash
 ```
 
@@ -97,7 +97,7 @@ Publish pre-built `mr` binaries as GitHub releases:
 - Requires release automation
 - Binary management overhead
 
-#### Option 4: Skip `mr sync` - Clone Manually
+#### Option 4: Skip `mr lock apply` - Clone Manually
 
 Clone effect-utils directly without megarepo:
 
@@ -127,7 +127,7 @@ Clone effect-utils directly without megarepo:
 
 **Resolved Issues:**
 
-1. ✅ `mr sync --frozen` now allows cloning in fresh CI environments (fix in commit 693eb6b)
+1. ✅ `mr lock apply` now allows cloning in fresh CI environments (fix in commit 693eb6b)
 2. ✅ Added `--refresh` to bypass nix flake cache and get latest megarepo version
 
 **Remaining Issues:**

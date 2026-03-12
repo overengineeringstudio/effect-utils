@@ -5,21 +5,21 @@
  * Compatible API with the old startSyncProgressUI pattern.
  */
 
-import type { Scope } from 'effect'
-import { Effect } from 'effect'
-import React from 'react'
+import type { Scope } from "effect";
+import { Effect } from "effect";
+import React from "react";
 
-import { isTTY } from '@overeng/tui-react'
-import { tty, layer as outputModeLayer } from '@overeng/tui-react'
+import { isTTY } from "@overeng/tui-react";
+import { tty, layer as outputModeLayer } from "@overeng/tui-react";
 
-import type { MemberSyncResult } from '../../../lib/sync/schema.ts'
-import { SyncApp } from './app.ts'
-import type { SyncState } from './schema.ts'
-import { SyncView } from './view.tsx'
+import type { MemberSyncResult } from "../../../lib/sync/schema.ts";
+import { SyncApp } from "./app.ts";
+import type { SyncState } from "./schema.ts";
+import { SyncView } from "./view.tsx";
 
 // Re-export SyncAction for consumers
-export type { SyncAction } from './schema.ts'
-import type { SyncAction } from './schema.ts'
+export type { SyncAction } from "./schema.ts";
+import type { SyncAction } from "./schema.ts";
 
 // =============================================================================
 // Types
@@ -28,10 +28,10 @@ import type { SyncAction } from './schema.ts'
 /** Handle for managing the sync UI lifecycle */
 export type SyncUIHandle = {
   /** Dispatch an action to update state */
-  dispatch: (action: SyncAction) => void
+  dispatch: (action: SyncAction) => void;
   /** Cleanup function - call when sync is complete */
-  cleanup: () => Effect.Effect<void>
-}
+  cleanup: () => Effect.Effect<void>;
+};
 
 // =============================================================================
 // Action Helpers
@@ -41,57 +41,57 @@ export type SyncUIHandle = {
  * Map a MemberSyncResult to an AddResult action.
  */
 export const mapResultToAction = (result: MemberSyncResult): SyncAction => ({
-  _tag: 'AddResult',
+  _tag: "AddResult",
   result,
-})
+});
 
 /**
  * Create a StartSync action.
  */
 export const createStartSyncAction = (members: readonly string[]): SyncAction => ({
-  _tag: 'StartSync',
+  _tag: "StartSync",
   members: [...members],
-})
+});
 
 /**
  * Create a SetActiveMember action (for spinner display).
  */
 export const createSetActiveMemberAction = (name: string): SyncAction => ({
-  _tag: 'SetActiveMember',
+  _tag: "SetActiveMember",
   name,
-})
+});
 
 /**
  * Create a Complete action.
  */
 export const createCompleteAction = (params: {
-  nestedMegarepos?: readonly string[]
-  generatedFiles?: readonly string[]
+  nestedMegarepos?: readonly string[];
+  generatedFiles?: readonly string[];
 }): SyncAction => ({
-  _tag: 'Complete',
+  _tag: "Complete",
   nestedMegarepos: [...(params.nestedMegarepos ?? [])],
   generatedFiles: [...(params.generatedFiles ?? [])],
-})
+});
 
 /**
  * Create an AddLog action.
  */
 export const createLogAction = (params: {
-  type: 'info' | 'warn' | 'error'
-  message: string
+  type: "info" | "warn" | "error";
+  message: string;
 }): SyncAction => ({
-  _tag: 'AddLog',
+  _tag: "AddLog",
   type: params.type,
   message: params.message,
-})
+});
 
 /**
  * Create a SetState action.
  */
 export const createSetStateAction = (state: SyncState): SyncAction => ({
-  _tag: 'SetState',
+  _tag: "SetState",
   state,
-})
+});
 
 // =============================================================================
 // API
@@ -105,54 +105,51 @@ export const createSetStateAction = (state: SyncState): SyncAction => ({
  * In non-TTY mode, returns a no-op handle.
  */
 export const startSyncUI = (options: {
-  workspaceName: string
-  workspaceRoot: string
-  memberNames: readonly string[]
-  dryRun?: boolean
-  frozen?: boolean
-  pull?: boolean
-  all?: boolean
-  force?: boolean
-  verbose?: boolean
-  skippedMembers?: readonly string[]
+  workspaceName: string;
+  workspaceRoot: string;
+  memberNames: readonly string[];
+  mode: "workspace" | "lock_sync" | "lock_update" | "lock_apply";
+  dryRun?: boolean;
+  all?: boolean;
+  force?: boolean;
+  verbose?: boolean;
+  skippedMembers?: readonly string[];
 }): Effect.Effect<SyncUIHandle, never, Scope.Scope> =>
   Effect.gen(function* () {
     const {
       workspaceName,
       workspaceRoot,
       memberNames,
+      mode,
       dryRun,
-      frozen,
-      pull,
       all,
       force,
       verbose,
       skippedMembers,
-    } = options
+    } = options;
 
     // If not TTY, return a no-op handle
     if (isTTY() === false) {
       return {
         dispatch: () => {},
         cleanup: () => Effect.void,
-      } satisfies SyncUIHandle
+      } satisfies SyncUIHandle;
     }
 
     // Run the app with the view using atom-first pattern
     const tui = yield* SyncApp.run(
       React.createElement(SyncView, { stateAtom: SyncApp.stateAtom }),
-    ).pipe(Effect.provide(outputModeLayer(tty)))
+    ).pipe(Effect.provide(outputModeLayer(tty)));
 
     // Initialize with start action
     tui.dispatch({
-      _tag: 'SetState',
+      _tag: "SetState",
       state: {
-        _tag: 'Syncing',
+        _tag: "Syncing",
         workspace: { name: workspaceName, root: workspaceRoot },
         options: {
+          mode,
           dryRun: dryRun ?? false,
-          frozen: frozen ?? false,
-          pull: pull ?? false,
           all: all ?? false,
           force: force || undefined,
           verbose: verbose || undefined,
@@ -178,19 +175,19 @@ export const startSyncUI = (options: {
         syncErrors: [],
         syncErrorCount: 0,
       },
-    })
+    });
 
     return {
       dispatch: tui.dispatch,
-      cleanup: () => tui.unmount({ mode: 'persist' }),
-    } satisfies SyncUIHandle
-  })
+      cleanup: () => tui.unmount({ mode: "persist" }),
+    } satisfies SyncUIHandle;
+  });
 
 /**
  * Finish the sync UI.
  * Cleans up the TUI renderer.
  */
-export const finishSyncUI = (handle: SyncUIHandle) => handle.cleanup()
+export const finishSyncUI = (handle: SyncUIHandle) => handle.cleanup();
 
 // Re-export for convenience
-export { isTTY }
+export { isTTY };

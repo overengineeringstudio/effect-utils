@@ -15,7 +15,7 @@ export {
   resolveCloneUrl,
   syncMember,
   type RepoSemaphoreMap,
-} from './member.ts'
+} from "./member.ts";
 export {
   countSyncResults,
   collectAllMemberResults,
@@ -25,5 +25,6 @@ export {
   type MemberSyncResult,
   type MemberSyncStatus,
   type SyncMemberError,
+  type SyncMode,
   type SyncOptions,
-} from './types.ts'
+} from "./types.ts";

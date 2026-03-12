@@ -7,19 +7,25 @@
  * Uses megarepo's design system components for consistent styling.
  */
 
-import type { Atom } from '@effect-atom/atom'
-import React from 'react'
+import type { Atom } from "@effect-atom/atom";
+import React from "react";
 
-import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
+import { Box, Text, useTuiAtomValue, unicodeSymbols } from "@overeng/tui-react";
 
-import { Separator } from '../../components/mod.ts'
-import type { StatusState, MemberStatus, LockStaleness, GitStatus, SymlinkDrift } from './schema.ts'
+import { Separator } from "../../components/mod.ts";
+import type {
+  StatusState,
+  MemberStatus,
+  LockStaleness,
+  GitStatus,
+  SymlinkDrift,
+} from "./schema.ts";
 
 // =============================================================================
 // Re-export types for convenience
 // =============================================================================
 
-export type { GitStatus, SymlinkDrift, MemberStatus, LockStaleness }
+export type { GitStatus, SymlinkDrift, MemberStatus, LockStaleness };
 
 // =============================================================================
 // Types
@@ -27,7 +33,7 @@ export type { GitStatus, SymlinkDrift, MemberStatus, LockStaleness }
 
 /** Props for the StatusView component that renders workspace status with member tree and warnings. */
 export interface StatusViewProps {
-  stateAtom: Atom.Atom<StatusState>
+  stateAtom: Atom.Atom<StatusState>;
 }
 
 // =============================================================================
@@ -44,20 +50,20 @@ export interface StatusViewProps {
  * - Summary line and legend
  */
 export const StatusView = ({ stateAtom }: StatusViewProps) => {
-  const state = useTuiAtomValue(stateAtom)
-  const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
-  const problems = analyzeProblems({ members, lockStaleness })
+  const state = useTuiAtomValue(stateAtom);
+  const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state;
+  const problems = analyzeProblems({ members, lockStaleness });
   const hasNesting = members.some(
     (m) => m.nestedMembers !== undefined && m.nestedMembers.length > 0,
-  )
-  const hasNestedMegarepos = members.some((m) => m.isMegarepo)
+  );
+  const hasNestedMegarepos = members.some((m) => m.isMegarepo);
 
   return (
     <Box>
       {/* Header */}
       <Text bold>{name}</Text>
       <Box flexDirection="row">
-        <Text dim>{'  root: '}</Text>
+        <Text dim>{"  root: "}</Text>
         <Text>{root}</Text>
       </Box>
       <Text> </Text>
@@ -71,8 +77,8 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
         <>
           {members.map((member, i) => {
             const isOnCurrentPath =
-              currentMemberPath !== undefined && currentMemberPath[0] === member.name
-            const isCurrent = isOnCurrentPath && currentMemberPath.length === 1
+              currentMemberPath !== undefined && currentMemberPath[0] === member.name;
+            const isCurrent = isOnCurrentPath && currentMemberPath.length === 1;
 
             return (
               <React.Fragment key={member.name}>
@@ -90,7 +96,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
                   )}
                 {i < members.length - 1 && <Text> </Text>}
               </React.Fragment>
-            )
+            );
           })}
         </>
       ) : (
@@ -100,8 +106,8 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
             const isCurrent =
               currentMemberPath !== undefined &&
               currentMemberPath.length === 1 &&
-              currentMemberPath[0] === member.name
-            return <MemberLine key={member.name} member={member} isCurrent={isCurrent} />
+              currentMemberPath[0] === member.name;
+            return <MemberLine key={member.name} member={member} isCurrent={isCurrent} />;
           })}
         </>
       )}
@@ -116,8 +122,8 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
       <StatusSummary members={members} lastSyncTime={lastSyncTime} />
       <Legend members={members} />
     </Box>
-  )
-}
+  );
+};
 
 // =============================================================================
 // Internal Components - Nested Megarepos Hint
@@ -127,33 +133,34 @@ const NestedMegareposHint = ({ count }: { count: number }) => {
   return (
     <Box paddingTop={1}>
       <Text dim>
-        Note: {count} member{count > 1 ? 's' : ''} {count > 1 ? 'are' : 'is a'} nested megarepo
-        {count > 1 ? 's' : ''}.
+        Note: {count} member{count > 1 ? "s" : ""} {count > 1 ? "are" : "is a"} nested megarepo
+        {count > 1 ? "s" : ""}.
       </Text>
       <Text dim> Run 'mr status --all' to see their members.</Text>
     </Box>
-  )
-}
+  );
+};
 
 // =============================================================================
 // Internal Types
 // =============================================================================
 
 type Problem =
-  | { _tag: 'not_synced'; members: MemberStatus[] }
-  | { _tag: 'dirty'; members: MemberStatus[] }
-  | { _tag: 'unpushed'; members: MemberStatus[] }
-  | { _tag: 'lock_missing' }
-  | { _tag: 'lock_stale'; missingFromLock: readonly string[]; extraInLock: readonly string[] }
-  | { _tag: 'stale_lock'; members: MemberStatus[] }
-  | { _tag: 'symlink_drift'; members: MemberStatus[] }
-  | { _tag: 'ref_mismatch'; members: MemberStatus[] }
+  | { _tag: "not_synced"; members: MemberStatus[] }
+  | { _tag: "dirty"; members: MemberStatus[] }
+  | { _tag: "unpushed"; members: MemberStatus[] }
+  | { _tag: "lock_missing" }
+  | { _tag: "lock_stale"; missingFromLock: readonly string[]; extraInLock: readonly string[] }
+  | { _tag: "stale_lock"; members: MemberStatus[] }
+  | { _tag: "symlink_drift"; members: MemberStatus[] }
+  | { _tag: "duplicate_worktree"; members: MemberStatus[] }
+  | { _tag: "ref_mismatch"; members: MemberStatus[] };
 
 /** Legend item type with key */
 type LegendItem = {
-  key: string
-  element: React.ReactNode
-}
+  key: string;
+  element: React.ReactNode;
+};
 
 // =============================================================================
 // Symbols (from centralized definitions)
@@ -166,7 +173,7 @@ const symbols = {
   dot: unicodeSymbols.status.dot,
   dirty: unicodeSymbols.status.dirty,
   ahead: unicodeSymbols.arrows.up,
-}
+};
 
 /** Tree branch characters */
 const tree = {
@@ -174,163 +181,170 @@ const tree = {
   last: unicodeSymbols.tree.last,
   vertical: unicodeSymbols.tree.vertical,
   empty: unicodeSymbols.tree.empty,
-}
+};
 
 // =============================================================================
 // Internal Helper Functions
 // =============================================================================
 
 const flattenMembers = (members: readonly MemberStatus[]): MemberStatus[] => {
-  const result: MemberStatus[] = []
+  const result: MemberStatus[] = [];
   for (const member of members) {
-    result.push(member)
+    result.push(member);
     if (member.nestedMembers !== undefined) {
-      result.push(...flattenMembers(member.nestedMembers))
+      result.push(...flattenMembers(member.nestedMembers));
     }
   }
-  return result
-}
+  return result;
+};
 
 const analyzeProblems = ({
   members,
   lockStaleness,
 }: {
-  members: readonly MemberStatus[]
-  lockStaleness: LockStaleness | undefined
+  members: readonly MemberStatus[];
+  lockStaleness: LockStaleness | undefined;
 }): Problem[] => {
-  const warnings: Problem[] = []
-  const allMembers = flattenMembers(members)
+  const warnings: Problem[] = [];
+  const allMembers = flattenMembers(members);
 
   // Ref mismatch is a critical issue - show first (Issue #88)
-  const refMismatched = allMembers.filter((m) => m.refMismatch !== undefined)
+  const refMismatched = allMembers.filter((m) => m.refMismatch !== undefined);
   if (refMismatched.length > 0) {
-    warnings.push({ _tag: 'ref_mismatch', members: refMismatched })
+    warnings.push({ _tag: "ref_mismatch", members: refMismatched });
   }
 
   // Stale lock: lock ref outdated but current state matches source intent
-  const staleLocked = allMembers.filter((m) => m.staleLock !== undefined)
+  const staleLocked = allMembers.filter((m) => m.staleLock !== undefined);
   if (staleLocked.length > 0) {
-    warnings.push({ _tag: 'stale_lock', members: staleLocked })
+    warnings.push({ _tag: "stale_lock", members: staleLocked });
   }
 
   // Symlink drift: symlink/lock don't match source intent
-  const drifted = allMembers.filter((m) => m.symlinkDrift !== undefined)
+  const drifted = allMembers.filter((m) => m.symlinkDrift !== undefined);
   if (drifted.length > 0) {
-    warnings.push({ _tag: 'symlink_drift', members: drifted })
+    warnings.push({ _tag: "symlink_drift", members: drifted });
+  }
+
+  const duplicateWorktrees = allMembers.filter((m) => m.duplicateWorktree !== undefined);
+  if (duplicateWorktrees.length > 0) {
+    warnings.push({ _tag: "duplicate_worktree", members: duplicateWorktrees });
   }
 
   if (lockStaleness !== undefined) {
     if (lockStaleness.exists === false) {
-      const hasRemoteMembers = allMembers.some((m) => !m.isLocal)
+      const hasRemoteMembers = allMembers.some((m) => !m.isLocal);
       if (hasRemoteMembers === true) {
-        warnings.push({ _tag: 'lock_missing' })
+        warnings.push({ _tag: "lock_missing" });
       }
     } else if (lockStaleness.missingFromLock.length > 0 || lockStaleness.extraInLock.length > 0) {
       warnings.push({
-        _tag: 'lock_stale',
+        _tag: "lock_stale",
         missingFromLock: lockStaleness.missingFromLock,
         extraInLock: lockStaleness.extraInLock,
-      })
+      });
     }
   }
 
-  const notSynced = allMembers.filter((m) => !m.exists)
+  const notSynced = allMembers.filter((m) => !m.exists);
   if (notSynced.length > 0) {
-    warnings.push({ _tag: 'not_synced', members: notSynced })
+    warnings.push({ _tag: "not_synced", members: notSynced });
   }
 
-  const dirty = allMembers.filter((m) => m.gitStatus?.isDirty)
+  const dirty = allMembers.filter((m) => m.gitStatus?.isDirty);
   if (dirty.length > 0) {
-    warnings.push({ _tag: 'dirty', members: dirty })
+    warnings.push({ _tag: "dirty", members: dirty });
   }
 
-  const unpushed = allMembers.filter((m) => m.gitStatus?.hasUnpushed)
+  const unpushed = allMembers.filter((m) => m.gitStatus?.hasUnpushed);
   if (unpushed.length > 0) {
-    warnings.push({ _tag: 'unpushed', members: unpushed })
+    warnings.push({ _tag: "unpushed", members: unpushed });
   }
 
-  return warnings
-}
+  return warnings;
+};
 
 /** Generate a unique key for a problem based on its tag and content */
 const getProblemKey = (problem: Problem): string => {
   switch (problem._tag) {
-    case 'not_synced':
-      return `not_synced-${problem.members.map((m) => m.name).join(',')}`
-    case 'dirty':
-      return `dirty-${problem.members.map((m) => m.name).join(',')}`
-    case 'unpushed':
-      return `unpushed-${problem.members.map((m) => m.name).join(',')}`
-    case 'lock_missing':
-      return 'lock_missing'
-    case 'lock_stale':
-      return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
-    case 'stale_lock':
-      return `stale_lock-${problem.members.map((m) => m.name).join(',')}`
-    case 'symlink_drift':
-      return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
-    case 'ref_mismatch':
-      return `ref_mismatch-${problem.members.map((m) => m.name).join(',')}`
+    case "not_synced":
+      return `not_synced-${problem.members.map((m) => m.name).join(",")}`;
+    case "dirty":
+      return `dirty-${problem.members.map((m) => m.name).join(",")}`;
+    case "unpushed":
+      return `unpushed-${problem.members.map((m) => m.name).join(",")}`;
+    case "lock_missing":
+      return "lock_missing";
+    case "lock_stale":
+      return `lock_stale-${problem.missingFromLock.join(",")}-${problem.extraInLock.join(",")}`;
+    case "stale_lock":
+      return `stale_lock-${problem.members.map((m) => m.name).join(",")}`;
+    case "symlink_drift":
+      return `symlink_drift-${problem.members.map((m) => m.name).join(",")}`;
+    case "duplicate_worktree":
+      return `duplicate_worktree-${problem.members.map((m) => m.name).join(",")}`;
+    case "ref_mismatch":
+      return `ref_mismatch-${problem.members.map((m) => m.name).join(",")}`;
   }
-}
+};
 
 /** Count members at different levels */
 const countMembers = (members: readonly MemberStatus[]) => {
-  const direct = members.length
-  let nested = 0
-  let synced = 0
+  const direct = members.length;
+  let nested = 0;
+  let synced = 0;
 
   const countRecursive = ({
     ms,
     isNested,
   }: {
-    ms: readonly MemberStatus[]
-    isNested: boolean
+    ms: readonly MemberStatus[];
+    isNested: boolean;
   }): void => {
     for (const m of ms) {
-      if (isNested === true) nested++
-      if (m.exists === true) synced++
+      if (isNested === true) nested++;
+      if (m.exists === true) synced++;
       if (m.nestedMembers !== undefined) {
-        countRecursive({ ms: m.nestedMembers, isNested: true })
+        countRecursive({ ms: m.nestedMembers, isNested: true });
       }
     }
-  }
+  };
 
   for (const m of members) {
-    if (m.exists === true) synced++
+    if (m.exists === true) synced++;
     if (m.nestedMembers !== undefined) {
-      countRecursive({ ms: m.nestedMembers, isNested: true })
+      countRecursive({ ms: m.nestedMembers, isNested: true });
     }
   }
 
-  return { direct, nested, synced, total: direct + nested }
-}
+  return { direct, nested, synced, total: direct + nested };
+};
 
 /** Format relative time */
 const formatRelativeTime = (date: Date): string => {
-  const now = Date.now()
-  const diff = now - date.getTime()
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
+  const now = Date.now();
+  const diff = now - date.getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
 
-  if (days > 0) return `${days}d ago`
-  if (hours > 0) return `${hours}h ago`
-  if (minutes > 0) return `${minutes}m ago`
-  return 'just now'
-}
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return "just now";
+};
 
 /** Detect which symbols are used for legend */
 const detectUsedSymbols = (members: readonly MemberStatus[]) => {
-  const allMembers = flattenMembers(members)
+  const allMembers = flattenMembers(members);
   return {
     hasDirty: allMembers.some((m) => m.gitStatus?.isDirty),
     hasUnpushed: allMembers.some((m) => m.gitStatus?.hasUnpushed),
     hasPinned: allMembers.some((m) => m.lockInfo?.pinned),
     hasNotSynced: allMembers.some((m) => !m.exists),
-  }
-}
+  };
+};
 
 // =============================================================================
 // Internal Components - Warnings
@@ -340,41 +354,41 @@ const detectUsedSymbols = (members: readonly MemberStatus[]) => {
 const WarningBadge = () => {
   return (
     <Text backgroundColor="yellow" color="black" bold>
-      {' WARNING '}
+      {" WARNING "}
     </Text>
-  )
-}
+  );
+};
 
 /** Single warning item */
 const WarningItem = ({ problem }: { problem: Problem }) => {
   switch (problem._tag) {
-    case 'ref_mismatch': {
-      const count = problem.members.length
+    case "ref_mismatch": {
+      const count = problem.members.length;
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold color="red">
-              {count} member{count > 1 ? 's' : ''}
+              {count} member{count > 1 ? "s" : ""}
             </Text>
             <Text> </Text>
             <Text dim>git HEAD differs from store path</Text>
           </Box>
           {problem.members.map((m) => {
-            const mismatch = m.refMismatch!
+            const mismatch = m.refMismatch!;
             return (
               <Box key={m.name}>
                 <Box flexDirection="row">
-                  <Text>{'    '}</Text>
+                  <Text>{"    "}</Text>
                   <Text bold>{m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text dim>store path: </Text>
                   <Text color="green">{mismatch.expectedRef}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text dim>git HEAD: </Text>
                   <Text color="yellow">
                     {mismatch.isDetached !== undefined
@@ -383,252 +397,299 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   </Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text color="cyan">fix: </Text>
                   <Text>
                     mr pin {m.name} -c {mismatch.actualRef}
                   </Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'             '}</Text>
+                  <Text>{"             "}</Text>
                   <Text dim>→ creates worktree for {mismatch.actualRef}, updates lock</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'           '}</Text>
+                  <Text>{"           "}</Text>
                   <Text dim>or: </Text>
                   <Text>git checkout {mismatch.expectedRef}</Text>
                   <Text dim> (in repos/{m.name})</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'             '}</Text>
+                  <Text>{"             "}</Text>
                   <Text dim>→ restores expected state (fails if uncommitted changes)</Text>
                 </Box>
               </Box>
-            )
+            );
           })}
         </Box>
-      )
+      );
     }
-    case 'stale_lock': {
-      const count = problem.members.length
+    case "stale_lock": {
+      const count = problem.members.length;
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold color="yellow">
-              {count} member{count > 1 ? 's' : ''}
+              {count} member{count > 1 ? "s" : ""}
             </Text>
             <Text> </Text>
             <Text dim>lock tracking wrong ref</Text>
           </Box>
           {problem.members.map((m) => {
-            const stale = m.staleLock!
+            const stale = m.staleLock!;
             return (
               <Box key={m.name}>
                 <Box flexDirection="row">
-                  <Text>{'    '}</Text>
+                  <Text>{"    "}</Text>
                   <Text bold>{m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text dim>lock: </Text>
                   <Text color="yellow">{stale.lockRef}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text dim>actual: </Text>
                   <Text color="green">{stale.actualRef}</Text>
                   <Text dim> (matches source)</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text color="cyan">fix: </Text>
-                  <Text>mr sync --only {m.name}</Text>
+                  <Text>mr lock sync --only {m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'             '}</Text>
+                  <Text>{"             "}</Text>
                   <Text dim>→ updates lock ref to {stale.actualRef}</Text>
                 </Box>
               </Box>
-            )
+            );
           })}
         </Box>
-      )
+      );
     }
-    case 'symlink_drift': {
-      const count = problem.members.length
+    case "symlink_drift": {
+      const count = problem.members.length;
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold color="red">
-              {count} member{count > 1 ? 's' : ''}
+              {count} member{count > 1 ? "s" : ""}
             </Text>
             <Text> </Text>
             <Text dim>tracking different ref than source</Text>
           </Box>
           {problem.members.map((m) => {
-            const drift = m.symlinkDrift!
+            const drift = m.symlinkDrift!;
             return (
               <Box key={m.name}>
                 <Box flexDirection="row">
-                  <Text>{'    '}</Text>
+                  <Text>{"    "}</Text>
                   <Text bold>{m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text dim>current: </Text>
                   <Text color="yellow">{drift.symlinkRef}</Text>
                   <Text dim> (lock + symlink)</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text dim>source: </Text>
                   <Text color="green">{drift.sourceRef}</Text>
                   <Text dim> (from megarepo.json)</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'      '}</Text>
+                  <Text>{"      "}</Text>
                   <Text color="cyan">fix: </Text>
                   <Text>add #{drift.symlinkRef} to megarepo.json</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'             '}</Text>
+                  <Text>{"             "}</Text>
                   <Text dim>→ keeps tracking {drift.symlinkRef}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'           '}</Text>
+                  <Text>{"           "}</Text>
                   <Text dim>or: </Text>
-                  <Text>mr sync --pull --only {m.name}</Text>
+                  <Text>mr sync --only {m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
-                  <Text>{'             '}</Text>
-                  <Text dim>→ switches to {drift.sourceRef}, updates lock</Text>
+                  <Text>{"             "}</Text>
+                  <Text dim>→ switches to {drift.sourceRef}</Text>
                 </Box>
               </Box>
-            )
+            );
           })}
         </Box>
-      )
+      );
     }
-    case 'lock_missing':
+    case "duplicate_worktree": {
+      const count = problem.members.length;
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
+            <Text bold color="red">
+              {count} member{count > 1 ? "s" : ""}
+            </Text>
+            <Text> </Text>
+            <Text dim>have legacy unencoded branch worktrees</Text>
+          </Box>
+          {problem.members.map((m) => {
+            const duplicate = m.duplicateWorktree!;
+            return (
+              <Box key={m.name}>
+                <Box flexDirection="row">
+                  <Text>{"    "}</Text>
+                  <Text bold>{m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{"      "}</Text>
+                  <Text dim>canonical: </Text>
+                  <Text color="green">{duplicate.canonicalPath}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{"      "}</Text>
+                  <Text dim>legacy: </Text>
+                  <Text color="yellow">{duplicate.legacyPath}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{"      "}</Text>
+                  <Text color="cyan">fix: </Text>
+                  <Text>mr sync --force --only {m.name}</Text>
+                </Box>
+                <Box flexDirection="row">
+                  <Text>{"             "}</Text>
+                  <Text dim>
+                    → archives the legacy path and promotes the canonical encoded worktree
+                  </Text>
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      );
+    }
+    case "lock_missing":
+      return (
+        <Box>
+          <Box flexDirection="row">
+            <Text>{"  "}</Text>
             <Text bold>Lock file missing</Text>
           </Box>
-          <Text dim>{'    Remote members are not tracked in lock file'}</Text>
+          <Text dim>{"    Remote members are not tracked in lock file"}</Text>
           <Box flexDirection="row">
-            <Text>{'    '}</Text>
+            <Text>{"    "}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> mr sync</Text>
+            <Text> mr lock sync</Text>
           </Box>
         </Box>
-      )
-    case 'lock_stale':
+      );
+    case "lock_stale":
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold>Lock file is stale</Text>
           </Box>
           {problem.missingFromLock.length > 0 && (
             <Box flexDirection="row">
-              <Text>{'    '}</Text>
+              <Text>{"    "}</Text>
               <Text dim>Not in lock:</Text>
-              <Text> {problem.missingFromLock.join(', ')}</Text>
+              <Text> {problem.missingFromLock.join(", ")}</Text>
             </Box>
           )}
           {problem.extraInLock.length > 0 && (
             <Box flexDirection="row">
-              <Text>{'    '}</Text>
+              <Text>{"    "}</Text>
               <Text dim>Removed from config:</Text>
-              <Text> {problem.extraInLock.join(', ')}</Text>
+              <Text> {problem.extraInLock.join(", ")}</Text>
             </Box>
           )}
           <Box flexDirection="row">
-            <Text>{'    '}</Text>
+            <Text>{"    "}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> mr sync</Text>
+            <Text> mr lock sync</Text>
           </Box>
         </Box>
-      )
-    case 'not_synced': {
-      const count = problem.members.length
-      const names = problem.members.map((m) => m.name)
+      );
+    case "not_synced": {
+      const count = problem.members.length;
+      const names = problem.members.map((m) => m.name);
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold>
-              {count} member{count > 1 ? 's' : ''}
+              {count} member{count > 1 ? "s" : ""}
             </Text>
             <Text> </Text>
             <Text dim>not synced</Text>
           </Box>
-          <Text dim>{'    ' + names.join(', ')}</Text>
+          <Text dim>{"    " + names.join(", ")}</Text>
           <Box flexDirection="row">
-            <Text>{'    '}</Text>
+            <Text>{"    "}</Text>
             <Text color="cyan">fix:</Text>
             <Text> mr sync</Text>
           </Box>
         </Box>
-      )
+      );
     }
-    case 'dirty': {
-      const count = problem.members.length
+    case "dirty": {
+      const count = problem.members.length;
       const names = problem.members.map((m) => {
-        const changes = m.gitStatus?.changesCount ?? 0
-        return changes > 0 ? `${m.name} (${changes})` : m.name
-      })
+        const changes = m.gitStatus?.changesCount ?? 0;
+        return changes > 0 ? `${m.name} (${changes})` : m.name;
+      });
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold>
-              {count} member{count > 1 ? 's' : ''}
+              {count} member{count > 1 ? "s" : ""}
             </Text>
             <Text> </Text>
             <Text dim>have uncommitted changes</Text>
           </Box>
-          <Text dim>{'    ' + names.join(', ')}</Text>
+          <Text dim>{"    " + names.join(", ")}</Text>
           <Box flexDirection="row">
-            <Text>{'    '}</Text>
+            <Text>{"    "}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> git status {'<member>'}</Text>
+            <Text> git status {"<member>"}</Text>
           </Box>
         </Box>
-      )
+      );
     }
-    case 'unpushed': {
-      const count = problem.members.length
-      const names = problem.members.map((m) => m.name)
+    case "unpushed": {
+      const count = problem.members.length;
+      const names = problem.members.map((m) => m.name);
       return (
         <Box>
           <Box flexDirection="row">
-            <Text>{'  '}</Text>
+            <Text>{"  "}</Text>
             <Text bold>
-              {count} member{count > 1 ? 's' : ''}
+              {count} member{count > 1 ? "s" : ""}
             </Text>
             <Text> </Text>
             <Text dim>have unpushed commits</Text>
           </Box>
-          <Text dim>{'    ' + names.join(', ')}</Text>
+          <Text dim>{"    " + names.join(", ")}</Text>
           <Box flexDirection="row">
-            <Text>{'    '}</Text>
+            <Text>{"    "}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> cd {'<member>'} && git push</Text>
+            <Text> cd {"<member>"} && git push</Text>
           </Box>
         </Box>
-      )
+      );
     }
   }
-}
+};
 
 /** Warnings section */
 const WarningsSection = ({ problems }: { problems: Problem[] }) => {
-  if (problems.length === 0) return null
+  if (problems.length === 0) return null;
   return (
     <Box>
       <WarningBadge />
@@ -642,8 +703,8 @@ const WarningsSection = ({ problems }: { problems: Problem[] }) => {
       <Separator />
       <Text> </Text>
     </Box>
-  )
-}
+  );
+};
 
 // =============================================================================
 // Internal Components - Member Display
@@ -652,56 +713,56 @@ const WarningsSection = ({ problems }: { problems: Problem[] }) => {
 /** Member status symbol */
 const MemberSymbol = ({ member }: { member: MemberStatus }) => {
   if (member.exists === false) {
-    return <Text color="yellow">{symbols.circle}</Text>
+    return <Text color="yellow">{symbols.circle}</Text>;
   }
   if (member.gitStatus?.isDirty === true) {
-    return <Text color="yellow">{symbols.check}</Text>
+    return <Text color="yellow">{symbols.check}</Text>;
   }
-  return <Text color="green">{symbols.check}</Text>
-}
+  return <Text color="green">{symbols.check}</Text>;
+};
 
 /** Branch display with color coding */
 const BranchInfo = ({ member }: { member: MemberStatus }) => {
   if (member.gitStatus?.branch !== undefined && member.gitStatus?.shortRev !== undefined) {
-    const branch = member.gitStatus.branch
-    const rev = member.gitStatus.shortRev
-    const branchColor: 'green' | 'blue' | 'magenta' =
-      branch === 'main' || branch === 'master' ? 'green' : branch === 'HEAD' ? 'blue' : 'magenta'
+    const branch = member.gitStatus.branch;
+    const rev = member.gitStatus.shortRev;
+    const branchColor: "green" | "blue" | "magenta" =
+      branch === "main" || branch === "master" ? "green" : branch === "HEAD" ? "blue" : "magenta";
     return (
       <>
         <Text color={branchColor}>{branch}</Text>
         <Text dim>@{rev}</Text>
       </>
-    )
+    );
   }
   if (member.lockInfo !== undefined) {
-    const ref = member.lockInfo.ref
-    const refColor: 'green' | 'magenta' = ref === 'main' || ref === 'master' ? 'green' : 'magenta'
+    const ref = member.lockInfo.ref;
+    const refColor: "green" | "magenta" = ref === "main" || ref === "master" ? "green" : "magenta";
     return (
       <>
         <Text color={refColor}>{ref}</Text>
         <Text dim>@{member.lockInfo.commit.slice(0, 7)}</Text>
       </>
-    )
+    );
   }
   if (member.isLocal === true) {
-    return <Text dim>(local)</Text>
+    return <Text dim>(local)</Text>;
   }
-  return null
-}
+  return null;
+};
 
 /** Single member line */
 const MemberLine = ({
   member,
   isCurrent,
-  prefix = '',
+  prefix = "",
 }: {
-  member: MemberStatus
-  isCurrent: boolean
-  prefix?: string
+  member: MemberStatus;
+  isCurrent: boolean;
+  prefix?: string;
 }) => {
   // Use 256-color dark gray (index 236) for current line highlight
-  const bgColor = isCurrent === true ? { ansi256: 236 } : undefined
+  const bgColor = isCurrent === true ? { ansi256: 236 } : undefined;
 
   return (
     <Box flexDirection="row" backgroundColor={bgColor} extendBackground={isCurrent}>
@@ -749,8 +810,8 @@ const MemberLine = ({
       )}
       {!member.exists && <Text dim> (not synced)</Text>}
     </Box>
-  )
-}
+  );
+};
 
 /** Recursive tree rendering */
 const MembersTree = ({
@@ -758,17 +819,17 @@ const MembersTree = ({
   prefix,
   currentPath,
 }: {
-  members: readonly MemberStatus[]
-  prefix: string
-  currentPath: readonly string[] | undefined
+  members: readonly MemberStatus[];
+  prefix: string;
+  currentPath: readonly string[] | undefined;
 }) => {
   return (
     <>
       {members.map((member, i) => {
-        const isLast = i === members.length - 1
-        const branchChar = isLast === true ? tree.last : tree.middle
-        const isOnCurrentPath = currentPath !== undefined && currentPath[0] === member.name
-        const isCurrent = isOnCurrentPath && currentPath.length === 1
+        const isLast = i === members.length - 1;
+        const branchChar = isLast === true ? tree.last : tree.middle;
+        const isOnCurrentPath = currentPath !== undefined && currentPath[0] === member.name;
+        const isCurrent = isOnCurrentPath && currentPath.length === 1;
 
         return (
           <React.Fragment key={member.name}>
@@ -783,11 +844,11 @@ const MembersTree = ({
                 />
               )}
           </React.Fragment>
-        )
+        );
       })}
     </>
-  )
-}
+  );
+};
 
 // =============================================================================
 // Internal Components - Summary
@@ -798,89 +859,89 @@ const StatusSummary = ({
   members,
   lastSyncTime,
 }: {
-  members: readonly MemberStatus[]
-  lastSyncTime?: string | undefined
+  members: readonly MemberStatus[];
+  lastSyncTime?: string | undefined;
 }) => {
-  const counts = countMembers(members)
-  const parts: string[] = []
+  const counts = countMembers(members);
+  const parts: string[] = [];
 
   if (counts.nested > 0) {
-    parts.push(`${counts.direct} direct`)
-    parts.push(`${counts.nested} nested`)
+    parts.push(`${counts.direct} direct`);
+    parts.push(`${counts.nested} nested`);
   } else {
-    parts.push(`${counts.total} members`)
+    parts.push(`${counts.total} members`);
   }
 
   if (counts.synced < counts.total) {
-    parts.push(`${counts.synced}/${counts.total} synced`)
+    parts.push(`${counts.synced}/${counts.total} synced`);
   }
 
   if (lastSyncTime !== undefined) {
-    const date = new Date(lastSyncTime)
+    const date = new Date(lastSyncTime);
     if (Number.isNaN(date.getTime()) === false) {
-      parts.push(`synced ${formatRelativeTime(date)}`)
+      parts.push(`synced ${formatRelativeTime(date)}`);
     }
   }
 
-  return <Text dim>{parts.join(` ${symbols.dot} `)}</Text>
-}
+  return <Text dim>{parts.join(` ${symbols.dot} `)}</Text>;
+};
 
 /** Legend component */
 const Legend = ({ members }: { members: readonly MemberStatus[] }) => {
-  const used = detectUsedSymbols(members)
-  const items: LegendItem[] = []
+  const used = detectUsedSymbols(members);
+  const items: LegendItem[] = [];
 
   if (used.hasNotSynced === true) {
     items.push({
-      key: 'not-synced',
+      key: "not-synced",
       element: (
         <>
           <Text color="yellow">{symbols.circle}</Text>
           <Text> not synced</Text>
         </>
       ),
-    })
+    });
   }
   if (used.hasDirty === true) {
     items.push({
-      key: 'dirty',
+      key: "dirty",
       element: (
         <>
           <Text color="yellow">{symbols.dirty}</Text>
           <Text> uncommitted</Text>
         </>
       ),
-    })
+    });
   }
   if (used.hasUnpushed === true) {
     items.push({
-      key: 'unpushed',
+      key: "unpushed",
       element: (
         <>
           <Text color="red">{symbols.ahead}</Text>
           <Text> unpushed</Text>
         </>
       ),
-    })
+    });
   }
   if (used.hasPinned === true) {
     items.push({
-      key: 'pinned',
+      key: "pinned",
       element: <Text color="yellow">pinned</Text>,
-    })
+    });
   }
 
-  if (items.length === 0) return null
+  if (items.length === 0) return null;
 
   return (
     <Box flexDirection="row">
       <Text dim>Legend: </Text>
       {items.map((item, i) => (
         <React.Fragment key={item.key}>
-          {i > 0 && <Text>{'  '}</Text>}
+          {i > 0 && <Text>{"  "}</Text>}
           {item.element}
         </React.Fragment>
       ))}
     </Box>
-  )
-}
+  );
+};

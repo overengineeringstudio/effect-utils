@@ -1,29 +1,20 @@
 # Getting Started
 
-This guide covers installing megarepo and creating your first multi-repo workspace.
+This guide covers installing megarepo and creating a first workspace.
 
 ## Installation
 
 ```bash
-# Using bun
 bun add -D @overeng/megarepo
+```
 
-# Or run directly
+Or run it directly:
+
+```bash
 bunx @overeng/megarepo
 ```
 
-Add an alias for convenience:
-
-```bash
-# In your shell config (.bashrc, .zshrc, etc.)
-alias mr='bunx @overeng/megarepo'
-```
-
-## Creating Your First Megarepo
-
-### 1. Initialize
-
-Create a new directory and initialize it as both a git repo and megarepo:
+## Create a Workspace
 
 ```bash
 mkdir my-workspace
@@ -32,138 +23,55 @@ git init
 mr init
 ```
 
-This creates `megarepo.json`:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json",
-  "members": {}
-}
-```
-
-### 2. Add Members
-
-Add repositories using GitHub shorthand, full URLs, or local paths:
+Add members:
 
 ```bash
-# GitHub shorthand (uses default branch)
 mr add effect-ts/effect
-
-# Specific branch
 mr add effect-ts/effect#next --name effect-next
-
-# Specific tag
 mr add effect-ts/effect#v3.0.0 --name effect-v3
-
-# Full URL
-mr add https://gitlab.com/org/repo --name gitlab-lib
-
-# Local path
 mr add ../shared-lib --name shared-lib
 ```
 
-Your `megarepo.json` now looks like:
-
-```json
-{
-  "$schema": "...",
-  "members": {
-    "effect": "effect-ts/effect",
-    "effect-next": "effect-ts/effect#next",
-    "effect-v3": "effect-ts/effect#v3.0.0",
-    "gitlab-lib": "https://gitlab.com/org/repo",
-    "shared-lib": "../shared-lib"
-  }
-}
-```
-
-### 3. Sync
-
-Sync clones repos to the global store and creates symlinks:
+Materialize the workspace:
 
 ```bash
 mr sync
 ```
 
-Output:
+That creates `repos/*` symlinks pointing at canonical store worktrees.
 
-```
-✓ effect (cloned)
-✓ effect-next (cloned)
-✓ effect-v3 (cloned)
-✓ gitlab-lib (cloned)
-✓ shared-lib (synced)
+## Record the Lock
 
-Synced 5 members, 0 already synced
-```
-
-Your workspace now contains:
-
-```
-my-workspace/
-├── megarepo.json
-├── megarepo.lock          # Tracks exact commits
-└── repos/
-    ├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
-    ├── effect-next -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/next/
-    ├── effect-v3 -> ~/.megarepo/github.com/effect-ts/effect/refs/tags/v3.0.0/
-    ├── gitlab-lib -> ~/.megarepo/gitlab.com/org/repo/refs/heads/main/
-    └── shared-lib -> ../shared-lib
-```
-
-### 4. Commit the Lock File
-
-Commit both config and lock file for reproducible builds:
+`mr sync` does not modify `megarepo.lock`. Once the workspace is in the state you want to commit, write the lock explicitly:
 
 ```bash
+mr lock sync
 git add megarepo.json megarepo.lock
-git commit -m "Initialize megarepo with members"
+git commit -m "Initialize megarepo"
 ```
 
-## Updating Members
+## Update Members Intentionally
 
-To fetch latest commits:
+To move branch-tracking members forward:
 
 ```bash
-# Update all members
-mr sync --pull
-
-# Update specific member
-mr sync --pull --only effect
+mr lock update
+mr lock update --only effect
 ```
 
 ## CI Setup
 
-Use `--frozen` mode in CI to ensure reproducible builds:
+Use lock application in CI:
 
 ```bash
-mr sync --frozen
+mr lock apply --git-protocol=https
 ```
 
-This:
-
-- Requires `megarepo.lock` to exist
-- Fails if lock doesn't match config
-- Uses exact commits from lock file
-- Never fetches or resolves new refs
-
-## Shell Integration
-
-For devenv-based shells, use a simple `.envrc`:
-
-```bash
-# .envrc
-source_env_if_exists .envrc.local
-if has devenv && test -f devenv.nix; then
-    use devenv
-fi
-```
-
-The megarepo root path is available as `DEVENV_ROOT` (provided by devenv).
+This requires a non-stale `megarepo.lock` and materializes the exact locked commits.
 
 ## Next Steps
 
-- [Commands Reference](commands.md) - Full CLI documentation
-- [Workflows](workflows.md) - Common usage patterns
-- [Bun Integration](integrations/bun.md) - Package manager setup
-- [TypeScript Integration](integrations/typescript.md) - Cross-repo types
+- [Commands Reference](commands.md)
+- [Workflows](workflows.md)
+- [Bun Integration](integrations/bun.md)
+- [TypeScript Integration](integrations/typescript.md)
