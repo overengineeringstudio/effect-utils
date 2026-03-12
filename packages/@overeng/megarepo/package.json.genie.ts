@@ -1,10 +1,4 @@
-import {
-  catalog,
-  effectLspDevDeps,
-  packageJson,
-  privatePackageDefaults,
-  type PackageJsonData,
-} from '../../../genie/internal.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
@@ -19,13 +13,40 @@ const peerDepNames = [
   'effect',
 ] as const
 
-const tuiReactPeerNames = Object.keys(tuiReactPkg.data.peerDependencies ?? {})
-
-const deps = catalog.compose({
+const runtimeDeps = catalog.compose({
   dir: import.meta.dirname,
-  workspace: [effectPathPkg, tuiReactPkg, utilsPkg],
-  external: catalog.pick('react'),
-  workspaceSupport: [tuiCorePkg],
+  dependencies: {
+    workspace: [effectPathPkg, tuiReactPkg, utilsPkg],
+    external: catalog.pick('react'),
+  },
+  devDependencies: {
+    workspace: [tuiCorePkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        '@effect/vitest',
+        '@types/bun',
+        '@types/node',
+        '@types/react',
+        'vitest',
+        'storybook',
+        '@storybook/react',
+        '@storybook/react-vite',
+        '@xterm/xterm',
+        '@xterm/addon-fit',
+        'react-dom',
+        'react-reconciler',
+        'typescript',
+        'vite',
+        '@vitejs/plugin-react',
+      ),
+    },
+  },
+  peerDependencies: {
+    workspace: [utilsPkg, tuiReactPkg],
+    external: catalog.pick(...peerDepNames),
+  },
+  mode: 'install',
 })
 
 export default packageJson(
@@ -47,38 +68,9 @@ export default packageJson(
         './cli': './dist/cli.js',
       },
     },
-    dependencies: deps.dependencies,
     dependenciesMeta: {
       '@overeng/tui-react': { injected: true },
     },
-    devDependencies: {
-      ...catalog.pick(
-        ...peerDepNames,
-        ...tuiReactPeerNames,
-        '@effect/vitest',
-        '@types/bun',
-        '@types/node',
-        '@types/react',
-        'vitest',
-        'storybook',
-        '@storybook/react',
-        '@storybook/react-vite',
-        '@xterm/xterm',
-        '@xterm/addon-fit',
-        'react-dom',
-        'react-reconciler',
-        'vite',
-        '@vitejs/plugin-react',
-      ),
-      ...effectLspDevDeps(),
-    },
-    peerDependencies: {
-      ...utilsPkg.data.peerDependencies,
-      ...tuiReactPkg.data.peerDependencies,
-      ...catalog.peers(...peerDepNames),
-    },
-  } satisfies PackageJsonData,
-  {
-    workspace: deps.workspace,
   },
+  runtimeDeps,
 )

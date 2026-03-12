@@ -13,5 +13,10 @@ export default tsconfigJson({
     types: ['node', 'bun'],
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*'],
-  references: [{ path: '../tui-react' }, { path: '../effect-path' }, { path: '../utils' }],
+  references: [
+    { path: '../tui-core' },
+    { path: '../tui-react' },
+    { path: '../effect-path' },
+    { path: '../utils' },
+  ],
 } satisfies TSConfigArgs)

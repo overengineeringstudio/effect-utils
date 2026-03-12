@@ -1,10 +1,18 @@
 import {
   catalog,
-  defineWorkspaceMetadata,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+
+const deps = catalog.compose({
+  dir: import.meta.dirname,
+  devDependencies: {
+    external: {
+      ...catalog.pick('@types/node', 'typescript', 'vitest'),
+    },
+  },
+})
 
 export default packageJson(
   {
@@ -19,14 +27,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-    dependencies: {},
-    devDependencies: {
-      ...catalog.pick('@types/node', 'typescript', 'vitest'),
-    },
   } satisfies PackageJsonData,
-  {
-    workspace: defineWorkspaceMetadata({
-      dir: import.meta.dirname,
-    }),
-  },
+  deps,
 )

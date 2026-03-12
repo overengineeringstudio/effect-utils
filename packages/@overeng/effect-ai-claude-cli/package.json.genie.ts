@@ -1,36 +1,46 @@
 import {
   catalog,
-  effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['@effect/ai', '@effect/platform', 'effect'] as const
-
-export default packageJson({
-  name: '@overeng/effect-ai-claude-cli',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/mod.ts',
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/mod.js',
+const workspaceDeps = catalog.compose({
+  dir: import.meta.dirname,
+  devDependencies: {
+    workspace: [utilsDevPkg],
+    external: {
+      ...catalog.pick(
+        '@effect/ai',
+        '@effect/platform',
+        '@effect/vitest',
+        'typescript',
+        'effect',
+        'vite',
+        'vitest',
+      ),
     },
   },
-  devDependencies: {
-    ...catalog.pick(
-      '@effect/ai',
-      '@effect/platform',
-      '@effect/vitest',
-      '@overeng/utils-dev',
-      'effect',
-      'vite',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
   },
-  peerDependencies: catalog.peers(...peerDepNames),
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: '@overeng/effect-ai-claude-cli',
+    ...privatePackageDefaults,
+    exports: {
+      '.': './src/mod.ts',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+      },
+    },
+  } satisfies PackageJsonData,
+  workspaceDeps,
+)

@@ -6,9 +6,20 @@ Generate `package.json` files from typed data.
 
 - first argument: canonical emitted `package.json` data
 - second argument: optional non-emitted metadata
+- metadata must be static import-time data, not runtime `ctx`
 
 The generated file only contains the first argument. The second argument is for
 composition by other Genie files.
+
+For normal package authoring, the intended path is:
+
+- `catalog.compose(...)`
+- `packageJson(data, composition)`
+
+Treat the composition object as coupled package-authoring state. Avoid manually
+assembling emitted dependency maps and workspace metadata from separate sources.
+The important safety boundary is package authoring time. After that, the
+workspace metadata can be treated as normalized graph metadata for projection.
 
 ## Usage
 
@@ -18,21 +29,28 @@ import { catalog, packageJson } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
   dir: import.meta.dirname,
-  workspace: [utilsPkg],
-  external: catalog.pick('react'),
+  dependencies: {
+    workspace: [utilsPkg],
+    external: catalog.pick('react'),
+  },
 })
 
 export default packageJson(
   {
     name: '@myorg/app',
     version: '1.0.0',
-    dependencies: deps.dependencies,
   },
-  {
-    workspace: deps.workspace,
-  },
+  deps,
 )
 ```
+
+If local workspace dependency specs (`workspace:`, `file:`, `link:`) are
+emitted, the package must also carry workspace metadata. The supported path is
+to pass the coupled `deps` composition object as the second argument to
+`packageJson(...)`.
+Passing raw `workspace` metadata directly is intentionally unsupported for that
+case. Manually emitting local workspace deps without coupled composition fails
+validation.
 
 ## Composition
 
@@ -45,19 +63,56 @@ This is useful for:
 
 - workspace dependency recomposition
 - aggregate workspace generation
-- inheriting peer dependency declarations
+- recomposing inherited peer installs when needed
 
 ## Catalog Helpers
 
 Use:
 
 - `catalog.pick(...)` for external dependency versions
-- `catalog.compose({ dir, workspace, external })` to derive:
-  - emitted `dependencies`
-  - non-emitted workspace metadata
+- `catalog.compose({ dir, dependencies, devDependencies, peerDependencies, mode })` to derive one
+  coupled package composition object
 
-Pass `external` as the result of `catalog.pick(...)`, not as catalog keys.
+Use `mode: 'manifest'` for normal package manifest composition.
+Use `mode: 'install'` for private/app-style install composition when inherited
+peer dependencies from imported workspace packages should also be installed
+explicitly from the catalog. `peerDependencies` are the semantic source of
+truth for these inherited installs; no extra install metadata is needed.
+
+When `mode: 'install'` is enabled, inherited peer installs come from the
+composed workspace packages' `peerDependencies` plus any explicit
+`peerDependencies.external` entries. Avoid manually spreading imported
+packages' `data.peerDependencies` into emitted dependency buckets.
+
+Pass `dependencies.external` / `devDependencies.external` as the result of
+`catalog.pick(...)`, not as catalog keys. Keep package-level composition on the
+coupled `composition` object and avoid manually threading emitted dependency
+maps and workspace metadata separately.
 
 `catalog.compose(...)` expects imported workspace package modules, not package
 names. This avoids a second registry and keeps package-local definitions as the
 source of truth.
+
+Pass the coupled result back into `packageJson(...)` as
+`packageJson(data, deps)` so emitted dependencies and non-emitted workspace
+metadata stay coupled. When using composition, emitted `dependencies` and
+`devDependencies` must come from the composition object, not from the first
+argument.
+
+Treat this coupled composition path as the only normal authoring API for local
+workspace dependency specs. Lower-level workspace metadata shaping is
+intentionally unsupported for normal package authoring.
+
+The metadata contains stable composition facts such as logical workspace
+identity (`repoName`, `memberPath`) and imported workspace deps. Projection
+helpers receive `ctx` later when they need to render relative paths.
+
+For projections, keep using the dedicated wrappers:
+
+- `workspaceRootFromPackages(...)`
+- `pnpmWorkspaceYamlFromPackage(...)`
+- `pnpmWorkspaceYamlFromPackages(...)`
+
+Do not treat lower-level workspace graph internals as co-equal authoring APIs.
+Those helpers are intentionally internal adapter code for the composed-root
+projection layer.

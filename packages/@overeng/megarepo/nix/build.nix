@@ -7,8 +7,8 @@
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
-  lockfileHash = "sha256-JXJwN/b9Og/DOcMQjTlmKi5+FvW/vS8KJstqmDpF1lg=";
-  packageJsonDepsHash = "sha256-dhrqTHhoUUk753oIk61dMTbxJ1ivA9UYEu6h9jM51qA=";
+  lockfileHash = "sha256-tIv+7T30Dp1vffedW19xlZxf3/zoG023POR+/k7NJR0=";
+  packageJsonDepsHash = "sha256-8jftZ5aQE3EYEx4SYZm68oIDo1bqymx39VXWbT+HQkw=";
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
@@ -16,7 +16,7 @@ let
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
-    pnpmDepsHash = "sha256-W3wFO12X/P7p5ZQZ98zJ5I/7B86xusHcW1KeP28uXg4=";
+    pnpmDepsHash = "sha256-WZUubgXZunmOYARSjnPtIQtV96b1DPRnPLKW4taPydk=";
     smokeTestArgs = [ "--help" ];
     inherit lockfileHash gitRev commitTs dirty;
   };

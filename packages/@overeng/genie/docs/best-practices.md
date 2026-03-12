@@ -40,14 +40,19 @@ Genie uses `Strict<T, TBase>` generics to catch typos (extra properties) at comp
 
 **Available types:**
 
-| Factory               | Type to use with `satisfies` |
-| --------------------- | ---------------------------- |
-| `githubRuleset()`     | `GithubRulesetArgs`          |
-| `githubWorkflow()`    | `GitHubWorkflowArgs`         |
-| `packageJson()`       | `PackageJsonData`            |
-| `workspaceRoot()`     | `WorkspaceRootData`          |
-| `tsconfigJson()`      | `TSConfigArgs`               |
-| `pnpmWorkspaceYaml()` | `PnpmWorkspaceData`          |
-| `oxlintConfig()`      | `OxlintConfigArgs`           |
-| `oxfmtConfig()`       | `OxfmtConfigArgs`            |
-| `megarepoJson()`      | `MegarepoConfigArgs`         |
+| Factory            | Type to use with `satisfies` |
+| ------------------ | ---------------------------- |
+| `githubRuleset()`  | `GithubRulesetArgs`          |
+| `githubWorkflow()` | `GitHubWorkflowArgs`         |
+| `packageJson()`    | `PackageJsonData`            |
+| `tsconfigJson()`   | `TSConfigArgs`               |
+| `oxlintConfig()`   | `OxlintConfigArgs`           |
+| `oxfmtConfig()`    | `OxfmtConfigArgs`            |
+| `megarepoJson()`   | `MegarepoConfigArgs`         |
+
+For workspace root and pnpm workspace projections, prefer the composition
+wrappers:
+
+- `workspaceRootFromPackages(...)`
+- `pnpmWorkspaceYamlFromPackage(...)`
+- `pnpmWorkspaceYamlFromPackages(...)`

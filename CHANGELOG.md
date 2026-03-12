@@ -40,6 +40,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Effect TypeScript tooling**: switch local language-service integration to Nix-provided `effect-tsgo`
+  - Repoints the dev environment to upstream `Effect-TS/tsgo`
+  - Renames generator helpers/comments to describe the current tsgo-based model
+  - Keeps the `@effect/language-service` tsconfig plugin entry only as the current upstream tsgo configuration channel
 - **pnpm/dev workspace**: Switch dev installs to a generated repo-root hoisted pnpm workspace
   - Adds generated root `package.json` and `pnpm-workspace.yaml` with explicit workspace members
   - Makes `pnpm:install` own the repo-root install state and refresh package-closure lockfiles in lockfile-only mode
@@ -59,6 +63,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/tasks/shared/lint-effect-lsp.nix**: add reusable `lint:check:effect-lsp` tsgo diagnostics task
+  - Exports `effect-tsgo` from the flake package set for downstream devenv consumers
+  - Wires the task into `lint:check` so `check:quick` picks up Effect diagnostics through the lint group
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
 - **docs/bun**: Document the upstream nested-workspace `patchedDependencies` blocker and link the Bun issue
 - **docs/bun**: Note the Bun-only local workspace fork workaround for patched dependencies
@@ -66,6 +73,9 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **devenv/tasks/shared/ts.nix**: remove the legacy `ts:patch-lsp` patching flow from the shared TypeScript task module
+  - Drops the `lspPatchCmd`, `lspPatchAfter`, and `lspPatchDir` parameters from the exported shared task API
+  - Removes stale shell-entry and OTEL references to `ts:patch-lsp`
 - **devenv/tasks/shared/setup.nix**: Remove `setup:opt:*` wrapper tasks and `setup:optional` gate
   - Optional tasks now use native `@complete` dependency suffix instead of nested `devenv tasks run` wrappers
   - Eliminates 6x shell re-evaluation, ~5.9s trace gap, fork-bomb guards, and filesystem locks

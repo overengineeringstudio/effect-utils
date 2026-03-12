@@ -1,6 +1,5 @@
 import {
   catalog,
-  effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -9,9 +8,24 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['@effect/platform', 'effect'] as const
 
-const deps = catalog.compose({
+const workspaceDeps = catalog.compose({
   dir: import.meta.dirname,
-  workspaceSupport: [utilsDevPkg],
+  devDependencies: {
+    workspace: [utilsDevPkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        '@effect/platform-node',
+        '@effect/vitest',
+        '@types/node',
+        'typescript',
+        'vitest',
+      ),
+    },
+  },
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
+  },
 })
 
 export default packageJson(
@@ -27,20 +41,6 @@ export default packageJson(
         '.': './dist/mod.js',
       },
     },
-    devDependencies: {
-      ...catalog.pick(
-        ...peerDepNames,
-        '@effect/platform-node',
-        '@effect/vitest',
-        '@overeng/utils-dev',
-        '@types/node',
-        'vitest',
-      ),
-      ...effectLspDevDeps(),
-    },
-    peerDependencies: catalog.peers(...peerDepNames),
   } satisfies PackageJsonData,
-  {
-    workspace: deps.workspace,
-  },
+  workspaceDeps,
 )

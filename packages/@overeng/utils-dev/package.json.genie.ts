@@ -1,7 +1,5 @@
 import {
   catalog,
-  defineWorkspaceMetadata,
-  effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
@@ -16,6 +14,18 @@ const peerDepNames = [
   'vitest',
 ] as const
 
+const deps = catalog.compose({
+  dir: import.meta.dirname,
+  devDependencies: {
+    external: {
+      ...catalog.pick(...peerDepNames, '@types/node', 'typescript'),
+    },
+  },
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
+  },
+})
+
 export default packageJson(
   {
     name: '@overeng/utils-dev',
@@ -29,16 +39,6 @@ export default packageJson(
         './node-vitest': './dist/node-vitest/mod.js',
       },
     },
-    dependencies: {},
-    devDependencies: {
-      ...catalog.pick(...peerDepNames, '@types/node'),
-      ...effectLspDevDeps(),
-    },
-    peerDependencies: catalog.peers(...peerDepNames),
   },
-  {
-    workspace: defineWorkspaceMetadata({
-      dir: import.meta.dirname,
-    }),
-  },
+  deps,
 )

@@ -221,8 +221,8 @@ See [Megarepo Nix Integration Guide](../../packages/@overeng/megarepo/docs/integ
 
 Nix builds run in a **sandboxed environment** that isolates the build from the host system. This sandbox does not include standard FHS paths like `/usr/bin/`. When npm/pnpm packages have lifecycle scripts (postinstall, prepare) that invoke binaries with `#!/usr/bin/env node` shebangs, they fail:
 
-```
-sh: /build/workspace/.../node_modules/.bin/effect-language-service: /usr/bin/env: bad interpreter: No such file or directory
+```sh
+sh: /build/workspace/.../node_modules/.bin/some-cli: /usr/bin/env: bad interpreter: No such file or directory
 ```
 
 ### Why This Happens

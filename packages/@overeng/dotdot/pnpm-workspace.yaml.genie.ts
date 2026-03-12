@@ -1,3 +1,8 @@
-import { pnpmWorkspaceStandalone } from '../../../genie/internal.ts'
+import { commonPnpmWorkspaceData, pnpmWorkspaceYamlFromPackages } from '../../../genie/internal.ts'
 
-export default pnpmWorkspaceStandalone()
+export default pnpmWorkspaceYamlFromPackages({
+  dir: import.meta.dirname,
+  packages: [],
+  extraPackages: ['.'],
+  ...commonPnpmWorkspaceData,
+})

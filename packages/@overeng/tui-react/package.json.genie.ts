@@ -1,11 +1,11 @@
 import {
   catalog,
-  effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
@@ -23,18 +23,47 @@ const peerDepNames = [
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 
-const deps = catalog.compose({
+const runtimeDeps = catalog.compose({
   dir: import.meta.dirname,
-  workspace: [tuiCorePkg],
-  external: catalog.pick(
-    'yoga-layout',
-    'string-width',
-    'cli-truncate',
-    '@xterm/xterm',
-    '@xterm/headless',
-    '@xterm/addon-fit',
-  ),
-  workspaceSupport: [utilsDevPkg],
+  dependencies: {
+    workspace: [tuiCorePkg],
+    external: catalog.pick(
+      'yoga-layout',
+      'string-width',
+      'cli-truncate',
+      '@xterm/xterm',
+      '@xterm/headless',
+      '@xterm/addon-fit',
+    ),
+  },
+  devDependencies: {
+    workspace: [utilsPkg, utilsDevPkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        '@types/node',
+        '@types/react',
+        '@types/react-reconciler',
+        'vitest',
+        '@effect/vitest',
+        '@playwright/test',
+        'effect',
+        '@effect/platform',
+        ...effectAtomDeps,
+        ...opentuiDeps,
+        'storybook',
+        '@storybook/react',
+        '@storybook/react-vite',
+        'vite',
+        '@vitejs/plugin-react',
+        'typescript',
+      ),
+    },
+  },
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
+  },
+  mode: 'install',
 })
 
 export default packageJson(
@@ -62,32 +91,6 @@ export default packageJson(
         './opentui': './dist/effect/opentui/mod.js',
       },
     },
-    dependencies: deps.dependencies,
-    devDependencies: {
-      ...effectLspDevDeps(),
-      ...catalog.pick(
-        ...peerDepNames,
-        '@types/node',
-        '@types/react',
-        '@types/react-reconciler',
-        'vitest',
-        '@effect/vitest',
-        '@playwright/test',
-        '@overeng/utils',
-        'effect',
-        '@effect/platform',
-        ...effectAtomDeps,
-        ...opentuiDeps,
-        'storybook',
-        '@storybook/react',
-        '@storybook/react-vite',
-        'vite',
-        '@vitejs/plugin-react',
-      ),
-    },
-    peerDependencies: catalog.peers(...peerDepNames, ...effectAtomDeps, ...opentuiDeps),
   } satisfies PackageJsonData,
-  {
-    workspace: deps.workspace,
-  },
+  runtimeDeps,
 )

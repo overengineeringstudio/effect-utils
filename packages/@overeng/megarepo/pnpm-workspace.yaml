@@ -1,7 +1,13 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../effect-path, ../tui-core, ../tui-react, ../utils]
+packages:
+  - .
+  - ../effect-path
+  - ../tui-core
+  - ../tui-react
+  - ../utils
+  - ../utils-dev
 
 patchedDependencies:
   effect-distributed-lock@0.0.11: ../utils/patches/effect-distributed-lock@0.0.11.patch

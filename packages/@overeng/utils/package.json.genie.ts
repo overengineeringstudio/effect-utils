@@ -1,7 +1,6 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
-  effectLspDevDeps,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
@@ -21,15 +20,36 @@ const peerDepNames = [
   'effect',
 ] as const
 
-const deps = catalog.compose({
+const runtimeDeps = catalog.compose({
   dir: import.meta.dirname,
-  external: catalog.pick(
-    '@noble/hashes',
-    '@opentelemetry/api',
-    'effect-distributed-lock',
-    'ioredis',
-  ),
-  workspaceSupport: [utilsDevPkg],
+  dependencies: {
+    external: catalog.pick(
+      '@noble/hashes',
+      '@opentelemetry/api',
+      'effect-distributed-lock',
+      'ioredis',
+    ),
+  },
+  devDependencies: {
+    workspace: [utilsDevPkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        ...otelSdkDeps,
+        '@effect/vitest',
+        '@types/node',
+        'storybook',
+        '@storybook/react-vite',
+        'typescript',
+        'vite',
+        'vitest',
+      ),
+    },
+  },
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
+  },
+  mode: 'install',
 })
 
 export default packageJson(
@@ -73,24 +93,6 @@ export default packageJson(
         },
       },
     },
-    dependencies: deps.dependencies,
-    devDependencies: {
-      ...catalog.pick(
-        ...peerDepNames,
-        ...otelSdkDeps,
-        '@effect/vitest',
-        '@overeng/utils-dev',
-        '@types/node',
-        'storybook',
-        '@storybook/react-vite',
-        'vite',
-        'vitest',
-      ),
-      ...effectLspDevDeps(),
-    },
-    peerDependencies: catalog.peers(...peerDepNames),
   } satisfies PackageJsonData,
-  {
-    workspace: deps.workspace,
-  },
+  runtimeDeps,
 )

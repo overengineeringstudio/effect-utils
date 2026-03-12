@@ -7,21 +7,22 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
-import path from 'node:path'
-
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
-import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
+import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
+import {
+  validatePackageRecompositionForPackage,
+  validateWorkspaceMetadataPresenceForPackageJson,
+  validateWorkspaceMetadataForPackageJson,
+} from './validators/recompose.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
 export {
-  CatalogBrand,
   defineCatalog,
   CatalogConflictError,
   type Catalog,
-  type CatalogBrandType,
   type CatalogInput,
-  type ExtendedCatalogInput,
 } from './catalog.ts'
 
 export {
@@ -32,8 +33,6 @@ export {
   type OverridesInput,
   type ExtendedOverridesInput,
 } from './overrides.ts'
-
-export { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 /**
  * Field ordering for package.json (matches syncpack sortFirst convention).
@@ -335,7 +334,8 @@ export type WorkspaceRootData = PackageJsonData & {
 
 /** Static workspace-composition metadata stored in non-emitted generator meta. */
 export type WorkspaceMetadata = {
-  sourceDir: string
+  repoName: string
+  memberPath: string
   deps: readonly WorkspacePackageLike[]
 }
 
@@ -353,18 +353,25 @@ export type WorkspacePackageLike = {
 /** Package.json genie output that carries workspace-composition metadata. */
 export type WorkspacePackage = GenieOutput<PackageJsonData, WorkspaceMeta>
 
-/** Define non-emitted workspace composition metadata for a package generator. */
-export const defineWorkspaceMetadata = ({
-  dir,
-  deps = [],
-}: {
-  dir: string
-  deps?: readonly WorkspacePackageLike[]
-}) =>
-  ({
-    sourceDir: dir,
-    deps,
-  }) satisfies WorkspaceMetadata
+type PackageJsonComposedData = Omit<
+  PackageJsonData,
+  'dependencies' | 'devDependencies' | 'peerDependencies'
+> & {
+  dependencies?: never
+  devDependencies?: never
+  peerDependencies?: never
+}
+
+type PackageJsonMetadataInput<TMeta extends object = {}> = TMeta & {
+  workspace?: never
+  composition?: never
+  [PackageJsonCompositionBrand]?: never
+}
+
+const isPackageJsonComposition = (meta: unknown): meta is PackageJsonComposition =>
+  typeof meta === 'object' &&
+  meta !== null &&
+  PackageJsonCompositionBrand in meta
 
 /**
  * Sort object keys according to a defined order.
@@ -412,92 +419,6 @@ const sortExports = (
   return sorted
 }
 
-/**
- * Compute relative path from one repo-relative location to another.
- * @param from - Source location (e.g., 'packages/@overeng/genie')
- * @param to - Target location (e.g., 'packages/@overeng/utils')
- * @returns Relative path (e.g., '../utils')
- */
-const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
-  // Normalize '.' to empty string (repo root)
-  const normalizedFrom = from === '.' ? '' : from
-  const fromParts = normalizedFrom.split('/').filter(Boolean)
-  const toParts = to.split('/').filter(Boolean)
-
-  // Find common prefix length
-  let common = 0
-  while (
-    common < fromParts.length &&
-    common < toParts.length &&
-    fromParts[common] === toParts[common]
-  ) {
-    common++
-  }
-
-  // Build relative path: go up from 'from', then down to 'to'
-  const upCount = fromParts.length - common
-  const downPath = toParts.slice(common).join('/')
-  const relativePath = '../'.repeat(upCount) + downPath
-
-  return relativePath || '.'
-}
-
-const sortStrings = (values: Iterable<string>) =>
-  [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
-
-const workspaceMemberPathFromPackage = ({
-  rootDir,
-  pkg,
-}: {
-  rootDir: string
-  pkg: WorkspacePackageLike
-}) => {
-  const relative = path.relative(rootDir, pkg.meta.workspace.sourceDir)
-  return relative === '' ? '.' : relative
-}
-
-const collectWorkspaceMembersRecursive = ({
-  packages,
-  rootDir,
-  visited = new Set<string>(),
-}: {
-  packages: readonly WorkspacePackageLike[]
-  rootDir: string
-  visited?: Set<string>
-}): string[] => {
-  const members = new Set<string>()
-
-  for (const pkg of packages) {
-    const pkgName = pkg.data.name
-    if (pkgName === undefined || visited.has(pkgName) === true) continue
-    visited.add(pkgName)
-
-    members.add(workspaceMemberPathFromPackage({ rootDir, pkg }))
-
-    for (const dep of collectWorkspaceMembersRecursive({
-      packages: pkg.meta.workspace.deps,
-      rootDir,
-      visited,
-    })) {
-      members.add(dep)
-    }
-  }
-
-  return sortStrings(members)
-}
-
-/** Recompose canonical root-relative workspace member paths from package metadata. */
-export const workspaceMemberPathsFromPackages = ({
-  dir,
-  packages,
-  extraPackages = [],
-}: {
-  dir: string
-  packages: readonly WorkspacePackageLike[]
-  extraPackages?: readonly string[]
-}) =>
-  sortStrings([...collectWorkspaceMembersRecursive({ packages, rootDir: dir }), ...extraPackages])
-
 /** Prefix for internal file dependencies that use absolute repo paths */
 const INTERNAL_FILE_PREFIX = 'file:packages/'
 /** Prefix for internal link dependencies that use absolute repo paths */
@@ -522,7 +443,7 @@ const resolveDeps = ({
     if (version.startsWith(INTERNAL_FILE_PREFIX) === true) {
       // Convert absolute repo path to relative path
       const targetLocation = version.slice('file:'.length)
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
         to: targetLocation,
       })
@@ -530,7 +451,7 @@ const resolveDeps = ({
     } else if (version.startsWith(INTERNAL_LINK_PREFIX) === true) {
       // Convert absolute repo path to relative path for link: protocol
       const targetLocation = version.slice('link:'.length)
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
         to: targetLocation,
       })
@@ -575,7 +496,7 @@ const resolvePatchPaths = ({
       resolved[pkg] = patchPath
     } else {
       // Repo-relative path - compute relative path from current location
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
         to: patchPath,
       })
@@ -694,44 +615,163 @@ const buildPackageJson = <T extends PackageJsonData>({
  * })
  * ```
  *
- * @example Composing peer dependencies
+ * @example Coupled dependency composition
  * ```ts
- * import { packageJson } from '@overeng/genie'
  * import utilsPkg from '../utils/package.json.genie.ts'
+ * import { catalog, packageJson } from '@overeng/genie'
  *
- * export default packageJson({
- *   name: '@myorg/app',
- *   dependencies: { '@myorg/utils': 'workspace:*' },
- *   peerDependencies: {
- *     ...utilsPkg.data.peerDependencies,  // Inherit peer deps
+ * const composition = catalog.compose({
+ *   dir: import.meta.dirname,
+ *   dependencies: {
+ *     workspace: [utilsPkg],
+ *     external: catalog.pick('effect'),
  *   },
- *   // If the app also installs those peers locally, use catalog versions
- *   // in dependencies/devDependencies instead of copying peer ranges.
+ *   mode: 'install',
  * })
+ *
+ * export default packageJson(
+ *   {
+ *     name: '@myorg/app',
+ *   },
+ *   composition,
+ * )
  * ```
  */
 export function packageJson<const T extends PackageJsonData>(
   data: Strict<T, PackageJsonData>,
 ): GenieOutput<T>
-export function packageJson<const T extends PackageJsonData, const TMeta>(
+export function packageJson<const T extends PackageJsonComposedData>(
+  data: Strict<T, PackageJsonComposedData>,
+  composition: PackageJsonComposition,
+): GenieOutput<T, WorkspaceMeta>
+export function packageJson<const T extends PackageJsonData, const TMeta extends object>(
   data: Strict<T, PackageJsonData>,
-  meta: TMeta,
+  meta: PackageJsonMetadataInput<TMeta>,
 ): GenieOutput<T, TMeta>
-/** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
+/**
+ * Genie convention: the first arg is emitted data and the second arg is
+ * non-emitted metadata.
+ *
+ * For package.json generators, workspace metadata must flow through the
+ * branded composition object returned by `catalog.compose(...)` so emitted
+ * dependencies and workspace closure stay coupled. Pass plain metadata only
+ * for unrelated concerns.
+ */
 // oxlint-disable-next-line overeng/named-args
 export function packageJson<const T extends PackageJsonData, const TMeta>(
   data: Strict<T, PackageJsonData>,
   meta?: TMeta,
 ) {
+  const hasManualDepsWithComposition =
+    isPackageJsonComposition(meta) === true &&
+    (data.dependencies !== undefined ||
+      data.devDependencies !== undefined ||
+      data.peerDependencies !== undefined)
+  const hasRawWorkspaceMetadata =
+    isPackageJsonComposition(meta) === false &&
+    meta !== undefined &&
+    typeof meta === 'object' &&
+    meta !== null &&
+    'workspace' in meta &&
+    typeof meta.workspace === 'object' &&
+    meta.workspace !== null
+  const hasWrappedComposition =
+    isPackageJsonComposition(meta) === false &&
+    meta !== undefined &&
+    typeof meta === 'object' &&
+    meta !== null &&
+    'composition' in meta
+  const composition = isPackageJsonComposition(meta) === true ? meta : undefined
+
+  const effectiveData =
+    composition !== undefined
+      ? ({
+          ...data,
+          ...(Object.keys(composition.dependencies).length === 0
+            ? {}
+            : { dependencies: composition.dependencies }),
+          ...(Object.keys(composition.devDependencies).length === 0
+            ? {}
+            : { devDependencies: composition.devDependencies }),
+          ...(Object.keys(composition.peerDependencies).length === 0
+            ? {}
+            : { peerDependencies: composition.peerDependencies }),
+        } satisfies PackageJsonData)
+      : data
+
+  const effectiveMeta =
+    composition !== undefined
+      ? ({ workspace: composition.workspace } satisfies WorkspaceMeta)
+      : meta
+
+  const effectiveWorkspaceMeta =
+    effectiveMeta !== undefined &&
+    typeof effectiveMeta === 'object' &&
+    effectiveMeta !== null &&
+    'workspace' in effectiveMeta &&
+    typeof effectiveMeta.workspace === 'object' &&
+    effectiveMeta.workspace !== null
+      ? (effectiveMeta.workspace as WorkspaceMetadata)
+      : undefined
+
   return createGenieOutput({
-    data,
+    data: effectiveData,
     stringify: (ctx: GenieContext) =>
-      JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-    validate: (ctx: GenieContext) =>
-      data.name !== undefined
-        ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name })
-        : [],
-    ...(meta === undefined ? {} : { meta }),
+      JSON.stringify(buildPackageJson({ data: effectiveData, location: ctx.location }), null, 2) +
+      '\n',
+    validate: (ctx: GenieContext) => [
+      ...(effectiveData.name !== undefined
+        ? validatePackageRecompositionForPackage({ ctx, pkgName: effectiveData.name })
+        : []),
+      ...(effectiveWorkspaceMeta === undefined
+        ? validateWorkspaceMetadataPresenceForPackageJson({
+            data: effectiveData,
+          })
+        : []),
+      ...(effectiveWorkspaceMeta === undefined
+        ? []
+        : validateWorkspaceMetadataForPackageJson({
+            data: effectiveData,
+            metadata: effectiveWorkspaceMeta,
+          })),
+      ...(hasManualDepsWithComposition === true
+        ? [
+            {
+              severity: 'error' as const,
+              packageName: effectiveData.name ?? '(anonymous package)',
+              dependency: '(composition)',
+              message:
+                'Do not define dependencies/devDependencies/peerDependencies in packageJson(data, composition). Put them into the composition so emitted deps and workspace metadata stay coupled.',
+              rule: 'package-json-composition-coupling',
+            },
+          ]
+        : []),
+      ...(hasRawWorkspaceMetadata === true
+        ? [
+            {
+              severity: 'error' as const,
+              packageName: effectiveData.name ?? '(anonymous package)',
+              dependency: '(workspace metadata)',
+              message:
+                'Do not pass workspace metadata directly to packageJson(...). Use packageJson(data, composition) so emitted dependencies and workspace closure come from one coupled source.',
+              rule: 'package-json-workspace-composition-required',
+            },
+          ]
+        : []),
+      ...(hasWrappedComposition === true
+        ? [
+            {
+              severity: 'error' as const,
+              packageName: effectiveData.name ?? '(anonymous package)',
+              dependency: '(composition)',
+              message:
+                'Do not wrap the composition object as { composition }. Pass packageJson(data, composition) so the authoring boundary stays crisp.',
+              rule: 'package-json-wrapped-composition-disallowed',
+            },
+          ]
+        : []),
+    ],
+    ...(effectiveMeta === undefined ? {} : { meta: effectiveMeta }),
   })
 }
 
@@ -744,35 +784,20 @@ export function packageJson<const T extends PackageJsonData, const TMeta>(
  * Returns a `GenieOutput` with the structured data accessible via `.data`
  * for composition with other genie files.
  *
- * @example
- * ```ts
- * import { workspaceRoot } from '@overeng/genie'
- * import { catalog } from './genie/catalog.ts'
- *
- * export default workspaceRoot({
- *   name: 'my-monorepo',
- *   private: true,
- *   packageManager: 'pnpm@9.15.0',
- *   workspaces: ['packages/*'],
- *   devDependencies: {
- *     typescript: catalog.typescript,
- *   },
- *   pnpm: {
- *     patchedDependencies: { ... },
- *   },
- * })
- * ```
+ * Prefer `workspaceRootFromPackages(...)` when deriving a root workspace from
+ * package metadata. The low-level emitted-data constructor stays internal so
+ * root authoring flows through metadata-driven projection.
  */
-export function workspaceRoot<const T extends WorkspaceRootData>(
+function workspaceRoot<const T extends WorkspaceRootData>(
   data: Strict<T, WorkspaceRootData>,
 ): GenieOutput<T>
-export function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
+function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
   data: Strict<T, WorkspaceRootData>,
   meta: TMeta,
 ): GenieOutput<T, TMeta>
 /** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
 // oxlint-disable-next-line overeng/named-args
-export function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
+function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
   data: Strict<T, WorkspaceRootData>,
   meta?: TMeta,
 ) {
@@ -784,7 +809,7 @@ export function workspaceRoot<const T extends WorkspaceRootData, const TMeta>(
   })
 }
 
-/** Build a root workspace package.json from package metadata instead of a handwritten member list. */
+/** Build a root workspace package.json by projecting package metadata instead of maintaining member lists manually. */
 export const workspaceRootFromPackages = ({
   dir,
   packages,
@@ -797,7 +822,7 @@ export const workspaceRootFromPackages = ({
 } & Omit<WorkspaceRootData, 'workspaces'>) =>
   workspaceRoot({
     ...data,
-    workspaces: workspaceMemberPathsFromPackages({
+    workspaces: rootWorkspaceMemberPathsFromPackages({
       dir,
       packages,
       extraPackages: extraWorkspaces,

@@ -4,10 +4,22 @@ Generate `pnpm-workspace.yaml` files.
 
 ## Mental Model
 
-- `pnpmWorkspaceYaml(...)` expects canonical emitted YAML data
-- `pnpmWorkspaceYamlFromPackage(...)` and
-  `pnpmWorkspaceYamlFromPackages(...)` are projection helpers that derive that
-  emitted data from package metadata
+- `pnpmWorkspaceYamlFromPackage(...)` projects a package-local
+  `pnpm-workspace.yaml` from package metadata
+- `pnpmWorkspaceYamlFromPackages(...)` projects a root aggregate
+  `pnpm-workspace.yaml` from multiple package outputs
+- package metadata must already contain static import-time workspace facts;
+  runtime `ctx` is only used during projection
+
+`pnpmWorkspaceYaml(...)` is the low-level emitted-data constructor used by those
+projection helpers. Treat it as internal/low-level. Normal authoring should use
+only:
+
+- `pnpmWorkspaceYamlFromPackage(...)`
+- `pnpmWorkspaceYamlFromPackages(...)`
+
+Keep lower-level workspace graph traversal and path derivation internal. The
+public story is package-level projection and root aggregate projection.
 
 ## Usage
 
@@ -38,6 +50,6 @@ export default pnpmWorkspaceYamlFromPackages({
 
 ## Why wrappers exist
 
-The wrapper helpers keep `pnpmWorkspaceYaml(...)` focused on canonical emitted
-YAML while still allowing aggregate workspace files to be recomposed from
-package-local Genie outputs and their metadata.
+The wrappers are the public projection API because package authoring should
+project from package metadata, not maintain workspace member lists manually.
+Low-level workspace graph helpers are intentionally internal.

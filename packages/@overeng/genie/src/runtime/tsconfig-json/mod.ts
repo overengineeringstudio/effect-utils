@@ -3,7 +3,12 @@
  * Reference: https://www.typescriptlang.org/tsconfig
  */
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
 import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
+import type { WorkspacePackageLike } from '../package-json/mod.ts'
+import { rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 import { validateTsconfigReferences } from './validators/references.ts'
 
 type Target =
@@ -315,4 +320,40 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
     validate: (ctx: GenieContext) =>
       validateTsconfigReferences({ ctx, references: args.references }),
   }
+}
+
+/** Project a root tsconfig.json references list from package metadata instead of maintaining reference paths manually. */
+export const tsconfigJsonFromPackages = ({
+  dir,
+  packages,
+  extraReferences = [],
+  onlyExistingReferences = false,
+  ...args
+}: {
+  dir: string
+  packages: readonly WorkspacePackageLike[]
+  extraReferences?: readonly string[]
+  onlyExistingReferences?: boolean
+} & Omit<TSConfigArgs, 'references'>): GenieOutput<TSConfigArgs> => {
+  const references = [
+    ...rootWorkspaceMemberPathsFromPackages({
+      dir,
+      packages,
+      extraPackages: extraReferences,
+    }),
+  ]
+
+  const normalizedReferences =
+    onlyExistingReferences === true
+      ? references.filter((referencePath) =>
+          existsSync(path.join(dir, referencePath, 'tsconfig.json')),
+        )
+      : references
+
+  return tsconfigJson({
+    ...args,
+    references: normalizedReferences.map((referencePath) => ({
+      path: `./${referencePath}`,
+    })),
+  })
 }
