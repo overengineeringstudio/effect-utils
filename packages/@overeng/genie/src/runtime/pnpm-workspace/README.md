@@ -27,10 +27,12 @@ public story is package-level projection and root aggregate projection.
 
 ```ts
 import pkg from './package.json.genie.ts'
+import examplePkg from './examples/basic/package.json.genie.ts'
 import { pnpmWorkspaceYaml } from '../../../genie/internal.ts'
 
 export default pnpmWorkspaceYaml.package({
   pkg,
+  packages: [examplePkg],
 })
 ```
 
@@ -42,7 +44,6 @@ import sharedPkg from './packages/shared/package.json.genie.ts'
 import { pnpmWorkspaceYaml } from './genie/internal.ts'
 
 export default pnpmWorkspaceYaml.root({
-  dir: import.meta.dirname,
   packages: [appPkg, sharedPkg],
   dedupePeerDependents: true,
 })
@@ -53,3 +54,7 @@ export default pnpmWorkspaceYaml.root({
 The wrappers are the public projection API because package authoring should
 project from package metadata, not maintain workspace member lists manually.
 Low-level workspace graph helpers are intentionally internal.
+
+Use real package generator outputs as workspace seeds. If a repo member should
+participate in the workspace, give it a package generator and include that
+output instead of threading extra member paths through the public API.

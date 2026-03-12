@@ -1,3 +1,5 @@
+import effectSocketPkg from './context/effect/socket/package.json.genie.ts'
+import opentuiPkg from './context/opentui/package.json.genie.ts'
 import { packageJson } from './genie/internal.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
@@ -19,6 +21,7 @@ import utilsDevPkg from './packages/@overeng/utils-dev/package.json.genie.ts'
 import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 
 export const rootWorkspacePackages = [
+  effectSocketPkg,
   effectAiClaudeCliPkg,
   effectPathPkg,
   effectReactPkg,
@@ -32,6 +35,7 @@ export const rootWorkspacePackages = [
   notionEffectClientPkg,
   notionEffectSchemaPkg,
   oxcConfigPkg,
+  opentuiPkg,
   reactInspectorPkg,
   tuiCorePkg,
   tuiReactPkg,
@@ -39,11 +43,8 @@ export const rootWorkspacePackages = [
   utilsDevPkg,
 ] as const
 
-export const rootWorkspaceExtraMembers = ['context/effect/socket', 'context/opentui'] as const
-
 const rootWorkspace = packageJson.aggregateFromPackages({
   packages: rootWorkspacePackages,
-  extraWorkspaces: rootWorkspaceExtraMembers,
   name: 'effect-utils-workspace',
 })
 

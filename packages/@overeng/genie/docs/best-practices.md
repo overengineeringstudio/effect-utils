@@ -57,3 +57,7 @@ wrappers:
 - `packageJson.aggregateFromPackages(...)`
 - `pnpmWorkspaceYaml.package(...)`
 - `pnpmWorkspaceYaml.root(...)`
+
+Treat the `packages` array in these helpers as the single source of truth for
+workspace membership. If something belongs in the workspace, include its
+package generator output rather than maintaining a parallel path list.

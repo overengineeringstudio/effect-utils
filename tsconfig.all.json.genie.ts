@@ -1,4 +1,4 @@
-import { rootWorkspaceExtraMembers, rootWorkspacePackages } from './package.json.genie.ts'
+import { rootWorkspacePackages } from './package.json.genie.ts'
 import {
   tsconfigJsonFromPackages,
   type TSConfigArgs,
@@ -8,6 +8,5 @@ import {
 export default tsconfigJsonFromPackages({
   dir: import.meta.dirname,
   packages: rootWorkspacePackages,
-  extraReferences: rootWorkspaceExtraMembers,
   files: [],
 } satisfies TSConfigArgs)

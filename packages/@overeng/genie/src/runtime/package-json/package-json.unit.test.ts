@@ -502,7 +502,6 @@ describe('packageJson.aggregateFromPackages', () => {
   it('returns GenieOutput with projected workspaces and stringify', () => {
     const result = packageJson.aggregateFromPackages({
       packages: [appPkg],
-      extraWorkspaces: ['packages/examples'],
       name: 'my-monorepo',
     })
 
@@ -510,7 +509,7 @@ describe('packageJson.aggregateFromPackages', () => {
       name: 'my-monorepo',
       private: true,
       packageManager: 'pnpm@10.29.2',
-      workspaces: ['packages/app', 'packages/examples'],
+      workspaces: ['packages/app'],
     })
     expect(typeof result.stringify).toBe('function')
   })

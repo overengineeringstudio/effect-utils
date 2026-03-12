@@ -1,7 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: pnpm-workspace.yaml.genie.ts
 
-packages: [., ../utils, ../utils-dev, examples/basic]
+packages: [., ../utils, ../utils-dev, ./examples/basic]
 
 patchedDependencies:
   effect-distributed-lock@0.0.11: ../utils/patches/effect-distributed-lock@0.0.11.patch

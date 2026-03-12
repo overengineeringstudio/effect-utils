@@ -62,15 +62,28 @@ describe('metadata-based workspace projections', () => {
     },
     appComposition,
   )
+  const exampleComposition = catalog.compose({
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/examples/basic',
+    }),
+  })
+  const example = packageJson(
+    {
+      name: '@test/example-basic',
+      version: '1.0.0',
+    },
+    exampleComposition,
+  )
 
   it('projects package-local workspace members from package metadata', () => {
     const workspaceFile = pnpmWorkspaceYaml.package({
       pkg: app,
-      extraPackages: ['../examples'],
+      packages: [example],
       dedupePeerDependents: true,
     })
 
-    expect(workspaceFile.data.packages).toEqual(['.', '../examples', '../utils'])
+    expect(workspaceFile.data.packages).toEqual(['.', '../examples/basic', '../utils'])
   })
 
   it('projects root workspace members recursively from package metadata', () => {
@@ -90,14 +103,9 @@ describe('metadata-based workspace projections', () => {
   it('projects workspace root workspaces from package metadata', () => {
     const workspaceRoot = packageJson.aggregateFromPackages({
       packages: [app],
-      extraWorkspaces: ['packages/examples'],
       name: 'workspace-root',
     })
 
-    expect(workspaceRoot.data.workspaces).toEqual([
-      'packages/app',
-      'packages/examples',
-      'packages/utils',
-    ])
+    expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 })

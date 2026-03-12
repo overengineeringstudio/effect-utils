@@ -1,11 +1,14 @@
-import { catalog, packageJson, type PackageJsonData } from '../../genie/internal.ts'
+import {
+  catalog,
+  packageJson,
+  workspaceMember,
+  type PackageJsonData,
+} from '../../genie/internal.ts'
 
-export default packageJson({
-  name: 'opentui-examples',
-  private: true,
-  type: 'module',
+const composition = catalog.compose({
+  workspace: workspaceMember('context/opentui'),
   dependencies: {
-    ...catalog.pick(
+    external: catalog.pick(
       '@effect-atom/atom',
       '@effect-atom/atom-react',
       '@opentui/core',
@@ -15,15 +18,24 @@ export default packageJson({
     ),
   },
   devDependencies: {
-    ...catalog.pick('@types/node', '@types/react'),
+    external: catalog.pick('@types/node', '@types/react'),
   },
-  pnpm: {
-    overrides: {
-      // Force version alignment for Effect ecosystem packages
-      // @effect-atom/atom brings in older versions as transitive deps
-      // TODO: Remove once new @effect-atom/atom is released
-      // https://github.com/tim-smart/effect-atom/issues/401
-      ...catalog.pick('effect', '@effect/platform', '@effect/experimental', '@effect/rpc'),
+})
+
+export default packageJson(
+  {
+    name: 'opentui-examples',
+    private: true,
+    type: 'module',
+    pnpm: {
+      overrides: {
+        // Force version alignment for Effect ecosystem packages
+        // @effect-atom/atom brings in older versions as transitive deps
+        // TODO: Remove once new @effect-atom/atom is released
+        // https://github.com/tim-smart/effect-atom/issues/401
+        ...catalog.pick('effect', '@effect/platform', '@effect/experimental', '@effect/rpc'),
+      },
     },
-  },
-} satisfies PackageJsonData)
+  } satisfies PackageJsonData,
+  composition,
+)

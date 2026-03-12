@@ -992,11 +992,11 @@ const collectRelativeWorkspaceDepsRecursive = ({
 /** Project a package-local pnpm-workspace.yaml from a package's non-emitted workspace metadata. */
 const packagePnpmWorkspaceYaml = ({
   pkg,
-  extraPackages = [],
+  packages = [],
   ...config
 }: {
   pkg: WorkspacePackageLike
-  extraPackages?: readonly string[]
+  packages?: readonly WorkspacePackageLike[]
 } & Omit<PnpmWorkspaceData, 'packages'>) =>
   createPnpmWorkspaceYaml({
     ...config,
@@ -1007,7 +1007,10 @@ const packagePnpmWorkspaceYaml = ({
           pkg,
           deps: pkg.meta.workspace.deps,
         }),
-        ...extraPackages,
+        ...collectRelativeWorkspaceDepsRecursive({
+          pkg,
+          deps: packages,
+        }),
       ]),
     ],
   })
@@ -1025,7 +1028,7 @@ const rootPnpmWorkspaceYaml = ({
     ...config,
     packages: rootWorkspaceMemberPathsFromPackages({
       packages,
-      extraPackages,
+      additionalMemberPaths: extraPackages,
     }),
   })
 

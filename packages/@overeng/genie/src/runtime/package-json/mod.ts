@@ -787,19 +787,14 @@ const createAggregatePackageJson = <const T extends AggregatePackageJsonInput>(
 /** Project an aggregate manifest from package metadata instead of maintaining member lists manually. */
 const aggregatePackageJsonFromPackages = ({
   packages,
-  extraWorkspaces = [],
   name,
 }: {
   packages: readonly WorkspacePackageLike[]
-  extraWorkspaces?: readonly string[]
   name: string
 }) =>
   createAggregatePackageJson({
     name,
-    workspaces: rootWorkspaceMemberPathsFromPackages({
-      packages,
-      extraPackages: extraWorkspaces,
-    }),
+    workspaces: rootWorkspaceMemberPathsFromPackages({ packages }),
   })
 
 /** Package manifest authoring API plus constrained aggregate manifest helpers. */

@@ -338,7 +338,7 @@ export const tsconfigJsonFromPackages = ({
   const references = [
     ...rootWorkspaceMemberPathsFromPackages({
       packages,
-      extraPackages: extraReferences,
+      additionalMemberPaths: extraReferences,
     }),
   ]
 
