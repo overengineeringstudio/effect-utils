@@ -40,7 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- **devenv/tasks/shared/lint-effect-lsp.nix**: document the tracked future unification of the standalone Effect LSP task with `ts:check`
+- **devenv/tasks/shared/ts-effect-lsp.nix**: document the tracked future unification of the standalone Effect LSP task with `ts:check`
   - Adds a linked TODO for collapsing the separate task once the main workspace TypeScript check becomes `Effect-TS/tsgo`-backed
 - **@overeng/genie**: tighten pnpm workspace SSOT around package seeds
   - Removes `extraPackages` from `pnpmWorkspaceYaml.root(...)` and the matching `additionalMemberPaths` graph helper escape hatch
@@ -69,7 +69,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **devenv/tasks/shared/lint-effect-lsp.nix**: add reusable `ts:check:effect-lsp` tsgo diagnostics task
+- **devenv/tasks/shared/ts-effect-lsp.nix**: add reusable `ts:check:effect-lsp` tsgo diagnostics task
   - Exports `effect-tsgo` from the flake package set for downstream devenv consumers
   - Keeps the task standalone so repos can opt into Effect diagnostics without conflating them with stylistic lint
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation

@@ -30,7 +30,7 @@ let
     storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
-    lint-effect-lsp = import ./nix/devenv-modules/tasks/shared/lint-effect-lsp.nix;
+    ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
@@ -285,7 +285,7 @@ in
       # Type-aware linting for typescript/no-deprecated rule
       tsconfig = "tsconfig.all.json";
     })
-    (taskModules.lint-effect-lsp { })
+    (taskModules.ts-effect-lsp { })
     # Setup task (auto-runs in enterShell)
     # Context example tasks
     taskModules.context
