@@ -652,7 +652,7 @@ const storeAddCommand = Cli.Command.make(
 
       // Get the current commit
       const commit = yield* Git.getCurrentCommit(worktreePath).pipe(
-        Effect.catchAll(() => Effect.succeed(undefined)),
+        Effect.catchAll(() => Effect.void),
       )
 
       // Use TuiApp for output

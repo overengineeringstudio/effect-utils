@@ -130,7 +130,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
           : pathService.resolve(pathService.dirname(fullPath), target),
       ),
       // readLink fails for non-symlinks; treat those as "no target".
-      Effect.catchAll(() => Effect.succeed(undefined)),
+      Effect.catchAll(() => Effect.void),
     )
 
   const isWithinRoot = (target: string): boolean =>

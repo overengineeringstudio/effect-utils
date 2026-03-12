@@ -385,7 +385,7 @@ export const syncMember = <R = never>({
       if (currentLinkNormalized === expectedPathNormalized) {
         // Read current HEAD from the worktree
         const currentCommit = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catchAll(() => Effect.void),
         )
         const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
@@ -791,7 +791,7 @@ export const syncMember = <R = never>({
 
       if (onExpectedBranch === true) {
         const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catchAll(() => Effect.void),
         )
         if (
           currentCommit !== undefined &&

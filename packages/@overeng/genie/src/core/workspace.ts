@@ -39,7 +39,7 @@ const findFiles = Effect.fn('workspace/findFiles')(function* ({
       for (const entry of entries) {
         if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
-        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.void))
         if (stat === undefined) continue
         if (stat.type === 'Directory') {
           yield* walk(fullPath)
@@ -70,7 +70,7 @@ const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function*
       for (const entry of entries) {
         if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
-        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.void))
         if (stat === undefined) continue
         if (stat.type === 'Directory') {
           yield* walk(fullPath)

@@ -161,7 +161,7 @@ const scanMembersRecursive = ({
 
           // Get current commit (full SHA for drift detection, short for display)
           fullCommit = yield* Git.getCurrentCommit(memberPath).pipe(
-            Effect.catchAll(() => Effect.succeed(undefined)),
+            Effect.catchAll(() => Effect.void),
           )
           const shortRev = fullCommit?.slice(0, 7)
 
@@ -411,7 +411,7 @@ export const statusCommand = Cli.Command.make(
               })
               const memberRealPath = yield* fs
                 .realPath(memberSymlinkPath.replace(/\/$/, ''))
-                .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+                .pipe(Effect.catchAll(() => Effect.void))
 
               if (memberRealPath !== undefined) {
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
