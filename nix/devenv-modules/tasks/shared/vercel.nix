@@ -87,11 +87,11 @@ let
           esac
 
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
-          ${pkgs.bun}/bin/bunx vercel pull --cwd "${cwd}" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
+          (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" --token "$VERCEL_TOKEN")
 
-          # Clear rootDirectory from pulled settings to prevent path doubling with --cwd.
-          # When both --cwd and rootDirectory are set, vercel build joins them into a
-          # non-existent path (e.g. packages/app/packages/app) causing spawn sh ENOENT.
+          # Clear rootDirectory from pulled settings to prevent path doubling.
+          # Vercel CLI joins rootDirectory with the working directory for both build
+          # and deploy, causing paths like packages/app/packages/app.
           if [ -f "${cwd}/.vercel/project.json" ]; then
             ${pkgs.jq}/bin/jq '.settings.rootDirectory = null' "${cwd}/.vercel/project.json" > "${cwd}/.vercel/project.json.tmp" \
               && mv "${cwd}/.vercel/project.json.tmp" "${cwd}/.vercel/project.json"
@@ -127,9 +127,9 @@ let
 
           echo "Building ${deployment.name} locally with vercel build..."
           if [ -n "$build_flag" ]; then
-            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes $build_flag --token "$VERCEL_TOKEN"
+            (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel build --yes $build_flag --token "$VERCEL_TOKEN")
           else
-            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes --token "$VERCEL_TOKEN"
+            (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel build --yes --token "$VERCEL_TOKEN")
           fi
 
           cleanup_vercel_json
@@ -139,11 +139,13 @@ let
             exit 1
           fi
 
+          # Deploy from within the cwd directory (not --cwd) to avoid Vercel CLI
+          # re-fetching rootDirectory from the API and doubling the path.
+          deploy_log="$(mktemp)"
           case "$deploy_type" in
             prod)
               echo "Deploying ${deployment.name} prebuilt output to production..."
-              deploy_log="$(mktemp)"
-              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --prod --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             pr|preview)
@@ -153,8 +155,7 @@ let
               else
                 echo "Deploying ${deployment.name} prebuilt preview..."
               fi
-              deploy_log="$(mktemp)"
-              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             *)
