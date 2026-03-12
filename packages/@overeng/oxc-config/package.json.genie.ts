@@ -24,6 +24,8 @@ export default packageJson({
   dependencies: {
     // Re-exported as part of the overeng plugin for storybook linting
     ...catalog.pick('eslint-plugin-storybook'),
+    // Required peer dep of eslint-plugin-storybook (provides storybook/internal/csf)
+    ...catalog.pick('storybook'),
   },
   devDependencies: {
     ...catalog.pick(

@@ -362,6 +362,79 @@ export const dispatchAlignmentStep = (opts: {
     shell: 'bash',
   })
 
+// =============================================================================
+// Vercel Deploy Helpers
+// =============================================================================
+
+/**
+ * Deploy a single Vercel project via devenv task.
+ * Prod on push-to-main/schedule/dispatch, preview on PRs.
+ * Captures deploy URL from task output and exports it to GITHUB_ENV.
+ */
+export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) => ({
+  name: `Deploy ${project.name} to Vercel`,
+  shell: 'bash' as const,
+  run: [
+    'if [ -z "${VERCEL_TOKEN:-}" ]; then',
+    '  echo "::error::VERCEL_TOKEN is not set"',
+    '  exit 1',
+    'fi',
+    'tmp_log="$(mktemp)"',
+    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')} 2>&1 | tee "$tmp_log"`,
+    'else',
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
+    'fi',
+    'deploy_exit=${PIPESTATUS[0]}',
+    `url=$(grep -oE 'https://[^[:space:]]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
+    `if [ -n "$url" ]; then echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"; fi`,
+    'rm -f "$tmp_log"',
+    'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',
+  ].join('\n'),
+})
+
+/**
+ * Configure git author so Vercel Deployment Protection
+ * associates the deploy with a team member.
+ */
+export const vercelGitAuthorStep = (opts: { name: string; email: string }) => ({
+  name: 'Configure git author for Vercel',
+  shell: 'bash' as const,
+  run: [
+    `git config user.name "${opts.name}"`,
+    `git config user.email "${opts.email}"`,
+    'git commit --amend --no-edit --reset-author',
+  ].join('\n'),
+})
+
+/** Post deploy URLs for one or more Vercel projects as a PR comment + job summary. */
+export const vercelDeployCommentStep = (projects: readonly { name: string; urlEnvKey: string }[]) =>
+  deployCommentStep({
+    summaryTitle: 'Vercel Deploy',
+    tableHeaders: ['Target', 'URL'],
+    noRowsMessage: 'No Vercel deploy URLs detected.',
+    modeScript: [
+      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+      '  label="prod"',
+      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+      '  label="PR #${{ github.event.pull_request.number }}"',
+      'else',
+      '  exit 0',
+      'fi',
+    ].join('\n'),
+    rowsScript: projects
+      .map(
+        (p) =>
+          `if [ -n "\${${p.urlEnvKey}:-}" ]; then\n  rows="\${rows}| ${p.name} | \${${p.urlEnvKey}} |\\n"\nfi`,
+      )
+      .join('\n'),
+    commentTitle: 'Vercel Preview',
+  })
+
+// =============================================================================
+// Netlify Deploy Helpers
+// =============================================================================
+
 /**
  * Deploy step for Netlify storybooks via devenv tasks.
  * Runs `netlify:deploy` with prod/PR mode based on the event trigger.
