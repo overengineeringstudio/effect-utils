@@ -269,7 +269,8 @@ const resolvePeerDependencies = <
     [
       ...packages.flatMap((pkg) => Object.entries(pkg.data.peerDependencies ?? {})),
       ...Object.entries(external).map(
-        ([name, version]) => [name, version.startsWith('^') ? version : `^${version}`] as const,
+        ([name, version]) =>
+          [name, version.startsWith('^') === true ? version : `^${version}`] as const,
       ),
     ].toSorted(([nameA], [nameB]) => nameA.localeCompare(nameB)),
   ) as CatalogInput

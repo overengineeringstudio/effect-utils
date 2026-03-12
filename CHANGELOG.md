@@ -31,6 +31,9 @@ All notable changes to this project will be documented in this file.
   - Reverts the `tsgo` flake lock refresh after confirming `Effect-TS/tsgo@df2eaaa` currently fails to build its own `effect-tsgo` package
   - Keeps downstream `devenv` shells green until the upstream patch set catches up again
 - **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from filtered aggregate-root workspaces instead of package-level deploy closures
+  - Moves patched dependency path discovery out of Nix evaluation and into the staging derivation
+  - Preserves lockfile-driven patch staging for root and external install roots without recursive eval-time YAML walks
+  - Unblocks downstream composed flake evaluation that was previously overflowing in `parsePatchedDependencyPaths`
   - Stages the target package and its workspace closure under one canonical root workspace
   - Installs dependencies at that staged root with the same aggregate lockfile model used by local dev
   - Compiles the target entrypoint with Bun from the staged package directory, reducing coupling to bespoke deploy-time workspace surgery

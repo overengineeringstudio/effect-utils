@@ -79,56 +79,8 @@ let
 
   rootPnpmWorkspaceYamlPath = workspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
-  rootPnpmLockPath = workspaceRootPath + "/pnpm-lock.yaml";
-  rootPnpmLock = builtins.readFile rootPnpmLockPath;
-
   packagePnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
   packagePnpmWorkspaceYaml = builtins.readFile packagePnpmWorkspaceYamlPath;
-
-  parsePatchedDependencyPaths =
-    lockfileYaml:
-    let
-      lockfileLines = lib.splitString "\n" lockfileYaml;
-
-      dropUntilPatchedDependencies =
-        lines:
-        if lines == [ ] then
-          [ ]
-        else if lib.trim (builtins.head lines) == "patchedDependencies:" then
-          lib.tail lines
-        else
-          dropUntilPatchedDependencies (lib.tail lines);
-
-      takePatchedDependenciesBlock =
-        lines:
-        if lines == [ ] then
-          [ ]
-        else
-          let
-            line = builtins.head lines;
-            trimmed = lib.trim line;
-          in
-          if trimmed != "" && !(lib.hasPrefix " " line) then
-            [ ]
-          else
-            [ line ] ++ takePatchedDependenciesBlock (lib.tail lines);
-    in
-    builtins.filter
-      (path: path != "")
-      (
-        map
-          (
-            line:
-            let
-              trimmed = lib.trim line;
-            in
-            if lib.hasPrefix "path:" trimmed then
-              lib.trim (lib.removePrefix "path:" trimmed)
-            else
-              ""
-          )
-          (takePatchedDependenciesBlock (dropUntilPatchedDependencies lockfileLines))
-      );
 
   parseWorkspacePackages =
     workspaceYaml:
@@ -346,13 +298,11 @@ let
           hasWorkspaceYaml = builtins.pathExists (installSourceRoot + "/pnpm-workspace.yaml");
           sourcePnpmWorkspaceYaml =
             if hasWorkspaceYaml then builtins.readFile (installSourceRoot + "/pnpm-workspace.yaml") else "";
-          sourcePnpmLock = builtins.readFile (installSourceRoot + "/pnpm-lock.yaml");
         in
         {
           inherit installDir installSourceRoot;
           memberDirs = lib.unique (map (item: item.memberDir) items);
           sourceRelMemberDirs = lib.unique (map (item: item.sourceRelMemberDir) items);
-          patchedDependencyPaths = parsePatchedDependencyPaths sourcePnpmLock;
           filteredPnpmWorkspaceYaml =
             if hasWorkspaceYaml then
               formatWorkspaceYaml
@@ -374,14 +324,6 @@ let
     builtins.filter (dir: !(lib.elem dir externalInstallOwnedDirs)) workspaceClosureDirs;
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
-  rootPatchedDependencyPaths = parsePatchedDependencyPaths rootPnpmLock;
-  stagedPatchFiles =
-    lib.unique (
-      rootPatchedDependencyPaths
-      ++ lib.concatMap (
-        root: map (path: "${root.installDir}/${path}") root.patchedDependencyPaths
-      ) externalInstallRoots
-    );
 
   rootWorkspaceFiles = [ "package.json" "pnpm-lock.yaml" ];
   optionalRootWorkspaceFiles = [ ".npmrc" "tsconfig.base.json" ];
@@ -415,6 +357,45 @@ let
     ''
       if [ -f ${lib.escapeShellArg (toString srcPath)} ]; then
         ${copyFileCmd relPath}
+      fi
+    '';
+
+  copyPatchedDependencyFilesCmd =
+    {
+      sourceRoot,
+      targetPrefix,
+    }:
+    let
+      sourceRootArg = lib.escapeShellArg (toString sourceRoot);
+      targetPrefixArg = lib.escapeShellArg targetPrefix;
+    in
+    ''
+      source_root=${sourceRootArg}
+      target_prefix=${targetPrefixArg}
+
+      if [ -f "$source_root/pnpm-lock.yaml" ]; then
+        awk '
+          /^patchedDependencies:/ { in_block = 1; next }
+          in_block && $0 ~ /^[^[:space:]]/ { exit }
+          in_block {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            if (index(line, "path:") == 1) {
+              sub(/^path:[[:space:]]*/, "", line)
+              print line
+            }
+          }
+        ' "$source_root/pnpm-lock.yaml" | while IFS= read -r rel_path; do
+          [ -n "$rel_path" ] || continue
+
+          target_rel_path="$rel_path"
+          if [ -n "$target_prefix" ]; then
+            target_rel_path="$target_prefix/$target_rel_path"
+          fi
+
+          mkdir -p "$out/$(dirname "$target_rel_path")"
+          cp "$source_root/$rel_path" "$out/$target_rel_path"
+        done
       fi
     '';
 
@@ -470,7 +451,20 @@ EOF
         else
           map copyDirCmd aggregateOwnedWorkspaceClosureDirs
       )
-      + builtins.concatStringsSep "\n" (map copyFileCmd stagedPatchFiles)
+      + copyPatchedDependencyFilesCmd {
+        sourceRoot = workspaceRootPath;
+        targetPrefix = "";
+      }
+      + builtins.concatStringsSep "\n" (
+        map
+          (root:
+            copyPatchedDependencyFilesCmd {
+              sourceRoot = root.installSourceRoot;
+              targetPrefix = root.installDir;
+            }
+          )
+          externalInstallRoots
+      )
     );
 
   depsSrc = materializeWorkspace {
