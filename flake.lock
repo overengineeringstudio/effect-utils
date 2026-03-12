@@ -96,11 +96,11 @@
         "typescript-src": "typescript-src"
       },
       "locked": {
-        "lastModified": 1773248833,
-        "narHash": "sha256-oTbxxHN0n1+4fQenZ0m3VPS+g8ajGsqgXL0iAnh1LQ4=",
+        "lastModified": 1773328185,
+        "narHash": "sha256-BZnqCRP+EULMP/4LAg+PaQbosl5DgpxBKTld/LjCPaM=",
         "owner": "Effect-TS",
         "repo": "tsgo",
-        "rev": "bd1258197942f077785183d8246ad9429a6902ea",
+        "rev": "df2eaaac4a46e6c192aae5c54034c18f22a8cd77",
         "type": "github"
       },
       "original": {
