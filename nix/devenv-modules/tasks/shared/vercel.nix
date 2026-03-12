@@ -47,6 +47,10 @@ let
         exec = ''
           set -euo pipefail
 
+          # Ensure native Node modules (e.g. sharp) can find libstdc++ on NixOS,
+          # where prebuilt binaries lack proper RPATH for Nix store paths.
+          export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
           if [ -z "''${VERCEL_TOKEN:-}" ]; then
             echo "Error: VERCEL_TOKEN is not set." >&2
             echo "Set it via: export VERCEL_TOKEN=\$(op read 'op://...')" >&2
