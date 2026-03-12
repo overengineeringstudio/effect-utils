@@ -61,6 +61,7 @@ All notable changes to this project will be documented in this file.
   - Makes `pnpm:install` own the repo-root install state and keeps the repo-root `pnpm-lock.yaml` as the only authoritative lockfile
   - Updates package-scoped task execution to use `pnpm exec` so Vitest, Storybook, and Vite resolve against the active workspace topology
   - Keeps package-level `pnpm-workspace.yaml` files only as package-closure metadata instead of package-local dev install roots or lock owners
+  - Clarifies in the install spec that the current symlinked `repos/*` Megarepo realization keeps imported members on a cross-repo `link:` boundary rather than making them aggregate-root workspace importers
 - **@overeng/utils**: Make Storybook `viteFinal` typing opt-in generic for linked Vite workspaces
   - Keeps the default helper API free of foreign Vite types
   - Lets consumers opt into their own local `vite` config type when they need a typed `viteFinal` hook

@@ -96,6 +96,12 @@ convergence invariant.
 - The aggregate root lists workspace members explicitly.
 - Cross-repo links are expressed only in generated composed-topology state.
 - `workspace:` is not used across repo boundaries.
+- Under the current Megarepo realization model, imported repo members under
+  `repos/*` cross the repo boundary only as composition-local `link:`
+  dependencies.
+- Under that model, imported repo members under `repos/*` are not aggregate-
+  root workspace importers merely because they are reachable under
+  `repos/<repo>/...`.
 - Each composed topology owns its own generated `package.json`,
   `pnpm-workspace.yaml`, and `pnpm-lock.yaml`.
 - A composed topology must not treat an upstream repo's aggregate lockfile as
@@ -119,7 +125,8 @@ convergence invariant.
 
 The aggregate root is generated from the composed topology and must include:
 
-- the explicit workspace member list for the composed topology
+- the explicit workspace member list for the composed topology inside the
+  owning repo view
 - composition-local `link:` dependencies for cross-repo local packages
 - the aggregate dependency closure for linked cross-repo packages
 - a composition-local aggregate lockfile derived from the composed topology
@@ -127,6 +134,16 @@ The aggregate root is generated from the composed topology and must include:
 Aggregate workspace files should be recomposed from package-local Genie outputs
 and their non-emitted metadata, not maintained as a second handwritten member
 list.
+
+That projection stops at the current repo boundary. If an imported package is
+reached through `repos/<repo>/...` under the current Megarepo symlinked
+repo-root realization, it remains a cross-repo `link:` target and does not
+become an aggregate-root workspace importer.
+
+If the system ever wants imported packages under `repos/*` to participate as
+true aggregate-root workspace importers, the realization layer must
+materialize them as normal directories from pnpm's perspective rather than
+through a symlinked `repos/<repo>` root.
 
 That package-local metadata must remain static and import-time safe. Runtime
 generation context is used only by projection helpers when rendering aggregate
@@ -205,6 +222,10 @@ At minimum, validation must prove:
   install step.
 - If a dependency is intended to resolve locally but does not, the mismatch
   must be surfaced explicitly.
+- The current symlinked `repos/<repo>` realization is compatible with
+  composition-local `link:` resolution across the repo boundary, but not with
+  treating imported `repos/*` packages as aggregate-root workspace importers in
+  the parent root lockfile.
 
 ## Linker and Runtime Model
 
@@ -323,6 +344,8 @@ Composed validation must cover:
 - aggregate root inputs are generated locally for the composed repo
 - aggregate topology generation
 - aggregate dependency closure generation
+- imported `repos/*` packages remain `link:`-owned across the current repo
+  boundary unless realization has materialized them as pnpm-owned directories
 - effective dependency inputs remain stable across equivalent checkouts
 - equivalent standalone and composed graphs for the same physical source tree
   converge to one package instance under GVS
@@ -335,6 +358,9 @@ Composed validation must cover:
   regressions such as `TS2742`
 - duplicate-instance detection for shared runtime dependencies
 - live cross-repo edit propagation
+- a realistic symlinked `repos/*` smoke test proving that aggregate workspace
+  projection does not accidentally treat imported members as root lockfile
+  importers under the current Megarepo realization
 
 The validation matrix must include at least one realistic multi-repo smoke
 test with actual `repos/*` symlinked paths.
