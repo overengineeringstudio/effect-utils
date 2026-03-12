@@ -48,9 +48,6 @@
   "references": [
     {
       "path": "../utils"
-    },
-    {
-      "path": "examples/basic"
     }
   ]
 }

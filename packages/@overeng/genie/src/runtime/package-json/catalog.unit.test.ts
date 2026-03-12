@@ -347,15 +347,14 @@ describe('defineCatalog', () => {
     it('installs inherited peers explicitly in install mode', () => {
       const utilsComposition = catalog.compose({
         dir: repo.memberDirs['packages/utils']!,
+        peerDependencies: {
+          external: catalog.pick('effect', '@effect/platform'),
+        },
       })
       const utils = packageJson(
         {
           name: '@test/utils',
           version: '1.0.0',
-          peerDependencies: {
-            effect: '^3.0.0',
-            '@effect/platform': '^0.90.0',
-          },
         },
         utilsComposition,
       )
@@ -382,14 +381,14 @@ describe('defineCatalog', () => {
     it('collects inherited peers transitively in install mode', () => {
       const utilsComposition = catalog.compose({
         dir: repo.memberDirs['packages/utils']!,
+        peerDependencies: {
+          external: catalog.pick('effect'),
+        },
       })
       const utils = packageJson(
         {
           name: '@test/utils',
           version: '1.0.0',
-          peerDependencies: {
-            effect: '^3.0.0',
-          },
         },
         utilsComposition,
       )
@@ -426,14 +425,16 @@ describe('defineCatalog', () => {
     it('throws when install mode cannot resolve an inherited peer version', () => {
       const appComposition = catalog.compose({
         dir: repo.memberDirs['packages/app']!,
+        peerDependencies: {
+          external: {
+            missing: '1.0.0',
+          },
+        },
       })
       const app = packageJson(
         {
           name: '@test/app',
           version: '1.0.0',
-          peerDependencies: {
-            missing: '^1.0.0',
-          },
         },
         appComposition,
       )

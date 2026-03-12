@@ -115,6 +115,7 @@ const collectWorkspaceMembersRecursive = ({
   return sortStrings(members)
 }
 
+/** Derive package workspace metadata from a real repo checkout path. */
 export const workspaceMetadataFromDir = ({
   dir,
   deps = [],
@@ -132,6 +133,7 @@ export const workspaceMetadataFromDir = ({
   }
 }
 
+/** Project root workspace member paths from package metadata for the current repo view. */
 export const rootWorkspaceMemberPathsFromPackages = ({
   dir,
   packages,

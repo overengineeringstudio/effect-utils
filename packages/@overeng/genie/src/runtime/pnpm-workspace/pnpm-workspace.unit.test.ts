@@ -4,32 +4,10 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { defineCatalog } from '../package-json/catalog.ts'
 import { packageJson } from '../mod.ts'
+import { defineCatalog } from '../package-json/catalog.ts'
 import { workspaceRootFromPackages } from '../package-json/mod.ts'
-import {
-  pnpmWorkspaceYamlFromPackage,
-  pnpmWorkspaceYamlFromPackages,
-} from './mod.ts'
-
-// =============================================================================
-// Helper: create a minimal package.json genie output for testing
-// =============================================================================
-
-const makePkg = ({
-  name,
-  ...rest
-}: {
-  name: string
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-}) =>
-  packageJson({
-    name,
-    version: '0.1.0',
-    ...rest,
-  })
+import { pnpmWorkspaceYamlFromPackage, pnpmWorkspaceYamlFromPackages } from './mod.ts'
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-workspace-'))

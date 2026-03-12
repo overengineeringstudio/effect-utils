@@ -5,15 +5,14 @@
  * Reference: https://pnpm.io/pnpm-workspace_yaml
  */
 
+import path from 'node:path'
+
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
-import {
-  type PackageJsonData,
-  type WorkspacePackageLike,
-} from '../package-json/mod.ts'
-import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import type { WorkspacePackageLike } from '../package-json/mod.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
+import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 
 // =============================================================================
 // Settings Types

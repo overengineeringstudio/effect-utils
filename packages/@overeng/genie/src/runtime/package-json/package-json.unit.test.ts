@@ -5,8 +5,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
-import { workspaceRootFromPackages } from './mod.ts'
 import { defineCatalog } from './catalog.ts'
+import { workspaceRootFromPackages } from './mod.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
 const mockGenieContext: GenieContext = {
@@ -361,6 +361,9 @@ describe('packageJson validate hook', () => {
     const repo = createTempRepo('packages/utils', 'packages/app')
     const utilsComposition = validationCatalog.compose({
       dir: repo.memberDirs['packages/utils']!,
+      peerDependencies: {
+        external: validationCatalog.pick('effect'),
+      },
     })
     const appComposition = validationCatalog.compose({
       dir: repo.memberDirs['packages/app']!,
@@ -370,11 +373,13 @@ describe('packageJson validate hook', () => {
             {
               name: '@test/utils',
               version: '1.0.0',
-              peerDependencies: { effect: '^3.0.0' },
             },
             utilsComposition,
           ),
         ],
+      },
+      peerDependencies: {
+        external: validationCatalog.pick('effect'),
       },
     })
     const upstream = makePackage({
@@ -405,6 +410,9 @@ describe('packageJson validate hook', () => {
     const repo = createTempRepo('packages/utils', 'packages/app')
     const utilsComposition = validationCatalog.compose({
       dir: repo.memberDirs['packages/utils']!,
+      peerDependencies: {
+        external: validationCatalog.pick('effect'),
+      },
     })
     const appComposition = validationCatalog.compose({
       dir: repo.memberDirs['packages/app']!,
@@ -414,11 +422,13 @@ describe('packageJson validate hook', () => {
             {
               name: '@test/utils',
               version: '1.0.0',
-              peerDependencies: { effect: '^3.0.0' },
             },
             utilsComposition,
           ),
         ],
+      },
+      peerDependencies: {
+        external: validationCatalog.pick('effect'),
       },
     })
     const upstream = makePackage({

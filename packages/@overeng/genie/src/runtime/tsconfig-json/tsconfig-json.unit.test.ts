@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -90,11 +90,17 @@ describe('tsconfigJson', () => {
 })
 
 describe('tsconfigJsonFromPackages', () => {
-  const pkg = (name: string, memberPath: string): WorkspacePackageLike => ({
+  const createTempRepo = () => {
+    const repoRoot = mkdtempSync(path.join(tmpdir(), 'genie-tsconfig-'))
+    mkdirSync(path.join(repoRoot, '.git'))
+    return repoRoot
+  }
+
+  const pkg = (repoName: string, name: string, memberPath: string): WorkspacePackageLike => ({
     data: { name },
     meta: {
       workspace: {
-        repoName: 'effect-utils',
+        repoName,
         memberPath,
         deps: [],
       },
@@ -102,52 +108,61 @@ describe('tsconfigJsonFromPackages', () => {
   })
 
   it('projects references from package metadata', () => {
-    const result = tsconfigJsonFromPackages({
-      dir: '/workspace/repo',
-      packages: [pkg('@pkg/a', 'packages/a'), pkg('@pkg/b', 'packages/b')],
-      files: [],
-    })
+    const dir = createTempRepo()
 
-    expect(result.data.references).toEqual([
-      { path: './packages/a' },
-      { path: './packages/b' },
-    ])
+    try {
+      const repoName = path.basename(dir)
+      const result = tsconfigJsonFromPackages({
+        dir,
+        packages: [pkg(repoName, '@pkg/a', 'packages/a'), pkg(repoName, '@pkg/b', 'packages/b')],
+        files: [],
+      })
+
+      expect(result.data.references).toEqual([{ path: './packages/a' }, { path: './packages/b' }])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('includes extra references', () => {
-    const result = tsconfigJsonFromPackages({
-      dir: '/workspace/repo',
-      packages: [pkg('@pkg/a', 'packages/a')],
-      extraReferences: ['apps/service-worker'],
-      files: [],
-    })
+    const dir = createTempRepo()
 
-    expect(result.data.references).toEqual([
-      { path: './apps/service-worker' },
-      { path: './packages/a' },
-    ])
+    try {
+      const repoName = path.basename(dir)
+      const result = tsconfigJsonFromPackages({
+        dir,
+        packages: [pkg(repoName, '@pkg/a', 'packages/a')],
+        extraReferences: ['apps/service-worker'],
+        files: [],
+      })
+
+      expect(result.data.references).toEqual([
+        { path: './apps/service-worker' },
+        { path: './packages/a' },
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('can filter to existing tsconfig files only', () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'genie-tsconfig-'))
+    const dir = createTempRepo()
 
     try {
+      const repoName = path.basename(dir)
       mkdirSync(path.join(dir, 'packages', 'a'), { recursive: true })
       mkdirSync(path.join(dir, 'packages', 'b'), { recursive: true })
       mkdirSync(path.join(dir, 'apps', 'service-worker'), { recursive: true })
-      mkdirSync(path.join(dir, 'packages', 'a', 'tsconfig.json'))
-    } catch {}
-
-    try {
+      writeFileSync(path.join(dir, 'packages', 'a', 'tsconfig.json'), '{}\n')
       const result = tsconfigJsonFromPackages({
         dir,
-        packages: [pkg('@pkg/a', 'packages/a'), pkg('@pkg/b', 'packages/b')],
+        packages: [pkg(repoName, '@pkg/a', 'packages/a'), pkg(repoName, '@pkg/b', 'packages/b')],
         extraReferences: ['apps/service-worker'],
         onlyExistingReferences: true,
         files: [],
       })
 
-      expect(result.data.references).toEqual([])
+      expect(result.data.references).toEqual([{ path: './packages/a' }])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
