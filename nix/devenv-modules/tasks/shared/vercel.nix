@@ -109,8 +109,18 @@ let
           }
 
           deploy_log=""
+          original_root_dir=""
           cleanup() {
             cleanup_vercel_json
+            # Restore rootDirectory in remote project settings if we cleared it.
+            if [ -n "$original_root_dir" ]; then
+              echo "Restoring rootDirectory in Vercel project settings..."
+              ${pkgs.curl}/bin/curl -sf -X PATCH \
+                "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"rootDirectory\":\"$original_root_dir\"}" > /dev/null || true
+            fi
             if [ -n "$deploy_log" ]; then
               rm -f "$deploy_log"
             fi
@@ -139,8 +149,24 @@ let
             exit 1
           fi
 
-          # Deploy from within the cwd directory (not --cwd) to avoid Vercel CLI
-          # re-fetching rootDirectory from the API and doubling the path.
+          # Clear rootDirectory from remote project settings before deploying.
+          # vercel deploy --prebuilt fetches rootDirectory from the Vercel API (not
+          # local project.json) and joins it with the working directory, causing
+          # path doubling like packages/app/packages/app. We save the original
+          # value and restore it in the cleanup trap.
+          original_root_dir="$(${pkgs.curl}/bin/curl -sf \
+            "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            | ${pkgs.jq}/bin/jq -r '.rootDirectory // empty')"
+          if [ -n "$original_root_dir" ]; then
+            echo "Temporarily clearing rootDirectory ($original_root_dir) from Vercel project settings..."
+            ${pkgs.curl}/bin/curl -sf -X PATCH \
+              "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"rootDirectory":null}' > /dev/null
+          fi
+
           deploy_log="$(mktemp)"
           case "$deploy_type" in
             prod)
