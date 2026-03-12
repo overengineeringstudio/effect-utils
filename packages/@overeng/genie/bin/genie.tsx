@@ -2,7 +2,7 @@
 
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
@@ -11,6 +11,7 @@ import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { genieCommand } from '../src/build/mod.tsx'
+import type { GenieCommandConfig, GenieCommandError } from '../src/build/types.ts'
 
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'
@@ -19,17 +20,17 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-const baseLayer = Layer.mergeAll(
-  NodeContext.layer,
-  CurrentWorkingDirectory.live,
-  makeOtelCliLayer({ serviceName: 'genie' }),
-)
+const command: Cli.Command.Command<'genie', never, GenieCommandError, GenieCommandConfig> =
+  Cli.Command.provide(
+    Cli.Command.provide(genieCommand, CurrentWorkingDirectory.live),
+    makeOtelCliLayer({ serviceName: 'genie' }),
+  )
 
-Cli.Command.run(genieCommand, {
+Cli.Command.run(command, {
   name: 'genie',
   version,
 })(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
-  Effect.provide(baseLayer),
+  Effect.provide(NodeContext.layer),
   runTuiMain(NodeRuntime),
 )

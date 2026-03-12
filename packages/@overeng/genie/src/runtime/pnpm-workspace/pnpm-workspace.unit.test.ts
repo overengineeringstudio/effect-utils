@@ -99,6 +99,44 @@ describe('metadata-based workspace projections', () => {
     ])
   })
 
+  it('stops root workspace projection at foreign repo boundaries', () => {
+    const foreignRepo = createTempRepo('packages/shared')
+    const foreignShared = packageJson(
+      {
+        name: '@foreign/shared',
+        version: '1.0.0',
+      },
+      catalog.compose({
+        workspace: workspace({
+          repoName: foreignRepo.repoName,
+          memberPath: 'packages/shared',
+        }),
+      }),
+    )
+    const crossRepoApp = packageJson(
+      {
+        name: '@test/cross-repo-app',
+        version: '1.0.0',
+      },
+      catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [utils, foreignShared],
+        },
+      }),
+    )
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [crossRepoApp, utils, foreignShared],
+      dedupePeerDependents: true,
+    })
+
+    expect(workspaceFile.data.packages).toEqual(['packages/app', 'packages/utils'])
+  })
+
   it('keeps a manual constructor for genuine non-package workspace manifests', () => {
     const workspaceFile = pnpmWorkspaceYaml.manual({
       packages: ['*', 'packages/app'],
@@ -111,6 +149,29 @@ describe('metadata-based workspace projections', () => {
   it('projects workspace root workspaces from package metadata', () => {
     const workspaceRoot = packageJson.aggregateFromPackages({
       packages: [app],
+      name: 'workspace-root',
+    })
+
+    expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
+  })
+
+  it('excludes direct foreign seeds from workspace root workspaces', () => {
+    const foreignRepo = createTempRepo('packages/shared')
+    const foreignShared = packageJson(
+      {
+        name: '@foreign/shared',
+        version: '1.0.0',
+      },
+      catalog.compose({
+        workspace: workspace({
+          repoName: foreignRepo.repoName,
+          memberPath: 'packages/shared',
+        }),
+      }),
+    )
+
+    const workspaceRoot = packageJson.aggregateFromPackages({
+      packages: [app, utils, foreignShared],
       name: 'workspace-root',
     })
 

@@ -17,8 +17,6 @@
  *
  * Do not build new public authoring APIs on top of this module.
  */
-import path from 'node:path'
-
 import type { WorkspacePackageLike } from './package-json/mod.ts'
 
 export { relativeRepoPath, rootWorkspaceMemberPathsFromPackages }
@@ -45,21 +43,10 @@ const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
   return relativePath === '' ? '.' : relativePath
 }
 
-const logicalWorkspaceMemberPath = ({
-  currentRepoName,
-  pkg,
-}: {
-  currentRepoName: string
-  pkg: WorkspacePackageLike
-}) =>
-  pkg.meta.workspace.repoName === currentRepoName
-    ? pkg.meta.workspace.memberPath
-    : path.posix.join('repos', pkg.meta.workspace.repoName, pkg.meta.workspace.memberPath)
-
 const sortStrings = (values: Iterable<string>) =>
   [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
 
-const collectWorkspaceMembersRecursive = ({
+const collectRootWorkspaceMembersRecursive = ({
   packages,
   currentRepoName,
   visited = new Set<string>(),
@@ -76,9 +63,13 @@ const collectWorkspaceMembersRecursive = ({
     if (visited.has(visitedKey) === true) continue
     visited.add(visitedKey)
 
-    members.add(logicalWorkspaceMemberPath({ currentRepoName, pkg }))
+    if (pkg.meta.workspace.repoName !== currentRepoName) {
+      continue
+    }
 
-    for (const dep of collectWorkspaceMembersRecursive({
+    members.add(pkg.meta.workspace.memberPath)
+
+    for (const dep of collectRootWorkspaceMembersRecursive({
       packages: pkg.meta.workspace.deps,
       currentRepoName,
       visited,
@@ -91,8 +82,25 @@ const collectWorkspaceMembersRecursive = ({
 }
 
 const inferCurrentRepoNameFromPackages = (packages: readonly WorkspacePackageLike[]) => {
-  const repoNames = new Set(packages.map((pkg) => pkg.meta.workspace.repoName))
-  const [repoName] = Array.from(repoNames)
+  const repoCounts = new Map<string, number>()
+
+  for (const pkg of packages) {
+    const repoName = pkg.meta.workspace.repoName
+    repoCounts.set(repoName, (repoCounts.get(repoName) ?? 0) + 1)
+  }
+
+  let repoName: string | undefined
+  let maxCount = -1
+
+  for (const pkg of packages) {
+    const candidateRepoName = pkg.meta.workspace.repoName
+    const candidateCount = repoCounts.get(candidateRepoName) ?? 0
+
+    if (candidateCount > maxCount) {
+      repoName = candidateRepoName
+      maxCount = candidateCount
+    }
+  }
 
   if (repoName === undefined) {
     throw new Error('Cannot infer a root workspace repo without any packages')
@@ -109,7 +117,7 @@ const rootWorkspaceMemberPathsFromPackages = ({
 }) =>
   packages.length === 0
     ? []
-    : collectWorkspaceMembersRecursive({
+    : collectRootWorkspaceMembersRecursive({
         packages,
         currentRepoName: inferCurrentRepoNameFromPackages(packages),
       })

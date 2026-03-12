@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Either, Fiber, pipe, PubSub, Queue, Stream } from 'effect'
+import { Context, Effect, Either, Fiber, pipe, PubSub, Queue, Stream } from 'effect'
 import React from 'react'
 
 import { run } from '@overeng/tui-react'
@@ -100,7 +100,9 @@ export const genieCommand: Cli.Command.Command<
     const handler = Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const readOnly = !writeable
-      const currentWorkingDirectory = yield* CurrentWorkingDirectory
+      const currentWorkingDirectory = yield* Effect.contextWith<CurrentWorkingDirectory, string>(
+        (context) => Context.get(context, new CurrentWorkingDirectory()),
+      )
       const inputCwd = path.isAbsolute(cwd) ? cwd : path.resolve(currentWorkingDirectory, cwd)
 
       /**

@@ -145,6 +145,27 @@ describe('tsconfigJsonFromPackages', () => {
     }
   })
 
+  it('excludes foreign repo packages from projected references', () => {
+    const dir = createTempRepo()
+
+    try {
+      const repoName = path.basename(dir)
+      const result = tsconfigJsonFromPackages({
+        dir,
+        packages: [
+          pkg(repoName, '@pkg/a', 'packages/a'),
+          pkg(repoName, '@pkg/b', 'packages/b'),
+          pkg('foreign-repo', '@foreign/c', 'packages/c'),
+        ],
+        files: [],
+      })
+
+      expect(result.data.references).toEqual([{ path: './packages/a' }, { path: './packages/b' }])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('can filter to existing tsconfig files only', () => {
     const dir = createTempRepo()
 

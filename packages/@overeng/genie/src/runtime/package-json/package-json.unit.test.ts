@@ -484,13 +484,30 @@ describe('packageJson validate hook', () => {
 })
 
 describe('packageJson.aggregateFromPackages', () => {
-  const repo = createTempRepo('packages/app')
+  const repo = createTempRepo('packages/app', 'packages/utils')
   const appComposition = testCatalog.compose({
     workspace: workspace({
       repoName: repo.repoName,
       memberPath: 'packages/app',
     }),
+    dependencies: {
+      workspace: [
+        packageJson(
+          {
+            name: '@test/utils',
+            version: '1.0.0',
+          },
+          testCatalog.compose({
+            workspace: workspace({
+              repoName: repo.repoName,
+              memberPath: 'packages/utils',
+            }),
+          }),
+        ),
+      ],
+    },
   })
+  const utilsPkg = appComposition.workspace.deps[0]!
   const appPkg = packageJson(
     {
       name: '@test/app',
@@ -509,7 +526,7 @@ describe('packageJson.aggregateFromPackages', () => {
       name: 'my-monorepo',
       private: true,
       packageManager: 'pnpm@10.29.2',
-      workspaces: ['packages/app'],
+      workspaces: ['packages/app', 'packages/utils'],
     })
     expect(typeof result.stringify).toBe('function')
   })
@@ -527,7 +544,45 @@ describe('packageJson.aggregateFromPackages', () => {
     expect(parsed.name).toBe('my-monorepo')
     expect(parsed.private).toBe(true)
     expect(parsed.packageManager).toBe('pnpm@10.29.2')
-    expect(parsed.workspaces).toEqual(['packages/app'])
+    expect(parsed.workspaces).toEqual(['packages/app', 'packages/utils'])
+  })
+
+  it('stops aggregate projection at foreign repo boundaries', () => {
+    const foreignRepo = createTempRepo('packages/shared')
+    const foreignPkg = packageJson(
+      {
+        name: '@foreign/shared',
+        version: '1.0.0',
+      },
+      testCatalog.compose({
+        workspace: workspace({
+          repoName: foreignRepo.repoName,
+          memberPath: 'packages/shared',
+        }),
+      }),
+    )
+    const crossRepoApp = packageJson(
+      {
+        name: '@test/cross-repo-app',
+        version: '1.0.0',
+      },
+      testCatalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [utilsPkg, foreignPkg],
+        },
+      }),
+    )
+
+    const result = packageJson.aggregateFromPackages({
+      packages: [crossRepoApp, utilsPkg, foreignPkg],
+      name: 'my-monorepo',
+    })
+
+    expect(result.data.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 
   it('creates an aggregate directly from explicit workspaces', () => {
