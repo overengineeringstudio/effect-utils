@@ -337,7 +337,6 @@ export const tsconfigJsonFromPackages = ({
 } & Omit<TSConfigArgs, 'references'>): GenieOutput<TSConfigArgs> => {
   const references = [
     ...rootWorkspaceMemberPathsFromPackages({
-      dir,
       packages,
       extraPackages: extraReferences,
     }),

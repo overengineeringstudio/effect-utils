@@ -501,7 +501,6 @@ describe('packageJson.aggregateFromPackages', () => {
 
   it('returns GenieOutput with projected workspaces and stringify', () => {
     const result = packageJson.aggregateFromPackages({
-      dir: repo.repoRoot,
       packages: [appPkg],
       extraWorkspaces: ['packages/examples'],
       name: 'my-monorepo',
@@ -518,7 +517,6 @@ describe('packageJson.aggregateFromPackages', () => {
 
   it('stringify produces valid JSON with $genie marker', () => {
     const result = packageJson.aggregateFromPackages({
-      dir: repo.repoRoot,
       packages: [appPkg],
       name: 'my-monorepo',
     })

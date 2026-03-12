@@ -42,7 +42,6 @@ export const rootWorkspacePackages = [
 export const rootWorkspaceExtraMembers = ['context/effect/socket', 'context/opentui'] as const
 
 const rootWorkspace = packageJson.aggregateFromPackages({
-  dir: import.meta.dirname,
   packages: rootWorkspacePackages,
   extraWorkspaces: rootWorkspaceExtraMembers,
   name: 'effect-utils-workspace',

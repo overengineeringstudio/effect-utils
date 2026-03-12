@@ -75,7 +75,6 @@ describe('metadata-based workspace projections', () => {
 
   it('projects root workspace members recursively from package metadata', () => {
     const workspaceFile = pnpmWorkspaceYaml.root({
-      dir: repo.repoRoot,
       packages: [app],
       extraPackages: ['packages/examples'],
       dedupePeerDependents: true,
@@ -90,7 +89,6 @@ describe('metadata-based workspace projections', () => {
 
   it('projects workspace root workspaces from package metadata', () => {
     const workspaceRoot = packageJson.aggregateFromPackages({
-      dir: repo.repoRoot,
       packages: [app],
       extraWorkspaces: ['packages/examples'],
       name: 'workspace-root',

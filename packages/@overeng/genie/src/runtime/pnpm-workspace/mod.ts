@@ -1014,19 +1014,16 @@ const packagePnpmWorkspaceYaml = ({
 
 /** Project a root pnpm-workspace.yaml by recomposing package metadata instead of maintaining member lists manually. */
 const rootPnpmWorkspaceYaml = ({
-  dir,
   packages,
   extraPackages = [],
   ...config
 }: {
-  dir: string
   packages: readonly WorkspacePackageLike[]
   extraPackages?: readonly string[]
 } & Omit<PnpmWorkspaceData, 'packages'>) =>
   createPnpmWorkspaceYaml({
     ...config,
     packages: rootWorkspaceMemberPathsFromPackages({
-      dir,
       packages,
       extraPackages,
     }),

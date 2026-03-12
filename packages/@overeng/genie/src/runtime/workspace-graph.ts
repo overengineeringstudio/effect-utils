@@ -17,18 +17,14 @@
  *
  * Do not build new public authoring APIs on top of this module.
  */
-import fs from 'node:fs'
 import path from 'node:path'
 
 import type { WorkspacePackageLike } from './package-json/mod.ts'
 
-const normalizeLogicalPath = (value: string) => {
-  const normalized = value.split(path.sep).join(path.posix.sep)
-  return normalized === '' ? '.' : normalized
-}
+export { relativeRepoPath, rootWorkspaceMemberPathsFromPackages }
 
 /** Compute a relative repo path from one logical workspace location to another. */
-export const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
+const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
   const normalizedFrom = from === '.' ? '' : from
   const fromParts = normalizedFrom.split('/').filter(Boolean)
   const toParts = to.split('/').filter(Boolean)
@@ -47,27 +43,6 @@ export const relativeRepoPath = ({ from, to }: { from: string; to: string }) => 
   const relativePath = '../'.repeat(upCount) + downPath
 
   return relativePath === '' ? '.' : relativePath
-}
-
-const findRepoRootFromDir = (dir: string) => {
-  let current = fs.realpathSync(path.resolve(dir))
-
-  while (true) {
-    if (fs.existsSync(path.join(current, '.git')) === true) return current
-
-    const parent = path.dirname(current)
-    if (parent === current) {
-      throw new Error(`Could not determine repo root for workspace metadata from: ${dir}`)
-    }
-    current = parent
-  }
-}
-
-const repoNameFromRepoRoot = (repoRoot: string) => {
-  const parts = normalizeLogicalPath(repoRoot).split('/')
-  const refsIndex = parts.lastIndexOf('refs')
-  if (refsIndex > 0) return parts[refsIndex - 1]!
-  return path.basename(repoRoot)
 }
 
 const logicalWorkspaceMemberPath = ({
@@ -115,20 +90,34 @@ const collectWorkspaceMembersRecursive = ({
   return sortStrings(members)
 }
 
+const inferCurrentRepoNameFromPackages = (packages: readonly WorkspacePackageLike[]) => {
+  const repoNames = new Set(packages.map((pkg) => pkg.meta.workspace.repoName))
+  const [repoName] = Array.from(repoNames)
+
+  if (repoName === undefined) {
+    throw new Error('Cannot infer a root workspace repo without any packages')
+  }
+
+  return repoName
+}
+
 /** Project root workspace member paths from package metadata for the current repo view. */
-export const rootWorkspaceMemberPathsFromPackages = ({
-  dir,
+const rootWorkspaceMemberPathsFromPackages = ({
   packages,
   extraPackages = [],
 }: {
-  dir: string
   packages: readonly WorkspacePackageLike[]
   extraPackages?: readonly string[]
-}) =>
-  sortStrings([
+}) => {
+  if (packages.length === 0) {
+    return sortStrings(extraPackages)
+  }
+
+  return sortStrings([
     ...collectWorkspaceMembersRecursive({
       packages,
-      currentRepoName: repoNameFromRepoRoot(findRepoRootFromDir(dir)),
+      currentRepoName: inferCurrentRepoNameFromPackages(packages),
     }),
     ...extraPackages,
   ])
+}
