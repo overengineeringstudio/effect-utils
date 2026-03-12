@@ -24,6 +24,9 @@ All notable changes to this project will be documented in this file.
   - Excludes vendored/generated trees like `node_modules` during lint cache invalidation
   - Keeps `oxlint` install-free by using the bundled Nix JS plugin instead of the source plugin path
   - Retains the package-local `genie` install dependency because `genie --check` still runs via the repo's source-mode CLI
+- **Effect TypeScript tooling**: Pin the exported `effect-tsgo` flake input back to the last known-good upstream revision
+  - Reverts the `tsgo` flake lock refresh after confirming `Effect-TS/tsgo@df2eaaa` currently fails to build its own `effect-tsgo` package
+  - Keeps downstream `devenv` shells green until the upstream patch set catches up again
 - **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from filtered aggregate-root workspaces instead of package-level deploy closures
   - Stages the target package and its workspace closure under one canonical root workspace
   - Installs dependencies at that staged root with the same aggregate lockfile model used by local dev
