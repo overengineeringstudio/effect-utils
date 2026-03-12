@@ -5,8 +5,8 @@ import {
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
-import utilsPkg from '../utils/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 /** Runtime + type peer deps — consumers must have these to use and type-check tui-react's .tsx source exports */
 const peerDepNames = [

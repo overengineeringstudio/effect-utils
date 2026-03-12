@@ -8,8 +8,8 @@
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
-  lockfileHash = "sha256-tIv+7T30Dp1vffedW19xlZxf3/zoG023POR+/k7NJR0=";
-  packageJsonDepsHash = "sha256-CmUtJuWBlzMIhS0W6/IefyQ5RpwSkk5/MwPq/szaDSg=";
+  lockfileHash = "sha256-uo451cE+RbsNgjjyKJtEIZEjTiuNZ1LuwDnYqgRLN70=";
+  packageJsonDepsHash = "sha256-osL8B/2iNi2+BrbifKIaTvY7zqcT54dNS6g4RWSzw+Y=";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";

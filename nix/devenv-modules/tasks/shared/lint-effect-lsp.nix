@@ -12,8 +12,9 @@
 # Notes:
 #   - Requires `tsgo` on PATH (for example via
 #     `inputs.effect-utils.packages.${pkgs.system}.effect-tsgo`).
-#   - Integrates into `lint:check` by default so `check:quick` picks it up via
-#     the existing lint group.
+#   - Intentionally standalone: this is slower than the fast lint/check path, so
+#     consumers should opt into aggregating it explicitly if they want it in a
+#     broader check group.
 {
   tsconfigFile ? "tsconfig.all.json",
   tsgoBin ? "tsgo",
@@ -32,10 +33,6 @@ in
       description = "Run Effect LSP diagnostics via tsgo";
       exec = trace.exec "lint:check:effect-lsp" "${tsgoBin} --build ${tsconfigFile} --pretty false";
       inherit after;
-    };
-    "lint:check" = {
-      description = lib.mkDefault "Run all lint checks";
-      after = lib.mkAfter [ "lint:check:effect-lsp" ];
     };
   };
 }

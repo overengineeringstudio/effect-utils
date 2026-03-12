@@ -5,7 +5,6 @@ import {
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
-import examplePkg from './examples/basic/package.json.genie.ts'
 
 const peerDepNames = [
   '@effect/platform',
@@ -20,7 +19,7 @@ const peerDepNames = [
 const workspaceDeps = catalog.compose({
   dir: import.meta.dirname,
   devDependencies: {
-    workspace: [examplePkg, utilsPkg],
+    workspace: [utilsPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,

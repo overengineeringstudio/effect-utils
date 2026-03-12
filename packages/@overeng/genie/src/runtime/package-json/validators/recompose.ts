@@ -214,10 +214,9 @@ export const validateWorkspaceMetadataPresenceForPackageJson = ({
     ...data.optionalDependencies,
   }
 
-  const localWorkspaceDeps = Object.entries(candidateDeps).filter(([, spec]) =>
-    spec.startsWith('workspace:') ||
-    spec.startsWith('file:') ||
-    spec.startsWith('link:'),
+  const localWorkspaceDeps = Object.entries(candidateDeps).filter(
+    ([, spec]) =>
+      spec.startsWith('workspace:') || spec.startsWith('file:') || spec.startsWith('link:'),
   )
 
   if (localWorkspaceDeps.length === 0) return []

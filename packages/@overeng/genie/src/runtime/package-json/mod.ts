@@ -18,12 +18,7 @@ import {
 } from './validators/recompose.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
-export {
-  defineCatalog,
-  CatalogConflictError,
-  type Catalog,
-  type CatalogInput,
-} from './catalog.ts'
+export { defineCatalog, CatalogConflictError, type Catalog, type CatalogInput } from './catalog.ts'
 
 export {
   defineOverrides,
@@ -369,9 +364,7 @@ type PackageJsonMetadataInput<TMeta extends object = {}> = TMeta & {
 }
 
 const isPackageJsonComposition = (meta: unknown): meta is PackageJsonComposition =>
-  typeof meta === 'object' &&
-  meta !== null &&
-  PackageJsonCompositionBrand in meta
+  typeof meta === 'object' && meta !== null && PackageJsonCompositionBrand in meta
 
 /**
  * Sort object keys according to a defined order.

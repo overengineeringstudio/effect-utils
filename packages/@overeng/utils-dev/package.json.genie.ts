@@ -1,8 +1,4 @@
-import {
-  catalog,
-  packageJson,
-  privatePackageDefaults,
-} from '../../../genie/internal.ts'
+import { catalog, packageJson, privatePackageDefaults } from '../../../genie/internal.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [

@@ -1,8 +1,4 @@
-import {
-  catalog,
-  packageJson,
-  type PackageJsonData,
-} from '../../../genie/internal.ts'
+import { catalog, packageJson, type PackageJsonData } from '../../../genie/internal.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react'] as const

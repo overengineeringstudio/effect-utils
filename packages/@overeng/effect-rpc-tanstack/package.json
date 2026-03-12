@@ -29,7 +29,6 @@
     "@tanstack/react-start": "1.145.10",
     "@types/react": "19.2.7",
     "effect": "3.19.15",
-    "effect-rpc-tanstack-example-basic": "workspace:*",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "typescript": "5.9.3",
