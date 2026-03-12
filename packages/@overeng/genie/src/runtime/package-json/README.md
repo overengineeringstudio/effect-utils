@@ -124,6 +124,8 @@ or publish settings.
 
 When projecting an aggregate from packages, pass real package generator
 outputs as seeds. Do not maintain a parallel list of extra workspace paths.
+Use `pnpmWorkspaceYaml.manual(...)` only for real non-package workspace
+manifests that cannot be expressed as package seeds.
 
 Do not treat lower-level workspace graph internals as co-equal authoring APIs.
 Those helpers are intentionally internal adapter code for the composed-root

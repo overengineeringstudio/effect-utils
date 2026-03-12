@@ -11,6 +11,9 @@ import type { WorkspacePackageLike } from '../package-json/mod.ts'
 import { rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 import { validateTsconfigReferences } from './validators/references.ts'
 
+const sortStrings = (values: Iterable<string>) =>
+  [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
+
 type Target =
   | 'ES3'
   | 'ES5'
@@ -335,12 +338,12 @@ export const tsconfigJsonFromPackages = ({
   extraReferences?: readonly string[]
   onlyExistingReferences?: boolean
 } & Omit<TSConfigArgs, 'references'>): GenieOutput<TSConfigArgs> => {
-  const references = [
+  const references = sortStrings([
     ...rootWorkspaceMemberPathsFromPackages({
       packages,
-      additionalMemberPaths: extraReferences,
     }),
-  ]
+    ...extraReferences,
+  ])
 
   const normalizedReferences =
     onlyExistingReferences === true

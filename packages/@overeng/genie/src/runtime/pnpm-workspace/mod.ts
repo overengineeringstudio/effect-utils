@@ -900,8 +900,8 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
  *
  * Prefer `pnpmWorkspaceYaml.package(...)` and
  * `pnpmWorkspaceYaml.root(...)` for metadata-driven projections.
- * The low-level emitted-data constructor stays internal so normal authoring
- * flows through metadata-driven projection.
+ * `pnpmWorkspaceYaml.manual(...)` exists only for genuine non-package
+ * workspace manifests that cannot be modeled from package seeds.
  */
 function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
   config: Strict<T, PnpmWorkspaceData>,
@@ -925,6 +925,11 @@ function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>
     ...(meta === undefined ? {} : { meta }),
   })
 }
+
+/** Create a pnpm-workspace.yaml directly for genuine non-package workspace manifests. */
+const manualPnpmWorkspaceYaml = <const T extends PnpmWorkspaceData>(
+  config: Strict<T, PnpmWorkspaceData>,
+) => createPnpmWorkspaceYaml(config)
 
 const sortStrings = (values: Iterable<string>) =>
   [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
@@ -1018,22 +1023,18 @@ const packagePnpmWorkspaceYaml = ({
 /** Project a root pnpm-workspace.yaml by recomposing package metadata instead of maintaining member lists manually. */
 const rootPnpmWorkspaceYaml = ({
   packages,
-  extraPackages = [],
   ...config
 }: {
   packages: readonly WorkspacePackageLike[]
-  extraPackages?: readonly string[]
 } & Omit<PnpmWorkspaceData, 'packages'>) =>
   createPnpmWorkspaceYaml({
     ...config,
-    packages: rootWorkspaceMemberPathsFromPackages({
-      packages,
-      additionalMemberPaths: extraPackages,
-    }),
+    packages: rootWorkspaceMemberPathsFromPackages({ packages }),
   })
 
 /** Public pnpm workspace projection API for package-local and aggregate views. */
 export const pnpmWorkspaceYaml = {
+  manual: manualPnpmWorkspaceYaml,
   package: packagePnpmWorkspaceYaml,
   root: rootPnpmWorkspaceYaml,
 } as const

@@ -1,7 +1,6 @@
 import { commonPnpmWorkspaceData, pnpmWorkspaceYaml } from '../../../genie/internal.ts'
 
-export default pnpmWorkspaceYaml.root({
-  packages: [],
-  extraPackages: ['.'],
+export default pnpmWorkspaceYaml.manual({
+  packages: ['.'],
   ...commonPnpmWorkspaceData,
 })

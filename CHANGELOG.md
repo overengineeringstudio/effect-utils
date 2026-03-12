@@ -40,6 +40,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/genie**: tighten pnpm workspace SSOT around package seeds
+  - Removes `extraPackages` from `pnpmWorkspaceYaml.root(...)` and the matching `additionalMemberPaths` graph helper escape hatch
+  - Keeps explicit non-package workspace manifests on `pnpmWorkspaceYaml.manual(...)` instead of overloading root projection
+  - Stops `genie/external.ts` from depending on internal workspace-graph helpers and documents the seed-only aggregate model
 - **Effect TypeScript tooling**: switch local language-service integration to Nix-provided `effect-tsgo`
   - Repoints the dev environment to upstream `Effect-TS/tsgo`
   - Renames generator helpers/comments to describe the current tsgo-based model

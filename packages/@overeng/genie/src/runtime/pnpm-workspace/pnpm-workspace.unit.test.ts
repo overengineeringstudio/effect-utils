@@ -88,16 +88,24 @@ describe('metadata-based workspace projections', () => {
 
   it('projects root workspace members recursively from package metadata', () => {
     const workspaceFile = pnpmWorkspaceYaml.root({
-      packages: [app],
-      extraPackages: ['packages/examples'],
+      packages: [app, example],
       dedupePeerDependents: true,
     })
 
     expect(workspaceFile.data.packages).toEqual([
       'packages/app',
-      'packages/examples',
+      'packages/examples/basic',
       'packages/utils',
     ])
+  })
+
+  it('keeps a manual constructor for genuine non-package workspace manifests', () => {
+    const workspaceFile = pnpmWorkspaceYaml.manual({
+      packages: ['*', 'packages/app'],
+      dedupePeerDependents: true,
+    })
+
+    expect(workspaceFile.data.packages).toEqual(['*', 'packages/app'])
   })
 
   it('projects workspace root workspaces from package metadata', () => {

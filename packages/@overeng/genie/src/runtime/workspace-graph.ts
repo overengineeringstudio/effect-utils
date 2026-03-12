@@ -104,20 +104,12 @@ const inferCurrentRepoNameFromPackages = (packages: readonly WorkspacePackageLik
 /** Project root workspace member paths from package metadata for the current repo view. */
 const rootWorkspaceMemberPathsFromPackages = ({
   packages,
-  additionalMemberPaths = [],
 }: {
   packages: readonly WorkspacePackageLike[]
-  additionalMemberPaths?: readonly string[]
-}) => {
-  if (packages.length === 0) {
-    return sortStrings(additionalMemberPaths)
-  }
-
-  return sortStrings([
-    ...collectWorkspaceMembersRecursive({
-      packages,
-      currentRepoName: inferCurrentRepoNameFromPackages(packages),
-    }),
-    ...additionalMemberPaths,
-  ])
-}
+}) =>
+  packages.length === 0
+    ? []
+    : collectWorkspaceMembersRecursive({
+        packages,
+        currentRepoName: inferCurrentRepoNameFromPackages(packages),
+      })

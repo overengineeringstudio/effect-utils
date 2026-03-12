@@ -39,7 +39,6 @@ import {
   type WorkspacePackage,
   type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
-import { relativeRepoPath } from '../packages/@overeng/genie/src/runtime/workspace-graph.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
@@ -234,6 +233,27 @@ export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
 
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
+
+const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
+  const normalizedFrom = from === '.' ? '' : from
+  const fromParts = normalizedFrom.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
+
+  let common = 0
+  while (
+    common < fromParts.length &&
+    common < toParts.length &&
+    fromParts[common] === toParts[common]
+  ) {
+    common++
+  }
+
+  const upCount = fromParts.length - common
+  const downPath = toParts.slice(common).join('/')
+  const relativePath = '../'.repeat(upCount) + downPath
+
+  return relativePath === '' ? '.' : relativePath
+}
 
 // =============================================================================
 // TypeScript Reference Helpers

@@ -8,13 +8,14 @@ Generate `pnpm-workspace.yaml` files.
   `pnpm-workspace.yaml` from package metadata
 - `pnpmWorkspaceYaml.root(...)` projects a root aggregate
   `pnpm-workspace.yaml` from multiple package outputs
+- `pnpmWorkspaceYaml.manual(...)` exists only for genuine
+  non-package workspaces that cannot be modeled from package seeds
 - package metadata must already contain static import-time workspace facts;
   runtime `ctx` is only used during projection
 
-`pnpmWorkspaceYaml(...)` is the low-level emitted-data constructor used by those
-projection helpers. Treat it as internal/low-level. Normal authoring should use
-only:
+Normal authoring should use only:
 
+- `pnpmWorkspaceYaml.manual(...)` for explicit non-package manifests only
 - `pnpmWorkspaceYaml.package(...)`
 - `pnpmWorkspaceYaml.root(...)`
 
@@ -58,3 +59,6 @@ Low-level workspace graph helpers are intentionally internal.
 Use real package generator outputs as workspace seeds. If a repo member should
 participate in the workspace, give it a package generator and include that
 output instead of threading extra member paths through the public API.
+
+Use `pnpmWorkspaceYaml.manual(...)` only when the workspace intentionally
+includes members that are not represented by package generator outputs.
