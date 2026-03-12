@@ -209,11 +209,14 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
   ) => {
     const tanstackRoute = createFileRoute(path)
     const loader = options.loader
+    type TanstackRouteOptions = NonNullable<Parameters<typeof tanstackRoute>[0]>
+    type TanstackLoader = NonNullable<TanstackRouteOptions['loader']>
+    type TanstackLoaderContext = Parameters<TanstackLoader>[0]
 
     const config = {
       ...(loader !== undefined
         ? {
-            loader: async (ctx: { params: unknown; abortController: AbortController }) => {
+            loader: async (ctx: TanstackLoaderContext) => {
               const effect = loader({
                 params: ctx.params as TParams,
                 abortController: ctx.abortController,
