@@ -651,9 +651,8 @@ const storeAddCommand = Cli.Command.make(
       }
 
       // Get the current commit
-      const commit = yield* Git.getCurrentCommit(worktreePath).pipe(
-        Effect.catchAll(() => Effect.void),
-      )
+      const commitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+      const commit = Option.getOrUndefined(commitOpt)
 
       // Use TuiApp for output
       const alreadyExists = bareExists && worktreeExists

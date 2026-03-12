@@ -384,9 +384,10 @@ export const syncMember = <R = never>({
       // If symlink points to correct location, just read current state for lock
       if (currentLinkNormalized === expectedPathNormalized) {
         // Read current HEAD from the worktree
-        const currentCommit = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
-          Effect.catchAll(() => Effect.void),
+        const currentCommitOpt = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
+          Effect.option,
         )
+        const currentCommit = Option.getOrUndefined(currentCommitOpt)
         const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
@@ -790,9 +791,8 @@ export const syncMember = <R = never>({
       const onExpectedBranch = Option.isSome(worktreeBranch) && worktreeBranch.value === targetRef
 
       if (onExpectedBranch === true) {
-        const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
-          Effect.catchAll(() => Effect.void),
-        )
+        const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+        const currentCommit = Option.getOrUndefined(currentCommitOpt)
         if (
           currentCommit !== undefined &&
           targetCommit !== undefined &&

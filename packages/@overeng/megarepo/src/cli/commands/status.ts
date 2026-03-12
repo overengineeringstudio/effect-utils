@@ -160,9 +160,8 @@ const scanMembersRecursive = ({
           currentBranch = branch !== 'HEAD' ? branch : undefined
 
           // Get current commit (full SHA for drift detection, short for display)
-          fullCommit = yield* Git.getCurrentCommit(memberPath).pipe(
-            Effect.catchAll(() => Effect.void),
-          )
+          const fullCommitOpt = yield* Git.getCurrentCommit(memberPath).pipe(Effect.option)
+          fullCommit = Option.getOrUndefined(fullCommitOpt)
           const shortRev = fullCommit?.slice(0, 7)
 
           gitStatus = {
