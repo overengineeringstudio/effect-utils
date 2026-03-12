@@ -30,6 +30,7 @@ export {
 } from './package-json/mod.ts'
 export {
   pnpmWorkspaceYaml,
+  type PnpmPackageClosureConfig,
   type PnpmSettings,
   type PnpmWorkspaceData,
 } from './pnpm-workspace/mod.ts'

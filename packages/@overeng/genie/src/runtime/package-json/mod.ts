@@ -9,6 +9,7 @@
 
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
+import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
 import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
 import {
@@ -293,6 +294,7 @@ export type PackageJsonData = {
 export type WorkspaceIdentity = {
   repoName: string
   memberPath: string
+  pnpmPackageClosure?: PnpmPackageClosureConfig
 }
 
 /** Static workspace-composition metadata stored in non-emitted generator meta. */

@@ -53,7 +53,8 @@ All notable changes to this project will be documented in this file.
   - Adds a linked TODO for collapsing the separate task once the main workspace TypeScript check becomes `Effect-TS/tsgo`-backed
 - **@overeng/genie**: tighten pnpm workspace SSOT around package seeds
   - Removes `extraPackages` from `pnpmWorkspaceYaml.root(...)` and the matching `additionalMemberPaths` graph helper escape hatch
-  - Keeps explicit non-package workspace manifests on `pnpmWorkspaceYaml.manual(...)` instead of overloading root projection
+  - Removes committed package-level `pnpm-workspace.yaml` projections in favor of internal build-time package closures
+  - Keeps `pnpmWorkspaceYaml.manual(...)` only for genuine non-package workspace manifests
   - Stops `genie/external.ts` from depending on internal workspace-graph helpers and documents the seed-only aggregate model
 - **Effect TypeScript tooling**: switch local language-service integration to Nix-provided `effect-tsgo`
   - Repoints the dev environment to upstream `Effect-TS/tsgo`
@@ -63,7 +64,7 @@ All notable changes to this project will be documented in this file.
   - Adds generated root `package.json` and `pnpm-workspace.yaml` with explicit workspace members
   - Makes `pnpm:install` own the repo-root install state and keeps the repo-root `pnpm-lock.yaml` as the only authoritative lockfile
   - Updates package-scoped task execution to use `pnpm exec` so Vitest, Storybook, and Vite resolve against the active workspace topology
-  - Keeps package-level `pnpm-workspace.yaml` files only as package-closure metadata instead of package-local dev install roots or lock owners
+  - Derives package closures for Nix/tooling at build time instead of committing package-level `pnpm-workspace.yaml` files
   - Clarifies in the install spec that the current symlinked `repos/*` Megarepo realization keeps imported members on a cross-repo `link:` boundary rather than making them aggregate-root workspace importers
 - **@overeng/utils**: Make Storybook `viteFinal` typing opt-in generic for linked Vite workspaces
   - Keeps the default helper API free of foreign Vite types

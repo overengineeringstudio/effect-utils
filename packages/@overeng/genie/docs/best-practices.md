@@ -55,7 +55,6 @@ wrappers:
 
 - `packageJson.aggregate(...)`
 - `packageJson.aggregateFromPackages(...)`
-- `pnpmWorkspaceYaml.package(...)`
 - `pnpmWorkspaceYaml.root(...)`
 
 Treat the `packages` array in these helpers as the single source of truth for

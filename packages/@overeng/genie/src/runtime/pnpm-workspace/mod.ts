@@ -708,6 +708,10 @@ export interface PnpmWorkspaceData {
   sharedWorkspaceLockfile?: boolean
 }
 
+export type PnpmPackageClosureConfig = {
+  extraMemberPaths?: readonly string[]
+}
+
 /**
  * Resolve patch paths, converting repo-relative paths to package-relative paths.
  *
@@ -899,10 +903,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
  *
  * @see https://pnpm.io/pnpm-workspace_yaml
  *
- * Prefer `pnpmWorkspaceYaml.package(...)` and
- * `pnpmWorkspaceYaml.root(...)` for metadata-driven projections.
- * `pnpmWorkspaceYaml.manual(...)` exists only for genuine non-package
- * workspace manifests that cannot be modeled from package seeds.
+ * Prefer `pnpmWorkspaceYaml.root(...)` for live repo state.
+ * `pnpmWorkspaceYaml.manual(...)` remains available for genuine non-package
+ * workspace manifests. Package closures are internal build-time projections
+ * derived from package workspace metadata.
  */
 function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
   config: Strict<T, PnpmWorkspaceData>,
@@ -946,30 +950,27 @@ const logicalWorkspaceMemberPath = ({
     ? pkg.meta.workspace.memberPath
     : path.posix.join('repos', pkg.meta.workspace.repoName, pkg.meta.workspace.memberPath)
 
-const relativePathForPackage = ({
-  pkg,
-  dep,
+const relativePathForMember = ({
+  packageDir,
+  memberPath,
 }: {
-  pkg: WorkspacePackageLike
-  dep: WorkspacePackageLike
+  packageDir: string
+  memberPath: string
 }) => {
   const relative =
     relativeRepoPath({
-      from: pkg.meta.workspace.memberPath,
-      to: logicalWorkspaceMemberPath({
-        currentRepoName: pkg.meta.workspace.repoName,
-        pkg: dep,
-      }),
+      from: packageDir,
+      to: memberPath,
     }) || '.'
   return relative.startsWith('.') === true ? relative : `./${relative}`
 }
 
-const collectRelativeWorkspaceDepsRecursive = ({
-  pkg,
+const collectLogicalWorkspaceDepsRecursive = ({
+  currentRepoName,
   deps,
   visited = new Set<string>(),
 }: {
-  pkg: WorkspacePackageLike
+  currentRepoName: string
   deps: readonly WorkspacePackageLike[]
   visited?: Set<string>
 }) => {
@@ -981,10 +982,10 @@ const collectRelativeWorkspaceDepsRecursive = ({
     if (visited.has(visitedKey) === true) continue
     visited.add(visitedKey)
 
-    members.add(relativePathForPackage({ pkg, dep }))
+    members.add(logicalWorkspaceMemberPath({ currentRepoName, pkg: dep }))
 
-    for (const nestedDep of collectRelativeWorkspaceDepsRecursive({
-      pkg,
+    for (const nestedDep of collectLogicalWorkspaceDepsRecursive({
+      currentRepoName,
       deps: dep.meta.workspace.deps,
       visited,
     })) {
@@ -995,31 +996,37 @@ const collectRelativeWorkspaceDepsRecursive = ({
   return sortStrings(members)
 }
 
-/** Project a package-local pnpm-workspace.yaml from a package's non-emitted workspace metadata. */
-const packagePnpmWorkspaceYaml = ({
+export const projectPnpmPackageClosure = ({
   pkg,
-  packages = [],
-  ...config
 }: {
   pkg: WorkspacePackageLike
-  packages?: readonly WorkspacePackageLike[]
-} & Omit<PnpmWorkspaceData, 'packages'>) =>
-  createPnpmWorkspaceYaml({
-    ...config,
-    packages: [
+}) => {
+  const packageDir = pkg.meta.workspace.memberPath
+  const currentRepoName = pkg.meta.workspace.repoName
+  const { extraMemberPaths = [] } = pkg.meta.workspace.pnpmPackageClosure ?? {}
+
+  const workspaceMembers = sortStrings([
+    ...collectLogicalWorkspaceDepsRecursive({
+      currentRepoName,
+      deps: pkg.meta.workspace.deps,
+    }),
+    ...extraMemberPaths,
+  ])
+
+  return {
+    packageDir,
+    workspaceClosureDirs: sortStrings([packageDir, ...workspaceMembers]),
+    packageRelativeMemberPaths: [
       '.',
-      ...sortStrings([
-        ...collectRelativeWorkspaceDepsRecursive({
-          pkg,
-          deps: pkg.meta.workspace.deps,
+      ...workspaceMembers.map((memberPath) =>
+        relativePathForMember({
+          packageDir,
+          memberPath,
         }),
-        ...collectRelativeWorkspaceDepsRecursive({
-          pkg,
-          deps: packages,
-        }),
-      ]),
+      ),
     ],
-  })
+  }
+}
 
 /** Project a root pnpm-workspace.yaml by recomposing package metadata instead of maintaining member lists manually. */
 const rootPnpmWorkspaceYaml = ({
@@ -1033,10 +1040,9 @@ const rootPnpmWorkspaceYaml = ({
     packages: rootWorkspaceMemberPathsFromPackages({ packages }),
   })
 
-/** Public pnpm workspace projection API for package-local and aggregate views. */
+/** Public pnpm workspace projection API for live repo state and genuine non-package workspaces. */
 export const pnpmWorkspaceYaml = {
   manual: manualPnpmWorkspaceYaml,
-  package: packagePnpmWorkspaceYaml,
   root: rootPnpmWorkspaceYaml,
 } as const
 

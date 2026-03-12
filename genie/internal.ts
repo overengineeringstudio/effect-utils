@@ -40,6 +40,7 @@ export {
   type OxlintConfigArgs,
   type PackageJsonData,
   type PatchesRegistry,
+  type PnpmPackageClosureConfig,
   type PnpmSettings,
   type PnpmWorkspaceData,
   type ScriptValue,
@@ -68,10 +69,14 @@ export const catalog = defineCatalog({
 
 const WORKSPACE_REPO_NAME = 'effect-utils'
 
-export const workspaceMember = (memberPath: string) =>
+export const workspaceMember = (
+  memberPath: string,
+  pnpmPackageClosure: PnpmPackageClosureConfig = {},
+) =>
   ({
     repoName: WORKSPACE_REPO_NAME,
     memberPath,
+    pnpmPackageClosure,
   }) as const
 
 /**
@@ -89,11 +94,11 @@ export const utilsPatches = definePatchedDependencies({
  * Common pnpm workspace settings for all effect-utils packages.
  *
  * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
- * so that package-local workspace projections and the aggregate root stay on
+ * so that internal package-closure projections and the aggregate root stay on
  * the same patch metadata.
  *
  * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
- * Package-local projections do not own lockfiles, and reintroducing per-member
+ * Build-time package closures do not own lockfiles, and reintroducing per-member
  * lock ownership would cause TS2742 errors in `tsc --build` because each
  * workspace member gets its own `.pnpm` store, creating different physical
  * paths for the same package. TypeScript treats these as distinct types,

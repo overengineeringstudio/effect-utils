@@ -20,7 +20,7 @@ This spec defines:
 - install ownership
 - local cross-repo resolution
 - linker and runtime behavior
-- package-level workspace projection metadata
+- internal package-closure projection data
 - lockfile and publish behavior
 - managed tooling and validation expectations
 
@@ -145,9 +145,9 @@ true aggregate-root workspace importers, the realization layer must
 materialize them as normal directories from pnpm's perspective rather than
 through a symlinked `repos/<repo>` root.
 
-That package-local metadata must remain static and import-time safe. Runtime
+That package metadata must remain static and import-time safe. Runtime
 generation context is used only by projection helpers when rendering aggregate
-or package-level workspace files.
+or build-time package closures.
 
 Aggregate generation is topology-local:
 
@@ -158,9 +158,9 @@ Aggregate generation is topology-local:
 The generated aggregate root files and aggregate dependency closure together
 form the effective dependency inputs for the composed topology.
 
-Package-level `pnpm-workspace.yaml` projections may remain as package-closure
-metadata for builders, but package-level `pnpm-lock.yaml` files are not part
-of the authoritative topology model.
+Package closures for builders may be derived from package metadata at build
+time, but package-level `pnpm-workspace.yaml` and `pnpm-lock.yaml` files are
+not part of the authoritative topology model.
 
 Those inputs must be stable and canonical enough that equivalent standalone and
 composed graphs for the same physical source tree collapse to the same global
@@ -269,7 +269,7 @@ Managed tooling must provide topology-aware entrypoints for:
 
 - standalone install
 - composed install
-- package-level workspace projection metadata
+- build-time package-closure projection
 - composed runtime execution
 - aggregate topology generation
 
@@ -309,13 +309,13 @@ Package-level install commands in the live worktree are not supported if they
 materialize package-local `node_modules` or package-local `pnpm-lock.yaml`
 files.
 
-## Package-Level Workspace Projections
+## Build-Time Package Closures
 
 - Standalone repo roots own their normal install state and lockfiles.
-- Package-level `pnpm-workspace.yaml` files may remain as package-closure
-  metadata for builders and projection helpers.
-- Those projections must not own or refresh package-local `pnpm-lock.yaml`
-  files.
+- Builders may derive package closures from package metadata when they need a
+  narrowed workspace view.
+- Those derived closures must not own or refresh package-level
+  `pnpm-workspace.yaml` or `pnpm-lock.yaml` files.
 - A package-level command that materializes fresh package-local install state
   or package-local lockfiles outside the active topology owner violates this
   spec.

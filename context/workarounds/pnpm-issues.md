@@ -22,6 +22,6 @@ adapter and prefer converging it onto:
 
 - `catalog.compose(...)`
 - `packageJson(data, composition)`
-- `pnpmWorkspaceYaml.package(...)`
+- `pnpmWorkspaceYaml.manual(...)` for genuine non-package manifests
 - `pnpmWorkspaceYaml.root(...)`
 - `packageJson.aggregateFromPackages(...)`

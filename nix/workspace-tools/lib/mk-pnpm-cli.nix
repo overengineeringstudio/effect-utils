@@ -28,19 +28,69 @@ let
     else
       builtins.toPath workspaceRoot;
 
+  normalizePathLike =
+    pathLike:
+    let
+      rawPath =
+        if builtins.isAttrs pathLike && builtins.hasAttr "outPath" pathLike then
+          pathLike.outPath
+        else if builtins.isPath pathLike then
+          pathLike
+        else
+          builtins.toPath pathLike;
+      normalizedPathString = builtins.unsafeDiscardStringContext (toString rawPath);
+    in
+    builtins.path {
+      path = normalizedPathString;
+      name = builtins.baseNameOf normalizedPathString;
+    };
+
   normalizeSourceRoot =
     sourceRoot:
-    if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
-      sourceRoot.outPath
-    else if builtins.isPath sourceRoot then
-      sourceRoot
-    else
-      builtins.toPath sourceRoot;
+    normalizePathLike sourceRoot;
 
   workspaceSourceRoots = lib.mapAttrs (_: normalizeSourceRoot) workspaceSources;
   workspaceSourcePrefixes = lib.sort (
     left: right: lib.stringLength left > lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
+
+  overlayWorkspaceSourceCmd =
+    prefix:
+    let
+      sourceRoot = workspaceSourceRoots.${prefix};
+      sourceRootArg = lib.escapeShellArg (toString sourceRoot);
+      targetRelPathArg = lib.escapeShellArg prefix;
+    in
+    if prefix == "." || prefix == "" then
+      ''
+        source_root=${sourceRootArg}
+        find "$out" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        cp -R "$source_root"/. "$out"
+        chmod -R +w "$out"
+      ''
+    else
+      ''
+        source_root=${sourceRootArg}
+        target_rel_path=${targetRelPathArg}
+        rm -rf "$out/$target_rel_path"
+        mkdir -p "$out/$target_rel_path"
+        cp -R "$source_root"/. "$out/$target_rel_path"
+        chmod -R +w "$out/$target_rel_path"
+      '';
+
+  workspaceEvalRootPath =
+    if workspaceSourcePrefixes == [ ] then
+      workspaceRootPath
+    else
+      pkgs.runCommand "${name}-workspace-eval-root" { } (
+        ''
+          set -euo pipefail
+          mkdir -p "$out"
+          cp -R ${lib.escapeShellArg (toString workspaceRootPath)}/. "$out"
+          chmod -R +w "$out"
+        ''
+        + builtins.concatStringsSep "\n" (map overlayWorkspaceSourceCmd workspaceSourcePrefixes)
+      );
 
   hasInstallRoot =
     sourceRoot:
@@ -79,85 +129,31 @@ let
 
   rootPnpmWorkspaceYamlPath = workspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
-  packagePnpmWorkspaceYamlPath = workspaceRootPath + "/${packageDir}/pnpm-workspace.yaml";
-  packagePnpmWorkspaceYaml = builtins.readFile packagePnpmWorkspaceYamlPath;
+  packageClosureProjectionFile = pkgs.runCommand "${name}-pnpm-package-closure.json" {
+    nativeBuildInputs = [ pkgs.bun ];
+  } ''
+    set -euo pipefail
+    cd ${lib.escapeShellArg (toString workspaceEvalRootPath)}
+    bun --eval '
+      const { rootWorkspacePackages } = await import("./package.json.genie.ts")
+      const { projectPnpmPackageClosure } = await import("./packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts")
 
-  parseWorkspacePackages =
-    workspaceYaml:
-    let
-      workspaceLines = lib.splitString "\n" workspaceYaml;
-      packagesLine = lib.findFirst (line: lib.hasPrefix "packages:" line) null workspaceLines;
-      packagesLineTrimmed = if packagesLine == null then "" else lib.trim packagesLine;
-      isPackagesInline = packagesLine != null && lib.hasPrefix "packages: [" packagesLineTrimmed;
+      if (!Array.isArray(rootWorkspacePackages)) {
+        throw new Error("package.json.genie.ts must export rootWorkspacePackages")
+      }
 
-      parsePackagesInline =
-        let
-          packagesArrayStr = lib.removePrefix "packages: " packagesLine;
-          packagesInner = lib.removeSuffix "]" (lib.removePrefix "[" packagesArrayStr);
-        in
-        map (s: lib.trim s) (lib.splitString "," packagesInner);
+      const pkg = rootWorkspacePackages.find(
+        (candidate) => candidate?.meta?.workspace?.memberPath === ${builtins.toJSON packageDir},
+      )
 
-      workspaceLinesAfterPackagesHeader =
-        let
-          dropUntilPackagesHeader =
-            lines:
-            if lines == [ ] then
-              [ ]
-            else if lib.hasPrefix "packages:" (lib.trim (builtins.head lines)) then
-              lib.tail lines
-            else
-              dropUntilPackagesHeader (lib.tail lines);
-        in
-        dropUntilPackagesHeader workspaceLines;
+      if (pkg === undefined) {
+        throw new Error("No rootWorkspacePackages entry found for packageDir: " + ${builtins.toJSON packageDir})
+      }
 
-      parsePackagesMultiline =
-        let
-          lines = workspaceLinesAfterPackagesHeader;
-          firstContentLine = lib.findFirst (line: lib.trim line != "") "" lines;
-          isBracketFormat = lib.hasInfix "[" firstContentLine;
-        in
-        if isBracketFormat then
-          let
-            takeWhile =
-              pred: lst:
-              if lst == [ ] then
-                [ ]
-              else if pred (builtins.head lst) then
-                [ (builtins.head lst) ] ++ takeWhile pred (lib.tail lst)
-              else
-                [ ];
-            indentedLines = takeWhile (line: lib.hasPrefix " " line || line == "") lines;
-            joined = builtins.concatStringsSep "\n" indentedLines;
-            afterOpen = builtins.elemAt (lib.splitString "[" joined) 1;
-            inner = builtins.elemAt (lib.splitString "]" afterOpen) 0;
-            items = lib.splitString "," inner;
-          in
-          builtins.filter (s: s != "") (map (s: lib.trim (lib.removeSuffix "," (lib.trim s))) items)
-        else
-          let
-            parseLines =
-              remainingLines:
-              if remainingLines == [ ] then
-                [ ]
-              else
-                let
-                  line = lib.trim (builtins.head remainingLines);
-                  rest = lib.tail remainingLines;
-                in
-                if line == "" || lib.hasPrefix "#" line then
-                  parseLines rest
-                else if lib.hasPrefix "- " line then
-                  [ lib.trim (lib.removePrefix "- " line) ] ++ parseLines rest
-                else if lib.hasPrefix "-" line then
-                  [ lib.trim (lib.removePrefix "-" line) ] ++ parseLines rest
-                else
-                  [ ];
-          in
-          parseLines lines;
-    in
-    builtins.filter builtins.isString (
-      if isPackagesInline then parsePackagesInline else parsePackagesMultiline
-    );
+      process.stdout.write(JSON.stringify(projectPnpmPackageClosure({ pkg })))
+    ' > "$out"
+  '';
+  packageClosureProjection = builtins.fromJSON (builtins.readFile packageClosureProjectionFile);
 
   workspaceSuffixLines =
     workspaceYaml:
@@ -198,46 +194,16 @@ let
     else
       "${packagesBlock}\n\n${suffix}\n";
 
-  workspaceMemberItems = parseWorkspacePackages packagePnpmWorkspaceYaml;
-  relativeWorkspaceMembers = builtins.filter (s: s != ".") workspaceMemberItems;
-
-  resolveRelativePath =
-    basePath: relPath:
-    let
-      baseParts = lib.splitString "/" basePath;
-      relParts = lib.splitString "/" relPath;
-      countResult =
-        builtins.foldl'
-          (
-            acc: part:
-            if acc.done then
-              acc
-            else if part == ".." then
-              {
-                count = acc.count + 1;
-                done = false;
-              }
-            else
-              {
-                count = acc.count;
-                done = true;
-              }
-          )
-          {
-            count = 0;
-            done = false;
-          }
-          relParts;
-      upCount = countResult.count;
-      remainingParts = lib.drop upCount relParts;
-      resolvedBase = lib.take (lib.length baseParts - upCount) baseParts;
-    in
-    lib.concatStringsSep "/" (resolvedBase ++ remainingParts);
+  workspaceClosureDirs =
+    if packageClosureProjection.packageDir != packageDir then
+      throw "mk-pnpm-cli: projected packageDir does not match requested packageDir"
+    else
+      packageClosureProjection.workspaceClosureDirs;
+  workspaceMembers = builtins.filter (dir: dir != packageDir) workspaceClosureDirs;
 
   resolvedWorkspaceMembers = map (
-    relPath:
+    dir:
     let
-      dir = resolveRelativePath packageDir relPath;
       resolved = resolveSourceFor dir;
     in
     {
@@ -249,10 +215,7 @@ let
         else
           resolved.sourceRoot + "/${resolved.sourceRelPath}";
     }
-  ) relativeWorkspaceMembers;
-
-  workspaceMembers = map (item: item.dir) resolvedWorkspaceMembers;
-  workspaceClosureDirs = lib.unique ([ packageDir ] ++ workspaceMembers);
+  ) workspaceMembers;
   externalInstallRootItems =
     builtins.filter (item: item != null) (
       map

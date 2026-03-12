@@ -12,8 +12,8 @@
  *
  * - `catalog.compose(...)`
  * - `packageJson(data, composition)`
- * - projection wrappers such as `pnpmWorkspaceYaml.package(...)`
- *   and `pnpmWorkspaceYaml.root(...)`
+ * - root workspace projection via `pnpmWorkspaceYaml.root(...)`
+ * - internal package-closure projection via `projectPnpmPackageClosure(...)`
  *
  * Do not build new public authoring APIs on top of this module.
  */

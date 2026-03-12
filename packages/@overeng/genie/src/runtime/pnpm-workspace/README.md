@@ -1,43 +1,28 @@
 # pnpm-workspace
 
-Generate `pnpm-workspace.yaml` files.
+Generate the repo-root `pnpm-workspace.yaml`.
 
 ## Mental Model
 
-- `pnpmWorkspaceYaml.package(...)` projects a package-local
-  `pnpm-workspace.yaml` from package metadata
 - `pnpmWorkspaceYaml.root(...)` projects a root aggregate
   `pnpm-workspace.yaml` from multiple package outputs
-- `pnpmWorkspaceYaml.manual(...)` exists only for genuine
-  non-package workspaces that cannot be modeled from package seeds
+- `pnpmWorkspaceYaml.manual(...)` remains available only for genuine
+  non-package workspace manifests
 - package metadata must already contain static import-time workspace facts;
   runtime `ctx` is only used during projection
-- package-local `pnpm-workspace.yaml` may remain as projection metadata, but
-  package-local `pnpm-lock.yaml` is not part of the intended model
+- package closures used by Nix/tooling are derived internally from package
+  metadata and are not committed workspace manifests
 
 Normal authoring should use only:
 
-- `pnpmWorkspaceYaml.manual(...)` for explicit non-package manifests only
-- `pnpmWorkspaceYaml.package(...)`
+- `pnpmWorkspaceYaml.manual(...)` for genuine non-package manifests only
 - `pnpmWorkspaceYaml.root(...)`
 
 Keep lower-level workspace graph traversal and path derivation internal. The
-public story is package-level projection and root aggregate projection.
+public story is a root aggregate projection plus internal package-closure
+derivation.
 
 ## Usage
-
-### Package-level projection
-
-```ts
-import pkg from './package.json.genie.ts'
-import examplePkg from './examples/basic/package.json.genie.ts'
-import { pnpmWorkspaceYaml } from '../../../genie/internal.ts'
-
-export default pnpmWorkspaceYaml.package({
-  pkg,
-  packages: [examplePkg],
-})
-```
 
 ### Root aggregate projection
 
@@ -54,9 +39,9 @@ export default pnpmWorkspaceYaml.root({
 
 ## Why wrappers exist
 
-The wrappers are the public projection API because package authoring should
-project from package metadata, not maintain workspace member lists manually.
-Low-level workspace graph helpers are intentionally internal.
+The wrapper is the public projection API because repo authoring should project
+from package metadata, not maintain workspace member lists manually. Low-level
+workspace graph helpers are intentionally internal.
 
 Use real package generator outputs as workspace seeds. If a repo member should
 participate in the workspace, give it a package generator and include that

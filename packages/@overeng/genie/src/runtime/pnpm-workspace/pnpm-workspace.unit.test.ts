@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
-import { pnpmWorkspaceYaml } from './mod.ts'
+import { pnpmWorkspaceYaml, projectPnpmPackageClosure } from './mod.ts'
 
 const createTempRepo = (...memberPaths: string[]) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-workspace-'))
@@ -25,9 +25,20 @@ const createTempRepo = (...memberPaths: string[]) => {
   }
 }
 
-const workspace = ({ repoName, memberPath }: { repoName: string; memberPath: string }) => ({
+const workspace = ({
   repoName,
   memberPath,
+  pnpmPackageClosure,
+}: {
+  repoName: string
+  memberPath: string
+  pnpmPackageClosure?: {
+    extraMemberPaths?: readonly string[]
+  }
+}) => ({
+  repoName,
+  memberPath,
+  pnpmPackageClosure,
 })
 
 describe('metadata-based workspace projections', () => {
@@ -50,6 +61,9 @@ describe('metadata-based workspace projections', () => {
     workspace: workspace({
       repoName: repo.repoName,
       memberPath: 'packages/app',
+      pnpmPackageClosure: {
+        extraMemberPaths: ['packages/examples/basic'],
+      },
     }),
     dependencies: {
       workspace: [utils],
@@ -76,14 +90,21 @@ describe('metadata-based workspace projections', () => {
     exampleComposition,
   )
 
-  it('projects package-local workspace members from package metadata', () => {
-    const workspaceFile = pnpmWorkspaceYaml.package({
+  it('projects package-closure workspace members from package metadata', () => {
+    const workspaceProjection = projectPnpmPackageClosure({
       pkg: app,
-      packages: [example],
-      dedupePeerDependents: true,
     })
 
-    expect(workspaceFile.data.packages).toEqual(['.', '../examples/basic', '../utils'])
+    expect(workspaceProjection.workspaceClosureDirs).toEqual([
+      'packages/app',
+      'packages/examples/basic',
+      'packages/utils',
+    ])
+    expect(workspaceProjection.packageRelativeMemberPaths).toEqual([
+      '.',
+      '../examples/basic',
+      '../utils',
+    ])
   })
 
   it('projects root workspace members recursively from package metadata', () => {
@@ -135,15 +156,6 @@ describe('metadata-based workspace projections', () => {
     })
 
     expect(workspaceFile.data.packages).toEqual(['packages/app', 'packages/utils'])
-  })
-
-  it('keeps a manual constructor for genuine non-package workspace manifests', () => {
-    const workspaceFile = pnpmWorkspaceYaml.manual({
-      packages: ['*', 'packages/app'],
-      dedupePeerDependents: true,
-    })
-
-    expect(workspaceFile.data.packages).toEqual(['*', 'packages/app'])
   })
 
   it('projects workspace root workspaces from package metadata', () => {

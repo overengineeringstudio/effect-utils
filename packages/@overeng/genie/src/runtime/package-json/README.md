@@ -114,7 +114,6 @@ For repository aggregates and projections, keep using the dedicated helpers:
 
 - `packageJson.aggregate(...)`
 - `packageJson.aggregateFromPackages(...)`
-- `pnpmWorkspaceYaml.package(...)`
 - `pnpmWorkspaceYaml.root(...)`
 
 Treat aggregate manifests as coordination files, not packages. They only

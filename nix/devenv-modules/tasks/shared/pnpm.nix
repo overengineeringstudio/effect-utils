@@ -1,9 +1,8 @@
 # pnpm install tasks
 #
 # effect-utils now uses a repo-root pnpm workspace for dev installs.
-# Package-level pnpm-workspace.yaml files remain only as package-closure
-# projection metadata. The repo-root pnpm-lock.yaml is the only authoritative
-# lockfile for this live-worktree model.
+# The repo-root pnpm-lock.yaml is the only authoritative lockfile for this
+# live-worktree model.
 #
 # Provides:
 # - pnpm:install
@@ -70,7 +69,6 @@ let
   injectedSourcePaths = lib.unique (lib.concatMap getInjectedDeps packages);
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
-  packageWorkspacePaths = lib.concatMapStringsSep " " (path: ''"${path}/pnpm-workspace.yaml"'') packages;
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
@@ -122,12 +120,6 @@ let
         for manifest in ${manifestPaths}; do
           if [ -f "$manifest" ]; then
             cat "$manifest"
-          fi
-        done
-
-        for workspace_file in ${packageWorkspacePaths}; do
-          if [ -f "$workspace_file" ]; then
-            cat "$workspace_file"
           fi
         done
 
