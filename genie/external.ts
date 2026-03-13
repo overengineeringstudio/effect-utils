@@ -215,6 +215,24 @@ export const catalog = defineCatalog({
   'cli-truncate': '5.1.1',
 })
 
+/**
+ * Shared pnpm policy settings for all megarepos.
+ *
+ * This is the SSOT for pnpm strictness/layout policy. Every megarepo
+ * root workspace should spread this so policy stays consistent.
+ */
+export const commonPnpmPolicySettings = {
+  dedupePeerDependents: true as const,
+  strictPeerDependencies: true as const,
+  supportedArchitectures: {
+    os: ['linux', 'darwin'],
+    cpu: ['x64', 'arm64'],
+  },
+  settings: {
+    nodeLinker: 'hoisted' as const,
+  },
+}
+
 /** Common fields for private packages */
 export const privatePackageDefaults = {
   version: '0.1.0',

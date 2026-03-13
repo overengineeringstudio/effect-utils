@@ -5,11 +5,17 @@
  * For external/peer repo use, import from `./external.ts` instead.
  */
 
-import { catalog as externalCatalog, defineCatalog, definePatchedDependencies } from './external.ts'
+import {
+  catalog as externalCatalog,
+  commonPnpmPolicySettings,
+  defineCatalog,
+  definePatchedDependencies,
+} from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
 export {
   baseTsconfigCompilerOptions,
+  commonPnpmPolicySettings,
   createEffectUtilsRefs,
   createPatchPostinstall,
   createPnpmPatchedDependencies,
@@ -91,9 +97,10 @@ export const utilsPatches = definePatchedDependencies({
 })
 
 /**
- * Common pnpm workspace settings for all effect-utils packages.
+ * Common pnpm workspace data for effect-utils workspaces.
  *
- * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
+ * Extends `commonPnpmPolicySettings` with effect-utils-specific patch metadata.
+ * All effect-utils workspaces share the same `patchedDependencies` and `allowUnusedPatches`
  * so that internal package-closure projections and the aggregate root stay on
  * the same patch metadata.
  *
@@ -105,14 +112,7 @@ export const utilsPatches = definePatchedDependencies({
  * breaking project references.
  */
 export const commonPnpmWorkspaceData = {
+  ...commonPnpmPolicySettings,
   patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
-  dedupePeerDependents: true as const,
-  supportedArchitectures: {
-    os: ['linux', 'darwin'],
-    cpu: ['x64', 'arm64'],
-  },
-  settings: {
-    nodeLinker: 'hoisted' as const,
-  },
 }
