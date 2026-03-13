@@ -496,8 +496,6 @@ export const syncMember = <R = never>({
     const wasCloned: boolean = yield* Effect.gen(function* () {
       if (bareExists === false) {
         if (dryRun === false) {
-          // Use semaphore to serialize bare repo creation for the same repo URL.
-          // This prevents race conditions when multiple members reference the same repo.
           const createBareRepo = Effect.gen(function* () {
             // Check again inside semaphore (double-check locking pattern)
             const stillNotExists = (yield* store.hasBareRepo(source)) === false
@@ -505,8 +503,10 @@ export const syncMember = <R = never>({
               const repoBasePath = store.getRepoBasePath(source)
               yield* fs.makeDirectory(repoBasePath, { recursive: true })
               yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+              yield* Effect.annotateCurrentSpan('action', 'clone')
               return true
             }
+            yield* Effect.annotateCurrentSpan('action', 'already-cloned-by-sibling')
             return false
           })
 
@@ -516,22 +516,25 @@ export const syncMember = <R = never>({
           }
           return yield* createBareRepo
         }
+        yield* Effect.annotateCurrentSpan('action', 'skip-dry-run')
       } else if (isLockUpdateMode === true && dryRun === false) {
-        // Fetch when lock update is requested.
-        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-          Effect.catchAll(() => Effect.void), // Ignore fetch errors
-        )
+        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+        yield* Effect.annotateCurrentSpan('action', 'fetch')
       } else if (isLockApplyMode === true && targetCommit !== undefined && dryRun === false) {
-        // Lock apply fetches missing commits to materialize the exact locked state.
         const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
         if (commitExists === false) {
           yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+          yield* Effect.annotateCurrentSpan('action', 'fetch-missing-commit')
+        } else {
+          yield* Effect.annotateCurrentSpan('action', 'noop')
         }
+      } else {
+        yield* Effect.annotateCurrentSpan('action', 'noop')
       }
       return false
     }).pipe(
       Effect.withSpan('megarepo/sync/member/clone-or-fetch', {
-        attributes: { 'span.label': name },
+        attributes: { 'span.label': name, bareExists },
       }),
     )
 
@@ -790,7 +793,7 @@ export const syncMember = <R = never>({
         }
       }).pipe(
         Effect.withSpan('megarepo/sync/member/create-worktree', {
-          attributes: { 'span.label': worktreeRef },
+          attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
         }),
       )
     }
@@ -922,6 +925,7 @@ export const syncMember = <R = never>({
       message: branchCreatedMessage,
     } satisfies MemberSyncResult
   }).pipe(
+    Effect.tap((result) => Effect.annotateCurrentSpan('result.status', result.status)),
     Effect.catchAll((error) => {
       // Interpret git errors to provide user-friendly messages
       if (error instanceof Git.GitCommandError) {
@@ -930,17 +934,23 @@ export const syncMember = <R = never>({
           interpreted.hint !== undefined
             ? `${interpreted.message}\n  hint: ${interpreted.hint}`
             : interpreted.message
-        return Effect.succeed({
+        return Effect.gen(function* () {
+          yield* Effect.annotateCurrentSpan('result.status', 'error')
+          return {
+            name,
+            status: 'error',
+            message,
+          } satisfies MemberSyncResult
+        })
+      }
+      return Effect.gen(function* () {
+        yield* Effect.annotateCurrentSpan('result.status', 'error')
+        return {
           name,
           status: 'error',
-          message,
-        } satisfies MemberSyncResult)
-      }
-      return Effect.succeed({
-        name,
-        status: 'error',
-        message: error instanceof Error ? error.message : String(error),
-      } satisfies MemberSyncResult)
+          message: error instanceof Error ? error.message : String(error),
+        } satisfies MemberSyncResult
+      })
     }),
     Effect.withSpan('megarepo/sync/member', {
       attributes: { 'span.label': name, name, source: sourceString },
