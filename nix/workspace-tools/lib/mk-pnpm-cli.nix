@@ -319,9 +319,11 @@ let
       externallyOwnedDirs = lib.concatMap (root: root.memberDirs) externalInstallRoots;
     in
     lib.unique ([ packageDir ] ++ builtins.filter (dir: !(lib.elem dir externallyOwnedDirs)) workspaceMembers);
-  externalInstallOwnedDirs = map (root: root.installDir) externalInstallRoots;
+  allExternallyOwnedDirs =
+    (map (root: root.installDir) externalInstallRoots)
+    ++ (lib.concatMap (root: root.memberDirs) externalInstallRoots);
   aggregateOwnedWorkspaceClosureDirs =
-    builtins.filter (dir: !(lib.elem dir externalInstallOwnedDirs)) workspaceClosureDirs;
+    builtins.filter (dir: !(lib.elem dir allExternallyOwnedDirs)) workspaceClosureDirs;
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
 
