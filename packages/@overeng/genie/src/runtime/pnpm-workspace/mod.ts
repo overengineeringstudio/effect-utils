@@ -1039,9 +1039,7 @@ const rootPnpmWorkspaceYaml = ({
   const allMembers =
     extraMembers.length === 0
       ? projectedMembers
-      : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) =>
-          a.localeCompare(b),
-        )
+      : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
 
   return createPnpmWorkspaceYaml({
     ...config,
