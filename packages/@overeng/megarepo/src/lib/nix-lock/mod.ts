@@ -414,7 +414,9 @@ const syncSingleLockFile = ({
       type: lockType,
       updatedInputs,
     }
-  })
+  }).pipe(
+    Effect.withSpan('megarepo/nix-lock/file', { attributes: { path: lockPath, type: lockType } }),
+  )
 
 // =============================================================================
 // Nested megarepo.lock Sync
@@ -499,7 +501,7 @@ const syncNestedMegarepoLockFile = ({
       type: 'megarepo.lock',
       updatedInputs,
     } satisfies NixLockSyncFileResult
-  })
+  }).pipe(Effect.withSpan('megarepo/nix-lock/nested', { attributes: { path: lockPath } }))
 
 // =============================================================================
 // Main Sync Function
@@ -522,120 +524,129 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     // Build a map of megarepo member URLs to their locked data
     const megarepoMembers = options.lockFile.members
 
-    const memberResults: NixLockSyncResult['memberResults'][number][] = []
-    let totalUpdates = 0
+    const memberNames = Object.keys(options.config.members).filter(
+      (name) => !excludeMembers.has(name),
+    )
 
-    // Process each member in the megarepo
-    for (const memberName of Object.keys(options.config.members)) {
-      // Skip excluded members
-      if (excludeMembers.has(memberName) === true) {
-        continue
-      }
+    // Process all members in parallel
+    const allMemberResults = yield* Effect.all(
+      memberNames.map((memberName) =>
+        Effect.gen(function* () {
+          const memberPath = getMemberPath({
+            megarepoRoot: options.megarepoRoot,
+            name: memberName,
+          })
 
-      const memberPath = getMemberPath({
-        megarepoRoot: options.megarepoRoot,
-        name: memberName,
-      })
+          const memberExists = yield* fs.exists(memberPath)
+          if (memberExists === false) return undefined
 
-      // Check if member directory exists
-      const memberExists = yield* fs.exists(memberPath)
-      if (memberExists === false) {
-        continue
-      }
+          const files: NixLockSyncFileResult[] = []
 
-      const files: NixLockSyncFileResult[] = []
-
-      // Check for flake.lock
-      const flakeLockPath = EffectPath.ops.join(
-        memberPath,
-        EffectPath.unsafe.relativeFile(FLAKE_LOCK),
-      )
-      const hasFlakeLock = yield* fs.exists(flakeLockPath)
-      if (hasFlakeLock === true) {
-        const result = yield* syncSingleLockFile({
-          lockPath: flakeLockPath,
-          lockType: 'flake.lock',
-          megarepoMembers,
-        }).pipe(
-          Effect.catchTag('ParseError', (e) =>
-            Effect.gen(function* () {
-              yield* Effect.logWarning(`Failed to parse ${flakeLockPath}: ${e.message}`)
-              return {
-                path: flakeLockPath,
-                type: 'flake.lock' as const,
-                updatedInputs: [],
-              }
-            }),
-          ),
-        )
-        if (result.updatedInputs.length > 0) {
-          files.push(result)
-          totalUpdates += result.updatedInputs.length
-        }
-      }
-
-      // Check for devenv.lock
-      const devenvLockPath = EffectPath.ops.join(
-        memberPath,
-        EffectPath.unsafe.relativeFile(DEVENV_LOCK),
-      )
-      const hasDevenvLock = yield* fs.exists(devenvLockPath)
-      if (hasDevenvLock === true) {
-        const result = yield* syncSingleLockFile({
-          lockPath: devenvLockPath,
-          lockType: 'devenv.lock',
-          megarepoMembers,
-        }).pipe(
-          Effect.catchTag('ParseError', (e) =>
-            Effect.gen(function* () {
-              yield* Effect.logWarning(`Failed to parse ${devenvLockPath}: ${e.message}`)
-              return {
-                path: devenvLockPath,
-                type: 'devenv.lock' as const,
-                updatedInputs: [],
-              }
-            }),
-          ),
-        )
-        if (result.updatedInputs.length > 0) {
-          files.push(result)
-          totalUpdates += result.updatedInputs.length
-        }
-      }
-
-      if (scope === 'recursive' && (recursiveMegarepoMembers?.has(memberName) ?? false) === true) {
-        const nestedMegarepoLockPath = EffectPath.ops.join(
-          memberPath,
-          EffectPath.unsafe.relativeFile(MEGAREPO_LOCK),
-        )
-        const hasNestedMegarepoLock = yield* fs.exists(nestedMegarepoLockPath)
-        if (hasNestedMegarepoLock === true) {
-          const result = yield* syncNestedMegarepoLockFile({
-            lockPath: nestedMegarepoLockPath,
-            megarepoMembers,
-          }).pipe(
-            Effect.catchTag('ParseError', (e) =>
-              Effect.gen(function* () {
-                yield* Effect.logWarning(`Failed to parse ${nestedMegarepoLockPath}: ${e.message}`)
-                return {
-                  path: nestedMegarepoLockPath,
-                  type: 'megarepo.lock' as const,
-                  updatedInputs: [],
-                } satisfies NixLockSyncFileResult
-              }),
-            ),
+          // Check for flake.lock
+          const flakeLockPath = EffectPath.ops.join(
+            memberPath,
+            EffectPath.unsafe.relativeFile(FLAKE_LOCK),
           )
-          if (result.updatedInputs.length > 0) {
-            files.push(result)
-            totalUpdates += result.updatedInputs.length
+          const hasFlakeLock = yield* fs.exists(flakeLockPath)
+          if (hasFlakeLock === true) {
+            const result = yield* syncSingleLockFile({
+              lockPath: flakeLockPath,
+              lockType: 'flake.lock',
+              megarepoMembers,
+            }).pipe(
+              Effect.catchTag('ParseError', (e) =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(`Failed to parse ${flakeLockPath}: ${e.message}`)
+                  return {
+                    path: flakeLockPath,
+                    type: 'flake.lock' as const,
+                    updatedInputs: [],
+                  }
+                }),
+              ),
+            )
+            if (result.updatedInputs.length > 0) {
+              files.push(result)
+            }
           }
-        }
-      }
 
-      if (files.length > 0) {
-        memberResults.push({ memberName, files })
-      }
-    }
+          // Check for devenv.lock
+          const devenvLockPath = EffectPath.ops.join(
+            memberPath,
+            EffectPath.unsafe.relativeFile(DEVENV_LOCK),
+          )
+          const hasDevenvLock = yield* fs.exists(devenvLockPath)
+          if (hasDevenvLock === true) {
+            const result = yield* syncSingleLockFile({
+              lockPath: devenvLockPath,
+              lockType: 'devenv.lock',
+              megarepoMembers,
+            }).pipe(
+              Effect.catchTag('ParseError', (e) =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(`Failed to parse ${devenvLockPath}: ${e.message}`)
+                  return {
+                    path: devenvLockPath,
+                    type: 'devenv.lock' as const,
+                    updatedInputs: [],
+                  }
+                }),
+              ),
+            )
+            if (result.updatedInputs.length > 0) {
+              files.push(result)
+            }
+          }
+
+          if (
+            scope === 'recursive' &&
+            (recursiveMegarepoMembers?.has(memberName) ?? false) === true
+          ) {
+            const nestedMegarepoLockPath = EffectPath.ops.join(
+              memberPath,
+              EffectPath.unsafe.relativeFile(MEGAREPO_LOCK),
+            )
+            const hasNestedMegarepoLock = yield* fs.exists(nestedMegarepoLockPath)
+            if (hasNestedMegarepoLock === true) {
+              const result = yield* syncNestedMegarepoLockFile({
+                lockPath: nestedMegarepoLockPath,
+                megarepoMembers,
+              }).pipe(
+                Effect.catchTag('ParseError', (e) =>
+                  Effect.gen(function* () {
+                    yield* Effect.logWarning(
+                      `Failed to parse ${nestedMegarepoLockPath}: ${e.message}`,
+                    )
+                    return {
+                      path: nestedMegarepoLockPath,
+                      type: 'megarepo.lock' as const,
+                      updatedInputs: [],
+                    } satisfies NixLockSyncFileResult
+                  }),
+                ),
+              )
+              if (result.updatedInputs.length > 0) {
+                files.push(result)
+              }
+            }
+          }
+
+          if (files.length > 0) {
+            return { memberName, files }
+          }
+          return undefined
+        }),
+      ),
+      { concurrency: 8 },
+    )
+
+    const memberResults = allMemberResults.filter(
+      (r): r is NonNullable<typeof r> => r !== undefined,
+    )
+    const totalUpdates = memberResults.reduce(
+      (sum, mr) => sum + mr.files.reduce((s, f) => s + f.updatedInputs.length, 0),
+      0,
+    )
 
     return {
       memberResults,

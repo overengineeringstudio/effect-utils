@@ -823,11 +823,12 @@ export const syncMember = <R = never>({
       if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
         return {
           name,
-          status: isLockApplyMode === true
-            ? 'already_synced'
-            : remoteUpdated === true
-              ? 'updated'
-              : 'already_synced',
+          status:
+            isLockApplyMode === true
+              ? 'already_synced'
+              : remoteUpdated === true
+                ? 'updated'
+                : 'already_synced',
           commit: targetCommit,
           previousCommit: remotePreviousCommit,
           ref: targetRef,
@@ -875,13 +876,14 @@ export const syncMember = <R = never>({
 
     return {
       name,
-      status: isLockApplyMode === true
-        ? 'applied'
-        : wasCloned === true
-          ? 'cloned'
-          : isUpdate === true
-            ? 'updated'
-            : 'synced',
+      status:
+        isLockApplyMode === true
+          ? 'applied'
+          : wasCloned === true
+            ? 'cloned'
+            : isUpdate === true
+              ? 'updated'
+              : 'synced',
       commit: targetCommit,
       previousCommit: isUpdate === true ? previousCommit : undefined,
       ref: targetRef,
@@ -909,4 +911,5 @@ export const syncMember = <R = never>({
         message: error instanceof Error ? error.message : String(error),
       } satisfies MemberSyncResult)
     }),
+    Effect.withSpan('megarepo/sync/member', { attributes: { name, source: sourceString } }),
   )
