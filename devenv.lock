@@ -199,11 +199,11 @@
         "typescript-src": "typescript-src"
       },
       "locked": {
-        "lastModified": 1773356758,
-        "narHash": "sha256-J/4CRvn+I8vYO/K9mqmEqTrKIVh2uO0qoVK9XUgGmdg=",
+        "lastModified": 1773387039,
+        "narHash": "sha256-v7O3R7RxDqK/T+ot3JPEZcBcLZsAMIjD2EbpYy1/t1I=",
         "owner": "Effect-TS",
         "repo": "tsgo",
-        "rev": "1cac7e96b99ad65a9efc8f51f70adc6ca9a26e8f",
+        "rev": "c219f226cb0579a8c077fab3192d7ddf190ba77a",
         "type": "github"
       },
       "original": {
