@@ -5,6 +5,7 @@ import { Data, Effect } from 'effect'
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
 
+/** Error when writing a generated schema file to disk. */
 export class WriteSchemaToFileError extends Data.TaggedError('WriteSchemaToFileError')<{
   readonly outputPath: string
   readonly cause: unknown

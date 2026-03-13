@@ -471,7 +471,7 @@ const RecordedLine = ({
   lockSync: MemberLockSyncResult | undefined
   dryRun: boolean
 }) => {
-  const verb = dryRun ? 'would record' : 'recorded'
+  const verb = dryRun === true ? 'would record' : 'recorded'
   const hasTransition = result.previousCommit !== undefined
   return (
     <Box flexDirection="row">
@@ -481,7 +481,7 @@ const RecordedLine = ({
       <Text> </Text>
       <Text color="cyan">{verb}</Text>
       <Text> </Text>
-      {hasTransition ? (
+      {hasTransition === true ? (
         <CommitTransition result={result} />
       ) : result.commit !== undefined ? (
         <>
@@ -496,7 +496,7 @@ const RecordedLine = ({
 
 /** Result line for applied member (lock apply — checked out commit from lockfile) */
 const AppliedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) => {
-  const verb = dryRun ? 'would check out' : 'checked out'
+  const verb = dryRun === true ? 'would check out' : 'checked out'
   return (
     <Box flexDirection="row">
       <StatusIcon status="applied" variant="sync" />

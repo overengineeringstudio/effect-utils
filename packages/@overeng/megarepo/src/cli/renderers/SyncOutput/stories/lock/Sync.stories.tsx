@@ -67,16 +67,18 @@ export const AllRecorded: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_sync',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_sync',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_sync', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({ mode: 'lock_sync', finalState: stateConfig }),
+            }
           : {})}
       />
     )
@@ -102,16 +104,18 @@ export const WithSkipped: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_sync',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_sync',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_sync', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({ mode: 'lock_sync', finalState: stateConfig }),
+            }
           : {})}
       />
     )
@@ -133,16 +137,18 @@ export const DryRun: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_sync',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_sync',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_sync', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({ mode: 'lock_sync', finalState: stateConfig }),
+            }
           : {})}
       />
     )

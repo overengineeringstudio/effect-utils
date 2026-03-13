@@ -233,9 +233,10 @@ export const syncReducer = ({
     case 'SetActiveMember':
       return {
         ...state,
-        activeMembers: state.activeMembers.includes(action.name)
-          ? state.activeMembers
-          : [...state.activeMembers, action.name],
+        activeMembers:
+          state.activeMembers.includes(action.name) === true
+            ? state.activeMembers
+            : [...state.activeMembers, action.name],
       }
 
     case 'AddResult':

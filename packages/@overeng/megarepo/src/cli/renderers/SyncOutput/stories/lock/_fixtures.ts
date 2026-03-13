@@ -161,10 +161,14 @@ export const lockApplyWithErrors: MemberSyncResult[] = [
 // State Factories
 // =============================================================================
 
-export const createLockState = (
-  mode: 'lock_sync' | 'lock_update' | 'lock_apply',
-  overrides: Partial<SyncStateType> & { results: MemberSyncResult[] },
-): SyncStateType =>
+/** Creates a lock state for a given mode with default options. */
+export const createLockState = ({
+  mode,
+  overrides,
+}: {
+  mode: 'lock_sync' | 'lock_update' | 'lock_apply'
+  overrides: Partial<SyncStateType> & { results: MemberSyncResult[] }
+}): SyncStateType =>
   createBaseState({
     options: { mode, dryRun: false, all: false, verbose: false, ...overrides.options },
     members: overrides.results.map((r) => r.name),
@@ -179,10 +183,13 @@ export const createLockState = (
  * Creates a timeline that animates through a lock operation with parallel execution.
  * Models concurrency=4: multiple members syncing simultaneously with staggered completion.
  */
-export const createLockTimeline = (
-  mode: 'lock_sync' | 'lock_update' | 'lock_apply',
-  finalState: Partial<SyncStateType> & { results: MemberSyncResult[] },
-): Array<{ at: number; action: typeof SyncAction.Type }> => {
+export const createLockTimeline = ({
+  mode,
+  finalState,
+}: {
+  mode: 'lock_sync' | 'lock_update' | 'lock_apply'
+  finalState: Partial<SyncStateType> & { results: MemberSyncResult[] }
+}): Array<{ at: number; action: typeof SyncAction.Type }> => {
   const results = finalState.results
   const members = finalState.members ?? results.map((r) => r.name)
   const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
@@ -247,11 +254,11 @@ export const createLockTimeline = (
         state: createBaseState({
           workspace,
           options,
-          _tag: isFinal ? (hasErrors ? 'Error' : 'Success') : 'Syncing',
+          _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
           members,
-          activeMembers: isFinal ? [] : [...currentActive],
+          activeMembers: isFinal === true ? [] : [...currentActive],
           results: completedResults.slice(),
-          lockSyncResults: isFinal ? lockSyncResults : [],
+          lockSyncResults: isFinal === true ? lockSyncResults : [],
           syncErrors: runningErrors.slice(),
           syncErrorCount: runningErrorCount,
         }),

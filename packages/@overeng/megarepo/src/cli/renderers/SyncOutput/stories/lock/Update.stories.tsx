@@ -73,16 +73,21 @@ export const Updated: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_update',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_update',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_update', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({
+                mode: 'lock_update',
+                finalState: stateConfig,
+              }),
+            }
           : {})}
       />
     )
@@ -108,16 +113,21 @@ export const WithNewBranches: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_update',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_update',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_update', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({
+                mode: 'lock_update',
+                finalState: stateConfig,
+              }),
+            }
           : {})}
       />
     )
@@ -157,16 +167,21 @@ export const WithErrors: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_update',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_update',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_update', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({
+                mode: 'lock_update',
+                finalState: stateConfig,
+              }),
+            }
           : {})}
       />
     )
@@ -194,16 +209,21 @@ export const WithLockInputSync: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_update',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_update',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_update', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({
+                mode: 'lock_update',
+                finalState: stateConfig,
+              }),
+            }
           : {})}
       />
     )
@@ -230,16 +250,21 @@ export const DryRun: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState(
-          'lock_update',
-          args.interactive ? { _tag: 'Success', results: [] } : stateConfig,
-        )}
+        initialState={fixtures.createLockState({
+          mode: 'lock_update',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive
-          ? { timeline: fixtures.createLockTimeline('lock_update', stateConfig) }
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({
+                mode: 'lock_update',
+                finalState: stateConfig,
+              }),
+            }
           : {})}
       />
     )
