@@ -92,10 +92,9 @@ const inferCurrentRepoNameFromPackages = (packages: readonly WorkspacePackageLik
     throw new Error('Cannot infer a root workspace repo without any packages')
   }
 
-  return [...repoCounts.entries()]
-    .toSorted(([nameA, countA], [nameB, countB]) =>
-      countA !== countB ? countB - countA : nameA.localeCompare(nameB),
-    )[0]![0]
+  return [...repoCounts.entries()].toSorted(([nameA, countA], [nameB, countB]) =>
+    countA !== countB ? countB - countA : nameA.localeCompare(nameB),
+  )[0]![0]
 }
 
 /** Project root workspace member paths from package metadata for the current repo view. */

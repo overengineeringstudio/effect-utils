@@ -39,7 +39,7 @@ import {
   type WorkspaceMetadata,
   type WorkspacePackage,
   type WorkspacePackageLike,
-} from "../packages/@overeng/genie/src/runtime/mod.ts";
+} from '../packages/@overeng/genie/src/runtime/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
@@ -53,7 +53,7 @@ export {
   packageJson,
   pnpmWorkspaceYaml,
   tsconfigJson,
-};
+}
 export type {
   AggregatePackageJsonData,
   AggregatePackageJsonInput,
@@ -76,7 +76,7 @@ export type {
   WorkspaceMetadata,
   WorkspacePackage,
   WorkspacePackageLike,
-};
+}
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -92,170 +92,170 @@ export type {
  * Consumers of packages that depend on @effect/opentelemetry need these.
  */
 export const otelSdkDeps = [
-  "@opentelemetry/resources",
-  "@opentelemetry/sdk-logs",
-  "@opentelemetry/sdk-metrics",
-  "@opentelemetry/sdk-trace-base",
-  "@opentelemetry/sdk-trace-node",
-  "@opentelemetry/sdk-trace-web",
-  "@opentelemetry/semantic-conventions",
-] as const;
+  '@opentelemetry/resources',
+  '@opentelemetry/sdk-logs',
+  '@opentelemetry/sdk-metrics',
+  '@opentelemetry/sdk-trace-base',
+  '@opentelemetry/sdk-trace-node',
+  '@opentelemetry/sdk-trace-web',
+  '@opentelemetry/semantic-conventions',
+] as const
 
 /** Catalog versions - single source of truth for dependency versions */
 export const catalog = defineCatalog({
   // Observability
-  "@opentelemetry/api": "1.9.0",
-  "@opentelemetry/resources": "2.2.0",
-  "@opentelemetry/sdk-logs": "0.208.0",
-  "@opentelemetry/sdk-metrics": "2.2.0",
-  "@opentelemetry/sdk-trace-base": "2.2.0",
-  "@opentelemetry/sdk-trace-node": "2.2.0",
-  "@opentelemetry/sdk-trace-web": "2.2.0",
-  "@opentelemetry/semantic-conventions": "1.38.0",
+  '@opentelemetry/api': '1.9.0',
+  '@opentelemetry/resources': '2.2.0',
+  '@opentelemetry/sdk-logs': '0.208.0',
+  '@opentelemetry/sdk-metrics': '2.2.0',
+  '@opentelemetry/sdk-trace-base': '2.2.0',
+  '@opentelemetry/sdk-trace-node': '2.2.0',
+  '@opentelemetry/sdk-trace-web': '2.2.0',
+  '@opentelemetry/semantic-conventions': '1.38.0',
 
   // Effect ecosystem
-  "@effect/ai": "0.33.2",
-  "effect-distributed-lock": "0.0.11",
-  effect: "3.19.15",
-  "@effect/platform": "0.94.2",
-  "@effect/platform-node": "0.104.1",
-  "@effect/cli": "0.73.1",
-  "@effect/vitest": "0.27.0",
-  "@effect/printer": "0.47.0",
-  "@effect/printer-ansi": "0.47.0",
-  "@effect/typeclass": "0.38.0",
-  "@effect/cluster": "0.56.1",
-  "@effect/sql": "0.49.0",
-  "@effect/experimental": "0.58.0",
-  "@effect/workflow": "0.16.0",
-  "@effect/rpc": "0.73.0",
-  "@effect/opentelemetry": "0.61.0",
+  '@effect/ai': '0.33.2',
+  'effect-distributed-lock': '0.0.11',
+  effect: '3.19.15',
+  '@effect/platform': '0.94.2',
+  '@effect/platform-node': '0.104.1',
+  '@effect/cli': '0.73.1',
+  '@effect/vitest': '0.27.0',
+  '@effect/printer': '0.47.0',
+  '@effect/printer-ansi': '0.47.0',
+  '@effect/typeclass': '0.38.0',
+  '@effect/cluster': '0.56.1',
+  '@effect/sql': '0.49.0',
+  '@effect/experimental': '0.58.0',
+  '@effect/workflow': '0.16.0',
+  '@effect/rpc': '0.73.0',
+  '@effect/opentelemetry': '0.61.0',
 
   // React ecosystem
-  react: "19.2.3",
-  "react-dom": "19.2.3",
-  "react-aria-components": "1.14.0",
+  react: '19.2.3',
+  'react-dom': '19.2.3',
+  'react-aria-components': '1.14.0',
 
   // Type definitions
-  "@types/react": "19.2.7",
-  "@types/react-dom": "19.2.3",
-  "@types/node": "25.3.3",
-  "@types/bun": "1.3.10",
-  "@types/eslint": "9.6.1",
-  "@types/is-dom": "1.1.2",
+  '@types/react': '19.2.7',
+  '@types/react-dom': '19.2.3',
+  '@types/node': '25.3.3',
+  '@types/bun': '1.3.10',
+  '@types/eslint': '9.6.1',
+  '@types/is-dom': '1.1.2',
 
   // Build tools
-  typescript: "5.9.3",
-  "@playwright/test": "1.58.2",
-  vite: "7.3.1",
+  typescript: '5.9.3',
+  '@playwright/test': '1.58.2',
+  vite: '7.3.1',
   // TODO upgrade to 4.x once fixed https://github.com/Effect-TS/effect/issues/5976
-  vitest: "3.2.4",
-  "@vitejs/plugin-react": "5.1.2",
+  vitest: '3.2.4',
+  '@vitejs/plugin-react': '5.1.2',
 
   // TanStack
-  "@tanstack/react-router": "1.145.7",
-  "@tanstack/react-start": "1.145.10",
-  "@tanstack/router-plugin": "1.145.10",
+  '@tanstack/react-router': '1.145.7',
+  '@tanstack/react-start': '1.145.10',
+  '@tanstack/router-plugin': '1.145.10',
 
   // Styling
-  tailwindcss: "4.1.18",
-  "@tailwindcss/vite": "4.1.18",
+  tailwindcss: '4.1.18',
+  '@tailwindcss/vite': '4.1.18',
 
   // Storybook
-  storybook: "10.2.3",
-  "@storybook/react": "10.2.3",
-  "@storybook/react-vite": "10.2.3",
-  "eslint-plugin-storybook": "10.2.3",
+  storybook: '10.2.3',
+  '@storybook/react': '10.2.3',
+  '@storybook/react-vite': '10.2.3',
+  'eslint-plugin-storybook': '10.2.3',
 
   // xterm (terminal emulator for browser/testing)
-  "@xterm/xterm": "6.0.0",
-  "@xterm/headless": "6.0.0",
-  "@xterm/addon-fit": "0.11.0",
+  '@xterm/xterm': '6.0.0',
+  '@xterm/headless': '6.0.0',
+  '@xterm/addon-fit': '0.11.0',
 
   // Testing
-  "@testing-library/react": "16.3.1",
-  "@testing-library/user-event": "14.6.1",
-  "happy-dom": "18.0.1",
+  '@testing-library/react': '16.3.1',
+  '@testing-library/user-event': '14.6.1',
+  'happy-dom': '18.0.1',
 
   // Linting
   /** Kept for rule-tester/types used by our custom lint rules even though runtime linting is oxlint. */
-  eslint: "9.39.2",
-  "@typescript-eslint/parser": "8.52.0",
-  "@typescript-eslint/rule-tester": "8.52.0",
-  "@typescript-eslint/utils": "8.52.0",
-  "typescript-eslint": "8.52.0",
-  prettier: "3.6.2",
-  oxfmt: "0.23.0",
-  oxlint: "1.39.0",
-  "oxlint-tsgolint": "0.11.4",
+  eslint: '9.39.2',
+  '@typescript-eslint/parser': '8.52.0',
+  '@typescript-eslint/rule-tester': '8.52.0',
+  '@typescript-eslint/utils': '8.52.0',
+  'typescript-eslint': '8.52.0',
+  prettier: '3.6.2',
+  oxfmt: '0.23.0',
+  oxlint: '1.39.0',
+  'oxlint-tsgolint': '0.11.4',
 
   // Crypto
-  "@noble/hashes": "1.7.1",
+  '@noble/hashes': '1.7.1',
 
   // DOM utilities
-  "is-dom": "1.1.0",
+  'is-dom': '1.1.0',
 
   // Redis
-  ioredis: "5.6.1",
+  ioredis: '5.6.1',
 
   // OpenTUI / Effect Atom (experimental)
-  "@effect-atom/atom": "0.4.13",
-  "@effect-atom/atom-react": "0.4.5",
-  "@opentui/core": "0.1.74",
-  "@opentui/react": "0.1.74",
+  '@effect-atom/atom': '0.4.13',
+  '@effect-atom/atom-react': '0.4.5',
+  '@opentui/core': '0.1.74',
+  '@opentui/react': '0.1.74',
 
   // Pi-tui (terminal UI framework)
-  "@mariozechner/pi-tui": "0.45.7",
+  '@mariozechner/pi-tui': '0.45.7',
 
   // TUI React renderer dependencies
-  "react-reconciler": "0.33.0",
-  "@types/react-reconciler": "0.28.9",
-  "yoga-layout": "3.2.1",
-  "string-width": "7.2.0",
-  "cli-truncate": "5.1.1",
-});
+  'react-reconciler': '0.33.0',
+  '@types/react-reconciler': '0.28.9',
+  'yoga-layout': '3.2.1',
+  'string-width': '7.2.0',
+  'cli-truncate': '5.1.1',
+})
 
 /** Common fields for private packages */
 export const privatePackageDefaults = {
-  version: "0.1.0",
+  version: '0.1.0',
   private: true,
-  type: "module",
-} as const;
+  type: 'module',
+} as const
 
 /** Standard package tsconfig compiler options (composite mode with src/dist structure) */
 export const packageTsconfigCompilerOptions = {
   composite: true,
-  rootDir: ".",
-  outDir: "./dist",
-  tsBuildInfoFile: "./dist/tsconfig.tsbuildinfo",
-} as const;
+  rootDir: '.',
+  outDir: './dist',
+  tsBuildInfoFile: './dist/tsconfig.tsbuildinfo',
+} as const
 
 /** DOM library set for browser-compatible packages */
-export const domLib = ["ES2024", "DOM", "DOM.Iterable"] as const;
+export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
 
 /** React JSX configuration for React packages */
-export const reactJsx = { jsx: "react-jsx" as const };
+export const reactJsx = { jsx: 'react-jsx' as const }
 
 const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
-  const normalizedFrom = from === "." ? "" : from;
-  const fromParts = normalizedFrom.split("/").filter(Boolean);
-  const toParts = to.split("/").filter(Boolean);
+  const normalizedFrom = from === '.' ? '' : from
+  const fromParts = normalizedFrom.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
 
-  let common = 0;
+  let common = 0
   while (
     common < fromParts.length &&
     common < toParts.length &&
     fromParts[common] === toParts[common]
   ) {
-    common++;
+    common++
   }
 
-  const upCount = fromParts.length - common;
-  const downPath = toParts.slice(common).join("/");
-  const relativePath = "../".repeat(upCount) + downPath;
+  const upCount = fromParts.length - common
+  const downPath = toParts.slice(common).join('/')
+  const relativePath = '../'.repeat(upCount) + downPath
 
-  return relativePath === "" ? "." : relativePath;
-};
+  return relativePath === '' ? '.' : relativePath
+}
 
 // =============================================================================
 // TypeScript Reference Helpers
@@ -267,9 +267,9 @@ const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
  * Parent repos can use createRefs() to build refs with the appropriate base path.
  */
 export const effectUtilsPackages = {
-  reactInspector: "@overeng/react-inspector",
-  schemaForm: "@overeng/effect-schema-form",
-} as const;
+  reactInspector: '@overeng/react-inspector',
+  schemaForm: '@overeng/effect-schema-form',
+} as const
 
 /**
  * Creates tsconfig reference objects for effect-utils packages.
@@ -281,7 +281,7 @@ export const createEffectUtilsRefs = (basePath: string) =>
       key,
       { path: `${basePath}/${pkgPath}` },
     ]),
-  ) as { [K in keyof typeof effectUtilsPackages]: { path: string } };
+  ) as { [K in keyof typeof effectUtilsPackages]: { path: string } }
 
 // =============================================================================
 // Patch Postinstall Helpers
@@ -295,27 +295,27 @@ export const createEffectUtilsRefs = (basePath: string) =>
  * we use postinstall scripts instead of bun's patchedDependencies.
  */
 const patches = {
-  "effect-distributed-lock@0.0.11":
-    "packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch",
-} as const satisfies PatchesRegistry;
+  'effect-distributed-lock@0.0.11':
+    'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch',
+} as const satisfies PatchesRegistry
 
 /**
  * Parse a patch specifier into package name and version.
  */
 const parsePatchSpecifier = (specifier: string): [string, string] | undefined => {
-  const lastAtIndex = specifier.lastIndexOf("@");
-  if (lastAtIndex <= 0) return undefined;
+  const lastAtIndex = specifier.lastIndexOf('@')
+  if (lastAtIndex <= 0) return undefined
 
-  if (specifier.startsWith("@") === true) {
-    const afterScope = specifier.indexOf("/", 1);
-    if (afterScope === -1) return undefined;
-    const versionAtIndex = specifier.indexOf("@", afterScope);
-    if (versionAtIndex === -1) return undefined;
-    return [specifier.slice(0, versionAtIndex), specifier.slice(versionAtIndex + 1)];
+  if (specifier.startsWith('@') === true) {
+    const afterScope = specifier.indexOf('/', 1)
+    if (afterScope === -1) return undefined
+    const versionAtIndex = specifier.indexOf('@', afterScope)
+    if (versionAtIndex === -1) return undefined
+    return [specifier.slice(0, versionAtIndex), specifier.slice(versionAtIndex + 1)]
   }
 
-  return [specifier.slice(0, lastAtIndex), specifier.slice(lastAtIndex + 1)];
-};
+  return [specifier.slice(0, lastAtIndex), specifier.slice(lastAtIndex + 1)]
+}
 
 /**
  * Generate postinstall script commands for applying patches.
@@ -324,23 +324,23 @@ const generatePatchCommands = ({
   patchEntries,
   location,
 }: {
-  patchEntries: Array<[string, string]>;
-  location: string;
+  patchEntries: Array<[string, string]>
+  location: string
 }): string => {
   return patchEntries
     .map(([specifier, patchPath]) => {
-      const parsed = parsePatchSpecifier(specifier);
-      if (parsed === undefined) return undefined;
-      const [pkgName] = parsed;
+      const parsed = parsePatchSpecifier(specifier)
+      if (parsed === undefined) return undefined
+      const [pkgName] = parsed
       const relativePath =
-        patchPath.startsWith("./") === true || patchPath.startsWith("../") === true
+        patchPath.startsWith('./') === true || patchPath.startsWith('../') === true
           ? patchPath
-          : relativeRepoPath({ from: location, to: patchPath });
-      return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`;
+          : relativeRepoPath({ from: location, to: patchPath })
+      return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`
     })
     .filter((x): x is string => x !== undefined)
-    .join(" && ");
-};
+    .join(' && ')
+}
 
 /**
  * Creates a postinstall script function for applying patches.
@@ -360,9 +360,9 @@ const generatePatchCommands = ({
  * ```
  */
 export const patchPostinstall = (customPatches: PatchesRegistry = patches): ScriptValue => {
-  const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b));
-  return (location: string) => generatePatchCommands({ patchEntries: entries, location });
-};
+  const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
+  return (location: string) => generatePatchCommands({ patchEntries: entries, location })
+}
 
 /**
  * Returns pnpm.patchedDependencies config using the effect-utils patches registry.
@@ -385,7 +385,7 @@ export const patchPostinstall = (customPatches: PatchesRegistry = patches): Scri
  */
 export const pnpmPatchedDependencies = (
   customPatches: PatchesRegistry = patches,
-): PatchesRegistry => ({ ...customPatches });
+): PatchesRegistry => ({ ...customPatches })
 
 /**
  * Creates a pnpmPatchedDependencies function with prefixed paths for use from a peer repo.
@@ -404,11 +404,11 @@ export const pnpmPatchedDependencies = (
 export const createPnpmPatchedDependencies = (args: { basePath: string }) => {
   const prefixedPatches = Object.fromEntries(
     Object.entries(patches).map(([pkg, path]) => [pkg, `${args.basePath}/${path}`]),
-  ) as PatchesRegistry;
+  ) as PatchesRegistry
   return (customPatches: PatchesRegistry = prefixedPatches): PatchesRegistry => ({
     ...customPatches,
-  });
-};
+  })
+}
 
 /**
  * Creates a patchPostinstall function with prefixed paths for use from a peer repo.
@@ -427,19 +427,19 @@ export const createPnpmPatchedDependencies = (args: { basePath: string }) => {
 export const createPatchPostinstall = (args: { basePath: string }) => {
   const prefixedPatches = Object.fromEntries(
     Object.entries(patches).map(([pkg, path]) => [pkg, `${args.basePath}/${path}`]),
-  ) as PatchesRegistry;
+  ) as PatchesRegistry
   return (customPatches: PatchesRegistry = prefixedPatches): ScriptValue => {
-    const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b));
-    return (location: string) => generatePatchCommands({ patchEntries: entries, location });
-  };
-};
+    const entries = Object.entries(customPatches).toSorted(([a], [b]) => a.localeCompare(b))
+    return (location: string) => generatePatchCommands({ patchEntries: entries, location })
+  }
+}
 
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
-  target: "ES2024",
-  lib: ["ES2024"],
-  module: "NodeNext",
-  moduleResolution: "NodeNext",
+  target: 'ES2024',
+  lib: ['ES2024'],
+  module: 'NodeNext',
+  moduleResolution: 'NodeNext',
   allowImportingTsExtensions: true,
   rewriteRelativeImportExtensions: true,
   resolveJsonModule: true,
@@ -448,7 +448,7 @@ export const baseTsconfigCompilerOptions = {
   declaration: true,
   declarationMap: true,
   sourceMap: true,
-  outDir: "dist",
+  outDir: 'dist',
   strict: true,
   noUncheckedIndexedAccess: true,
   exactOptionalPropertyTypes: true,
@@ -463,87 +463,87 @@ export const baseTsconfigCompilerOptions = {
     {
       // Upstream tsgo currently reads Effect-specific diagnostics/options from
       // this plugin entry, while plain tsc ignores it when the npm package is absent.
-      name: "@effect/language-service",
+      name: '@effect/language-service',
       reportSuggestionsAsWarningsInTsc: true,
       pipeableMinArgCount: 2,
       diagnosticSeverity: {
-        missedPipeableOpportunity: "warning",
-        schemaUnionOfLiterals: "warning",
-        anyUnknownInErrorContext: "warning",
-        preferSchemaOverJson: "warning",
+        missedPipeableOpportunity: 'warning',
+        schemaUnionOfLiterals: 'warning',
+        anyUnknownInErrorContext: 'warning',
+        preferSchemaOverJson: 'warning',
       },
     },
   ],
-} as const satisfies TSConfigCompilerOptions;
+} as const satisfies TSConfigCompilerOptions
 
 // =============================================================================
 // Oxlint Configuration Helpers
 // =============================================================================
 
-import type { OxlintOverride } from "../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts";
+import type { OxlintOverride } from '../packages/@overeng/genie/src/runtime/oxlint-config/mod.ts'
 
 export {
   baseOxlintCategories,
   baseOxlintIgnorePatterns,
   baseOxlintPlugins,
   baseOxlintRules,
-} from "./oxlint-base.ts";
+} from './oxlint-base.ts'
 
 /** Standard overrides for mod.ts entry point files */
 export const modEntryOxlintOverride = {
-  files: ["**/mod.ts"],
-  rules: { "oxc/no-barrel-file": "off" },
-} as const satisfies OxlintOverride;
+  files: ['**/mod.ts'],
+  rules: { 'oxc/no-barrel-file': 'off' },
+} as const satisfies OxlintOverride
 
 /** Standard overrides for storybook story files (*.stories.*) */
 export const storybookOxlintOverride = {
-  files: ["**/*.stories.tsx", "**/*.stories.ts"],
+  files: ['**/*.stories.tsx', '**/*.stories.ts'],
   rules: {
     // Relaxed rules for story files
-    "func-style": "off",
-    "overeng/exports-first": "off",
-    "overeng/jsdoc-require-exports": "off",
+    'func-style': 'off',
+    'overeng/exports-first': 'off',
+    'overeng/jsdoc-require-exports': 'off',
     // Storybook best practices (re-exported from eslint-plugin-storybook)
-    "overeng/storybook/meta-satisfies-type": "error",
-    "overeng/storybook/default-exports": "error",
-    "overeng/storybook/story-exports": "warn",
-    "overeng/storybook/csf-component": "warn",
-    "overeng/storybook/hierarchy-separator": "warn",
-    "overeng/storybook/no-redundant-story-name": "warn",
-    "overeng/storybook/prefer-pascal-case": "warn",
+    'overeng/storybook/meta-satisfies-type': 'error',
+    'overeng/storybook/default-exports': 'error',
+    'overeng/storybook/story-exports': 'warn',
+    'overeng/storybook/csf-component': 'warn',
+    'overeng/storybook/hierarchy-separator': 'warn',
+    'overeng/storybook/no-redundant-story-name': 'warn',
+    'overeng/storybook/prefer-pascal-case': 'warn',
   },
-} as const satisfies OxlintOverride;
+} as const satisfies OxlintOverride
 
 /** Standard overrides for storybook config files (.storybook/*) */
 export const storybookConfigOxlintOverride = {
-  files: ["**/.storybook/**"],
+  files: ['**/.storybook/**'],
   rules: {
-    "func-style": "off",
-    "overeng/exports-first": "off",
-    "overeng/jsdoc-require-exports": "off",
-    "import/no-unassigned-import": "off",
+    'func-style': 'off',
+    'overeng/exports-first': 'off',
+    'overeng/jsdoc-require-exports': 'off',
+    'import/no-unassigned-import': 'off',
   },
-} as const satisfies OxlintOverride;
+} as const satisfies OxlintOverride
 
 /** Standard overrides for config files */
 export const configFilesOxlintOverride = {
-  files: ["**/vitest.config.ts", "**/vite.config.ts", "**/playwright.config.ts"],
+  files: ['**/vitest.config.ts', '**/vite.config.ts', '**/playwright.config.ts'],
   rules: {
-    "func-style": "off",
-    "overeng/jsdoc-require-exports": "off",
+    'func-style': 'off',
+    'overeng/jsdoc-require-exports': 'off',
   },
-} as const satisfies OxlintOverride;
+} as const satisfies OxlintOverride
 
 /** Standard overrides for test files */
 export const testFilesOxlintOverride = {
-  files: ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+  files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
   rules: {
-    "overeng/named-args": "off",
-    "unicorn/no-array-sort": "off",
-    "unicorn/consistent-function-scoping": "off",
-    "require-yield": "off",
+    'overeng/named-args': 'off',
+    'unicorn/no-array-sort': 'off',
+    'unicorn/consistent-function-scoping': 'off',
+    'require-yield': 'off',
   },
-} as const satisfies OxlintOverride;
+} as const satisfies OxlintOverride
 
 // =============================================================================
 // CI Workflow Helpers
@@ -565,4 +565,4 @@ export {
   applyMegarepoLockStep,
   RUNNER_PROFILES,
   type RunnerProfile,
-} from "./ci-workflow.ts";
+} from './ci-workflow.ts'

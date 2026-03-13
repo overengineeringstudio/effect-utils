@@ -245,7 +245,12 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {recorded.map((r) => (
-            <RecordedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} dryRun={dryRun} />
+            <RecordedLine
+              key={r.name}
+              result={r}
+              lockSync={lockSyncByMember.get(r.name)}
+              dryRun={dryRun}
+            />
           ))}
           {applied.map((r) => (
             <AppliedLine key={r.name} result={r} dryRun={dryRun} />
@@ -490,13 +495,7 @@ const RecordedLine = ({
 }
 
 /** Result line for applied member (lock apply — checked out commit from lockfile) */
-const AppliedLine = ({
-  result,
-  dryRun,
-}: {
-  result: MemberSyncResult
-  dryRun: boolean
-}) => {
+const AppliedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) => {
   const verb = dryRun ? 'would check out' : 'checked out'
   return (
     <Box flexDirection="row">
@@ -505,9 +504,7 @@ const AppliedLine = ({
       <Text bold>{result.name}</Text>
       <Text> </Text>
       <Text color="cyan">{verb}</Text>
-      {result.commit !== undefined && (
-        <Text dim> {result.commit.slice(0, 7)}</Text>
-      )}
+      {result.commit !== undefined && <Text dim> {result.commit.slice(0, 7)}</Text>}
     </Box>
   )
 }
@@ -815,7 +812,9 @@ const getResultMessage = (result: MemberSyncResult): string | undefined => {
       return transition !== undefined ? `recorded ${transition}` : 'recorded'
     }
     case 'applied':
-      return result.commit !== undefined ? `checked out ${result.commit.slice(0, 7)}` : 'checked out'
+      return result.commit !== undefined
+        ? `checked out ${result.commit.slice(0, 7)}`
+        : 'checked out'
     case 'already_synced':
       return undefined // No message for already synced
     case 'skipped':

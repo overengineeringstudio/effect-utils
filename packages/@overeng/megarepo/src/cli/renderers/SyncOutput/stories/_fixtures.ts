@@ -167,7 +167,8 @@ export const createTimeline = (
   let nextToStart = concurrency
   const completedResults: Array<(typeof results)[number]> = []
   const currentActive = [...initialActive]
-  let runningErrors: Array<{ megarepoRoot: string; memberName: string; message: string | null }> = []
+  let runningErrors: Array<{ megarepoRoot: string; memberName: string; message: string | null }> =
+    []
   let runningErrorCount = 0
 
   for (let i = 0; i < results.length; i++) {
