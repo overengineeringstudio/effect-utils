@@ -424,7 +424,7 @@ export const syncMember = <R = never>({
         const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
         return {
           name,
-          status: lockUpdated === true ? 'locked' : 'already_synced',
+          status: lockUpdated === true ? 'recorded' : 'already_synced',
           commit: currentCommit,
           previousCommit: lockUpdated === true ? previousCommit : undefined,
           ref: currentBranch ?? lockedMember?.ref ?? targetRef,
@@ -823,7 +823,11 @@ export const syncMember = <R = never>({
       if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
         return {
           name,
-          status: remoteUpdated === true ? 'updated' : 'already_synced',
+          status: isLockApplyMode === true
+            ? 'already_synced'
+            : remoteUpdated === true
+              ? 'updated'
+              : 'already_synced',
           commit: targetCommit,
           previousCommit: remotePreviousCommit,
           ref: targetRef,
@@ -871,7 +875,13 @@ export const syncMember = <R = never>({
 
     return {
       name,
-      status: wasCloned === true ? 'cloned' : isUpdate === true ? 'updated' : 'synced',
+      status: isLockApplyMode === true
+        ? 'applied'
+        : wasCloned === true
+          ? 'cloned'
+          : isUpdate === true
+            ? 'updated'
+            : 'synced',
       commit: targetCommit,
       previousCommit: isUpdate === true ? previousCommit : undefined,
       ref: targetRef,

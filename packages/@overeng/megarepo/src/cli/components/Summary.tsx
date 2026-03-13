@@ -19,7 +19,8 @@ export interface SummaryCounts {
   cloned?: number
   synced?: number
   updated?: number
-  locked?: number
+  recorded?: number
+  applied?: number
   removed?: number
   errors?: number
   skipped?: number
@@ -67,8 +68,10 @@ export const Summary = ({ counts, dryRun = false }: SummaryProps) => {
       parts.push({ key: 'synced', element: <Text dim>{counts.synced} to sync</Text> })
     if (counts.updated !== undefined && counts.updated > 0)
       parts.push({ key: 'updated', element: <Text dim>{counts.updated} to update</Text> })
-    if (counts.locked !== undefined && counts.locked > 0)
-      parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
+    if (counts.recorded !== undefined && counts.recorded > 0)
+      parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} to record</Text> })
+    if (counts.applied !== undefined && counts.applied > 0)
+      parts.push({ key: 'applied', element: <Text dim>{counts.applied} to check out</Text> })
     if (counts.removed !== undefined && counts.removed > 0)
       parts.push({ key: 'removed', element: <Text color="red">{counts.removed} to remove</Text> })
     if (counts.errors !== undefined && counts.errors > 0)
@@ -82,8 +85,10 @@ export const Summary = ({ counts, dryRun = false }: SummaryProps) => {
       parts.push({ key: 'synced', element: <Text dim>{counts.synced} synced</Text> })
     if (counts.updated !== undefined && counts.updated > 0)
       parts.push({ key: 'updated', element: <Text dim>{counts.updated} updated</Text> })
-    if (counts.locked !== undefined && counts.locked > 0)
-      parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
+    if (counts.recorded !== undefined && counts.recorded > 0)
+      parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} recorded</Text> })
+    if (counts.applied !== undefined && counts.applied > 0)
+      parts.push({ key: 'applied', element: <Text dim>{counts.applied} checked out</Text> })
     if (counts.removed !== undefined && counts.removed > 0)
       parts.push({ key: 'removed', element: <Text color="red">{counts.removed} removed</Text> })
     if (counts.errors !== undefined && counts.errors > 0)

@@ -15,17 +15,17 @@ import { createBaseState } from '../_fixtures.ts'
 
 /** All members recorded into megarepo.lock successfully */
 export const lockSyncAllRecorded: MemberSyncResult[] = [
-  { name: 'effect', status: 'locked', commit: 'a1b2c3d4e5', previousCommit: '9f8e7d6c5b' },
-  { name: 'effect-utils', status: 'locked', commit: 'f0e1d2c3b4', previousCommit: 'a5b6c7d8e9' },
-  { name: 'livestore', status: 'locked', commit: '1a2b3c4d5e' },
+  { name: 'effect', status: 'recorded', commit: 'a1b2c3d4e5', previousCommit: '9f8e7d6c5b' },
+  { name: 'effect-utils', status: 'recorded', commit: 'f0e1d2c3b4', previousCommit: 'a5b6c7d8e9' },
+  { name: 'livestore', status: 'recorded', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'already_synced' },
 ]
 
 /** Lock sync with some members skipped (dirty worktree, pinned) */
 export const lockSyncWithSkipped: MemberSyncResult[] = [
-  { name: 'effect', status: 'locked', commit: 'a1b2c3d4e5' },
+  { name: 'effect', status: 'recorded', commit: 'a1b2c3d4e5' },
   { name: 'effect-utils', status: 'skipped', message: 'dirty worktree' },
-  { name: 'livestore', status: 'locked', commit: '1a2b3c4d5e' },
+  { name: 'livestore', status: 'recorded', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'skipped', message: 'pinned' },
 ]
 
@@ -130,30 +130,30 @@ export const lockUpdateLockSyncResults: MemberLockSyncResult[] = [
 
 /** Lock apply in CI - all members applied from lockfile */
 export const lockApplyResults: MemberSyncResult[] = [
-  { name: 'effect', status: 'locked', commit: 'a1b2c3d4e5' },
-  { name: 'effect-utils', status: 'locked', commit: 'f0e1d2c3b4' },
-  { name: 'livestore', status: 'locked', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'locked', commit: '9f8e7d6c5b' },
-  { name: 'schickling.dev', status: 'locked', commit: 'deadbeef42' },
+  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
+  { name: 'effect-utils', status: 'applied', commit: 'f0e1d2c3b4' },
+  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
+  { name: 'dotfiles', status: 'applied', commit: '9f8e7d6c5b' },
+  { name: 'schickling.dev', status: 'applied', commit: 'deadbeef42' },
 ]
 
 /** Lock apply with some already at correct commit */
 export const lockApplyPartial: MemberSyncResult[] = [
-  { name: 'effect', status: 'locked', commit: 'a1b2c3d4e5' },
+  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
   { name: 'effect-utils', status: 'already_synced' },
-  { name: 'livestore', status: 'locked', commit: '1a2b3c4d5e' },
+  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'already_synced' },
 ]
 
 /** Lock apply failure (lockfile out of date, network issues) */
 export const lockApplyWithErrors: MemberSyncResult[] = [
-  { name: 'effect', status: 'locked', commit: 'a1b2c3d4e5' },
+  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
   {
     name: 'effect-utils',
     status: 'error',
     message: 'commit f0e1d2c not found — run mr lock update',
   },
-  { name: 'livestore', status: 'locked', commit: '1a2b3c4d5e' },
+  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'error', message: 'repository not found' },
 ]
 

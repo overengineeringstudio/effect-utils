@@ -111,7 +111,7 @@ export const FullExample: Story = {
             cloned: 2,
             synced: 3,
             updated: 1,
-            locked: 1,
+            recorded: 1,
             errors: 1,
             alreadySynced: 2,
           }}

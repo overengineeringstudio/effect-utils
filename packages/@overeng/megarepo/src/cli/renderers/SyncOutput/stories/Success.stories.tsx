@@ -186,13 +186,13 @@ export const LockUpdates: Story = {
         results: [
           {
             name: 'effect',
-            status: 'locked' as const,
+            status: 'recorded' as const,
             commit: 'abc1234def',
             previousCommit: '9876543fed',
           },
           {
             name: 'effect-utils',
-            status: 'locked' as const,
+            status: 'recorded' as const,
             commit: 'def5678abc',
             previousCommit: 'fedcba987',
           },

@@ -21,7 +21,8 @@ export const MemberSyncStatus = Schema.Literal(
   'skipped',
   'error',
   'updated',
-  'locked',
+  'recorded',
+  'applied',
   'removed',
 )
 /** Inferred type for the possible outcomes of syncing a single member. */
@@ -83,7 +84,8 @@ export const SyncSummary = Schema.Struct({
   cloned: Schema.Number,
   synced: Schema.Number,
   updated: Schema.Number,
-  locked: Schema.Number,
+  recorded: Schema.Number,
+  applied: Schema.Number,
   alreadySynced: Schema.Number,
   skipped: Schema.Number,
   errors: Schema.Number,
@@ -130,7 +132,8 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
   let cloned = 0
   let synced = 0
   let updated = 0
-  let locked = 0
+  let recorded = 0
+  let applied = 0
   let alreadySynced = 0
   let skipped = 0
   let errors = 0
@@ -147,8 +150,11 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
       case 'updated':
         updated++
         break
-      case 'locked':
-        locked++
+      case 'recorded':
+        recorded++
+        break
+      case 'applied':
+        applied++
         break
       case 'already_synced':
         alreadySynced++
@@ -169,7 +175,8 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
     cloned,
     synced,
     updated,
-    locked,
+    recorded,
+    applied,
     alreadySynced,
     skipped,
     errors,

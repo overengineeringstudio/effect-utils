@@ -194,7 +194,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     summaryCounts.cloned > 0 ||
     summaryCounts.synced > 0 ||
     summaryCounts.updated > 0 ||
-    summaryCounts.locked > 0 ||
+    summaryCounts.recorded > 0 ||
+    summaryCounts.applied > 0 ||
     summaryCounts.removed > 0 ||
     summaryCounts.errors > 0
 
@@ -202,7 +203,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   const cloned = results.filter((r) => r.status === 'cloned')
   const synced = results.filter((r) => r.status === 'synced')
   const updated = results.filter((r) => r.status === 'updated')
-  const locked = results.filter((r) => r.status === 'locked')
+  const recorded = results.filter((r) => r.status === 'recorded')
+  const applied = results.filter((r) => r.status === 'applied')
   const removed = results.filter((r) => r.status === 'removed')
   const errors = results.filter((r) => r.status === 'error')
   const nestedErrors = syncErrors.filter((e) => e.megarepoRoot !== workspace.root)
@@ -242,8 +244,11 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           {updated.map((r) => (
             <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
-          {locked.map((r) => (
-            <LockedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
+          {recorded.map((r) => (
+            <RecordedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} dryRun={dryRun} />
+          ))}
+          {applied.map((r) => (
+            <AppliedLine key={r.name} result={r} dryRun={dryRun} />
           ))}
           {removed.map((r) => (
             <RemovedLine key={r.name} result={r} dryRun={dryRun} />
@@ -291,7 +296,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           cloned: summaryCounts.cloned,
           synced: summaryCounts.synced,
           updated: summaryCounts.updated,
-          locked: summaryCounts.locked,
+          recorded: summaryCounts.recorded,
+          applied: summaryCounts.applied,
           removed: summaryCounts.removed,
           errors: errorCount,
           alreadySynced: summaryCounts.alreadySynced,
@@ -450,24 +456,58 @@ const UpdatedLine = ({
   )
 }
 
-/** Result line for locked member */
-const LockedLine = ({
+/** Result line for recorded member (lock sync — wrote commit to lockfile) */
+const RecordedLine = ({
   result,
   lockSync,
+  dryRun,
 }: {
   result: MemberSyncResult
   lockSync: MemberLockSyncResult | undefined
+  dryRun: boolean
 }) => {
+  const verb = dryRun ? 'would record' : 'recorded'
+  const hasTransition = result.previousCommit !== undefined
   return (
     <Box flexDirection="row">
-      <StatusIcon status="locked" variant="sync" />
+      <StatusIcon status="recorded" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="cyan">lock updated</Text>
+      <Text color="cyan">{verb}</Text>
       <Text> </Text>
-      <CommitTransition result={result} />
+      {hasTransition ? (
+        <CommitTransition result={result} />
+      ) : result.commit !== undefined ? (
+        <>
+          <Text dim>{result.commit.slice(0, 7)}</Text>
+          <Text dim> (new entry)</Text>
+        </>
+      ) : null}
       <LockSyncBadge lockSync={lockSync} />
+    </Box>
+  )
+}
+
+/** Result line for applied member (lock apply — checked out commit from lockfile) */
+const AppliedLine = ({
+  result,
+  dryRun,
+}: {
+  result: MemberSyncResult
+  dryRun: boolean
+}) => {
+  const verb = dryRun ? 'would check out' : 'checked out'
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="applied" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="cyan">{verb}</Text>
+      {result.commit !== undefined && (
+        <Text dim> {result.commit.slice(0, 7)}</Text>
+      )}
     </Box>
   )
 }
@@ -770,10 +810,12 @@ const getResultMessage = (result: MemberSyncResult): string | undefined => {
       const transition = formatCommitTransition(result)
       return transition !== undefined ? `updated ${transition}` : 'updated'
     }
-    case 'locked': {
+    case 'recorded': {
       const transition = formatCommitTransition(result)
-      return transition !== undefined ? `lock updated ${transition}` : 'lock updated'
+      return transition !== undefined ? `recorded ${transition}` : 'recorded'
     }
+    case 'applied':
+      return result.commit !== undefined ? `checked out ${result.commit.slice(0, 7)}` : 'checked out'
     case 'already_synced':
       return undefined // No message for already synced
     case 'skipped':

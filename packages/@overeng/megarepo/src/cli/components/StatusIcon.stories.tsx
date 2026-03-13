@@ -58,8 +58,12 @@ const StatusIconShowcase = () => (
         <Text>updated</Text>
       </Box>
       <Box flexDirection="row" gap={1}>
-        <StatusIcon status="locked" variant="sync" />
-        <Text>locked</Text>
+        <StatusIcon status="recorded" variant="sync" />
+        <Text>recorded</Text>
+      </Box>
+      <Box flexDirection="row" gap={1}>
+        <StatusIcon status="applied" variant="sync" />
+        <Text>applied</Text>
       </Box>
       <Box flexDirection="row" gap={1}>
         <StatusIcon status="already_synced" variant="sync" />

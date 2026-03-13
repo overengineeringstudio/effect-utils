@@ -1604,7 +1604,7 @@ describe('mr lock sync', () => {
           const memberResult = json.results[0]
           expect(memberResult?.name).toBe('my-lib')
           // For local paths, status is 'synced' since they create symlinks
-          expect(['synced', 'locked', 'already_synced']).toContain(memberResult?.status)
+          expect(['synced', 'recorded', 'already_synced']).toContain(memberResult?.status)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

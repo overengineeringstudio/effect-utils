@@ -17,7 +17,8 @@ export type MemberSyncStatus =
   | 'skipped'
   | 'error'
   | 'updated'
-  | 'locked'
+  | 'recorded'
+  | 'applied'
   | 'removed'
 
 /** Member sync result */
@@ -82,14 +83,16 @@ export const countSyncResults = (
 ): {
   synced: number
   updated: number
-  locked: number
+  recorded: number
+  applied: number
   already: number
   errors: number
   removed: number
 } => {
   const synced = r.results.filter((m) => m.status === 'cloned' || m.status === 'synced').length
   const updated = r.results.filter((m) => m.status === 'updated').length
-  const locked = r.results.filter((m) => m.status === 'locked').length
+  const recorded = r.results.filter((m) => m.status === 'recorded').length
+  const applied = r.results.filter((m) => m.status === 'applied').length
   const already = r.results.filter((m) => m.status === 'already_synced').length
   const errors = r.results.filter((m) => m.status === 'error').length
   const removed = r.results.filter((m) => m.status === 'removed').length
@@ -99,18 +102,20 @@ export const countSyncResults = (
       return {
         synced: acc.synced + nc.synced,
         updated: acc.updated + nc.updated,
-        locked: acc.locked + nc.locked,
+        recorded: acc.recorded + nc.recorded,
+        applied: acc.applied + nc.applied,
         already: acc.already + nc.already,
         errors: acc.errors + nc.errors,
         removed: acc.removed + nc.removed,
       }
     },
-    { synced: 0, updated: 0, locked: 0, already: 0, errors: 0, removed: 0 },
+    { synced: 0, updated: 0, recorded: 0, applied: 0, already: 0, errors: 0, removed: 0 },
   )
   return {
     synced: synced + nested.synced,
     updated: updated + nested.updated,
-    locked: locked + nested.locked,
+    recorded: recorded + nested.recorded,
+    applied: applied + nested.applied,
     already: already + nested.already,
     errors: errors + nested.errors,
     removed: removed + nested.removed,
