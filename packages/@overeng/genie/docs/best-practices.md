@@ -60,5 +60,6 @@ wrappers:
 Treat the `packages` array in these helpers as the single source of truth for
 workspace membership. If something belongs in the workspace, include its
 package generator output rather than maintaining a parallel path list.
-Use `pnpmWorkspaceYaml.manual(...)` only for genuine non-package workspace
-manifests that cannot be driven from package outputs.
+`pnpmWorkspaceYaml.manual(...)` is an escape hatch for rare cases where a
+workspace member is intentionally not genie-managed (e.g. a vendored third-party
+package). Prefer adding a package generator output to `packages` instead.
