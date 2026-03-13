@@ -105,7 +105,10 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
         }),
       { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
+  }).pipe(
+    Effect.provide(StoreLayer),
+    Effect.withSpan('megarepo/store/ls', { attributes: { 'span.label': 'ls' } }),
+  ),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Show store status and detect issues */
@@ -309,7 +312,10 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
         }),
       { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status')),
+  }).pipe(
+    Effect.provide(StoreLayer),
+    Effect.withSpan('megarepo/store/status', { attributes: { 'span.label': 'status' } }),
+  ),
 ).pipe(Cli.Command.withDescription('Show store status and detect issues'))
 
 /** Fetch all repos in the store */
@@ -362,7 +368,10 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
         }),
       { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
+  }).pipe(
+    Effect.provide(StoreLayer),
+    Effect.withSpan('megarepo/store/fetch', { attributes: { 'span.label': 'fetch' } }),
+  ),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
 /**
@@ -603,7 +612,10 @@ const storeGcCommand = Cli.Command.make(
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/store/gc', { attributes: { 'span.label': 'gc' } }),
+    ),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
 /**
@@ -760,7 +772,10 @@ const storeAddCommand = Cli.Command.make(
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/store/add', { attributes: { 'span.label': sourceString } }),
+    ),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
 
 /** Store subcommand group */

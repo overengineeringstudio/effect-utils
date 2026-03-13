@@ -479,7 +479,7 @@ export const syncMegarepo = <R = never>({
     } satisfies MegarepoSyncResult
   }).pipe(
     Effect.withSpan('megarepo/sync', {
-      attributes: { root: megarepoRoot, mode: options.mode, depth },
+      attributes: { 'span.label': megarepoRoot, root: megarepoRoot, mode: options.mode, depth },
     }),
   )
 

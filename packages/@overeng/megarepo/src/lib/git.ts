@@ -142,7 +142,11 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
     }
     cmdArgs.push(args.url, args.targetPath)
     yield* runGitCommand({ args: cmdArgs })
-  }).pipe(Effect.withSpan('git/clone', { attributes: { url: args.url, bare: args.bare ?? false } }))
+  }).pipe(
+    Effect.withSpan('git/clone', {
+      attributes: { 'span.label': args.url, url: args.url, bare: args.bare ?? false },
+    }),
+  )
 
 /**
  * Fetch updates from remote
@@ -155,7 +159,11 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
     }
     cmdArgs.push(args.remote ?? 'origin')
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
-  }).pipe(Effect.withSpan('git/fetch', { attributes: { repoPath: args.repoPath } }))
+  }).pipe(
+    Effect.withSpan('git/fetch', {
+      attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
+    }),
+  )
 
 /**
  * Checkout a specific ref (branch, tag, or commit)
@@ -233,7 +241,11 @@ export const createWorktree = (args: {
       cmdArgs.push(args.worktreePath, args.branch)
     }
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
-  }).pipe(Effect.withSpan('git/create-worktree', { attributes: { branch: args.branch } }))
+  }).pipe(
+    Effect.withSpan('git/create-worktree', {
+      attributes: { 'span.label': args.branch, branch: args.branch },
+    }),
+  )
 
 /**
  * Remove a git worktree
@@ -320,7 +332,9 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
       args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
       cwd: args.targetPath,
     })
-  }).pipe(Effect.withSpan('git/clone-bare', { attributes: { url: args.url } }))
+  }).pipe(
+    Effect.withSpan('git/clone-bare', { attributes: { 'span.label': args.url, url: args.url } }),
+  )
 
 /**
  * Fetch all refs from remote in a bare repo
@@ -333,7 +347,11 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
-  }).pipe(Effect.withSpan('git/fetch-bare', { attributes: { repoPath: args.repoPath } }))
+  }).pipe(
+    Effect.withSpan('git/fetch-bare', {
+      attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
+    }),
+  )
 
 /**
  * Get the default branch name from a remote
@@ -487,7 +505,9 @@ export const createWorktreeDetached = (args: {
     cwd: args.repoPath,
   }).pipe(
     Effect.asVoid,
-    Effect.withSpan('git/create-worktree-detached', { attributes: { commit: args.commit } }),
+    Effect.withSpan('git/create-worktree-detached', {
+      attributes: { 'span.label': args.commit.slice(0, 8), commit: args.commit },
+    }),
   )
 
 /**
@@ -530,7 +550,11 @@ export const getWorktreeStatus = (worktreePath: string) =>
       hasUnpushed: unpushedOutput,
       changesCount: changes.length,
     } satisfies WorktreeStatus
-  }).pipe(Effect.withSpan('git/worktree-status', { attributes: { worktreePath } }))
+  }).pipe(
+    Effect.withSpan('git/worktree-status', {
+      attributes: { 'span.label': worktreePath, worktreePath },
+    }),
+  )
 
 /**
  * Update a branch worktree to the latest from remote

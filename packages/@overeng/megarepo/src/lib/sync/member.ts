@@ -493,42 +493,47 @@ export const syncMember = <R = never>({
     }
 
     // Clone bare repo if needed.
-    let wasCloned = false
-    if (bareExists === false) {
-      if (dryRun === false) {
-        // Use semaphore to serialize bare repo creation for the same repo URL.
-        // This prevents race conditions when multiple members reference the same repo.
-        const createBareRepo = Effect.gen(function* () {
-          // Check again inside semaphore (double-check locking pattern)
-          const stillNotExists = (yield* store.hasBareRepo(source)) === false
-          if (stillNotExists === true) {
-            const repoBasePath = store.getRepoBasePath(source)
-            yield* fs.makeDirectory(repoBasePath, { recursive: true })
-            yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-            return true
-          }
-          return false
-        })
+    const wasCloned: boolean = yield* Effect.gen(function* () {
+      if (bareExists === false) {
+        if (dryRun === false) {
+          // Use semaphore to serialize bare repo creation for the same repo URL.
+          // This prevents race conditions when multiple members reference the same repo.
+          const createBareRepo = Effect.gen(function* () {
+            // Check again inside semaphore (double-check locking pattern)
+            const stillNotExists = (yield* store.hasBareRepo(source)) === false
+            if (stillNotExists === true) {
+              const repoBasePath = store.getRepoBasePath(source)
+              yield* fs.makeDirectory(repoBasePath, { recursive: true })
+              yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+              return true
+            }
+            return false
+          })
 
-        if (semaphoreMap !== undefined) {
-          const sem = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: cloneUrl })
-          wasCloned = yield* sem.withPermits(1)(createBareRepo)
-        } else {
-          wasCloned = yield* createBareRepo
+          if (semaphoreMap !== undefined) {
+            const sem = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: cloneUrl })
+            return yield* sem.withPermits(1)(createBareRepo)
+          }
+          return yield* createBareRepo
+        }
+      } else if (isLockUpdateMode === true && dryRun === false) {
+        // Fetch when lock update is requested.
+        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
+          Effect.catchAll(() => Effect.void), // Ignore fetch errors
+        )
+      } else if (isLockApplyMode === true && targetCommit !== undefined && dryRun === false) {
+        // Lock apply fetches missing commits to materialize the exact locked state.
+        const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+        if (commitExists === false) {
+          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
         }
       }
-    } else if (isLockUpdateMode === true && dryRun === false) {
-      // Fetch when lock update is requested.
-      yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-        Effect.catchAll(() => Effect.void), // Ignore fetch errors
-      )
-    } else if (isLockApplyMode === true && targetCommit !== undefined && dryRun === false) {
-      // Lock apply fetches missing commits to materialize the exact locked state.
-      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
-      if (commitExists === false) {
-        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
-      }
-    }
+      return false
+    }).pipe(
+      Effect.withSpan('megarepo/sync/member/clone-or-fetch', {
+        attributes: { 'span.label': name },
+      }),
+    )
 
     /**
      * A lock entry can point at an object that disappeared after a force-push.
@@ -560,141 +565,165 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Validate that the ref exists (for dry-run mode or before creating worktree)
-    // Uses hybrid approach: check local bare repo if exists, otherwise query remote
-    // Track whether we need to create the branch
-    let needsCreateBranch = false
-    let defaultBranchForCreate: string | undefined
+    // Validate ref exists and resolve to commit
+    const refResult = yield* Effect.gen(function* () {
+      let needsCreateBranch = false
+      let defaultBranchForCreate: string | undefined
+      let resolvedRefType: RefType = classifyRef(targetRef)
+      let resolvedCommit = targetCommit
 
-    if (targetCommit === undefined && isCommitSha(targetRef) === false) {
-      const refValidation = yield* Git.validateRefExists({
-        ref: targetRef,
-        bareRepoPath: bareExists === true ? bareRepoPath : undefined,
-        bareExists,
-        cloneUrl,
-      })
-      if (refValidation.exists === false) {
-        // Get default branch to use as base (needed for both createBranches and interactive prompt)
-        if (bareExists === true) {
-          const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
-          defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
-        } else {
-          const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
-          defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
-        }
+      if (resolvedCommit === undefined && isCommitSha(targetRef) === false) {
+        const refValidation = yield* Git.validateRefExists({
+          ref: targetRef,
+          bareRepoPath: bareExists === true ? bareRepoPath : undefined,
+          bareExists,
+          cloneUrl,
+        })
+        if (refValidation.exists === false) {
+          if (bareExists === true) {
+            const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+          } else {
+            const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
+            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+          }
 
-        // Determine action: --create-branches flag, interactive prompt, or error
-        let action: MissingRefAction = 'error'
+          let action: MissingRefAction = 'error'
 
-        if (createBranches === true) {
-          action = 'create'
-        } else if (onMissingRef !== undefined) {
-          // Interactive mode - ask user what to do
-          action = yield* onMissingRef({
-            memberName: name,
-            ref: targetRef,
-            defaultBranch: defaultBranchForCreate,
-            cloneUrl,
-          })
-        }
+          if (createBranches === true) {
+            action = 'create'
+          } else if (onMissingRef !== undefined) {
+            action = yield* onMissingRef({
+              memberName: name,
+              ref: targetRef,
+              defaultBranch: defaultBranchForCreate,
+              cloneUrl,
+            })
+          }
 
-        switch (action) {
-          case 'create':
-            needsCreateBranch = true
-            if (dryRun === true) {
-              // In dry-run mode, report what would happen
+          switch (action) {
+            case 'create':
+              needsCreateBranch = true
+              if (dryRun === true) {
+                return {
+                  _tag: 'early-return' as const,
+                  result: {
+                    name,
+                    status: 'synced',
+                    ref: targetRef,
+                    message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
+                  } satisfies MemberSyncResult,
+                }
+              }
+              break
+            case 'skip':
               return {
-                name,
-                status: 'synced',
-                ref: targetRef,
-                message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
-              } satisfies MemberSyncResult
-            }
-            break
-          case 'skip':
-            return {
-              name,
-              status: 'skipped',
-              message: `branch '${targetRef}' does not exist`,
-            } satisfies MemberSyncResult
-          case 'abort':
-            return {
-              name,
-              status: 'error',
-              message: `Sync aborted: branch '${targetRef}' does not exist`,
-            } satisfies MemberSyncResult
-          case 'error':
-          default:
-            return {
-              name,
-              status: 'error',
-              message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
-            } satisfies MemberSyncResult
+                _tag: 'early-return' as const,
+                result: {
+                  name,
+                  status: 'skipped',
+                  message: `branch '${targetRef}' does not exist`,
+                } satisfies MemberSyncResult,
+              }
+            case 'abort':
+              return {
+                _tag: 'early-return' as const,
+                result: {
+                  name,
+                  status: 'error',
+                  message: `Sync aborted: branch '${targetRef}' does not exist`,
+                } satisfies MemberSyncResult,
+              }
+            case 'error':
+            default:
+              return {
+                _tag: 'early-return' as const,
+                result: {
+                  name,
+                  status: 'error',
+                  message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
+                } satisfies MemberSyncResult,
+              }
+          }
         }
       }
-    }
 
-    // Create branch if needed (--create-branches flag was used and ref doesn't exist)
-    if (needsCreateBranch === true && defaultBranchForCreate !== undefined && dryRun === false) {
-      // Create the branch locally and push to remote
-      // Note: In bare repos, branches are at refs/heads/<branch>, not refs/remotes/origin/<branch>
-      yield* Git.createAndPushBranch({
-        repoPath: bareRepoPath,
-        branch: targetRef,
-        baseRef: defaultBranchForCreate,
-      })
-    }
-
-    // Resolve ref to commit if not already known
-    // Use actual ref type from local repo query for accurate classification
-    let actualRefType: RefType = classifyRef(targetRef) // fallback to heuristic
-    if (targetCommit === undefined && dryRun === false) {
-      // If it's already a commit SHA, use it directly
-      if (isCommitSha(targetRef) === true) {
-        targetCommit = targetRef
-        actualRefType = 'commit'
-      } else {
-        // Query local repo for actual ref type (more accurate than heuristic)
-        const refInfo = yield* Git.queryLocalRefType({
+      // Create branch if needed
+      if (needsCreateBranch === true && defaultBranchForCreate !== undefined && dryRun === false) {
+        yield* Git.createAndPushBranch({
           repoPath: bareRepoPath,
-          ref: targetRef,
+          branch: targetRef,
+          baseRef: defaultBranchForCreate,
         })
+      }
 
-        if (refInfo.type === 'tag') {
-          actualRefType = 'tag'
-          targetCommit = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/tags/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
-        } else if (refInfo.type === 'branch') {
-          actualRefType = 'branch'
-          targetCommit = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/remotes/origin/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+      // Resolve ref to commit if not already known
+      if (resolvedCommit === undefined && dryRun === false) {
+        if (isCommitSha(targetRef) === true) {
+          resolvedCommit = targetRef
+          resolvedRefType = 'commit'
         } else {
-          // Unknown ref type - fall back to heuristic-based resolution
-          const heuristicType = classifyRef(targetRef)
-          actualRefType = heuristicType
-          if (heuristicType === 'tag') {
-            targetCommit = yield* Git.resolveRef({
+          const refInfo = yield* Git.queryLocalRefType({
+            repoPath: bareRepoPath,
+            ref: targetRef,
+          })
+
+          if (refInfo.type === 'tag') {
+            resolvedRefType = 'tag'
+            resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/tags/${targetRef}`,
             }).pipe(
               Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
             )
-          } else {
-            // Treat as branch
-            targetCommit = yield* Git.resolveRef({
+          } else if (refInfo.type === 'branch') {
+            resolvedRefType = 'branch'
+            resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/remotes/origin/${targetRef}`,
             }).pipe(
               Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
             )
+          } else {
+            const heuristicType = classifyRef(targetRef)
+            resolvedRefType = heuristicType
+            if (heuristicType === 'tag') {
+              resolvedCommit = yield* Git.resolveRef({
+                repoPath: bareRepoPath,
+                ref: `refs/tags/${targetRef}`,
+              }).pipe(
+                Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+              )
+            } else {
+              resolvedCommit = yield* Git.resolveRef({
+                repoPath: bareRepoPath,
+                ref: `refs/remotes/origin/${targetRef}`,
+              }).pipe(
+                Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+              )
+            }
           }
         }
       }
-    }
+
+      return {
+        _tag: 'resolved' as const,
+        commit: resolvedCommit,
+        refType: resolvedRefType,
+        needsCreateBranch,
+        defaultBranchForCreate,
+      }
+    }).pipe(
+      Effect.withSpan('megarepo/sync/member/resolve-ref', {
+        attributes: { 'span.label': targetRef, ref: targetRef },
+      }),
+    )
+
+    if (refResult._tag === 'early-return') return refResult.result
+    targetCommit = refResult.commit
+    const actualRefType = refResult.refType
+    const needsCreateBranch = refResult.needsCreateBranch
+    const defaultBranchForCreate = refResult.defaultBranchForCreate
 
     /** Re-check immutable source refs before worktree creation. */
     if (dryRun === false && targetCommit !== undefined && isCommitSha(targetRef) === true) {
@@ -727,41 +756,43 @@ export const syncMember = <R = never>({
     })
 
     if (worktreeExists === false && dryRun === false) {
-      // Ensure worktree parent directory exists
-      const worktreeParent = EffectPath.ops.parent(worktreePath)
-      if (worktreeParent !== undefined) {
-        yield* fs.makeDirectory(worktreeParent, { recursive: true })
-      }
+      yield* Effect.gen(function* () {
+        // Ensure worktree parent directory exists
+        const worktreeParent = EffectPath.ops.parent(worktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
 
-      // Create worktree
-      // Use the actual ref type determined earlier, or check if using commit-based path
-      const createWorktreeRefType = useCommitBasedPath === true ? 'commit' : actualRefType
-      if (createWorktreeRefType === 'commit' || createWorktreeRefType === 'tag') {
-        // Commit or tag: create detached worktree
-        yield* Git.createWorktreeDetached({
-          repoPath: bareRepoPath,
-          worktreePath,
-          commit: targetCommit ?? worktreeRef,
-        })
-      } else {
-        // Branch worktree - can track the branch
-        yield* Git.createWorktree({
-          repoPath: bareRepoPath,
-          worktreePath,
-          branch: targetRef,
-          createBranch: false,
-        }).pipe(
-          Effect.catchAll(() =>
-            // If branch doesn't exist locally, create from remote
-            Git.createWorktree({
-              repoPath: bareRepoPath,
-              worktreePath,
-              branch: `origin/${targetRef}`,
-              createBranch: false,
-            }),
-          ),
-        )
-      }
+        // Create worktree
+        const createWorktreeRefType = useCommitBasedPath === true ? 'commit' : actualRefType
+        if (createWorktreeRefType === 'commit' || createWorktreeRefType === 'tag') {
+          yield* Git.createWorktreeDetached({
+            repoPath: bareRepoPath,
+            worktreePath,
+            commit: targetCommit ?? worktreeRef,
+          })
+        } else {
+          yield* Git.createWorktree({
+            repoPath: bareRepoPath,
+            worktreePath,
+            branch: targetRef,
+            createBranch: false,
+          }).pipe(
+            Effect.catchAll(() =>
+              Git.createWorktree({
+                repoPath: bareRepoPath,
+                worktreePath,
+                branch: `origin/${targetRef}`,
+                createBranch: false,
+              }),
+            ),
+          )
+        }
+      }).pipe(
+        Effect.withSpan('megarepo/sync/member/create-worktree', {
+          attributes: { 'span.label': worktreeRef },
+        }),
+      )
     }
 
     // Fast-forward existing branch worktrees when updating from remote.
@@ -911,5 +942,7 @@ export const syncMember = <R = never>({
         message: error instanceof Error ? error.message : String(error),
       } satisfies MemberSyncResult)
     }),
-    Effect.withSpan('megarepo/sync/member', { attributes: { name, source: sourceString } }),
+    Effect.withSpan('megarepo/sync/member', {
+      attributes: { 'span.label': name, name, source: sourceString },
+    }),
   )

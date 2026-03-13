@@ -195,7 +195,11 @@ export const fetchNixFlakeMetadata = ({
       narHash: parsed.hash,
       lastModified: parsed.locked.lastModified,
     }
-  }).pipe(Effect.withSpan('fetchNixFlakeMetadata', { attributes: { owner, repo, rev } }))
+  }).pipe(
+    Effect.withSpan('fetchNixFlakeMetadata', {
+      attributes: { 'span.label': `${owner}/${repo}@${rev.slice(0, 8)}`, owner, repo, rev },
+    }),
+  )
 
 /**
  * Build a flake reference URL from locked input data.
@@ -415,7 +419,9 @@ const syncSingleLockFile = ({
       updatedInputs,
     }
   }).pipe(
-    Effect.withSpan('megarepo/nix-lock/file', { attributes: { path: lockPath, type: lockType } }),
+    Effect.withSpan('megarepo/nix-lock/file', {
+      attributes: { 'span.label': lockPath, path: lockPath, type: lockType },
+    }),
   )
 
 // =============================================================================
@@ -501,7 +507,11 @@ const syncNestedMegarepoLockFile = ({
       type: 'megarepo.lock',
       updatedInputs,
     } satisfies NixLockSyncFileResult
-  }).pipe(Effect.withSpan('megarepo/nix-lock/nested', { attributes: { path: lockPath } }))
+  }).pipe(
+    Effect.withSpan('megarepo/nix-lock/nested', {
+      attributes: { 'span.label': lockPath, path: lockPath },
+    }),
+  )
 
 // =============================================================================
 // Main Sync Function
