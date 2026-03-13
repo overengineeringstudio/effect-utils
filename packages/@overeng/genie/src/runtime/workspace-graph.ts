@@ -80,32 +80,18 @@ const collectRootWorkspaceMembersRecursive = ({
   return sortStrings(members)
 }
 
-const inferCurrentRepoNameFromPackages = (packages: readonly WorkspacePackageLike[]) => {
-  const repoCounts = new Map<string, number>()
-
-  for (const pkg of packages) {
-    const repoName = pkg.meta.workspace.repoName
-    repoCounts.set(repoName, (repoCounts.get(repoName) ?? 0) + 1)
-  }
-
-  if (repoCounts.size === 0) {
-    throw new Error('Cannot infer a root workspace repo without any packages')
-  }
-
-  return [...repoCounts.entries()].toSorted(([nameA, countA], [nameB, countB]) =>
-    countA !== countB ? countB - countA : nameA.localeCompare(nameB),
-  )[0]![0]
-}
-
-/** Project root workspace member paths from package metadata for the current repo view. */
+/**
+ * Project root workspace member paths from package metadata for an explicit repo view.
+ * The caller must specify which repo's perspective to project from — no heuristic inference.
+ */
 const rootWorkspaceMemberPathsFromPackages = ({
   packages,
+  repoName,
 }: {
   packages: readonly WorkspacePackageLike[]
+  repoName: string
 }) =>
-  packages.length === 0
-    ? []
-    : collectRootWorkspaceMembersRecursive({
-        packages,
-        currentRepoName: inferCurrentRepoNameFromPackages(packages),
-      })
+  collectRootWorkspaceMembersRecursive({
+    packages,
+    currentRepoName: repoName,
+  })

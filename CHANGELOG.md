@@ -54,7 +54,8 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: tighten pnpm workspace SSOT around package seeds
   - Removes `extraPackages` from `pnpmWorkspaceYaml.root(...)` and the matching `additionalMemberPaths` graph helper escape hatch
   - Removes committed package-level `pnpm-workspace.yaml` projections in favor of internal build-time package closures
-  - Keeps `pnpmWorkspaceYaml.manual(...)` only for genuine non-package workspace manifests
+  - Removes `pnpmWorkspaceYaml.manual(...)` and `packageJson.aggregate(...)`; all root projection now goes through `pnpmWorkspaceYaml.root(...)` and `packageJson.aggregateFromPackages(...)` with explicit `repoName`
+  - Adds `extraMembers` as an exceptional escape hatch for non-genie-managed workspace members (e.g. standalone examples in livestore) — prefer real package generators over `extraMembers` whenever possible
   - Stops `genie/external.ts` from depending on internal workspace-graph helpers and documents the seed-only aggregate model
 - **Effect TypeScript tooling**: switch local language-service integration to Nix-provided `effect-tsgo`
   - Repoints the dev environment to upstream `Effect-TS/tsgo`

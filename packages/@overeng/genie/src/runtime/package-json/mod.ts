@@ -302,19 +302,10 @@ export type WorkspaceMetadata = WorkspaceIdentity & {
   deps: readonly WorkspacePackageLike[]
 }
 
-/**
- * Author input for a repository aggregate manifest.
- *
- * Aggregate manifests are intentionally constrained: they only declare the
- * workspace member set and do not act like normal package manifests.
- */
-export type AggregatePackageJsonInput = {
+/** Emitted repository aggregate manifest shape. */
+export type AggregatePackageJsonData = {
   name: string
   workspaces: readonly string[]
-}
-
-/** Emitted repository aggregate manifest shape. */
-export type AggregatePackageJsonData = AggregatePackageJsonInput & {
   private: true
   packageManager: string
 }
@@ -765,22 +756,41 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
 const DEFAULT_AGGREGATE_PACKAGE_MANAGER = 'pnpm@10.29.2'
 
 /**
- * Create a repository aggregate manifest.
+ * Project an aggregate manifest from package metadata for an explicit repo view.
  *
  * The aggregate manifest is not a runnable package and does not own
  * dependencies, scripts, exports, or publish settings. It exists only to
  * declare related workspace members. Constraining it prevents root-level
  * dependency and tooling creep, while actual package ownership remains with
  * real workspace packages.
+ *
+ * `extraMembers` allows adding non-genie-managed workspace member paths
+ * (e.g. standalone examples) that cannot be derived from package metadata.
  */
-const createAggregatePackageJson = <const T extends AggregatePackageJsonInput>(
-  data: Strict<T, AggregatePackageJsonInput>,
-) => {
+const aggregatePackageJsonFromPackages = ({
+  packages,
+  name,
+  repoName,
+  extraMembers = [],
+}: {
+  packages: readonly WorkspacePackageLike[]
+  name: string
+  repoName: string
+  extraMembers?: readonly string[]
+}) => {
+  const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
+  const allMembers =
+    extraMembers.length === 0
+      ? projectedMembers
+      : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) =>
+          a.localeCompare(b),
+        )
+
   const aggregate: AggregatePackageJsonData = {
-    name: data.name,
+    name,
     private: true,
     packageManager: DEFAULT_AGGREGATE_PACKAGE_MANAGER,
-    workspaces: [...data.workspaces],
+    workspaces: allMembers,
   }
 
   return createGenieOutput({
@@ -790,24 +800,9 @@ const createAggregatePackageJson = <const T extends AggregatePackageJsonInput>(
   })
 }
 
-/** Project an aggregate manifest from package metadata instead of maintaining member lists manually. */
-const aggregatePackageJsonFromPackages = ({
-  packages,
-  name,
-}: {
-  packages: readonly WorkspacePackageLike[]
-  name: string
-}) =>
-  createAggregatePackageJson({
-    name,
-    workspaces: rootWorkspaceMemberPathsFromPackages({ packages }),
-  })
-
-/** Package manifest authoring API plus constrained aggregate manifest helpers. */
+/** Package manifest authoring API plus constrained aggregate projection. */
 export const packageJson = Object.assign(createPackageJson, {
-  aggregate: createAggregatePackageJson,
   aggregateFromPackages: aggregatePackageJsonFromPackages,
 }) as typeof createPackageJson & {
-  aggregate: typeof createAggregatePackageJson
   aggregateFromPackages: typeof aggregatePackageJsonFromPackages
 }

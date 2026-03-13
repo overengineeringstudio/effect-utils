@@ -37,7 +37,6 @@ export {
   reactJsx,
   tsconfigJson,
   type AggregatePackageJsonData,
-  type AggregatePackageJsonInput,
   type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,

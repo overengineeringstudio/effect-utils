@@ -20,8 +20,7 @@ authoring story:
 If a repo still needs a lower-level or transitional path, treat it as an
 adapter and prefer converging it onto:
 
-- `pnpmWorkspaceYaml.root(...)` with package-seed-driven projection
-- `packageJson.aggregateFromPackages(...)`
+- `pnpmWorkspaceYaml.root({ packages, repoName, ... })` with package-seed-driven projection
+- `packageJson.aggregateFromPackages({ packages, name, repoName })`
 - `catalog.compose(...)`
 - `packageJson(data, composition)`
-- `pnpmWorkspaceYaml.manual(...)` (escape hatch for non-genie-managed members)

@@ -115,6 +115,7 @@ describe('tsconfigJsonFromPackages', () => {
       const result = tsconfigJsonFromPackages({
         dir,
         packages: [pkg(repoName, '@pkg/a', 'packages/a'), pkg(repoName, '@pkg/b', 'packages/b')],
+        repoName,
         files: [],
       })
 
@@ -132,6 +133,7 @@ describe('tsconfigJsonFromPackages', () => {
       const result = tsconfigJsonFromPackages({
         dir,
         packages: [pkg(repoName, '@pkg/a', 'packages/a')],
+        repoName,
         extraReferences: ['apps/service-worker'],
         files: [],
       })
@@ -157,6 +159,7 @@ describe('tsconfigJsonFromPackages', () => {
           pkg(repoName, '@pkg/b', 'packages/b'),
           pkg('foreign-repo', '@foreign/c', 'packages/c'),
         ],
+        repoName,
         files: [],
       })
 
@@ -178,6 +181,7 @@ describe('tsconfigJsonFromPackages', () => {
       const result = tsconfigJsonFromPackages({
         dir,
         packages: [pkg(repoName, '@pkg/a', 'packages/a'), pkg(repoName, '@pkg/b', 'packages/b')],
+        repoName,
         extraReferences: ['apps/service-worker'],
         onlyExistingReferences: true,
         files: [],

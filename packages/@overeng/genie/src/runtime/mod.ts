@@ -14,7 +14,6 @@ export {
   definePatchedDependencies,
   packageJson,
   type AggregatePackageJsonData,
-  type AggregatePackageJsonInput,
   type Catalog,
   type CatalogInput,
   type ExtendedOverridesInput,
@@ -30,7 +29,6 @@ export {
 } from './package-json/mod.ts'
 export {
   pnpmWorkspaceYaml,
-  type PnpmPackageClosureConfig,
   type PnpmSettings,
   type PnpmWorkspaceData,
 } from './pnpm-workspace/mod.ts'

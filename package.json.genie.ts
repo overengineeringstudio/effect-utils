@@ -46,6 +46,7 @@ export const rootWorkspacePackages = [
 const rootWorkspace = packageJson.aggregateFromPackages({
   packages: rootWorkspacePackages,
   name: 'effect-utils-workspace',
+  repoName: 'effect-utils',
 })
 
 export const rootWorkspaceMemberPaths = rootWorkspace.data.workspaces

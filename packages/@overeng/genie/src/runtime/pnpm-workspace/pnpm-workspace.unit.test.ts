@@ -110,6 +110,7 @@ describe('metadata-based workspace projections', () => {
   it('projects root workspace members recursively from package metadata', () => {
     const workspaceFile = pnpmWorkspaceYaml.root({
       packages: [app, example],
+      repoName: repo.repoName,
       dedupePeerDependents: true,
     })
 
@@ -152,16 +153,34 @@ describe('metadata-based workspace projections', () => {
 
     const workspaceFile = pnpmWorkspaceYaml.root({
       packages: [crossRepoApp, utils, foreignShared],
+      repoName: repo.repoName,
       dedupePeerDependents: true,
     })
 
     expect(workspaceFile.data.packages).toEqual(['packages/app', 'packages/utils'])
   })
 
+  it('includes extraMembers in root workspace projection', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app, example],
+      repoName: repo.repoName,
+      extraMembers: ['examples/*'],
+      dedupePeerDependents: true,
+    })
+
+    expect(workspaceFile.data.packages).toEqual([
+      'examples/*',
+      'packages/app',
+      'packages/examples/basic',
+      'packages/utils',
+    ])
+  })
+
   it('projects workspace root workspaces from package metadata', () => {
     const workspaceRoot = packageJson.aggregateFromPackages({
       packages: [app],
       name: 'workspace-root',
+      repoName: repo.repoName,
     })
 
     expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
@@ -185,6 +204,7 @@ describe('metadata-based workspace projections', () => {
     const workspaceRoot = packageJson.aggregateFromPackages({
       packages: [app, utils, foreignShared],
       name: 'workspace-root',
+      repoName: repo.repoName,
     })
 
     expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])

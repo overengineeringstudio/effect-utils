@@ -329,18 +329,21 @@ export const tsconfigJson = <const T extends TSConfigArgs>(
 export const tsconfigJsonFromPackages = ({
   dir,
   packages,
+  repoName,
   extraReferences = [],
   onlyExistingReferences = false,
   ...args
 }: {
   dir: string
   packages: readonly WorkspacePackageLike[]
+  repoName: string
   extraReferences?: readonly string[]
   onlyExistingReferences?: boolean
 } & Omit<TSConfigArgs, 'references'>): GenieOutput<TSConfigArgs> => {
   const references = sortStrings([
     ...rootWorkspaceMemberPathsFromPackages({
       packages,
+      repoName,
     }),
     ...extraReferences,
   ])

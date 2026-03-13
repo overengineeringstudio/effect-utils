@@ -904,10 +904,9 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
  *
  * @see https://pnpm.io/pnpm-workspace_yaml
  *
- * Prefer `pnpmWorkspaceYaml.root(...)` for live repo state.
- * `pnpmWorkspaceYaml.manual(...)` remains available for genuine non-package
- * workspace manifests. Package closures are internal build-time projections
- * derived from package workspace metadata.
+ * Use `pnpmWorkspaceYaml.root(...)` for live repo state projection.
+ * Package closures are internal build-time projections derived from
+ * package workspace metadata.
  */
 function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
   config: Strict<T, PnpmWorkspaceData>,
@@ -931,11 +930,6 @@ function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>
     ...(meta === undefined ? {} : { meta }),
   })
 }
-
-/** Create a pnpm-workspace.yaml directly for genuine non-package workspace manifests. */
-const manualPnpmWorkspaceYaml = <const T extends PnpmWorkspaceData>(
-  config: Strict<T, PnpmWorkspaceData>,
-) => createPnpmWorkspaceYaml(config)
 
 const sortStrings = (values: Iterable<string>) =>
   [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
@@ -1025,21 +1019,38 @@ export const projectPnpmPackageClosure = ({ pkg }: { pkg: WorkspacePackageLike }
   }
 }
 
-/** Project a root pnpm-workspace.yaml by recomposing package metadata instead of maintaining member lists manually. */
+/**
+ * Project a root pnpm-workspace.yaml from package metadata for an explicit repo view.
+ *
+ * `extraMembers` allows adding non-genie-managed workspace member paths
+ * (e.g. standalone examples) that cannot be derived from package metadata.
+ */
 const rootPnpmWorkspaceYaml = ({
   packages,
+  repoName,
+  extraMembers = [],
   ...config
 }: {
   packages: readonly WorkspacePackageLike[]
-} & Omit<PnpmWorkspaceData, 'packages'>) =>
-  createPnpmWorkspaceYaml({
-    ...config,
-    packages: rootWorkspaceMemberPathsFromPackages({ packages }),
-  })
+  repoName: string
+  extraMembers?: readonly string[]
+} & Omit<PnpmWorkspaceData, 'packages'>) => {
+  const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
+  const allMembers =
+    extraMembers.length === 0
+      ? projectedMembers
+      : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) =>
+          a.localeCompare(b),
+        )
 
-/** Public pnpm workspace projection API for live repo state and genuine non-package workspaces. */
+  return createPnpmWorkspaceYaml({
+    ...config,
+    packages: allMembers,
+  })
+}
+
+/** Public pnpm workspace projection API. */
 export const pnpmWorkspaceYaml = {
-  manual: manualPnpmWorkspaceYaml,
   root: rootPnpmWorkspaceYaml,
 } as const
 

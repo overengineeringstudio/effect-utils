@@ -25,10 +25,8 @@ import {
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
   type AggregatePackageJsonData,
-  type AggregatePackageJsonInput,
   type PackageJsonData,
   type PatchesRegistry,
-  type PnpmPackageClosureConfig,
   type PnpmSettings,
   type PnpmWorkspaceData,
   type ScriptValue,
@@ -40,6 +38,13 @@ import {
   type WorkspacePackage,
   type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
+/**
+ * Exceptional export: downstream repos that define `workspaceMember()` factories
+ * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
+ * Prefer not using package closures unless your repo genuinely needs Nix-time
+ * workspace subsetting (currently only livestore).
+ */
+import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
@@ -56,7 +61,6 @@ export {
 }
 export type {
   AggregatePackageJsonData,
-  AggregatePackageJsonInput,
   GenieOutput,
   GithubRulesetArgs,
   GitHubWorkflowArgs,

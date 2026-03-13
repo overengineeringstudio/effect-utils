@@ -520,6 +520,7 @@ describe('packageJson.aggregateFromPackages', () => {
     const result = packageJson.aggregateFromPackages({
       packages: [appPkg],
       name: 'my-monorepo',
+      repoName: repo.repoName,
     })
 
     expect(result.data).toEqual({
@@ -535,6 +536,7 @@ describe('packageJson.aggregateFromPackages', () => {
     const result = packageJson.aggregateFromPackages({
       packages: [appPkg],
       name: 'my-monorepo',
+      repoName: repo.repoName,
     })
 
     const json = result.stringify(mockWorkspaceRootContext)
@@ -580,22 +582,31 @@ describe('packageJson.aggregateFromPackages', () => {
     const result = packageJson.aggregateFromPackages({
       packages: [crossRepoApp, utilsPkg, foreignPkg],
       name: 'my-monorepo',
+      repoName: repo.repoName,
     })
 
     expect(result.data.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 
-  it('creates an aggregate directly from explicit workspaces', () => {
-    const result = packageJson.aggregate({
+  it('includes extraMembers in the projected aggregate', () => {
+    const result = packageJson.aggregateFromPackages({
+      packages: [appPkg],
       name: 'my-monorepo',
-      workspaces: ['packages/app', 'packages/examples'],
+      repoName: repo.repoName,
+      extraMembers: ['examples/*'],
     })
 
-    expect(result.data).toEqual({
+    expect(result.data.workspaces).toEqual(['examples/*', 'packages/app', 'packages/utils'])
+  })
+
+  it('deduplicates extraMembers with projected members', () => {
+    const result = packageJson.aggregateFromPackages({
+      packages: [appPkg],
       name: 'my-monorepo',
-      private: true,
-      packageManager: 'pnpm@10.29.2',
-      workspaces: ['packages/app', 'packages/examples'],
+      repoName: repo.repoName,
+      extraMembers: ['packages/app', 'examples/*'],
     })
+
+    expect(result.data.workspaces).toEqual(['examples/*', 'packages/app', 'packages/utils'])
   })
 })

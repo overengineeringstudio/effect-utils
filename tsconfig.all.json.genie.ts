@@ -8,5 +8,6 @@ import {
 export default tsconfigJsonFromPackages({
   dir: import.meta.dirname,
   packages: rootWorkspacePackages,
+  repoName: 'effect-utils',
   files: [],
 } satisfies TSConfigArgs)

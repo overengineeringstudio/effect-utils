@@ -110,21 +110,23 @@ The metadata contains stable composition facts such as logical workspace
 identity (`repoName`, `memberPath`) and imported workspace deps. Projection
 helpers receive `ctx` later when they need to render relative paths.
 
-For repository aggregates and projections, keep using the dedicated helpers:
+For repository aggregates and projections, use:
 
-- `packageJson.aggregate(...)`
-- `packageJson.aggregateFromPackages(...)`
-- `pnpmWorkspaceYaml.root(...)`
+- `packageJson.aggregateFromPackages({ packages, name, repoName })`
+- `pnpmWorkspaceYaml.root({ packages, repoName, ...config })`
+
+Both require an explicit `repoName` — projection does not infer the current
+repo heuristically.
+
+`extraMembers` is an exceptional compromise for non-genie-managed workspace
+members (e.g. standalone, copyable examples) that cannot be derived from
+package metadata. Prefer creating real package generators over using
+`extraMembers` whenever possible.
 
 Treat aggregate manifests as coordination files, not packages. They only
 declare related workspace members and automatically emit `private: true` plus
 the required `packageManager`. They do not own dependencies, scripts, exports,
 or publish settings.
-
-When projecting an aggregate from packages, pass real package generator
-outputs as seeds. Do not maintain a parallel list of extra workspace paths.
-Use `pnpmWorkspaceYaml.manual(...)` only for real non-package workspace
-manifests that cannot be expressed as package seeds.
 
 Do not treat lower-level workspace graph internals as co-equal authoring APIs.
 Those helpers are intentionally internal adapter code for the composed-root
