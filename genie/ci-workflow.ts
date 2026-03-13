@@ -205,7 +205,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock app
  * Previously ran `devenv info` (~25s) as an eager canary to detect any store
  * corruption before tasks run. Now uses `nix-store --check-validity` (~1-2s)
  * which only verifies the devenv store path itself. If the store path is
- * invalid, runs a repair and re-resolves.
+ * invalid, runs a targeted repair on just that path and re-resolves.
  *
  * Still captures diagnostics dir + runner fingerprint for #272 instrumentation.
  *
@@ -241,8 +241,8 @@ DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
 # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
 if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-  echo "::warning::devenv store path invalid, repairing..."
-  nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+  echo "::warning::devenv store path invalid, repairing targeted path..."
+  nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
   rm -rf ~/.cache/nix/eval-cache-*
   DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
   DEVENV_BIN="$DEVENV_OUT/bin/devenv"

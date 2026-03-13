@@ -86,8 +86,8 @@ jobs:
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
           if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-            echo "::warning::devenv store path invalid, repairing..."
-            nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+            echo "::warning::devenv store path invalid, repairing targeted path..."
+            nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
@@ -230,8 +230,8 @@ jobs:
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
           if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-            echo "::warning::devenv store path invalid, repairing..."
-            nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+            echo "::warning::devenv store path invalid, repairing targeted path..."
+            nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
@@ -377,8 +377,8 @@ jobs:
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
           if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-            echo "::warning::devenv store path invalid, repairing..."
-            nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+            echo "::warning::devenv store path invalid, repairing targeted path..."
+            nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
@@ -524,8 +524,8 @@ jobs:
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
           if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-            echo "::warning::devenv store path invalid, repairing..."
-            nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+            echo "::warning::devenv store path invalid, repairing targeted path..."
+            nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
@@ -672,8 +672,8 @@ jobs:
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
           if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-            echo "::warning::devenv store path invalid, repairing..."
-            nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+            echo "::warning::devenv store path invalid, repairing targeted path..."
+            nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
             DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
