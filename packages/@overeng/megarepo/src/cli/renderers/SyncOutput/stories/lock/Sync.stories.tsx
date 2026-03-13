@@ -1,5 +1,5 @@
 /**
- * Stories for `mr lock sync` — records current workspace state into megarepo.lock.
+ * Stories for `mr lock` — records current workspace state into megarepo.lock.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -55,7 +55,7 @@ export const AllRecorded: Story = {
       () => ({
         results: fixtures.lockSyncAllRecorded,
         options: {
-          mode: 'lock_sync' as const,
+          mode: 'lock' as const,
           dryRun: args.dryRun,
           all: false,
           verbose: args.verbose,
@@ -68,7 +68,7 @@ export const AllRecorded: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_sync',
+          mode: 'lock',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -77,7 +77,7 @@ export const AllRecorded: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({ mode: 'lock_sync', finalState: stateConfig }),
+              timeline: fixtures.createLockTimeline({ mode: 'lock', finalState: stateConfig }),
             }
           : {})}
       />
@@ -92,7 +92,7 @@ export const WithSkipped: Story = {
       () => ({
         results: fixtures.lockSyncWithSkipped,
         options: {
-          mode: 'lock_sync' as const,
+          mode: 'lock' as const,
           dryRun: args.dryRun,
           all: false,
           verbose: args.verbose,
@@ -105,7 +105,7 @@ export const WithSkipped: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_sync',
+          mode: 'lock',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -114,7 +114,7 @@ export const WithSkipped: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({ mode: 'lock_sync', finalState: stateConfig }),
+              timeline: fixtures.createLockTimeline({ mode: 'lock', finalState: stateConfig }),
             }
           : {})}
       />
@@ -129,7 +129,7 @@ export const DryRun: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.lockSyncAllRecorded,
-        options: { mode: 'lock_sync' as const, dryRun: true, all: false, verbose: args.verbose },
+        options: { mode: 'lock' as const, dryRun: true, all: false, verbose: args.verbose },
       }),
       [args.verbose],
     )
@@ -138,7 +138,7 @@ export const DryRun: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_sync',
+          mode: 'lock',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -147,7 +147,7 @@ export const DryRun: Story = {
         tabs={ALL_OUTPUT_TABS}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({ mode: 'lock_sync', finalState: stateConfig }),
+              timeline: fixtures.createLockTimeline({ mode: 'lock', finalState: stateConfig }),
             }
           : {})}
       />

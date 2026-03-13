@@ -72,17 +72,14 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   // Build mode indicators
   const modes: string[] = []
   switch (options.mode) {
-    case 'workspace':
-      modes.push('workspace')
+    case 'apply':
+      modes.push('apply')
       break
-    case 'lock_sync':
-      modes.push('lock sync')
+    case 'lock':
+      modes.push('lock')
       break
-    case 'lock_update':
-      modes.push('lock update')
-      break
-    case 'lock_apply':
-      modes.push('lock apply')
+    case 'fetch':
+      modes.push('fetch')
       break
   }
   if (options.dryRun === true) modes.push('dry run')
@@ -742,7 +739,7 @@ const NestedMegareposHint = ({ count }: { count: number }) => {
       <Text dim>
         Note: {count} member{count > 1 ? 's' : ''} contain nested megarepos
       </Text>
-      <Text dim> Run 'mr sync --all' to sync them</Text>
+      <Text dim> Run 'mr apply --all' to sync them</Text>
     </Box>
   )
 }

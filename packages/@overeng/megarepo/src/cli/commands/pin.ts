@@ -51,7 +51,7 @@ import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
  * Pin a member to a specific ref.
  * When -c is provided, switches to a different ref (branch, tag, or commit).
  * Without -c, pins to the current commit.
- * Pinned members won't be updated by `mr lock update` unless explicitly forced.
+ * Pinned members won't be updated by `mr fetch` unless explicitly forced.
  */
 export const pinCommand = Cli.Command.make(
   'pin',

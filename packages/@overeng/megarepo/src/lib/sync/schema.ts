@@ -29,7 +29,7 @@ export const MemberSyncStatus = Schema.Literal(
 export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
 
 /** Sync mode. */
-export const SyncMode = Schema.Literal('workspace', 'lock_sync', 'lock_update', 'lock_apply')
+export const SyncMode = Schema.Literal('fetch', 'apply', 'lock')
 /** Inferred type for sync mode. */
 export type SyncMode = Schema.Schema.Type<typeof SyncMode>
 
@@ -70,7 +70,7 @@ export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>
 
 /** Default sync options */
 export const defaultSyncOptions: SyncOptions = {
-  mode: 'workspace',
+  mode: 'apply',
   dryRun: false,
   all: false,
 }

@@ -82,6 +82,103 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
   },
 ]
 
+/** Lock sync results including source file (flake.nix, devenv.yaml) updates */
+export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          {
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1111111',
+            newRev: '2222222',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.yaml',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          {
+            inputName: 'effect-utils-playwright',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'schickling.dev',
+    files: [
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+]
+
 // =============================================================================
 // State Factories
 // =============================================================================
@@ -89,7 +186,7 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
 export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
   _tag: 'Success',
   workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
-  options: { mode: 'workspace', dryRun: false, all: false, verbose: false },
+  options: { mode: 'apply', dryRun: false, all: false, verbose: false },
   members: [],
   activeMembers: [],
   results: [],
@@ -124,7 +221,7 @@ export const createTimeline = (
   const results = finalState.results ?? []
   const members = finalState.members ?? results.map((r) => r.name)
   const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
-  const options = finalState.options ?? { mode: 'workspace', dryRun: false, all: false }
+  const options = finalState.options ?? { mode: 'apply', dryRun: false, all: false }
   const nestedMegarepos = finalState.nestedMegarepos ?? []
   const generatedFiles = finalState.generatedFiles ?? []
   const lockSyncResults = finalState.lockSyncResults ?? []

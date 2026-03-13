@@ -135,7 +135,7 @@ const runMrCommand = ({
     }
   }).pipe(Effect.scoped)
 
-/** Run `mr sync` and capture output. */
+/** Run `mr apply` and capture output. */
 const runSyncCommand = ({
   cwd,
   args = [],
@@ -144,22 +144,42 @@ const runSyncCommand = ({
   cwd: AbsoluteDirPath
   args?: ReadonlyArray<string>
   env?: Record<string, string>
-}) => runMrCommand({ cwd, command: ['sync'], args, env })
+}) => runMrCommand({ cwd, command: ['apply'], args, env })
 
-/** Run `mr lock <subcommand>` and capture output. */
-const runLockCommand = ({
+/** Run `mr lock` and capture output. */
+const runLockRecordCommand = ({
   cwd,
-  subcommand,
   args = [],
   env = {},
 }: {
   cwd: AbsoluteDirPath
-  subcommand: 'sync' | 'update' | 'apply'
   args?: ReadonlyArray<string>
   env?: Record<string, string>
-}) => runMrCommand({ cwd, command: ['lock', subcommand], args, env })
+}) => runMrCommand({ cwd, command: ['lock'], args, env })
 
-describe('mr sync', () => {
+/** Run `mr fetch` and capture output. */
+const runFetchCommand = ({
+  cwd,
+  args = [],
+  env = {},
+}: {
+  cwd: AbsoluteDirPath
+  args?: ReadonlyArray<string>
+  env?: Record<string, string>
+}) => runMrCommand({ cwd, command: ['fetch'], args, env })
+
+/** Run `mr fetch --apply` (the daily driver, replaces old `mr sync`). */
+const runFetchApplyCommand = ({
+  cwd,
+  args = [],
+  env = {},
+}: {
+  cwd: AbsoluteDirPath
+  args?: ReadonlyArray<string>
+  env?: Record<string, string>
+}) => runMrCommand({ cwd, command: ['fetch', '--apply'], args, env })
+
+describe('mr apply', () => {
   describe('with local path members', () => {
     it.effect(
       'should create symlinks for local path members',
@@ -746,7 +766,7 @@ describe('--all nested error reporting', () => {
           EffectPath.unsafe.relativeDir('repos/child/'),
         )
 
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
           args: ['--output', 'json', '--all'],
         })
@@ -1309,7 +1329,7 @@ describe('nested megarepo.lock sync scope', () => {
         const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
         expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
 
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
           args: ['--output', 'json'],
           env: {
@@ -1329,7 +1349,7 @@ describe('nested megarepo.lock sync scope', () => {
   )
 
   it.effect(
-    'should sync nested megarepo.lock only when mr lock sync --all is set',
+    'should sync nested megarepo.lock only when mr fetch --apply --all is set',
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, sharedCommit, staleNestedCommit } =
@@ -1344,9 +1364,8 @@ describe('nested megarepo.lock sync scope', () => {
         const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
         expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
 
-        const result = yield* runLockCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          subcommand: 'sync',
           args: ['--output', 'json', '--all'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
@@ -1365,7 +1384,7 @@ describe('nested megarepo.lock sync scope', () => {
   )
 
   it.effect(
-    'should not abort recursive mr lock update when nested pinned members reference stale commits',
+    'should not abort recursive mr fetch when nested pinned members reference stale commits',
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
@@ -1390,9 +1409,8 @@ describe('nested megarepo.lock sync scope', () => {
         })
         yield* writeLockFile({ lockPath: nestedLockPath, lockFile: nestedLock })
 
-        const result = yield* runLockCommand({
+        const result = yield* runFetchCommand({
           cwd: parentPath,
-          subcommand: 'update',
           args: ['--output', 'json', '--all'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
@@ -1423,9 +1441,8 @@ describe('nested megarepo.lock sync scope', () => {
         const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
         expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
 
-        const result = yield* runLockCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          subcommand: 'sync',
           args: ['--output', 'json', '--all', '--only', 'shared'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
@@ -1459,9 +1476,8 @@ describe('nested megarepo.lock sync scope', () => {
         const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
         expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
 
-        const result = yield* runLockCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          subcommand: 'sync',
           args: ['--output', 'json', '--all'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
@@ -1495,9 +1511,8 @@ describe('nested megarepo.lock sync scope', () => {
         const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
         expect(beforeNestedLock.members['shared-dev']?.commit).toBe(mainCommit)
 
-        const result = yield* runLockCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          subcommand: 'sync',
           args: ['--output', 'json', '--all'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
@@ -1531,9 +1546,8 @@ describe('nested megarepo.lock sync scope', () => {
         const beforeNestedLock = Option.getOrThrow(beforeNestedLockOpt)
         expect(beforeNestedLock.members['shared']?.commit).toBe(staleNestedCommit)
 
-        const result = yield* runLockCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: parentPath,
-          subcommand: 'sync',
           args: ['--output', 'json', '--all'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
@@ -1556,7 +1570,7 @@ describe('nested megarepo.lock sync scope', () => {
 // Lock Sync Tests (lock updated from workspace state)
 // =============================================================================
 
-describe('mr lock sync', () => {
+describe('mr lock', () => {
   describe('lock file updates', () => {
     it.effect(
       'should update lock file when worktree HEAD differs from lock',
@@ -1591,10 +1605,9 @@ describe('mr lock sync', () => {
             },
           })
 
-          // Run mr lock sync
-          const result = yield* runLockCommand({
+          // Run mr lock
+          const result = yield* runLockRecordCommand({
             cwd: workspacePath,
-            subcommand: 'sync',
             args: ['--output', 'json'],
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
@@ -1645,12 +1658,11 @@ describe('mr lock sync', () => {
           })
 
           // First sync to create symlinks
-          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+          yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
           // Second sync should show already_synced
-          const result = yield* runLockCommand({
+          const result = yield* runLockRecordCommand({
             cwd: workspacePath,
-            subcommand: 'sync',
             args: ['--output', 'json'],
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
@@ -1702,11 +1714,10 @@ describe('mr lock sync', () => {
             message: 'Initialize megarepo',
           })
 
-          // Run mr lock sync. It should not fetch remote state and should report the member as
+          // Run mr lock. It should not fetch remote state and should report the member as
           // needing workspace sync first because no branch worktree has been materialized yet.
-          const result = yield* runLockCommand({
+          const result = yield* runLockRecordCommand({
             cwd: workspacePath,
-            subcommand: 'sync',
             args: ['--output', 'json', '--dry-run'],
           })
 
@@ -1776,7 +1787,7 @@ describe('mr lock sync', () => {
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
           // First sync to create symlink
-          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+          yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
           // Verify symlink exists
           const symlinkPath = EffectPath.ops.join(
@@ -1810,7 +1821,7 @@ describe('mr lock sync', () => {
           )
 
           // Sync again - should update symlink
-          const result = yield* runSyncCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json'],
           })
@@ -1890,7 +1901,7 @@ describe('mr lock sync', () => {
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
           // First sync to create symlink
-          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+          yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
           // Add dirty changes to the main repo (simulating work in progress)
           yield* fs.writeFileString(
@@ -1907,7 +1918,7 @@ describe('mr lock sync', () => {
           )
 
           // Sync again - should skip because old worktree is dirty
-          const result = yield* runSyncCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json'],
           })
@@ -1978,7 +1989,7 @@ describe('mr lock sync', () => {
           yield* addCommit({ repoPath: workspacePath, message: 'Initialize megarepo' })
 
           // First sync
-          yield* runSyncCommand({ cwd: workspacePath, args: [] })
+          yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
           // Add dirty changes
           yield* fs.writeFileString(
@@ -1995,7 +2006,7 @@ describe('mr lock sync', () => {
           )
 
           // Sync with --force - should succeed
-          const result = yield* runSyncCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--force'],
           })
@@ -2024,7 +2035,7 @@ describe('mr lock sync', () => {
 // Lock Update Tests
 // =============================================================================
 
-describe('mr lock update', () => {
+describe('mr fetch', () => {
   describe('dirty worktree protection', () => {
     it.effect(
       'should skip member with uncommitted changes unless --force',
@@ -2068,12 +2079,11 @@ describe('mr lock update', () => {
             EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('dirty-lib')),
           )
 
-          // Run mr lock update (should skip dirty worktree)
+          // Run mr fetch (should skip dirty worktree)
           // Note: For local path sources, dirty check may not apply the same way
           // This test documents the expected behavior
-          const result = yield* runLockCommand({
+          const result = yield* runFetchCommand({
             cwd: workspacePath,
-            subcommand: 'update',
             args: ['--output', 'json'],
           })
 
@@ -2131,10 +2141,9 @@ describe('mr lock update', () => {
             EffectPath.ops.join(reposDir, EffectPath.unsafe.relativeFile('pinned-lib')),
           )
 
-          // Run mr lock update
-          const result = yield* runLockCommand({
+          // Run mr fetch
+          const result = yield* runFetchCommand({
             cwd: workspacePath,
-            subcommand: 'update',
             args: ['--output', 'json'],
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
@@ -2149,15 +2158,14 @@ describe('mr lock update', () => {
     )
 
     it.effect(
-      'should recover pinned members with stale locked commits in mr lock update --force mode',
+      'should recover pinned members with stale locked commits in mr fetch --force mode',
       Effect.fnUntraced(
         function* () {
           const { workspacePath, storePath, staleCommit, currentCommit } =
             yield* createPinnedStaleCommitPullFixture()
 
-          const result = yield* runLockCommand({
+          const result = yield* runFetchCommand({
             cwd: workspacePath,
-            subcommand: 'update',
             args: ['--force', '--output', 'json'],
             env: {
               MEGAREPO_STORE: storePath.slice(0, -1),
@@ -2188,16 +2196,15 @@ describe('mr lock update', () => {
     )
 
     it.effect(
-      'should skip pinned stale commit-SHA refs in mr lock update mode',
+      'should skip pinned stale commit-SHA refs in mr fetch mode',
       Effect.fnUntraced(
         function* () {
           const { workspacePath, storePath } = yield* createPinnedStaleCommitPullFixture({
             useCommitRef: true,
           })
 
-          const result = yield* runLockCommand({
+          const result = yield* runFetchCommand({
             cwd: workspacePath,
-            subcommand: 'update',
             args: ['--output', 'json'],
             env: {
               MEGAREPO_STORE: storePath.slice(0, -1),
@@ -2216,7 +2223,7 @@ describe('mr lock update', () => {
     )
 
     it.effect(
-      'should fail pinned stale commit-SHA refs in mr lock update --force mode',
+      'should fail pinned stale commit-SHA refs in mr fetch --apply --force mode',
       Effect.fnUntraced(
         function* () {
           const { workspacePath, storePath, staleCommit } =
@@ -2224,9 +2231,8 @@ describe('mr lock update', () => {
               useCommitRef: true,
             })
 
-          const result = yield* runLockCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
-            subcommand: 'update',
             args: ['--force', '--output', 'json'],
             env: {
               MEGAREPO_STORE: storePath.slice(0, -1),
@@ -2347,10 +2353,9 @@ describe('mr lock update', () => {
           const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
           expect(newCommit).not.toBe(initialCommit)
 
-          // 6. Run mr lock update
-          const result = yield* runLockCommand({
+          // 6. Run mr fetch --apply
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
-            subcommand: 'update',
             args: ['--output', 'json'],
             env: { MEGAREPO_STORE: storePath },
           })
@@ -2422,7 +2427,7 @@ describe('sync status types', () => {
         })
 
         // Run sync for first time
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
@@ -2476,7 +2481,7 @@ describe('sync error handling', () => {
         })
 
         // Run sync --json to get structured output
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
@@ -2564,7 +2569,7 @@ describe('sync member filtering', () => {
           })
 
           // Run sync with --only repo1
-          const result = yield* runSyncCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--only', 'repo1'],
           })
@@ -2632,7 +2637,7 @@ describe('sync member filtering', () => {
           })
 
           // Run sync with --skip repo2
-          const result = yield* runSyncCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--skip', 'repo2'],
           })
@@ -2683,7 +2688,7 @@ describe('sync member filtering', () => {
           })
 
           // Run sync with both --only and --skip (should fail)
-          const result = yield* runSyncCommand({
+          const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
             args: ['--output', 'json', '--only', 'repo1', '--skip', 'repo2'],
           })
@@ -2716,13 +2721,13 @@ describe('sync member filtering', () => {
 
 describe('sync worktree ref mismatch detection', () => {
   /**
-   * REGRESSION TEST for issue #88: mr sync should detect worktree ref mismatch
+   * REGRESSION TEST for issue #88: mr apply should detect worktree ref mismatch
    *
    * When a user runs `git checkout <other-branch>` directly inside a store worktree,
    * the worktree path no longer matches its git HEAD. This violates invariant #8:
    * "Worktree path matches HEAD: The ref encoded in a worktree's store path should match its git HEAD"
    *
-   * Currently, `mr sync` reports "already synced" without detecting this drift.
+   * Currently, `mr apply` reports "already synced" without detecting this drift.
    * The expected behavior is to warn about the mismatch.
    */
   it.effect(
@@ -2807,8 +2812,8 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* addCommit({ repoPath: storeWorktreePath, message: 'Add feature' })
 
-        // Run mr sync with custom store path - should detect and warn about the ref mismatch
-        const result = yield* runSyncCommand({
+        // Run mr fetch --apply with custom store path - should detect and warn about the ref mismatch
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
           env: {
@@ -2926,8 +2931,8 @@ describe('sync worktree ref mismatch detection', () => {
         const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
         expect(currentBranch).toBe('') // Empty means detached HEAD
 
-        // Run mr sync - should detect and warn about the detached HEAD mismatch
-        const result = yield* runSyncCommand({
+        // Run mr fetch --apply - should detect and warn about the detached HEAD mismatch
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
           env: {
@@ -3019,7 +3024,7 @@ describe('sync member removal detection', () => {
         })
 
         // First sync - create both symlinks
-        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+        yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Verify both symlinks exist
         const repo1Symlink = EffectPath.ops.join(
@@ -3047,7 +3052,7 @@ describe('sync member removal detection', () => {
         )
 
         // Second sync - should detect and remove orphaned repo2 symlink
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
         })
@@ -3127,7 +3132,7 @@ describe('sync member removal detection', () => {
         })
 
         // First sync - create both symlinks
-        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+        yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Update config to remove repo2
         const updatedConfig: typeof MegarepoConfig.Type = {
@@ -3142,7 +3147,7 @@ describe('sync member removal detection', () => {
         )
 
         // Sync with --dry-run - should report removed but not actually remove
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json', '--dry-run'],
         })
@@ -3220,10 +3225,10 @@ describe('sync member removal detection', () => {
         })
 
         // First sync - create both symlinks
-        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+        yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Sync with --skip repo2 - should NOT treat repo2 as removed
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json', '--skip', 'repo2'],
         })
@@ -3290,7 +3295,7 @@ describe('sync member removal detection', () => {
         })
 
         // First sync - create repo1 symlink
-        yield* runSyncCommand({ cwd: workspacePath, args: [] })
+        yield* runFetchApplyCommand({ cwd: workspacePath, args: [] })
 
         // Manually create a directory (not symlink) called 'orphan-dir' in repos/
         const orphanDirPath = EffectPath.ops.join(
@@ -3304,7 +3309,7 @@ describe('sync member removal detection', () => {
         )
 
         // Sync again - should NOT remove the directory (only removes symlinks)
-        const result = yield* runSyncCommand({
+        const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
           args: ['--output', 'json'],
         })

@@ -194,11 +194,11 @@ const scanMembersRecursive = ({
       //
       // Stale lock: lock.ref ≠ symlink.ref, but symlink.ref === source.ref
       //   - Current state matches intent, lock is just outdated
-      //   - Fix: mr sync (updates lock)
+      //   - Fix: mr lock (updates lock)
       //
       // Symlink drift: lock.ref === symlink.ref, but lock.ref ≠ source.ref
       //   - Lock and symlink are in sync, but don't match config intent
-      //   - Fix: mr sync (switch to source ref) or edit megarepo.json
+      //   - Fix: mr fetch --apply (switch to source ref) or edit megarepo.json
       let staleLock: StaleLock | undefined = undefined
       let symlinkDrift: SymlinkDrift | undefined = undefined
 

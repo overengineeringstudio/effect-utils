@@ -1,5 +1,5 @@
 /**
- * Stories for `mr lock apply` — applies exact commits from megarepo.lock for reproducible CI.
+ * Stories for `mr apply` — applies exact commits from megarepo.lock for reproducible CI.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -56,7 +56,7 @@ export const FullApply: Story = {
         results: fixtures.lockApplyResults,
         workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
         options: {
-          mode: 'lock_apply' as const,
+          mode: 'apply' as const,
           dryRun: args.dryRun,
           all: false,
           verbose: args.verbose,
@@ -69,7 +69,7 @@ export const FullApply: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_apply',
+          mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -79,7 +79,7 @@ export const FullApply: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_apply',
+                mode: 'apply',
                 finalState: stateConfig,
               }),
             }
@@ -96,7 +96,7 @@ export const PartialApply: Story = {
       () => ({
         results: fixtures.lockApplyPartial,
         options: {
-          mode: 'lock_apply' as const,
+          mode: 'apply' as const,
           dryRun: args.dryRun,
           all: false,
           verbose: args.verbose,
@@ -109,7 +109,7 @@ export const PartialApply: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_apply',
+          mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -119,7 +119,7 @@ export const PartialApply: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_apply',
+                mode: 'apply',
                 finalState: stateConfig,
               }),
             }
@@ -138,7 +138,7 @@ export const WithErrors: Story = {
         results: fixtures.lockApplyWithErrors,
         workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
         options: {
-          mode: 'lock_apply' as const,
+          mode: 'apply' as const,
           dryRun: args.dryRun,
           all: false,
           verbose: args.verbose,
@@ -148,7 +148,7 @@ export const WithErrors: Story = {
           {
             megarepoRoot: '/home/runner/work/mr-all-blue',
             memberName: 'effect-utils',
-            message: 'commit f0e1d2c not found — run mr lock update',
+            message: 'commit f0e1d2c not found — run mr fetch',
           },
           {
             megarepoRoot: '/home/runner/work/mr-all-blue',
@@ -164,7 +164,7 @@ export const WithErrors: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_apply',
+          mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -174,7 +174,7 @@ export const WithErrors: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_apply',
+                mode: 'apply',
                 finalState: stateConfig,
               }),
             }
@@ -192,7 +192,7 @@ export const DryRun: Story = {
       () => ({
         results: fixtures.lockApplyResults,
         workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
-        options: { mode: 'lock_apply' as const, dryRun: true, all: false, verbose: args.verbose },
+        options: { mode: 'apply' as const, dryRun: true, all: false, verbose: args.verbose },
       }),
       [args.verbose],
     )
@@ -201,7 +201,7 @@ export const DryRun: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_apply',
+          mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -211,7 +211,7 @@ export const DryRun: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_apply',
+                mode: 'apply',
                 finalState: stateConfig,
               }),
             }

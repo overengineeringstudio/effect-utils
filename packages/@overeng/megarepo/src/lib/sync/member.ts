@@ -158,11 +158,10 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
 /**
  * Sync a single member: use bare repo + worktree pattern
  *
- * Modes:
- * - workspace: ensure members exist at source refs, never update the lock
- * - lock_sync: record the current synced workspace into the lock
- * - lock_update: fetch source refs, update workspace, then update the lock
- * - lock_apply: apply the exact lock file state (CI mode)
+ * Modes (see cli-redesign-spec.md):
+ * - fetch: Remote → Lock. Clone/fetch, resolve commits. Never touches workspace.
+ * - apply: Lock → Workspace. Create worktrees from lock, symlink. Never writes lock.
+ * - lock:  Workspace → Lock. Record current HEAD commits. No network, no workspace changes.
  */
 export const syncMember = <R = never>({
   name,
@@ -196,10 +195,9 @@ export const syncMember = <R = never>({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* Store
-    const isWorkspaceMode = mode === 'workspace'
-    const isLockSyncMode = mode === 'lock_sync'
-    const isLockUpdateMode = mode === 'lock_update'
-    const isLockApplyMode = mode === 'lock_apply'
+    const isFetchMode = mode === 'fetch'
+    const isApplyMode = mode === 'apply'
+    const isLockMode = mode === 'lock'
 
     // Validate member name to prevent path traversal
     const nameError = validateMemberName(name)
@@ -223,6 +221,11 @@ export const syncMember = <R = never>({
 
     const memberPath = getMemberPath({ megarepoRoot, name })
     const memberPathNormalized = memberPath.replace(/\/$/, '')
+
+    // Fetch mode: skip local path members (nothing to fetch)
+    if (source.type === 'path' && isFetchMode === true) {
+      return { name, status: 'skipped', message: 'local path member' } satisfies MemberSyncResult
+    }
 
     // Handle local path sources - just create symlink
     if (source.type === 'path') {
@@ -311,12 +314,12 @@ export const syncMember = <R = never>({
     let targetCommit: string | undefined
 
     // Note: lockedMember was already retrieved above for resolveCloneUrl
-    if (isLockApplyMode === true) {
+    if (isApplyMode === true) {
       if (lockedMember === undefined) {
         return {
           name,
           status: 'error',
-          message: 'Not in lock file (mr lock apply requires lock file)',
+          message: 'Not in lock file (mr apply requires lock file)',
         } satisfies MemberSyncResult
       }
       targetRef = lockedMember.ref
@@ -340,7 +343,7 @@ export const syncMember = <R = never>({
       }
     }
 
-    if (isLockUpdateMode === true && lockedMember?.pinned === true && force === false) {
+    if (isFetchMode === true && lockedMember?.pinned === true && force === false) {
       return {
         name,
         status: 'skipped',
@@ -356,8 +359,8 @@ export const syncMember = <R = never>({
       .pipe(Effect.catchAll(() => Effect.succeed(null)))
     const memberExists = currentLink !== null
 
-    // In workspace/lock-sync modes, if member exists, check if symlink points to correct ref
-    if (memberExists === true && isLockUpdateMode === false && isLockApplyMode === false) {
+    // In lock and apply modes, if member exists, check if symlink points to correct ref
+    if (memberExists === true && (isLockMode === true || isApplyMode === true)) {
       // Compute expected worktree path based on configured ref
       // Uses heuristic ref classification since we haven't queried the repo yet
       const expectedWorktreePath = store.getWorktreePath({ source, ref: targetRef })
@@ -365,7 +368,7 @@ export const syncMember = <R = never>({
       const expectedPathNormalized = expectedWorktreePath.replace(/\/$/, '')
 
       // Lock sync only records current branch-attached workspace state.
-      if (isLockSyncMode === true && currentLinkNormalized !== expectedPathNormalized) {
+      if (isLockMode === true && currentLinkNormalized !== expectedPathNormalized) {
         // Extract the ref from the current symlink path for display
         const extracted =
           currentLinkNormalized !== undefined
@@ -379,7 +382,7 @@ export const syncMember = <R = never>({
           message:
             `workspace is not synced to source ref '${targetRef}'` +
             ` (symlink points to '${symlinkRef ?? 'unknown'}')\n` +
-            `  hint: run 'mr sync${name.length > 0 ? ` --only ${name}` : ''}' first`,
+            `  hint: run 'mr apply${name.length > 0 ? ` --only ${name}` : ''}' first`,
         } satisfies MemberSyncResult
       }
 
@@ -411,25 +414,20 @@ export const syncMember = <R = never>({
           } satisfies MemberSyncResult
         }
 
-        if (isWorkspaceMode === true) {
+        if (isLockMode === true) {
+          const previousCommit = lockedMember?.commit
+          const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
           return {
             name,
-            status: 'already_synced',
+            status: lockUpdated === true ? 'recorded' : 'already_synced',
             commit: currentCommit,
-            ref: currentBranch ?? targetRef,
+            previousCommit: lockUpdated === true ? previousCommit : undefined,
+            ref: currentBranch ?? lockedMember?.ref ?? targetRef,
+            lockUpdated,
           } satisfies MemberSyncResult
         }
-
-        const previousCommit = lockedMember?.commit
-        const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
-        return {
-          name,
-          status: lockUpdated === true ? 'recorded' : 'already_synced',
-          commit: currentCommit,
-          previousCommit: lockUpdated === true ? previousCommit : undefined,
-          ref: currentBranch ?? lockedMember?.ref ?? targetRef,
-          lockUpdated,
-        } satisfies MemberSyncResult
+        // Apply mode: symlink correct, no ref mismatch → already synced (will fast-forward later if needed)
+        // Don't early return here — fall through to let the fast-forward logic run
       }
 
       // Symlink points to wrong location (ref changed in config)
@@ -459,7 +457,7 @@ export const syncMember = <R = never>({
     }
 
     // For lock update mode, check if worktree is dirty before making changes
-    if (isLockUpdateMode === true && memberExists === true && dryRun === false) {
+    if (isApplyMode === true && memberExists === true && dryRun === false) {
       const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
         Effect.catchAll(() =>
           Effect.succeed({
@@ -484,11 +482,11 @@ export const syncMember = <R = never>({
       }
     }
 
-    if (isLockSyncMode === true && memberExists === false) {
+    if (isLockMode === true && memberExists === false) {
       return {
         name,
         status: 'skipped',
-        message: `workspace member missing for '${targetRef}'\n  hint: run 'mr sync${name.length > 0 ? ` --only ${name}` : ''}' first`,
+        message: `workspace member missing for '${targetRef}'\n  hint: run 'mr apply${name.length > 0 ? ` --only ${name}` : ''}' first`,
       } satisfies MemberSyncResult
     }
 
@@ -517,10 +515,10 @@ export const syncMember = <R = never>({
           return yield* createBareRepo
         }
         yield* Effect.annotateCurrentSpan('action', 'skip-dry-run')
-      } else if (isLockUpdateMode === true && dryRun === false) {
+      } else if (isFetchMode === true && dryRun === false) {
         yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
         yield* Effect.annotateCurrentSpan('action', 'fetch')
-      } else if (isLockApplyMode === true && targetCommit !== undefined && dryRun === false) {
+      } else if (isApplyMode === true && targetCommit !== undefined && dryRun === false) {
         const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
         if (commitExists === false) {
           yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
@@ -548,7 +546,7 @@ export const syncMember = <R = never>({
       if (commitExists === false) {
         const shortCommit = targetCommit.slice(0, 8)
 
-        if (isLockApplyMode === true) {
+        if (isApplyMode === true) {
           return {
             name,
             status: 'error',
@@ -725,6 +723,19 @@ export const syncMember = <R = never>({
     if (refResult._tag === 'early-return') return refResult.result
     targetCommit = refResult.commit
     const actualRefType = refResult.refType
+
+    // Fetch mode: resolved commit is all we need. Don't touch workspace.
+    if (isFetchMode === true) {
+      const previousCommit = lockedMember?.commit
+      const isUpdate = previousCommit !== undefined && previousCommit !== targetCommit
+      return {
+        name,
+        status: isUpdate === true ? 'updated' : 'already_synced',
+        commit: targetCommit,
+        previousCommit: isUpdate === true ? previousCommit : undefined,
+        ref: targetRef,
+      } satisfies MemberSyncResult
+    }
     const needsCreateBranch = refResult.needsCreateBranch
     const defaultBranchForCreate = refResult.defaultBranchForCreate
 
@@ -741,12 +752,8 @@ export const syncMember = <R = never>({
     }
 
     // Create or update worktree.
-    // Lock apply intentionally materializes commit-based branch worktrees for reproducibility.
-    const useCommitBasedPath = isLockApplyMode === true && targetCommit !== undefined
-    // TypeScript note: when useCommitBasedPath is true, targetCommit is guaranteed to be defined
-    const worktreeRef: string = useCommitBasedPath === true ? targetCommit! : targetRef
-    // Use the actual ref type for accurate store path classification
-    const worktreeRefType = useCommitBasedPath === true ? ('commit' as const) : actualRefType
+    const worktreeRef: string = targetRef
+    const worktreeRefType = actualRefType
     const worktreePath = store.getWorktreePath({
       source,
       ref: worktreeRef,
@@ -767,8 +774,7 @@ export const syncMember = <R = never>({
         }
 
         // Create worktree
-        const createWorktreeRefType = useCommitBasedPath === true ? 'commit' : actualRefType
-        if (createWorktreeRefType === 'commit' || createWorktreeRefType === 'tag') {
+        if (actualRefType === 'commit' || actualRefType === 'tag') {
           yield* Git.createWorktreeDetached({
             repoPath: bareRepoPath,
             worktreePath,
@@ -792,6 +798,31 @@ export const syncMember = <R = never>({
           )
         }
       }).pipe(
+        // Handle race condition: when multiple nested megarepos reference
+        // the same member, concurrent syncs may both pass the hasWorktree
+        // check but the second git worktree add fails. Re-check existence
+        // and succeed if the worktree was created by the concurrent sync.
+        Effect.catchIf(
+          (error) =>
+            error instanceof Git.GitCommandError &&
+            error.stderr.includes('already exists and is not an empty directory'),
+          () =>
+            store
+              .hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType })
+              .pipe(
+                Effect.flatMap((exists) =>
+                  exists
+                    ? Effect.void
+                    : Effect.fail(
+                        new Git.GitCommandError({
+                          args: ['worktree', 'add'],
+                          exitCode: 1,
+                          stderr: 'Target directory already exists but is not a valid worktree',
+                        }),
+                      ),
+                ),
+              ),
+        ),
         Effect.withSpan('megarepo/sync/member/create-worktree', {
           attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
         }),
@@ -803,10 +834,9 @@ export const syncMember = <R = never>({
     let remotePreviousCommit: string | undefined
     if (
       worktreeExists === true &&
-      isLockUpdateMode === true &&
+      isApplyMode === true &&
       dryRun === false &&
-      actualRefType === 'branch' &&
-      useCommitBasedPath === false
+      actualRefType === 'branch'
     ) {
       // Verify the worktree is actually on the expected branch before merging.
       // If the user ran `git checkout <other-branch>` inside the worktree,
@@ -857,17 +887,12 @@ export const syncMember = <R = never>({
       if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
         return {
           name,
-          status:
-            isLockApplyMode === true
-              ? 'already_synced'
-              : remoteUpdated === true
-                ? 'updated'
-                : 'already_synced',
+          status: remoteUpdated === true ? 'updated' : 'already_synced',
           commit: targetCommit,
           previousCommit: remotePreviousCommit,
           ref: targetRef,
           lockUpdated:
-            isLockSyncMode === true || isLockUpdateMode === true
+            isLockMode === true
               ? remoteUpdated === true
                 ? true
                 : undefined
@@ -900,7 +925,7 @@ export const syncMember = <R = never>({
     // Determine if this is a lock update (changed commit)
     const previousCommit = lockedMember?.commit
     const isUpdate =
-      isLockUpdateMode === true && previousCommit !== undefined && previousCommit !== targetCommit
+      isApplyMode === true && previousCommit !== undefined && previousCommit !== targetCommit
 
     // Build message for branch creation
     const branchCreatedMessage =
@@ -911,17 +936,15 @@ export const syncMember = <R = never>({
     return {
       name,
       status:
-        isLockApplyMode === true
-          ? 'applied'
-          : wasCloned === true
-            ? 'cloned'
-            : isUpdate === true
-              ? 'updated'
-              : 'synced',
+        wasCloned === true
+          ? 'cloned'
+          : isUpdate === true
+            ? 'updated'
+            : 'applied',
       commit: targetCommit,
       previousCommit: isUpdate === true ? previousCommit : undefined,
       ref: targetRef,
-      lockUpdated: isLockSyncMode === true || isLockUpdateMode === true ? true : undefined,
+      lockUpdated: isLockMode === true ? true : undefined,
       message: branchCreatedMessage,
     } satisfies MemberSyncResult
   }).pipe(

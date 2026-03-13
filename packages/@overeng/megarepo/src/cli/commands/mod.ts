@@ -5,15 +5,16 @@
  */
 
 export { addCommand } from './add.ts'
+export { depsCommand } from './deps.ts'
 export { envCommand } from './env.ts'
 export { execCommand } from './exec.ts'
 export { initCommand } from './init.ts'
-export { lockCommand } from './lock.ts'
+export { fetchCommand, lockCommand } from './lock.ts'
 export { lsCommand } from './ls.ts'
 export { pinCommand, unpinCommand } from './pin.ts'
 export { rootCommand } from './root.ts'
 export { statusCommand } from './status.ts'
-export { syncCommand, syncMegarepo } from './sync.ts'
+export { applyCommand, syncMegarepo } from './sync.ts'
 
 // Re-export errors from centralized errors module
 export { NotInMegarepoError, LockFileRequiredError, StaleLockFileError } from '../errors.ts'

@@ -443,7 +443,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 <Box flexDirection="row">
                   <Text>{'      '}</Text>
                   <Text color="cyan">fix: </Text>
-                  <Text>mr lock sync --only {m.name}</Text>
+                  <Text>mr lock --only {m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'             '}</Text>
@@ -499,7 +499,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                 <Box flexDirection="row">
                   <Text>{'           '}</Text>
                   <Text dim>or: </Text>
-                  <Text>mr sync --only {m.name}</Text>
+                  <Text>mr apply --only {m.name}</Text>
                 </Box>
                 <Box flexDirection="row">
                   <Text>{'             '}</Text>
@@ -522,7 +522,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
           <Box flexDirection="row">
             <Text>{'    '}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> mr lock sync</Text>
+            <Text> mr lock</Text>
           </Box>
         </Box>
       )
@@ -550,7 +550,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
           <Box flexDirection="row">
             <Text>{'    '}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> mr lock sync</Text>
+            <Text> mr lock</Text>
           </Box>
         </Box>
       )
@@ -571,7 +571,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
           <Box flexDirection="row">
             <Text>{'    '}</Text>
             <Text color="cyan">fix:</Text>
-            <Text> mr sync</Text>
+            <Text> mr apply</Text>
           </Box>
         </Box>
       )

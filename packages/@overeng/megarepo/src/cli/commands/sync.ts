@@ -98,6 +98,8 @@ export const syncMegarepo = <R = never>({
     skip: ReadonlyArray<string> | undefined
     gitProtocol: GitProtocol
     createBranches: boolean
+    /** When true (fetch --apply), skip staleness check and run fetch before apply for nested --all recursion. */
+    applyAfterFetch?: boolean
   }
   depth?: number
   visited?: Set<string>
@@ -117,8 +119,11 @@ export const syncMegarepo = <R = never>({
   Effect.gen(function* () {
     const { mode, dryRun, force, all, only, skip, gitProtocol, createBranches } = options
     const fs = yield* FileSystem.FileSystem
-    const isLockApplyMode = mode === 'lock_apply'
-    const updatesLock = mode === 'lock_sync' || mode === 'lock_update'
+    const isApplyMode = mode === 'apply'
+    const isFetchMode = mode === 'fetch'
+    const isLockMode = mode === 'lock'
+    const writesLock = isFetchMode || isLockMode
+    const changesWorkspace = isApplyMode
 
     // Resolve to physical path for deduplication (handles symlinks)
     const resolvedRoot = yield* fs.realPath(megarepoRoot)
@@ -151,7 +156,7 @@ export const syncMegarepo = <R = never>({
       yield* fs.makeDirectory(membersRoot, { recursive: true })
     }
 
-    // Load lock file (optional unless lock apply)
+    // Load lock file (optional unless apply)
     const lockPath = EffectPath.ops.join(
       megarepoRoot,
       EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
@@ -183,11 +188,12 @@ export const syncMegarepo = <R = never>({
       }),
     )
 
-    // Check lock apply requirements.
-    if (isLockApplyMode === true) {
+    // Check apply requirements — lock file must exist and not be stale.
+    // Skip when applyAfterFetch is set (fetch just ran; "staleness" = fetch failures, not real drift).
+    if (isApplyMode === true && options.applyAfterFetch !== true) {
       if (lockFile === undefined) {
         return yield* new LockFileRequiredError({
-          message: 'Lock file required for mr lock apply',
+          message: 'Lock file required for mr apply',
         })
       }
 
@@ -213,7 +219,7 @@ export const syncMegarepo = <R = never>({
       })
       if (staleness.isStale === true) {
         return yield* new StaleLockFileError({
-          message: 'Lock file is stale for mr lock apply',
+          message: 'Lock file is stale for mr apply',
           addedMembers: staleness.addedMembers,
           removedMembers: staleness.removedMembers,
         })
@@ -267,15 +273,15 @@ export const syncMegarepo = <R = never>({
       { concurrency },
     )
 
-    // Detect and remove orphaned symlinks (members removed from config)
+    // Detect and remove orphaned symlinks (members removed from config) — only in apply mode
     const membersRoot = getMembersRoot(megarepoRoot)
     const configuredMemberNames = new Set(Object.keys(config.members))
     const removedResults: Array<MemberSyncResult> = []
 
-    // Only check for orphans if repos/ directory exists
-    const membersRootExists = yield* fs
+    // Only check for orphans in apply mode (workspace changes) and if repos/ directory exists
+    const membersRootExists = changesWorkspace === true && (yield* fs
       .exists(membersRoot)
-      .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      .pipe(Effect.catchAll(() => Effect.succeed(false))))
 
     if (membersRootExists === true) {
       const existingEntries = yield* fs
@@ -350,8 +356,8 @@ export const syncMegarepo = <R = never>({
     // Track Nix lock sync results (populated if lock sync runs)
     let nixLockResult: NixLockSyncResult | undefined = undefined
 
-    // Update lock file only in lock sync/update modes.
-    if (dryRun === false && updatesLock === true) {
+    // Update lock file in fetch and lock modes.
+    if (dryRun === false && writesLock === true) {
       // Initialize lock file if needed
       if (lockFile === undefined) {
         lockFile = createEmptyLockFile()
@@ -392,43 +398,48 @@ export const syncMegarepo = <R = never>({
 
       // Write lock file
       yield* writeLockFile({ lockPath, lockFile })
+    }
 
+    // Nix lock sync and generators only run when changing workspace (apply mode).
+    if (dryRun === false && changesWorkspace === true) {
       // Sync Nix lock files (flake.lock, devenv.lock) in member repos
       // - lockSync.enabled: true → always enable (explicit override)
       // - lockSync.enabled: false → always disable (explicit override)
       // - lockSync.enabled: undefined → auto-detect based on root lock file presence
-      const lockSyncFs = yield* FileSystem.FileSystem
-      const lockSyncExplicitSetting = config.lockSync?.enabled
-      const devenvLockExists = yield* lockSyncFs.exists(
-        EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('devenv.lock')),
-      )
-      const flakeLockExists = yield* lockSyncFs.exists(
-        EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('flake.lock')),
-      )
-      const lockSyncEnabled =
-        lockSyncExplicitSetting === true ||
-        (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
+      if (lockFile !== undefined) {
+        const lockSyncFs = yield* FileSystem.FileSystem
+        const lockSyncExplicitSetting = config.lockSync?.enabled
+        const devenvLockExists = yield* lockSyncFs.exists(
+          EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('devenv.lock')),
+        )
+        const flakeLockExists = yield* lockSyncFs.exists(
+          EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile('flake.lock')),
+        )
+        const lockSyncEnabled =
+          lockSyncExplicitSetting === true ||
+          (lockSyncExplicitSetting !== false && (devenvLockExists || flakeLockExists))
 
-      if (lockSyncEnabled === true) {
-        const excludeMembers = new Set(config.lockSync?.exclude ?? [])
-        nixLockResult = yield* syncNixLocks({
-          megarepoRoot,
-          config,
-          lockFile,
-          excludeMembers,
-          scope: all === true ? 'recursive' : 'direct',
-          recursiveMegarepoMembers: new Set(nestedMegarepos),
-        })
-        if (nixLockResult.totalUpdates > 0) {
-          yield* Effect.logInfo(
-            `Synced ${nixLockResult.totalUpdates} Nix lock input(s) across ${nixLockResult.memberResults.length} member(s)`,
-          )
+        if (lockSyncEnabled === true) {
+          const excludeMembers = new Set(config.lockSync?.exclude ?? [])
+          nixLockResult = yield* syncNixLocks({
+            megarepoRoot,
+            config,
+            lockFile,
+            excludeMembers,
+            scope: all === true ? 'recursive' : 'direct',
+            recursiveMegarepoMembers: new Set(nestedMegarepos),
+          })
+          if (nixLockResult.totalUpdates > 0) {
+            yield* Effect.logInfo(
+              `Synced ${nixLockResult.totalUpdates} Nix lock input(s) across ${nixLockResult.memberResults.length} member(s)`,
+            )
+          }
         }
       }
     }
 
-    // Always regenerate the local Nix workspace after syncing members.
-    if (dryRun === false) {
+    // Regenerate the local Nix workspace after syncing members (apply mode only).
+    if (dryRun === false && changesWorkspace === true) {
       const outermostRootOpt = yield* findMegarepoRoot(megarepoRoot)
       const outermostRoot = Option.getOrElse(outermostRootOpt, () => megarepoRoot)
       yield* generateAll({
@@ -448,12 +459,24 @@ export const syncMegarepo = <R = never>({
                 nestedPath.endsWith('/') === true ? nestedPath : `${nestedPath}/`,
               )
 
-              return syncMegarepo({
-                megarepoRoot: nestedRoot,
-                options,
-                depth: depth + 1,
-                visited,
-                ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+              return Effect.gen(function* () {
+                // In applyAfterFetch mode, run fetch first for nested megarepos
+                // so they have a lock file before apply runs.
+                if (options.applyAfterFetch === true) {
+                  yield* syncMegarepo({
+                    megarepoRoot: nestedRoot,
+                    options: { ...options, mode: 'fetch', applyAfterFetch: false },
+                    depth: depth + 1,
+                    ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+                  })
+                }
+                return yield* syncMegarepo({
+                  megarepoRoot: nestedRoot,
+                  options,
+                  depth: depth + 1,
+                  visited,
+                  ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+                })
               }).pipe(
                 Effect.catchAll(() =>
                   Effect.succeed({
@@ -543,6 +566,7 @@ export const runSyncCommand = ({
   gitProtocol,
   createBranches,
   verbose,
+  applyAfterFetch = false,
 }: {
   mode: SyncMode
   output: OutputModeValue
@@ -554,6 +578,8 @@ export const runSyncCommand = ({
   gitProtocol: GitProtocol
   createBranches: boolean
   verbose: boolean
+  /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
+  applyAfterFetch?: boolean
 }) =>
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
@@ -594,8 +620,9 @@ export const runSyncCommand = ({
       return false
     })
 
+    const displayMode = applyAfterFetch === true ? ('apply' as const) : mode
     const syncDisplayOptions = {
-      mode,
+      mode: displayMode,
       dryRun,
       all,
       force: force || undefined,
@@ -608,11 +635,14 @@ export const runSyncCommand = ({
         ? (info: MissingRefInfo) => createMissingRefPrompt(info)
         : undefined
 
-    const runSync = (progressHandle?: SyncUIHandle) =>
-      syncMegarepo({
+    // When applyAfterFetch is set, run fetch first (no output), then apply with rendering.
+    // Capture fetch results to merge error information into the final output.
+    let fetchResult: MegarepoSyncResult | undefined
+    if (applyAfterFetch === true) {
+      fetchResult = yield* syncMegarepo({
         megarepoRoot: root.value,
         options: {
-          mode,
+          mode: 'fetch',
           dryRun,
           force,
           all,
@@ -621,17 +651,81 @@ export const runSyncCommand = ({
           gitProtocol,
           createBranches,
         },
+        ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+      })
+    }
+
+    const effectiveMode = applyAfterFetch === true ? 'apply' : mode
+
+    const runSync = (progressHandle?: SyncUIHandle) =>
+      syncMegarepo({
+        megarepoRoot: root.value,
+        options: {
+          mode: effectiveMode,
+          dryRun,
+          force,
+          all,
+          only: onlyMembers,
+          skip: skipMembers,
+          gitProtocol,
+          createBranches,
+          ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
+        },
         ...(progressHandle !== undefined ? { progressHandle } : {}),
         ...(onMissingRef !== undefined ? { onMissingRef } : {}),
       })
 
+    /** Merge fetch errors into apply results so errors from the fetch phase are visible.
+     * - Replace apply error results with fetch errors (fetch has the actual git error, apply only knows "not in lock file")
+     * - Add fetch errors for members not present in apply results at all
+     */
+    const mergeFetchErrors = (applyResult: MegarepoSyncResult): MegarepoSyncResult => {
+      if (fetchResult === undefined) return applyResult
+
+      // Build a map of fetch errors by member name
+      const fetchErrorMap = new Map<string, MemberSyncResult>()
+      for (const r of fetchResult.results) {
+        if (r.status === 'error') fetchErrorMap.set(r.name, r)
+      }
+
+      // Replace apply error results with fetch errors (better context), pass through non-errors
+      const mergedResults = applyResult.results.map((r) => {
+        if (r.status === 'error') {
+          const fetchError = fetchErrorMap.get(r.name)
+          if (fetchError !== undefined) {
+            fetchErrorMap.delete(r.name)
+            return fetchError
+          }
+        } else {
+          fetchErrorMap.delete(r.name)
+        }
+        return r
+      })
+
+      // Add remaining fetch errors for members not in apply results at all
+      const remainingFetchErrors = [...fetchErrorMap.values()]
+
+      // Merge nested results too
+      const applyNestedRoots = new Set(applyResult.nestedResults.map((r) => r.root))
+      const fetchNestedErrors = fetchResult.nestedResults.filter(
+        (nr) => !applyNestedRoots.has(nr.root),
+      )
+
+      return {
+        ...applyResult,
+        results: [...mergedResults, ...remainingFetchErrors],
+        nestedResults: [...applyResult.nestedResults, ...fetchNestedErrors],
+      }
+    }
+
     const renderSyncResult = ({
-      syncResult,
+      syncResult: rawSyncResult,
       dispatch,
     }: {
       syncResult: MegarepoSyncResult
       dispatch: (action: SyncAction) => void
     }) => {
+      const syncResult = mergeFetchErrors(rawSyncResult)
       const generatedFiles = getEnabledGenerators(config)
       const lockSyncResults: ReadonlyArray<MemberLockSyncResult> =
         syncResult.lockSyncResults?.memberResults.map((mr) => ({
@@ -680,7 +774,7 @@ export const runSyncCommand = ({
         workspaceName,
         workspaceRoot: root.value,
         memberNames,
-        mode,
+        mode: displayMode,
         dryRun,
         all,
         force,
@@ -707,9 +801,9 @@ export const runSyncCommand = ({
     return syncResult
   }).pipe(Effect.scoped, Effect.provide(StoreLayer))
 
-/** Sync members to the refs declared in megarepo.json without changing the lock file. */
-export const syncCommand = Cli.Command.make(
-  'sync',
+/** Apply the lock file to the workspace — create/update worktrees and symlinks. */
+export const applyCommand = Cli.Command.make(
+  'apply',
   {
     output: outputOption,
     dryRun: Cli.Options.boolean('dry-run').pipe(
@@ -722,11 +816,11 @@ export const syncCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
     all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively sync nested megarepos'),
+      Cli.Options.withDescription('Recursively apply nested megarepos'),
       Cli.Options.withDefault(false),
     ),
     only: Cli.Options.text('only').pipe(
-      Cli.Options.withDescription('Only sync specified members (comma-separated)'),
+      Cli.Options.withDescription('Only apply specified members (comma-separated)'),
       Cli.Options.optional,
     ),
     skip: Cli.Options.text('skip').pipe(
@@ -739,15 +833,11 @@ export const syncCommand = Cli.Command.make(
       ),
       Cli.Options.withDefault('auto' as const),
     ),
-    createBranches: Cli.Options.boolean('create-branches').pipe(
-      Cli.Options.withDescription('Create branches that do not exist (from default branch)'),
-      Cli.Options.withDefault(false),
-    ),
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, createBranches, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
     runSyncCommand({
-      mode: 'workspace',
+      mode: 'apply',
       output,
       dryRun,
       force,
@@ -755,11 +845,11 @@ export const syncCommand = Cli.Command.make(
       only,
       skip,
       gitProtocol,
-      createBranches,
+      createBranches: false,
       verbose,
     }),
 ).pipe(
   Cli.Command.withDescription(
-    'Ensure members exist at the refs declared in megarepo.json without modifying megarepo.lock.',
+    'Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.',
   ),
 )

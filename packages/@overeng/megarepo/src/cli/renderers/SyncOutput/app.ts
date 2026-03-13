@@ -22,7 +22,7 @@ export const createInitialSyncState = (params: {
     root: params.workspaceRoot,
   },
   options: {
-    mode: 'workspace',
+    mode: 'apply',
     dryRun: false,
     all: false,
   },

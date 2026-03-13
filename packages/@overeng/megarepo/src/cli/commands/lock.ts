@@ -1,3 +1,11 @@
+/**
+ * Lock & Fetch Commands
+ *
+ * - `mr lock`  — Workspace → Lock: record current HEAD commits into megarepo.lock.
+ * - `mr fetch` — Remote → Lock: fetch upstream refs, resolve commits, write lock.
+ *                With `--apply`, also applies lock to workspace afterward.
+ */
+
 import * as Cli from '@effect/cli'
 
 import { outputOption, verboseOption } from '../context.ts'
@@ -15,11 +23,11 @@ const sharedOptions = {
     Cli.Options.withDefault(false),
   ),
   all: Cli.Options.boolean('all').pipe(
-    Cli.Options.withDescription('Recursively sync nested megarepos'),
+    Cli.Options.withDescription('Recursively operate on nested megarepos'),
     Cli.Options.withDefault(false),
   ),
   only: Cli.Options.text('only').pipe(
-    Cli.Options.withDescription('Only sync specified members (comma-separated)'),
+    Cli.Options.withDescription('Only operate on specified members (comma-separated)'),
     Cli.Options.optional,
   ),
   skip: Cli.Options.text('skip').pipe(
@@ -35,14 +43,15 @@ const sharedOptions = {
   verbose: verboseOption,
 } as const
 
-const lockSyncCommand = Cli.Command.make(
-  'sync',
+/** `mr lock` — Workspace → Lock: record current worktree HEAD commits into megarepo.lock. No network, no workspace changes. */
+export const lockCommand = Cli.Command.make(
+  'lock',
   {
     ...sharedOptions,
   },
   ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
     runSyncCommand({
-      mode: 'lock_sync',
+      mode: 'lock',
       output,
       dryRun,
       force,
@@ -53,20 +62,29 @@ const lockSyncCommand = Cli.Command.make(
       createBranches: false,
       verbose,
     }),
-).pipe(Cli.Command.withDescription('Record the current synced workspace state into megarepo.lock.'))
+).pipe(
+  Cli.Command.withDescription(
+    'Workspace → Lock: record current worktree HEAD commits into megarepo.lock.',
+  ),
+)
 
-const lockUpdateCommand = Cli.Command.make(
-  'update',
+/** `mr fetch` — Remote → Lock: fetch upstream refs, resolve commits, write lock. With --apply, also materializes workspace. */
+export const fetchCommand = Cli.Command.make(
+  'fetch',
   {
     ...sharedOptions,
+    apply: Cli.Options.boolean('apply').pipe(
+      Cli.Options.withDescription('After fetching, also apply the lock to the workspace (fetch + apply)'),
+      Cli.Options.withDefault(false),
+    ),
     createBranches: Cli.Options.boolean('create-branches').pipe(
       Cli.Options.withDescription('Create branches that do not exist (from default branch)'),
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, createBranches, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, apply: applyAfter, createBranches, verbose }) =>
     runSyncCommand({
-      mode: 'lock_update',
+      mode: 'fetch',
       output,
       dryRun,
       force,
@@ -76,39 +94,10 @@ const lockUpdateCommand = Cli.Command.make(
       gitProtocol,
       createBranches,
       verbose,
+      applyAfterFetch: applyAfter,
     }),
 ).pipe(
   Cli.Command.withDescription(
-    'Fetch configured refs, update the workspace to them, and write the new state into megarepo.lock.',
+    'Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.',
   ),
-)
-
-const lockApplyCommand = Cli.Command.make(
-  'apply',
-  {
-    ...sharedOptions,
-  },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
-    runSyncCommand({
-      mode: 'lock_apply',
-      output,
-      dryRun,
-      force,
-      all,
-      only,
-      skip,
-      gitProtocol,
-      createBranches: false,
-      verbose,
-    }),
-).pipe(
-  Cli.Command.withDescription(
-    'Apply the exact commits from megarepo.lock, materializing commit worktrees for reproducible CI.',
-  ),
-)
-
-/** CLI command group for megarepo.lock operations (sync, update, apply). */
-export const lockCommand = Cli.Command.make('lock', {}).pipe(
-  Cli.Command.withSubcommands([lockSyncCommand, lockUpdateCommand, lockApplyCommand]),
-  Cli.Command.withDescription('Manage megarepo.lock and lock-driven workspace operations'),
 )

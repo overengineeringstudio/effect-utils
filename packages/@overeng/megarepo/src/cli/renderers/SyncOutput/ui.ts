@@ -108,7 +108,7 @@ export const startSyncUI = (options: {
   workspaceName: string
   workspaceRoot: string
   memberNames: readonly string[]
-  mode: 'workspace' | 'lock_sync' | 'lock_update' | 'lock_apply'
+  mode: 'fetch' | 'apply' | 'lock'
   dryRun?: boolean
   all?: boolean
   force?: boolean

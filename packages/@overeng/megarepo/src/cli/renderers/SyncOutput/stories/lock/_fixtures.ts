@@ -81,7 +81,7 @@ export const lockUpdateWithErrors: MemberSyncResult[] = [
   { name: 'private-repo', status: 'error', message: 'authentication failed' },
 ]
 
-/** Lock update with lock input sync results */
+/** Lock update with lock input sync results (including flake.nix/devenv.yaml source file updates) */
 export const lockUpdateLockSyncResults: MemberLockSyncResult[] = [
   {
     memberName: 'effect',
@@ -124,6 +124,76 @@ export const lockUpdateLockSyncResults: MemberLockSyncResult[] = [
   },
 ]
 
+/** Lock update with full nix lock sync including source file (flake.nix, devenv.yaml) and shared lock updates */
+export const lockUpdateFullNixSync: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          {
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1111111',
+            newRev: '2222222',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.yaml',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          {
+            inputName: 'effect-utils-playwright',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+]
+
 // =============================================================================
 // Lock Apply Fixtures
 // =============================================================================
@@ -151,7 +221,7 @@ export const lockApplyWithErrors: MemberSyncResult[] = [
   {
     name: 'effect-utils',
     status: 'error',
-    message: 'commit f0e1d2c not found — run mr lock update',
+    message: 'commit f0e1d2c not found — run mr fetch',
   },
   { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'error', message: 'repository not found' },
@@ -166,7 +236,7 @@ export const createLockState = ({
   mode,
   overrides,
 }: {
-  mode: 'lock_sync' | 'lock_update' | 'lock_apply'
+  mode: 'lock' | 'fetch' | 'apply'
   overrides: Partial<SyncStateType> & { results: MemberSyncResult[] }
 }): SyncStateType =>
   createBaseState({
@@ -187,7 +257,7 @@ export const createLockTimeline = ({
   mode,
   finalState,
 }: {
-  mode: 'lock_sync' | 'lock_update' | 'lock_apply'
+  mode: 'lock' | 'fetch' | 'apply'
   finalState: Partial<SyncStateType> & { results: MemberSyncResult[] }
 }): Array<{ at: number; action: typeof SyncAction.Type }> => {
   const results = finalState.results

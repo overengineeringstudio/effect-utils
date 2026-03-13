@@ -57,8 +57,14 @@ export interface SyncMemberError {
   readonly member: MemberSyncResult
 }
 
-/** Sync command mode. */
-export type SyncMode = 'workspace' | 'lock_sync' | 'lock_update' | 'lock_apply'
+/**
+ * Sync command mode.
+ *
+ * - `'fetch'` — Remote → Lock: fetch upstream refs, resolve commits, write lock. Never touches workspace.
+ * - `'apply'` — Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
+ * - `'lock'`  — Workspace → Lock: record current worktree HEAD commits into lock. No network, no workspace changes.
+ */
+export type SyncMode = 'fetch' | 'apply' | 'lock'
 
 /** Options for sync operations */
 export interface SyncOptions {

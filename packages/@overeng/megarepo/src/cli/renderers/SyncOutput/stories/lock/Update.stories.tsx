@@ -1,5 +1,5 @@
 /**
- * Stories for `mr lock update` — fetches configured refs, updates workspace, writes megarepo.lock.
+ * Stories for `mr fetch` — fetches configured refs, updates workspace, writes megarepo.lock.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -61,7 +61,7 @@ export const Updated: Story = {
       () => ({
         results: fixtures.lockUpdateResults,
         options: {
-          mode: 'lock_update' as const,
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
@@ -74,7 +74,7 @@ export const Updated: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_update',
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -84,7 +84,7 @@ export const Updated: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_update',
+                mode: 'fetch',
                 finalState: stateConfig,
               }),
             }
@@ -101,7 +101,7 @@ export const WithNewBranches: Story = {
       () => ({
         results: fixtures.lockUpdateWithNewBranches,
         options: {
-          mode: 'lock_update' as const,
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
@@ -114,7 +114,7 @@ export const WithNewBranches: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_update',
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -124,7 +124,7 @@ export const WithNewBranches: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_update',
+                mode: 'fetch',
                 finalState: stateConfig,
               }),
             }
@@ -142,7 +142,7 @@ export const WithErrors: Story = {
         _tag: 'Error' as const,
         results: fixtures.lockUpdateWithErrors,
         options: {
-          mode: 'lock_update' as const,
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
@@ -168,7 +168,7 @@ export const WithErrors: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_update',
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -178,7 +178,7 @@ export const WithErrors: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_update',
+                mode: 'fetch',
                 finalState: stateConfig,
               }),
             }
@@ -197,7 +197,7 @@ export const WithLockInputSync: Story = {
         results: fixtures.lockUpdateResults,
         lockSyncResults: fixtures.lockUpdateLockSyncResults,
         options: {
-          mode: 'lock_update' as const,
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
@@ -210,7 +210,7 @@ export const WithLockInputSync: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_update',
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -220,7 +220,49 @@ export const WithLockInputSync: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_update',
+                mode: 'fetch',
+                finalState: stateConfig,
+              }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** Update with full nix lock sync including source file (flake.nix, devenv.yaml) updates */
+export const WithSourceFileSync: Story = {
+  args: { verbose: true },
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: fixtures.lockUpdateResults,
+        lockSyncResults: fixtures.lockUpdateFullNixSync,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+        },
+      }),
+      [args.dryRun, args.all, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={fixtures.createLockState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        {...(args.interactive === true
+          ? {
+              timeline: fixtures.createLockTimeline({
+                mode: 'fetch',
                 finalState: stateConfig,
               }),
             }
@@ -238,7 +280,7 @@ export const DryRun: Story = {
       () => ({
         results: fixtures.lockUpdateResults,
         options: {
-          mode: 'lock_update' as const,
+          mode: 'fetch' as const,
           dryRun: true,
           all: args.all,
           verbose: args.verbose,
@@ -251,7 +293,7 @@ export const DryRun: Story = {
         View={SyncView}
         app={SyncApp}
         initialState={fixtures.createLockState({
-          mode: 'lock_update',
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
@@ -261,7 +303,7 @@ export const DryRun: Story = {
         {...(args.interactive === true
           ? {
               timeline: fixtures.createLockTimeline({
-                mode: 'lock_update',
+                mode: 'fetch',
                 finalState: stateConfig,
               }),
             }

@@ -21,7 +21,7 @@ type StoryArgs = {
   interactive: boolean
   playbackSpeed: number
   dryRun: boolean
-  mode: 'workspace' | 'lock_sync' | 'lock_update' | 'lock_apply'
+  mode: 'apply' | 'lock' | 'fetch'
   all: boolean
   verbose: boolean
 }
@@ -35,7 +35,7 @@ export default {
   args: {
     ...defaultStoryArgs,
     dryRun: false,
-    mode: 'workspace',
+    mode: 'apply',
     all: false,
     verbose: false,
   },
@@ -48,7 +48,7 @@ export default {
     mode: {
       description: 'Sync mode for the example state',
       control: { type: 'select' },
-      options: ['workspace', 'lock_sync', 'lock_update', 'lock_apply'],
+      options: ['apply', 'lock', 'fetch'],
     },
     all: {
       description: '--all flag: sync nested megarepos recursively',
