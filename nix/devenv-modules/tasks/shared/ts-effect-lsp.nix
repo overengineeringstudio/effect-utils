@@ -7,7 +7,7 @@
 #     })
 #   ];
 #
-# Provides: ts:check:effect-lsp
+# Provides: ts:effect-lsp
 #
 # Notes:
 #   - Requires `tsgo` on PATH (for example via
@@ -36,9 +36,9 @@ in
     # TODO(effect-utils#377): this should become part of the normal tsgo-backed
     # `ts:check` flow once we stop using `tsc --build` for the main workspace
     # type check.
-    "ts:check:effect-lsp" = {
+    "ts:effect-lsp" = {
       description = "Run Effect LSP diagnostics via tsgo";
-      exec = trace.exec "ts:check:effect-lsp" "${tsgoBin} --build ${tsconfigFile} --pretty false";
+      exec = trace.exec "ts:effect-lsp" "${tsgoBin} --build ${tsconfigFile} --pretty false";
       inherit after;
     };
   };

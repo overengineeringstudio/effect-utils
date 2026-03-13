@@ -29,7 +29,7 @@ imports = [
 - `check.nix` - Aggregate check tasks (check:quick, check:all)
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
-- `ts-effect-lsp.nix` - Effect LSP diagnostics via tsgo (`ts:check:effect-lsp`)
+- `ts-effect-lsp.nix` - Effect LSP diagnostics via tsgo (`ts:effect-lsp`)
 - `lint-oxc.nix` - Linting tasks (oxlint, oxfmt)
   - Note: `lint:check:format`/`lint:fix:format` run oxfmt on an explicit file list
     (git-tracked files) instead of `oxfmt <dir>...` directory walking. This avoids

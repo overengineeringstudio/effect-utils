@@ -80,7 +80,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **devenv/tasks/shared/ts-effect-lsp.nix**: add reusable `ts:check:effect-lsp` tsgo diagnostics task
+- **devenv/tasks/shared/ts-effect-lsp.nix**: add reusable `ts:effect-lsp` tsgo diagnostics task
   - Exports `effect-tsgo` from the flake package set for downstream devenv consumers
   - Keeps the task standalone so repos can opt into Effect diagnostics without conflating them with stylistic lint
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
