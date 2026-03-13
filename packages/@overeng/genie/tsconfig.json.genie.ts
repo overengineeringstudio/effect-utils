@@ -11,7 +11,7 @@ export default tsconfigJson({
     types: ['node', 'bun'],
     jsx: 'react-jsx',
   },
-  include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx'],
+  include: ['src/**/*.ts', 'src/**/*.tsx', 'bin/**/*.ts', 'bin/**/*.tsx', '../../../types/css.d.ts'],
   references: [
     { path: '../tui-core' },
     { path: '../tui-react' },
