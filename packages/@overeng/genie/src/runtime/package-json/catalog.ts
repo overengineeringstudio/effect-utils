@@ -321,14 +321,18 @@ const createComposeFn =
             packages: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
           })
         : {}
+    const workspaceDepVersion = (pkg: WorkspacePackageLike): string =>
+      pkg.meta.workspace.repoName === workspace.repoName
+        ? 'workspace:*'
+        : `link:repos/${pkg.meta.workspace.repoName}/${pkg.meta.workspace.memberPath}`
     const runtimeWorkspaceDependencies = Object.fromEntries(
       runtimeWorkspace.flatMap((pkg) =>
-        pkg.data.name === undefined ? [] : [[pkg.data.name, 'workspace:*'] as const],
+        pkg.data.name === undefined ? [] : [[pkg.data.name, workspaceDepVersion(pkg)] as const],
       ),
     ) as WorkspaceDependencyMap<TDependenciesWorkspace>
     const supportWorkspaceDependencies = Object.fromEntries(
       supportWorkspace.flatMap((pkg) =>
-        pkg.data.name === undefined ? [] : [[pkg.data.name, 'workspace:*'] as const],
+        pkg.data.name === undefined ? [] : [[pkg.data.name, workspaceDepVersion(pkg)] as const],
       ),
     ) as WorkspaceDependencyMap<TDevDependenciesWorkspace>
     const peerDependencyEntries = resolvePeerDependencies({

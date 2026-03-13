@@ -46,10 +46,23 @@ let
     };
 
   normalizeSourceRoot =
-    sourceRoot:
-    normalizePathLike sourceRoot;
+    prefix: sourceRoot:
+    let
+      rawPath =
+        if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
+          sourceRoot.outPath
+        else if builtins.isPath sourceRoot then
+          sourceRoot
+        else
+          builtins.toPath sourceRoot;
+      normalizedPathString = builtins.unsafeDiscardStringContext (toString rawPath);
+    in
+    builtins.path {
+      path = normalizedPathString;
+      name = lib.replaceStrings [ "/" ] [ "-" ] prefix;
+    };
 
-  workspaceSourceRoots = lib.mapAttrs (_: normalizeSourceRoot) workspaceSources;
+  workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
   workspaceSourcePrefixes = lib.sort (
     left: right: lib.stringLength left > lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
@@ -78,11 +91,32 @@ let
         chmod -R +w "$out/$target_rel_path"
       '';
 
+  repoLevelPrefixes = builtins.filter
+    (prefix:
+      let parts = lib.splitString "/" prefix;
+      in builtins.length parts == 2 && builtins.head parts == "repos")
+    workspaceSourcePrefixes;
+
+  crossRepoSymlinkCmds =
+    if builtins.length repoLevelPrefixes < 2 then ""
+    else
+      lib.concatMapStrings (outer:
+        lib.concatMapStrings (inner:
+          if outer == inner then ""
+          else
+            let innerName = lib.removePrefix "repos/" inner;
+            in ''
+              mkdir -p "$out/${outer}/repos"
+              ln -s "../../${innerName}" "$out/${outer}/repos/${innerName}"
+            ''
+        ) repoLevelPrefixes
+      ) repoLevelPrefixes;
+
   workspaceEvalRootPath =
     if workspaceSourcePrefixes == [ ] then
       workspaceRootPath
     else
-      pkgs.runCommand "${name}-workspace-eval-root" { } (
+      pkgs.runCommand "workspace-eval-root" { } (
         ''
           set -euo pipefail
           mkdir -p "$out"
@@ -90,6 +124,7 @@ let
           chmod -R +w "$out"
         ''
         + builtins.concatStringsSep "\n" (map overlayWorkspaceSourceCmd workspaceSourcePrefixes)
+        + crossRepoSymlinkCmds
       );
 
   hasInstallRoot =
@@ -127,6 +162,22 @@ let
     else
       resolved.sourceRoot + "/${resolved.sourceRelPath}";
 
+  genieRelPath = "packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts";
+  geniePrefix =
+    if builtins.pathExists (workspaceRootPath + "/${genieRelPath}") then
+      ""
+    else
+      let
+        found = lib.findFirst
+          (prefix: builtins.pathExists (absoluteSourcePathFor "${prefix}/${genieRelPath}"))
+          null
+          workspaceSourcePrefixes;
+      in
+      if found == null then
+        throw "mk-pnpm-cli: Cannot find genie runtime (${genieRelPath}) in workspace root or workspace sources"
+      else
+        "${found}/";
+
   rootPnpmWorkspaceYamlPath = workspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
   packageClosureProjectionFile = pkgs.runCommand "${name}-pnpm-package-closure.json" {
@@ -135,19 +186,15 @@ let
     set -euo pipefail
     cd ${lib.escapeShellArg (toString workspaceEvalRootPath)}
     bun --eval '
-      const { rootWorkspacePackages } = await import("./package.json.genie.ts")
-      const { projectPnpmPackageClosure } = await import("./packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts")
+      const pkg = (await import(${builtins.toJSON "./${packageDir}/package.json.genie.ts"})).default
+      const { projectPnpmPackageClosure } = await import(${builtins.toJSON "./${geniePrefix}${genieRelPath}"})
 
-      if (!Array.isArray(rootWorkspacePackages)) {
-        throw new Error("package.json.genie.ts must export rootWorkspacePackages")
-      }
-
-      const pkg = rootWorkspacePackages.find(
-        (candidate) => candidate?.meta?.workspace?.memberPath === ${builtins.toJSON packageDir},
-      )
-
-      if (pkg === undefined) {
-        throw new Error("No rootWorkspacePackages entry found for packageDir: " + ${builtins.toJSON packageDir})
+      if (pkg?.meta?.workspace?.memberPath !== ${builtins.toJSON packageDir}) {
+        throw new Error(
+          "package.json.genie.ts default export has unexpected memberPath: "
+          + (pkg?.meta?.workspace?.memberPath ?? "<missing>")
+          + " (expected: " + ${builtins.toJSON packageDir} + ")"
+        )
       }
 
       process.stdout.write(JSON.stringify(projectPnpmPackageClosure({ pkg })))

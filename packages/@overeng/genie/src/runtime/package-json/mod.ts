@@ -397,15 +397,14 @@ const sortExports = (
   return sorted
 }
 
-/** Prefix for internal file dependencies that use absolute repo paths */
+/** Prefixes for internal dependencies that use absolute repo paths */
 const INTERNAL_FILE_PREFIX = 'file:packages/'
-/** Prefix for internal link dependencies that use absolute repo paths */
 const INTERNAL_LINK_PREFIX = 'link:packages/'
+const INTERNAL_REPO_LINK_PREFIX = 'link:repos/'
 
 /**
- * Resolve dependency versions, converting internal `file:packages/...` and `link:packages/...` paths to relative paths.
- * @param deps - Dependencies object
- * @param currentLocation - Current package's repo-relative location
+ * Resolve dependency versions, converting internal repo-absolute paths to relative paths.
+ * Handles `file:packages/...`, `link:packages/...`, and `link:repos/...` (cross-repo) prefixes.
  */
 const resolveDeps = ({
   deps,
@@ -419,15 +418,16 @@ const resolveDeps = ({
   const resolved: Record<string, string> = {}
   for (const [name, version] of Object.entries(deps).toSorted(([a], [b]) => a.localeCompare(b))) {
     if (version.startsWith(INTERNAL_FILE_PREFIX) === true) {
-      // Convert absolute repo path to relative path
       const targetLocation = version.slice('file:'.length)
       const relativePath = relativeRepoPath({
         from: currentLocation,
         to: targetLocation,
       })
       resolved[name] = `file:${relativePath}`
-    } else if (version.startsWith(INTERNAL_LINK_PREFIX) === true) {
-      // Convert absolute repo path to relative path for link: protocol
+    } else if (
+      version.startsWith(INTERNAL_LINK_PREFIX) === true ||
+      version.startsWith(INTERNAL_REPO_LINK_PREFIX) === true
+    ) {
       const targetLocation = version.slice('link:'.length)
       const relativePath = relativeRepoPath({
         from: currentLocation,
