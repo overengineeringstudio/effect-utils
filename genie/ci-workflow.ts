@@ -194,7 +194,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock apply${skipArgs ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock apply --all${skipArgs ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }

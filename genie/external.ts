@@ -199,8 +199,8 @@ export const catalog = defineCatalog({
   ioredis: '5.6.1',
 
   // OpenTUI / Effect Atom (experimental)
-  '@effect-atom/atom': '0.4.13',
-  '@effect-atom/atom-react': '0.4.5',
+  '@effect-atom/atom': '0.5.3',
+  '@effect-atom/atom-react': '0.5.0',
   '@opentui/core': '0.1.74',
   '@opentui/react': '0.1.74',
 
