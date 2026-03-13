@@ -82,7 +82,7 @@ export type SyncLogEntry = Schema.Schema.Type<typeof SyncLogEntry>
  * Unified state for sync command.
  *
  * Supports both:
- * - TTY progress mode: shows spinners, live updates via `phase`, `members`, `activeMember`
+ * - TTY progress mode: shows spinners, live updates via `phase`, `members`, `activeMembers`
  * - Final output mode: shows results summary via `results`
  *
  * JSON output structure:
@@ -113,8 +113,8 @@ export const SyncState = Schema.Struct({
   /** All member names being synced (populated at start for progress tracking) */
   members: Schema.Array(Schema.String),
 
-  /** Currently syncing member (for spinner display) */
-  activeMember: Schema.NullOr(Schema.String),
+  /** Currently syncing members (for spinner display, supports parallel sync) */
+  activeMembers: Schema.Array(Schema.String),
 
   /** Sync results for each member (populated progressively) */
   results: Schema.Array(MemberSyncResult),
@@ -216,7 +216,7 @@ export const syncReducer = ({
         ...state,
         _tag: 'Syncing',
         members: action.members,
-        activeMember: null,
+        activeMembers: [],
         results: [],
         logs: [],
         startedAt: Date.now(),
@@ -233,15 +233,16 @@ export const syncReducer = ({
     case 'SetActiveMember':
       return {
         ...state,
-        activeMember: action.name,
+        activeMembers: state.activeMembers.includes(action.name)
+          ? state.activeMembers
+          : [...state.activeMembers, action.name],
       }
 
     case 'AddResult':
       return {
         ...state,
         results: [...state.results, action.result],
-        // Clear active member if this was the active one
-        activeMember: state.activeMember === action.result.name ? null : state.activeMember,
+        activeMembers: state.activeMembers.filter((m) => m !== action.result.name),
         syncErrors:
           action.result.status === 'error'
             ? [
@@ -280,7 +281,7 @@ export const syncReducer = ({
       return {
         ...state,
         _tag: state.syncErrorCount > 0 ? 'Error' : 'Success',
-        activeMember: null,
+        activeMembers: [],
         nestedMegarepos: action.nestedMegarepos,
         generatedFiles: action.generatedFiles,
       }
@@ -289,7 +290,7 @@ export const syncReducer = ({
       return {
         ...state,
         _tag: 'Interrupted',
-        activeMember: null,
+        activeMembers: [],
       }
   }
 }

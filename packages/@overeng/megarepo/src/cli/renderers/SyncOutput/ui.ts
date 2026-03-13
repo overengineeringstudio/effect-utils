@@ -159,7 +159,7 @@ export const startSyncUI = (options: {
               : undefined,
         },
         members: [...memberNames],
-        activeMember: null,
+        activeMembers: [],
         results: [],
         logs: [],
         startedAt: Date.now(),

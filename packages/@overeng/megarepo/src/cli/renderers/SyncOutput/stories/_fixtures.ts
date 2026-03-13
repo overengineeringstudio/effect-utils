@@ -91,7 +91,7 @@ export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateTy
   workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
   options: { mode: 'workspace', dryRun: false, all: false, verbose: false },
   members: [],
-  activeMember: null,
+  activeMembers: [],
   results: [],
   logs: [],
   startedAt: null,
@@ -114,8 +114,9 @@ export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateTy
 // =============================================================================
 
 /**
- * Creates a timeline that animates through syncing each member and ends with the provided final state.
- * This ensures interactive mode shows the same end result as static mode.
+ * Creates a timeline that animates through syncing members with parallel execution.
+ * Models concurrency=4 (like real TTY mode): up to 4 members start together,
+ * results arrive at staggered intervals, and new members start as slots free up.
  */
 export const createTimeline = (
   finalState: Partial<SyncStateType>,
@@ -126,9 +127,9 @@ export const createTimeline = (
   const options = finalState.options ?? { mode: 'workspace', dryRun: false, all: false }
   const nestedMegarepos = finalState.nestedMegarepos ?? []
   const generatedFiles = finalState.generatedFiles ?? []
+  const lockSyncResults = finalState.lockSyncResults ?? []
 
   if (results.length === 0) {
-    // No results - just show complete state
     return [
       {
         at: 0,
@@ -141,9 +142,11 @@ export const createTimeline = (
   }
 
   const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
-  const stepDuration = 800
+  const concurrency = 4
+  const resultInterval = 600
 
-  // Start syncing
+  // Step 0: start syncing — first batch of members become active
+  const initialActive = members.slice(0, concurrency)
   timeline.push({
     at: 0,
     action: {
@@ -153,33 +156,59 @@ export const createTimeline = (
         options,
         _tag: 'Syncing',
         members,
-        activeMember: members[0] ?? null,
+        activeMembers: initialActive,
         results: [],
         startedAt: Date.now(),
       }),
     },
   })
 
-  // Add each result progressively
+  // Progressive results — as each completes, the next queued member starts
+  let nextToStart = concurrency
+  const completedResults: Array<(typeof results)[number]> = []
+  const currentActive = [...initialActive]
+  let runningErrors: Array<{ megarepoRoot: string; memberName: string; message: string | null }> = []
+  let runningErrorCount = 0
+
   for (let i = 0; i < results.length; i++) {
-    const currentResults = results.slice(0, i + 1)
-    const nextMember = i + 1 < members.length ? (members[i + 1] ?? null) : null
+    const result = results[i]!
+    completedResults.push(result)
+
+    // Remove completed member from active
+    const activeIdx = currentActive.indexOf(result.name)
+    if (activeIdx !== -1) currentActive.splice(activeIdx, 1)
+
+    // Start next queued member if any
+    if (nextToStart < members.length) {
+      currentActive.push(members[nextToStart]!)
+      nextToStart++
+    }
+
+    if (result.status === 'error') {
+      runningErrorCount++
+      const matchingError = (finalState.syncErrors ?? []).find((e) => e.memberName === result.name)
+      if (matchingError !== undefined) runningErrors.push(matchingError)
+    }
+
     const isFinal = i === results.length - 1
-    const hasErrors = isFinal && currentResults.some((r) => r.status === 'error')
+    const hasErrors = runningErrorCount > 0
 
     timeline.push({
-      at: (i + 1) * stepDuration,
+      at: (i + 1) * resultInterval,
       action: {
         _tag: 'SetState',
         state: createBaseState({
           workspace,
           options,
-          _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
+          _tag: isFinal ? (hasErrors ? 'Error' : 'Success') : 'Syncing',
           members,
-          activeMember: nextMember,
-          results: currentResults,
-          nestedMegarepos: i === results.length - 1 ? nestedMegarepos : [],
-          generatedFiles: i === results.length - 1 ? generatedFiles : [],
+          activeMembers: isFinal ? [] : [...currentActive],
+          results: completedResults.slice(),
+          nestedMegarepos: isFinal ? nestedMegarepos : [],
+          generatedFiles: isFinal ? generatedFiles : [],
+          lockSyncResults: isFinal ? lockSyncResults : [],
+          syncErrors: runningErrors.slice(),
+          syncErrorCount: runningErrorCount,
         }),
       },
     })

@@ -282,30 +282,42 @@ export const syncMegarepo = <R = never>({
         .readDirectory(membersRoot)
         .pipe(Effect.catchAll(() => Effect.succeed([] as string[])))
 
-      for (const entry of existingEntries) {
-        // Skip if this member is still in config
-        if (configuredMemberNames.has(entry) === true) continue
+      const candidates = existingEntries.filter(
+        (entry) => !configuredMemberNames.has(entry) && !skippedMemberNames.has(entry),
+      )
 
-        // Skip if this member was explicitly skipped via --only/--skip
-        if (skippedMemberNames.has(entry) === true) continue
+      const orphanResults = yield* Effect.all(
+        candidates.map((entry) =>
+          Effect.gen(function* () {
+            const entryPath = EffectPath.ops.join(
+              membersRoot,
+              EffectPath.unsafe.relativeFile(entry),
+            )
 
-        const entryPath = EffectPath.ops.join(membersRoot, EffectPath.unsafe.relativeFile(entry))
+            // Only remove symlinks (not directories that might be local repos)
+            const linkTarget = yield* fs
+              .readLink(entryPath)
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
 
-        // Only remove symlinks (not directories that might be local repos)
-        const linkTarget = yield* fs
-          .readLink(entryPath)
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            if (linkTarget !== null) {
+              if (dryRun === false) {
+                yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
+              }
+              return {
+                name: entry,
+                status: 'removed' as const,
+                message: linkTarget,
+              }
+            }
+            return undefined
+          }),
+        ),
+        { concurrency: 'unbounded' },
+      )
 
-        if (linkTarget !== null) {
-          // This is a symlink - it's an orphan, remove it
-          if (dryRun === false) {
-            yield* fs.remove(entryPath).pipe(Effect.catchAll(() => Effect.void))
-          }
-          removedResults.push({
-            name: entry,
-            status: 'removed',
-            message: linkTarget, // Store symlink target for display
-          })
+      for (const result of orphanResults) {
+        if (result !== undefined) {
+          removedResults.push(result)
         }
       }
     }
@@ -426,38 +438,37 @@ export const syncMegarepo = <R = never>({
       })
     }
 
-    // Handle --all flag: recursively sync nested megarepos
-    const nestedResults: MegarepoSyncResult[] = []
-    if (all === true && nestedMegarepos.length > 0) {
-      for (const nestedName of nestedMegarepos) {
-        const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
-        // Convert to AbsoluteDirPath (add trailing slash if needed)
-        const nestedRoot = EffectPath.unsafe.absoluteDir(
-          nestedPath.endsWith('/') === true ? nestedPath : `${nestedPath}/`,
-        )
+    // Handle --all flag: recursively sync nested megarepos in parallel
+    const nestedResults =
+      all === true && nestedMegarepos.length > 0
+        ? yield* Effect.all(
+            nestedMegarepos.map((nestedName) => {
+              const nestedPath = getMemberPath({ megarepoRoot, name: nestedName })
+              const nestedRoot = EffectPath.unsafe.absoluteDir(
+                nestedPath.endsWith('/') === true ? nestedPath : `${nestedPath}/`,
+              )
 
-        const nestedResult = yield* syncMegarepo({
-          megarepoRoot: nestedRoot,
-          options,
-          depth: depth + 1,
-          visited, // Pass visited set to prevent duplicate syncing
-          ...(onMissingRef !== undefined ? { onMissingRef } : {}),
-        }).pipe(
-          Effect.catchAll(() =>
-            // Return an empty result on error (errors are already in results)
-            Effect.succeed({
-              root: nestedRoot,
-              results: [],
-              nestedMegarepos: [],
-              nestedResults: [],
-              lockSyncResults: undefined,
-            } satisfies MegarepoSyncResult),
-          ),
-        )
-
-        nestedResults.push(nestedResult)
-      }
-    }
+              return syncMegarepo({
+                megarepoRoot: nestedRoot,
+                options,
+                depth: depth + 1,
+                visited,
+                ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+              }).pipe(
+                Effect.catchAll(() =>
+                  Effect.succeed({
+                    root: nestedRoot,
+                    results: [],
+                    nestedMegarepos: [],
+                    nestedResults: [],
+                    lockSyncResults: undefined,
+                  } satisfies MegarepoSyncResult),
+                ),
+              )
+            }),
+            { concurrency: 4 },
+          )
+        : []
 
     return {
       root: megarepoRoot,
@@ -466,7 +477,11 @@ export const syncMegarepo = <R = never>({
       nestedResults,
       lockSyncResults: nixLockResult,
     } satisfies MegarepoSyncResult
-  })
+  }).pipe(
+    Effect.withSpan('megarepo/sync', {
+      attributes: { root: megarepoRoot, mode: options.mode, depth },
+    }),
+  )
 
 const toMegarepoSyncTree = (r: MegarepoSyncResult): MegarepoSyncTreeType => ({
   root: r.root,
@@ -646,7 +661,7 @@ export const runSyncCommand = ({
           workspace: { name: workspaceName, root: root.value },
           options: syncDisplayOptions,
           members: memberNames,
-          activeMember: null,
+          activeMembers: [],
           results: syncResult.results,
           logs: [],
           startedAt: null,

@@ -57,7 +57,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     workspace,
     options,
     members,
-    activeMember,
+    activeMembers,
     results,
     logs,
     nestedMegarepos,
@@ -147,7 +147,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <ProgressItem
               key={name}
               name={name}
-              isActive={name === activeMember}
+              isActive={activeMembers.includes(name)}
               result={resultsByName.get(name)}
             />
           ))}

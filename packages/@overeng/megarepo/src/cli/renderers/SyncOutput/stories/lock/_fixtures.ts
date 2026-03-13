@@ -176,8 +176,8 @@ export const createLockState = (
 // =============================================================================
 
 /**
- * Creates a timeline that animates through a lock operation, progressively
- * completing each member. Ends with the provided final state.
+ * Creates a timeline that animates through a lock operation with parallel execution.
+ * Models concurrency=4: multiple members syncing simultaneously with staggered completion.
  */
 export const createLockTimeline = (
   mode: 'lock_sync' | 'lock_update' | 'lock_apply',
@@ -189,12 +189,13 @@ export const createLockTimeline = (
   const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
   const lockSyncResults = finalState.lockSyncResults ?? []
   const syncErrors = finalState.syncErrors ?? []
-  const syncErrorCount = finalState.syncErrorCount ?? 0
 
   const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
-  const stepDuration = 800
+  const concurrency = 4
+  const resultInterval = 600
 
-  // Step 0: start syncing — all members pending
+  // Step 0: first batch of members become active
+  const initialActive = members.slice(0, concurrency)
   timeline.push({
     at: 0,
     action: {
@@ -204,22 +205,31 @@ export const createLockTimeline = (
         options,
         _tag: 'Syncing',
         members,
-        activeMember: members[0] ?? null,
+        activeMembers: initialActive,
         results: [],
         startedAt: Date.now(),
       }),
     },
   })
 
-  // Progressive results — accumulate errors as they appear
+  // Progressive results with parallel slot management
+  let nextToStart = concurrency
+  const completedResults: typeof results = []
+  const currentActive = [...initialActive]
   let runningErrorCount = 0
   const runningErrors: Array<(typeof syncErrors)[number]> = []
 
   for (let i = 0; i < results.length; i++) {
     const result = results[i]!
-    const currentResults = results.slice(0, i + 1)
-    const nextMember = i + 1 < members.length ? (members[i + 1] ?? null) : null
-    const isFinal = i === results.length - 1
+    completedResults.push(result)
+
+    const activeIdx = currentActive.indexOf(result.name)
+    if (activeIdx !== -1) currentActive.splice(activeIdx, 1)
+
+    if (nextToStart < members.length) {
+      currentActive.push(members[nextToStart]!)
+      nextToStart++
+    }
 
     if (result.status === 'error') {
       runningErrorCount++
@@ -227,10 +237,11 @@ export const createLockTimeline = (
       if (matchingError !== undefined) runningErrors.push(matchingError)
     }
 
+    const isFinal = i === results.length - 1
     const hasErrors = runningErrorCount > 0
 
     timeline.push({
-      at: (i + 1) * stepDuration,
+      at: (i + 1) * resultInterval,
       action: {
         _tag: 'SetState',
         state: createBaseState({
@@ -238,8 +249,8 @@ export const createLockTimeline = (
           options,
           _tag: isFinal ? (hasErrors ? 'Error' : 'Success') : 'Syncing',
           members,
-          activeMember: nextMember,
-          results: currentResults,
+          activeMembers: isFinal ? [] : [...currentActive],
+          results: completedResults.slice(),
           lockSyncResults: isFinal ? lockSyncResults : [],
           syncErrors: runningErrors.slice(),
           syncErrorCount: runningErrorCount,

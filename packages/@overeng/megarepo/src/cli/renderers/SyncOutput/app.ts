@@ -27,7 +27,7 @@ export const createInitialSyncState = (params: {
     all: false,
   },
   members: [],
-  activeMember: null,
+  activeMembers: [],
   results: [],
   logs: [],
   startedAt: null,
