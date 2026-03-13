@@ -212,8 +212,7 @@ const collectInheritedPeerInstalls = ({
   const installs = new Map<string, string>()
 
   for (const pkg of packages) {
-    const pkgKey =
-      pkg.data.name ?? `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
+    const pkgKey = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
     if (visited.has(pkgKey) === true) continue
     visited.add(pkgKey)
 

@@ -978,8 +978,7 @@ const collectLogicalWorkspaceDepsRecursive = ({
   const members = new Set<string>()
 
   for (const dep of deps) {
-    const visitedKey =
-      dep.data.name ?? `${dep.meta.workspace.repoName}:${dep.meta.workspace.memberPath}`
+    const visitedKey = `${dep.meta.workspace.repoName}:${dep.meta.workspace.memberPath}`
     if (visited.has(visitedKey) === true) continue
     visited.add(visitedKey)
 

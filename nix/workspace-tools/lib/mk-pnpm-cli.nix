@@ -28,23 +28,6 @@ let
     else
       builtins.toPath workspaceRoot;
 
-  normalizePathLike =
-    pathLike:
-    let
-      rawPath =
-        if builtins.isAttrs pathLike && builtins.hasAttr "outPath" pathLike then
-          pathLike.outPath
-        else if builtins.isPath pathLike then
-          pathLike
-        else
-          builtins.toPath pathLike;
-      normalizedPathString = builtins.unsafeDiscardStringContext (toString rawPath);
-    in
-    builtins.path {
-      path = normalizedPathString;
-      name = builtins.baseNameOf normalizedPathString;
-    };
-
   normalizeSourceRoot =
     prefix: sourceRoot:
     let
@@ -63,9 +46,10 @@ let
     };
 
   workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
-  workspaceSourcePrefixes = lib.sort (
-    left: right: lib.stringLength left > lib.stringLength right
+  workspaceSourcePrefixesByLengthAsc = lib.sort (
+    left: right: lib.stringLength left < lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
+  workspaceSourcePrefixesByLengthDesc = lib.reverseList workspaceSourcePrefixesByLengthAsc;
 
   overlayWorkspaceSourceCmd =
     prefix:
@@ -95,7 +79,7 @@ let
     (prefix:
       let parts = lib.splitString "/" prefix;
       in builtins.length parts == 2 && builtins.head parts == "repos")
-    workspaceSourcePrefixes;
+    workspaceSourcePrefixesByLengthAsc;
 
   crossRepoSymlinkCmds =
     if builtins.length repoLevelPrefixes < 2 then ""
@@ -113,7 +97,7 @@ let
       ) repoLevelPrefixes;
 
   workspaceEvalRootPath =
-    if workspaceSourcePrefixes == [ ] then
+    if workspaceSourcePrefixesByLengthAsc == [ ] then
       workspaceRootPath
     else
       pkgs.runCommand "workspace-eval-root" { } (
@@ -123,7 +107,7 @@ let
           cp -R ${lib.escapeShellArg (toString workspaceRootPath)}/. "$out"
           chmod -R +w "$out"
         ''
-        + builtins.concatStringsSep "\n" (map overlayWorkspaceSourceCmd workspaceSourcePrefixes)
+        + builtins.concatStringsSep "\n" (map overlayWorkspaceSourceCmd workspaceSourcePrefixesByLengthAsc)
         + crossRepoSymlinkCmds
       );
 
@@ -135,12 +119,18 @@ let
   resolveSourceFor =
     relPath:
     let
-      prefix = lib.findFirst (
-        candidate: relPath == candidate || lib.hasPrefix "${candidate}/" relPath
-      ) null workspaceSourcePrefixes;
+      matchesPrefix =
+        candidate:
+        if candidate == "." || candidate == "" then
+          true
+        else
+          relPath == candidate || lib.hasPrefix "${candidate}/" relPath;
+      prefix = lib.findFirst matchesPrefix null workspaceSourcePrefixesByLengthDesc;
       sourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRoots.${prefix};
       sourceRelPath =
         if prefix == null then
+          relPath
+        else if prefix == "." || prefix == "" then
           relPath
         else if relPath == prefix then
           "."
@@ -171,7 +161,7 @@ let
         found = lib.findFirst
           (prefix: builtins.pathExists (absoluteSourcePathFor "${prefix}/${genieRelPath}"))
           null
-          workspaceSourcePrefixes;
+          workspaceSourcePrefixesByLengthAsc;
       in
       if found == null then
         throw "mk-pnpm-cli: Cannot find genie runtime (${genieRelPath}) in workspace root or workspace sources"
@@ -435,11 +425,13 @@ EOF
                 if manifestOnly then
                   (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
                   ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+                  ++ (map (dir: copyFileCmd "${dir}/package.json") (builtins.filter (dir: dir != root.installDir) root.memberDirs))
                 else if lib.elem root.installDir root.memberDirs then
                   [ (copyDirCmd root.installDir) ]
                 else
                   (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
                   ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+                  ++ (map copyDirCmd (builtins.filter (dir: dir != root.installDir) root.memberDirs))
               )
               ++ [
                 ''
@@ -500,7 +492,7 @@ EOF
     '';
   };
 
-  packageJsonPath = workspaceRootPath + "/${packageDir}/package.json";
+  packageJsonPath = absoluteSourcePathFor "${packageDir}/package.json";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
   packageVersion = packageJson.version or "0.0.0";
   entryRelativeToPackage =
