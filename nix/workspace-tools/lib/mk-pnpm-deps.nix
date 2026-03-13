@@ -87,6 +87,7 @@ in
       dontUnpack = true;
       dontConfigure = true;
       dontBuild = true;
+      dontFixup = true;
 
       installPhase = ''
         mkdir source
