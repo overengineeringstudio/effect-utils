@@ -90,27 +90,9 @@ const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => 
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
   withAppendedNixConfig(`${devenvBinRef} tasks run ${args.join(' ')} --mode before`, opts)
 
-/**
- * Shell snippet that wraps a compound command with lazy Nix store repair on failure.
- * On first failure, runs `nix-store --verify --check-contents --repair`,
- * clears eval cache, and retries once. Uses subshells so multi-statement
- * commands (like withAppendedNixConfig output) are treated as a single unit.
- *
- * Tradeoff: genuine task failures (e.g. type errors, test failures) pay a one-time
- * ~30-60s penalty for the unnecessary repair attempt before re-failing. This is
- * acceptable because store corruption is the rarer failure mode and saving ~25s on
- * every successful run across all jobs outweighs the occasional false retry.
- *
- * Safe to embed in if/elif branches.
- *
- * @see https://github.com/overengineeringstudio/effect-utils/issues/201
- */
-const withStoreRepairRetry = (command: string) =>
-  `(${command}) || { echo "::warning::Task failed, attempting Nix store repair and retry..."; DIAG_DIR="${'${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}}'}"; nix-store --verify --check-contents --repair > "$DIAG_DIR/nix-store-verify-repair.log" 2>&1 || true; rm -rf ~/.cache/nix/eval-cache-*; (${command}); }`
-
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  withStoreRepairRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
+  runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -222,14 +204,12 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock app
  *
  * Previously ran `devenv info` (~25s) as an eager canary to detect any store
  * corruption before tasks run. Now uses `nix-store --check-validity` (~1-2s)
- * which only verifies the devenv store path itself — not its full transitive
- * closure. Corruption in deeper deps is caught lazily at task time by
- * `withStoreRepairRetry`, which retries after repair.
+ * which only verifies the devenv store path itself. If the store path is
+ * invalid, runs a repair and re-resolves.
  *
  * Still captures diagnostics dir + runner fingerprint for #272 instrumentation.
  *
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
- * @see https://github.com/overengineeringstudio/effect-utils/issues/201
  * @see https://github.com/overengineeringstudio/effect-utils/issues/272
  */
 export const validateNixStoreStep = {
@@ -260,7 +240,6 @@ DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
 DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
 # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
-# Deeper transitive-dep corruption is caught lazily at task time via retry wrapper.
 if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
   echo "::warning::devenv store path invalid, repairing..."
   nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
