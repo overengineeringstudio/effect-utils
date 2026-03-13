@@ -12,6 +12,7 @@
   gitRev ? "unknown",
   commitTs ? 0,
   dirty ? false,
+  prodInstall ? false,
   smokeTestArgs ? [ "--help" ],
   extraBunBuildArgs ? [ ],
 }:
@@ -503,6 +504,8 @@ EOF
     else
       throw "mk-pnpm-cli: entry must be inside packageDir (${packageDir}): ${entry}";
 
+  pnpmInstallFlags = "--offline --frozen-lockfile --ignore-scripts"
+    + lib.optionalString prodInstall " --prod";
   dirtyStr = if dirty then "true" else "false";
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
@@ -552,7 +555,7 @@ pkgs.stdenv.mkDerivation {
     cd workspace
 
     echo "Installing aggregate workspace..."
-    pnpm install --offline --frozen-lockfile --ignore-scripts
+    pnpm install ${pnpmInstallFlags}
 
     ${builtins.concatStringsSep "\n" (
       map
@@ -562,7 +565,7 @@ pkgs.stdenv.mkDerivation {
             echo "Installing external workspace root: ${root.installDir}..."
             (
               cd ${lib.escapeShellArg root.installDir}
-              pnpm install --offline --frozen-lockfile --ignore-scripts
+              pnpm install ${pnpmInstallFlags}
             )
           ''
         )
