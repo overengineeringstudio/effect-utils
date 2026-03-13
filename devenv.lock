@@ -199,11 +199,11 @@
         "typescript-src": "typescript-src"
       },
       "locked": {
-        "lastModified": 1773248833,
-        "narHash": "sha256-oTbxxHN0n1+4fQenZ0m3VPS+g8ajGsqgXL0iAnh1LQ4=",
+        "lastModified": 1773356758,
+        "narHash": "sha256-J/4CRvn+I8vYO/K9mqmEqTrKIVh2uO0qoVK9XUgGmdg=",
         "owner": "Effect-TS",
         "repo": "tsgo",
-        "rev": "bd1258197942f077785183d8246ad9429a6902ea",
+        "rev": "1cac7e96b99ad65a9efc8f51f70adc6ca9a26e8f",
         "type": "github"
       },
       "original": {
@@ -215,17 +215,17 @@
     "typescript-go-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1772673779,
-        "narHash": "sha256-qRQIuIfrU0uTwzat36v9MB4NnfyFggsBCefpnNDZC/c=",
+        "lastModified": 1773275612,
+        "narHash": "sha256-S5TnTCE3/e7ZyQgsBKYzBp5aqCvecflo1JAEL0LDv4Q=",
         "owner": "microsoft",
         "repo": "typescript-go",
-        "rev": "dfcdea6d6989eab87cad7a6075948845e349ae4c",
+        "rev": "8b515c6ce5f821ed382cdb540c6df488738bb515",
         "type": "github"
       },
       "original": {
         "owner": "microsoft",
         "repo": "typescript-go",
-        "rev": "dfcdea6d6989eab87cad7a6075948845e349ae4c",
+        "rev": "8b515c6ce5f821ed382cdb540c6df488738bb515",
         "type": "github"
       }
     },
