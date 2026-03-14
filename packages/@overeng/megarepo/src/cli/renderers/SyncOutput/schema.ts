@@ -40,6 +40,7 @@ export const LockRevUpdate = Schema.Struct({
   oldRev: Schema.String,
   newRev: Schema.String,
 })
+/** Inferred type for a rev update */
 export type LockRevUpdate = Schema.Schema.Type<typeof LockRevUpdate>
 
 /** Ref (branch) update — intentional branch/input URL change */
@@ -50,6 +51,7 @@ export const LockRefUpdate = Schema.Struct({
   oldRef: Schema.String,
   newRef: Schema.String,
 })
+/** Inferred type for a ref update */
 export type LockRefUpdate = Schema.Schema.Type<typeof LockRefUpdate>
 
 /** Shared lock source update — e.g. devenv version propagated from source member */
@@ -59,14 +61,17 @@ export const LockSharedSourceUpdate = Schema.Struct({
   sourceMemberName: Schema.String,
   targetCount: Schema.Number,
 })
+/** Inferred type for a shared source update */
 export type LockSharedSourceUpdate = Schema.Schema.Type<typeof LockSharedSourceUpdate>
 
 /** Union of rev and ref update types (used in lock file sync results) */
 export const LockFileUpdate = Schema.Union(LockRevUpdate, LockRefUpdate)
+/** Inferred type for a lock file update (rev or ref) */
 export type LockFileUpdate = Schema.Schema.Type<typeof LockFileUpdate>
 
 /** Union of all lock sync update types */
 export const LockSyncUpdate = Schema.Union(LockRevUpdate, LockRefUpdate, LockSharedSourceUpdate)
+/** Inferred type for any lock sync update (rev, ref, or shared source) */
 export type LockSyncUpdate = Schema.Schema.Type<typeof LockSyncUpdate>
 
 /** Schema for lock file sync result */
@@ -92,7 +97,13 @@ export type MemberLockSyncResult = Schema.Schema.Type<typeof MemberLockSyncResul
 // =============================================================================
 
 /** Schema for the sync command outcome/progress state. */
-export const SyncOutcome = Schema.Literal('Syncing', 'Success', 'Error', 'Interrupted', 'PreflightFailed')
+export const SyncOutcome = Schema.Literal(
+  'Syncing',
+  'Success',
+  'Error',
+  'Interrupted',
+  'PreflightFailed',
+)
 /** Inferred type for sync outcome literals. */
 export type SyncOutcome = Schema.Schema.Type<typeof SyncOutcome>
 
