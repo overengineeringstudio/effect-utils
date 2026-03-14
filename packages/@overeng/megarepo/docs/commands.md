@@ -4,50 +4,42 @@ All commands support `--output json` or `--output ndjson`.
 
 ## Core Commands
 
-### `mr sync`
+### `mr fetch --apply`
 
-Reconcile the workspace to `megarepo.json`.
+Fetch configured refs, reconcile the workspace to `megarepo.json`, and write the new lock.
 
 ```bash
-mr sync [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
+mr fetch --apply [--force] [--all] [--only <members>] [--skip <members>] [--create-branches] [--dry-run]
 ```
 
 Behavior:
 
 1. Resolve members from `megarepo.json`
-2. Materialize or reuse canonical source-ref worktrees in the store
-3. Repair duplicate encoded/unencoded branch worktrees with `--force`
-4. Repoint `repos/*` symlinks
-5. Run generators
+2. Fetch from remotes and update worktrees to latest commits
+3. Materialize or reuse canonical source-ref worktrees in the store
+4. Repair duplicate encoded/unencoded branch worktrees with `--force`
+5. Repoint `repos/*` symlinks
+6. Update `megarepo.lock`
+7. Run generators
 
-`mr sync` never writes `megarepo.lock`.
+Pinned members are skipped unless `--force` is used.
 
-### `mr lock sync`
+### `mr lock`
 
 Record the current synced workspace state into `megarepo.lock`.
 
 ```bash
-mr lock sync [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
+mr lock [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 ```
 
-This expects the workspace to already be reconciled to `megarepo.json`. If a member symlink points at the wrong ref, it is skipped with a hint to run `mr sync`.
+This expects the workspace to already be reconciled to `megarepo.json`. If a member symlink points at the wrong ref, it is skipped with a hint to run `mr fetch --apply`.
 
-### `mr lock update`
-
-Fetch configured refs, update the workspace to them, and write the new lock.
-
-```bash
-mr lock update [--force] [--all] [--only <members>] [--skip <members>] [--create-branches] [--dry-run]
-```
-
-Pinned members are skipped unless `--force` is used.
-
-### `mr lock apply`
+### `mr apply`
 
 Apply the exact commits from `megarepo.lock`.
 
 ```bash
-mr lock apply [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
+mr apply [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 ```
 
 This is the reproducible CI mode. It requires a non-stale lock file and materializes commit worktrees.
@@ -68,7 +60,7 @@ Switch a member to a specific branch, tag, or commit and mark the lock entry as 
 mr unpin <member>
 ```
 
-Remove the pin so `mr lock update` can move the member again.
+Remove the pin so `mr fetch --apply` can move the member again.
 
 ## Info Commands
 

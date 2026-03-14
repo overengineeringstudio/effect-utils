@@ -17,27 +17,26 @@ mr add effect-ts/effect
 mr add effect-ts/effect#v3.0.0 --name effect-v3
 mr add ./packages/local-lib --name local-lib
 
-mr sync
-mr lock sync
+mr fetch --apply
+mr lock
 ```
 
 ## Command Model
 
 | Command          | Purpose                                                                                     |
 | ---------------- | ------------------------------------------------------------------------------------------- |
-| `mr sync`        | Reconcile `repos/*` and store worktrees to `megarepo.json` without changing `megarepo.lock` |
-| `mr lock sync`   | Record the current synced workspace state into `megarepo.lock`                              |
-| `mr lock update` | Fetch configured refs, update workspace worktrees, and write the new lock                   |
-| `mr lock apply`  | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI                   |
+| `mr fetch --apply` | Fetch configured refs, reconcile workspace, and update `megarepo.lock`                    |
+| `mr lock`        | Record the current synced workspace state into `megarepo.lock`                              |
+| `mr apply`       | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI                   |
 
 ## Typical Flow
 
 ```bash
-mr sync
+mr fetch --apply
 
 # work in repos/*
 
-mr lock sync
+mr lock
 git add megarepo.lock
 git commit -m "Update megarepo lock"
 ```
@@ -45,18 +44,18 @@ git commit -m "Update megarepo lock"
 To intentionally move dependencies forward:
 
 ```bash
-mr lock update
+mr fetch --apply
 ```
 
 For CI:
 
 ```bash
-mr lock apply --git-protocol=https
+mr apply --git-protocol=https
 ```
 
 ## Directory Layout
 
-After `mr sync` and `mr lock sync`:
+After `mr fetch --apply` and `mr lock`:
 
 ```text
 my-megarepo/

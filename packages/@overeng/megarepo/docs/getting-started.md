@@ -35,17 +35,17 @@ mr add ../shared-lib --name shared-lib
 Materialize the workspace:
 
 ```bash
-mr sync
+mr fetch --apply
 ```
 
-That creates `repos/*` symlinks pointing at canonical store worktrees.
+That creates `repos/*` symlinks pointing at canonical store worktrees and updates `megarepo.lock`.
 
 ## Record the Lock
 
-`mr sync` does not modify `megarepo.lock`. Once the workspace is in the state you want to commit, write the lock explicitly:
+To explicitly write the lock without fetching (e.g. after local changes):
 
 ```bash
-mr lock sync
+mr lock
 git add megarepo.json megarepo.lock
 git commit -m "Initialize megarepo"
 ```
@@ -55,8 +55,8 @@ git commit -m "Initialize megarepo"
 To move branch-tracking members forward:
 
 ```bash
-mr lock update
-mr lock update --only effect
+mr fetch --apply
+mr fetch --apply --only effect
 ```
 
 ## CI Setup
@@ -64,7 +64,7 @@ mr lock update --only effect
 Use lock application in CI:
 
 ```bash
-mr lock apply --git-protocol=https
+mr apply --git-protocol=https
 ```
 
 This requires a non-stale `megarepo.lock` and materializes the exact locked commits.

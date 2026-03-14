@@ -149,7 +149,7 @@ imports = [ inputs.my-repo.devenvModules.myTask ];
 
 ## CI Builds
 
-For CI, use `mr lock apply` or check flake outputs directly:
+For CI, use `mr apply` or check flake outputs directly:
 
 ```bash
 # Check all packages build
@@ -159,7 +159,7 @@ nix flake check
 nix build .#my-cli
 
 # With megarepo (lock apply mode)
-mr lock apply
+mr apply
 nix build "path:$DEVENV_ROOT/repos/my-repo#packages.x86_64-linux.my-cli"
 ```
 
