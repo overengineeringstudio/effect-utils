@@ -210,82 +210,83 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
 
           // Analyze all worktrees for this repo in parallel
           return yield* Effect.all(
-            allWorktrees.map(({ path: worktreePath, ref: expectedRef, refType: refTypeDir, broken }) =>
-              Effect.gen(function* () {
-                const issues: StoreWorktreeIssue[] = []
+            allWorktrees.map(
+              ({ path: worktreePath, ref: expectedRef, refType: refTypeDir, broken }) =>
+                Effect.gen(function* () {
+                  const issues: StoreWorktreeIssue[] = []
 
-                if (bareExists === false) {
-                  issues.push({
-                    type: 'missing_bare',
-                    severity: 'error',
-                    message: '.bare/ directory not found',
-                  })
-                }
+                  if (bareExists === false) {
+                    issues.push({
+                      type: 'missing_bare',
+                      severity: 'error',
+                      message: '.bare/ directory not found',
+                    })
+                  }
 
-                if (broken === true) {
-                  issues.push({
-                    type: 'broken_worktree',
-                    severity: 'error',
-                    message: '.git not found in worktree',
-                  })
-                } else {
-                  if (refTypeDir === 'heads') {
-                    const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-                      Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+                  if (broken === true) {
+                    issues.push({
+                      type: 'broken_worktree',
+                      severity: 'error',
+                      message: '.git not found in worktree',
+                    })
+                  } else {
+                    if (refTypeDir === 'heads') {
+                      const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
+                        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+                      )
+                      if (
+                        Option.isSome(actualBranch) === true &&
+                        actualBranch.value !== expectedRef
+                      ) {
+                        issues.push({
+                          type: 'ref_mismatch',
+                          severity: 'error',
+                          message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
+                        })
+                      }
+                    }
+
+                    const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+                      Effect.catchAll(() =>
+                        Effect.succeed({
+                          isDirty: false,
+                          hasUnpushed: false,
+                          changesCount: 0,
+                        }),
+                      ),
                     )
-                    if (
-                      Option.isSome(actualBranch) === true &&
-                      actualBranch.value !== expectedRef
-                    ) {
+                    if (worktreeStatus.isDirty === true) {
                       issues.push({
-                        type: 'ref_mismatch',
-                        severity: 'error',
-                        message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
+                        type: 'dirty',
+                        severity: 'warning',
+                        message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
+                      })
+                    }
+                    if (worktreeStatus.hasUnpushed === true) {
+                      issues.push({
+                        type: 'unpushed',
+                        severity: 'warning',
+                        message: 'has unpushed commits',
                       })
                     }
                   }
 
-                  const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
-                    Effect.catchAll(() =>
-                      Effect.succeed({
-                        isDirty: false,
-                        hasUnpushed: false,
-                        changesCount: 0,
-                      }),
-                    ),
-                  )
-                  if (worktreeStatus.isDirty === true) {
+                  if (inUsePaths.has(worktreePath) === false) {
                     issues.push({
-                      type: 'dirty',
-                      severity: 'warning',
-                      message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
+                      type: 'orphaned',
+                      severity: 'info',
+                      message: 'not in current megarepo.lock',
                     })
                   }
-                  if (worktreeStatus.hasUnpushed === true) {
-                    issues.push({
-                      type: 'unpushed',
-                      severity: 'warning',
-                      message: 'has unpushed commits',
-                    })
-                  }
-                }
 
-                if (inUsePaths.has(worktreePath) === false) {
-                  issues.push({
-                    type: 'orphaned',
-                    severity: 'info',
-                    message: 'not in current megarepo.lock',
-                  })
-                }
-
-                return {
-                  repo: repo.relativePath,
-                  ref: expectedRef,
-                  refType: refTypeDir,
-                  path: worktreePath,
-                  issues,
-                } satisfies StoreWorktreeStatus
-              }),
+                  return {
+                    repo: repo.relativePath,
+                    ref: expectedRef,
+                    refType: refTypeDir,
+                    path: worktreePath,
+                    issues,
+                  } satisfies StoreWorktreeStatus
+                }),
             ),
             { concurrency: 8 },
           )
@@ -505,7 +506,11 @@ const storeGcCommand = Cli.Command.make(
 
                   /** Broken worktrees have no .git — skip git status, proceed directly to removal */
                   if (worktree.broken === true) {
-                    return { worktree, action: 'check' as const, status: { isDirty: false, hasUnpushed: false, changesCount: 0 } }
+                    return {
+                      worktree,
+                      action: 'check' as const,
+                      status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
+                    }
                   }
 
                   const status = yield* Git.getWorktreeStatus(worktree.path).pipe(

@@ -172,7 +172,12 @@ const make = ({
       }
 
       const entries = yield* fs.readDirectory(currentPath)
-      const nestedResults: Array<{ ref: string; refType: RefType; path: AbsoluteDirPath; broken: boolean }> = []
+      const nestedResults: Array<{
+        ref: string
+        refType: RefType
+        path: AbsoluteDirPath
+        broken: boolean
+      }> = []
 
       for (const entry of entries) {
         if (entry.startsWith('.') === true) continue
