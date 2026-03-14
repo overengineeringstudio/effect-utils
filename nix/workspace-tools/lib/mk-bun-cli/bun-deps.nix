@@ -71,7 +71,7 @@ else pkgs.stdenvNoCC.mkDerivation {
       local install_log="$PWD/${depsManager}-install-$log_name.log"
       if ${lib.boolToString (!isPnpm)}; then
         # Use --ignore-scripts to avoid /usr/bin/env shebang failures in Nix sandbox.
-        # See: context/nix-devenv/ci.md
+        # See the stack-level Nix/devenv CI policy docs.
         bun install \
           --cwd "$dep_path" \
           --frozen-lockfile \
@@ -83,7 +83,7 @@ else pkgs.stdenvNoCC.mkDerivation {
         (
           cd "$dep_path"
           # Use --ignore-scripts to avoid /usr/bin/env shebang failures in Nix sandbox.
-          # See: context/nix-devenv/ci.md
+          # See the stack-level Nix/devenv CI policy docs.
           pnpm install \
             --frozen-lockfile \
             --force \

@@ -30,6 +30,14 @@ import { StoreCommandError } from '../../errors.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type { StoreWorktreeStatus, StoreWorktreeIssue } from '../../renderers/StoreOutput/mod.ts'
 
+/** Entry returned by collectStoreWorktrees — `broken` indicates a directory that looks like a worktree but is missing its .git file */
+type CollectedWorktree = {
+  ref: string
+  refType: 'heads' | 'tags' | 'commits'
+  path: AbsoluteDirPath
+  broken: boolean
+}
+
 const collectStoreWorktrees = ({
   fs,
   refTypePath,
@@ -40,14 +48,7 @@ const collectStoreWorktrees = ({
   refTypePath: AbsoluteDirPath
   currentPath: AbsoluteDirPath
   refType: 'heads' | 'tags' | 'commits'
-}): Effect.Effect<
-  Array<{
-    ref: string
-    refType: 'heads' | 'tags' | 'commits'
-    path: AbsoluteDirPath
-  }>,
-  PlatformError.PlatformError
-> =>
+}): Effect.Effect<Array<CollectedWorktree>, PlatformError.PlatformError> =>
   Effect.gen(function* () {
     const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
     const isWorktree = yield* fs.exists(gitPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
@@ -57,16 +58,13 @@ const collectStoreWorktrees = ({
           ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
           refType,
           path: currentPath,
+          broken: false,
         },
-      ] as const
+      ]
     }
 
     const entries = yield* fs.readDirectory(currentPath)
-    const result: Array<{
-      ref: string
-      refType: 'heads' | 'tags' | 'commits'
-      path: AbsoluteDirPath
-    }> = []
+    const result: Array<CollectedWorktree> = []
 
     for (const entry of entries) {
       if (entry.startsWith('.') === true) continue
@@ -83,6 +81,18 @@ const collectStoreWorktrees = ({
           refType,
         })),
       )
+    }
+
+    /** If no worktrees found and this isn't the refType root, it's a broken worktree */
+    if (result.length === 0 && currentPath !== refTypePath) {
+      return [
+        {
+          ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
+          refType,
+          path: currentPath,
+          broken: true,
+        },
+      ]
     }
 
     return result
@@ -177,11 +187,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
               d === 'heads' || d === 'tags' || d === 'commits',
           )
 
-          const allWorktrees: Array<{
-            ref: string
-            refType: 'heads' | 'tags' | 'commits'
-            path: AbsoluteDirPath
-          }> = []
+          const allWorktrees: Array<CollectedWorktree> = []
 
           for (const refTypeDir of validRefTypes) {
             const refTypePath = EffectPath.ops.join(
@@ -204,7 +210,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
 
           // Analyze all worktrees for this repo in parallel
           return yield* Effect.all(
-            allWorktrees.map(({ path: worktreePath, ref: expectedRef, refType: refTypeDir }) =>
+            allWorktrees.map(({ path: worktreePath, ref: expectedRef, refType: refTypeDir, broken }) =>
               Effect.gen(function* () {
                 const issues: StoreWorktreeIssue[] = []
 
@@ -216,14 +222,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                   })
                 }
 
-                const gitPath = EffectPath.ops.join(
-                  worktreePath,
-                  EffectPath.unsafe.relativeFile('.git'),
-                )
-                const gitExists = yield* fs
-                  .exists(gitPath)
-                  .pipe(Effect.catchAll(() => Effect.succeed(false)))
-                if (gitExists === false) {
+                if (broken === true) {
                   issues.push({
                     type: 'broken_worktree',
                     severity: 'error',
@@ -467,11 +466,7 @@ const storeGcCommand = Cli.Command.make(
               const exists = yield* fs.exists(refsDir)
               if (exists === false) return []
 
-              const result: Array<{
-                ref: string
-                refType: 'heads' | 'tags' | 'commits'
-                path: AbsoluteDirPath
-              }> = []
+              const result: Array<CollectedWorktree> = []
 
               const refTypes = yield* fs.readDirectory(refsDir)
               for (const refTypeDir of refTypes) {
@@ -506,6 +501,11 @@ const storeGcCommand = Cli.Command.make(
                 Effect.gen(function* () {
                   if (inUsePaths.has(worktree.path) === true) {
                     return { worktree, action: 'skipped_in_use' as const, status: undefined }
+                  }
+
+                  /** Broken worktrees have no .git — skip git status, proceed directly to removal */
+                  if (worktree.broken === true) {
+                    return { worktree, action: 'check' as const, status: { isDirty: false, hasUnpushed: false, changesCount: 0 } }
                   }
 
                   const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
@@ -563,15 +563,20 @@ const storeGcCommand = Cli.Command.make(
 
               if (dryRun === false) {
                 yield* Effect.gen(function* () {
-                  const bareRepoPath = EffectPath.ops.join(
-                    repo.fullPath,
-                    EffectPath.unsafe.relativeDir('.bare/'),
-                  )
-                  yield* Git.removeWorktree({
-                    repoPath: bareRepoPath,
-                    worktreePath: worktree.path,
-                    force: force,
-                  }).pipe(Effect.catchAll(() => fs.remove(worktree.path, { recursive: true })))
+                  if (worktree.broken === true) {
+                    /** Broken worktrees can't be removed via git — just delete the directory */
+                    yield* fs.remove(worktree.path, { recursive: true })
+                  } else {
+                    const bareRepoPath = EffectPath.ops.join(
+                      repo.fullPath,
+                      EffectPath.unsafe.relativeDir('.bare/'),
+                    )
+                    yield* Git.removeWorktree({
+                      repoPath: bareRepoPath,
+                      worktreePath: worktree.path,
+                      force: force,
+                    }).pipe(Effect.catchAll(() => fs.remove(worktree.path, { recursive: true })))
+                  }
                 }).pipe(
                   Effect.catchAll((error) =>
                     Effect.succeed({

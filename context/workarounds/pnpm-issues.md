@@ -7,7 +7,8 @@ from:
 
 - `packages/@overeng/genie/src/runtime/package-json/README.md`
 - `packages/@overeng/genie/src/runtime/pnpm-workspace/README.md`
-- `context/node-modules-install/spec.md`
+- the stack-level node-modules install specification maintained outside this
+  public repo
 
 The old patterns that previously lived here are no longer the intended public
 authoring story:

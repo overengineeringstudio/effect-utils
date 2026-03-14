@@ -81,12 +81,13 @@ export interface MegarepoStore {
     PlatformError.PlatformError
   >
 
-  /** List all worktrees for a repo */
+  /** List all worktrees for a repo (includes broken worktrees with missing .git) */
   readonly listWorktrees: (source: MemberSource) => Effect.Effect<
     ReadonlyArray<{
       readonly ref: string
       readonly refType: RefType
       readonly path: AbsoluteDirPath
+      readonly broken: boolean
     }>,
     PlatformError.PlatformError
   >
@@ -158,6 +159,7 @@ const make = ({
       ref: string
       refType: RefType
       path: AbsoluteDirPath
+      broken: boolean
     }>,
     PlatformError.PlatformError
   > =>
@@ -166,11 +168,11 @@ const make = ({
       const isWorktree = yield* fs.exists(gitPath)
       if (isWorktree === true) {
         const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
-        return [{ ref, refType, path: currentPath }]
+        return [{ ref, refType, path: currentPath, broken: false }]
       }
 
       const entries = yield* fs.readDirectory(currentPath)
-      const nestedResults: Array<{ ref: string; refType: RefType; path: AbsoluteDirPath }> = []
+      const nestedResults: Array<{ ref: string; refType: RefType; path: AbsoluteDirPath; broken: boolean }> = []
 
       for (const entry of entries) {
         if (entry.startsWith('.') === true) continue
@@ -191,6 +193,12 @@ const make = ({
             refType,
           })),
         )
+      }
+
+      /** If no worktrees found and this isn't the refType root, it's a broken worktree */
+      if (nestedResults.length === 0 && currentPath !== refTypePath) {
+        const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
+        return [{ ref, refType, path: currentPath, broken: true }]
       }
 
       return nestedResults
@@ -297,6 +305,7 @@ const make = ({
           ref: string
           refType: RefType
           path: AbsoluteDirPath
+          broken: boolean
         }> = []
 
         // Walk refs/{heads,tags,commits}/** and treat any directory with a .git file as a worktree.

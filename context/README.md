@@ -1,81 +1,19 @@
 # Context Reference
 
-This directory contains focused references for patterns and technologies used
-in this workspace.
+This directory now keeps only implementation-near references that still belong
+in the public `effect-utils` repo.
 
-## Core Documentation
+Cross-repo policy, requirements, and alignment specs are maintained outside
+this repo. The docs here should explain package behavior, examples, and local
+implementation details.
 
-### [nix-devenv/](./nix-devenv/)
+## Kept Here
 
-Nix and devenv setup, requirements, and patterns.
-
-- [setup-guide.md](./nix-devenv/setup-guide.md) - File templates and setup
-  for new megarepos
-- [requirements.md](./nix-devenv/requirements.md) - Assumptions and
-  requirements spec
-- [tasks.md](./nix-devenv/tasks.md) - Devenv tasks, `dt` wrapper, shared modules
-- [flake-packages.md](./nix-devenv/flake-packages.md) - Flake package
-  definitions
-
-### [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md)
-
-Full megarepo specification.
-
-### [bun-cli-build/](./bun-cli-build/)
-
-Building Bun-compiled TypeScript CLIs with Nix.
-
-### [node-modules-install/](./node-modules-install/)
-
-Requirements, specs, and investigations for standalone and composed
-`node_modules` install models.
-
-### [cli-design/](./cli-design/)
-
-CLI output style guide.
-
-### [oxc-config/](./oxc-config/)
-
-OXC (oxlint, oxfmt) configuration.
-
-### [testing/](./testing/)
-
-Testing patterns and conventions.
-
-### [otel/](./otel/)
-
-OpenTelemetry observability stack (Collector + Tempo + Grafana).
-
-- [README.md](./otel/README.md) - Quick start, env vars, shell helper
-- [spec.md](./otel/spec.md) - Architecture, port allocation, forward
-  compatibility
-- [dashboards.md](./otel/dashboards.md) - Grafonnet dashboards, span conventions
-
-## Workflows
-
-### [workflows/](./workflows/)
-
-- [cron/](./workflows/cron/) - Consistency checks and dependency update
-  workflows
-
-## Workarounds
-
-### [workarounds/](./workarounds/)
-
-Temporary workarounds for tool issues (bun, pnpm).
-
-## Planned
-
-### [planned/](./planned/)
-
-Specs for future work.
-
-## Reference Examples
-
-### [effect/](./effect/)
-
-Effect-related examples (socket, etc.).
-
-### [opentui/](./opentui/)
-
-OpenTUI integration example.
+- [Megarepo Spec](../packages/@overeng/megarepo/docs/spec.md)
+- [effect/](./effect/) - Effect socket examples and related package files
+- [opentui/](./opentui/) - OpenTUI integration example
+- [otel.md](./otel.md) - OpenTelemetry notes
+- [oxc-config/](./oxc-config/) - OXC configuration docs
+- [workarounds/](./workarounds/) - historical tool issue notes
+- [workflows/](./workflows/) - local consistency/update workflow notes
+- [wishlist.md](./wishlist.md)

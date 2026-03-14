@@ -191,6 +191,6 @@
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie
       #   effectUtils.packages.${system}.megarepo
-      # See: context/nix-devenv/cli-patterns.md
+      # See the stack-level Nix/devenv CLI distribution policy docs.
     };
 }

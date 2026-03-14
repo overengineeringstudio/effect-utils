@@ -4,9 +4,9 @@
 #
 # Tasks:
 # - megarepo:sync - Fetch latest refs and apply to workspace (mr fetch --apply)
-# - megarepo:lock:sync - Record the current workspace into megarepo.lock (mr lock)
-# - megarepo:lock:update - Fetch latest refs and apply (mr fetch --apply)
-# - megarepo:lock:apply - Apply megarepo.lock exactly (mr apply)
+# - megarepo:lock - Record the current workspace into megarepo.lock (mr lock)
+# - megarepo:fetch-apply - Fetch latest refs and apply (mr fetch --apply)
+# - megarepo:apply - Apply megarepo.lock exactly (mr apply)
 # - megarepo:check - Verify megarepo setup is complete
 #
 # Options:
@@ -57,9 +57,9 @@ in
     '';
   };
 
-  tasks."megarepo:lock:sync" = {
+  tasks."megarepo:lock" = {
     description = "Record current workspace state into megarepo.lock";
-    exec = trace.exec "megarepo:lock:sync" ''
+    exec = trace.exec "megarepo:lock" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
@@ -68,9 +68,9 @@ in
     '';
   };
 
-  tasks."megarepo:lock:update" = {
+  tasks."megarepo:fetch-apply" = {
     description = "Fetch latest refs and apply to workspace";
-    exec = trace.exec "megarepo:lock:update" ''
+    exec = trace.exec "megarepo:fetch-apply" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
@@ -79,9 +79,9 @@ in
     '';
   };
 
-  tasks."megarepo:lock:apply" = {
+  tasks."megarepo:apply" = {
     description = "Apply megarepo.lock to workspace";
-    exec = trace.exec "megarepo:lock:apply" ''
+    exec = trace.exec "megarepo:apply" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
