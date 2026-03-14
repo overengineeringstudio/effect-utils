@@ -102,7 +102,9 @@ export const ErrorCustom: Story = {
       command="mr deps"
       View={DepsView}
       app={DepsApp}
-      initialState={fixtures.createDepsErrorState('Failed to parse flake.lock in member effect-utils')}
+      initialState={fixtures.createDepsErrorState(
+        'Failed to parse flake.lock in member effect-utils',
+      )}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
     />

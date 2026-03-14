@@ -63,17 +63,24 @@ export interface SummaryProps {
 export const Summary = ({ counts, dryRun = false, mode }: SummaryProps) => {
   const parts: Array<{ key: string; element: React.ReactNode }> = []
   const isFetch = mode === 'fetch'
-  const updatedLabel = isFetch ? 'fetched' : 'updated'
-  const unchangedLabel = isFetch ? 'already up to date' : 'unchanged'
+  const updatedLabel = isFetch === true ? 'fetched' : 'updated'
+  const unchangedLabel = isFetch === true ? 'already up to date' : 'unchanged'
 
   if (dryRun === true) {
-    const toUpdateLabel = isFetch ? 'to fetch' : 'to update'
+    const toUpdateLabel = isFetch === true ? 'to fetch' : 'to update'
     if (counts.cloned !== undefined && counts.cloned > 0)
       parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} to clone</Text> })
     if (counts.synced !== undefined && counts.synced > 0)
       parts.push({ key: 'synced', element: <Text dim>{counts.synced} to sync</Text> })
     if (counts.updated !== undefined && counts.updated > 0)
-      parts.push({ key: 'updated', element: <Text dim>{counts.updated} {toUpdateLabel}</Text> })
+      parts.push({
+        key: 'updated',
+        element: (
+          <Text dim>
+            {counts.updated} {toUpdateLabel}
+          </Text>
+        ),
+      })
     if (counts.recorded !== undefined && counts.recorded > 0)
       parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} to record</Text> })
     if (counts.applied !== undefined && counts.applied > 0)
@@ -83,14 +90,28 @@ export const Summary = ({ counts, dryRun = false, mode }: SummaryProps) => {
     if (counts.errors !== undefined && counts.errors > 0)
       parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
     if (counts.alreadySynced !== undefined && counts.alreadySynced > 0)
-      parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} {unchangedLabel}</Text> })
+      parts.push({
+        key: 'unchanged',
+        element: (
+          <Text dim>
+            {counts.alreadySynced} {unchangedLabel}
+          </Text>
+        ),
+      })
   } else {
     if (counts.cloned !== undefined && counts.cloned > 0)
       parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} cloned</Text> })
     if (counts.synced !== undefined && counts.synced > 0)
       parts.push({ key: 'synced', element: <Text dim>{counts.synced} synced</Text> })
     if (counts.updated !== undefined && counts.updated > 0)
-      parts.push({ key: 'updated', element: <Text dim>{counts.updated} {updatedLabel}</Text> })
+      parts.push({
+        key: 'updated',
+        element: (
+          <Text dim>
+            {counts.updated} {updatedLabel}
+          </Text>
+        ),
+      })
     if (counts.recorded !== undefined && counts.recorded > 0)
       parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} recorded</Text> })
     if (counts.applied !== undefined && counts.applied > 0)
@@ -100,7 +121,14 @@ export const Summary = ({ counts, dryRun = false, mode }: SummaryProps) => {
     if (counts.errors !== undefined && counts.errors > 0)
       parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
     if (counts.alreadySynced !== undefined && counts.alreadySynced > 0)
-      parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} {unchangedLabel}</Text> })
+      parts.push({
+        key: 'unchanged',
+        element: (
+          <Text dim>
+            {counts.alreadySynced} {unchangedLabel}
+          </Text>
+        ),
+      })
   }
 
   if (parts.length === 0) {

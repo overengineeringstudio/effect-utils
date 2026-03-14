@@ -263,7 +263,12 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <SyncedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {updated.map((r) => (
-            <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} mode={options.mode} />
+            <UpdatedLine
+              key={r.name}
+              result={r}
+              lockSync={lockSyncByMember.get(r.name)}
+              mode={options.mode}
+            />
           ))}
           {recorded.map((r) => (
             <RecordedLine
@@ -308,7 +313,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             ) : (
               <Box flexDirection="row">
                 <Text dim>
-                  {symbols.check} {alreadySynced.length} members {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
+                  {symbols.check} {alreadySynced.length} members{' '}
+                  {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
                 </Text>
               </Box>
             ))}
@@ -361,7 +367,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
 const PreflightFailedView = ({
   issues,
-  mode,
+  mode: _mode,
 }: {
   issues: readonly PreflightIssue[]
   mode: string
@@ -772,7 +778,7 @@ const LockFileUpdateLine = ({ update }: { update: LockFileUpdate }) => {
       return (
         <Box paddingLeft={2} flexDirection="row">
           <Text dim>
-            {update.inputName}  rev {update.oldRev} {symbols.arrow} {update.newRev}
+            {update.inputName} rev {update.oldRev} {symbols.arrow} {update.newRev}
           </Text>
         </Box>
       )
@@ -780,7 +786,7 @@ const LockFileUpdateLine = ({ update }: { update: LockFileUpdate }) => {
       return (
         <Box paddingLeft={2} flexDirection="row">
           <Text color="cyan">
-            {update.inputName}  ref {update.oldRef} {symbols.arrow} {update.newRef}
+            {update.inputName} ref {update.oldRef} {symbols.arrow} {update.newRef}
           </Text>
         </Box>
       )
@@ -793,7 +799,7 @@ const LockSyncSection = ({
   sharedSourceUpdates,
   totalUpdates,
   verbose,
-  dryRun,
+  dryRun: _dryRun,
 }: {
   results: readonly MemberLockSyncResult[]
   sharedSourceUpdates: readonly LockSharedSourceUpdate[]
@@ -892,7 +898,7 @@ const ProgressItem = ({
 }) => {
   if (result !== undefined) {
     // Show completed result using TaskItem with mapped status
-    const message = getResultMessage(result, mode)
+    const message = getResultMessage({ result, mode })
     return (
       <TaskItem
         id={name}
@@ -926,7 +932,13 @@ const formatCommitTransition = (result: MemberSyncResult): string | undefined =>
 }
 
 /** Get display message for a sync result */
-const getResultMessage = (result: MemberSyncResult, mode: SyncMode): string | undefined => {
+const getResultMessage = ({
+  result,
+  mode,
+}: {
+  result: MemberSyncResult
+  mode: SyncMode
+}): string | undefined => {
   switch (result.status) {
     case 'cloned':
       return result.ref !== undefined ? `cloned (${result.ref})` : 'cloned'

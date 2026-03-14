@@ -26,6 +26,7 @@ export const PreflightIssue = Schema.Struct({
   message: Schema.String,
   fix: Schema.optional(Schema.String),
 })
+/** Inferred type for a pre-flight hygiene issue */
 export type PreflightIssue = Schema.Schema.Type<typeof PreflightIssue>
 
 // =============================================================================
