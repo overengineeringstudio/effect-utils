@@ -17,6 +17,7 @@ import {
 } from './config.ts'
 import * as Git from './git.ts'
 import type { LockFile } from './lock.ts'
+import { classifyRef } from './ref.ts'
 import type { MegarepoStore } from './store.ts'
 
 // =============================================================================
@@ -163,11 +164,10 @@ export const validateStoreMembers = ({
         continue
       }
 
-      // Check ref mismatch (only for branch worktrees)
+      // Check ref mismatch (only for branch worktrees — tags/commits are detached by design)
       const expectedRef = lockedMember.ref
 
-      // Only check branch-type refs for mismatch (tags/commits are detached by design)
-      if (/^[0-9a-f]{40}$/i.test(expectedRef) === false) {
+      if (classifyRef(expectedRef) === 'branch') {
         const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )

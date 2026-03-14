@@ -1,3 +1,4 @@
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
@@ -189,6 +190,40 @@ describe('store-hygiene', () => {
           })
 
           expect(issues).toEqual([])
+        }),
+      ))
+
+    it('does not report ref_mismatch for tag refs (detached HEAD is expected)', () =>
+      runWithContext(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const basePath = `/tmp/test-store-tag-ref-${Date.now()}/`
+          const store = makeTestStore(EffectPath.unsafe.absoluteDir(basePath))
+          const config = makeTestConfig({ myrepo: 'owner/myrepo#v1.0.0' })
+          const lockFile = makeTestLockFile({
+            myrepo: { ref: 'v1.0.0', commit: 'a'.repeat(40) },
+          })
+
+          // Create bare repo dir and .git file so validation gets past missing_bare/broken_worktree checks
+          const bareRepoPath = `${basePath}github.com/owner/myrepo/.bare/`
+          const worktreePath = `${basePath}github.com/owner/myrepo/refs/heads/v1.0.0/`
+          yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+          yield* fs.makeDirectory(worktreePath, { recursive: true })
+          yield* fs.writeFileString(`${worktreePath}.git`, 'gitdir: ../../../.bare')
+
+          const issues = yield* validateStoreMembers({
+            memberNames: ['myrepo'],
+            config,
+            lockFile,
+            store,
+          })
+
+          // Should have no ref_mismatch issues — tags are expected to be detached
+          const refMismatchIssues = issues.filter((i) => i.type === 'ref_mismatch')
+          expect(refMismatchIssues).toEqual([])
+
+          // Cleanup
+          yield* fs.remove(`${basePath}github.com`, { recursive: true })
         }),
       ))
 
