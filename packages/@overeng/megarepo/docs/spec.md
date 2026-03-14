@@ -253,13 +253,13 @@ The lock file records resolved state and is committed to git for CI reproducibil
 
 ### Lock Entry Fields
 
-| Field      | Description                                         |
-| ---------- | --------------------------------------------------- |
-| `url`      | Resolved URL (GitHub shorthand expanded)            |
-| `ref`      | Current ref (branch, tag, or commit SHA)            |
-| `commit`   | Resolved commit SHA (40 chars)                      |
+| Field      | Description                                           |
+| ---------- | ----------------------------------------------------- |
+| `url`      | Resolved URL (GitHub shorthand expanded)              |
+| `ref`      | Current ref (branch, tag, or commit SHA)              |
+| `commit`   | Resolved commit SHA (40 chars)                        |
 | `pinned`   | If true, `mr fetch --apply` won't refresh this member |
-| `lockedAt` | Timestamp when this entry was resolved              |
+| `lockedAt` | Timestamp when this entry was resolved                |
 
 **Note:** Local paths are NOT in the lock file - they're already local.
 
@@ -326,11 +326,11 @@ mr fetch --apply [--force] [--all] [--only <members...>] [--skip <members...>] [
 
 **Modes:**
 
-| Mode       | Command            | Behavior                                                           |
-| ---------- | ------------------ | ------------------------------------------------------------------ |
+| Mode        | Command            | Behavior                                                            |
+| ----------- | ------------------ | ------------------------------------------------------------------- |
 | Fetch+Apply | `mr fetch --apply` | Fetch from remote, update worktrees to latest, then update the lock |
-| Lock       | `mr lock`          | Record current workspace commits into `megarepo.lock`              |
-| Apply      | `mr apply`         | Clone if needed, apply lock → worktrees exactly, never modify lock |
+| Lock        | `mr lock`          | Record current workspace commits into `megarepo.lock`               |
+| Apply       | `mr apply`         | Clone if needed, apply lock → worktrees exactly, never modify lock  |
 
 **Member Filtering:**
 
@@ -481,10 +481,10 @@ mr pin effect -c abc123def    # pin to specific commit
 The ref type determines mutability, not the `pin` command itself:
 
 | Ref Type | Example                 | Mutability | Behavior on `mr fetch --apply` (if unpinned) |
-| -------- | ----------------------- | ---------- | ------------------------------------------ |
-| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                   |
-| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                     |
-| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                      |
+| -------- | ----------------------- | ---------- | -------------------------------------------- |
+| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                     |
+| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                       |
+| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                        |
 
 When pinned, the member stays at its current commit regardless of ref type.
 

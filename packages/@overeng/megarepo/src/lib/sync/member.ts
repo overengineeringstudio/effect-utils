@@ -723,9 +723,10 @@ export const syncMember = <R = never>({
     if (refResult._tag === 'early-return') return refResult.result
     // In apply mode, use the locked commit — not the bare repo's current branch tip.
     // The resolution is still needed for refType classification and ref validation.
-    targetCommit = isApplyMode === true && lockedMember?.commit !== undefined
-      ? lockedMember.commit
-      : refResult.commit
+    targetCommit =
+      isApplyMode === true && lockedMember?.commit !== undefined
+        ? lockedMember.commit
+        : refResult.commit
     const actualRefType = refResult.refType
 
     // Fetch mode: resolved commit is all we need. Don't touch workspace.

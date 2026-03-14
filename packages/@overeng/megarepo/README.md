@@ -23,11 +23,11 @@ mr lock
 
 ## Command Model
 
-| Command          | Purpose                                                                                     |
-| ---------------- | ------------------------------------------------------------------------------------------- |
-| `mr fetch --apply` | Fetch configured refs, reconcile workspace, and update `megarepo.lock`                    |
-| `mr lock`        | Record the current synced workspace state into `megarepo.lock`                              |
-| `mr apply`       | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI                   |
+| Command            | Purpose                                                                   |
+| ------------------ | ------------------------------------------------------------------------- |
+| `mr fetch --apply` | Fetch configured refs, reconcile workspace, and update `megarepo.lock`    |
+| `mr lock`          | Record the current synced workspace state into `megarepo.lock`            |
+| `mr apply`         | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI |
 
 ## Typical Flow
 

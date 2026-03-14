@@ -73,7 +73,13 @@ export const WithErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all, verbose: args.verbose, force: args.force },
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
         results: exampleSyncResultsWithErrors,
         members: exampleSyncResultsWithErrors.map((r) => r.name),
       }),
@@ -103,7 +109,13 @@ export const AllErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all, verbose: args.verbose, force: args.force },
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
         results: [
           { name: 'effect', status: 'error' as const, message: 'network timeout' },
           { name: 'effect-utils', status: 'error' as const, message: 'authentication failed' },
@@ -138,7 +150,13 @@ export const SkippedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all, verbose: args.verbose, force: args.force },
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           { name: 'dirty-repo', status: 'skipped' as const, message: 'dirty worktree' },
@@ -173,7 +191,13 @@ export const MixedSkipped: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all, verbose: args.verbose, force: args.force },
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
         results: [
           { name: 'effect', status: 'already_synced' as const },
           { name: 'dirty-repo', status: 'skipped' as const, message: '5 uncommitted changes' },
@@ -210,7 +234,13 @@ export const RefMismatchDetected: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all, verbose: args.verbose, force: args.force },
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           {
@@ -261,7 +291,13 @@ export const Interrupted: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all, verbose: args.verbose, force: args.force },
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
         _tag: 'Interrupted' as const,
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         results: [
