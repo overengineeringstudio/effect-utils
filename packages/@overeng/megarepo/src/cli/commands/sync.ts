@@ -35,8 +35,8 @@ import {
   writeLockFile,
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
+import { Store, StoreLayer } from '../../lib/store.ts'
 import {
   type GitProtocol,
   makeRepoSemaphoreMap,
@@ -301,9 +301,9 @@ export const syncMegarepo = <R = never>({
     const removedResults: Array<MemberSyncResult> = []
 
     // Only check for orphans in apply mode (workspace changes) and if repos/ directory exists
-    const membersRootExists = changesWorkspace === true && (yield* fs
-      .exists(membersRoot)
-      .pipe(Effect.catchAll(() => Effect.succeed(false))))
+    const membersRootExists =
+      changesWorkspace === true &&
+      (yield* fs.exists(membersRoot).pipe(Effect.catchAll(() => Effect.succeed(false))))
 
     if (membersRootExists === true) {
       const existingEntries = yield* fs

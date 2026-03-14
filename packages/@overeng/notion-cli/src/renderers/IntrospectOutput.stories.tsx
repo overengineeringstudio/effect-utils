@@ -37,13 +37,19 @@ const makeSuccessState = (
 
 export const Loading: Story = {
   render: () => (
-    <TuiStoryPreview command="notion introspect" View={IntrospectView} app={IntrospectApp} initialState={makeLoadingState()} />
+    <TuiStoryPreview
+      command="notion introspect"
+      View={IntrospectView}
+      app={IntrospectApp}
+      initialState={makeLoadingState()}
+    />
   ),
 }
 
 export const Success: Story = {
   render: () => (
-    <TuiStoryPreview command="notion introspect"
+    <TuiStoryPreview
+      command="notion introspect"
       View={IntrospectView}
       app={IntrospectApp}
       initialState={makeSuccessState({
@@ -83,7 +89,8 @@ export const Success: Story = {
 
 export const WithOptions: Story = {
   render: () => (
-    <TuiStoryPreview command="notion introspect"
+    <TuiStoryPreview
+      command="notion introspect"
       View={IntrospectView}
       app={IntrospectApp}
       initialState={makeSuccessState({
@@ -115,7 +122,8 @@ export const WithOptions: Story = {
 
 export const WithRelations: Story = {
   render: () => (
-    <TuiStoryPreview command="notion introspect"
+    <TuiStoryPreview
+      command="notion introspect"
       View={IntrospectView}
       app={IntrospectApp}
       initialState={makeSuccessState({
@@ -147,7 +155,8 @@ export const WithRelations: Story = {
 
 export const SimpleProperties: Story = {
   render: () => (
-    <TuiStoryPreview command="notion introspect"
+    <TuiStoryPreview
+      command="notion introspect"
       View={IntrospectView}
       app={IntrospectApp}
       initialState={makeSuccessState({
@@ -168,7 +177,8 @@ export const SimpleProperties: Story = {
 export const ErrorState: Story = {
   name: 'Error',
   render: () => (
-    <TuiStoryPreview command="notion introspect"
+    <TuiStoryPreview
+      command="notion introspect"
       View={IntrospectView}
       app={IntrospectApp}
       initialState={makeErrorState('Invalid API key')}

@@ -93,7 +93,12 @@ export default {
   title: 'Components/StatusIcon',
   component: StatusIcon,
   render: () => (
-    <TuiStoryPreview command="mr status" app={StaticApp} View={() => <StatusIconShowcase />} initialState={null} />
+    <TuiStoryPreview
+      command="mr status"
+      app={StaticApp}
+      View={() => <StatusIconShowcase />}
+      initialState={null}
+    />
   ),
   parameters: {
     layout: 'fullscreen',

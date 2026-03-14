@@ -21,9 +21,7 @@ export const exampleDepsGraph: DepsMember[] = [
   },
   {
     name: 'livestore',
-    downstreamMembers: [
-      { name: 'dotfiles', files: ['flake.nix'] },
-    ],
+    downstreamMembers: [{ name: 'dotfiles', files: ['flake.nix'] }],
   },
   {
     name: 'nixpkgs',

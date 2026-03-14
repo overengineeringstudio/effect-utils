@@ -28,10 +28,20 @@ import {
   writeLockFile,
 } from '../lock.ts'
 import { parseNixFlakeUrl, getRef, getRev, updateNixFlakeUrl } from './flake-url.ts'
-import { extractFlakeNixInputs, extractDevenvYamlInputs, extractLockFileInputs, matchUrlToMember } from './input-discovery.ts'
-import { rewriteFlakeNixUrls, rewriteDevenvYamlUrls, rewriteLockFileRefs, type SourceUrlUpdate } from './source-rewriter.ts'
+import {
+  extractFlakeNixInputs,
+  extractDevenvYamlInputs,
+  extractLockFileInputs,
+  matchUrlToMember,
+} from './input-discovery.ts'
 import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
 import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
+import {
+  rewriteFlakeNixUrls,
+  rewriteDevenvYamlUrls,
+  rewriteLockFileRefs,
+  type SourceUrlUpdate,
+} from './source-rewriter.ts'
 
 // =============================================================================
 // Types
@@ -539,19 +549,13 @@ export const syncSourceFileRevs = ({
   filePath: AbsoluteFilePath
   fileType: 'flake.nix' | 'devenv.yaml'
   megarepoMembers: Record<string, LockedMember>
-}): Effect.Effect<
-  NixLockSyncFileResult,
-  PlatformError.PlatformError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<NixLockSyncFileResult, PlatformError.PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
 
     const content = yield* fs.readFileString(filePath)
     const inputs =
-      fileType === 'flake.nix'
-        ? extractFlakeNixInputs(content)
-        : extractDevenvYamlInputs(content)
+      fileType === 'flake.nix' ? extractFlakeNixInputs(content) : extractDevenvYamlInputs(content)
 
     const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
     let updatedContent = content
@@ -570,7 +574,7 @@ export const syncSourceFileRevs = ({
       if (currentRev === undefined) continue
       if (currentRev === member.commit) continue
 
-      const newUrl = updateNixFlakeUrl(input.url, { rev: member.commit })
+      const newUrl = updateNixFlakeUrl({ url: input.url, updates: { rev: member.commit } })
 
       updatedInputs.push({
         inputName: input.inputName,
@@ -615,10 +619,8 @@ export interface SharedLockSourceResult {
  * Resolve a dot-notation path (e.g. ".nodes.devenv.locked") to a value in an object.
  * Returns undefined if the path doesn't exist.
  */
-export const getByDotPath = (obj: unknown, dotPath: string): unknown => {
-  const segments = dotPath
-    .split('.')
-    .filter((s) => s.length > 0)
+export const getByDotPath = ({ obj, dotPath }: { obj: unknown; dotPath: string }): unknown => {
+  const segments = dotPath.split('.').filter((s) => s.length > 0)
 
   let current: unknown = obj
   for (const segment of segments) {
@@ -635,14 +637,17 @@ export const getByDotPath = (obj: unknown, dotPath: string): unknown => {
  * Creates intermediate objects as needed.
  * Returns a new object (shallow clones along the path).
  */
-export const setByDotPath = (obj: unknown, dotPath: string, value: unknown): unknown => {
-  const segments = dotPath
-    .split('.')
-    .filter((s) => s.length > 0)
+export const setByDotPath = ({
+  obj,
+  dotPath,
+  value,
+}: { obj: unknown; dotPath: string; value: unknown }): unknown => {
+  const segments = dotPath.split('.').filter((s) => s.length > 0)
 
   if (segments.length === 0) return value
 
-  const root = typeof obj === 'object' && obj !== null ? { ...(obj as Record<string, unknown>) } : {}
+  const root =
+    typeof obj === 'object' && obj !== null ? { ...(obj as Record<string, unknown>) } : {}
   let current: Record<string, unknown> = root
 
   for (let i = 0; i < segments.length - 1; i++) {
@@ -721,7 +726,7 @@ const syncSharedLockSources = ({
         continue
       }
 
-      const sourceValue = getByDotPath(sourceJson, config.path)
+      const sourceValue = getByDotPath({ obj: sourceJson, dotPath: config.path })
       if (sourceValue === undefined) {
         results.push({
           label,
@@ -738,7 +743,7 @@ const syncSharedLockSources = ({
 
       for (const memberName of memberNames) {
         if (memberName === config.source) continue
-        if (excludeMembers.has(memberName)) {
+        if (excludeMembers.has(memberName) === true) {
           skippedMembers.push(memberName)
           continue
         }
@@ -761,12 +766,12 @@ const syncSharedLockSources = ({
           continue
         }
 
-        const currentValue = getByDotPath(targetJson, config.path)
+        const currentValue = getByDotPath({ obj: targetJson, dotPath: config.path })
         // Skip if the value is already identical
         // @effect-diagnostics-next-line preferSchemaOverJson:off
         if (JSON.stringify(currentValue) === JSON.stringify(sourceValue)) continue
 
-        const updatedJson = setByDotPath(targetJson, config.path, sourceValue)
+        const updatedJson = setByDotPath({ obj: targetJson, dotPath: config.path, value: sourceValue })
         // @effect-diagnostics-next-line preferSchemaOverJson:off
         yield* fs.writeFileString(devenvLockPath, JSON.stringify(updatedJson, null, 2) + '\n')
         updatedMembers.push(memberName)
@@ -782,9 +787,7 @@ const syncSharedLockSources = ({
     }
 
     return results
-  }).pipe(
-    Effect.withSpan('megarepo/nix-lock/shared-lock-sources'),
-  )
+  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-lock-sources'))
 
 // =============================================================================
 // Ref Sync
@@ -813,10 +816,10 @@ const syncMemberRefs = ({
     const results: NixLockSyncFileResult[] = []
 
     /** Sync refs in a source file (flake.nix or devenv.yaml) */
-    const syncSourceRefs = (
-      filename: string,
-      fileType: 'flake.nix' | 'devenv.yaml',
-    ) =>
+    const syncSourceRefs = ({
+      filename,
+      fileType,
+    }: { filename: string; fileType: 'flake.nix' | 'devenv.yaml' }) =>
       Effect.gen(function* () {
         const filePath = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename))
         const exists = yield* fs.exists(filePath)
@@ -871,10 +874,10 @@ const syncMemberRefs = ({
       })
 
     /** Sync refs in a lock file (flake.lock or devenv.lock) */
-    const syncLockRefs = (
-      filename: string,
-      fileType: 'flake.lock' | 'devenv.lock',
-    ) =>
+    const syncLockRefs = ({
+      filename,
+      fileType,
+    }: { filename: string; fileType: 'flake.lock' | 'devenv.lock' }) =>
       Effect.gen(function* () {
         const filePath = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename))
         const exists = yield* fs.exists(filePath)
@@ -935,10 +938,10 @@ const syncMemberRefs = ({
         }
       })
 
-    yield* syncSourceRefs(FLAKE_NIX, 'flake.nix')
-    yield* syncSourceRefs(DEVENV_YAML, 'devenv.yaml')
-    yield* syncLockRefs(FLAKE_LOCK, 'flake.lock')
-    yield* syncLockRefs(DEVENV_LOCK, 'devenv.lock')
+    yield* syncSourceRefs({ filename: FLAKE_NIX, fileType: 'flake.nix' })
+    yield* syncSourceRefs({ filename: DEVENV_YAML, fileType: 'devenv.yaml' })
+    yield* syncLockRefs({ filename: FLAKE_LOCK, fileType: 'flake.lock' })
+    yield* syncLockRefs({ filename: DEVENV_LOCK, fileType: 'devenv.lock' })
 
     return results
   }).pipe(

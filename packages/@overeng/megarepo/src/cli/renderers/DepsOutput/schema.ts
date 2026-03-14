@@ -17,6 +17,7 @@ export const DownstreamRef = Schema.Struct({
   files: Schema.Array(Schema.String),
 })
 
+/** Inferred type for a downstream member reference with its source files */
 export type DownstreamRef = Schema.Schema.Type<typeof DownstreamRef>
 
 // =============================================================================
@@ -29,18 +30,22 @@ export const DepsMember = Schema.Struct({
   downstreamMembers: Schema.Array(DownstreamRef),
 })
 
+/** Inferred type for an upstream member and its downstream dependents */
 export type DepsMember = Schema.Schema.Type<typeof DepsMember>
 
 // =============================================================================
 // Deps State (Union of success, empty, and error)
 // =============================================================================
 
+/** State when dependency graph was successfully computed */
 export const DepsSuccessState = Schema.TaggedStruct('Success', {
   members: Schema.Array(DepsMember),
 })
 
+/** State when no inter-member dependencies exist */
 export const DepsEmptyState = Schema.TaggedStruct('Empty', {})
 
+/** State when dependency graph computation failed */
 export const DepsErrorState = Schema.TaggedStruct('Error', {
   message: Schema.String,
 })

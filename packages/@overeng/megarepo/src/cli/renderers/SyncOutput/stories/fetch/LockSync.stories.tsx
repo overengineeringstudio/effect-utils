@@ -14,11 +14,7 @@ import {
 
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
-import {
-  createCommandState,
-  createCommandTimeline,
-  exampleLockSyncResults,
-} from '../_fixtures.ts'
+import { createCommandState, createCommandTimeline, exampleLockSyncResults } from '../_fixtures.ts'
 import { fetchFullNixSync, fetchLockSyncResults, fetchResults } from './_fixtures.ts'
 
 type StoryArgs = {

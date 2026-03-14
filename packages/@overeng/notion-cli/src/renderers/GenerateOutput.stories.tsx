@@ -30,7 +30,8 @@ export const Demo: Story = {
     height: { control: { type: 'range', min: 200, max: 600, step: 50 } },
   },
   render: (args) => (
-    <TuiStoryPreview command="notion generate"
+    <TuiStoryPreview
+      command="notion generate"
       View={GenerateView}
       app={GenerateApp}
       initialState={createIntrospectingState()}
@@ -125,7 +126,8 @@ const createErrorState = (): GenerateState => ({
 
 export const Introspecting: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate"
+    <TuiStoryPreview
+      command="notion generate"
       View={GenerateView}
       app={GenerateApp}
       initialState={createIntrospectingState()}
@@ -135,25 +137,41 @@ export const Introspecting: Story = {
 
 export const Generating: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate" View={GenerateView} app={GenerateApp} initialState={createGeneratingState()} />
+    <TuiStoryPreview
+      command="notion generate"
+      View={GenerateView}
+      app={GenerateApp}
+      initialState={createGeneratingState()}
+    />
   ),
 }
 
 export const Writing: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate" View={GenerateView} app={GenerateApp} initialState={createWritingState()} />
+    <TuiStoryPreview
+      command="notion generate"
+      View={GenerateView}
+      app={GenerateApp}
+      initialState={createWritingState()}
+    />
   ),
 }
 
 export const Done: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate" View={GenerateView} app={GenerateApp} initialState={createDoneState()} />
+    <TuiStoryPreview
+      command="notion generate"
+      View={GenerateView}
+      app={GenerateApp}
+      initialState={createDoneState()}
+    />
   ),
 }
 
 export const DoneReadOnly: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate"
+    <TuiStoryPreview
+      command="notion generate"
       View={GenerateView}
       app={GenerateApp}
       initialState={createDoneReadOnlyState()}
@@ -163,7 +181,8 @@ export const DoneReadOnly: Story = {
 
 export const DoneWithApi: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate"
+    <TuiStoryPreview
+      command="notion generate"
       View={GenerateView}
       app={GenerateApp}
       initialState={createDoneWithApiState()}
@@ -173,13 +192,19 @@ export const DoneWithApi: Story = {
 
 export const DryRun: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate" View={GenerateView} app={GenerateApp} initialState={createDryRunState()} />
+    <TuiStoryPreview
+      command="notion generate"
+      View={GenerateView}
+      app={GenerateApp}
+      initialState={createDryRunState()}
+    />
   ),
 }
 
 export const DryRunWithApi: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate"
+    <TuiStoryPreview
+      command="notion generate"
       View={GenerateView}
       app={GenerateApp}
       initialState={createDryRunWithApiState()}
@@ -189,6 +214,11 @@ export const DryRunWithApi: Story = {
 
 export const ErrorState: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate" View={GenerateView} app={GenerateApp} initialState={createErrorState()} />
+    <TuiStoryPreview
+      command="notion generate"
+      View={GenerateView}
+      app={GenerateApp}
+      initialState={createErrorState()}
+    />
   ),
 }

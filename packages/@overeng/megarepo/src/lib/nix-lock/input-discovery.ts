@@ -12,11 +12,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { getMemberPath, type MegarepoConfig } from '../config.ts'
 import type { LockFile, LockedMember } from '../lock.ts'
-import {
-  type NixFlakeUrl,
-  getOwnerRepo,
-  parseNixFlakeUrl,
-} from './flake-url.ts'
+import { type NixFlakeUrl, getOwnerRepo, parseNixFlakeUrl } from './flake-url.ts'
 import { parseLockedInput } from './schema.ts'
 
 // =============================================================================
@@ -74,11 +70,11 @@ export const extractFlakeNixInputs = (
     const url = match[2]!
     // Filter out false positives — URL must look like a Nix flake URL
     if (
-      url.startsWith('github:') ||
-      url.startsWith('git+https://') ||
-      url.startsWith('git+ssh://') ||
-      url.startsWith('https://') ||
-      url.startsWith('path:')
+      url.startsWith('github:') === true ||
+      url.startsWith('git+https://') === true ||
+      url.startsWith('git+ssh://') === true ||
+      url.startsWith('https://') === true ||
+      url.startsWith('path:') === true
     ) {
       results.push({ inputName, url })
     }
@@ -123,10 +119,10 @@ export const extractDevenvYamlInputs = (
       continue
     }
 
-    if (!inInputs) continue
+    if (inInputs === false) continue
 
     // If we hit a line at the same or lower indent as `inputs:`, we've left the section
-    if (trimmed !== '' && indent <= inputsIndent && !trimmed.startsWith('#')) {
+    if (trimmed !== '' && indent <= inputsIndent && trimmed.startsWith('#') === false) {
       inInputs = false
       currentInputName = undefined
       continue
@@ -146,11 +142,12 @@ export const extractDevenvYamlInputs = (
       if (urlMatch !== null) {
         const url = urlMatch[1]!.trim()
         // Strip optional YAML quotes
-        const cleanUrl = url.startsWith('"') && url.endsWith('"')
-          ? url.slice(1, -1)
-          : url.startsWith("'") && url.endsWith("'")
+        const cleanUrl =
+          url.startsWith('"') === true && url.endsWith('"') === true
             ? url.slice(1, -1)
-            : url
+            : url.startsWith("'") === true && url.endsWith("'") === true
+              ? url.slice(1, -1)
+              : url
         results.push({ inputName: currentInputName, url: cleanUrl })
       }
     }
@@ -172,7 +169,10 @@ export const extractLockFileInputs = (
 
   let parsed: { root?: string; nodes?: Record<string, Record<string, unknown>> }
   try {
-    parsed = JSON.parse(content) as { root?: string; nodes?: Record<string, Record<string, unknown>> }
+    parsed = JSON.parse(content) as {
+      root?: string
+      nodes?: Record<string, Record<string, unknown>>
+    }
   } catch {
     return results
   }
@@ -197,7 +197,11 @@ export const extractLockFileInputs = (
     if (parsedInput === undefined) continue
 
     let url: string
-    if (parsedInput.type === 'github' && parsedInput.owner !== undefined && parsedInput.repo !== undefined) {
+    if (
+      parsedInput.type === 'github' &&
+      parsedInput.owner !== undefined &&
+      parsedInput.repo !== undefined
+    ) {
       url = `github:${parsedInput.owner}/${parsedInput.repo}`
     } else if (parsedInput.type === 'git' && parsedInput.url !== undefined) {
       url = parsedInput.url
@@ -220,9 +224,7 @@ export const extractLockFileInputs = (
  *
  * megarepo.lock URLs are like: https://github.com/owner/repo
  */
-const normalizeMemberUrl = (
-  url: string,
-): { owner: string; repo: string } | undefined => {
+const normalizeMemberUrl = (url: string): { owner: string; repo: string } | undefined => {
   const match = url.match(/github\.com\/([^/]+)\/([^/.]+)/)
   if (match?.[1] !== undefined && match[2] !== undefined) {
     return { owner: match[1].toLowerCase(), repo: match[2].toLowerCase() }
@@ -274,7 +276,11 @@ const matchLockedToMember = ({
   if (parsedInput === undefined) return undefined
 
   let url: string | undefined
-  if (parsedInput.type === 'github' && parsedInput.owner !== undefined && parsedInput.repo !== undefined) {
+  if (
+    parsedInput.type === 'github' &&
+    parsedInput.owner !== undefined &&
+    parsedInput.repo !== undefined
+  ) {
     url = `https://github.com/${parsedInput.owner}/${parsedInput.repo}`
   } else if (parsedInput.type === 'git' && parsedInput.url !== undefined) {
     url = parsedInput.url
@@ -325,7 +331,7 @@ export const discoverMemberInputs = ({
       Effect.gen(function* () {
         const path = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename))
         const exists = yield* fs.exists(path)
-        if (!exists) return undefined
+        if (exists === false) return undefined
         return yield* fs.readFileString(path)
       })
 
@@ -413,11 +419,7 @@ export const buildDependencyGraph = ({
   config: typeof MegarepoConfig.Type
   lockFile: LockFile
   excludeMembers?: ReadonlySet<string>
-}): Effect.Effect<
-  DependencyGraph,
-  PlatformError.PlatformError,
-  FileSystem.FileSystem
-> =>
+}): Effect.Effect<DependencyGraph, PlatformError.PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const exclude = excludeMembers ?? new Set()
@@ -430,7 +432,7 @@ export const buildDependencyGraph = ({
         Effect.gen(function* () {
           const memberPath = getMemberPath({ megarepoRoot, name: memberName })
           const exists = yield* fs.exists(memberPath)
-          if (!exists) return { memberName, inputs: [] as DiscoveredInput[] }
+          if (exists === false) return { memberName, inputs: [] as DiscoveredInput[] }
 
           const inputs = yield* discoverMemberInputs({ memberPath, members })
           return { memberName, inputs: [...inputs] }

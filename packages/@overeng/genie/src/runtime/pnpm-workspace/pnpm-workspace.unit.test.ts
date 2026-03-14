@@ -5,8 +5,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
-import type { WorkspacePackage } from '../package-json/mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
+import type { WorkspacePackage } from '../package-json/mod.ts'
 import { pnpmWorkspaceYaml, projectPnpmPackageClosure } from './mod.ts'
 
 const createTempRepo = (...memberPaths: string[]) => {
@@ -310,10 +310,7 @@ describe('root patch coverage validation', () => {
         workspace: [app],
       },
     })
-    const wrapper = packageJson(
-      { name: '@test/wrapper', version: '1.0.0' },
-      wrapperComposition,
-    )
+    const wrapper = packageJson({ name: '@test/wrapper', version: '1.0.0' }, wrapperComposition)
 
     const workspaceFile = pnpmWorkspaceYaml.root({
       packages: [wrapper],
@@ -338,10 +335,7 @@ describe('root patch coverage validation', () => {
         memberPath: 'packages/utils',
       }),
     })
-    const plainUtils = packageJson(
-      { name: '@test/utils', version: '1.0.0' },
-      utilsComposition,
-    )
+    const plainUtils = packageJson({ name: '@test/utils', version: '1.0.0' }, utilsComposition)
     const app = makeApp([plainUtils])
 
     const workspaceFile = pnpmWorkspaceYaml.root({

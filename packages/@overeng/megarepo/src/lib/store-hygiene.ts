@@ -23,8 +23,10 @@ import type { MegarepoStore } from './store.ts'
 // Store Issue Types
 // =============================================================================
 
+/** Severity level for store consistency issues */
 export type StoreIssueSeverity = 'error' | 'warning' | 'info'
 
+/** Classification of store consistency problems (ref mismatch, broken worktree, etc.) */
 export type StoreIssueType =
   | 'ref_mismatch'
   | 'broken_worktree'
@@ -33,6 +35,7 @@ export type StoreIssueType =
   | 'unpushed'
   | 'orphaned'
 
+/** A detected consistency problem in the megarepo store for a specific member */
 export interface StoreIssue {
   readonly severity: StoreIssueSeverity
   readonly type: StoreIssueType
@@ -44,15 +47,26 @@ export interface StoreIssue {
   readonly meta?: StoreIssueMeta | undefined
 }
 
+/** Extra metadata attached to a store issue, used for programmatic auto-fixes */
 export type StoreIssueMeta =
-  | { readonly _tag: 'ref_mismatch'; readonly expectedRef: string; readonly actualRef: string; readonly worktreePath: string }
-  | { readonly _tag: 'broken_worktree'; readonly worktreePath: string; readonly source: MemberSource }
+  | {
+      readonly _tag: 'ref_mismatch'
+      readonly expectedRef: string
+      readonly actualRef: string
+      readonly worktreePath: string
+    }
+  | {
+      readonly _tag: 'broken_worktree'
+      readonly worktreePath: string
+      readonly source: MemberSource
+    }
   | { readonly _tag: 'missing_bare'; readonly source: MemberSource }
 
 // =============================================================================
 // Store Hygiene Error
 // =============================================================================
 
+/** Tagged error raised when store pre-flight checks detect blocking issues */
 export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
   'StoreHygieneError',
   {
@@ -133,9 +147,9 @@ export const validateStoreMembers = ({
       })
 
       const gitFilePath = `${worktreePath}.git`.replace(/\/\.git$/, '/.git')
-      const gitFileExists = yield* fs.exists(gitFilePath).pipe(
-        Effect.catchAll(() => Effect.succeed(false)),
-      )
+      const gitFileExists = yield* fs
+        .exists(gitFilePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
 
       if (gitFileExists === false) {
         issues.push({
@@ -158,7 +172,7 @@ export const validateStoreMembers = ({
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
 
-        if (Option.isSome(actualBranch) && actualBranch.value !== expectedRef) {
+        if (Option.isSome(actualBranch) === true && actualBranch.value !== expectedRef) {
           issues.push({
             severity: 'error',
             type: 'ref_mismatch',
@@ -172,7 +186,7 @@ export const validateStoreMembers = ({
               worktreePath,
             },
           })
-        } else if (Option.isNone(actualBranch)) {
+        } else if (Option.isNone(actualBranch) === true) {
           // Detached HEAD in a branch worktree is also a mismatch
           const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(
             Effect.map((sha) => sha.slice(0, 7)),
@@ -201,7 +215,7 @@ export const validateStoreMembers = ({
         ),
       )
 
-      if (worktreeStatus.isDirty) {
+      if (worktreeStatus.isDirty === true) {
         issues.push({
           severity: 'warning',
           type: 'dirty',
@@ -210,7 +224,7 @@ export const validateStoreMembers = ({
         })
       }
 
-      if (worktreeStatus.hasUnpushed) {
+      if (worktreeStatus.hasUnpushed === true) {
         issues.push({
           severity: 'warning',
           type: 'unpushed',
@@ -270,7 +284,7 @@ export const runPreflightChecks = ({
     }
 
     // Fail on errors (unless non-strict mode)
-    if (strict && errors.length > 0) {
+    if (strict === true && errors.length > 0) {
       const errorMessages = errors
         .map((e) => {
           const fixHint = e.fix !== undefined ? `\n  fix: ${e.fix}` : ''
@@ -308,6 +322,7 @@ export const parseWorktreeRef = (
 // Fix Operations
 // =============================================================================
 
+/** Outcome of attempting to auto-fix a single store issue */
 export interface FixResult {
   readonly memberName: string
   readonly issueType: StoreIssueType
@@ -416,15 +431,15 @@ export const fixStoreIssues = ({
           }
 
           // Remove existing broken worktree
-          yield* fs.remove(worktreePath, { recursive: true }).pipe(
-            Effect.catchAll(() => Effect.void),
-          )
+          yield* fs
+            .remove(worktreePath, { recursive: true })
+            .pipe(Effect.catchAll(() => Effect.void))
 
           // Recreate the worktree
           yield* Effect.gen(function* () {
-            yield* fs.makeDirectory(worktreePath, { recursive: true }).pipe(
-              Effect.catchAll(() => Effect.void),
-            )
+            yield* fs
+              .makeDirectory(worktreePath, { recursive: true })
+              .pipe(Effect.catchAll(() => Effect.void))
 
             const parsed = parseWorktreeRef(worktreePath)
 

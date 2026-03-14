@@ -9,6 +9,7 @@
 
 import React from 'react'
 
+/** Props for the powerline-style shell prompt component */
 export interface PowerlinePromptProps {
   /** The CLI command being demonstrated (e.g. "deploy --env production") */
   command: string
@@ -16,17 +17,20 @@ export interface PowerlinePromptProps {
   cwd?: string | undefined
 }
 
-const COLORS = {
+/** Color palette for the powerline prompt segments (cwd, prompt symbol, and background bar) */
+export const COLORS = {
   cwd: { bg: '#0087af', fg: '#ffffff' },
   prompt: { bg: '#303030', fg: '#ffffff' },
   bar: '#1a1a2e',
 } as const
 
-const PROMPT_HEIGHT = 22
-const HALF_HEIGHT = PROMPT_HEIGHT / 2
+/** Total height in pixels for the prompt bar */
+export const PROMPT_HEIGHT = 22
+/** Half the prompt height, used for CSS border triangle calculations */
+export const HALF_HEIGHT = PROMPT_HEIGHT / 2
 
 /** CSS border triangle separator — creates the powerline angled arrow effect */
-const Separator: React.FC<{ leftBg: string; rightBg: string }> = ({ leftBg, rightBg }) => (
+export const Separator: React.FC<{ leftBg: string; rightBg: string }> = ({ leftBg, rightBg }) => (
   <span
     style={{
       display: 'inline-block',
@@ -40,10 +44,7 @@ const Separator: React.FC<{ leftBg: string; rightBg: string }> = ({ leftBg, righ
 )
 
 /** Powerline-style shell prompt showing the command being demonstrated */
-export const PowerlinePrompt: React.FC<PowerlinePromptProps> = ({
-  command,
-  cwd = '~/project',
-}) => (
+export const PowerlinePrompt: React.FC<PowerlinePromptProps> = ({ command, cwd = '~/project' }) => (
   <div
     style={{
       display: 'flex',

@@ -64,7 +64,12 @@ export const AllStates: Story = {
 
 export const WithTitle: Story = {
   render: (args) => (
-    <TuiStoryPreview command="tasklist-demo" app={StaticApp} View={() => <TaskList {...args} />} initialState={null} />
+    <TuiStoryPreview
+      command="tasklist-demo"
+      app={StaticApp}
+      View={() => <TaskList {...args} />}
+      initialState={null}
+    />
   ),
   args: {
     items: [
@@ -102,7 +107,12 @@ export const WithSummary: Story = {
 
 export const LongList: Story = {
   render: (args) => (
-    <TuiStoryPreview command="tasklist-demo" app={StaticApp} View={() => <TaskList {...args} />} initialState={null} />
+    <TuiStoryPreview
+      command="tasklist-demo"
+      app={StaticApp}
+      View={() => <TaskList {...args} />}
+      initialState={null}
+    />
   ),
   args: {
     items: Array.from({ length: 15 }, (_, i) => ({
@@ -224,7 +234,12 @@ const SyncSimulationDemo = () => {
 /** Interactive sync simulation (animated in terminal) */
 export const SyncSimulation: Story = {
   render: () => (
-    <TuiStoryPreview command="tasklist-demo" app={StaticApp} View={() => <SyncSimulationDemo />} initialState={null} />
+    <TuiStoryPreview
+      command="tasklist-demo"
+      app={StaticApp}
+      View={() => <SyncSimulationDemo />}
+      initialState={null}
+    />
   ),
 }
 

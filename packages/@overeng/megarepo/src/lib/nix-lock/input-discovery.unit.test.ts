@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
+import type { LockedMember } from '../lock.ts'
 import {
   extractFlakeNixInputs,
   extractDevenvYamlInputs,
   extractLockFileInputs,
   matchUrlToMember,
 } from './input-discovery.ts'
-import type { LockedMember } from '../lock.ts'
 
 // =============================================================================
 // Helpers
@@ -55,9 +55,7 @@ describe('extractFlakeNixInputs', () => {
     const result = extractFlakeNixInputs(content)
     expect(result).toHaveLength(1)
     expect(result[0]!.inputName).toBe('private-shared')
-    expect(result[0]!.url).toBe(
-      'git+ssh://git@github.com/overengineeringstudio/private-shared.git',
-    )
+    expect(result[0]!.url).toBe('git+ssh://git@github.com/overengineeringstudio/private-shared.git')
   })
 
   it('should extract git+https URL with query params', () => {

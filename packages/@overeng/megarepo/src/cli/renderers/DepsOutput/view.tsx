@@ -42,7 +42,7 @@ export const DepsView = ({ stateAtom }: DepsViewProps) => {
           <Text bold>{upstream.name}</Text>
           {upstream.downstreamMembers.map((downstream) => (
             <Box key={downstream.name} flexDirection="row">
-              <Text dim>  ← </Text>
+              <Text dim> ← </Text>
               <Text>{downstream.name}</Text>
               <Text dim> [{downstream.files.join(', ')}]</Text>
             </Box>

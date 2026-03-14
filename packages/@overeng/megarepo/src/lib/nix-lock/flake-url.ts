@@ -65,7 +65,7 @@ export const parseNixFlakeUrl = (url: string): NixFlakeUrl | undefined => {
   const params = qIdx >= 0 ? parseQueryString(url.slice(qIdx + 1)) : new Map<string, string>()
 
   // Pattern 1: github:owner/repo[/ref...]
-  if (base.startsWith('github:')) {
+  if (base.startsWith('github:') === true) {
     const rest = base.slice('github:'.length)
     const parts = rest.split('/')
     if (parts.length < 2) return undefined
@@ -81,27 +81,31 @@ export const parseNixFlakeUrl = (url: string): NixFlakeUrl | undefined => {
   }
 
   // Pattern 2: git+https://github.com/owner/repo[.git]
-  if (base.startsWith('git+https://github.com/')) {
+  if (base.startsWith('git+https://github.com/') === true) {
     const path = base.slice('git+https://github.com/'.length)
-    return parseGitPath(path, 'git+https', params)
+    return parseGitPath({ path, scheme: 'git+https', params })
   }
 
   // Pattern 3: git+ssh://git@github.com/owner/repo[.git]
-  if (base.startsWith('git+ssh://git@github.com/')) {
+  if (base.startsWith('git+ssh://git@github.com/') === true) {
     const path = base.slice('git+ssh://git@github.com/'.length)
-    return parseGitPath(path, 'git+ssh', params)
+    return parseGitPath({ path, scheme: 'git+ssh', params })
   }
 
   return undefined
 }
 
-const parseGitPath = (
-  path: string,
-  scheme: 'git+https' | 'git+ssh',
-  params: ReadonlyMap<string, string>,
-): NixFlakeUrl | undefined => {
+const parseGitPath = ({
+  path,
+  scheme,
+  params,
+}: {
+  path: string
+  scheme: 'git+https' | 'git+ssh'
+  params: ReadonlyMap<string, string>
+}): NixFlakeUrl | undefined => {
   const dotGit = path.endsWith('.git')
-  const cleanPath = dotGit ? path.slice(0, -4) : path
+  const cleanPath = dotGit === true ? path.slice(0, -4) : path
   const parts = cleanPath.split('/')
   if (parts.length < 2) return undefined
 
@@ -149,12 +153,12 @@ export const serializeNixFlakeUrl = (parsed: NixFlakeUrl): string => {
     }
     case 'git+https': {
       base = `git+https://github.com/${parsed.owner}/${parsed.repo}`
-      if (parsed.dotGit) base += '.git'
+      if (parsed.dotGit === true) base += '.git'
       break
     }
     case 'git+ssh': {
       base = `git+ssh://git@github.com/${parsed.owner}/${parsed.repo}`
-      if (parsed.dotGit) base += '.git'
+      if (parsed.dotGit === true) base += '.git'
       break
     }
   }
@@ -180,10 +184,13 @@ const serializeQueryString = (params: ReadonlyMap<string, string>): string => {
  * Update ref and/or rev in a Nix flake URL string.
  * Preserves scheme, dir, and other query params.
  */
-export const updateNixFlakeUrl = (
-  url: string,
-  updates: { ref?: string | null; rev?: string | null },
-): string => {
+export const updateNixFlakeUrl = ({
+  url,
+  updates,
+}: {
+  url: string
+  updates: { ref?: string | null; rev?: string | null }
+}): string => {
   const parsed = parseNixFlakeUrl(url)
   if (parsed === undefined) return url
 

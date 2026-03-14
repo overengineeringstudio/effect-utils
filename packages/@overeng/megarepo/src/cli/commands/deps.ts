@@ -33,7 +33,7 @@ export const depsCommand = Cli.Command.make(
         DepsApp,
         (tui) =>
           Effect.gen(function* () {
-            if (Option.isNone(rootOpt)) {
+            if (Option.isNone(rootOpt) === true) {
               tui.dispatch({ _tag: 'SetError', message: 'No megarepo.json found' })
               return
             }
@@ -41,14 +41,22 @@ export const depsCommand = Cli.Command.make(
             const fs = yield* FileSystem.FileSystem
 
             // Load config
-            const configPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME))
+            const configPath = EffectPath.ops.join(
+              root,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+            )
             const configContent = yield* fs.readFileString(configPath)
-            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+              configContent,
+            )
 
             // Load lock file
-            const lockPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeFile(LOCK_FILE_NAME))
+            const lockPath = EffectPath.ops.join(
+              root,
+              EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+            )
             const lockFileOpt = yield* readLockFile(lockPath)
-            if (Option.isNone(lockFileOpt)) {
+            if (Option.isNone(lockFileOpt) === true) {
               tui.dispatch({
                 _tag: 'SetError',
                 message: 'Lock file required for mr deps — run `mr lock` first',
@@ -80,7 +88,7 @@ export const depsCommand = Cli.Command.make(
                   byUpstream.set(input.upstreamMember, upstreamEntry)
                 }
                 const files = upstreamEntry.get(memberName) ?? []
-                if (!files.includes(input.file)) {
+                if (files.includes(input.file) === false) {
                   files.push(input.file)
                 }
                 upstreamEntry.set(memberName, files)
@@ -88,11 +96,11 @@ export const depsCommand = Cli.Command.make(
             }
 
             const members: DepsMember[] = [...byUpstream]
-              .sort(([a], [b]) => a.localeCompare(b))
+              .toSorted(([a], [b]) => a.localeCompare(b))
               .map(([upstreamName, downstreams]) => ({
                 name: upstreamName,
                 downstreamMembers: [...downstreams]
-                  .sort(([a], [b]) => a.localeCompare(b))
+                  .toSorted(([a], [b]) => a.localeCompare(b))
                   .map(([name, files]) => ({ name, files })),
               }))
 
@@ -101,8 +109,4 @@ export const depsCommand = Cli.Command.make(
         { view: React.createElement(DepsView, { stateAtom: DepsApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
     }).pipe(Effect.withSpan('megarepo/deps')),
-).pipe(
-  Cli.Command.withDescription(
-    'Show the Nix input dependency graph between megarepo members.',
-  ),
-)
+).pipe(Cli.Command.withDescription('Show the Nix input dependency graph between megarepo members.'))

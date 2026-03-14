@@ -61,9 +61,7 @@ describe('parseNixFlakeUrl', () => {
   })
 
   it('should parse git+https URL without query params', () => {
-    const result = parseNixFlakeUrl(
-      'git+https://github.com/overengineeringstudio/effect-utils',
-    )
+    const result = parseNixFlakeUrl('git+https://github.com/overengineeringstudio/effect-utils')
     expect(result?.scheme).toBe('git+https')
     expect(getRef(result!)).toBeUndefined()
     expect(getRev(result!)).toBeUndefined()
@@ -152,25 +150,25 @@ describe('updateNixFlakeUrl', () => {
   describe('github: scheme', () => {
     it('should update ref (path-embedded)', () => {
       const url = 'github:overengineeringstudio/effect-utils/main'
-      const result = updateNixFlakeUrl(url, { ref: 'schickling/feature' })
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'schickling/feature' } })
       expect(result).toBe('github:overengineeringstudio/effect-utils/schickling/feature')
     })
 
     it('should add ref to bare URL', () => {
       const url = 'github:overengineeringstudio/effect-utils'
-      const result = updateNixFlakeUrl(url, { ref: 'schickling/feature' })
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'schickling/feature' } })
       expect(result).toBe('github:overengineeringstudio/effect-utils/schickling/feature')
     })
 
     it('should remove ref with null', () => {
       const url = 'github:overengineeringstudio/effect-utils/main'
-      const result = updateNixFlakeUrl(url, { ref: null })
+      const result = updateNixFlakeUrl({ url, updates: { ref: null } })
       expect(result).toBe('github:overengineeringstudio/effect-utils')
     })
 
     it('should preserve ?dir= when updating ref', () => {
       const url = 'github:overengineeringstudio/effect-utils?dir=nix/playwright-flake'
-      const result = updateNixFlakeUrl(url, { ref: 'schickling/feature' })
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'schickling/feature' } })
       expect(result).toBe(
         'github:overengineeringstudio/effect-utils/schickling/feature?dir=nix/playwright-flake',
       )
@@ -179,54 +177,46 @@ describe('updateNixFlakeUrl', () => {
 
   describe('git+https scheme', () => {
     it('should update ref query param', () => {
-      const url =
-        'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
-      const result = updateNixFlakeUrl(url, { ref: 'schickling/feature' })
+      const url = 'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'schickling/feature' } })
       expect(result).toBe(
         'git+https://github.com/overengineeringstudio/effect-utils?ref=schickling/feature&rev=abc123',
       )
     })
 
     it('should update rev query param', () => {
-      const url =
-        'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
-      const result = updateNixFlakeUrl(url, { rev: 'def456' })
+      const url = 'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
+      const result = updateNixFlakeUrl({ url, updates: { rev: 'def456' } })
       expect(result).toBe(
         'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=def456',
       )
     })
 
     it('should update both ref and rev', () => {
-      const url =
-        'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
-      const result = updateNixFlakeUrl(url, { ref: 'feature', rev: 'def456' })
+      const url = 'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'feature', rev: 'def456' } })
       expect(result).toBe(
         'git+https://github.com/overengineeringstudio/effect-utils?ref=feature&rev=def456',
       )
     })
 
     it('should remove rev with null', () => {
-      const url =
-        'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
-      const result = updateNixFlakeUrl(url, { rev: null })
-      expect(result).toBe(
-        'git+https://github.com/overengineeringstudio/effect-utils?ref=main',
-      )
+      const url = 'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
+      const result = updateNixFlakeUrl({ url, updates: { rev: null } })
+      expect(result).toBe('git+https://github.com/overengineeringstudio/effect-utils?ref=main')
     })
 
     it('should add ref to URL without query params', () => {
       const url = 'git+https://github.com/overengineeringstudio/effect-utils'
-      const result = updateNixFlakeUrl(url, { ref: 'feature' })
-      expect(result).toBe(
-        'git+https://github.com/overengineeringstudio/effect-utils?ref=feature',
-      )
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'feature' } })
+      expect(result).toBe('git+https://github.com/overengineeringstudio/effect-utils?ref=feature')
     })
   })
 
   describe('git+ssh scheme', () => {
     it('should add ref to git+ssh URL', () => {
       const url = 'git+ssh://git@github.com/overengineeringstudio/effect-utils.git'
-      const result = updateNixFlakeUrl(url, { ref: 'feature' })
+      const result = updateNixFlakeUrl({ url, updates: { ref: 'feature' } })
       expect(result).toBe(
         'git+ssh://git@github.com/overengineeringstudio/effect-utils.git?ref=feature',
       )
@@ -235,7 +225,7 @@ describe('updateNixFlakeUrl', () => {
 
   it('should return the original URL if parsing fails', () => {
     const url = 'https://example.com/something'
-    expect(updateNixFlakeUrl(url, { ref: 'feature' })).toBe(url)
+    expect(updateNixFlakeUrl({ url, updates: { ref: 'feature' } })).toBe(url)
   })
 })
 

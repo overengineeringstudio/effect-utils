@@ -22,8 +22,8 @@ import {
 import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
-import { Store, StoreLayer } from '../../../lib/store.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
+import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
@@ -800,7 +800,7 @@ const storeFixCommand = Cli.Command.make(
       const fs = yield* FileSystem.FileSystem
 
       const root = yield* findMegarepoRoot(cwd)
-      if (Option.isNone(root)) {
+      if (Option.isNone(root) === true) {
         yield* run(
           StoreApp,
           (tui) =>
@@ -828,7 +828,7 @@ const storeFixCommand = Cli.Command.make(
         EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
       )
       const lockFileOpt = yield* readLockFile(lockPath)
-      if (Option.isNone(lockFileOpt)) {
+      if (Option.isNone(lockFileOpt) === true) {
         yield* run(
           StoreApp,
           (tui) =>
@@ -847,9 +847,7 @@ const storeFixCommand = Cli.Command.make(
       const lockFile = lockFileOpt.value
 
       // Determine which members to check
-      const memberNames = Option.isSome(member)
-        ? [member.value]
-        : Object.keys(config.members)
+      const memberNames = Option.isSome(member) === true ? [member.value] : Object.keys(config.members)
 
       // Validate
       const issues = yield* validateStoreMembers({
@@ -923,7 +921,9 @@ const storeWorktreeNewCommand = Cli.Command.make(
       Cli.Options.optional,
     ),
     porcelain: Cli.Options.boolean('porcelain').pipe(
-      Cli.Options.withDescription('Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))'),
+      Cli.Options.withDescription(
+        'Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))',
+      ),
       Cli.Options.withDefault(false),
     ),
     output: outputOption,
@@ -1057,7 +1057,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
       // Determine target ref and worktree creation mode
       const targetRef = commit ?? ref!
       const isNewBranch = base !== undefined
-      const refType = commit !== undefined ? 'commit' as const : classifyRef(targetRef)
+      const refType = commit !== undefined ? ('commit' as const) : classifyRef(targetRef)
 
       // Compute worktree path
       const worktreePath = store.getWorktreePath({ source, ref: targetRef, refType })

@@ -807,21 +807,19 @@ export const syncMember = <R = never>({
             error instanceof Git.GitCommandError &&
             error.stderr.includes('already exists and is not an empty directory'),
           () =>
-            store
-              .hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType })
-              .pipe(
-                Effect.flatMap((exists) =>
-                  exists
-                    ? Effect.void
-                    : Effect.fail(
-                        new Git.GitCommandError({
-                          args: ['worktree', 'add'],
-                          exitCode: 1,
-                          stderr: 'Target directory already exists but is not a valid worktree',
-                        }),
-                      ),
-                ),
+            store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType }).pipe(
+              Effect.flatMap((exists) =>
+                exists
+                  ? Effect.void
+                  : Effect.fail(
+                      new Git.GitCommandError({
+                        args: ['worktree', 'add'],
+                        exitCode: 1,
+                        stderr: 'Target directory already exists but is not a valid worktree',
+                      }),
+                    ),
               ),
+            ),
         ),
         Effect.withSpan('megarepo/sync/member/create-worktree', {
           attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
@@ -892,11 +890,7 @@ export const syncMember = <R = never>({
           previousCommit: remotePreviousCommit,
           ref: targetRef,
           lockUpdated:
-            isLockMode === true
-              ? remoteUpdated === true
-                ? true
-                : undefined
-              : undefined,
+            isLockMode === true ? (remoteUpdated === true ? true : undefined) : undefined,
         } satisfies MemberSyncResult
       }
       if (dryRun === false) {
@@ -935,12 +929,7 @@ export const syncMember = <R = never>({
 
     return {
       name,
-      status:
-        wasCloned === true
-          ? 'cloned'
-          : isUpdate === true
-            ? 'updated'
-            : 'applied',
+      status: wasCloned === true ? 'cloned' : isUpdate === true ? 'updated' : 'applied',
       commit: targetCommit,
       previousCommit: isUpdate === true ? previousCommit : undefined,
       ref: targetRef,

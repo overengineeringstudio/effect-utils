@@ -5,9 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import type { MegarepoConfig } from './config.ts'
-import type { LockFile } from './lock.ts'
-import type { MegarepoStore } from './store.ts'
 import type { MemberSource } from './config.ts'
+import type { LockFile } from './lock.ts'
 import {
   validateStoreMembers,
   runPreflightChecks,
@@ -16,6 +15,7 @@ import {
   StoreHygieneError,
   type StoreIssue,
 } from './store-hygiene.ts'
+import type { MegarepoStore } from './store.ts'
 
 // =============================================================================
 // Test Helpers
@@ -25,9 +25,7 @@ const makeTestStore = (basePath: AbsoluteDirPath): MegarepoStore => ({
   basePath,
   getRepoBasePath: (source) => {
     if (source.type === 'github') {
-      return EffectPath.unsafe.absoluteDir(
-        `${basePath}github.com/${source.owner}/${source.repo}/`,
-      )
+      return EffectPath.unsafe.absoluteDir(`${basePath}github.com/${source.owner}/${source.repo}/`)
     }
     return EffectPath.unsafe.absoluteDir(`${basePath}other/`)
   },
@@ -53,9 +51,7 @@ const makeTestStore = (basePath: AbsoluteDirPath): MegarepoStore => ({
   listWorktrees: () => Effect.succeed([]),
   getRepoPath: (source) => {
     if (source.type === 'github') {
-      return EffectPath.unsafe.absoluteDir(
-        `${basePath}github.com/${source.owner}/${source.repo}/`,
-      )
+      return EffectPath.unsafe.absoluteDir(`${basePath}github.com/${source.owner}/${source.repo}/`)
     }
     return EffectPath.unsafe.absoluteDir(`${basePath}other/`)
   },
@@ -65,9 +61,7 @@ const makeTestStore = (basePath: AbsoluteDirPath): MegarepoStore => ({
 const makeTestConfig = (members: Record<string, string>): MegarepoConfig =>
   ({ members }) as MegarepoConfig
 
-const makeTestLockFile = (
-  members: Record<string, { ref: string; commit: string }>,
-): LockFile =>
+const makeTestLockFile = (members: Record<string, { ref: string; commit: string }>): LockFile =>
   ({
     version: 1,
     members: Object.fromEntries(
@@ -84,9 +78,8 @@ const makeTestLockFile = (
     ),
   }) as LockFile
 
-const runWithContext = <A, E>(
-  effect: Effect.Effect<A, E, NodeContext.NodeContext>,
-) => Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
+const runWithContext = <A, E>(effect: Effect.Effect<A, E, NodeContext.NodeContext>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(NodeContext.layer)))
 
 // =============================================================================
 // Tests
@@ -110,8 +103,7 @@ describe('store-hygiene', () => {
 
           expect(issues).toEqual([])
         }),
-      ),
-    )
+      ))
 
     it('returns empty array when member not in lock file', () =>
       runWithContext(
@@ -129,8 +121,7 @@ describe('store-hygiene', () => {
 
           expect(issues).toEqual([])
         }),
-      ),
-    )
+      ))
 
     it('reports missing_bare when bare repo does not exist', () =>
       runWithContext(
@@ -155,8 +146,7 @@ describe('store-hygiene', () => {
           expect(issues[0]!.severity).toBe('error')
           expect(issues[0]!.memberName).toBe('myrepo')
         }),
-      ),
-    )
+      ))
 
     it('skips members not in memberNames', () =>
       runWithContext(
@@ -182,8 +172,7 @@ describe('store-hygiene', () => {
 
           expect(issues.every((i) => i.memberName === 'myrepo')).toBe(true)
         }),
-      ),
-    )
+      ))
 
     it('skips local path members', () =>
       runWithContext(
@@ -201,8 +190,7 @@ describe('store-hygiene', () => {
 
           expect(issues).toEqual([])
         }),
-      ),
-    )
+      ))
 
     it('reports missing_bare with fix suggestion and metadata', () =>
       runWithContext(
@@ -225,8 +213,7 @@ describe('store-hygiene', () => {
           expect(issues[0]!.fix).toBeDefined()
           expect(issues[0]!.meta?._tag).toBe('missing_bare')
         }),
-      ),
-    )
+      ))
   })
 
   describe('runPreflightChecks', () => {
@@ -238,22 +225,23 @@ describe('store-hygiene', () => {
           lockFile: makeTestLockFile({}),
           store: makeTestStore(EffectPath.unsafe.absoluteDir('/tmp/test-store/')),
         }),
-      ),
-    )
+      ))
 
     it('fails with StoreHygieneError on error-severity issues', () =>
       runWithContext(
         Effect.gen(function* () {
-          const result = yield* Effect.flip(runPreflightChecks({
-            memberNames: ['myrepo'],
-            config: makeTestConfig({ myrepo: 'owner/myrepo#main' }),
-            lockFile: makeTestLockFile({
-              myrepo: { ref: 'main', commit: 'a'.repeat(40) },
+          const result = yield* Effect.flip(
+            runPreflightChecks({
+              memberNames: ['myrepo'],
+              config: makeTestConfig({ myrepo: 'owner/myrepo#main' }),
+              lockFile: makeTestLockFile({
+                myrepo: { ref: 'main', commit: 'a'.repeat(40) },
+              }),
+              store: makeTestStore(
+                EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
+              ),
             }),
-            store: makeTestStore(
-              EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
-            ),
-          }))
+          )
 
           expect(result).toBeInstanceOf(StoreHygieneError)
           if (result instanceof StoreHygieneError) {
@@ -262,8 +250,7 @@ describe('store-hygiene', () => {
             expect(result.issues[0]!.memberName).toBe('myrepo')
           }
         }),
-      ),
-    )
+      ))
 
     it('succeeds in non-strict mode even with errors', () =>
       runWithContext(
@@ -273,66 +260,72 @@ describe('store-hygiene', () => {
           lockFile: makeTestLockFile({
             myrepo: { ref: 'main', commit: 'a'.repeat(40) },
           }),
-          store: makeTestStore(
-            EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
-          ),
+          store: makeTestStore(EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/')),
           strict: false,
         }),
-      ),
-    )
+      ))
 
     it('includes actionable error messages', () =>
       runWithContext(
         Effect.gen(function* () {
-          const result = yield* Effect.flip(runPreflightChecks({
-            memberNames: ['myrepo'],
-            config: makeTestConfig({ myrepo: 'owner/myrepo#main' }),
-            lockFile: makeTestLockFile({
-              myrepo: { ref: 'main', commit: 'a'.repeat(40) },
+          const result = yield* Effect.flip(
+            runPreflightChecks({
+              memberNames: ['myrepo'],
+              config: makeTestConfig({ myrepo: 'owner/myrepo#main' }),
+              lockFile: makeTestLockFile({
+                myrepo: { ref: 'main', commit: 'a'.repeat(40) },
+              }),
+              store: makeTestStore(
+                EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
+              ),
             }),
-            store: makeTestStore(
-              EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
-            ),
-          }))
+          )
 
           expect(result).toBeInstanceOf(StoreHygieneError)
           if (result instanceof StoreHygieneError) {
             expect(result.message).toContain('Store hygiene check failed')
           }
         }),
-      ),
-    )
+      ))
   })
 
   describe('parseWorktreeRef', () => {
     it('parses /refs/heads/ paths', () => {
-      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/main/'))
-        .toEqual({ type: 'heads', ref: 'main' })
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/main/')).toEqual({
+        type: 'heads',
+        ref: 'main',
+      })
     })
 
     it('parses branch names with slashes', () => {
-      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/feature/my-branch/'))
-        .toEqual({ type: 'heads', ref: 'feature/my-branch' })
+      expect(
+        parseWorktreeRef('/store/github.com/owner/repo/refs/heads/feature/my-branch/'),
+      ).toEqual({ type: 'heads', ref: 'feature/my-branch' })
     })
 
     it('parses /refs/tags/ paths', () => {
-      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/tags/v1.0/'))
-        .toEqual({ type: 'tags', ref: 'v1.0' })
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/tags/v1.0/')).toEqual({
+        type: 'tags',
+        ref: 'v1.0',
+      })
     })
 
     it('parses /refs/commits/ paths', () => {
-      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/commits/abc123def/'))
-        .toEqual({ type: 'commits', ref: 'abc123def' })
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/commits/abc123def/')).toEqual({
+        type: 'commits',
+        ref: 'abc123def',
+      })
     })
 
     it('returns undefined for paths without /refs/', () => {
-      expect(parseWorktreeRef('/store/github.com/owner/repo/some/other/path/'))
-        .toBeUndefined()
+      expect(parseWorktreeRef('/store/github.com/owner/repo/some/other/path/')).toBeUndefined()
     })
 
     it('handles paths without trailing slash', () => {
-      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/main'))
-        .toEqual({ type: 'heads', ref: 'main' })
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/main')).toEqual({
+        type: 'heads',
+        ref: 'main',
+      })
     })
   })
 
@@ -352,18 +345,20 @@ describe('store-hygiene', () => {
       it('reports what would happen for ref_mismatch without doing anything', () =>
         runWithContext(
           Effect.gen(function* () {
-            const issues: StoreIssue[] = [{
-              severity: 'error',
-              type: 'ref_mismatch',
-              memberName: 'myrepo',
-              message: 'worktree HEAD is wrong',
-              meta: {
-                _tag: 'ref_mismatch',
-                expectedRef: 'main',
-                actualRef: 'develop',
-                worktreePath: '/tmp/test/refs/heads/main/',
+            const issues: StoreIssue[] = [
+              {
+                severity: 'error',
+                type: 'ref_mismatch',
+                memberName: 'myrepo',
+                message: 'worktree HEAD is wrong',
+                meta: {
+                  _tag: 'ref_mismatch',
+                  expectedRef: 'main',
+                  actualRef: 'develop',
+                  worktreePath: '/tmp/test/refs/heads/main/',
+                },
               },
-            }]
+            ]
 
             const results = yield* fixStoreIssues({ issues, store: testStore, dryRun: true })
 
@@ -371,23 +366,24 @@ describe('store-hygiene', () => {
             expect(results[0]!.status).toBe('skipped')
             expect(results[0]!.message).toContain("would checkout 'main'")
           }),
-        ),
-      )
+        ))
 
       it('reports what would happen for broken_worktree without doing anything', () =>
         runWithContext(
           Effect.gen(function* () {
-            const issues: StoreIssue[] = [{
-              severity: 'error',
-              type: 'broken_worktree',
-              memberName: 'myrepo',
-              message: '.git not found',
-              meta: {
-                _tag: 'broken_worktree',
-                worktreePath: '/tmp/test/refs/heads/main/',
-                source: githubSource,
+            const issues: StoreIssue[] = [
+              {
+                severity: 'error',
+                type: 'broken_worktree',
+                memberName: 'myrepo',
+                message: '.git not found',
+                meta: {
+                  _tag: 'broken_worktree',
+                  worktreePath: '/tmp/test/refs/heads/main/',
+                  source: githubSource,
+                },
               },
-            }]
+            ]
 
             const results = yield* fixStoreIssues({ issues, store: testStore, dryRun: true })
 
@@ -395,19 +391,20 @@ describe('store-hygiene', () => {
             expect(results[0]!.status).toBe('skipped')
             expect(results[0]!.message).toContain('would recreate worktree')
           }),
-        ),
-      )
+        ))
 
       it('reports what would happen for missing_bare without doing anything', () =>
         runWithContext(
           Effect.gen(function* () {
-            const issues: StoreIssue[] = [{
-              severity: 'error',
-              type: 'missing_bare',
-              memberName: 'myrepo',
-              message: 'bare repo not found',
-              meta: { _tag: 'missing_bare', source: githubSource },
-            }]
+            const issues: StoreIssue[] = [
+              {
+                severity: 'error',
+                type: 'missing_bare',
+                memberName: 'myrepo',
+                message: 'bare repo not found',
+                meta: { _tag: 'missing_bare', source: githubSource },
+              },
+            ]
 
             const results = yield* fixStoreIssues({ issues, store: testStore, dryRun: true })
 
@@ -415,16 +412,25 @@ describe('store-hygiene', () => {
             expect(results[0]!.status).toBe('skipped')
             expect(results[0]!.message).toContain('would clone bare repo')
           }),
-        ),
-      )
+        ))
     })
 
     it('skips non-error severity issues', () =>
       runWithContext(
         Effect.gen(function* () {
           const issues: StoreIssue[] = [
-            { severity: 'warning', type: 'dirty', memberName: 'myrepo', message: 'uncommitted changes' },
-            { severity: 'warning', type: 'unpushed', memberName: 'myrepo', message: 'unpushed commits' },
+            {
+              severity: 'warning',
+              type: 'dirty',
+              memberName: 'myrepo',
+              message: 'uncommitted changes',
+            },
+            {
+              severity: 'warning',
+              type: 'unpushed',
+              memberName: 'myrepo',
+              message: 'unpushed commits',
+            },
             { severity: 'info', type: 'orphaned', memberName: 'myrepo', message: 'orphaned' },
           ]
 
@@ -432,8 +438,7 @@ describe('store-hygiene', () => {
 
           expect(results).toHaveLength(0)
         }),
-      ),
-    )
+      ))
 
     it('skips issues with missing metadata', () =>
       runWithContext(
@@ -450,18 +455,19 @@ describe('store-hygiene', () => {
           expect(results.every((r) => r.status === 'skipped')).toBe(true)
           expect(results.every((r) => r.message === 'missing metadata for fix')).toBe(true)
         }),
-      ),
-    )
+      ))
 
     it('skips unsupported issue types', () =>
       runWithContext(
         Effect.gen(function* () {
-          const issues: StoreIssue[] = [{
-            severity: 'error',
-            type: 'dirty',
-            memberName: 'myrepo',
-            message: 'dirty worktree',
-          }]
+          const issues: StoreIssue[] = [
+            {
+              severity: 'error',
+              type: 'dirty',
+              memberName: 'myrepo',
+              message: 'dirty worktree',
+            },
+          ]
 
           const results = yield* fixStoreIssues({ issues, store: testStore })
 
@@ -469,7 +475,6 @@ describe('store-hygiene', () => {
           expect(results[0]!.status).toBe('skipped')
           expect(results[0]!.message).toContain("no automatic fix for 'dirty'")
         }),
-      ),
-    )
+      ))
   })
 })

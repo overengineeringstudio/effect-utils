@@ -35,7 +35,10 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: { description: '--dry-run: preview changes without applying', control: { type: 'boolean' } },
+    dryRun: {
+      description: '--dry-run: preview changes without applying',
+      control: { type: 'boolean' },
+    },
   },
 } satisfies Meta
 

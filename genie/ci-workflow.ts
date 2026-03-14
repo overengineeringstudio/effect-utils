@@ -73,7 +73,7 @@ const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>
-  [...(opts.unrestrictedEval ? ['restrict-eval = false'] : []), ...(opts.extraLines ?? [])].join(
+  [...(opts.unrestrictedEval === true ? ['restrict-eval = false'] : []), ...(opts.extraLines ?? [])].join(
     '\n',
   )
 
@@ -109,7 +109,7 @@ export const namespaceRunner = (profile: RunnerProfile | (string & {}), runId: s
 /** Checkout repository via actions/checkout@v4 */
 export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: string }) => ({
   uses: 'actions/checkout@v4' as const,
-  ...(opts && Object.keys(opts).length > 0 ? { with: opts } : {}),
+  ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
 })
 
 /**
@@ -127,7 +127,7 @@ export const installNixStep = (opts?: { extraConf?: string }) => ({
       'extra-substituters = https://devenv.cachix.org',
       'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
       'access-tokens = github.com=${{ github.token }}',
-      ...(opts?.extraConf ? [opts.extraConf] : []),
+      ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
   },
 })
@@ -138,7 +138,7 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
   uses: 'cachix/cachix-action@v16' as const,
   with: {
     name: opts.name,
-    ...(opts.authToken ? { authToken: opts.authToken } : {}),
+    ...(opts.authToken !== undefined ? { authToken: opts.authToken } : {}),
   },
 })
 
@@ -166,7 +166,7 @@ export const installMegarepoStep = {
 /** Sync megarepo dependencies to workspace refs. */
 export const syncMegarepoWorkspaceStep = (opts?: { skip?: string[] }) => {
   const args = ['mr', 'sync']
-  if (opts?.skip) for (const s of opts.skip) args.push('--skip', s)
+  if (opts?.skip !== undefined) for (const s of opts.skip) args.push('--skip', s)
   return {
     name: 'Sync megarepo dependencies',
     env: { MEGAREPO_STORE: jobLocalMegarepoStore },
@@ -194,7 +194,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock apply --all${skipArgs ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }

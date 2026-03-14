@@ -79,7 +79,9 @@ export const fetchCommand = Cli.Command.make(
   {
     ...sharedOptions,
     apply: Cli.Options.boolean('apply').pipe(
-      Cli.Options.withDescription('After fetching, also apply the lock to the workspace (fetch + apply)'),
+      Cli.Options.withDescription(
+        'After fetching, also apply the lock to the workspace (fetch + apply)',
+      ),
       Cli.Options.withDefault(false),
     ),
     createBranches: Cli.Options.boolean('create-branches').pipe(
@@ -87,7 +89,19 @@ export const fetchCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, apply: applyAfter, createBranches, verbose }) =>
+  ({
+    output,
+    dryRun,
+    force,
+    all,
+    only,
+    skip,
+    gitProtocol,
+    noStrict,
+    apply: applyAfter,
+    createBranches,
+    verbose,
+  }) =>
     runSyncCommand({
       mode: 'fetch',
       output,

@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest'
 
 import type { LockedMember } from '../lock.ts'
 import { parseNixFlakeUrl, getRef, getRev, updateNixFlakeUrl } from './flake-url.ts'
-import { extractFlakeNixInputs, extractDevenvYamlInputs, extractLockFileInputs, matchUrlToMember } from './input-discovery.ts'
-import { getByDotPath, setByDotPath } from './mod.ts'
+import {
+  extractFlakeNixInputs,
+  extractDevenvYamlInputs,
+  extractLockFileInputs,
+  matchUrlToMember,
+} from './input-discovery.ts'
 import {
   matchLockedInputToMember,
   needsRevUpdate,
@@ -12,6 +16,7 @@ import {
   normalizeGitUrl,
   urlsMatch,
 } from './matcher.ts'
+import { getByDotPath, setByDotPath } from './mod.ts'
 import {
   FlakeLock,
   GitHubLockedInput,
@@ -804,9 +809,7 @@ const simulateSourceFileRevSync = ({
   }>
 } => {
   const inputs =
-    fileType === 'flake.nix'
-      ? extractFlakeNixInputs(content)
-      : extractDevenvYamlInputs(content)
+    fileType === 'flake.nix' ? extractFlakeNixInputs(content) : extractDevenvYamlInputs(content)
 
   const updatedInputs: Array<{
     inputName: string
@@ -830,7 +833,7 @@ const simulateSourceFileRevSync = ({
     if (currentRev === undefined) continue
     if (currentRev === member.commit) continue
 
-    const newUrl = updateNixFlakeUrl(input.url, { rev: member.commit })
+    const newUrl = updateNixFlakeUrl({ url: input.url, updates: { rev: member.commit } })
 
     updatedInputs.push({
       inputName: input.inputName,
@@ -1116,66 +1119,66 @@ describe('shared lock source helpers', () => {
   describe('getByDotPath', () => {
     it('should resolve a simple path', () => {
       const obj = { a: { b: { c: 42 } } }
-      expect(getByDotPath(obj, '.a.b.c')).toBe(42)
+      expect(getByDotPath({ obj, dotPath: '.a.b.c' })).toBe(42)
     })
 
     it('should resolve a path without leading dot', () => {
       const obj = { a: { b: 'hello' } }
-      expect(getByDotPath(obj, 'a.b')).toBe('hello')
+      expect(getByDotPath({ obj, dotPath: 'a.b' })).toBe('hello')
     })
 
     it('should return the nested object at a partial path', () => {
       const obj = { nodes: { devenv: { locked: { rev: 'abc', type: 'github' } } } }
-      expect(getByDotPath(obj, '.nodes.devenv.locked')).toEqual({ rev: 'abc', type: 'github' })
+      expect(getByDotPath({ obj, dotPath: '.nodes.devenv.locked' })).toEqual({ rev: 'abc', type: 'github' })
     })
 
     it('should return undefined for missing path', () => {
       const obj = { a: { b: 1 } }
-      expect(getByDotPath(obj, '.a.c.d')).toBeUndefined()
+      expect(getByDotPath({ obj, dotPath: '.a.c.d' })).toBeUndefined()
     })
 
     it('should return undefined for null/undefined input', () => {
-      expect(getByDotPath(undefined, '.a')).toBeUndefined()
-      expect(getByDotPath(null, '.a')).toBeUndefined()
+      expect(getByDotPath({ obj: undefined, dotPath: '.a' })).toBeUndefined()
+      expect(getByDotPath({ obj: null, dotPath: '.a' })).toBeUndefined()
     })
 
     it('should return the root object for empty path', () => {
       const obj = { a: 1 }
-      expect(getByDotPath(obj, '')).toEqual({ a: 1 })
+      expect(getByDotPath({ obj, dotPath: '' })).toEqual({ a: 1 })
     })
   })
 
   describe('setByDotPath', () => {
     it('should set a value at a simple path', () => {
       const obj = { a: { b: { c: 1 } } }
-      const result = setByDotPath(obj, '.a.b.c', 42)
-      expect(getByDotPath(result, '.a.b.c')).toBe(42)
+      const result = setByDotPath({ obj, dotPath: '.a.b.c', value: 42 })
+      expect(getByDotPath({ obj: result, dotPath: '.a.b.c' })).toBe(42)
     })
 
     it('should create intermediate objects', () => {
       const obj = {}
-      const result = setByDotPath(obj, '.a.b.c', 'hello')
-      expect(getByDotPath(result, '.a.b.c')).toBe('hello')
+      const result = setByDotPath({ obj, dotPath: '.a.b.c', value: 'hello' })
+      expect(getByDotPath({ obj: result, dotPath: '.a.b.c' })).toBe('hello')
     })
 
     it('should not mutate the original object', () => {
       const obj = { a: { b: { c: 1 } } }
-      const result = setByDotPath(obj, '.a.b.c', 42)
+      const result = setByDotPath({ obj, dotPath: '.a.b.c', value: 42 })
       expect(obj.a.b.c).toBe(1)
-      expect(getByDotPath(result, '.a.b.c')).toBe(42)
+      expect(getByDotPath({ obj: result, dotPath: '.a.b.c' })).toBe(42)
     })
 
     it('should set a complex value (object)', () => {
       const obj = { nodes: { devenv: { locked: { rev: 'old', type: 'github' } } } }
       const newLocked = { rev: 'new', type: 'github', lastModified: 123 }
-      const result = setByDotPath(obj, '.nodes.devenv.locked', newLocked)
-      expect(getByDotPath(result, '.nodes.devenv.locked')).toEqual(newLocked)
+      const result = setByDotPath({ obj, dotPath: '.nodes.devenv.locked', value: newLocked })
+      expect(getByDotPath({ obj: result, dotPath: '.nodes.devenv.locked' })).toEqual(newLocked)
     })
 
     it('should preserve sibling keys', () => {
       const obj = { nodes: { devenv: { locked: { rev: 'old' }, original: { type: 'github' } } } }
-      const result = setByDotPath(obj, '.nodes.devenv.locked', { rev: 'new' })
-      expect(getByDotPath(result, '.nodes.devenv.original')).toEqual({ type: 'github' })
+      const result = setByDotPath({ obj, dotPath: '.nodes.devenv.locked', value: { rev: 'new' } })
+      expect(getByDotPath({ obj: result, dotPath: '.nodes.devenv.original' })).toEqual({ type: 'github' })
     })
   })
 })
@@ -1219,19 +1222,39 @@ describe('shared lock source sync logic', () => {
     for (const [label, config] of Object.entries(sharedLockSources)) {
       const sourceContent = memberLocks[config.source]
       if (sourceContent === undefined) {
-        results.push({ label, sourceMember: config.source, path: config.path, updatedMembers: [], skippedMembers: [] })
+        results.push({
+          label,
+          sourceMember: config.source,
+          path: config.path,
+          updatedMembers: [],
+          skippedMembers: [],
+        })
         continue
       }
 
       let sourceJson: unknown
-      try { sourceJson = JSON.parse(sourceContent) } catch {
-        results.push({ label, sourceMember: config.source, path: config.path, updatedMembers: [], skippedMembers: [] })
+      try {
+        sourceJson = JSON.parse(sourceContent)
+      } catch {
+        results.push({
+          label,
+          sourceMember: config.source,
+          path: config.path,
+          updatedMembers: [],
+          skippedMembers: [],
+        })
         continue
       }
 
-      const sourceValue = getByDotPath(sourceJson, config.path)
+      const sourceValue = getByDotPath({ obj: sourceJson, dotPath: config.path })
       if (sourceValue === undefined) {
-        results.push({ label, sourceMember: config.source, path: config.path, updatedMembers: [], skippedMembers: [] })
+        results.push({
+          label,
+          sourceMember: config.source,
+          path: config.path,
+          updatedMembers: [],
+          skippedMembers: [],
+        })
         continue
       }
 
@@ -1240,26 +1263,34 @@ describe('shared lock source sync logic', () => {
 
       for (const memberName of Object.keys(memberLocks)) {
         if (memberName === config.source) continue
-        if (excludeMembers.has(memberName)) {
+        if (excludeMembers.has(memberName) === true) {
           skippedMembers.push(memberName)
           continue
         }
 
         let targetJson: unknown
-        try { targetJson = JSON.parse(updatedLocks[memberName]!) } catch {
+        try {
+          targetJson = JSON.parse(updatedLocks[memberName]!)
+        } catch {
           skippedMembers.push(memberName)
           continue
         }
 
-        const currentValue = getByDotPath(targetJson, config.path)
+        const currentValue = getByDotPath({ obj: targetJson, dotPath: config.path })
         if (JSON.stringify(currentValue) === JSON.stringify(sourceValue)) continue
 
-        const updatedJson = setByDotPath(targetJson, config.path, sourceValue)
+        const updatedJson = setByDotPath({ obj: targetJson, dotPath: config.path, value: sourceValue })
         updatedLocks[memberName] = JSON.stringify(updatedJson, null, 2) + '\n'
         updatedMembers.push(memberName)
       }
 
-      results.push({ label, sourceMember: config.source, path: config.path, updatedMembers, skippedMembers })
+      results.push({
+        label,
+        sourceMember: config.source,
+        path: config.path,
+        updatedMembers,
+        skippedMembers,
+      })
     }
 
     return { updatedLocks, results }
@@ -1441,9 +1472,7 @@ const simulateSourceFileRefSync = ({
   }>
 } => {
   const inputs =
-    fileType === 'flake.nix'
-      ? extractFlakeNixInputs(content)
-      : extractDevenvYamlInputs(content)
+    fileType === 'flake.nix' ? extractFlakeNixInputs(content) : extractDevenvYamlInputs(content)
 
   const updates = new Map<string, SourceUrlUpdate>()
   const updatedInputs: Array<{
@@ -1559,7 +1588,7 @@ describe('ref sync', () => {
       ref: 'schickling/2026-03-12-pnpm-refactor',
       commit: 'abc123def456789012345678901234567890abcd',
     }),
-    'playwright': createLockedMember({
+    playwright: createLockedMember({
       url: 'https://github.com/nicknisi/playwright-nix',
       ref: 'feature/new-branch',
       commit: 'def456789012345678901234567890abcdef1234',
@@ -1588,9 +1617,7 @@ describe('ref sync', () => {
       expect(result.updatedContent).toContain(
         'playwright.url = "git+https://github.com/nicknisi/playwright-nix?ref=feature/new-branch"',
       )
-      expect(result.updatedContent).toContain(
-        'nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable"',
-      )
+      expect(result.updatedContent).toContain('nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable"')
     })
 
     it('should not add ref to bare URL (no current ref)', () => {
@@ -1672,9 +1699,7 @@ describe('ref sync', () => {
       expect(result.updatedContent).toContain(
         '    url: "git+https://github.com/nicknisi/playwright-nix?ref=feature/new-branch"',
       )
-      expect(result.updatedContent).toContain(
-        '    url: github:NixOS/nixpkgs/nixos-unstable',
-      )
+      expect(result.updatedContent).toContain('    url: github:NixOS/nixpkgs/nixos-unstable')
     })
 
     it('should not add ref to bare URL', () => {
@@ -1694,66 +1719,67 @@ describe('ref sync', () => {
   })
 
   describe('lock file ref sync', () => {
-    const lockContent = JSON.stringify(
-      {
-        nodes: {
-          root: {
-            inputs: {
-              'effect-utils': 'effect-utils',
-              'effect-utils-sub': 'effect-utils-sub',
-              nixpkgs: 'nixpkgs',
+    const lockContent =
+      JSON.stringify(
+        {
+          nodes: {
+            root: {
+              inputs: {
+                'effect-utils': 'effect-utils',
+                'effect-utils-sub': 'effect-utils-sub',
+                nixpkgs: 'nixpkgs',
+              },
+            },
+            'effect-utils': {
+              locked: {
+                owner: 'overengineeringstudio',
+                repo: 'effect-utils',
+                rev: 'abc123',
+                type: 'github',
+              },
+              original: {
+                owner: 'overengineeringstudio',
+                ref: 'main',
+                repo: 'effect-utils',
+                type: 'github',
+              },
+            },
+            'effect-utils-sub': {
+              locked: {
+                owner: 'overengineeringstudio',
+                repo: 'effect-utils',
+                rev: 'abc123',
+                type: 'github',
+              },
+              original: {
+                dir: 'packages/sub',
+                owner: 'overengineeringstudio',
+                ref: 'main',
+                repo: 'effect-utils',
+                type: 'github',
+              },
+            },
+            nixpkgs: {
+              locked: {
+                owner: 'NixOS',
+                repo: 'nixpkgs',
+                rev: 'def456',
+                type: 'github',
+              },
+              original: {
+                owner: 'NixOS',
+                ref: 'nixos-unstable',
+                repo: 'nixpkgs',
+                type: 'github',
+              },
             },
           },
-          'effect-utils': {
-            locked: {
-              owner: 'overengineeringstudio',
-              repo: 'effect-utils',
-              rev: 'abc123',
-              type: 'github',
-            },
-            original: {
-              owner: 'overengineeringstudio',
-              ref: 'main',
-              repo: 'effect-utils',
-              type: 'github',
-            },
-          },
-          'effect-utils-sub': {
-            locked: {
-              owner: 'overengineeringstudio',
-              repo: 'effect-utils',
-              rev: 'abc123',
-              type: 'github',
-            },
-            original: {
-              dir: 'packages/sub',
-              owner: 'overengineeringstudio',
-              ref: 'main',
-              repo: 'effect-utils',
-              type: 'github',
-            },
-          },
-          nixpkgs: {
-            locked: {
-              owner: 'NixOS',
-              repo: 'nixpkgs',
-              rev: 'def456',
-              type: 'github',
-            },
-            original: {
-              owner: 'NixOS',
-              ref: 'nixos-unstable',
-              repo: 'nixpkgs',
-              type: 'github',
-            },
-          },
+          version: 7,
+          root: 'root',
         },
-        version: 7,
-        root: 'root',
-      },
-      null,
-      2,
-    ) + '\n'
+        null,
+        2,
+      ) + '\n'
 
     it('should update original.ref for matched inputs', () => {
       const result = simulateLockFileRefSync({
@@ -1768,7 +1794,9 @@ describe('ref sync', () => {
 
       const parsed = JSON.parse(result.updatedContent)
       expect(parsed.nodes['effect-utils'].original.ref).toBe('schickling/2026-03-12-pnpm-refactor')
-      expect(parsed.nodes['effect-utils-sub'].original.ref).toBe('schickling/2026-03-12-pnpm-refactor')
+      expect(parsed.nodes['effect-utils-sub'].original.ref).toBe(
+        'schickling/2026-03-12-pnpm-refactor',
+      )
       expect(parsed.nodes['effect-utils-sub'].original.dir).toBe('packages/sub')
       expect(parsed.nodes.nixpkgs.original.ref).toBe('nixos-unstable')
     })
@@ -1791,30 +1819,31 @@ describe('ref sync', () => {
     })
 
     it('should skip nodes without original.ref', () => {
-      const content = JSON.stringify(
-        {
-          nodes: {
-            root: { inputs: { dep: 'dep' } },
-            dep: {
-              locked: {
-                owner: 'overengineeringstudio',
-                repo: 'effect-utils',
-                rev: 'abc123',
-                type: 'github',
-              },
-              original: {
-                owner: 'overengineeringstudio',
-                repo: 'effect-utils',
-                type: 'github',
+      const content =
+        JSON.stringify(
+          {
+            nodes: {
+              root: { inputs: { dep: 'dep' } },
+              dep: {
+                locked: {
+                  owner: 'overengineeringstudio',
+                  repo: 'effect-utils',
+                  rev: 'abc123',
+                  type: 'github',
+                },
+                original: {
+                  owner: 'overengineeringstudio',
+                  repo: 'effect-utils',
+                  type: 'github',
+                },
               },
             },
+            version: 7,
+            root: 'root',
           },
-          version: 7,
-          root: 'root',
-        },
-        null,
-        2,
-      ) + '\n'
+          null,
+          2,
+        ) + '\n'
 
       const result = simulateLockFileRefSync({
         content,

@@ -86,7 +86,12 @@ export const AlreadySynced: Story = {
 
 export const NoChanges: Story = {
   render: () => (
-    <TuiStoryPreview command="mr status" app={StaticApp} View={() => <Summary counts={{}} />} initialState={null} />
+    <TuiStoryPreview
+      command="mr status"
+      app={StaticApp}
+      View={() => <Summary counts={{}} />}
+      initialState={null}
+    />
   ),
 }
 

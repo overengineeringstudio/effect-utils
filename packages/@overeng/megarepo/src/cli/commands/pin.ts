@@ -34,8 +34,8 @@ import {
   writeLockFile,
 } from '../../lib/lock.ts'
 import { classifyRef } from '../../lib/ref.ts'
-import { Store, StoreLayer } from '../../lib/store.ts'
 import { runPreflightChecks } from '../../lib/store-hygiene.ts'
+import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import {
   NotInMegarepoError,

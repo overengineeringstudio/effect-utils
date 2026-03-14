@@ -11,6 +11,7 @@ import { parseNixFlakeUrl, updateNixFlakeUrl } from './flake-url.ts'
 // Types
 // =============================================================================
 
+/** Describes a ref/rev update to apply to a Nix input URL */
 export interface SourceUrlUpdate {
   /** The upstream megarepo member name this input maps to */
   readonly memberName: string
@@ -51,7 +52,7 @@ export const rewriteFlakeNixUrls = (args: {
     if ('newRef' in update) updateArgs.ref = update.newRef
     if ('newRev' in update) updateArgs.rev = update.newRev
 
-    const newUrl = updateNixFlakeUrl(url, updateArgs)
+    const newUrl = updateNixFlakeUrl({ url, updates: updateArgs })
     if (newUrl === url) return fullMatch
 
     updatedInputs.push(inputName)
@@ -95,9 +96,9 @@ export const rewriteDevenvYamlUrls = (args: {
       continue
     }
 
-    if (!inInputs) continue
+    if (inInputs === false) continue
 
-    if (trimmed !== '' && indent <= inputsIndent && !trimmed.startsWith('#')) {
+    if (trimmed !== '' && indent <= inputsIndent && trimmed.startsWith('#') === false) {
       inInputs = false
       currentInputName = undefined
       continue
@@ -118,7 +119,7 @@ export const rewriteDevenvYamlUrls = (args: {
         const rawValue = urlMatch[1]!.trim()
         const isDoubleQuoted = rawValue.startsWith('"') && rawValue.endsWith('"')
         const isSingleQuoted = rawValue.startsWith("'") && rawValue.endsWith("'")
-        const cleanUrl = isDoubleQuoted || isSingleQuoted ? rawValue.slice(1, -1) : rawValue
+        const cleanUrl = isDoubleQuoted === true || isSingleQuoted === true ? rawValue.slice(1, -1) : rawValue
 
         const parsed = parseNixFlakeUrl(cleanUrl)
         if (parsed === undefined) continue
@@ -127,10 +128,10 @@ export const rewriteDevenvYamlUrls = (args: {
         if ('newRef' in update) updateArgs.ref = update.newRef
         if ('newRev' in update) updateArgs.rev = update.newRev
 
-        const newUrl = updateNixFlakeUrl(cleanUrl, updateArgs)
+        const newUrl = updateNixFlakeUrl({ url: cleanUrl, updates: updateArgs })
         if (newUrl === cleanUrl) continue
 
-        const newValue = isDoubleQuoted ? `"${newUrl}"` : isSingleQuoted ? `'${newUrl}'` : newUrl
+        const newValue = isDoubleQuoted === true ? `"${newUrl}"` : isSingleQuoted === true ? `'${newUrl}'` : newUrl
         lines[i] = line.replace(rawValue, newValue)
         updatedInputs.push(currentInputName)
       }

@@ -33,7 +33,10 @@ describe('rewriteFlakeNixUrls', () => {
 
   it('should update ref in github: URL', () => {
     const updates = new Map<string, SourceUrlUpdate>([
-      ['effect-utils', { memberName: 'effect-utils', newRef: 'schickling/2026-03-12-pnpm-refactor' }],
+      [
+        'effect-utils',
+        { memberName: 'effect-utils', newRef: 'schickling/2026-03-12-pnpm-refactor' },
+      ],
     ])
     const result = rewriteFlakeNixUrls({ content: flakeNixContent, updates })
     expect(result.updatedInputs).toEqual(['effect-utils'])
@@ -91,9 +94,7 @@ describe('rewriteFlakeNixUrls', () => {
     ])
     const result = rewriteFlakeNixUrls({ content, updates })
     expect(result.updatedInputs).toEqual(['my-flake'])
-    expect(result.content).toContain(
-      'my-flake.url = "github:owner/repo/new-ref?dir=nix/my-flake"',
-    )
+    expect(result.content).toContain('my-flake.url = "github:owner/repo/new-ref?dir=nix/my-flake"')
   })
 
   it('should not modify inputs without matching update', () => {
@@ -223,49 +224,50 @@ allowUnfree: true
 // =============================================================================
 
 describe('rewriteLockFileRefs', () => {
-  const lockContent = JSON.stringify(
-    {
-      nodes: {
-        root: {
-          inputs: {
-            'effect-utils': 'effect-utils',
-            nixpkgs: 'nixpkgs',
+  const lockContent =
+    JSON.stringify(
+      {
+        nodes: {
+          root: {
+            inputs: {
+              'effect-utils': 'effect-utils',
+              nixpkgs: 'nixpkgs',
+            },
+          },
+          'effect-utils': {
+            locked: {
+              owner: 'overengineeringstudio',
+              repo: 'effect-utils',
+              rev: 'abc123',
+              type: 'github',
+            },
+            original: {
+              owner: 'overengineeringstudio',
+              ref: 'main',
+              repo: 'effect-utils',
+              type: 'github',
+            },
+          },
+          nixpkgs: {
+            locked: {
+              owner: 'NixOS',
+              repo: 'nixpkgs',
+              rev: 'def456',
+              type: 'github',
+            },
+            original: {
+              owner: 'NixOS',
+              ref: 'nixos-unstable',
+              repo: 'nixpkgs',
+              type: 'github',
+            },
           },
         },
-        'effect-utils': {
-          locked: {
-            owner: 'overengineeringstudio',
-            repo: 'effect-utils',
-            rev: 'abc123',
-            type: 'github',
-          },
-          original: {
-            owner: 'overengineeringstudio',
-            ref: 'main',
-            repo: 'effect-utils',
-            type: 'github',
-          },
-        },
-        nixpkgs: {
-          locked: {
-            owner: 'NixOS',
-            repo: 'nixpkgs',
-            rev: 'def456',
-            type: 'github',
-          },
-          original: {
-            owner: 'NixOS',
-            ref: 'nixos-unstable',
-            repo: 'nixpkgs',
-            type: 'github',
-          },
-        },
+        version: 7,
       },
-      version: 7,
-    },
-    null,
-    2,
-  ) + '\n'
+      null,
+      2,
+    ) + '\n'
 
   it('should update original.ref for matching node', () => {
     const refUpdates = new Map([['effect-utils', 'schickling/2026-03-12-pnpm-refactor']])
@@ -298,7 +300,10 @@ describe('rewriteLockFileRefs', () => {
   })
 
   it('should handle invalid JSON gracefully', () => {
-    const result = rewriteLockFileRefs({ content: 'not valid json', refUpdates: new Map([['a', 'b']]) })
+    const result = rewriteLockFileRefs({
+      content: 'not valid json',
+      refUpdates: new Map([['a', 'b']]),
+    })
     expect(result.updatedNodes).toEqual([])
     expect(result.content).toBe('not valid json')
   })
@@ -316,15 +321,20 @@ describe('rewriteLockFileRefs', () => {
   })
 
   it('should skip nodes without original field', () => {
-    const content = JSON.stringify({
-      nodes: {
-        root: { inputs: {} },
-        'no-original': {
-          locked: { owner: 'foo', repo: 'bar', type: 'github' },
+    const content =
+      JSON.stringify(
+        {
+          nodes: {
+            root: { inputs: {} },
+            'no-original': {
+              locked: { owner: 'foo', repo: 'bar', type: 'github' },
+            },
+          },
+          version: 7,
         },
-      },
-      version: 7,
-    }, null, 2) + '\n'
+        null,
+        2,
+      ) + '\n'
     const result = rewriteLockFileRefs({ content, refUpdates: new Map([['no-original', 'ref']]) })
     expect(result.updatedNodes).toEqual([])
   })

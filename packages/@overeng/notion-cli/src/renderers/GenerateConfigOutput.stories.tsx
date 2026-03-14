@@ -60,7 +60,8 @@ export const Demo: Story = {
     height: { control: { type: 'range', min: 200, max: 600, step: 50 } },
   },
   render: (args) => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={{ _tag: 'Loading', configPath: './notion.config.ts' } as GenerateConfigState}
@@ -128,7 +129,8 @@ const makeDatabase = ({
 
 export const Loading: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeLoading('./notion.config.ts')}
@@ -138,7 +140,8 @@ export const Loading: Story = {
 
 export const AllPending: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeRunning({
@@ -156,7 +159,8 @@ export const AllPending: Story = {
 
 export const InProgress: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeRunning({
@@ -174,7 +178,8 @@ export const InProgress: Story = {
 
 export const AllDone: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeDone({ configPath: './notion.config.ts', count: 4 })}
@@ -184,7 +189,8 @@ export const AllDone: Story = {
 
 export const WithErrors: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeRunning({
@@ -202,7 +208,8 @@ export const WithErrors: Story = {
 
 export const SingleDatabase: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeRunning({
@@ -215,7 +222,8 @@ export const SingleDatabase: Story = {
 
 export const ManyDatabases: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeRunning({
@@ -241,7 +249,8 @@ export const ManyDatabases: Story = {
 
 export const ErrorState: Story = {
   render: () => (
-    <TuiStoryPreview command="notion generate-config"
+    <TuiStoryPreview
+      command="notion generate-config"
       View={GenerateConfigView}
       app={GenerateConfigApp}
       initialState={makeError('Config file not found: ./notion.config.ts')}
