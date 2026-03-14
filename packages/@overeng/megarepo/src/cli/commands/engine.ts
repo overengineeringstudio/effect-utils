@@ -1,10 +1,11 @@
 /**
- * Sync Command
+ * Megarepo Sync Engine
  *
- * Sync members: clone to store and create symlinks.
+ * Core sync logic shared by all three commands (fetch, apply, lock).
+ * - `syncMegarepo` — recursive megarepo sync parameterized by mode
+ * - `runCommand` — CLI orchestration: TUI rendering, fetch-before-apply, error merging
  */
 
-import * as Cli from '@effect/cli'
 import { Prompt } from '@effect/cli'
 import type { CommandExecutor, Terminal } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
@@ -49,14 +50,7 @@ import {
   type SyncMode,
 } from '../../lib/sync/mod.ts'
 import type { MegarepoSyncTree as MegarepoSyncTreeType } from '../../lib/sync/schema.ts'
-import {
-  Cwd,
-  findMegarepoRoot,
-  outputOption,
-  outputModeLayer,
-  type OutputModeValue,
-  verboseOption,
-} from '../context.ts'
+import { Cwd, findMegarepoRoot, outputModeLayer, type OutputModeValue } from '../context.ts'
 import {
   NotInMegarepoError,
   LockFileRequiredError,
@@ -582,8 +576,8 @@ const createMissingRefPrompt = (
     )
   })
 
-/** Execute a megarepo sync with the given CLI options, rendering progress via TUI or structured output. */
-export const runSyncCommand = ({
+/** Execute a megarepo command with the given CLI options, rendering progress via TUI or structured output. */
+export const runCommand = ({
   mode,
   output,
   dryRun,
@@ -688,7 +682,7 @@ export const runSyncCommand = ({
 
     const effectiveMode = applyAfterFetch === true ? 'apply' : mode
 
-    const runSync = (progressHandle?: SyncUIHandle) =>
+    const doSync = (progressHandle?: SyncUIHandle) =>
       syncMegarepo({
         megarepoRoot: root.value,
         options: {
@@ -840,13 +834,13 @@ export const runSyncCommand = ({
         skippedMembers,
       })
 
-      const syncResult = yield* runSync(ui)
+      const syncResult = yield* doSync(ui)
       renderSyncResult({ syncResult, dispatch: (state) => ui.dispatch(state) })
       yield* finishSyncUI(ui)
       return syncResult
     }
 
-    const syncResult = yield* runSync()
+    const syncResult = yield* doSync()
     yield* run(
       SyncApp,
       (tui) =>
@@ -858,61 +852,3 @@ export const runSyncCommand = ({
 
     return syncResult
   }).pipe(Effect.scoped, Effect.provide(StoreLayer))
-
-/** Apply the lock file to the workspace — create/update worktrees and symlinks. */
-export const applyCommand = Cli.Command.make(
-  'apply',
-  {
-    output: outputOption,
-    dryRun: Cli.Options.boolean('dry-run').pipe(
-      Cli.Options.withDescription('Show what would be done without making changes'),
-      Cli.Options.withDefault(false),
-    ),
-    force: Cli.Options.boolean('force').pipe(
-      Cli.Options.withAlias('f'),
-      Cli.Options.withDescription('Force updates for pinned members'),
-      Cli.Options.withDefault(false),
-    ),
-    all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively apply nested megarepos'),
-      Cli.Options.withDefault(false),
-    ),
-    only: Cli.Options.text('only').pipe(
-      Cli.Options.withDescription('Only apply specified members (comma-separated)'),
-      Cli.Options.optional,
-    ),
-    skip: Cli.Options.text('skip').pipe(
-      Cli.Options.withDescription('Skip specified members (comma-separated)'),
-      Cli.Options.optional,
-    ),
-    gitProtocol: Cli.Options.choice('git-protocol', ['ssh', 'https', 'auto']).pipe(
-      Cli.Options.withDescription(
-        'Git protocol for cloning: ssh (default for new clones), https, or auto (use lock file URL if available)',
-      ),
-      Cli.Options.withDefault('auto' as const),
-    ),
-    noStrict: Cli.Options.boolean('no-strict').pipe(
-      Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
-      Cli.Options.withDefault(false),
-    ),
-    verbose: verboseOption,
-  },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, verbose }) =>
-    runSyncCommand({
-      mode: 'apply',
-      output,
-      dryRun,
-      force,
-      all,
-      only,
-      skip,
-      gitProtocol,
-      createBranches: false,
-      noStrict,
-      verbose,
-    }),
-).pipe(
-  Cli.Command.withDescription(
-    'Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.',
-  ),
-)

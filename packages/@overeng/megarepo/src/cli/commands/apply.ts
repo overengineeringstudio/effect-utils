@@ -1,7 +1,7 @@
 /**
- * `mr lock` — Workspace → Lock
+ * `mr apply` — Lock → Workspace
  *
- * Record current worktree HEAD commits into megarepo.lock. No network, no workspace changes.
+ * Create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.
  */
 
 import * as Cli from '@effect/cli'
@@ -9,8 +9,8 @@ import * as Cli from '@effect/cli'
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand } from './engine.ts'
 
-export const lockCommand = Cli.Command.make(
-  'lock',
+export const applyCommand = Cli.Command.make(
+  'apply',
   {
     output: outputOption,
     dryRun: Cli.Options.boolean('dry-run').pipe(
@@ -19,17 +19,15 @@ export const lockCommand = Cli.Command.make(
     ),
     force: Cli.Options.boolean('force').pipe(
       Cli.Options.withAlias('f'),
-      Cli.Options.withDescription(
-        'Force lock operation even when members are pinned or need repair',
-      ),
+      Cli.Options.withDescription('Force updates for pinned members'),
       Cli.Options.withDefault(false),
     ),
     all: Cli.Options.boolean('all').pipe(
-      Cli.Options.withDescription('Recursively operate on nested megarepos'),
+      Cli.Options.withDescription('Recursively apply nested megarepos'),
       Cli.Options.withDefault(false),
     ),
     only: Cli.Options.text('only').pipe(
-      Cli.Options.withDescription('Only operate on specified members (comma-separated)'),
+      Cli.Options.withDescription('Only apply specified members (comma-separated)'),
       Cli.Options.optional,
     ),
     skip: Cli.Options.text('skip').pipe(
@@ -50,7 +48,7 @@ export const lockCommand = Cli.Command.make(
   },
   ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, verbose }) =>
     runCommand({
-      mode: 'lock',
+      mode: 'apply',
       output,
       dryRun,
       force,
@@ -64,6 +62,6 @@ export const lockCommand = Cli.Command.make(
     }),
 ).pipe(
   Cli.Command.withDescription(
-    'Workspace → Lock: record current worktree HEAD commits into megarepo.lock.',
+    'Lock → Workspace: create worktrees from lock, symlink, nix lock sync, generators. Never writes lock.',
   ),
 )
