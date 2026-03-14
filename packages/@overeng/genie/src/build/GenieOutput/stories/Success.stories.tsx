@@ -117,6 +117,7 @@ export const MixedResults: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -162,6 +163,7 @@ export const AllUnchanged: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -241,6 +243,7 @@ export const DryRun: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -289,6 +292,7 @@ export const CheckModeSuccess: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={

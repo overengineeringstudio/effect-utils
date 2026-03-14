@@ -10,31 +10,42 @@
  */
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 
-export default packageJson({
-  name: '@overeng/oxc-config',
-  ...privatePackageDefaults,
-  exports: {
-    './plugin': './src/mod.ts',
-  },
+const deps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/oxc-config'),
   dependencies: {
-    // Re-exported as part of the overeng plugin for storybook linting
-    ...catalog.pick('eslint-plugin-storybook'),
+    external: {
+      ...catalog.pick('eslint-plugin-storybook'),
+    },
   },
   devDependencies: {
-    ...catalog.pick(
-      '@types/eslint',
-      '@typescript-eslint/parser',
-      '@typescript-eslint/rule-tester',
-      '@typescript-eslint/utils',
-      'eslint',
-      'typescript',
-      'vitest',
-      'oxlint-tsgolint',
-    ),
+    external: {
+      ...catalog.pick(
+        '@types/eslint',
+        '@typescript-eslint/parser',
+        '@typescript-eslint/rule-tester',
+        '@typescript-eslint/utils',
+        'eslint',
+        'typescript',
+        'vitest',
+        'oxlint-tsgolint',
+      ),
+    },
   },
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: '@overeng/oxc-config',
+    ...privatePackageDefaults,
+    exports: {
+      './plugin': './src/mod.ts',
+    },
+  } satisfies PackageJsonData,
+  deps,
+)

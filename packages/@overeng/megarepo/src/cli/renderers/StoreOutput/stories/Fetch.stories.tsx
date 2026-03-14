@@ -19,6 +19,7 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  dryRun: boolean
 }
 
 // =============================================================================
@@ -39,9 +40,14 @@ export default {
   },
   args: {
     ...defaultStoryArgs,
+    dryRun: false,
   },
   argTypes: {
     ...commonArgTypes,
+    dryRun: {
+      description: '--dry-run: show what would happen without making changes',
+      control: { type: 'boolean' },
+    },
   },
 } satisfies Meta
 
@@ -62,10 +68,12 @@ export const Success: Story = {
         ],
         elapsedMs: 1850,
       }),
-      [],
+      [args.dryRun],
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
         View={StoreView}
         app={StoreApp}
         initialState={
@@ -92,10 +100,12 @@ export const WithErrors: Story = {
         results: fixtures.exampleFetchResults,
         elapsedMs: 3200,
       }),
-      [],
+      [args.dryRun],
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
         View={StoreView}
         app={StoreApp}
         initialState={
@@ -133,10 +143,12 @@ export const AllErrors: Story = {
         ],
         elapsedMs: 30500,
       }),
-      [],
+      [args.dryRun],
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
         View={StoreView}
         app={StoreApp}
         initialState={

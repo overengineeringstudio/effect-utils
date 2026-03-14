@@ -100,6 +100,8 @@ in
       description = "Run oxlint linter";
       exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
       execIfModified = execIfModifiedPatterns;
+    } // lib.optionalAttrs (tsconfig != null) {
+      after = [ "pnpm:install" ];
     };
     "lint:check:genie" = {
       description = "Check generated files are up to date";

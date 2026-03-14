@@ -140,7 +140,7 @@ export const useCapturedLogs = (): readonly TuiLogEntry[] => {
       handle.logsRef.changes.pipe(Stream.runForEach(() => Effect.sync(() => onStoreChange()))),
     )
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      void Effect.runFork(Fiber.interrupt(fiber))
     }
   }
 
@@ -190,7 +190,7 @@ export const createLogCapture = (options?: {
       })
 
     const appendLogSync = (entry: TuiLogEntry): void => {
-      Runtime.runFork(runtime)(appendLog(entry))
+      void Runtime.runFork(runtime)(appendLog(entry))
     }
 
     // Create Effect Logger that captures instead of printing

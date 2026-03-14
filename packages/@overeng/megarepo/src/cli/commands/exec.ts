@@ -119,13 +119,13 @@ export const execCommand = Cli.Command.make(
                   const shellCmd = Command.make('sh', '-c', cmd).pipe(
                     Command.workingDirectory(memberPath),
                   )
-                  const output = yield* Command.string(shellCmd)
+                  const commandOutput = yield* Command.string(shellCmd)
                   tui.dispatch({
                     _tag: 'UpdateMember',
                     name,
                     status: 'success',
                     exitCode: 0,
-                    stdout: output,
+                    stdout: commandOutput,
                   })
                 }).pipe(
                   Effect.catchAll((error) =>

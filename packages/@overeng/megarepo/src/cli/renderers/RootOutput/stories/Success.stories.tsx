@@ -37,6 +37,8 @@ type Story = StoryObj<StoryArgs>
 export const Default: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr"
       View={RootView}
       app={RootApp}
       initialState={fixtures.successState}

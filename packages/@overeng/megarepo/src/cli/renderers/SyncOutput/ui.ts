@@ -108,9 +108,8 @@ export const startSyncUI = (options: {
   workspaceName: string
   workspaceRoot: string
   memberNames: readonly string[]
+  mode: 'fetch' | 'apply' | 'lock'
   dryRun?: boolean
-  frozen?: boolean
-  pull?: boolean
   all?: boolean
   force?: boolean
   verbose?: boolean
@@ -121,9 +120,8 @@ export const startSyncUI = (options: {
       workspaceName,
       workspaceRoot,
       memberNames,
+      mode,
       dryRun,
-      frozen,
-      pull,
       all,
       force,
       verbose,
@@ -150,9 +148,8 @@ export const startSyncUI = (options: {
         _tag: 'Syncing',
         workspace: { name: workspaceName, root: workspaceRoot },
         options: {
+          mode,
           dryRun: dryRun ?? false,
-          frozen: frozen ?? false,
-          pull: pull ?? false,
           all: all ?? false,
           force: force || undefined,
           verbose: verbose || undefined,
@@ -162,13 +159,14 @@ export const startSyncUI = (options: {
               : undefined,
         },
         members: [...memberNames],
-        activeMember: null,
+        activeMembers: [],
         results: [],
         logs: [],
         startedAt: Date.now(),
         nestedMegarepos: [],
         generatedFiles: [],
         lockSyncResults: [],
+        sharedSourceUpdates: [],
         syncTree: {
           root: workspaceRoot,
           results: [],
@@ -177,6 +175,7 @@ export const startSyncUI = (options: {
         },
         syncErrors: [],
         syncErrorCount: 0,
+        preflightIssues: [],
       },
     })
 

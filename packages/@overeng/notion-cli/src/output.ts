@@ -1,9 +1,15 @@
 import { FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 
 import { EffectPath, type AbsoluteFilePath } from '@overeng/effect-path'
 import { type CurrentWorkingDirectory, cmd } from '@overeng/utils/node'
+
+/** Error when writing a generated schema file to disk. */
+export class WriteSchemaToFileError extends Data.TaggedError('WriteSchemaToFileError')<{
+  readonly outputPath: string
+  readonly cause: unknown
+}> {}
 
 /** Options for writing generated schema files */
 export interface WriteSchemaToFileOptions {
@@ -29,7 +35,7 @@ const READ_WRITE_MODE = 0o644
  */
 export const writeSchemaToFile = (
   options: WriteSchemaToFileOptions,
-): Effect.Effect<void, Error, FileSystem.FileSystem> =>
+): Effect.Effect<void, WriteSchemaToFileError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const { code, outputPath, writable = false } = options
@@ -56,10 +62,11 @@ export const writeSchemaToFile = (
     }
   }).pipe(
     Effect.mapError(
-      (error) =>
-        new Error(
-          `Failed to write schema to ${options.outputPath}: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+      (cause) =>
+        new WriteSchemaToFileError({
+          outputPath: options.outputPath,
+          cause,
+        }),
     ),
   )
 

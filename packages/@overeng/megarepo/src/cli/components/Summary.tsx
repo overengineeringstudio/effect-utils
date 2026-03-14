@@ -19,7 +19,8 @@ export interface SummaryCounts {
   cloned?: number
   synced?: number
   updated?: number
-  locked?: number
+  recorded?: number
+  applied?: number
   removed?: number
   errors?: number
   skipped?: number
@@ -32,6 +33,8 @@ export interface SummaryProps {
   counts: SummaryCounts
   /** Whether this is a dry run (changes "cloned" to "to clone", etc.) */
   dryRun?: boolean
+  /** Sync mode — affects display labels (e.g. "fetched" vs "updated") */
+  mode?: 'fetch' | 'apply' | 'lock'
 }
 
 // =============================================================================
@@ -57,39 +60,75 @@ export interface SummaryProps {
  * <Summary counts={{ cloned: 3, synced: 2 }} dryRun />
  * ```
  */
-export const Summary = ({ counts, dryRun = false }: SummaryProps) => {
+export const Summary = ({ counts, dryRun = false, mode }: SummaryProps) => {
   const parts: Array<{ key: string; element: React.ReactNode }> = []
+  const isFetch = mode === 'fetch'
+  const updatedLabel = isFetch === true ? 'fetched' : 'updated'
+  const unchangedLabel = isFetch === true ? 'already up to date' : 'unchanged'
 
   if (dryRun === true) {
+    const toUpdateLabel = isFetch === true ? 'to fetch' : 'to update'
     if (counts.cloned !== undefined && counts.cloned > 0)
       parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} to clone</Text> })
     if (counts.synced !== undefined && counts.synced > 0)
       parts.push({ key: 'synced', element: <Text dim>{counts.synced} to sync</Text> })
     if (counts.updated !== undefined && counts.updated > 0)
-      parts.push({ key: 'updated', element: <Text dim>{counts.updated} to update</Text> })
-    if (counts.locked !== undefined && counts.locked > 0)
-      parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
+      parts.push({
+        key: 'updated',
+        element: (
+          <Text dim>
+            {counts.updated} {toUpdateLabel}
+          </Text>
+        ),
+      })
+    if (counts.recorded !== undefined && counts.recorded > 0)
+      parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} to record</Text> })
+    if (counts.applied !== undefined && counts.applied > 0)
+      parts.push({ key: 'applied', element: <Text dim>{counts.applied} to check out</Text> })
     if (counts.removed !== undefined && counts.removed > 0)
       parts.push({ key: 'removed', element: <Text color="red">{counts.removed} to remove</Text> })
     if (counts.errors !== undefined && counts.errors > 0)
       parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
     if (counts.alreadySynced !== undefined && counts.alreadySynced > 0)
-      parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} unchanged</Text> })
+      parts.push({
+        key: 'unchanged',
+        element: (
+          <Text dim>
+            {counts.alreadySynced} {unchangedLabel}
+          </Text>
+        ),
+      })
   } else {
     if (counts.cloned !== undefined && counts.cloned > 0)
       parts.push({ key: 'cloned', element: <Text dim>{counts.cloned} cloned</Text> })
     if (counts.synced !== undefined && counts.synced > 0)
       parts.push({ key: 'synced', element: <Text dim>{counts.synced} synced</Text> })
     if (counts.updated !== undefined && counts.updated > 0)
-      parts.push({ key: 'updated', element: <Text dim>{counts.updated} updated</Text> })
-    if (counts.locked !== undefined && counts.locked > 0)
-      parts.push({ key: 'locked', element: <Text dim>{counts.locked} lock updates</Text> })
+      parts.push({
+        key: 'updated',
+        element: (
+          <Text dim>
+            {counts.updated} {updatedLabel}
+          </Text>
+        ),
+      })
+    if (counts.recorded !== undefined && counts.recorded > 0)
+      parts.push({ key: 'recorded', element: <Text dim>{counts.recorded} recorded</Text> })
+    if (counts.applied !== undefined && counts.applied > 0)
+      parts.push({ key: 'applied', element: <Text dim>{counts.applied} checked out</Text> })
     if (counts.removed !== undefined && counts.removed > 0)
       parts.push({ key: 'removed', element: <Text color="red">{counts.removed} removed</Text> })
     if (counts.errors !== undefined && counts.errors > 0)
       parts.push({ key: 'errors', element: <Text color="red">{counts.errors} errors</Text> })
     if (counts.alreadySynced !== undefined && counts.alreadySynced > 0)
-      parts.push({ key: 'unchanged', element: <Text dim>{counts.alreadySynced} unchanged</Text> })
+      parts.push({
+        key: 'unchanged',
+        element: (
+          <Text dim>
+            {counts.alreadySynced} {unchangedLabel}
+          </Text>
+        ),
+      })
   }
 
   if (parts.length === 0) {

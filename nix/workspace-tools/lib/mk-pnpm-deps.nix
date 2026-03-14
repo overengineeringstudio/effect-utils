@@ -3,11 +3,12 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that fetches pnpm dependencies
-#    from a staged package lockfile and archives the resulting store into a
-#    reproducible tarball.
+#    from staged lockfiles by adding their external package set to the pnpm
+#    store and archiving the normalized result into a reproducible tarball.
 #
-# 2. mkRestoreScript: Generates a shell script snippet that extracts the archived
-#    pnpm store and configures pnpm for offline installs during the build phase.
+# 2. mkRestoreScript: Generates a shell script snippet that extracts the
+#    archived pnpm store and configures pnpm for offline installs during the
+#    build phase.
 #
 # By centralizing this logic we avoid duplicating the ~50 lines of pnpm store
 # setup, timestamp normalization, and tarball creation across multiple builders.
@@ -15,6 +16,7 @@
 { pkgs }:
 
 let
+  lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
 in
 {
@@ -22,11 +24,16 @@ in
   #
   # Arguments:
   #   name:           Derivation name prefix (e.g., "genie" or "oxc-config")
-  #   src:            Filtered source containing package.json + pnpm-lock.yaml
-  #   sourceRoot:     Path within the source to cd into (e.g., "source/packages/@overeng/genie").
-  #                   Must contain the staged pnpm-lock.yaml.
+  #   src:            Filtered source containing the staged workspace root
+  #                   package.json, pnpm-lock.yaml, pnpm-workspace.yaml, and
+  #                   relevant workspace member manifests / patches.
+  #   sourceRoot:     Path within the staged workspace root to cd into before
+  #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
-  #   preInstall:     Extra shell commands to run before pnpm install (e.g., chmod for workspace members)
+  #   preInstall:     Extra shell commands to run before lockfile parsing
+  #   lockfilePaths:
+  #                   Lockfiles that define the allowed package set for store normalization.
+  #                   Each path is relative to sourceRoot.
   mkDeps =
     {
       name,
@@ -34,6 +41,7 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
+      lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -63,7 +71,7 @@ in
       );
     in
     pkgs.stdenvNoCC.mkDerivation {
-      pname = "${name}-pnpm-deps-${srcFingerprint}";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v3";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -76,10 +84,22 @@ in
         pkgs.findutils
       ];
 
+      dontUnpack = true;
       dontConfigure = true;
       dontBuild = true;
+      dontFixup = true;
 
       installPhase = ''
+        mkdir source
+        cp -r "$src"/. source/
+        chmod -R +w source
+
+        if [ "$sourceRoot" = "." ]; then
+          cd source
+        else
+          cd "source/$sourceRoot"
+        fi
+
         runHook preInstall
 
         ${preInstall}
@@ -89,16 +109,80 @@ in
         export CI=true
         export NPM_CONFIG_PRODUCTION=false
         export npm_config_production=false
+        export npm_config_manage_package_manager_versions=false
         export NODE_ENV=development
+        export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
         pnpm config set store-dir "$STORE_PATH"
         pnpm config set manage-package-manager-versions false
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
-        pnpm install --frozen-lockfile --ignore-scripts
+        node -e '
+          const fs = require("fs");
 
-        export LOCKFILE_PATH="$PWD/pnpm-lock.yaml"
+          const splitNameVersion = (spec) => {
+            const atIndex = spec.startsWith("@")
+              ? spec.indexOf("@", 1)
+              : spec.indexOf("@");
+            return atIndex === -1
+              ? undefined
+              : [spec.slice(0, atIndex), spec.slice(atIndex + 1)];
+          };
+
+          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
+          const specs = new Set();
+
+          for (const lockfilePath of lockfilePaths) {
+            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
+              console.error("store-fetch: FATAL — staged lockfile not found at " + lockfilePath);
+              process.exit(1);
+            }
+
+            const lines = fs.readFileSync(lockfilePath, "utf8").split("\n");
+            let inPackages = false;
+            for (const line of lines) {
+              if (/^packages:\s*$/.test(line)) {
+                inPackages = true;
+                continue;
+              }
+              if (inPackages) {
+                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
+                const m = /^\s{2}("|\x27)?(.+?)\1:\s*$/.exec(line);
+                if (!m) continue;
+                const key = m[2];
+                const spec = key.split("(")[0];
+                const nameVersion = splitNameVersion(spec);
+                if (!nameVersion) continue;
+                const [pkgName, version] = nameVersion;
+                if (
+                  !pkgName
+                  || !version
+                  || version.startsWith("file:")
+                  || version.startsWith("link:")
+                  || version.startsWith("workspace:")
+                  || version.startsWith("patch:")
+                  || version.startsWith("git+")
+                  || version.startsWith("http:")
+                  || version.startsWith("https:")
+                  || version.startsWith("npm:")
+                ) continue;
+                specs.add(pkgName + "@" + version);
+              }
+            }
+          }
+
+          const sortedSpecs = Array.from(specs).sort();
+          if (sortedSpecs.length === 0) {
+            console.error("store-fetch: FATAL — no external package specs parsed from staged lockfiles");
+            process.exit(1);
+          }
+          fs.writeFileSync(".pnpm-store-specs.txt", sortedSpecs.join("\n") + "\n");
+          console.log("store-fetch: parsed " + sortedSpecs.length + " unique external package specs");
+        '
+
+        xargs -r -a .pnpm-store-specs.txt -n 50 pnpm store add
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
@@ -117,7 +201,7 @@ in
           const fs = require("fs");
           const p = require("path");
           const sp = process.env.STORE_PATH;
-          const lockfilePath = process.env.LOCKFILE_PATH;
+          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
 
           function walk(dir, out) {
             for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
@@ -127,33 +211,44 @@ in
             return out;
           }
 
-          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d));
+          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d)).sort();
           if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
+          if (vdirs.length !== 1) {
+            console.error("store-norm: FATAL — expected exactly one v* dir, found: " + vdirs.join(", "));
+            process.exit(1);
+          }
           const vdir = p.join(sp, vdirs[0]);
 
-          if (!lockfilePath || !fs.existsSync(lockfilePath)) {
-            console.error("store-norm: FATAL — staged pnpm-lock.yaml not found at " + lockfilePath);
+          if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
+            console.error("store-norm: FATAL — no staged lockfiles were provided");
             process.exit(1);
           }
 
           /* Phase 0: Prune phantom index files not in the staged lockfile. */
-          const lockfile = fs.readFileSync(lockfilePath, "utf8");
-
           const Q = String.fromCharCode(39); /* single quote */
           const pkgLineRe = new RegExp("^\\s+(" + Q + "?)(.+?)\\1:\\s*$");
           const allowedPkgVersions = new Set();
 
-          const lines = lockfile.split("\n");
-          let inPackages = false;
-          for (const line of lines) {
-            if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
-            if (inPackages) {
-              if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
-              const m = pkgLineRe.exec(line);
-              if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
+          for (const lockfilePath of lockfilePaths) {
+            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
+              console.error("store-norm: FATAL — staged lockfile not found at " + lockfilePath);
+              process.exit(1);
+            }
+
+            const lockfile = fs.readFileSync(lockfilePath, "utf8");
+            const lines = lockfile.split("\n");
+            let inPackages = false;
+            for (const line of lines) {
+              if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
+              if (inPackages) {
+                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
+                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
+                const m = pkgLineRe.exec(line);
+                if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
+              }
             }
           }
-          console.log("store-norm: parsed staged lockfile, found " + allowedPkgVersions.size + " unique packages");
+          console.log("store-norm: parsed staged lockfiles, found " + allowedPkgVersions.size + " unique packages");
 
           if (allowedPkgVersions.size === 0) {
             console.error("store-norm: FATAL — no packages parsed from staged pnpm-lock.yaml");
@@ -269,6 +364,12 @@ in
         echo "store-diag: exec-files-count=$(find "$STORE_PATH"/v*/files -name '*-exec' | wc -l)"
         echo "store-diag: total-size=$(du -sb "$STORE_PATH" | cut -f1)"
 
+        if find "$STORE_PATH" -type l | grep -q .; then
+          echo "store-norm: FATAL — symlinks remain after normalization"
+          find "$STORE_PATH" -type l
+          exit 1
+        fi
+
         mkdir -p $out
         cd $STORE_PATH
         LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
@@ -297,6 +398,7 @@ in
       export STORE_PATH=$(mktemp -d)
       export NPM_CONFIG_PRODUCTION=false
       export npm_config_production=false
+      export npm_config_manage_package_manager_versions=false
       export NODE_ENV=development
 
       # Extract pnpm store

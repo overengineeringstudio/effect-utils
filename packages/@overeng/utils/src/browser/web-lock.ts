@@ -190,7 +190,7 @@ export const waitForLock = (lockName: string): Effect.Effect<void, WebLockNotSup
       if (signal.aborted === true) return
 
       navigator.locks.request(lockName, { mode: 'shared', signal, ifAvailable: false }, (_lock) => {
-        cb(Effect.succeed(void 0))
+        cb(Effect.void)
       })
     })
   })
@@ -217,7 +217,7 @@ export const getLockAndWaitForSteal = (
         .request(lockName, { mode: 'exclusive', ifAvailable: true }, async (lock) => {
           if (lock === null) {
             // Lock wasn't available, resolve immediately
-            cb(Effect.succeed(void 0))
+            cb(Effect.void)
             return
           }
 
@@ -226,7 +226,7 @@ export const getLockAndWaitForSteal = (
             signal.addEventListener('abort', () => resolve())
           }).catch(() => {})
 
-          cb(Effect.succeed(void 0))
+          cb(Effect.void)
         })
         .catch((error: DOMException) => {
           if (
@@ -235,7 +235,7 @@ export const getLockAndWaitForSteal = (
               error.message === `Lock broken by another request with the 'steal' option.`)
           ) {
             // Signal interruption or lock stolen - handled via Effect
-            cb(Effect.succeed(void 0))
+            cb(Effect.void)
           } else {
             console.error('WebLock.getLockAndWaitForSteal error:', error)
             throw error

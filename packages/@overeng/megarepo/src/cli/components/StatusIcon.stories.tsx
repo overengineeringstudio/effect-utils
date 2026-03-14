@@ -58,8 +58,12 @@ const StatusIconShowcase = () => (
         <Text>updated</Text>
       </Box>
       <Box flexDirection="row" gap={1}>
-        <StatusIcon status="locked" variant="sync" />
-        <Text>locked</Text>
+        <StatusIcon status="recorded" variant="sync" />
+        <Text>recorded</Text>
+      </Box>
+      <Box flexDirection="row" gap={1}>
+        <StatusIcon status="applied" variant="sync" />
+        <Text>applied</Text>
       </Box>
       <Box flexDirection="row" gap={1}>
         <StatusIcon status="already_synced" variant="sync" />
@@ -89,7 +93,12 @@ export default {
   title: 'Components/StatusIcon',
   component: StatusIcon,
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => <StatusIconShowcase />} initialState={null} />
+    <TuiStoryPreview
+      command="mr status"
+      app={StaticApp}
+      View={() => <StatusIconShowcase />}
+      initialState={null}
+    />
   ),
   parameters: {
     layout: 'fullscreen',
@@ -117,6 +126,7 @@ export const AllStatuses: Story = {}
 export const ActiveSpinner: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row" gap={1}>
@@ -132,6 +142,7 @@ export const ActiveSpinner: Story = {
 export const SuccessCheck: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row" gap={1}>
@@ -147,6 +158,7 @@ export const SuccessCheck: Story = {
 export const ErrorCross: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row" gap={1}>

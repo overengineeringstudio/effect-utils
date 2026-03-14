@@ -124,7 +124,7 @@ export const monitorActiveHandles = Effect.fn('ActiveHandlesDebugger.monitorActi
   function* (interval: Duration.DurationInput) {
     let lastTotal = -1
 
-    yield* Stream.fromSchedule(Schedule.spaced(interval)).pipe(
+    const _ = yield* Stream.fromSchedule(Schedule.spaced(interval)).pipe(
       Stream.runForEach(() =>
         Effect.gen(function* () {
           const info = yield* dumpActiveHandles

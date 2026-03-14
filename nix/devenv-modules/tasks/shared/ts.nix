@@ -7,7 +7,7 @@
 #     (inputs.effect-utils.devenvModules.tasks.ts { tsconfigFile = "tsconfig.dev.json"; })
 #   ];
 #
-# Provides: ts:check, ts:build-watch, ts:build, ts:clean, and optionally ts:patch-lsp
+# Provides: ts:check, ts:build-watch, ts:build, ts:emit, ts:clean
 #
 # Dependencies:
 #   - genie:run: config files must be generated before tsc can resolve paths
@@ -20,20 +20,7 @@
 #   Ensure all packages are listed in tsconfig.all.json references.
 #
 # tscBin:
-#   Path to the tsc binary. Use a package-local node_modules/.bin/tsc to pick up
-#   the Effect Language Service patch. The Nix-provided tsc is unpatched, so
-#   Effect plugin diagnostics are silently skipped unless a patched binary is used.
-#
-# lspPatchCmd:
-#   Command to patch TypeScript with the Effect Language Service plugin. When set,
-#   creates a ts:patch-lsp task that runs before ts:check/ts:build-watch/ts:build.
-#   This replaces per-package postinstall scripts, centralizing the patch in dt.
-#   Example: "packages/@overeng/utils/node_modules/.bin/effect-language-service patch"
-#
-# lspPatchAfter:
-#   Dependencies for the ts:patch-lsp task. Defaults to ["pnpm:install"].
-#   For faster startup, specify only the package containing the patch binary:
-#   Example: ["pnpm:install:utils"] to depend only on packages/@overeng/utils
+#   Path to the tsc binary. Defaults to "tsc".
 #
 # OTEL tracing:
 #   When OTEL is available, ts:check and ts:build run with --extendedDiagnostics
@@ -43,18 +30,13 @@
 #
 # Status checks:
 #   - ts:emit uses `tsc --build --dry --noCheck` to skip when no outputs would be produced.
-#   - ts:patch-lsp can be cached by providing `lspPatchDir` (the TypeScript dir being patched).
 {
   tsconfigFile ? "tsconfig.all.json",
   tscBin ? "tsc",
-  lspPatchCmd ? null,
-  lspPatchAfter ? [ "pnpm:install" ],
-  lspPatchDir ? null,
 }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  lspAfter = if lspPatchCmd != null then [ "ts:patch-lsp" ] else [ ];
 
   # Script that runs tsc with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
@@ -187,8 +169,7 @@ in
       after = [
         "genie:run"
         "pnpm:install"
-      ]
-      ++ lspAfter;
+      ];
     };
     "ts:build-watch" = {
       description = "Build all packages in watch mode (tsc --build --watch)";
@@ -196,8 +177,7 @@ in
       after = [
         "genie:run"
         "pnpm:install"
-      ]
-      ++ lspAfter;
+      ];
     };
     "ts:build" = {
       description = "Build all packages with type checking (tsc --build)";
@@ -205,8 +185,7 @@ in
       after = [
         "genie:run"
         "pnpm:install"
-      ]
-      ++ lspAfter;
+      ];
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
@@ -229,36 +208,7 @@ in
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
-      # Use Nix tsc (always available) since clean doesn't need the Effect LSP patch
       exec = trace.exec "ts:clean" "tsc --build --clean ${tsconfigFile}";
     };
-  }
-  // (
-    if lspPatchCmd != null then
-      {
-        "ts:patch-lsp" =
-          if lspPatchDir != null then
-            trace.withStatus "ts:patch-lsp" "path" {
-              description = "Patch TypeScript with Effect Language Service";
-              exec = lspPatchCmd;
-              status = ''
-                set -euo pipefail
-
-                _tsc_js="${lspPatchDir}/lib/_tsc.js"
-                [ -f "$_tsc_js" ] || exit 1
-                grep -q "@effect/language-service/embedded-typescript-copy" "$_tsc_js" && exit 0
-                exit 1
-              '';
-              after = lspPatchAfter;
-            }
-          else
-            {
-              description = "Patch TypeScript with Effect Language Service";
-              exec = trace.exec "ts:patch-lsp" lspPatchCmd;
-              after = lspPatchAfter;
-            };
-      }
-    else
-      { }
-  );
+  };
 }

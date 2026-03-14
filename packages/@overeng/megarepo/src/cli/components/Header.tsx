@@ -18,7 +18,7 @@ export interface HeaderProps {
   name: string
   /** Workspace root path */
   root?: string
-  /** Mode indicators (e.g., "dry run", "frozen", "pull") */
+  /** Mode indicators (e.g., "workspace", "dry run") */
   modes?: readonly string[]
 }
 

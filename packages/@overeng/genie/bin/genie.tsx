@@ -2,7 +2,7 @@
 
 import * as Cli from '@effect/cli'
 import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
@@ -19,17 +19,16 @@ const version = resolveCliVersion({
   buildStamp,
 })
 
-const baseLayer = Layer.mergeAll(
-  NodeContext.layer,
-  CurrentWorkingDirectory.live,
+const command = Cli.Command.provide(
+  Cli.Command.provide(genieCommand, CurrentWorkingDirectory.live),
   makeOtelCliLayer({ serviceName: 'genie' }),
 )
 
-Cli.Command.run(genieCommand, {
+Cli.Command.run(command, {
   name: 'genie',
   version,
 })(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
-  Effect.provide(baseLayer),
+  Effect.provide(NodeContext.layer),
   runTuiMain(NodeRuntime),
 )

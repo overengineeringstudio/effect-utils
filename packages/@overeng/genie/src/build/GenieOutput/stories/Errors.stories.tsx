@@ -134,6 +134,7 @@ export const WithErrors: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -230,6 +231,7 @@ export const CheckModeFailed: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -316,6 +318,7 @@ export const Issue251FailFastCancellation: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -361,6 +364,7 @@ export const GlobalError: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={stateConfig}
@@ -491,6 +495,7 @@ export const MixedErrorTypes: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={
@@ -530,6 +535,7 @@ export const ValidationFailed: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={stateConfig}
@@ -563,6 +569,7 @@ export const ValidationFailedDuringGeneration: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={stateConfig}
@@ -666,6 +673,7 @@ export const WithSkipped: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={

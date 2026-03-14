@@ -26,7 +26,7 @@ import { Context, Effect, Layer, Option } from 'effect'
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
-import { classifyRef, encodeRef, refTypeToPathSegment, type RefType } from './ref.ts'
+import { classifyRef, refTypeToPathSegment, type RefType } from './ref.ts'
 
 // =============================================================================
 // Store Service
@@ -81,12 +81,13 @@ export interface MegarepoStore {
     PlatformError.PlatformError
   >
 
-  /** List all worktrees for a repo */
+  /** List all worktrees for a repo (includes broken worktrees with missing .git) */
   readonly listWorktrees: (source: MemberSource) => Effect.Effect<
     ReadonlyArray<{
       readonly ref: string
       readonly refType: RefType
       readonly path: AbsoluteDirPath
+      readonly broken: boolean
     }>,
     PlatformError.PlatformError
   >
@@ -139,12 +140,74 @@ const make = ({
     // Use provided refType or fall back to heuristic classification
     const effectiveRefType = refType ?? classifyRef(ref)
     const pathSegment = refTypeToPathSegment(effectiveRefType)
-    const encodedRef = encodeRef(ref)
     return EffectPath.ops.join(
       repoBase,
-      EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${encodedRef}/`),
+      EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${ref}/`),
     )
   }
+
+  const collectNestedWorktrees = ({
+    refTypePath,
+    currentPath,
+    refType,
+  }: {
+    refTypePath: AbsoluteDirPath
+    currentPath: AbsoluteDirPath
+    refType: RefType
+  }): Effect.Effect<
+    Array<{
+      ref: string
+      refType: RefType
+      path: AbsoluteDirPath
+      broken: boolean
+    }>,
+    PlatformError.PlatformError
+  > =>
+    Effect.gen(function* () {
+      const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
+      const isWorktree = yield* fs.exists(gitPath)
+      if (isWorktree === true) {
+        const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
+        return [{ ref, refType, path: currentPath, broken: false }]
+      }
+
+      const entries = yield* fs.readDirectory(currentPath)
+      const nestedResults: Array<{
+        ref: string
+        refType: RefType
+        path: AbsoluteDirPath
+        broken: boolean
+      }> = []
+
+      for (const entry of entries) {
+        if (entry.startsWith('.') === true) continue
+
+        const entryPath = EffectPath.ops.join(
+          currentPath,
+          EffectPath.unsafe.relativeDir(`${entry}/`),
+        )
+        const entryStat = yield* fs
+          .stat(entryPath)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)))
+        if (entryStat?.type !== 'Directory') continue
+
+        nestedResults.push(
+          ...(yield* collectNestedWorktrees({
+            refTypePath,
+            currentPath: entryPath,
+            refType,
+          })),
+        )
+      }
+
+      /** If no worktrees found and this isn't the refType root, it's a broken worktree */
+      if (nestedResults.length === 0 && currentPath !== refTypePath) {
+        const ref = currentPath.slice(refTypePath.length).replace(/\/$/, '')
+        return [{ ref, refType, path: currentPath, broken: true }]
+      }
+
+      return nestedResults
+    })
 
   return {
     basePath,
@@ -247,9 +310,10 @@ const make = ({
           ref: string
           refType: RefType
           path: AbsoluteDirPath
+          broken: boolean
         }> = []
 
-        // Walk refs/{heads,tags,commits}/{encoded-ref}/
+        // Walk refs/{heads,tags,commits}/** and treat any directory with a .git file as a worktree.
         const refTypes = yield* fs.readDirectory(refsDir)
         for (const refTypeDir of refTypes) {
           const refType = pathSegmentToRefType(refTypeDir)
@@ -262,24 +326,13 @@ const make = ({
           const refTypeStat = yield* fs.stat(refTypePath)
           if (refTypeStat.type !== 'Directory') continue
 
-          const encodedRefs = yield* fs.readDirectory(refTypePath)
-          for (const encodedRef of encodedRefs) {
-            const worktreePath = EffectPath.ops.join(
+          result.push(
+            ...(yield* collectNestedWorktrees({
               refTypePath,
-              EffectPath.unsafe.relativeDir(`${encodedRef}/`),
-            )
-            const worktreeStat = yield* fs.stat(worktreePath)
-            if (worktreeStat.type !== 'Directory') continue
-
-            // Decode the ref name
-            const ref = decodeURIComponent(encodedRef)
-
-            result.push({
-              ref,
+              currentPath: refTypePath,
               refType,
-              path: worktreePath,
-            })
-          }
+            })),
+          )
         }
 
         return result

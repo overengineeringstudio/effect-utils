@@ -62,6 +62,8 @@ type Story = StoryObj<StoryArgs>
 export const WithRepos: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store ls"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createLsState(fixtures.exampleStoreRepos)}
@@ -74,6 +76,8 @@ export const WithRepos: Story = {
 export const Empty: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store ls"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createLsState([])}
@@ -86,6 +90,8 @@ export const Empty: Story = {
 export const ManyRepos: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store ls"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createLsState([

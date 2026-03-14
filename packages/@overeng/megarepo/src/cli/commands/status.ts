@@ -25,6 +25,7 @@ import * as Git from '../../lib/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
+import { type Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 import { StatusApp, StatusView } from '../renderers/StatusOutput/mod.ts'
@@ -53,7 +54,7 @@ const scanMembersRecursive = ({
 }): Effect.Effect<
   MemberStatus[],
   PlatformError.PlatformError | ParseResult.ParseError,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -160,9 +161,8 @@ const scanMembersRecursive = ({
           currentBranch = branch !== 'HEAD' ? branch : undefined
 
           // Get current commit (full SHA for drift detection, short for display)
-          fullCommit = yield* Git.getCurrentCommit(memberPath).pipe(
-            Effect.catchAll(() => Effect.succeed(undefined)),
-          )
+          const fullCommitOpt = yield* Git.getCurrentCommit(memberPath).pipe(Effect.option)
+          fullCommit = Option.getOrUndefined(fullCommitOpt)
           const shortRev = fullCommit?.slice(0, 7)
 
           gitStatus = {
@@ -194,11 +194,11 @@ const scanMembersRecursive = ({
       //
       // Stale lock: lock.ref ≠ symlink.ref, but symlink.ref === source.ref
       //   - Current state matches intent, lock is just outdated
-      //   - Fix: mr sync (updates lock)
+      //   - Fix: mr lock (updates lock)
       //
       // Symlink drift: lock.ref === symlink.ref, but lock.ref ≠ source.ref
       //   - Lock and symlink are in sync, but don't match config intent
-      //   - Fix: mr sync --pull (switch to source ref) or edit megarepo.json
+      //   - Fix: mr fetch --apply (switch to source ref) or edit megarepo.json
       let staleLock: StaleLock | undefined = undefined
       let symlinkDrift: SymlinkDrift | undefined = undefined
 
@@ -298,7 +298,7 @@ export const statusCommand = Cli.Command.make(
         return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
       }
 
-      const name = yield* Git.deriveMegarepoName(root.value)
+      const workspaceName = yield* Git.deriveMegarepoName(root.value)
 
       // Load config
       const configPath = EffectPath.ops.join(
@@ -411,7 +411,7 @@ export const statusCommand = Cli.Command.make(
               })
               const memberRealPath = yield* fs
                 .realPath(memberSymlinkPath.replace(/\/$/, ''))
-                .pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+                .pipe(Effect.catchAll(() => Effect.void))
 
               if (memberRealPath !== undefined) {
                 const memberRealPathNorm = memberRealPath.replace(/\/$/, '')
@@ -453,8 +453,9 @@ export const statusCommand = Cli.Command.make(
         currentMemberPath = [currentMemberPath[0]!]
       }
 
-      // Compute syncNeeded and syncReasons
-      const syncReasons: string[] = []
+      // Compute workspace vs lock reconciliation needs.
+      const workspaceSyncReasons: string[] = []
+      const lockSyncReasons: string[] = []
 
       // Helper to collect sync reasons from members recursively
       const collectMemberSyncReasons = ({
@@ -468,23 +469,28 @@ export const statusCommand = Cli.Command.make(
           const memberLabel =
             prefix !== undefined && prefix !== '' ? `${prefix}/${member.name}` : member.name
           if (member.symlinkExists === false) {
-            syncReasons.push(`Member '${memberLabel}' symlink missing`)
+            workspaceSyncReasons.push(`Member '${memberLabel}' symlink missing`)
           } else if (member.exists === false) {
-            syncReasons.push(`Member '${memberLabel}' worktree missing`)
+            workspaceSyncReasons.push(`Member '${memberLabel}' worktree missing`)
           }
           if (member.staleLock !== undefined) {
-            syncReasons.push(
+            lockSyncReasons.push(
               `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
             )
           }
           if (member.symlinkDrift !== undefined) {
-            syncReasons.push(
+            workspaceSyncReasons.push(
               `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
             )
           }
           if (member.refMismatch !== undefined) {
-            syncReasons.push(
+            workspaceSyncReasons.push(
               `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
+            )
+          }
+          if (member.commitDrift !== undefined) {
+            lockSyncReasons.push(
+              `Member '${memberLabel}' commit drift: workspace is '${member.commitDrift.localCommit.slice(0, 8)}' but lock records '${member.commitDrift.lockedCommit.slice(0, 8)}'`,
             )
           }
           if (member.nestedMembers !== undefined) {
@@ -497,16 +503,19 @@ export const statusCommand = Cli.Command.make(
       // Check lock staleness
       if (lockStaleness !== undefined) {
         if (lockStaleness.exists === false) {
-          syncReasons.push('Lock file missing')
+          lockSyncReasons.push('Lock file missing')
         }
-        for (const name of lockStaleness.missingFromLock) {
-          syncReasons.push(`Member '${name}' not in lock file`)
+        for (const memberName of lockStaleness.missingFromLock) {
+          lockSyncReasons.push(`Member '${memberName}' not in lock file`)
         }
-        for (const name of lockStaleness.extraInLock) {
-          syncReasons.push(`Lock file has extra member '${name}'`)
+        for (const memberName of lockStaleness.extraInLock) {
+          lockSyncReasons.push(`Lock file has extra member '${memberName}'`)
         }
       }
 
+      const syncReasons = [...workspaceSyncReasons, ...lockSyncReasons]
+      const workspaceSyncNeeded = workspaceSyncReasons.length > 0
+      const lockSyncNeeded = lockSyncReasons.length > 0
       const syncNeeded = syncReasons.length > 0
 
       // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
@@ -517,9 +526,11 @@ export const statusCommand = Cli.Command.make(
             tui.dispatch({
               _tag: 'SetState',
               state: {
-                name,
+                name: workspaceName,
                 root: root.value,
                 syncNeeded,
+                workspaceSyncNeeded,
+                lockSyncNeeded,
                 syncReasons,
                 members,
                 all,
@@ -531,5 +542,5 @@ export const statusCommand = Cli.Command.make(
           }),
         { view: React.createElement(StatusView, { stateAtom: StatusApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.withSpan('megarepo/status')),
+    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/status')),
 ).pipe(Cli.Command.withDescription('Show workspace status and member states'))

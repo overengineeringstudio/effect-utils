@@ -77,6 +77,8 @@ export const AddDefault: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr add"
         View={AddView}
         app={AddApp}
         initialState={
@@ -108,6 +110,8 @@ export const AddNoSync: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr add --no-sync"
         View={AddView}
         app={AddApp}
         initialState={
@@ -140,6 +144,8 @@ export const AddWithSyncCloned: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr add"
         View={AddView}
         app={AddApp}
         initialState={
@@ -172,6 +178,8 @@ export const AddWithSyncExisting: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr add"
         View={AddView}
         app={AddApp}
         initialState={
@@ -204,6 +212,8 @@ export const AddWithSyncError: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr add"
         View={AddView}
         app={AddApp}
         initialState={

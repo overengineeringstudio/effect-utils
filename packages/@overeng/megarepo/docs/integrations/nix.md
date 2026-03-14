@@ -116,11 +116,11 @@ For flakes you're actively developing, use the `.envrc` override pattern or keep
 
 When multiple megarepo members depend on each other via Nix flake inputs, you can end up with version drift between `megarepo.lock` and the individual `flake.lock`/`devenv.lock` files.
 
-Megarepo solves this with **Nix Lock Sync**: during `mr sync`, it automatically updates `flake.lock` and `devenv.lock` files in member repos to match the commits in `megarepo.lock`.
+Megarepo solves this with **Nix Lock Sync**: during `mr lock`, `mr fetch --apply`, and `mr apply`, it updates `flake.lock` and `devenv.lock` files in member repos to match the commits in `megarepo.lock`.
 
 ### How It Works
 
-1. After `megarepo.lock` is written, megarepo scans each member for lock files
+1. After `megarepo.lock` is written or applied, megarepo scans each member for lock files
 2. For each input in `flake.lock`/`devenv.lock`, it checks if the URL matches another megarepo member
 3. If matched and the `rev` differs, it updates to match `megarepo.lock`
 4. `narHash` and `lastModified` are removed (Nix recalculates these)

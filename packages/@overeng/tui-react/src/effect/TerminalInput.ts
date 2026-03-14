@@ -547,7 +547,7 @@ export const createTerminalInput = (
         }
 
         // Publish event - fire and forget for the sync callback
-        Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
+        void Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
       }
     }
 
@@ -574,7 +574,7 @@ export const createTerminalInput = (
       const resizeHandler = () => {
         const cols = output.columns ?? 80
         const rows = output.rows ?? 24
-        Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
+        void Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
       }
 
       // Listen for SIGWINCH (terminal resize signal)
@@ -668,7 +668,7 @@ export const createTerminalResize = (
       // Set up resize handler
       const resizeHandler = () => {
         const dims = getDimensions()
-        Runtime.runFork(runtime)(PubSub.publish(pubsub, dims))
+        void Runtime.runFork(runtime)(PubSub.publish(pubsub, dims))
       }
 
       // Listen for SIGWINCH

@@ -30,6 +30,7 @@ type Story = StoryObj<typeof Spinner>
 export const Default: Story = {
   render: () => (
     <TuiStoryPreview
+      command="spinner-demo"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row">
@@ -45,6 +46,7 @@ export const Default: Story = {
 export const WithColor: Story = {
   render: () => (
     <TuiStoryPreview
+      command="spinner-demo"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row">
@@ -61,6 +63,7 @@ export const WithColor: Story = {
 export const AllTypes: Story = {
   render: () => (
     <TuiStoryPreview
+      command="spinner-demo"
       app={StaticApp}
       View={() => (
         <Box>
@@ -94,6 +97,7 @@ export const AllTypes: Story = {
 export const InContext: Story = {
   render: () => (
     <TuiStoryPreview
+      command="spinner-demo"
       app={StaticApp}
       View={() => (
         <Box>

@@ -73,7 +73,7 @@ const createEffectRunner = (options: {
       Runtime.runFork(options.runtime),
     )
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      void Effect.runFork(Fiber.interrupt(fiber))
     }
   }
 }

@@ -1,44 +1,13 @@
 /**
- * Ref encoding and parsing utilities for megarepo
+ * Ref parsing utilities for megarepo.
  *
  * Handles:
- * - URL encoding refs for filesystem-safe paths
  * - Extracting #ref from source strings
  * - Classifying refs as commit/tag/branch
+ * - Parsing store symlink targets back into refs
  */
 
 import { Option } from 'effect'
-
-// =============================================================================
-// Ref Encoding (for filesystem paths)
-// =============================================================================
-
-/**
- * Encode a git ref for use in filesystem paths.
- * Uses URL percent-encoding for safety.
- *
- * @example
- * encodeRef('main') // 'main'
- * encodeRef('feature/foo') // 'feature%2Ffoo'
- * encodeRef('100%complete') // '100%25complete'
- */
-export const encodeRef = (ref: string): string => {
-  // Use encodeURIComponent for most encoding, which handles /,%,etc.
-  // But we want to keep alphanumerics, -, _, . unencoded for readability
-  return encodeURIComponent(ref)
-}
-
-/**
- * Decode a URL-encoded ref back to its original form.
- *
- * @example
- * decodeRef('main') // 'main'
- * decodeRef('feature%2Ffoo') // 'feature/foo'
- * decodeRef('100%25complete') // '100%complete'
- */
-export const decodeRef = (encoded: string): string => {
-  return decodeURIComponent(encoded)
-}
 
 // =============================================================================
 // Source Parsing
@@ -216,21 +185,19 @@ export interface ExtractedSymlinkRef {
  * Store paths follow the pattern:
  * - `~/.megarepo/<url>/refs/heads/<branch>` for branches
  * - `~/.megarepo/<url>/refs/tags/<tag>` for tags
- * - `~/.megarepo/<url>/commits/<sha>` for commits
- *
- * Branch names with `/` are URL-encoded as `%2F`.
+ * - `~/.megarepo/<url>/refs/commits/<sha>` for commits
  *
  * @example
  * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/heads/main')
  * // { ref: 'main', type: 'branch' }
  *
- * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/heads/refactor%2Fgenie-igor-ci')
+ * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/heads/refactor/genie-igor-ci')
  * // { ref: 'refactor/genie-igor-ci', type: 'branch' }
  *
  * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/tags/v1.0.0')
  * // { ref: 'v1.0.0', type: 'tag' }
  *
- * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/commits/abc123def456789012345678901234567890abcd')
+ * extractRefFromSymlinkPath('/Users/foo/.megarepo/github.com/org/repo/refs/commits/abc123def456789012345678901234567890abcd')
  * // { ref: 'abc123def456789012345678901234567890abcd', type: 'commit' }
  *
  * extractRefFromSymlinkPath('/some/other/path')
@@ -240,14 +207,12 @@ export const extractRefFromSymlinkPath = (
   symlinkTarget: string,
 ): ExtractedSymlinkRef | undefined => {
   // Path format: .../refs/heads/<branch> or .../refs/tags/<tag> or .../commits/<sha>
-  // Branch names with / are URL-encoded as %2F
-  const refsMatch = symlinkTarget.match(/\/refs\/heads\/([^/]+(?:\/[^/]+)*)(?:\/)?$/)
-  const tagsMatch = symlinkTarget.match(/\/refs\/tags\/([^/]+)(?:\/)?$/)
+  const refsMatch = symlinkTarget.match(/\/refs\/heads\/(.+?)(?:\/)?$/)
+  const tagsMatch = symlinkTarget.match(/\/refs\/tags\/(.+?)(?:\/)?$/)
   const commitsMatch = symlinkTarget.match(/\/commits\/([a-f0-9]+)(?:\/)?$/)
 
   if (refsMatch !== null) {
-    // Decode URL-encoded branch names (e.g., refactor%2Fgenie-igor-ci -> refactor/genie-igor-ci)
-    return { ref: decodeURIComponent(refsMatch[1]!), type: 'branch' }
+    return { ref: refsMatch[1]!, type: 'branch' }
   }
   if (tagsMatch !== null) {
     return { ref: tagsMatch[1]!, type: 'tag' }

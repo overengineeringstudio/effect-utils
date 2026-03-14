@@ -63,6 +63,8 @@ type Story = StoryObj<StoryArgs>
 export const Healthy: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -79,6 +81,8 @@ export const Healthy: Story = {
 export const HealthyWithDiskUsage: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -96,6 +100,8 @@ export const HealthyWithDiskUsage: Story = {
 export const MixedIssues: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -112,6 +118,8 @@ export const MixedIssues: Story = {
 export const RefMismatch: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -155,6 +163,8 @@ export const RefMismatch: Story = {
 export const DirtyWorktrees: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -196,6 +206,8 @@ export const DirtyWorktrees: Story = {
 export const OrphanedWorktrees: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -240,6 +252,8 @@ export const OrphanedWorktrees: Story = {
 export const BrokenWorktrees: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -275,6 +289,8 @@ export const BrokenWorktrees: Story = {
 export const AllIssueTypes: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -336,6 +352,8 @@ export const AllIssueTypes: Story = {
 export const Empty: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({
@@ -352,6 +370,8 @@ export const Empty: Story = {
 export const LargeStore: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store status"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createStatusState({

@@ -7,28 +7,21 @@
 
 import {
   catalog as externalCatalog,
-  createWorkspaceDepsResolver,
+  commonPnpmPolicySettings,
   defineCatalog,
   definePatchedDependencies,
-  pnpmWorkspaceYaml,
-  type GenieOutput,
-  type PackageJsonData,
 } from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
-// Re-export from external for convenience (explicit exports to avoid barrel file)
 export {
   baseTsconfigCompilerOptions,
-  CatalogBrand,
-  computeRelativePath,
+  commonPnpmPolicySettings,
   createEffectUtilsRefs,
   createPatchPostinstall,
   createPnpmPatchedDependencies,
-  createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   domLib,
-  effectLspDevDeps,
   effectUtilsPackages,
   githubRuleset,
   githubWorkflow,
@@ -39,12 +32,11 @@ export {
   packageTsconfigCompilerOptions,
   patchPostinstall,
   pnpmPatchedDependencies,
-  pnpmWorkspace,
   pnpmWorkspaceYaml,
   privatePackageDefaults,
   reactJsx,
   tsconfigJson,
-  workspaceRoot,
+  type AggregatePackageJsonData,
   type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
@@ -52,21 +44,25 @@ export {
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
   type PackageJsonData,
-  type PackageJsonGenie,
   type PatchesRegistry,
+  type PnpmPackageClosureConfig,
   type PnpmSettings,
   type PnpmWorkspaceData,
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
-  type WorkspaceRootData,
+  type WorkspaceIdentity,
+  type WorkspaceMeta,
+  type WorkspaceMetadata,
+  type WorkspacePackage,
+  type WorkspacePackageLike,
 } from './external.ts'
 
 /**
  * Extended catalog with internal @overeng/* packages for effect-utils use.
  *
- * Internal packages use `workspace:*` protocol with per-package pnpm-workspace.yaml files.
- * Each package declares its siblings in its workspace, enabling proper symlink resolution.
+ * Internal packages use `workspace:*` inside the standalone repo topology.
+ * Cross-repo composition uses generated aggregate roots instead.
  *
  * Package list is derived from genie/packages.ts (single source of truth).
  * See: context/workarounds/pnpm-issues.md for full details
@@ -75,6 +71,19 @@ export const catalog = defineCatalog({
   extends: externalCatalog,
   packages: internalPackageCatalogEntries,
 })
+
+const WORKSPACE_REPO_NAME = 'effect-utils'
+
+/** Creates a workspace member descriptor for a package path within the effect-utils repo */
+export const workspaceMember = (
+  memberPath: string,
+  pnpmPackageClosure: PnpmPackageClosureConfig = {},
+) =>
+  ({
+    repoName: WORKSPACE_REPO_NAME,
+    memberPath,
+    pnpmPackageClosure,
+  }) as const
 
 /**
  * Patched dependencies for `@overeng/utils`.
@@ -88,119 +97,22 @@ export const utilsPatches = definePatchedDependencies({
 })
 
 /**
- * Common pnpm workspace settings for all effect-utils packages.
+ * Common pnpm workspace data for effect-utils workspaces.
  *
- * All workspaces share the same `patchedDependencies` and `allowUnusedPatches`
- * so that lockfiles remain consistent when the same package appears in multiple workspaces.
+ * Extends `commonPnpmPolicySettings` with effect-utils-specific patch metadata.
+ * All effect-utils workspaces share the same `patchedDependencies` and `allowUnusedPatches`
+ * so that internal package-closure projections and the aggregate root stay on
+ * the same patch metadata.
  *
  * NOTE: `sharedWorkspaceLockfile: false` is intentionally NOT set here.
- * Per-member lockfiles cause TS2742 errors in `tsc --build` because each workspace member
- * gets its own `.pnpm` store, creating different physical paths for the same package.
- * TypeScript treats these as distinct types, breaking project references.
+ * Build-time package closures do not own lockfiles, and reintroducing per-member
+ * lock ownership would cause TS2742 errors in `tsc --build` because each
+ * workspace member gets its own `.pnpm` store, creating different physical
+ * paths for the same package. TypeScript treats these as distinct types,
+ * breaking project references.
  */
-const commonWorkspaceSettings = {
+export const commonPnpmWorkspaceData = {
+  ...commonPnpmPolicySettings,
   patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
-  dedupePeerDependents: true as const,
-  supportedArchitectures: {
-    os: ['linux', 'darwin'],
-    cpu: ['x64', 'arm64'],
-  },
-}
-
-/**
- * Pnpm workspace with React hoisting for single-instance React in dev.
- *
- * Includes supportedArchitectures to download platform-specific binaries for all
- * platforms, making the pnpm store hash consistent across Linux and macOS builds.
- */
-export const pnpmWorkspaceReact = (packages: readonly string[]) =>
-  pnpmWorkspaceYaml({
-    packages: ['.', ...packages],
-    publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
-    ...commonWorkspaceSettings,
-  })
-
-type PkgInput = GenieOutput<PackageJsonData>
-
-const resolveDeps = createWorkspaceDepsResolver({
-  prefixes: ['@overeng/'],
-  resolveWorkspacePath: (packageName) => `../${packageName.split('/')[1]}`,
-})
-
-/**
- * Standalone pnpm workspace (no internal deps).
- * Use for packages that don't depend on other @overeng/* packages.
- */
-export const pnpmWorkspaceStandalone = () =>
-  pnpmWorkspaceYaml({
-    packages: ['.'],
-    ...commonWorkspaceSettings,
-  })
-
-/**
- * Standalone pnpm workspace with React hoisting (no internal deps).
- * Use for React packages that don't depend on other @overeng/* packages.
- */
-export const pnpmWorkspaceStandaloneReact = () =>
-  pnpmWorkspaceYaml({
-    packages: ['.'],
-    publicHoistPattern: ['react', 'react-dom', 'react-reconciler'],
-    ...commonWorkspaceSettings,
-  })
-
-/**
- * Derive pnpm workspace from package and its imported deps.
- *
- * Each package imports its direct deps' package.json.genie.ts files,
- * and this function recursively resolves transitive deps.
- *
- * @example
- * ```ts
- * import pkg from './package.json.genie.ts'
- * import tuiReactPkg from '../tui-react/package.json.genie.ts'
- * import utilsPkg from '../utils/package.json.genie.ts'
- *
- * export default pnpmWorkspaceWithDeps({ pkg, deps: [tuiReactPkg, utilsPkg] })
- * ```
- */
-export const pnpmWorkspaceWithDeps = ({
-  pkg,
-  deps,
-  extraPackages,
-}: {
-  pkg: PkgInput
-  deps: readonly PkgInput[]
-  extraPackages?: readonly string[]
-}) => {
-  const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
-  return pnpmWorkspaceYaml({
-    packages: ['.', ...packages],
-    ...commonWorkspaceSettings,
-  })
-}
-
-/**
- * Derive pnpm workspace with React hoisting from package and its imported deps.
- *
- * @example
- * ```ts
- * import pkg from './package.json.genie.ts'
- * import tuiReactPkg from '../tui-react/package.json.genie.ts'
- * import tuiCorePkg from '../tui-core/package.json.genie.ts'
- *
- * export default pnpmWorkspaceWithDepsReact({ pkg, deps: [tuiReactPkg, tuiCorePkg] })
- * ```
- */
-export const pnpmWorkspaceWithDepsReact = ({
-  pkg,
-  deps,
-  extraPackages,
-}: {
-  pkg: PkgInput
-  deps: readonly PkgInput[]
-  extraPackages?: readonly string[]
-}) => {
-  const packages = resolveDeps({ pkg, deps, location: '.', extraPackages })
-  return pnpmWorkspaceReact(packages)
 }

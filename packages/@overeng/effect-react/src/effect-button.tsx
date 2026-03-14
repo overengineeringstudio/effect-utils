@@ -119,7 +119,7 @@ export const useEffectButton = <TEnv, TA, TE>({
       Effect.gen(function* () {
         const progressChanges = yield* ProgressReporter.changes
 
-        yield* progressChanges.pipe(
+        const _ = yield* progressChanges.pipe(
           Stream.tap((progress) =>
             Effect.sync(() => {
               setState((prev) => {

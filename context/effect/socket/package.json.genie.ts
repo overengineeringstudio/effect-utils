@@ -1,13 +1,25 @@
-import { catalog, packageJson, type PackageJsonData } from '../../../genie/internal.ts'
+import {
+  catalog,
+  packageJson,
+  workspaceMember,
+  type PackageJsonData,
+} from '../../../genie/internal.ts'
 
-export default packageJson({
-  name: 'effect-socket-examples',
-  private: true,
-  type: 'module',
+const composition = catalog.compose({
+  workspace: workspaceMember('context/effect/socket'),
   dependencies: {
-    ...catalog.pick('@effect/platform', '@effect/platform-node', '@effect/rpc', 'effect'),
+    external: catalog.pick('@effect/platform', '@effect/platform-node', '@effect/rpc', 'effect'),
   },
   devDependencies: {
-    ...catalog.pick('@types/node'),
+    external: catalog.pick('@types/node'),
   },
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: 'effect-socket-examples',
+    private: true,
+    type: 'module',
+  } satisfies PackageJsonData,
+  composition,
+)

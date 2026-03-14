@@ -491,7 +491,7 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
         // Update atom synchronously via registry
         registry.set(dispatchAtom, action)
         // Also publish to PubSub for action stream
-        Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
+        void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
       }
 
       // Track root for manual unmount

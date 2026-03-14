@@ -64,7 +64,7 @@ const init = async () => {
   connectWorker()
 
   // Run log listener in background (scoped so it cleans up on page unload)
-  startLogListener.pipe(Effect.scoped, Effect.runFork)
+  void startLogListener.pipe(Effect.scoped, Effect.runFork)
 }
 
 init()

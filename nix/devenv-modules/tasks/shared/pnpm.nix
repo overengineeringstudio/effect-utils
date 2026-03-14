@@ -1,86 +1,22 @@
 # pnpm install tasks
 #
-# STATUS: Current package manager (temporary, plan to switch back to bun)
+# effect-utils now uses a repo-root pnpm workspace for dev installs.
+# The repo-root pnpm-lock.yaml is the only authoritative lockfile for this
+# live-worktree model.
 #
-# We use pnpm temporarily due to bun bugs. Once fixed, we'll switch back to bun.
-# See: context/workarounds/bun-issues.md for blocking issues.
-#
-# Usage in devenv.nix:
-#   imports = [
-#     (inputs.effect-utils.devenvModules.tasks.pnpm {
-#       packages = [
-#         "packages/app"
-#         "packages/website"
-#         "scripts"
-#       ];
-#       # globalCache = true;  # default: share ~/.cache/pnpm across workspaces
-#     })
-#   ];
-#
-# Provides: pnpm:install, pnpm:install:<name>, pnpm:update, pnpm:clean, pnpm:reset-lock-files
-# Sets: env.npm_config_cache (when globalCache = true)
-#
-# ---
-# How we avoid TypeScript TS2742 errors:
-#
-# We use `workspace:*` protocol with per-package pnpm-workspace.yaml files.
-# Each package declares only its direct workspace dependencies, which ensures
-# TypeScript resolves types correctly without additional workarounds.
-#
-# Note: `enableGlobalVirtualStore` was previously used but is no longer needed
-# with the `workspace:*` protocol approach. See PNPM-02 in context/workarounds/pnpm-issues.md
-#
-# ---
-# Why installs run SEQUENTIALLY (not in parallel):
-#
-# Each package has a pnpm-workspace.yaml that lists workspace members for the
-# `workspace:*` protocol to resolve internal dependencies. When `pnpm install`
-# runs, it operates on ALL workspace members (not just the current package),
-# installing dependencies into each member's node_modules/.
-#
-# When multiple packages have overlapping workspace members (e.g., both genie
-# and notion-cli include ../utils, ../tui-react), running their installs in
-# parallel causes race conditions - both try to write to the same directories
-# simultaneously, resulting in ENOENT errors.
-#
-# Alternative: Dependency-aware parallelism could be implemented by analyzing
-# workspace overlap and only serializing installs with shared members. This
-# would restore ~3x speedup for non-overlapping packages but adds complexity.
-#
-# ---
-# Shared caching rules live in ../lib/cache.nix (task-specific details below).
-#
-# Cache inputs (per package path):
-# - package.json contents
-# - pnpm-lock.yaml contents
-# - For packages with workspace members (pnpm-workspace.yaml): member package.json contents
-# - For packages with injected deps: source file contents (content-addressed)
-#
-# Cache files:
-# - .direnv/task-cache/pnpm-install/<task-name>.hash
-#
-# ---
-# Injected workspace deps and staleness:
-#
-# Packages using `injected: true` in dependenciesMeta get a COPY of the workspace
-# dep instead of a symlink. This copy becomes stale when the source changes.
-# Regular `pnpm install` syncs the copy, but our status check must detect when
-# the source has changed to trigger reinstall.
-#
-# Injected deps are AUTO-DETECTED from each package's package.json by parsing
-# the `dependenciesMeta` section at Nix evaluation time. No manual configuration
-# needed - just add `"injected": true` to dependenciesMeta and it will be tracked.
-#
-# ---
-# Global content cache:
-#
-# By default, pnpm's content-addressable cache is shared globally at ~/.cache/pnpm.
-# This prevents duplicate downloads across workspaces while keeping stores per-workspace.
-# Set globalCache = false to disable (not recommended for megarepo setups).
-#
+# Provides:
+# - pnpm:install
+# - pnpm:update
+# - pnpm:clean
+# - pnpm:reset-lock-files
 {
   packages,
   globalCache ? true,
+  frozenInCi ? true,
+  installAfter ? [],
+  updateAfter ? [],
+  cleanAfter ? [],
+  resetLockFilesAfter ? [],
 }:
 {
   lib,
@@ -92,87 +28,10 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
+
+  sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   flock = "${pkgs.flock}/bin/flock";
 
-  sanitize = s: builtins.replaceStrings [ "/" "." "@" ] [ "-" "-" "" ] s;
-
-  # Primary display name used when unique:
-  # "packages/@scope/foo" -> "foo"
-  # "packages/@scope/foo/examples/basic" -> "foo-examples-basic"
-  # "packages/app" -> "app"
-  # "apps/example.com" -> "example-com"
-  # "tests/wa-sqlite" -> "tests-wa-sqlite"
-  # "scripts" -> "scripts"
-  # "repos/effect-utils/packages/@overeng/oxc-config" -> "oxc-config"
-  baseName =
-    path:
-    let
-      repoStripped =
-        let
-          m = builtins.match "repos/[^/]+/packages/(.*)" path;
-        in
-        if m != null then builtins.head m else path;
-      stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" repoStripped);
-      m = builtins.match "@[^/]+/(.*)" stripped;
-      final = if m != null then builtins.head m else stripped;
-    in
-    sanitize final;
-
-  # Collision fallback name:
-  # include enough stable context (repo + scope + relative path) to avoid conflicts.
-  # Example:
-  #   repos/repo-a/packages/@scope/utils -> repo-a-scope-utils
-  #   packages/@other/utils -> other-utils
-  disambiguatedName =
-    path:
-    let
-      repoMatch = builtins.match "repos/([^/]+)/(.*)" path;
-      repo = if repoMatch == null then null else builtins.elemAt repoMatch 0;
-      repoRelative = if repoMatch == null then path else builtins.elemAt repoMatch 1;
-      stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" repoRelative);
-      scopeMatch = builtins.match "@([^/]+)/(.*)" stripped;
-      scope = if scopeMatch == null then null else builtins.elemAt scopeMatch 0;
-      rest = if scopeMatch == null then stripped else builtins.elemAt scopeMatch 1;
-      pieces = lib.filter (x: x != null && x != "") [ repo scope rest ];
-    in
-    sanitize (lib.concatStringsSep "-" pieces);
-
-  baseTaskNames = map baseName packages;
-  duplicateBaseTaskNames = lib.filterAttrs (_: names: builtins.length names > 1) (lib.groupBy (n: n) baseTaskNames);
-  toName =
-    path:
-    let
-      name = baseName path;
-    in
-    if (duplicateBaseTaskNames.${name} or null) != null then disambiguatedName path else name;
-
-  packageTaskNames = map toName packages;
-  duplicateTaskNames = lib.filterAttrs (_: names: builtins.length names > 1) (lib.groupBy (n: n) packageTaskNames);
-  duplicateTaskNameLines = lib.mapAttrsToList (
-    taskName: _:
-    let
-      conflictingPaths = lib.filter (path: toName path == taskName) packages;
-    in
-    "- ${taskName}: ${lib.concatStringsSep ", " conflictingPaths}"
-  ) duplicateTaskNames;
-  ensureUniqueTaskNames =
-    if duplicateTaskNames == { } then
-      true
-    else
-      throw ''
-        pnpm task name collision detected.
-        Conflicting task names (derived from package paths):
-        ${lib.concatStringsSep "\n" duplicateTaskNameLines}
-
-        Fix by adjusting task-name derivation so each configured package path maps to a unique task name.
-      '';
-
-  # =============================================================================
-  # Auto-detect injected deps from package.json
-  # =============================================================================
-  #
-  # Build a lookup from package name (e.g., "@overeng/tui-react") to path
-  # (e.g., "packages/@overeng/tui-react"). Only includes packages in our list.
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
       map (
@@ -194,8 +53,6 @@ let
     )
   );
 
-  # Get injected dep paths for a package by parsing its package.json
-  # Returns list of paths (e.g., ["packages/@overeng/tui-react"])
   getInjectedDeps =
     path:
     let
@@ -203,225 +60,161 @@ let
       pkgJsonExists = builtins.pathExists pkgJsonPath;
       pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else { };
       depsMeta = pkgJson.dependenciesMeta or { };
-      # Get names with injected: true
       injectedNames = builtins.filter (name: (depsMeta.${name}.injected or false) == true) (
         builtins.attrNames depsMeta
       );
-      # Map to paths, filtering out packages not in our list
-      injectedPaths = builtins.filter (p: p != null) (
-        map (name: packageNameToPath.${name} or null) injectedNames
-      );
     in
-    injectedPaths;
+    builtins.filter (p: p != null) (map (name: packageNameToPath.${name} or null) injectedNames);
 
-  # Build list of {path, name, prevName, injected} for sequential chaining
-  packagesWithPrev =
-    assert ensureUniqueTaskNames;
-    lib.imap0 (i: path: {
-      inherit path;
-      name = toName path;
-      prevName = if i == 0 then null else toName (builtins.elemAt packages (i - 1));
-      # Auto-detect injected deps from package.json
-      injected = getInjectedDeps path;
-    }) packages;
+  injectedSourcePaths = lib.unique (lib.concatMap getInjectedDeps packages);
 
-  # =============================================================================
-  # Shared hash computation scripts
-  # =============================================================================
-  #
-  # Hash function that works on both Linux (sha256sum) and macOS (shasum)
-  sha256sum = "${pkgs.coreutils}/bin/sha256sum";
-  yq = "${pkgs.yq-go}/bin/yq";
+  manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
+  nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
+  lockFilePaths = ''"pnpm-lock.yaml"'';
+
   computeHashFn = ''
     compute_hash() {
       ${sha256sum} | awk '{print $1}'
     }
   '';
 
-  # Compute a hash of workspace member package.json files from pnpm-workspace.yaml.
-  # When upstream workspace members change deps, pnpm install must re-run
-  # even if the local package.json and lockfile haven't changed.
-  computeWsHashFn = ''
-    compute_ws_hash() {
-      if [ ! -f pnpm-workspace.yaml ]; then
+  emitDirStateFn = ''
+    emit_dir_state() {
+      local dir="$1"
+
+      if [ ! -d "$dir" ]; then
         return
       fi
-      local ws_content=""
-      while IFS= read -r pattern; do
-        [ "$pattern" = "." ] && continue
-        # Simple glob expansion (no recursive ** or negation — not needed since
-        # our genie-generated pnpm-workspace.yaml files use plain relative paths)
-        for dir in $pattern; do
-          [ -f "$dir/package.json" ] && ws_content="$ws_content$(cat "$dir/package.json")"
+
+      find "$dir" \
+        \( \
+          -name .git -o \
+          -name .direnv -o \
+          -name .devenv -o \
+          -name .turbo -o \
+          -name .cache -o \
+          -name node_modules -o \
+          -name dist -o \
+          -name coverage -o \
+          -name result -o \
+          -name tmp \
+        \) -prune -o -type f -print \
+        | LC_ALL=C sort \
+        | while IFS= read -r file; do
+          printf '%s ' "''${file#"$dir"/}"
+          ${sha256sum} "$file" | awk '{print $1}'
         done
-      done < <(${yq} '.packages[]' pnpm-workspace.yaml 2>/dev/null)
-      if [ -n "$ws_content" ]; then
-        printf '%s' "$ws_content" | compute_hash
-      fi
     }
   '';
 
-  # Generate cache hash computation script for a package
-  # Takes the list of injected dep paths and a variable name for the result
-  mkComputeCacheHash =
-    { injected, resultVar }:
-    ''
-      if [ -f pnpm-lock.yaml ]; then
-        base_hash="$(cat package.json pnpm-lock.yaml | compute_hash)"
-      else
-        base_hash="$(cat package.json | compute_hash)"
-      fi
-      ws_hash="$(compute_ws_hash)"
-      [ -n "$ws_hash" ] && base_hash="$base_hash $ws_hash"
-      ${
-        if injected == [ ] then
-          ''
-            ${resultVar}="$base_hash"
-          ''
-        else
-          ''
-            injected_hash="$(find ${
-              lib.concatMapStringsSep " " (dep: "\"$DEVENV_ROOT/${dep}/src\"") injected
-            } -type f \( -name "*.ts" -o -name "*.tsx" \) -exec cat {} + 2>/dev/null | compute_hash)"
-            ${resultVar}="$base_hash $injected_hash"
-          ''
-      }
-    '';
+  computeWorkspaceStateHash = ''
+    compute_workspace_state_hash() {
+      {
+        cat package.json
+        cat pnpm-workspace.yaml
+        cat pnpm-lock.yaml
+        if [ -f .npmrc ]; then
+          cat .npmrc
+        fi
 
-  # Install tasks run sequentially to avoid race conditions from overlapping workspaces.
-  # Each task depends on the previous one completing.
-  # Note: pnpm-workspace.yaml files are committed, so fresh clones can install without genie:run.
-  mkInstallTask =
-    {
-      path,
-      name,
-      prevName,
-      injected,
-    }:
-    {
-      "pnpm:install:${name}" = {
-        description = "Install dependencies for ${name}";
-        # NOTE: Use --config.confirmModulesPurge=false to avoid TTY prompts in non-interactive mode.
-        exec = trace.exec "pnpm:install:${name}" ''
-          set -euo pipefail
-          mkdir -p "${cacheRoot}"
-          hash_file="${cacheRoot}/${name}.hash"
-
-          # Cross-process lock: prevent overlapping pnpm installs within a worktree.
-          #
-          # Even though our per-package install tasks are chained sequentially within a
-          # single task graph, multiple terminals can trigger installs concurrently
-          # (e.g. simultaneous direnv loads). pnpm then races on node_modules/.pnpm
-          # final renames, producing flaky filesystem errors like ENOTEMPTY/ENOENT.
-          lockfile="${cacheRoot}/pnpm-install.lock"
-          exec 200>"$lockfile"
-          if ! ${flock} -w 600 200; then
-            echo "[pnpm] Install lock timeout after 600s: $lockfile" >&2
-            echo "[pnpm] Another pnpm install may be stuck; try: dt pnpm:clean && dt pnpm:install" >&2
-            exit 1
+        for manifest in ${manifestPaths}; do
+          if [ -f "$manifest" ]; then
+            cat "$manifest"
           fi
+        done
 
-          if [ ! -f pnpm-lock.yaml ]; then
-            echo "[pnpm] Warning: pnpm-lock.yaml missing in ${path}." >&2
-            echo "[pnpm] Install will proceed without a lockfile (non-deterministic)." >&2
-            echo "[pnpm] Fix: run 'dt pnpm:update' to regenerate lockfiles." >&2
-          fi
-
-          if [ -n "''${CI:-}" ]; then
-            pnpm install --config.confirmModulesPurge=false --frozen-lockfile
-          else
-            pnpm install --config.confirmModulesPurge=false
-          fi
-
-          ${computeHashFn}
-          ${computeWsHashFn}
-          ${mkComputeCacheHash {
-            inherit injected;
-            resultVar = "cache_value";
-          }}
-          ${cache.writeCacheFile ''"$hash_file"''}
-        '';
-        cwd = path;
-        # Sequential chaining: each task depends on the previous one to avoid race conditions.
-        # First task has no dependency (workspace files are committed).
-        after = if prevName == null then [ ] else [ "pnpm:install:${prevName}" ];
-        status = trace.status "pnpm:install:${name}" "hash" ''
-          set -euo pipefail
-          hash_file="${cacheRoot}/${name}.hash"
-          if [ ! -d "node_modules" ]; then
-            exit 1
-          fi
-          if [ ! -f "$hash_file" ]; then
-            exit 1
-          fi
-          ${computeHashFn}
-          ${computeWsHashFn}
-          ${mkComputeCacheHash {
-            inherit injected;
-            resultVar = "current_hash";
-          }}
-          stored_hash="$(cat "$hash_file")"
-          if [ "$current_hash" != "$stored_hash" ]; then
-            exit 1
-          fi
-          exit 0
-        '';
-      };
-    };
-
-  nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
-  lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/pnpm-lock.yaml") packages;
-  pnpmStorePath = "${config.devenv.root}/.pnpm-store";
-
-  # Build a shell script that updates lockfiles for all packages
-  # See: https://pnpm.io/cli/install#--fix-lockfile
-  updateScript = lib.concatStringsSep "\n" (
-    map (p: ''
-      echo "Updating ${p}..."
-      (cd "${p}" && pnpm install --fix-lockfile --config.confirmModulesPurge=false) || echo "Warning: ${p} update failed"
-    '') packages
-  );
+        for injected_dir in ${lib.concatMapStringsSep " " (path: ''"${path}"'') injectedSourcePaths}; do
+          emit_dir_state "$injected_dir"
+        done
+      } | compute_hash
+    }
+  '';
 
 in
 {
-  # Share pnpm's content-addressable cache globally to prevent duplicate downloads
-  # across workspaces. Each workspace still has its own store (PNPM_STORE_DIR),
-  # but downloaded tarballs are cached in ~/.cache/pnpm.
-  # Note: This must be set in enterShell (not env) so that $HOME is expanded by
-  # bash at runtime. Nix strings don't do shell variable expansion, and
-  # builtins.getEnv "HOME" returns "" in pure flake evaluation.
   enterShell = lib.mkIf globalCache ''
     export npm_config_cache="$HOME/.cache/pnpm"
+    export npm_config_manage_package_manager_versions=false
   '';
 
-  tasks = lib.mkMerge (
-    map mkInstallTask packagesWithPrev
-    ++ [
-      {
-        "pnpm:install" = {
-          description = "Install all pnpm dependencies";
-          exec = "echo 'All pnpm packages installed'";
-          after = map (p: "pnpm:install:${toName p}") packages;
-        };
-        "pnpm:update" = {
-          description = "Update all pnpm lockfiles (use when adding new dependencies)";
-          # Ensure generated package.json files are up to date before updating lockfiles.
-          after = [ "genie:run" ];
-          exec = trace.exec "pnpm:update" ''
-            echo "Updating pnpm lockfiles for all packages..."
-            ${updateScript}
-            echo "Lockfiles updated. Run 'dt nix:hash' to update Nix hashes."
-          '';
-        };
-        "pnpm:clean" = {
-          description = "Remove node_modules for all managed packages";
-          exec = trace.exec "pnpm:clean" "rm -rf ${nodeModulesPaths} ${pnpmStorePath}";
-        };
-        "pnpm:reset-lock-files" = {
-          description = "Remove pnpm lock files for all managed packages (⚠ destructive, last resort)";
-          exec = trace.exec "pnpm:reset-lock-files" "rm -f ${lockFilePaths}";
-        };
-      }
-    ]
-  );
+  tasks = {
+    "pnpm:install" = {
+      description = "Install the repo-root pnpm workspace from the authoritative root lockfile";
+      after = installAfter;
+      exec = trace.exec "pnpm:install" ''
+        set -euo pipefail
+        mkdir -p "${cacheRoot}"
+        hash_file="${cacheRoot}/workspace.hash"
+
+        lockfile="${cacheRoot}/pnpm-install.lock"
+        exec 200>"$lockfile"
+        if ! ${flock} -w 600 200; then
+          echo "[pnpm] Install lock timeout after 600s: $lockfile" >&2
+          echo "[pnpm] Another pnpm install may be stuck; try: dt pnpm:clean && dt pnpm:install" >&2
+          exit 1
+        fi
+
+        export npm_config_manage_package_manager_versions=false
+
+        if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
+          pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+        elif [ -n "''${CI:-}" ]; then
+          pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
+        else
+          pnpm install --config.confirmModulesPurge=false
+        fi
+
+        ${computeHashFn}
+        ${emitDirStateFn}
+        ${computeWorkspaceStateHash}
+        cache_value="$(compute_workspace_state_hash)"
+        ${cache.writeCacheFile ''"$hash_file"''}
+      '';
+      status = trace.status "pnpm:install" "hash" ''
+        set -euo pipefail
+        hash_file="${cacheRoot}/workspace.hash"
+
+        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
+          exit 1
+        fi
+
+        ${computeHashFn}
+        ${emitDirStateFn}
+        ${computeWorkspaceStateHash}
+        current_hash="$(compute_workspace_state_hash)"
+        stored_hash="$(cat "$hash_file")"
+        if [ "$current_hash" != "$stored_hash" ]; then
+          exit 1
+        fi
+        exit 0
+      '';
+    };
+
+    "pnpm:update" = {
+      description = "Update the authoritative repo-root pnpm lockfile";
+      after = [ "genie:run" ] ++ updateAfter;
+      exec = trace.exec "pnpm:update" ''
+        set -euo pipefail
+        export npm_config_manage_package_manager_versions=false
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false
+        echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
+      '';
+    };
+
+    "pnpm:clean" = {
+      description = "Remove repo-root and package-level node_modules";
+      after = cleanAfter;
+      exec = trace.exec "pnpm:clean" ''
+        rm -rf "node_modules" ${nodeModulesPaths}
+      '';
+    };
+
+    "pnpm:reset-lock-files" = {
+      description = "Remove the repo-root pnpm lock file (last resort)";
+      after = resetLockFilesAfter;
+      exec = trace.exec "pnpm:reset-lock-files" ''
+        rm -f ${lockFilePaths}
+      '';
+    };
+  };
 }

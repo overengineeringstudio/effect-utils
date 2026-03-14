@@ -23,7 +23,7 @@ import { detectRefMismatch, formatRefMismatchMessage } from '../issues.ts'
 import type { LockFile } from '../lock.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
 import { Store } from '../store.ts'
-import type { MemberSyncResult } from './types.ts'
+import type { MemberSyncResult, SyncMode } from './types.ts'
 
 /**
  * Action to take when a ref doesn't exist
@@ -158,19 +158,18 @@ const createSymlink = ({ target, link }: { target: string; link: string }) =>
 /**
  * Sync a single member: use bare repo + worktree pattern
  *
- * Modes:
- * - Default: ensure member exists, read current HEAD to update lock
- * - Pull: fetch from remote, update to latest (unless pinned)
- * - Frozen: use exact commit from lock, never modify lock
+ * Modes (see cli-redesign-spec.md):
+ * - fetch: Remote → Lock. Clone/fetch, resolve commits. Never touches workspace.
+ * - apply: Lock → Workspace. Create worktrees from lock, symlink. Never writes lock.
+ * - lock:  Workspace → Lock. Record current HEAD commits. No network, no workspace changes.
  */
 export const syncMember = <R = never>({
   name,
   sourceString,
   megarepoRoot,
   lockFile,
+  mode,
   dryRun,
-  pull,
-  frozen,
   force,
   semaphoreMap,
   gitProtocol = 'auto',
@@ -181,9 +180,8 @@ export const syncMember = <R = never>({
   sourceString: string
   megarepoRoot: AbsoluteDirPath
   lockFile: LockFile | undefined
+  mode: SyncMode
   dryRun: boolean
-  pull: boolean
-  frozen: boolean
   force: boolean
   /** Optional semaphore map for serializing bare repo creation per repo URL */
   semaphoreMap?: RepoSemaphoreMap
@@ -197,6 +195,9 @@ export const syncMember = <R = never>({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* Store
+    const isFetchMode = mode === 'fetch'
+    const isApplyMode = mode === 'apply'
+    const isLockMode = mode === 'lock'
 
     // Validate member name to prevent path traversal
     const nameError = validateMemberName(name)
@@ -220,6 +221,11 @@ export const syncMember = <R = never>({
 
     const memberPath = getMemberPath({ megarepoRoot, name })
     const memberPathNormalized = memberPath.replace(/\/$/, '')
+
+    // Fetch mode: skip local path members (nothing to fetch)
+    if (source.type === 'path' && isFetchMode === true) {
+      return { name, status: 'skipped', message: 'local path member' } satisfies MemberSyncResult
+    }
 
     // Handle local path sources - just create symlink
     if (source.type === 'path') {
@@ -307,28 +313,15 @@ export const syncMember = <R = never>({
     let targetRef: string
     let targetCommit: string | undefined
 
-    // Check lock file first (for --frozen mode or to use locked commit)
     // Note: lockedMember was already retrieved above for resolveCloneUrl
-    if (frozen === true) {
+    if (isApplyMode === true) {
       if (lockedMember === undefined) {
         return {
           name,
           status: 'error',
-          message: 'Not in lock file (--frozen requires lock file)',
+          message: 'Not in lock file (mr apply requires lock file)',
         } satisfies MemberSyncResult
       }
-      targetRef = lockedMember.ref
-      targetCommit = lockedMember.commit
-      /**
-       * Keep pinned members on the exact locked commit unless the caller explicitly
-       * opted into overriding pins via `--pull --force`.
-       */
-    } else if (
-      lockedMember !== undefined &&
-      lockedMember.pinned === true &&
-      (pull === false || force === false)
-    ) {
-      // Use pinned commit from lock
       targetRef = lockedMember.ref
       targetCommit = lockedMember.commit
     } else {
@@ -350,23 +343,32 @@ export const syncMember = <R = never>({
       }
     }
 
+    if (isFetchMode === true && lockedMember?.pinned === true && force === false) {
+      return {
+        name,
+        status: 'skipped',
+        message: `member is pinned at ${lockedMember.commit.slice(0, 8)} (use --force to update pinned members)`,
+        commit: lockedMember.commit,
+        ref: lockedMember.ref,
+      } satisfies MemberSyncResult
+    }
+
     // Check if member symlink already exists and points to a valid worktree
     const currentLink = yield* fs
       .readLink(memberPathNormalized)
       .pipe(Effect.catchAll(() => Effect.succeed(null)))
     const memberExists = currentLink !== null
 
-    // In default mode (no --pull), if member exists, check if symlink points to correct ref
-    if (memberExists === true && pull === false && frozen === false) {
+    // In lock and apply modes, if member exists, check if symlink points to correct ref
+    if (memberExists === true && (isLockMode === true || isApplyMode === true)) {
       // Compute expected worktree path based on configured ref
       // Uses heuristic ref classification since we haven't queried the repo yet
       const expectedWorktreePath = store.getWorktreePath({ source, ref: targetRef })
       const currentLinkNormalized = currentLink?.replace(/\/$/, '')
       const expectedPathNormalized = expectedWorktreePath.replace(/\/$/, '')
 
-      // Check for symlink drift: lock file ref differs from source string ref
-      // This happens when lock says "refactor/foo" but source has no ref (defaulting to "dev")
-      if (lockedMember !== undefined && lockedMember.ref !== targetRef) {
+      // Lock sync only records current branch-attached workspace state.
+      if (isLockMode === true && currentLinkNormalized !== expectedPathNormalized) {
         // Extract the ref from the current symlink path for display
         const extracted =
           currentLinkNormalized !== undefined
@@ -377,16 +379,20 @@ export const syncMember = <R = never>({
         return {
           name,
           status: 'skipped',
-          message: `symlink drift: lock says '${lockedMember.ref}' but source resolves to '${targetRef}' (symlink points to '${symlinkRef ?? 'unknown'}')\n  hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #${lockedMember.ref}`,
+          message:
+            `workspace is not synced to source ref '${targetRef}'` +
+            ` (symlink points to '${symlinkRef ?? 'unknown'}')\n` +
+            `  hint: run 'mr apply${name.length > 0 ? ` --only ${name}` : ''}' first`,
         } satisfies MemberSyncResult
       }
 
-      // If symlink points to correct location, just read current state for lock
+      // If symlink points to correct location, read current state.
       if (currentLinkNormalized === expectedPathNormalized) {
         // Read current HEAD from the worktree
-        const currentCommit = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+        const currentCommitOpt = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
+          Effect.option,
         )
+        const currentCommit = Option.getOrUndefined(currentCommitOpt)
         const currentBranchOpt = yield* Git.getCurrentBranch(memberPathNormalized).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
@@ -408,18 +414,20 @@ export const syncMember = <R = never>({
           } satisfies MemberSyncResult
         }
 
-        // Determine if lock needs updating
-        const previousCommit = lockedMember?.commit
-        const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
-
-        return {
-          name,
-          status: lockUpdated === true ? 'locked' : 'already_synced',
-          commit: currentCommit,
-          previousCommit: lockUpdated === true ? previousCommit : undefined,
-          ref: currentBranch ?? lockedMember?.ref ?? targetRef,
-          lockUpdated,
-        } satisfies MemberSyncResult
+        if (isLockMode === true) {
+          const previousCommit = lockedMember?.commit
+          const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
+          return {
+            name,
+            status: lockUpdated === true ? 'recorded' : 'already_synced',
+            commit: currentCommit,
+            previousCommit: lockUpdated === true ? previousCommit : undefined,
+            ref: currentBranch ?? lockedMember?.ref ?? targetRef,
+            lockUpdated,
+          } satisfies MemberSyncResult
+        }
+        // Apply mode: symlink correct, no ref mismatch → already synced (will fast-forward later if needed)
+        // Don't early return here — fall through to let the fast-forward logic run
       }
 
       // Symlink points to wrong location (ref changed in config)
@@ -448,8 +456,8 @@ export const syncMember = <R = never>({
       // Fall through to update symlink to new ref
     }
 
-    // For --pull mode, check if worktree is dirty before making changes
-    if (pull === true && memberExists === true && frozen === false && dryRun === false) {
+    // For lock update mode, check if worktree is dirty before making changes
+    if (isApplyMode === true && memberExists === true && dryRun === false) {
       const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
         Effect.catchAll(() =>
           Effect.succeed({
@@ -474,50 +482,63 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Clone bare repo if needed
-    // Note: --frozen mode still allows cloning - it only prevents updating the lock file.
-    // This enables CI to materialize the locked state in a fresh environment.
-    let wasCloned = false
-    if (bareExists === false) {
-      if (dryRun === false) {
-        // Use semaphore to serialize bare repo creation for the same repo URL.
-        // This prevents race conditions when multiple members reference the same repo.
-        const createBareRepo = Effect.gen(function* () {
-          // Check again inside semaphore (double-check locking pattern)
-          const stillNotExists = (yield* store.hasBareRepo(source)) === false
-          if (stillNotExists === true) {
-            const repoBasePath = store.getRepoBasePath(source)
-            yield* fs.makeDirectory(repoBasePath, { recursive: true })
-            yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-            return true
-          }
-          return false
-        })
-
-        if (semaphoreMap !== undefined) {
-          const sem = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: cloneUrl })
-          wasCloned = yield* sem.withPermits(1)(createBareRepo)
-        } else {
-          wasCloned = yield* createBareRepo
-        }
-      }
-    } else if (pull === true && dryRun === false) {
-      // Fetch when --pull is specified (includes frozen mode - frozen only prevents lock updates)
-      yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(
-        Effect.catchAll(() => Effect.void), // Ignore fetch errors
-      )
-    } else if (frozen === true && targetCommit !== undefined && dryRun === false) {
-      // In frozen mode, fetch if the locked commit is not available locally
-      // This ensures we can materialize the exact locked state even if the store is stale
-      const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
-      if (commitExists === false) {
-        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
-      }
+    if (isLockMode === true && memberExists === false) {
+      return {
+        name,
+        status: 'skipped',
+        message: `workspace member missing for '${targetRef}'\n  hint: run 'mr apply${name.length > 0 ? ` --only ${name}` : ''}' first`,
+      } satisfies MemberSyncResult
     }
+
+    // Clone bare repo if needed.
+    const wasCloned: boolean = yield* Effect.gen(function* () {
+      if (bareExists === false) {
+        if (dryRun === false) {
+          const createBareRepo = Effect.gen(function* () {
+            // Check again inside semaphore (double-check locking pattern)
+            const stillNotExists = (yield* store.hasBareRepo(source)) === false
+            if (stillNotExists === true) {
+              const repoBasePath = store.getRepoBasePath(source)
+              yield* fs.makeDirectory(repoBasePath, { recursive: true })
+              yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+              yield* Effect.annotateCurrentSpan('action', 'clone')
+              return true
+            }
+            yield* Effect.annotateCurrentSpan('action', 'already-cloned-by-sibling')
+            return false
+          })
+
+          if (semaphoreMap !== undefined) {
+            const sem = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: cloneUrl })
+            return yield* sem.withPermits(1)(createBareRepo)
+          }
+          return yield* createBareRepo
+        }
+        yield* Effect.annotateCurrentSpan('action', 'skip-dry-run')
+      } else if (isFetchMode === true && dryRun === false) {
+        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+        yield* Effect.annotateCurrentSpan('action', 'fetch')
+      } else if (isApplyMode === true && targetCommit !== undefined && dryRun === false) {
+        const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
+        if (commitExists === false) {
+          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
+          yield* Effect.annotateCurrentSpan('action', 'fetch-missing-commit')
+        } else {
+          yield* Effect.annotateCurrentSpan('action', 'noop')
+        }
+      } else {
+        yield* Effect.annotateCurrentSpan('action', 'noop')
+      }
+      return false
+    }).pipe(
+      Effect.withSpan('megarepo/sync/member/clone-or-fetch', {
+        attributes: { 'span.label': name, bareExists },
+      }),
+    )
 
     /**
      * A lock entry can point at an object that disappeared after a force-push.
-     * In pull mode we can recover branch-based members by re-resolving `targetRef`,
+     * In lock update mode we can recover branch-based members by re-resolving `targetRef`,
      * but pinned commit-SHA refs remain hard failures because there is no mutable ref to follow.
      */
     if (dryRun === false && targetCommit !== undefined) {
@@ -525,7 +546,7 @@ export const syncMember = <R = never>({
       if (commitExists === false) {
         const shortCommit = targetCommit.slice(0, 8)
 
-        if (frozen === true) {
+        if (isApplyMode === true) {
           return {
             name,
             status: 'error',
@@ -541,159 +562,189 @@ export const syncMember = <R = never>({
           } satisfies MemberSyncResult
         }
 
-        if (lockedMember?.pinned === true) {
-          return {
-            name,
-            status: 'skipped',
-            message: `pinned commit '${shortCommit}' for ref '${targetRef}' is no longer available (use --force to update to the tracked ref or update megarepo.lock)`,
-          } satisfies MemberSyncResult
-        }
-
         targetCommit = undefined
       }
     }
 
-    // Validate that the ref exists (for dry-run mode or before creating worktree)
-    // Uses hybrid approach: check local bare repo if exists, otherwise query remote
-    // Track whether we need to create the branch
-    let needsCreateBranch = false
-    let defaultBranchForCreate: string | undefined
+    // Validate ref exists and resolve to commit
+    const refResult = yield* Effect.gen(function* () {
+      let needsCreateBranch = false
+      let defaultBranchForCreate: string | undefined
+      let resolvedRefType: RefType = classifyRef(targetRef)
+      let resolvedCommit = targetCommit
 
-    if (targetCommit === undefined && isCommitSha(targetRef) === false) {
-      const refValidation = yield* Git.validateRefExists({
-        ref: targetRef,
-        bareRepoPath: bareExists === true ? bareRepoPath : undefined,
-        bareExists,
-        cloneUrl,
-      })
-      if (refValidation.exists === false) {
-        // Get default branch to use as base (needed for both createBranches and interactive prompt)
-        if (bareExists === true) {
-          const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
-          defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
-        } else {
-          const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
-          defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
-        }
+      if (resolvedCommit === undefined && isCommitSha(targetRef) === false) {
+        const refValidation = yield* Git.validateRefExists({
+          ref: targetRef,
+          bareRepoPath: bareExists === true ? bareRepoPath : undefined,
+          bareExists,
+          cloneUrl,
+        })
+        if (refValidation.exists === false) {
+          if (bareExists === true) {
+            const defaultBranch = yield* Git.getDefaultBranch({ repoPath: bareRepoPath })
+            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+          } else {
+            const defaultBranch = yield* Git.getDefaultBranch({ url: cloneUrl })
+            defaultBranchForCreate = Option.getOrElse(defaultBranch, () => 'main')
+          }
 
-        // Determine action: --create-branches flag, interactive prompt, or error
-        let action: MissingRefAction = 'error'
+          let action: MissingRefAction = 'error'
 
-        if (createBranches === true) {
-          action = 'create'
-        } else if (onMissingRef !== undefined) {
-          // Interactive mode - ask user what to do
-          action = yield* onMissingRef({
-            memberName: name,
-            ref: targetRef,
-            defaultBranch: defaultBranchForCreate,
-            cloneUrl,
-          })
-        }
+          if (createBranches === true) {
+            action = 'create'
+          } else if (onMissingRef !== undefined) {
+            action = yield* onMissingRef({
+              memberName: name,
+              ref: targetRef,
+              defaultBranch: defaultBranchForCreate,
+              cloneUrl,
+            })
+          }
 
-        switch (action) {
-          case 'create':
-            needsCreateBranch = true
-            if (dryRun === true) {
-              // In dry-run mode, report what would happen
+          switch (action) {
+            case 'create':
+              needsCreateBranch = true
+              if (dryRun === true) {
+                return {
+                  _tag: 'early-return' as const,
+                  result: {
+                    name,
+                    status: 'synced',
+                    ref: targetRef,
+                    message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
+                  } satisfies MemberSyncResult,
+                }
+              }
+              break
+            case 'skip':
               return {
-                name,
-                status: 'synced',
-                ref: targetRef,
-                message: `would create branch '${targetRef}' from '${defaultBranchForCreate}'`,
-              } satisfies MemberSyncResult
-            }
-            break
-          case 'skip':
-            return {
-              name,
-              status: 'skipped',
-              message: `branch '${targetRef}' does not exist`,
-            } satisfies MemberSyncResult
-          case 'abort':
-            return {
-              name,
-              status: 'error',
-              message: `Sync aborted: branch '${targetRef}' does not exist`,
-            } satisfies MemberSyncResult
-          case 'error':
-          default:
-            return {
-              name,
-              status: 'error',
-              message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
-            } satisfies MemberSyncResult
+                _tag: 'early-return' as const,
+                result: {
+                  name,
+                  status: 'skipped',
+                  message: `branch '${targetRef}' does not exist`,
+                } satisfies MemberSyncResult,
+              }
+            case 'abort':
+              return {
+                _tag: 'early-return' as const,
+                result: {
+                  name,
+                  status: 'error',
+                  message: `Sync aborted: branch '${targetRef}' does not exist`,
+                } satisfies MemberSyncResult,
+              }
+            case 'error':
+            default:
+              return {
+                _tag: 'early-return' as const,
+                result: {
+                  name,
+                  status: 'error',
+                  message: `Ref '${targetRef}' not found\n  hint: Check available refs with: git ls-remote --refs ${cloneUrl}\n  hint: Use --create-branches to create missing branches`,
+                } satisfies MemberSyncResult,
+              }
+          }
         }
       }
-    }
 
-    // Create branch if needed (--create-branches flag was used and ref doesn't exist)
-    if (needsCreateBranch === true && defaultBranchForCreate !== undefined && dryRun === false) {
-      // Create the branch locally and push to remote
-      // Note: In bare repos, branches are at refs/heads/<branch>, not refs/remotes/origin/<branch>
-      yield* Git.createAndPushBranch({
-        repoPath: bareRepoPath,
-        branch: targetRef,
-        baseRef: defaultBranchForCreate,
-      })
-    }
-
-    // Resolve ref to commit if not already known
-    // Use actual ref type from local repo query for accurate classification
-    let actualRefType: RefType = classifyRef(targetRef) // fallback to heuristic
-    if (targetCommit === undefined && dryRun === false) {
-      // If it's already a commit SHA, use it directly
-      if (isCommitSha(targetRef) === true) {
-        targetCommit = targetRef
-        actualRefType = 'commit'
-      } else {
-        // Query local repo for actual ref type (more accurate than heuristic)
-        const refInfo = yield* Git.queryLocalRefType({
+      // Create branch if needed
+      if (needsCreateBranch === true && defaultBranchForCreate !== undefined && dryRun === false) {
+        yield* Git.createAndPushBranch({
           repoPath: bareRepoPath,
-          ref: targetRef,
+          branch: targetRef,
+          baseRef: defaultBranchForCreate,
         })
+      }
 
-        if (refInfo.type === 'tag') {
-          actualRefType = 'tag'
-          targetCommit = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/tags/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
-        } else if (refInfo.type === 'branch') {
-          actualRefType = 'branch'
-          targetCommit = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/remotes/origin/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })))
+      // Resolve ref to commit if not already known
+      if (resolvedCommit === undefined && dryRun === false) {
+        if (isCommitSha(targetRef) === true) {
+          resolvedCommit = targetRef
+          resolvedRefType = 'commit'
         } else {
-          // Unknown ref type - fall back to heuristic-based resolution
-          const heuristicType = classifyRef(targetRef)
-          actualRefType = heuristicType
-          if (heuristicType === 'tag') {
-            targetCommit = yield* Git.resolveRef({
+          const refInfo = yield* Git.queryLocalRefType({
+            repoPath: bareRepoPath,
+            ref: targetRef,
+          })
+
+          if (refInfo.type === 'tag') {
+            resolvedRefType = 'tag'
+            resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/tags/${targetRef}`,
             }).pipe(
               Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
             )
-          } else {
-            // Treat as branch
-            targetCommit = yield* Git.resolveRef({
+          } else if (refInfo.type === 'branch') {
+            resolvedRefType = 'branch'
+            resolvedCommit = yield* Git.resolveRef({
               repoPath: bareRepoPath,
               ref: `refs/remotes/origin/${targetRef}`,
             }).pipe(
               Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
             )
+          } else {
+            const heuristicType = classifyRef(targetRef)
+            resolvedRefType = heuristicType
+            if (heuristicType === 'tag') {
+              resolvedCommit = yield* Git.resolveRef({
+                repoPath: bareRepoPath,
+                ref: `refs/tags/${targetRef}`,
+              }).pipe(
+                Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+              )
+            } else {
+              resolvedCommit = yield* Git.resolveRef({
+                repoPath: bareRepoPath,
+                ref: `refs/remotes/origin/${targetRef}`,
+              }).pipe(
+                Effect.catchAll(() => Git.resolveRef({ repoPath: bareRepoPath, ref: targetRef })),
+              )
+            }
           }
         }
       }
-    }
 
-    /**
-     * `--pull --force` can bypass the earlier pinned-commit guard and derive
-     * `targetCommit` directly from an immutable source ref. Re-check existence
-     * here so stale commit-SHA refs fail before worktree creation.
-     */
+      return {
+        _tag: 'resolved' as const,
+        commit: resolvedCommit,
+        refType: resolvedRefType,
+        needsCreateBranch,
+        defaultBranchForCreate,
+      }
+    }).pipe(
+      Effect.withSpan('megarepo/sync/member/resolve-ref', {
+        attributes: { 'span.label': targetRef, ref: targetRef },
+      }),
+    )
+
+    if (refResult._tag === 'early-return') return refResult.result
+    // In apply mode, use the locked commit — not the bare repo's current branch tip.
+    // The resolution is still needed for refType classification and ref validation.
+    targetCommit =
+      isApplyMode === true && lockedMember?.commit !== undefined
+        ? lockedMember.commit
+        : refResult.commit
+    const actualRefType = refResult.refType
+
+    // Fetch mode: resolved commit is all we need. Don't touch workspace.
+    if (isFetchMode === true) {
+      const previousCommit = lockedMember?.commit
+      const isUpdate = previousCommit !== undefined && previousCommit !== targetCommit
+      return {
+        name,
+        status: isUpdate === true ? 'updated' : 'already_synced',
+        commit: targetCommit,
+        previousCommit: isUpdate === true ? previousCommit : undefined,
+        ref: targetRef,
+      } satisfies MemberSyncResult
+    }
+    const needsCreateBranch = refResult.needsCreateBranch
+    const defaultBranchForCreate = refResult.defaultBranchForCreate
+
+    /** Re-check immutable source refs before worktree creation. */
     if (dryRun === false && targetCommit !== undefined && isCommitSha(targetRef) === true) {
       const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
       if (commitExists === false) {
@@ -705,15 +756,9 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Create or update worktree
-    // For frozen/pinned mode, use commit-based worktree path to guarantee exact reproducibility
-    // This ensures the worktree is at exactly the locked commit, not whatever a branch points to
-    const useCommitBasedPath =
-      (frozen === true || lockedMember?.pinned === true) && targetCommit !== undefined
-    // TypeScript note: when useCommitBasedPath is true, targetCommit is guaranteed to be defined
-    const worktreeRef: string = useCommitBasedPath === true ? targetCommit! : targetRef
-    // Use the actual ref type for accurate store path classification
-    const worktreeRefType = useCommitBasedPath === true ? ('commit' as const) : actualRefType
+    // Create or update worktree.
+    const worktreeRef: string = targetRef
+    const worktreeRefType = actualRefType
     const worktreePath = store.getWorktreePath({
       source,
       ref: worktreeRef,
@@ -726,60 +771,94 @@ export const syncMember = <R = never>({
     })
 
     if (worktreeExists === false && dryRun === false) {
-      // Ensure worktree parent directory exists
-      const worktreeParent = EffectPath.ops.parent(worktreePath)
-      if (worktreeParent !== undefined) {
-        yield* fs.makeDirectory(worktreeParent, { recursive: true })
-      }
+      yield* Effect.gen(function* () {
+        // Ensure worktree parent directory exists
+        const worktreeParent = EffectPath.ops.parent(worktreePath)
+        if (worktreeParent !== undefined) {
+          yield* fs.makeDirectory(worktreeParent, { recursive: true })
+        }
 
-      // Create worktree
-      // Use the actual ref type determined earlier, or check if using commit-based path
-      const worktreeRefType = useCommitBasedPath === true ? 'commit' : actualRefType
-      if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
-        // Commit or tag: create detached worktree
-        yield* Git.createWorktreeDetached({
-          repoPath: bareRepoPath,
-          worktreePath,
-          commit: targetCommit ?? worktreeRef,
-        })
-      } else {
-        // Branch worktree - can track the branch
-        yield* Git.createWorktree({
-          repoPath: bareRepoPath,
-          worktreePath,
-          branch: targetRef,
-          createBranch: false,
-        }).pipe(
-          Effect.catchAll(() =>
-            // If branch doesn't exist locally, create from remote
-            Git.createWorktree({
-              repoPath: bareRepoPath,
-              worktreePath,
-              branch: `origin/${targetRef}`,
-              createBranch: false,
-            }),
-          ),
-          Effect.catchAll(() =>
-            // Last resort: create detached at the resolved commit
-            Git.createWorktreeDetached({
-              repoPath: bareRepoPath,
-              worktreePath,
-              commit: targetCommit ?? targetRef,
-            }),
-          ),
+        // Create worktree
+        if (actualRefType === 'commit' || actualRefType === 'tag') {
+          yield* Git.createWorktreeDetached({
+            repoPath: bareRepoPath,
+            worktreePath,
+            commit: targetCommit ?? worktreeRef,
+          })
+        } else {
+          yield* Git.createWorktree({
+            repoPath: bareRepoPath,
+            worktreePath,
+            branch: targetRef,
+            createBranch: false,
+          }).pipe(
+            Effect.catchAll(() =>
+              Git.createWorktree({
+                repoPath: bareRepoPath,
+                worktreePath,
+                branch: `origin/${targetRef}`,
+                createBranch: false,
+              }),
+            ),
+          )
+        }
+      }).pipe(
+        // Handle race condition: when multiple nested megarepos reference
+        // the same member, concurrent syncs may both pass the hasWorktree
+        // check but the second git worktree add fails. Re-check existence
+        // and succeed if the worktree was created by the concurrent sync.
+        Effect.catchIf(
+          (error) =>
+            error instanceof Git.GitCommandError &&
+            error.stderr.includes('already exists and is not an empty directory'),
+          () =>
+            store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType }).pipe(
+              Effect.flatMap((exists) =>
+                exists === true
+                  ? Effect.void
+                  : Effect.fail(
+                      new Git.GitCommandError({
+                        args: ['worktree', 'add'],
+                        exitCode: 1,
+                        stderr: 'Target directory already exists but is not a valid worktree',
+                      }),
+                    ),
+              ),
+            ),
+        ),
+        Effect.withSpan('megarepo/sync/member/create-worktree', {
+          attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
+        }),
+      )
+    }
+
+    // For newly created branch worktrees in apply mode, ensure the worktree
+    // is at the locked commit (not the branch tip in the bare repo).
+    if (
+      worktreeExists === false &&
+      dryRun === false &&
+      isApplyMode === true &&
+      actualRefType === 'branch' &&
+      targetCommit !== undefined
+    ) {
+      const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
+        Effect.catchAll(() => Effect.succeed(undefined)),
+      )
+      if (currentCommit !== undefined && currentCommit !== targetCommit) {
+        yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
+          Effect.catchAll(() => Effect.void),
         )
       }
     }
 
-    // Fast-forward existing branch worktrees when pulling
-    let pullUpdated = false
-    let pullPreviousCommit: string | undefined
+    // Fast-forward existing branch worktrees when updating from remote.
+    let remoteUpdated = false
+    let remotePreviousCommit: string | undefined
     if (
       worktreeExists === true &&
-      pull === true &&
+      isApplyMode === true &&
       dryRun === false &&
-      actualRefType === 'branch' &&
-      useCommitBasedPath === false
+      actualRefType === 'branch'
     ) {
       // Verify the worktree is actually on the expected branch before merging.
       // If the user ran `git checkout <other-branch>` inside the worktree,
@@ -790,9 +869,8 @@ export const syncMember = <R = never>({
       const onExpectedBranch = Option.isSome(worktreeBranch) && worktreeBranch.value === targetRef
 
       if (onExpectedBranch === true) {
-        const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
-        )
+        const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+        const currentCommit = Option.getOrUndefined(currentCommitOpt)
         if (
           currentCommit !== undefined &&
           targetCommit !== undefined &&
@@ -817,8 +895,8 @@ export const syncMember = <R = never>({
           // Re-read HEAD to confirm actual state after merge
           const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
           targetCommit = headAfterMerge
-          pullPreviousCommit = currentCommit
-          pullUpdated = true
+          remotePreviousCommit = currentCommit
+          remoteUpdated = true
         }
       }
     }
@@ -831,11 +909,12 @@ export const syncMember = <R = never>({
       if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
         return {
           name,
-          status: pullUpdated === true ? 'updated' : 'already_synced',
+          status: remoteUpdated === true ? 'updated' : 'already_synced',
           commit: targetCommit,
-          previousCommit: pullPreviousCommit,
+          previousCommit: remotePreviousCommit,
           ref: targetRef,
-          lockUpdated: pullUpdated === true ? true : undefined,
+          lockUpdated:
+            isLockMode === true ? (remoteUpdated === true ? true : undefined) : undefined,
         } satisfies MemberSyncResult
       }
       if (dryRun === false) {
@@ -861,10 +940,10 @@ export const syncMember = <R = never>({
       })
     }
 
-    // Determine if this is a pull update (changed commit)
+    // Determine if this is a lock update (changed commit)
     const previousCommit = lockedMember?.commit
     const isUpdate =
-      pull === true && previousCommit !== undefined && previousCommit !== targetCommit
+      isApplyMode === true && previousCommit !== undefined && previousCommit !== targetCommit
 
     // Build message for branch creation
     const branchCreatedMessage =
@@ -874,14 +953,15 @@ export const syncMember = <R = never>({
 
     return {
       name,
-      status: wasCloned === true ? 'cloned' : isUpdate === true ? 'updated' : 'synced',
+      status: wasCloned === true ? 'cloned' : isUpdate === true ? 'updated' : 'applied',
       commit: targetCommit,
       previousCommit: isUpdate === true ? previousCommit : undefined,
       ref: targetRef,
-      lockUpdated: true,
+      lockUpdated: isLockMode === true ? true : undefined,
       message: branchCreatedMessage,
     } satisfies MemberSyncResult
   }).pipe(
+    Effect.tap((result) => Effect.annotateCurrentSpan('result.status', result.status)),
     Effect.catchAll((error) => {
       // Interpret git errors to provide user-friendly messages
       if (error instanceof Git.GitCommandError) {
@@ -890,16 +970,25 @@ export const syncMember = <R = never>({
           interpreted.hint !== undefined
             ? `${interpreted.message}\n  hint: ${interpreted.hint}`
             : interpreted.message
-        return Effect.succeed({
+        return Effect.gen(function* () {
+          yield* Effect.annotateCurrentSpan('result.status', 'error')
+          return {
+            name,
+            status: 'error',
+            message,
+          } satisfies MemberSyncResult
+        })
+      }
+      return Effect.gen(function* () {
+        yield* Effect.annotateCurrentSpan('result.status', 'error')
+        return {
           name,
           status: 'error',
-          message,
-        } satisfies MemberSyncResult)
-      }
-      return Effect.succeed({
-        name,
-        status: 'error',
-        message: error instanceof Error ? error.message : String(error),
-      } satisfies MemberSyncResult)
+          message: error instanceof Error ? error.message : String(error),
+        } satisfies MemberSyncResult
+      })
+    }),
+    Effect.withSpan('megarepo/sync/member', {
+      attributes: { 'span.label': name, name, source: sourceString },
     }),
   )

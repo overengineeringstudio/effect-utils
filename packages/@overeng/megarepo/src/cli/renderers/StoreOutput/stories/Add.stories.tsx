@@ -62,6 +62,8 @@ type Story = StoryObj<StoryArgs>
 export const InvalidSource: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createErrorState({
@@ -78,6 +80,8 @@ export const InvalidSource: Story = {
 export const LocalPath: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createErrorState({
@@ -93,6 +97,8 @@ export const LocalPath: Story = {
 export const NoUrl: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createErrorState({
@@ -112,6 +118,8 @@ export const NoUrl: Story = {
 export const SuccessNew: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createAddState({
@@ -130,6 +138,8 @@ export const SuccessNew: Story = {
 export const SuccessExisting: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createAddState({
@@ -148,6 +158,8 @@ export const SuccessExisting: Story = {
 export const SuccessWithRef: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createAddState({
@@ -166,6 +178,8 @@ export const SuccessWithRef: Story = {
 export const SuccessNoCommit: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store add"
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createAddState({

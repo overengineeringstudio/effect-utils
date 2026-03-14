@@ -115,7 +115,7 @@ const runBouncingWindows = ({
 
         // Cleanup
         process.stdout.off('resize', resizeHandler)
-        yield* Fiber.interrupt(animationFiber)
+        const _ = yield* Fiber.interrupt(animationFiber)
       }),
     { view: <BouncingWindowsView stateAtom={BouncingApp.stateAtom} /> },
   )

@@ -64,6 +64,7 @@ export const ManyFilesGenerating: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={initialState}
@@ -93,6 +94,7 @@ export const ManyFilesComplete: Story = {
 
     return (
       <TuiStoryPreview
+        command="genie build"
         View={GenieView}
         app={GenieApp}
         initialState={initialState}

@@ -142,7 +142,11 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
     }
     cmdArgs.push(args.url, args.targetPath)
     yield* runGitCommand({ args: cmdArgs })
-  })
+  }).pipe(
+    Effect.withSpan('git/clone', {
+      attributes: { 'span.label': args.url, url: args.url, bare: args.bare ?? false },
+    }),
+  )
 
 /**
  * Fetch updates from remote
@@ -155,7 +159,11 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
     }
     cmdArgs.push(args.remote ?? 'origin')
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
-  })
+  }).pipe(
+    Effect.withSpan('git/fetch', {
+      attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
+    }),
+  )
 
 /**
  * Checkout a specific ref (branch, tag, or commit)
@@ -223,17 +231,26 @@ export const createWorktree = (args: {
   worktreePath: string
   branch: string
   createBranch?: boolean
+  /** Start point for new branch (only used with createBranch: true) */
+  startPoint?: string
 }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
     if (args.createBranch === true) {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
+      if (args.startPoint !== undefined) {
+        cmdArgs.push(args.startPoint)
+      }
     } else {
       cmdArgs.push(args.worktreePath, args.branch)
     }
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
-  })
+  }).pipe(
+    Effect.withSpan('git/create-worktree', {
+      attributes: { 'span.label': args.branch, branch: args.branch },
+    }),
+  )
 
 /**
  * Remove a git worktree
@@ -247,6 +264,15 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
     cmdArgs.push(args.worktreePath)
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
   })
+
+/**
+ * Move a git worktree to a new path.
+ */
+export const moveWorktree = (args: { repoPath: string; fromPath: string; toPath: string }) =>
+  runGitCommand({
+    args: ['worktree', 'move', args.fromPath, args.toPath],
+    cwd: args.repoPath,
+  }).pipe(Effect.asVoid)
 
 /**
  * List git worktrees
@@ -311,7 +337,9 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
       args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
       cwd: args.targetPath,
     })
-  })
+  }).pipe(
+    Effect.withSpan('git/clone-bare', { attributes: { 'span.label': args.url, url: args.url } }),
+  )
 
 /**
  * Fetch all refs from remote in a bare repo
@@ -320,12 +348,15 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
 export const fetchBare = (args: { repoPath: string; remote?: string }) =>
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
-    // Fetch all refs including tags, prune stale refs
     yield* runGitCommand({
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
-  })
+  }).pipe(
+    Effect.withSpan('git/fetch-bare', {
+      attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
+    }),
+  )
 
 /**
  * Get the default branch name from a remote
@@ -474,11 +505,15 @@ export const createWorktreeDetached = (args: {
   worktreePath: string
   commit: string
 }) =>
-  // --detach creates the worktree with a detached HEAD at the specified commit
   runGitCommand({
     args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
     cwd: args.repoPath,
-  }).pipe(Effect.asVoid)
+  }).pipe(
+    Effect.asVoid,
+    Effect.withSpan('git/create-worktree-detached', {
+      attributes: { 'span.label': args.commit.slice(0, 8), commit: args.commit },
+    }),
+  )
 
 /**
  * Worktree status information
@@ -520,7 +555,11 @@ export const getWorktreeStatus = (worktreePath: string) =>
       hasUnpushed: unpushedOutput,
       changesCount: changes.length,
     } satisfies WorktreeStatus
-  })
+  }).pipe(
+    Effect.withSpan('git/worktree-status', {
+      attributes: { 'span.label': worktreePath, worktreePath },
+    }),
+  )
 
 /**
  * Update a branch worktree to the latest from remote

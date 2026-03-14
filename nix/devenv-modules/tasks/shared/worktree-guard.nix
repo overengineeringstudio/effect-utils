@@ -24,7 +24,7 @@ let
 
   # Shared store worktree detection logic.
   # After evaluation sets: git, repoRoot, repoName, repoRootPhysical,
-  # storeExpectedRef, storeExpectedType, storeBase, encodedRef
+  # storeExpectedRef, storeExpectedType, storeBase, refPath
   storeDetect = ''
     git=${gitBin}
 
@@ -33,40 +33,34 @@ let
     repoRootPhysical="$(cd "$repoRoot" && pwd -P)"
     repoRootPhysical="''${repoRootPhysical%/}"
 
-    url_decode() {
-      # Percent-decoding using printf escape sequences.
-      # encodeURIComponent emits %XX escapes (no '+').
-      printf '%b' "''${1//%/\\x}"
-    }
-
     storeExpectedRef=""
     storeExpectedType=""
     storeBase=""
-    encodedRef=""
+    refPath=""
 
     case "$repoRootPhysical" in
       */refs/heads/*)
         storeBase="''${repoRootPhysical%%/refs/heads/*}"
-        encodedRef="''${repoRootPhysical#"$storeBase/refs/heads/"}"
+        refPath="''${repoRootPhysical#"$storeBase/refs/heads/"}"
         if [ -d "$storeBase/.bare" ]; then
           storeExpectedType="branch"
-          storeExpectedRef="$(url_decode "$encodedRef")"
+          storeExpectedRef="$refPath"
         fi
         ;;
       */refs/tags/*)
         storeBase="''${repoRootPhysical%%/refs/tags/*}"
-        encodedRef="''${repoRootPhysical#"$storeBase/refs/tags/"}"
+        refPath="''${repoRootPhysical#"$storeBase/refs/tags/"}"
         if [ -d "$storeBase/.bare" ]; then
           storeExpectedType="tag"
-          storeExpectedRef="$(url_decode "$encodedRef")"
+          storeExpectedRef="$refPath"
         fi
         ;;
       */refs/commits/*)
         storeBase="''${repoRootPhysical%%/refs/commits/*}"
-        encodedRef="''${repoRootPhysical#"$storeBase/refs/commits/"}"
+        refPath="''${repoRootPhysical#"$storeBase/refs/commits/"}"
         if [ -d "$storeBase/.bare" ]; then
           storeExpectedType="commit"
-          storeExpectedRef="$encodedRef"
+          storeExpectedRef="$refPath"
         fi
         ;;
     esac

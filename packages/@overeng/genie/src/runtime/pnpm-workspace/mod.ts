@@ -5,10 +5,14 @@
  * Reference: https://pnpm.io/pnpm-workspace_yaml
  */
 
-import type { GenieOutput, Strict } from '../mod.ts'
-import type { PackageJsonData } from '../package-json/mod.ts'
+import path from 'node:path'
+
+import { createGenieOutput } from '../core.ts'
+import type { GenieContext } from '../core.ts'
+import type { WorkspacePackageLike } from '../package-json/mod.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
+import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 
 // =============================================================================
 // Settings Types
@@ -508,8 +512,9 @@ export interface PnpmWorkspaceData {
 
   /**
    * When true, installation won't fail if some patches from `patchedDependencies`
-   * are not used by the current workspace member. Required for per-member lockfiles
-   * (`sharedWorkspaceLockfile: false`) where not every member depends on the patched package.
+   * are not used by the current projected workspace. Useful when shared patch
+   * metadata is reused across package-local and aggregate workspace
+   * projections.
    *
    * @see https://pnpm.io/settings#allow-unused-patches
    */
@@ -703,41 +708,9 @@ export interface PnpmWorkspaceData {
   sharedWorkspaceLockfile?: boolean
 }
 
-// =============================================================================
-// Path Resolution Utilities
-// =============================================================================
-
-/**
- * Compute relative path from one repo-relative location to another.
- *
- * @example
- * ```ts
- * computeRelativePath({ from: 'packages/app', to: 'packages/@local/shared' })
- * // => '../@local/shared'
- *
- * computeRelativePath({ from: '.', to: 'packages/utils' })
- * // => 'packages/utils'
- * ```
- */
-export const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
-  const normalizedFrom = from === '.' ? '' : from
-  const fromParts = normalizedFrom.split('/').filter(Boolean)
-  const toParts = to.split('/').filter(Boolean)
-
-  let common = 0
-  while (
-    common < fromParts.length &&
-    common < toParts.length &&
-    fromParts[common] === toParts[common]
-  ) {
-    common++
-  }
-
-  const upCount = fromParts.length - common
-  const downPath = toParts.slice(common).join('/')
-  const relativePath = '../'.repeat(upCount) + downPath
-
-  return relativePath || '.'
+/** Per-package config for computing the pnpm workspace closure (transitive workspace deps). */
+export type PnpmPackageClosureConfig = {
+  extraMemberPaths?: readonly string[]
 }
 
 /**
@@ -756,153 +729,20 @@ const resolvePatchPaths = ({
   if (patches === undefined) return undefined
 
   const resolved: Record<string, string> = {}
-  for (const [pkg, path] of Object.entries(patches).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (path.startsWith('./') === true || path.startsWith('../') === true) {
-      resolved[pkg] = path
+  for (const [pkg, patchPath] of Object.entries(patches).toSorted(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (patchPath.startsWith('./') === true || patchPath.startsWith('../') === true) {
+      resolved[pkg] = patchPath
     } else {
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
-        to: path,
+        to: patchPath,
       })
       resolved[pkg] = relativePath
     }
   }
   return resolved
-}
-
-// =============================================================================
-// Workspace Deps Resolver Factory
-// =============================================================================
-
-/**
- * Creates a resolver that traverses package dependency graphs to find workspace packages.
- *
- * Given a package and its imported deps (as `GenieOutput<PackageJsonData>` objects),
- * the resolver performs BFS through dependencies/devDependencies/peerDependencies,
- * collecting all internal packages matching the configured prefixes.
- *
- * Returns a function that produces sorted workspace-relative paths — callers compose
- * these paths with `pnpmWorkspaceYaml()` and their own workspace settings.
- *
- * @example
- * ```ts
- * // Flat siblings layout (e.g. effect-utils)
- * const resolveDeps = createWorkspaceDepsResolver({
- *   prefixes: ['@overeng/'],
- *   resolveWorkspacePath: (name) => `../${name.split('/')[1]}`,
- * })
- *
- * export default pnpmWorkspaceYaml({
- *   packages: ['.', ...resolveDeps({ pkg, deps, location: '.' })],
- *   dedupePeerDependents: true,
- * })
- *
- * // Registry-based paths (e.g. multi-repo with submodules)
- * const resolveDeps = createWorkspaceDepsResolver({
- *   prefixes: ['@overeng/', '@local/'],
- *   resolveWorkspacePath: (name, from) => {
- *     const target = packageLocations[name]
- *     return computeRelativePath({ from, to: target })
- *   },
- * })
- * ```
- */
-export const createWorkspaceDepsResolver = (config: {
-  /** Package name prefixes identifying internal packages */
-  prefixes: readonly string[]
-  /** Resolve package name to workspace-relative path from calling location */
-  resolveWorkspacePath: (packageName: string, fromLocation: string) => string
-}) => {
-  type PkgInput = GenieOutput<PackageJsonData>
-
-  const collectInternalPackageNames = (pkg: PkgInput): string[] => {
-    const names = new Set<string>()
-    const collect = (deps?: Record<string, string>) => {
-      if (deps === undefined) return
-      for (const name of Object.keys(deps)) {
-        if (config.prefixes.some((prefix) => name.startsWith(prefix)) === true) {
-          names.add(name)
-        }
-      }
-    }
-
-    collect(pkg.data.dependencies)
-    collect(pkg.data.devDependencies)
-    collect(pkg.data.peerDependencies)
-
-    return [...names]
-  }
-
-  const buildRegistry = (packages: readonly PkgInput[]): ReadonlyMap<string, PkgInput> => {
-    const registry = new Map<string, PkgInput>()
-    for (const pkg of packages) {
-      const name = pkg.data.name
-      if (name !== undefined) {
-        registry.set(name, pkg)
-      }
-    }
-    return registry
-  }
-
-  const collectWorkspacePackagesRecursive = ({
-    pkg,
-    registry,
-    location,
-    visited = new Set(),
-  }: {
-    pkg: PkgInput
-    registry: ReadonlyMap<string, PkgInput>
-    location: string
-    visited?: Set<string>
-  }): Set<string> => {
-    const result = new Set<string>()
-
-    const directDeps = collectInternalPackageNames(pkg)
-    for (const depName of directDeps) {
-      if (visited.has(depName) === true) continue
-      visited.add(depName)
-
-      result.add(config.resolveWorkspacePath(depName, location))
-
-      const depPkg = registry.get(depName)
-      if (depPkg !== undefined) {
-        const transitiveDeps = collectWorkspacePackagesRecursive({
-          pkg: depPkg,
-          registry,
-          location,
-          visited,
-        })
-        for (const path of transitiveDeps) {
-          result.add(path)
-        }
-      }
-    }
-
-    return result
-  }
-
-  return (args: {
-    pkg: PkgInput
-    deps: readonly PkgInput[]
-    location: string
-    extraPackages?: readonly string[]
-  }): string[] => {
-    const registry = buildRegistry([args.pkg, ...args.deps])
-    const workspacePaths = new Set<string>()
-
-    for (const p of [args.pkg, ...args.deps]) {
-      const paths = collectWorkspacePackagesRecursive({ pkg: p, registry, location: args.location })
-      for (const path of paths) {
-        workspacePaths.add(path)
-      }
-    }
-
-    for (const extra of args.extraPackages ?? []) {
-      workspacePaths.add(extra)
-    }
-
-    return [...workspacePaths].toSorted((a, b) => a.localeCompare(b))
-  }
 }
 
 // =============================================================================
@@ -1053,59 +893,136 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 // Main Export
 // =============================================================================
 
+const sortStrings = (values: Iterable<string>) =>
+  [...new Set(values)].toSorted((a, b) => a.localeCompare(b))
+
+const logicalWorkspaceMemberPath = ({
+  currentRepoName,
+  pkg,
+}: {
+  currentRepoName: string
+  pkg: WorkspacePackageLike
+}) =>
+  pkg.meta.workspace.repoName === currentRepoName
+    ? pkg.meta.workspace.memberPath
+    : path.posix.join('repos', pkg.meta.workspace.repoName, pkg.meta.workspace.memberPath)
+
+const relativePathForMember = ({
+  packageDir,
+  memberPath,
+}: {
+  packageDir: string
+  memberPath: string
+}) => {
+  const relative =
+    relativeRepoPath({
+      from: packageDir,
+      to: memberPath,
+    }) || '.'
+  return relative.startsWith('.') === true ? relative : `./${relative}`
+}
+
+const collectLogicalWorkspaceDepsRecursive = ({
+  currentRepoName,
+  deps,
+  visited = new Set<string>(),
+}: {
+  currentRepoName: string
+  deps: readonly WorkspacePackageLike[]
+  visited?: Set<string>
+}) => {
+  const members = new Set<string>()
+
+  for (const dep of deps) {
+    const visitedKey = `${dep.meta.workspace.repoName}:${dep.meta.workspace.memberPath}`
+    if (visited.has(visitedKey) === true) continue
+    visited.add(visitedKey)
+
+    members.add(logicalWorkspaceMemberPath({ currentRepoName, pkg: dep }))
+
+    for (const nestedDep of collectLogicalWorkspaceDepsRecursive({
+      currentRepoName,
+      deps: dep.meta.workspace.deps,
+      visited,
+    })) {
+      members.add(nestedDep)
+    }
+  }
+
+  return sortStrings(members)
+}
+
+/** Compute the workspace member closure for a package's pnpm install boundary. */
+export const projectPnpmPackageClosure = ({ pkg }: { pkg: WorkspacePackageLike }) => {
+  const packageDir = pkg.meta.workspace.memberPath
+  const currentRepoName = pkg.meta.workspace.repoName
+  const { extraMemberPaths = [] } = pkg.meta.workspace.pnpmPackageClosure ?? {}
+
+  const workspaceMembers = sortStrings([
+    ...collectLogicalWorkspaceDepsRecursive({
+      currentRepoName,
+      deps: pkg.meta.workspace.deps,
+    }),
+    ...extraMemberPaths,
+  ])
+
+  return {
+    packageDir,
+    workspaceClosureDirs: sortStrings([packageDir, ...workspaceMembers]),
+    packageRelativeMemberPaths: [
+      '.',
+      ...workspaceMembers.map((memberPath) =>
+        relativePathForMember({
+          packageDir,
+          memberPath,
+        }),
+      ),
+    ],
+  }
+}
+
 /**
- * Creates a pnpm-workspace.yaml configuration.
+ * Project a root pnpm-workspace.yaml from package metadata for an explicit repo view.
  *
- * Returns a `GenieOutput` with the structured data accessible via `.data`
- * for composition with other genie files.
- *
- * Patch paths are resolved relative to the package location at stringify time,
- * similar to how `packageJson` handles internal dependencies.
- *
- * @see https://pnpm.io/pnpm-workspace_yaml
- *
- * @example Basic usage
- * ```ts
- * import { pnpmWorkspaceYaml } from '@overeng/genie'
- *
- * export default pnpmWorkspaceYaml({
- *   packages: ['.', '../*'],
- *   dedupePeerDependents: true,
- * })
- * ```
- *
- * @example With catalog
- * ```ts
- * import { pnpmWorkspaceYaml } from '@overeng/genie'
- *
- * export default pnpmWorkspaceYaml({
- *   packages: ['packages/*'],
- *   catalog: {
- *     react: '18.2.0',
- *     typescript: '5.3.0',
- *   },
- * })
- * ```
- *
- * @example With patched dependencies
- * ```ts
- * import { pnpmWorkspaceYaml } from '@overeng/genie'
- *
- * export default pnpmWorkspaceYaml({
- *   packages: ['.'],
- *   patchedDependencies: {
- *     'some-pkg@1.0.0': 'patches/some-pkg@1.0.0.patch',
- *   },
- * })
- * ```
+ * `extraMembers` allows adding non-genie-managed workspace member paths
+ * (e.g. standalone examples) that cannot be derived from package metadata.
  */
-export const pnpmWorkspaceYaml = <const T extends PnpmWorkspaceData>(
-  config: Strict<T, PnpmWorkspaceData>,
-): GenieOutput<T> => ({
-  data: config,
-  stringify: (ctx) => stringify(buildPnpmWorkspaceYaml({ data: config, location: ctx.location })),
-  validate: (ctx) => validatePnpmWorkspaceData({ data: config, location: ctx.location }),
-})
+const rootPnpmWorkspaceYaml = ({
+  packages,
+  repoName,
+  extraMembers = [],
+  ...config
+}: {
+  packages: readonly WorkspacePackageLike[]
+  repoName: string
+  extraMembers?: readonly string[]
+} & Omit<PnpmWorkspaceData, 'packages'>) => {
+  const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
+  const allMembers =
+    extraMembers.length === 0
+      ? projectedMembers
+      : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
+
+  const fullConfig = { ...config, packages: allMembers }
+
+  return createGenieOutput({
+    data: fullConfig,
+    stringify: (ctx: GenieContext) =>
+      stringify(buildPnpmWorkspaceYaml({ data: fullConfig, location: ctx.location })),
+    validate: (ctx: GenieContext) => [
+      ...validatePnpmWorkspaceData({ data: fullConfig, location: ctx.location }),
+      ...validateRootPatchCoverage({
+        packages,
+        rootPatchedDependencies: config.patchedDependencies,
+      }),
+    ],
+  })
+}
+
+/** Public pnpm workspace projection API. */
+export const pnpmWorkspaceYaml = {
+  root: rootPnpmWorkspaceYaml,
+} as const
 
 // =============================================================================
 // Validation
@@ -1137,11 +1054,65 @@ const validatePnpmWorkspaceData = ({
   return issues
 }
 
-// =============================================================================
-// Legacy Export (deprecated)
-// =============================================================================
+/**
+ * Collect all pnpm patch keys required by packages in the workspace closure.
+ * Traverses transitive workspace deps recursively.
+ */
+const collectRequiredPatchKeysFromPackages = (
+  packages: readonly WorkspacePackageLike[],
+): Set<string> => {
+  const keys = new Set<string>()
+  const visited = new Set<string>()
+
+  const traverse = (deps: readonly WorkspacePackageLike[]) => {
+    for (const dep of deps) {
+      const visitedKey = `${dep.meta.workspace.repoName}:${dep.meta.workspace.memberPath}`
+      if (visited.has(visitedKey) === true) continue
+      visited.add(visitedKey)
+
+      const patches = dep.data.pnpm?.patchedDependencies
+      if (patches !== undefined) {
+        for (const key of Object.keys(patches)) {
+          keys.add(key)
+        }
+      }
+
+      traverse(dep.meta.workspace.deps)
+    }
+  }
+
+  traverse(packages)
+  return keys
+}
 
 /**
- * @deprecated Use `pnpmWorkspaceYaml` instead
+ * Validate that a root pnpm-workspace.yaml includes all patch keys
+ * required by workspace members in its transitive closure.
  */
-export const pnpmWorkspace = pnpmWorkspaceYaml
+const validateRootPatchCoverage = ({
+  packages,
+  rootPatchedDependencies,
+}: {
+  packages: readonly WorkspacePackageLike[]
+  rootPatchedDependencies: Record<string, string> | undefined
+}): GenieValidationIssue[] => {
+  const requiredKeys = collectRequiredPatchKeysFromPackages(packages)
+  if (requiredKeys.size === 0) return []
+
+  const rootKeys = new Set(Object.keys(rootPatchedDependencies ?? {}))
+  const issues: GenieValidationIssue[] = []
+
+  for (const key of requiredKeys) {
+    if (rootKeys.has(key) === false) {
+      issues.push({
+        severity: 'error',
+        packageName: '(root workspace)',
+        dependency: key,
+        message: `Root pnpm-workspace.yaml is missing patch "${key}" required by a workspace member. Use createPnpmPatchedDependencies() to project patches from imported repos.`,
+        rule: 'root-patch-coverage',
+      })
+    }
+  }
+
+  return issues
+}

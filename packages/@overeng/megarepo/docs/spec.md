@@ -45,32 +45,28 @@ The store uses **bare repos with worktrees per ref**:
         refs/
           heads/
             main/                       # worktree for 'main' branch
-            feature%2Ffoo/              # worktree for 'feature/foo' (URL-encoded)
+            feature/
+              foo/                      # worktree for 'feature/foo'
           tags/
             v1.0.0/                     # worktree for tag
           commits/
             abc123def456.../            # worktree for specific commit
 ```
 
-**Path structure:** `refs/{type}/{encoded-ref}/`
+**Path structure:** `refs/{type}/{raw-ref-path}/`
 
 The path reveals:
 
 1. **Mutability** - `refs/heads/*` is mutable (branches), everything else is immutable
 2. **Type** - `heads` (branch), `tags` (tag), `commits` (detached commit)
-3. **Ref identity** - URL-encoded ref name
+3. **Ref identity** - raw git ref path segments
 
-**Ref encoding:** Use percent-encoding (URL encoding) for ref names:
-
-- `/` → `%2F`
-- `%` → `%25`
-
-| Git Ref        | Store Path                   |
-| -------------- | ---------------------------- |
-| `main`         | `refs/heads/main/`           |
-| `feature/auth` | `refs/heads/feature%2Fauth/` |
-| `v1.0.0`       | `refs/tags/v1.0.0/`          |
-| `abc123...`    | `refs/commits/abc123.../`    |
+| Git Ref        | Store Path                 |
+| -------------- | -------------------------- |
+| `main`         | `refs/heads/main/`         |
+| `feature/auth` | `refs/heads/feature/auth/` |
+| `v1.0.0`       | `refs/tags/v1.0.0/`        |
+| `abc123...`    | `refs/commits/abc123.../`  |
 
 **Key implication:** Each ref has its own isolated worktree. Switching between refs (via `mr pin -c`) updates the symlink to point to a different worktree—it does NOT modify files in place like `git checkout`. This means uncommitted changes in one worktree are preserved when you switch to another ref.
 
@@ -257,13 +253,13 @@ The lock file records resolved state and is committed to git for CI reproducibil
 
 ### Lock Entry Fields
 
-| Field      | Description                                         |
-| ---------- | --------------------------------------------------- |
-| `url`      | Resolved URL (GitHub shorthand expanded)            |
-| `ref`      | Current ref (branch, tag, or commit SHA)            |
-| `commit`   | Resolved commit SHA (40 chars)                      |
-| `pinned`   | If true, `mr sync --pull` won't refresh this member |
-| `lockedAt` | Timestamp when this entry was resolved              |
+| Field      | Description                                           |
+| ---------- | ----------------------------------------------------- |
+| `url`      | Resolved URL (GitHub shorthand expanded)              |
+| `ref`      | Current ref (branch, tag, or commit SHA)              |
+| `commit`   | Resolved commit SHA (40 chars)                        |
+| `pinned`   | If true, `mr fetch --apply` won't refresh this member |
+| `lockedAt` | Timestamp when this entry was resolved                |
 
 **Note:** Local paths are NOT in the lock file - they're already local.
 
@@ -272,7 +268,7 @@ The lock file records resolved state and is committed to git for CI reproducibil
 The `pinned` flag and ref type serve different purposes:
 
 - **Ref type** determines what the member tracks (branch = mutable, tag/commit = immutable)
-- **Pinned flag** determines whether `sync --pull` should update the member
+- **Pinned flag** determines whether `mr fetch --apply` should update the member
 
 A pinned branch stays at its current commit even though branches are normally mutable.
 An unpinned tag stays at the tagged commit because tags are inherently immutable.
@@ -320,21 +316,21 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 
 ### Core Commands
 
-#### `mr sync`
+#### `mr fetch --apply`
 
-Bidirectional sync between worktrees and lock file. The default mode ensures members exist and updates the lock file to match current worktree HEADs.
+Workspace sync from `megarepo.json`. This ensures members exist and that `repos/*` points at the canonical ref worktrees declared in config.
 
 ```bash
-mr sync [--pull] [--frozen] [--force] [--all] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>] [--create-branches]
+mr fetch --apply [--force] [--all] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>] [--create-branches]
 ```
 
 **Modes:**
 
-| Mode    | Command            | Behavior                                                                |
-| ------- | ------------------ | ----------------------------------------------------------------------- |
-| Default | `mr sync`          | Ensure members exist, update lock to current worktree commits           |
-| Pull    | `mr sync --pull`   | Fetch from remote, update worktrees to latest                           |
-| Frozen  | `mr sync --frozen` | Clone if needed, apply lock → worktrees exactly, never modify lock (CI) |
+| Mode        | Command            | Behavior                                                            |
+| ----------- | ------------------ | ------------------------------------------------------------------- |
+| Fetch+Apply | `mr fetch --apply` | Fetch from remote, update worktrees to latest, then update the lock |
+| Lock        | `mr lock`          | Record current workspace commits into `megarepo.lock`               |
+| Apply       | `mr apply`         | Clone if needed, apply lock → worktrees exactly, never modify lock  |
 
 **Member Filtering:**
 
@@ -347,19 +343,19 @@ These options are mutually exclusive. When filtering is applied:
 
 - Only the specified members are synced
 - Generators skip members that weren't synced (graceful handling of missing paths)
-- Lock file operations only affect synced members
+- Lock operations only affect synced members when you run `mr lock`, `mr fetch --apply`, or `mr apply`
 
-**Default Mode Behavior:**
+**Workspace Sync Behavior:**
 
 1. For each member in config:
-   - If member exists → read current HEAD, update lock if different
-   - If member NOT exists → clone/create worktree, add to lock
+   - If member exists → ensure it matches the configured source ref
+   - If member does NOT exist → clone/create the configured worktree
 2. Does NOT fetch from remote
-3. Updates lock file to reflect current worktree state
+3. Does NOT update `megarepo.lock`
 
-This mode is ideal for local iteration: make commits in worktrees, then `mr sync` to capture the current state in the lock file.
+This mode is ideal for local shell/setup flows where you want a usable workspace without recording anything yet.
 
-**Lock vs source mismatch detection:** In default mode, `mr sync` and `mr status` detect two distinct scenarios when the lock file ref doesn't match the source:
+**Lock vs source mismatch detection:** `mr fetch --apply` and `mr status` detect two distinct scenarios when the lock file ref doesn't match the source:
 
 **1. Stale lock:** The lock is outdated but current state matches source intent.
 
@@ -368,7 +364,7 @@ lock file outdated
     effect-utils
       lock: feat/r12-monitoring (outdated)
       actual: main (matches source)
-      fix: mr sync --only effect-utils
+      fix: mr lock --only effect-utils
              → updates lock to main
 ```
 
@@ -383,7 +379,7 @@ tracking different ref than source
       source: dev (from megarepo.json)
       fix: add #feat/refactor to megarepo.json
              → keeps tracking feat/refactor
-           or: mr sync --pull --only livestore
+           or: mr fetch --apply --only livestore
              → switches to dev, updates lock
 ```
 
@@ -393,9 +389,7 @@ This distinction prevents silent "already synced" messages and provides targeted
 
 **Options:**
 
-- `--pull` - Fetch from remote and update to latest commits (like old `mr update`)
-- `--frozen` - CI mode: fail if lock is missing or stale, apply lock exactly
-- `--force` / `-f` - Override dirty worktree check, update pinned members
+- `--force` / `-f` - Force updates for pinned members
 - `--all` - Recursively sync nested megarepos
 - `--only <members>` - Only sync specified members (comma-separated, mutually exclusive with `--skip`)
 - `--skip <members>` - Skip specified members (comma-separated, mutually exclusive with `--only`)
@@ -404,7 +398,7 @@ This distinction prevents silent "already synced" messages and provides targeted
 
 #### Sync JSON Output
 
-When using `--output json` or `--output ndjson`, `mr sync` outputs a structured state object.
+When using `--output json` or `--output ndjson`, `mr fetch --apply` outputs a structured state object.
 
 Important fields:
 
@@ -429,14 +423,12 @@ The `--git-protocol` option controls which URL format is used when cloning repos
 **CI Usage:** In CI environments without SSH keys configured, use `--git-protocol=https` to clone public repositories via HTTPS:
 
 ```bash
-mr sync --frozen --git-protocol=https
+mr apply --git-protocol=https
 ```
 
 **Note:** The `auto` mode prefers the URL stored in `megarepo.lock` (which is typically HTTPS), making it work well in most CI scenarios where the lock file exists.
 
-#### `mr sync --pull`
-
-Fetches from remotes and updates worktrees to latest commits:
+**Fetch and update behavior:**
 
 1. Fetch from remote for each member
 2. Resolve ref to latest commit
@@ -447,7 +439,7 @@ Fetches from remotes and updates worktrees to latest commits:
 
 **Pinned members:** Skipped unless `--force` is used.
 
-#### `mr sync --frozen`
+#### `mr apply`
 
 Strict mode for CI that guarantees exact reproducibility:
 
@@ -455,13 +447,13 @@ Strict mode for CI that guarantees exact reproducibility:
 - Lock MUST cover all config members (no new members allowed)
 - Uses locked commits exactly
 - Fails if config has members not in lock
-- **Clones and fetches if needed** - frozen mode will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
+- **Clones and fetches if needed** - lock apply will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
 - **Uses commit-based worktree paths** (e.g., `refs/commits/<sha>/`) to guarantee the exact locked commit is checked out, regardless of what branch refs currently point to
 - **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
-This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, frozen mode always materializes the exact commits from the lock file.
+This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, lock apply always materializes the exact commits from the lock file.
 
-**CI usage:** In a fresh CI environment, `mr sync --frozen` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
+**CI usage:** In a fresh CI environment, `mr apply` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
 
@@ -480,7 +472,7 @@ mr pin effect -c abc123def    # pin to specific commit
 2. Creates a new worktree for that ref (if it doesn't exist)
 3. Updates the symlink in `repos/` to point to the new worktree
 4. Sets `pinned: true` in lock file
-5. Pinned members won't update with `mr sync --pull`
+5. Pinned members won't update with `mr fetch --apply`
 
 **Worktree preservation:** Unlike `git checkout`, switching refs does NOT modify the current worktree. Each ref has its own worktree in the store. The previous worktree remains untouched with any uncommitted changes preserved. This enables safe context-switching between branches without stashing or committing work-in-progress.
 
@@ -488,11 +480,11 @@ mr pin effect -c abc123def    # pin to specific commit
 
 The ref type determines mutability, not the `pin` command itself:
 
-| Ref Type | Example                 | Mutability | Behavior on `sync --pull` (if unpinned) |
-| -------- | ----------------------- | ---------- | --------------------------------------- |
-| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                |
-| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                  |
-| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                   |
+| Ref Type | Example                 | Mutability | Behavior on `mr fetch --apply` (if unpinned) |
+| -------- | ----------------------- | ---------- | -------------------------------------------- |
+| Branch   | `main`, `feature/foo`   | Mutable    | Updates to latest commit                     |
+| Tag      | `v3.0.0`, `release-1.0` | Immutable  | Stays at tagged commit                       |
+| Commit   | `abc123def...`          | Immutable  | Stays at exact commit                        |
 
 When pinned, the member stays at its current commit regardless of ref type.
 
@@ -505,7 +497,7 @@ mr unpin effect
 ```
 
 - Sets `pinned: false` in lock file
-- Next `mr sync --pull` will refresh to latest (for branch refs)
+- Next `mr fetch --apply` will refresh to latest (for branch refs)
 - Tags and commits remain at their fixed points even when unpinned
 
 ### Convenience Commands
@@ -534,8 +526,8 @@ mr status
 
 **Lock mismatch detection:** Warns about two distinct scenarios:
 
-- **Stale lock:** Lock is outdated but current state matches source intent. Fix: `mr sync`
-- **Symlink drift:** Symlink/lock track different ref than source. Fix: edit megarepo.json or `mr sync --pull`
+- **Stale lock:** Lock is outdated but current state matches source intent. Fix: `mr fetch --apply`
+- **Symlink drift:** Symlink/lock track different ref than source. Fix: edit megarepo.json or `mr fetch --apply`
 
 #### `mr env`
 
@@ -684,14 +676,15 @@ All commands support:
 
 ```bash
 # Initial setup
-mr sync                    # clone members, create lock
+mr fetch --apply                    # clone members and create symlinks
+mr lock               # write megarepo.lock
 
 # Make changes in worktrees
 cd repos/effect && git commit -m "fix bug"
 cd repos/other-lib && git commit -m "add feature"
 
 # Capture current state in lock file
-mr sync                    # updates lock to current worktree HEADs
+mr lock               # updates lock to current worktree HEADs
 git add megarepo.lock
 git commit -m "Update dependencies"
 ```
@@ -700,22 +693,22 @@ git commit -m "Update dependencies"
 
 ```bash
 # Config: effect tracks main branch
-mr sync                    # ensure members exist
+mr fetch --apply                    # ensure members exist
 # ... time passes ...
-mr sync --pull             # fetch and update to latest commits
+mr fetch --apply             # fetch and update to latest commits
 ```
 
 ### CI (reproducible builds)
 
 ```bash
 # Lock file is committed to git
-mr sync --frozen           # uses exactly what's in lock
+mr apply           # uses exactly what's in lock
 
 # Skip members that can't be cloned (e.g., private repos without auth)
-mr sync --frozen --skip private-repo
+mr apply --skip private-repo
 
 # Use HTTPS for public repos when SSH keys aren't available
-mr sync --frozen --git-protocol=https
+mr apply --git-protocol=https
 ```
 
 ### Stabilizing for release
@@ -727,7 +720,7 @@ git add megarepo.lock
 git commit -m "Pin dependencies for release"
 
 # Later updates skip pinned members
-mr sync --pull             # effect stays pinned, others update
+mr fetch --apply             # effect stays pinned, others update
 ```
 
 ### Switching branches
@@ -744,7 +737,7 @@ mr pin effect -c main
 
 # Allow updates again
 mr unpin effect
-mr sync --pull                   # update to latest main
+mr fetch --apply                   # update to latest main
 ```
 
 ### Investigating a regression
@@ -754,7 +747,7 @@ mr pin effect -c abc123          # pin to known-good commit
 # ... test ...
 mr pin effect -c main            # back to main branch
 mr unpin effect                  # allow updates
-mr sync --pull                   # update to latest
+mr fetch --apply                   # update to latest
 ```
 
 ### Creating a new feature branch
@@ -765,16 +758,16 @@ There are two ways to create a new branch that doesn't exist yet:
 
 ```bash
 # In megarepo.json: "dotfiles": "schickling/dotfiles#new-feature"
-mr sync --create-branches        # creates missing branches from default branch
+mr fetch --apply --create-branches        # creates missing branches from default branch
 ```
 
 **Interactive mode (TTY only):**
 
-If you specify a branch that doesn't exist and you're running in an interactive terminal, `mr sync` will prompt:
+If you specify a branch that doesn't exist and you're running in an interactive terminal, `mr fetch --apply` will prompt:
 
 ```bash
 # In megarepo.json: "dotfiles": "schickling/dotfiles#new-feature"
-mr sync
+mr fetch --apply
 
 # Output:
 # Branch 'new-feature' doesn't exist in schickling/dotfiles.
@@ -792,7 +785,7 @@ In non-interactive mode without `--create-branches`, missing refs result in an e
 
 ## Directory Layout
 
-After `mr sync`, a megarepo looks like:
+After `mr fetch --apply`, a megarepo looks like:
 
 ```
 my-megarepo/                    # Git repo (the megarepo itself)
@@ -814,24 +807,24 @@ my-megarepo/                    # Git repo (the megarepo itself)
 Members can themselves be megarepos with their own `megarepo.json`. When a member depends on another repo:
 
 1. **The member declares its own dependencies** in its `megarepo.json`
-2. **Running `mr sync` in the member** creates symlinks within that member
+2. **Running `mr fetch --apply` in the member** creates symlinks within that member
 3. **Shared dependencies** point to the same store worktree
 
 **Sync Behavior for Nested Megarepos:**
 
-- **Default (shallow):** `mr sync` only syncs the current megarepo's direct members
-- **Recursive:** `mr sync --all` syncs nested megarepos recursively
+- **Default (shallow):** `mr fetch --apply` only syncs the current megarepo's direct members
+- **Recursive:** `mr fetch --apply --all` syncs nested megarepos recursively
 
 ```bash
-mr sync          # Shallow - only direct members
-mr sync --all    # Recursive - includes nested megarepos
+mr fetch --apply          # Shallow - only direct members
+mr fetch --apply --all    # Recursive - includes nested megarepos
 ```
 
 ---
 
 ## Sync Behavior
 
-### `mr sync` (Default Mode) Strategy
+### `mr fetch --apply` (Default Mode) Strategy
 
 1. **For existing members:** Read current worktree HEAD, update lock if different
 2. **For new members:** Clone bare repo, create worktree, add to lock
@@ -842,7 +835,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 
 **Removed member detection:** After syncing configured members, the sync command scans the `repos/` directory for orphaned symlinks (entries not in the current config). These are automatically removed to keep the workspace clean. The corresponding lock file entries are also removed. Note: The underlying worktrees in the store are NOT removed - use `mr store gc` to clean up unused worktrees.
 
-### `mr sync --pull` Strategy
+### `mr fetch --apply` Strategy
 
 1. **Fetch:** Get latest refs from remote
 2. **Check dirty:** Fail if worktree has uncommitted changes (unless `--force`)
@@ -850,7 +843,7 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 4. **Fast-forward:** If worktree exists and is a branch, `git merge --ff-only` to update working tree
 5. **Update lock:** Write new commit to lock file
 
-### `mr sync --frozen` Strategy
+### `mr apply` Strategy
 
 1. **Validate lock:** Fail if lock missing or stale
 2. **Use locked commits:** Checkout exact commits from lock
@@ -880,13 +873,13 @@ Default mode does NOT fetch from remote. It reads current worktree state and upd
 | --------- | -------------------------------------------- |
 | VSCode    | `<megarepo>/.vscode/megarepo.code-workspace` |
 
-`mr sync` runs configured generators after syncing members (unless `--dry-run`).
+`mr fetch --apply` runs configured generators after syncing members (unless `--dry-run`).
 
 ### Nix Lock Sync
 
 Megarepo automatically synchronizes `flake.lock` and `devenv.lock` files in direct member repos to keep them in sync with `megarepo.lock`. Lock sync is **auto-detected**: it is enabled if `devenv.lock` or `flake.lock` exists in the megarepo root directory.
 
-`mr sync` applies lock sync in the current megarepo only. `mr sync --all` recurses into nested megarepos and applies lock sync there too, including nested `megarepo.lock` reconciliation.
+`mr fetch --apply` applies lock sync in the current megarepo only. `mr fetch --apply --all` recurses into nested megarepos and applies lock sync there too, including nested `megarepo.lock` reconciliation.
 
 **The Problem:**
 
@@ -899,7 +892,7 @@ These can drift, causing CI reproducibility issues and confusion.
 
 **The Solution:**
 
-During `mr sync`, after `megarepo.lock` is updated, megarepo scans each direct member repo for `flake.lock` and `devenv.lock` files. For any input that matches another megarepo member (by URL), it updates the `rev` to match `megarepo.lock`.
+During `mr lock`, `mr fetch --apply`, and `mr apply`, once `megarepo.lock` is the active source of truth, megarepo scans each direct member repo for `flake.lock` and `devenv.lock` files. For any input that matches another megarepo member (by URL), it updates the `rev` to match `megarepo.lock`.
 
 **How it works:**
 
@@ -961,7 +954,7 @@ And `repos/my-app/flake.lock` with an input referencing effect-utils at a differ
 }
 ```
 
-After `mr sync`, the flake.lock will be updated to:
+After a lock-writing or lock-applying command, the flake.lock will be updated to:
 
 ```json
 {
@@ -1016,7 +1009,7 @@ Options:
   - Use --force to discard changes (DANGEROUS)
 ```
 
-### Lock is stale (--frozen mode)
+### Lock is stale (lock apply mode)
 
 ```
 Error: Lock file is out of sync with config
@@ -1025,7 +1018,7 @@ Error: Lock file is out of sync with config
   Removed members: old-lib
   Changed refs: effect (main -> next)
 
-Run 'mr sync' to update lock file, then commit.
+Run 'mr lock' to update lock file, then commit.
 ```
 
 ### Local path doesn't exist
@@ -1040,7 +1033,7 @@ Check that the path is correct relative to the megarepo root.
 
 ```
 Skipped: effect (symlink drift: lock says 'refactor/feature' but source resolves to 'dev')
-  hint: run 'mr sync --pull' to update to lock ref, or update megarepo.json to include #refactor/feature
+  hint: run 'mr fetch --apply' to update to lock ref, or update megarepo.json to include #refactor/feature
 ```
 
 This occurs when:
@@ -1050,9 +1043,9 @@ This occurs when:
 
 **Resolution options:**
 
-- Run `mr sync --pull` to fetch and update to the lock file's ref
+- Run `mr fetch --apply` to fetch and update to the lock file's ref
 - Update `megarepo.json` to explicitly specify the ref: `"effect": "effect-ts/effect#refactor/feature"`
-- If the lock is outdated, update it by checking out the desired ref and running `mr sync`
+- If the lock is outdated, update it by checking out the desired ref and running `mr fetch --apply`
 
 ### Store worktree ref mismatch
 
