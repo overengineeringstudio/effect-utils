@@ -489,11 +489,12 @@ export const syncMegarepo = <R = never>({
                 // In applyAfterFetch mode, run fetch first for nested megarepos
                 // so they have a lock file before apply runs.
                 if (options.applyAfterFetch === true) {
+                  // Use a separate visited set for fetch — sharing the apply's visited
+                  // set would cause the apply phase to skip megarepos already visited by fetch.
                   yield* syncMegarepo({
                     megarepoRoot: nestedRoot,
                     options: { ...options, mode: 'fetch', applyAfterFetch: false },
                     depth: depth + 1,
-                    visited,
                     ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                   })
                 }

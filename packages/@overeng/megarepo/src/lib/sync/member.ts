@@ -222,8 +222,8 @@ export const syncMember = <R = never>({
     const memberPath = getMemberPath({ megarepoRoot, name })
     const memberPathNormalized = memberPath.replace(/\/$/, '')
 
-    // Skip local path members in fetch and lock modes (nothing to fetch/record)
-    if (source.type === 'path' && (isFetchMode === true || isLockMode === true)) {
+    // Fetch mode: skip local path members (nothing to fetch)
+    if (source.type === 'path' && isFetchMode === true) {
       return { name, status: 'skipped', message: 'local path member' } satisfies MemberSyncResult
     }
 
