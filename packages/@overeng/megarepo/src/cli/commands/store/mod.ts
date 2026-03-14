@@ -922,9 +922,13 @@ const storeWorktreeNewCommand = Cli.Command.make(
       Cli.Options.withDescription('Commit SHA to check out (detached HEAD)'),
       Cli.Options.optional,
     ),
+    porcelain: Cli.Options.boolean('porcelain').pipe(
+      Cli.Options.withDescription('Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))'),
+      Cli.Options.withDefault(false),
+    ),
     output: outputOption,
   },
-  ({ repo: repoString, ref: refOpt, base: baseOpt, commit: commitOpt, output }) =>
+  ({ repo: repoString, ref: refOpt, base: baseOpt, commit: commitOpt, porcelain, output }) =>
     Effect.gen(function* () {
       const store = yield* Store
       const fs = yield* FileSystem.FileSystem
@@ -1138,6 +1142,12 @@ const storeWorktreeNewCommand = Cli.Command.make(
       // Get the current commit in the new worktree
       const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
       const resolvedCommit = Option.getOrUndefined(commitSha)
+
+      // Porcelain: raw path output for scripting (e.g. cd $(mr store worktree new ... --porcelain))
+      if (porcelain === true) {
+        yield* Effect.sync(() => process.stdout.write(worktreePath.replace(/\/$/, '') + '\n'))
+        return
+      }
 
       // Output
       yield* run(
