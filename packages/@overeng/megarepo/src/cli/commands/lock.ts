@@ -9,6 +9,7 @@ import * as Cli from '@effect/cli'
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand } from './engine.ts'
 
+/** `mr lock` — Workspace → Lock: record current worktree HEAD commits into megarepo.lock. */
 export const lockCommand = Cli.Command.make(
   'lock',
   {

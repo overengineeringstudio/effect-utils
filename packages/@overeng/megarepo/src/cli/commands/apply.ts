@@ -9,6 +9,7 @@ import * as Cli from '@effect/cli'
 import { outputOption, verboseOption } from '../context.ts'
 import { runCommand } from './engine.ts'
 
+/** `mr apply` — Lock → Workspace: create worktrees, symlink, nix lock sync, generators. */
 export const applyCommand = Cli.Command.make(
   'apply',
   {

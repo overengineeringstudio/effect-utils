@@ -46,6 +46,7 @@ const sharedOptions = {
   verbose: verboseOption,
 } as const
 
+/** `mr fetch` — Remote → Lock: fetch upstream refs, resolve commits, write lock. */
 export const fetchCommand = Cli.Command.make(
   'fetch',
   {
