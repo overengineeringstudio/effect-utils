@@ -328,7 +328,7 @@ export const TuiStoryPreview = <S, A>({
   const ViewCast = View as React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ fontFamily: 'system-ui, sans-serif', borderRadius: '8px', overflow: 'hidden' }}>
       {/* Tabs */}
       <div
         style={{

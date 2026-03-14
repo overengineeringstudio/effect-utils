@@ -33,7 +33,6 @@ export const containerStyles: React.CSSProperties = {
   width: '100%',
   height: '400px',
   backgroundColor: '#1a1a2e',
-  borderRadius: '8px',
   overflow: 'hidden',
   boxSizing: 'border-box',
 }
