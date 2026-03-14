@@ -23,6 +23,7 @@ type StoryArgs = {
   playbackSpeed: number
   dryRun: boolean
   verbose: boolean
+  all: boolean
 }
 
 export default {
@@ -33,6 +34,7 @@ export default {
     ...defaultStoryArgs,
     dryRun: false,
     verbose: false,
+    all: false,
   },
   argTypes: {
     ...commonArgTypes,
@@ -42,6 +44,10 @@ export default {
     },
     verbose: {
       description: '--verbose: show detailed commit information',
+      control: { type: 'boolean' },
+    },
+    all: {
+      description: '--all: sync nested megarepos recursively',
       control: { type: 'boolean' },
     },
   },
@@ -58,11 +64,11 @@ export const AllRecorded: Story = {
         options: {
           mode: 'lock' as const,
           dryRun: args.dryRun,
-          all: false,
+          all: args.all,
           verbose: args.verbose,
         },
       }),
-      [args.dryRun, args.verbose],
+      [args.dryRun, args.verbose, args.all],
     )
     return (
       <TuiStoryPreview
@@ -77,7 +83,7 @@ export const AllRecorded: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr lock${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -100,11 +106,11 @@ export const WithUpdates: Story = {
         options: {
           mode: 'lock' as const,
           dryRun: args.dryRun,
-          all: false,
+          all: args.all,
           verbose: args.verbose,
         },
       }),
-      [args.dryRun, args.verbose],
+      [args.dryRun, args.verbose, args.all],
     )
     return (
       <TuiStoryPreview
@@ -119,7 +125,7 @@ export const WithUpdates: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr lock${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -142,11 +148,11 @@ export const WithSkipped: Story = {
         options: {
           mode: 'lock' as const,
           dryRun: args.dryRun,
-          all: false,
+          all: args.all,
           verbose: args.verbose,
         },
       }),
-      [args.dryRun, args.verbose],
+      [args.dryRun, args.verbose, args.all],
     )
     return (
       <TuiStoryPreview
@@ -161,7 +167,7 @@ export const WithSkipped: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr lock${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({

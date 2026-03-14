@@ -812,7 +812,9 @@ const LockSyncSection = ({
     sharedSourceUpdates.reduce((sum, u) => sum + u.targetCount, 0)
 
   return (
-    <Box paddingTop={1} flexDirection="column">
+    <Box flexDirection="column">
+      {/* Empty line before section */}
+      <Text> </Text>
       {/* Summary line */}
       <Box flexDirection="row">
         <Text color="cyan">{symbols.check}</Text>
