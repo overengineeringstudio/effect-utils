@@ -5,7 +5,7 @@
  * all surrounding formatting, comments, and expressions.
  */
 
-import { parseNixFlakeUrl, updateNixFlakeUrl, serializeNixFlakeUrl } from './flake-url.ts'
+import { parseNixFlakeUrl, updateNixFlakeUrl } from './flake-url.ts'
 
 // =============================================================================
 // Types

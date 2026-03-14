@@ -5,6 +5,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
+import type { WorkspacePackage } from '../package-json/mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
 import { pnpmWorkspaceYaml, projectPnpmPackageClosure } from './mod.ts'
 
@@ -236,7 +237,7 @@ describe('root patch coverage validation', () => {
     )
   }
 
-  const makeApp = (deps: ReturnType<typeof packageJson>[]) => {
+  const makeApp = (deps: WorkspacePackage[]) => {
     const appComposition = catalog.compose({
       workspace: workspace({
         repoName: repo.repoName,

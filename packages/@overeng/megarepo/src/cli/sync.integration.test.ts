@@ -135,17 +135,6 @@ const runMrCommand = ({
     }
   }).pipe(Effect.scoped)
 
-/** Run `mr apply` and capture output. */
-const runSyncCommand = ({
-  cwd,
-  args = [],
-  env = {},
-}: {
-  cwd: AbsoluteDirPath
-  args?: ReadonlyArray<string>
-  env?: Record<string, string>
-}) => runMrCommand({ cwd, command: ['apply'], args, env })
-
 /** Run `mr lock` and capture output. */
 const runLockRecordCommand = ({
   cwd,

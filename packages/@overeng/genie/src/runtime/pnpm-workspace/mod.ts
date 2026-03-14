@@ -8,7 +8,7 @@
 import path from 'node:path'
 
 import { createGenieOutput } from '../core.ts'
-import type { GenieContext, GenieOutput, Strict } from '../core.ts'
+import type { GenieContext } from '../core.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
@@ -892,44 +892,6 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 // =============================================================================
 // Main Export
 // =============================================================================
-
-/**
- * Creates a pnpm-workspace.yaml configuration.
- *
- * Returns a `GenieOutput` with the structured data accessible via `.data`
- * for composition with other genie files.
- *
- * Patch paths are resolved relative to the package location at stringify time,
- * similar to how `packageJson` handles internal dependencies.
- *
- * @see https://pnpm.io/pnpm-workspace_yaml
- *
- * Use `pnpmWorkspaceYaml.root(...)` for live repo state projection.
- * Package closures are internal build-time projections derived from
- * package workspace metadata.
- */
-function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData>(
-  config: Strict<T, PnpmWorkspaceData>,
-): GenieOutput<T>
-function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
-  config: Strict<T, PnpmWorkspaceData>,
-  meta: TMeta,
-): GenieOutput<T, TMeta>
-/** Genie convention: the first arg is emitted data and the second arg is non-emitted metadata. */
-// oxlint-disable-next-line overeng/named-args
-function createPnpmWorkspaceYaml<const T extends PnpmWorkspaceData, const TMeta>(
-  config: Strict<T, PnpmWorkspaceData>,
-  meta?: TMeta,
-) {
-  return createGenieOutput({
-    data: config,
-    stringify: (ctx: GenieContext) =>
-      stringify(buildPnpmWorkspaceYaml({ data: config, location: ctx.location })),
-    validate: (ctx: GenieContext) =>
-      validatePnpmWorkspaceData({ data: config, location: ctx.location }),
-    ...(meta === undefined ? {} : { meta }),
-  })
-}
 
 const sortStrings = (values: Iterable<string>) =>
   [...new Set(values)].toSorted((a, b) => a.localeCompare(b))

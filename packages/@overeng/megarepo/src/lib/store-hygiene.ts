@@ -9,14 +9,11 @@ import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import type { CommandExecutor } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 
-import type { AbsoluteDirPath } from '@overeng/effect-path'
-
 import {
   type MegarepoConfig,
   type MemberSource,
   isRemoteSource,
   parseSourceString,
-  getSourceRef,
 } from './config.ts'
 import * as Git from './git.ts'
 import type { LockFile } from './lock.ts'
@@ -153,7 +150,6 @@ export const validateStoreMembers = ({
       }
 
       // Check ref mismatch (only for branch worktrees)
-      const sourceRef = Option.getOrElse(getSourceRef(source), () => 'main')
       const expectedRef = lockedMember.ref
 
       // Only check branch-type refs for mismatch (tags/commits are detached by design)

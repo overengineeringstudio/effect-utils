@@ -6,9 +6,9 @@
  */
 
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option } from 'effect'
+import { Effect } from 'effect'
 
-import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { getMemberPath, type MegarepoConfig } from '../config.ts'
 import type { LockFile, LockedMember } from '../lock.ts'
