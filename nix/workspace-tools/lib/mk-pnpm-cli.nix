@@ -264,10 +264,11 @@ let
                 )
                 workspaceMembers
             );
-          # Include workspace member package.json files (not full directories)
-          # Also include their parent directories as directories
-          isWorkspaceMemberPackageJson = lib.any (
-            memberDir: relPath == "${memberDir}/package.json"
+          # Include workspace member dependency-relevant files (not full source trees)
+          # so package-local lockfiles remain available when a workspace package expects
+          # self-contained pnpm installs.
+          isWorkspaceMemberDepsFile = lib.any (
+            memberDir: lib.any (fname: relPath == "${memberDir}/${fname}") depsRelevantFiles
           ) workspaceMembers;
           isWorkspaceMemberDir =
             type == "directory" && lib.any (memberDir: relPath == memberDir) workspaceMembers;
@@ -289,7 +290,7 @@ let
           || isPackageDepsFile
           || isInPatches
           || isParentDir
-          || isWorkspaceMemberPackageJson
+          || isWorkspaceMemberDepsFile
           || isWorkspaceMemberDir
           || isWorkspaceMemberParentDir
         );
@@ -436,7 +437,6 @@ pkgs.stdenv.mkDerivation {
     pnpm --config.inject-workspace-packages=true \
       --filter . \
       deploy \
-      --offline \
       --frozen-lockfile \
       --ignore-scripts \
       "$deploy_dir"
