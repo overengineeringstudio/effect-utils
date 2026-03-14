@@ -165,9 +165,9 @@ export const installMegarepoStep = {
   shell: 'bash',
 } as const
 
-/** Sync megarepo dependencies to workspace refs. */
+/** Fetch latest refs and apply megarepo workspace. */
 export const syncMegarepoWorkspaceStep = (opts?: { skip?: string[] }) => {
-  const args = ['mr', 'sync']
+  const args = ['mr', 'fetch', '--apply']
   if (opts?.skip !== undefined) for (const s of opts.skip) args.push('--skip', s)
   return {
     name: 'Sync megarepo dependencies',
@@ -196,7 +196,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- lock apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }

@@ -222,8 +222,8 @@ export const syncMember = <R = never>({
     const memberPath = getMemberPath({ megarepoRoot, name })
     const memberPathNormalized = memberPath.replace(/\/$/, '')
 
-    // Fetch mode: skip local path members (nothing to fetch)
-    if (source.type === 'path' && isFetchMode === true) {
+    // Skip local path members in fetch and lock modes (nothing to fetch/record)
+    if (source.type === 'path' && (isFetchMode === true || isLockMode === true)) {
       return { name, status: 'skipped', message: 'local path member' } satisfies MemberSyncResult
     }
 
@@ -721,7 +721,11 @@ export const syncMember = <R = never>({
     )
 
     if (refResult._tag === 'early-return') return refResult.result
-    targetCommit = refResult.commit
+    // In apply mode, use the locked commit — not the bare repo's current branch tip.
+    // The resolution is still needed for refType classification and ref validation.
+    targetCommit = isApplyMode === true && lockedMember?.commit !== undefined
+      ? lockedMember.commit
+      : refResult.commit
     const actualRefType = refResult.refType
 
     // Fetch mode: resolved commit is all we need. Don't touch workspace.
@@ -825,6 +829,25 @@ export const syncMember = <R = never>({
           attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
         }),
       )
+    }
+
+    // For newly created branch worktrees in apply mode, ensure the worktree
+    // is at the locked commit (not the branch tip in the bare repo).
+    if (
+      worktreeExists === false &&
+      dryRun === false &&
+      isApplyMode === true &&
+      actualRefType === 'branch' &&
+      targetCommit !== undefined
+    ) {
+      const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
+        Effect.catchAll(() => Effect.succeed(undefined)),
+      )
+      if (currentCommit !== undefined && currentCommit !== targetCommit) {
+        yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
+          Effect.catchAll(() => Effect.void),
+        )
+      }
     }
 
     // Fast-forward existing branch worktrees when updating from remote.

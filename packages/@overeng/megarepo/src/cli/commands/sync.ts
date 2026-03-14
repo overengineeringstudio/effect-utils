@@ -493,6 +493,7 @@ export const syncMegarepo = <R = never>({
                     megarepoRoot: nestedRoot,
                     options: { ...options, mode: 'fetch', applyAfterFetch: false },
                     depth: depth + 1,
+                    visited,
                     ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                   })
                 }

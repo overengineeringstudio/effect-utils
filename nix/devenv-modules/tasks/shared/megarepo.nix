@@ -1,12 +1,12 @@
-# Megarepo sync tasks.
+# Megarepo tasks.
 #
 # Uses the `mr` CLI for megarepo operations.
 #
 # Tasks:
-# - megarepo:sync - Reconcile repos/ to megarepo.json refs without touching megarepo.lock
-# - megarepo:lock:sync - Record the current synced workspace into megarepo.lock
-# - megarepo:lock:update - Fetch/update refs and then write megarepo.lock
-# - megarepo:lock:apply - Apply megarepo.lock exactly (CI / isolated stores)
+# - megarepo:sync - Fetch latest refs and apply to workspace (mr fetch --apply)
+# - megarepo:lock:sync - Record the current workspace into megarepo.lock (mr lock)
+# - megarepo:lock:update - Fetch latest refs and apply (mr fetch --apply)
+# - megarepo:lock:apply - Apply megarepo.lock exactly (mr apply)
 # - megarepo:check - Verify megarepo setup is complete
 #
 # Options:
@@ -31,13 +31,13 @@ in
     pkgs.openssh
   ];
   tasks."megarepo:sync" = {
-    description = "Sync megarepo members to megarepo.json refs";
+    description = "Fetch latest refs and apply to workspace";
     exec = trace.exec "megarepo:sync" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      mr sync${if syncAll then " --all" else ""}
+      mr fetch --apply${if syncAll then " --all" else ""}
     '';
     # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
     status = trace.status "megarepo:sync" "binary" ''
@@ -58,35 +58,35 @@ in
   };
 
   tasks."megarepo:lock:sync" = {
-    description = "Write megarepo.lock from the current synced workspace";
+    description = "Record current workspace state into megarepo.lock";
     exec = trace.exec "megarepo:lock:sync" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      mr lock sync${if syncAll then " --all" else ""}
+      mr lock${if syncAll then " --all" else ""}
     '';
   };
 
   tasks."megarepo:lock:update" = {
-    description = "Fetch refs, update workspace, and write megarepo.lock";
+    description = "Fetch latest refs and apply to workspace";
     exec = trace.exec "megarepo:lock:update" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      mr lock update${if syncAll then " --all" else ""}
+      mr fetch --apply${if syncAll then " --all" else ""}
     '';
   };
 
   tasks."megarepo:lock:apply" = {
-    description = "Apply megarepo.lock exactly";
+    description = "Apply megarepo.lock to workspace";
     exec = trace.exec "megarepo:lock:apply" ''
       if [ ! -f ./megarepo.json ]; then
         exit 0
       fi
 
-      mr lock apply${if syncAll then " --all" else ""}
+      mr apply${if syncAll then " --all" else ""}
     '';
   };
 

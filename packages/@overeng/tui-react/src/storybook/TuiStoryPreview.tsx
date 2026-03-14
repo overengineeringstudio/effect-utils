@@ -140,17 +140,14 @@ export const TuiStoryPreview = <S, A>({
   // Force re-render when atom changes (for panes that need current state value)
   const [, forceUpdate] = useState(0)
 
-  // Atom-based state management (replaces React useState for state)
+  // Atom-based state management — atom is derived from initialState so it
+  // resets when props change (e.g. Storybook controls toggling verbose/force)
   const registryRef = useRef<Registry.Registry | null>(null)
-  const stateAtomRef = useRef<Atom.Writable<S> | null>(null)
   if (registryRef.current === null) {
     registryRef.current = Registry.make()
   }
-  if (stateAtomRef.current === null) {
-    stateAtomRef.current = Atom.make(initialState)
-  }
   const registry = registryRef.current
-  const stateAtom = stateAtomRef.current
+  const stateAtom = useMemo(() => Atom.make(initialState), [initialState])
 
   // Refs for visual terminal only
   const containerRef = useRef<HTMLDivElement>(null)

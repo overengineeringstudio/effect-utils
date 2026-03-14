@@ -407,7 +407,7 @@ export const ManyMembers: Story = {
         results,
         members: results.map((r) => r.name),
       }
-    }, [args.dryRun, args.all, args.verbose])
+    }, [args.dryRun, args.all, args.verbose, args.force])
     return (
       <TuiStoryPreview
         View={SyncView}
