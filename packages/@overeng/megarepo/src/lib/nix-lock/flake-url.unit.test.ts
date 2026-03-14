@@ -19,11 +19,11 @@ describe('parseNixFlakeUrl', () => {
     const result = parseNixFlakeUrl('github:overengineeringstudio/effect-utils')
     expect(result).toMatchInlineSnapshot(`
       {
+        "_tag": "github",
         "owner": "overengineeringstudio",
         "params": Map {},
         "ref": undefined,
         "repo": "effect-utils",
-        "scheme": "github",
       }
     `)
   })
@@ -32,7 +32,7 @@ describe('parseNixFlakeUrl', () => {
     const result = parseNixFlakeUrl(
       'github:overengineeringstudio/effect-utils/schickling/2026-03-08-foo',
     )
-    expect(result?.scheme).toBe('github')
+    expect(result?._tag).toBe('github')
     expect(result?.owner).toBe('overengineeringstudio')
     expect(result?.repo).toBe('effect-utils')
     expect(getRef(result!)).toBe('schickling/2026-03-08-foo')
@@ -42,7 +42,7 @@ describe('parseNixFlakeUrl', () => {
     const result = parseNixFlakeUrl(
       'github:overengineeringstudio/effect-utils?dir=nix/playwright-flake',
     )
-    expect(result?.scheme).toBe('github')
+    expect(result?._tag).toBe('github')
     expect(result?.owner).toBe('overengineeringstudio')
     expect(result?.repo).toBe('effect-utils')
     expect(getRef(result!)).toBeUndefined()
@@ -53,7 +53,7 @@ describe('parseNixFlakeUrl', () => {
     const url =
       'git+https://github.com/overengineeringstudio/effect-utils?ref=schickling/2026-03-08-foo&rev=51a67f704ddac6afd3a5230e696dbc440257f07d'
     const result = parseNixFlakeUrl(url)
-    expect(result?.scheme).toBe('git+https')
+    expect(result?._tag).toBe('git+https')
     expect(result?.owner).toBe('overengineeringstudio')
     expect(result?.repo).toBe('effect-utils')
     expect(getRef(result!)).toBe('schickling/2026-03-08-foo')
@@ -62,7 +62,7 @@ describe('parseNixFlakeUrl', () => {
 
   it('should parse git+https URL without query params', () => {
     const result = parseNixFlakeUrl('git+https://github.com/overengineeringstudio/effect-utils')
-    expect(result?.scheme).toBe('git+https')
+    expect(result?._tag).toBe('git+https')
     expect(getRef(result!)).toBeUndefined()
     expect(getRev(result!)).toBeUndefined()
   })
@@ -71,17 +71,17 @@ describe('parseNixFlakeUrl', () => {
     const result = parseNixFlakeUrl(
       'git+ssh://git@github.com/overengineeringstudio/effect-utils.git',
     )
-    expect(result?.scheme).toBe('git+ssh')
+    expect(result?._tag).toBe('git+ssh')
     expect(result?.owner).toBe('overengineeringstudio')
     expect(result?.repo).toBe('effect-utils')
-    expect(result?.scheme === 'git+ssh' && result.dotGit).toBe(true)
+    expect(result?._tag === 'git+ssh' && result.dotGit).toBe(true)
   })
 
   it('should parse git+ssh URL with ref query param', () => {
     const url =
       'git+ssh://git@github.com/overengineeringstudio/private-shared?ref=schickling/feature'
     const result = parseNixFlakeUrl(url)
-    expect(result?.scheme).toBe('git+ssh')
+    expect(result?._tag).toBe('git+ssh')
     expect(getRef(result!)).toBe('schickling/feature')
   })
 
@@ -160,9 +160,9 @@ describe('updateNixFlakeUrl', () => {
       expect(result).toBe('github:overengineeringstudio/effect-utils/schickling/feature')
     })
 
-    it('should remove ref with null', () => {
+    it('should remove ref with undefined', () => {
       const url = 'github:overengineeringstudio/effect-utils/main'
-      const result = updateNixFlakeUrl({ url, updates: { ref: null } })
+      const result = updateNixFlakeUrl({ url, updates: { ref: undefined } })
       expect(result).toBe('github:overengineeringstudio/effect-utils')
     })
 
@@ -200,9 +200,9 @@ describe('updateNixFlakeUrl', () => {
       )
     })
 
-    it('should remove rev with null', () => {
+    it('should remove rev with undefined', () => {
       const url = 'git+https://github.com/overengineeringstudio/effect-utils?ref=main&rev=abc123'
-      const result = updateNixFlakeUrl({ url, updates: { rev: null } })
+      const result = updateNixFlakeUrl({ url, updates: { rev: undefined } })
       expect(result).toBe('git+https://github.com/overengineeringstudio/effect-utils?ref=main')
     })
 

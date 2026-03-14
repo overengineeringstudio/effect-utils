@@ -16,8 +16,8 @@
 /** Parsed Nix flake URL with all components extracted */
 export type NixFlakeUrl =
   | {
-      /** github: scheme (e.g. `github:owner/repo/ref`) */
-      readonly scheme: 'github'
+      /** github: URL variant (e.g. `github:owner/repo/ref`) */
+      readonly _tag: 'github'
       readonly owner: string
       readonly repo: string
       /** Branch/tag ref embedded in path (github:owner/repo/ref) */
@@ -26,8 +26,8 @@ export type NixFlakeUrl =
       readonly params: ReadonlyMap<string, string>
     }
   | {
-      /** git+https: scheme */
-      readonly scheme: 'git+https'
+      /** git+https: URL variant */
+      readonly _tag: 'git+https'
       readonly owner: string
       readonly repo: string
       /** Whether the URL had .git suffix */
@@ -36,8 +36,8 @@ export type NixFlakeUrl =
       readonly params: ReadonlyMap<string, string>
     }
   | {
-      /** git+ssh: scheme */
-      readonly scheme: 'git+ssh'
+      /** git+ssh: URL variant */
+      readonly _tag: 'git+ssh'
       readonly owner: string
       readonly repo: string
       /** Whether the URL had .git suffix */
@@ -77,19 +77,19 @@ export const parseNixFlakeUrl = (url: string): NixFlakeUrl | undefined => {
     // Everything after owner/repo is the ref (can contain slashes)
     const ref = parts.length > 2 ? parts.slice(2).join('/') : undefined
 
-    return { scheme: 'github', owner, repo, ref, params }
+    return { _tag: 'github', owner, repo, ref, params }
   }
 
   // Pattern 2: git+https://github.com/owner/repo[.git]
   if (base.startsWith('git+https://github.com/') === true) {
     const path = base.slice('git+https://github.com/'.length)
-    return parseGitPath({ path, scheme: 'git+https', params })
+    return parseGitPath({ path, _tag: 'git+https', params })
   }
 
   // Pattern 3: git+ssh://git@github.com/owner/repo[.git]
   if (base.startsWith('git+ssh://git@github.com/') === true) {
     const path = base.slice('git+ssh://git@github.com/'.length)
-    return parseGitPath({ path, scheme: 'git+ssh', params })
+    return parseGitPath({ path, _tag: 'git+ssh', params })
   }
 
   return undefined
@@ -97,11 +97,11 @@ export const parseNixFlakeUrl = (url: string): NixFlakeUrl | undefined => {
 
 const parseGitPath = ({
   path,
-  scheme,
+  _tag,
   params,
 }: {
   path: string
-  scheme: 'git+https' | 'git+ssh'
+  _tag: 'git+https' | 'git+ssh'
   params: ReadonlyMap<string, string>
 }): NixFlakeUrl | undefined => {
   const dotGit = path.endsWith('.git')
@@ -113,7 +113,7 @@ const parseGitPath = ({
   const repo = parts[1]!
   if (owner === '' || repo === '') return undefined
 
-  return { scheme, owner, repo, dotGit, params }
+  return { _tag, owner, repo, dotGit, params }
 }
 
 /** Parse a query string into an ordered Map (preserves param order) */
@@ -143,7 +143,7 @@ const parseQueryString = (qs: string): Map<string, string> => {
 export const serializeNixFlakeUrl = (parsed: NixFlakeUrl): string => {
   let base: string
 
-  switch (parsed.scheme) {
+  switch (parsed._tag) {
     case 'github': {
       base = `github:${parsed.owner}/${parsed.repo}`
       if (parsed.ref !== undefined) {
@@ -189,23 +189,21 @@ export const updateNixFlakeUrl = ({
   updates,
 }: {
   url: string
-  updates: { ref?: string | null; rev?: string | null }
+  updates: { ref?: string | null | undefined; rev?: string | null | undefined }
 }): string => {
   const parsed = parseNixFlakeUrl(url)
   if (parsed === undefined) return url
 
   const newParams = new Map(parsed.params)
 
-  if (parsed.scheme === 'github') {
-    // For github: scheme, ref is embedded in the path
+  if (parsed._tag === 'github') {
     let newRef = parsed.ref
     if ('ref' in updates) {
       newRef = updates.ref ?? undefined
     }
 
-    // rev goes in query params for github: scheme (rare but possible)
     if ('rev' in updates) {
-      if (updates.rev !== undefined && updates.rev !== null) {
+      if (updates.rev != null) {
         newParams.set('rev', updates.rev)
       } else {
         newParams.delete('rev')
@@ -215,9 +213,8 @@ export const updateNixFlakeUrl = ({
     return serializeNixFlakeUrl({ ...parsed, ref: newRef, params: newParams })
   }
 
-  // For git+https and git+ssh, ref and rev are query params
   if ('ref' in updates) {
-    if (updates.ref !== undefined && updates.ref !== null) {
+    if (updates.ref != null) {
       newParams.set('ref', updates.ref)
     } else {
       newParams.delete('ref')
@@ -225,7 +222,7 @@ export const updateNixFlakeUrl = ({
   }
 
   if ('rev' in updates) {
-    if (updates.rev !== undefined && updates.rev !== null) {
+    if (updates.rev != null) {
       newParams.set('rev', updates.rev)
     } else {
       newParams.delete('rev')
@@ -247,7 +244,7 @@ export const getOwnerRepo = (parsed: NixFlakeUrl): { owner: string; repo: string
 
 /** Get the ref from a NixFlakeUrl (either path-embedded or query param) */
 export const getRef = (parsed: NixFlakeUrl): string | undefined => {
-  if (parsed.scheme === 'github') {
+  if (parsed._tag === 'github') {
     return parsed.ref
   }
   return parsed.params.get('ref')
