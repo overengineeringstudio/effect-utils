@@ -54,7 +54,6 @@ export const PowerlinePrompt: React.FC<PowerlinePromptProps> = ({
       fontSize: '12px',
       lineHeight: `${PROMPT_HEIGHT}px`,
       overflow: 'hidden',
-      userSelect: 'none',
     }}
     data-testid="powerline-prompt"
   >
