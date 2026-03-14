@@ -15,6 +15,20 @@ import {
 } from '../../../lib/sync/schema.ts'
 
 // =============================================================================
+// Pre-flight Hygiene Issue (for display)
+// =============================================================================
+
+/** Schema for a store hygiene issue shown in pre-flight failure output */
+export const PreflightIssue = Schema.Struct({
+  severity: Schema.Literal('error', 'warning', 'info'),
+  type: Schema.String,
+  memberName: Schema.String,
+  message: Schema.String,
+  fix: Schema.optional(Schema.String),
+})
+export type PreflightIssue = Schema.Schema.Type<typeof PreflightIssue>
+
+// =============================================================================
 // Lock Sync Result (for TUI display)
 // =============================================================================
 
@@ -78,7 +92,7 @@ export type MemberLockSyncResult = Schema.Schema.Type<typeof MemberLockSyncResul
 // =============================================================================
 
 /** Schema for the sync command outcome/progress state. */
-export const SyncOutcome = Schema.Literal('Syncing', 'Success', 'Error', 'Interrupted')
+export const SyncOutcome = Schema.Literal('Syncing', 'Success', 'Error', 'Interrupted', 'PreflightFailed')
 /** Inferred type for sync outcome literals. */
 export type SyncOutcome = Schema.Schema.Type<typeof SyncOutcome>
 
@@ -166,6 +180,9 @@ export const SyncState = Schema.Struct({
 
   /** Total number of sync errors (root + nested). */
   syncErrorCount: Schema.Number,
+
+  /** Pre-flight hygiene issues (populated when _tag === 'PreflightFailed') */
+  preflightIssues: Schema.Array(PreflightIssue),
 })
 
 /** Inferred type for sync command state including workspace, options, phase, and results. */
@@ -219,6 +236,11 @@ export const SyncAction = Schema.Union(
 
   /** Handle interruption (Ctrl+C) */
   Schema.TaggedStruct('Interrupted', {}),
+
+  /** Set pre-flight failure state */
+  Schema.TaggedStruct('PreflightFailed', {
+    issues: Schema.Array(PreflightIssue),
+  }),
 )
 
 /** Inferred type for sync actions. */
@@ -327,6 +349,14 @@ export const syncReducer = ({
         ...state,
         _tag: 'Interrupted',
         activeMembers: [],
+      }
+
+    case 'PreflightFailed':
+      return {
+        ...state,
+        _tag: 'PreflightFailed',
+        activeMembers: [],
+        preflightIssues: action.issues,
       }
   }
 }

@@ -6,7 +6,12 @@
 
 import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
-import type { LockSharedSourceUpdate, MemberLockSyncResult, SyncAction } from '../schema.ts'
+import type {
+  LockSharedSourceUpdate,
+  MemberLockSyncResult,
+  PreflightIssue,
+  SyncAction,
+} from '../schema.ts'
 
 // =============================================================================
 // Example Data
@@ -364,8 +369,46 @@ export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateTy
   },
   syncErrors: [],
   syncErrorCount: 0,
+  preflightIssues: [],
   ...overrides,
 })
+
+// =============================================================================
+// Pre-flight Failure - Example Data & State Factory
+// =============================================================================
+
+export const examplePreflightIssues: PreflightIssue[] = [
+  {
+    severity: 'error',
+    type: 'ref_mismatch',
+    memberName: 'livestore',
+    message: "worktree HEAD is 'refactor/genie' but expected 'dev'",
+    fix: "run 'git -C ~/.megarepo/.../refs/heads/dev checkout dev' or 'mr store fix'",
+  },
+  {
+    severity: 'error',
+    type: 'broken_worktree',
+    memberName: 'effect-utils',
+    message: '.git not found in worktree at ~/.megarepo/.../refs/heads/main',
+    fix: "run 'mr apply' to recreate the worktree",
+  },
+  {
+    severity: 'warning',
+    type: 'dirty',
+    memberName: 'dotfiles',
+    message: '12 uncommitted changes',
+  },
+]
+
+export const createPreflightFailedState = (opts: {
+  mode: 'apply' | 'lock' | 'fetch'
+  issues: PreflightIssue[]
+}): SyncStateType =>
+  createBaseState({
+    _tag: 'PreflightFailed',
+    options: { mode: opts.mode, dryRun: false, all: false, verbose: false },
+    preflightIssues: opts.issues,
+  })
 
 // =============================================================================
 // Timeline Factory for Animated Stories

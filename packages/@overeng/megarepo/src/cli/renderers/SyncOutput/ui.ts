@@ -175,6 +175,7 @@ export const startSyncUI = (options: {
         },
         syncErrors: [],
         syncErrorCount: 0,
+        preflightIssues: [],
       },
     })
 

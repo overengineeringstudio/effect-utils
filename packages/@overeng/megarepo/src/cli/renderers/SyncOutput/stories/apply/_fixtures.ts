@@ -38,3 +38,10 @@ export const applyWithErrors: MemberSyncResult[] = [
   { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'error', message: 'repository not found' },
 ]
+
+/** Apply with lock sync results (lock files updated alongside apply) */
+export const applyWithLockSync: MemberSyncResult[] = [
+  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
+  { name: 'effect-utils', status: 'applied', commit: 'f0e1d2c3b4' },
+  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
+]

@@ -820,6 +820,7 @@ export const runSyncCommand = ({
           syncTree: toMegarepoSyncTree(syncResult),
           syncErrors: syncErrorItems,
           syncErrorCount: syncErrorItems.length,
+          preflightIssues: [],
         },
       })
     }

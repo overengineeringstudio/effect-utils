@@ -17,6 +17,7 @@ import {
   computeSyncSummary,
   type MemberSyncResult,
   type SyncErrorItem,
+  type SyncMode,
 } from '../../../lib/sync/schema.ts'
 import {
   Header,
@@ -34,6 +35,7 @@ import type {
   MemberLockSyncResult,
   LockFileUpdate,
   LockSharedSourceUpdate,
+  PreflightIssue,
 } from './schema.ts'
 
 // =============================================================================
@@ -154,6 +156,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
               name={name}
               isActive={activeMembers.includes(name)}
               result={resultsByName.get(name)}
+              mode={options.mode}
             />
           ))}
 
@@ -188,6 +191,19 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
         <Text dim>
           Synced {results.length} of {members.length} members before interruption
         </Text>
+      </Box>
+    )
+  }
+
+  // ===================
+  // Pre-flight Failed View
+  // ===================
+  if (_tag === 'PreflightFailed') {
+    return (
+      <Box>
+        <Header name={workspace.name} root={workspace.root} modes={modes} />
+        <Text> </Text>
+        <PreflightFailedView issues={state.preflightIssues} mode={options.mode} />
       </Box>
     )
   }
@@ -247,7 +263,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <SyncedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {updated.map((r) => (
-            <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
+            <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} mode={options.mode} />
           ))}
           {recorded.map((r) => (
             <RecordedLine
@@ -286,12 +302,13 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
                   key={r.name}
                   result={r}
                   lockSync={lockSyncByMember.get(r.name)}
+                  mode={options.mode}
                 />
               ))
             ) : (
               <Box flexDirection="row">
                 <Text dim>
-                  {symbols.check} {alreadySynced.length} members already synced
+                  {symbols.check} {alreadySynced.length} members {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
                 </Text>
               </Box>
             ))}
@@ -313,6 +330,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           alreadySynced: summaryCounts.alreadySynced,
         }}
         dryRun={dryRun}
+        mode={options.mode}
       />
 
       {/* Generated files */}
@@ -333,6 +351,66 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {nestedMegarepos.length > 0 && !options.all && (
         <NestedMegareposHint count={nestedMegarepos.length} />
       )}
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Pre-flight Failed View
+// =============================================================================
+
+const PreflightFailedView = ({
+  issues,
+  mode,
+}: {
+  issues: readonly PreflightIssue[]
+  mode: string
+}) => {
+  const errors = issues.filter((i) => i.severity === 'error')
+  const warnings = issues.filter((i) => i.severity === 'warning')
+
+  return (
+    <Box flexDirection="column">
+      <Text color="red" bold>
+        {symbols.cross} Store hygiene check failed
+      </Text>
+      <Text> </Text>
+      {errors.map((issue, i) => (
+        <Box key={`err-${issue.memberName}-${issue.type}-${i}`} flexDirection="column">
+          <Box flexDirection="row">
+            <Text color="red">{symbols.cross}</Text>
+            <Text> </Text>
+            <Text bold>{issue.memberName}</Text>
+            <Text dim> ({issue.type})</Text>
+          </Box>
+          <Box paddingLeft={4}>
+            <Text dim>{issue.message}</Text>
+          </Box>
+          {issue.fix !== undefined && (
+            <Box paddingLeft={4}>
+              <Text dim>fix: {issue.fix}</Text>
+            </Box>
+          )}
+        </Box>
+      ))}
+      {warnings.map((issue, i) => (
+        <Box key={`warn-${issue.memberName}-${issue.type}-${i}`} flexDirection="column">
+          <Box flexDirection="row">
+            <Text color="yellow">{symbols.circle}</Text>
+            <Text> </Text>
+            <Text bold>{issue.memberName}</Text>
+            <Text dim> ({issue.type})</Text>
+          </Box>
+          <Box paddingLeft={4}>
+            <Text dim>{issue.message}</Text>
+          </Box>
+        </Box>
+      ))}
+      <Text> </Text>
+      <Separator />
+      <Text dim>
+        Run 'mr store fix' to resolve issues, or pass '--no-strict' to skip pre-flight checks
+      </Text>
     </Box>
   )
 }
@@ -445,21 +523,24 @@ const SyncedLine = ({
   )
 }
 
-/** Result line for updated member */
+/** Result line for updated member (shows "fetched" in fetch mode, "updated" otherwise) */
 const UpdatedLine = ({
   result,
   lockSync,
+  mode,
 }: {
   result: MemberSyncResult
   lockSync: MemberLockSyncResult | undefined
+  mode: SyncMode
 }) => {
+  const verb = mode === 'fetch' ? 'fetched' : 'updated'
   return (
     <Box flexDirection="row">
       <StatusIcon status="updated" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="green">updated</Text>
+      <Text color="green">{verb}</Text>
       <Text> </Text>
       <CommitTransition result={result} />
       <LockSyncBadge lockSync={lockSync} />
@@ -633,21 +714,24 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   )
 }
 
-/** Result line for already synced member */
+/** Result line for already synced member (shows "already up to date" in fetch mode) */
 const AlreadySyncedLine = ({
   result,
   lockSync,
+  mode,
 }: {
   result: MemberSyncResult
   lockSync: MemberLockSyncResult | undefined
+  mode: SyncMode
 }) => {
+  const label = mode === 'fetch' ? 'already up to date' : 'already synced'
   return (
     <Box flexDirection="row">
       <StatusIcon status="already_synced" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text dim>already synced</Text>
+      <Text dim>{label}</Text>
       <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
@@ -797,14 +881,16 @@ const ProgressItem = ({
   name,
   isActive,
   result,
+  mode,
 }: {
   name: string
   isActive: boolean
   result: MemberSyncResult | undefined
+  mode: SyncMode
 }) => {
   if (result !== undefined) {
     // Show completed result using TaskItem with mapped status
-    const message = getResultMessage(result)
+    const message = getResultMessage(result, mode)
     return (
       <TaskItem
         id={name}
@@ -838,15 +924,16 @@ const formatCommitTransition = (result: MemberSyncResult): string | undefined =>
 }
 
 /** Get display message for a sync result */
-const getResultMessage = (result: MemberSyncResult): string | undefined => {
+const getResultMessage = (result: MemberSyncResult, mode: SyncMode): string | undefined => {
   switch (result.status) {
     case 'cloned':
       return result.ref !== undefined ? `cloned (${result.ref})` : 'cloned'
     case 'synced':
       return result.ref !== undefined ? `synced (${result.ref})` : 'synced'
     case 'updated': {
+      const verb = mode === 'fetch' ? 'fetched' : 'updated'
       const transition = formatCommitTransition(result)
-      return transition !== undefined ? `updated ${transition}` : 'updated'
+      return transition !== undefined ? `${verb} ${transition}` : verb
     }
     case 'recorded': {
       const transition = formatCommitTransition(result)

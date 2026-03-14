@@ -15,6 +15,7 @@ import {
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import * as sharedFixtures from '../_fixtures.ts'
+import { exampleLockSyncResults } from '../_fixtures.ts'
 import * as fixtures from './_fixtures.ts'
 
 type StoryArgs = {
@@ -161,6 +162,94 @@ export const WithErrors: Story = {
             message: 'repository not found',
           },
         ],
+      }),
+      [args.dryRun, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={sharedFixtures.createCommandState({
+          mode: 'apply',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="/home/runner/work/mr-all-blue"
+        command={`mr apply${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: sharedFixtures.createCommandTimeline({
+                mode: 'apply',
+                finalState: stateConfig,
+              }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** No megarepo.lock found — user must run `mr fetch` first */
+export const LockRequired: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        _tag: 'Error' as const,
+        results: [],
+        workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
+        options: {
+          mode: 'apply' as const,
+          dryRun: args.dryRun,
+          all: false,
+          verbose: args.verbose,
+        },
+        syncErrorCount: 1,
+        syncErrors: [
+          {
+            megarepoRoot: '/Users/dev/workspace',
+            memberName: '',
+            message: 'No megarepo.lock found. Run `mr fetch` to create one.',
+          },
+        ],
+      }),
+      [args.dryRun, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={sharedFixtures.createCommandState({
+          mode: 'apply',
+          overrides: stateConfig,
+        })}
+        height={args.height}
+        autoRun={false}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command="mr apply"
+      />
+    )
+  },
+}
+
+/** Apply with lock sync results (lock files updated alongside apply) */
+export const WithLockSync: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: fixtures.applyWithLockSync,
+        lockSyncResults: exampleLockSyncResults,
+        workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
+        options: {
+          mode: 'apply' as const,
+          dryRun: args.dryRun,
+          all: false,
+          verbose: args.verbose,
+        },
       }),
       [args.dryRun, args.verbose],
     )

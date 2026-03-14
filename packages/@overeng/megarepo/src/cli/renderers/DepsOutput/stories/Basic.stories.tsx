@@ -78,3 +78,33 @@ export const SingleUpstream: Story = {
     />
   ),
 }
+
+/** Error state — no lock file */
+export const ErrorNoLockFile: Story = {
+  render: (args) => (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr deps"
+      View={DepsView}
+      app={DepsApp}
+      initialState={fixtures.createDepsErrorState()}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  ),
+}
+
+/** Error state — custom message */
+export const ErrorCustom: Story = {
+  render: (args) => (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr deps"
+      View={DepsView}
+      app={DepsApp}
+      initialState={fixtures.createDepsErrorState('Failed to parse flake.lock in member effect-utils')}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  ),
+}

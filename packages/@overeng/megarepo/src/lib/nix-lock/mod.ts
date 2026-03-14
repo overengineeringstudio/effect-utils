@@ -18,7 +18,7 @@ import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
-import { getMemberPath, type MegarepoConfig } from '../config.ts'
+import { CONFIG_FILE_NAME, getMemberPath, type MegarepoConfig } from '../config.ts'
 import {
   LOCK_FILE_NAME,
   readLockFile,
@@ -990,7 +990,6 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     const fs = yield* FileSystem.FileSystem
     const excludeMembers = options.excludeMembers ?? new Set()
     const scope = options.scope ?? 'direct'
-    const recursiveMegarepoMembers = options.recursiveMegarepoMembers
 
     // Build a map of megarepo member URLs to their locked data
     const megarepoMembers = options.lockFile.members
@@ -998,6 +997,34 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
     const memberNames = Object.keys(options.config.members).filter(
       (name) => !excludeMembers.has(name),
     )
+
+    // Auto-detect nested megarepos by scanning for megarepo.json if not explicitly provided
+    const recursiveMegarepoMembers =
+      options.recursiveMegarepoMembers ??
+      (scope === 'recursive'
+        ? yield* Effect.map(
+            Effect.all(
+              memberNames.map((name) =>
+                Effect.gen(function* () {
+                  const memberPath = getMemberPath({
+                    megarepoRoot: options.megarepoRoot,
+                    name,
+                  })
+                  const configPath = EffectPath.ops.join(
+                    memberPath,
+                    EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+                  )
+                  const exists = yield* fs
+                    .exists(configPath)
+                    .pipe(Effect.catchAll(() => Effect.succeed(false)))
+                  return exists === true ? name : undefined
+                }),
+              ),
+              { concurrency: 'unbounded' },
+            ),
+            (results) => new Set(results.filter((n): n is string => n !== undefined)),
+          )
+        : new Set<string>())
 
     // Process all members in parallel
     const allMemberResults = yield* Effect.all(
