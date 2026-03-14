@@ -14,6 +14,7 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  porcelain: boolean
 }
 
 // =============================================================================
@@ -36,6 +37,7 @@ export default {
     height: 400,
     interactive: false,
     playbackSpeed: 1,
+    porcelain: false,
   },
   argTypes: {
     height: {
@@ -51,6 +53,10 @@ export default {
       control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
       if: { arg: 'interactive' },
     },
+    porcelain: {
+      description: '--porcelain: raw path output for scripting',
+      control: { type: 'boolean' },
+    },
   },
 } satisfies Meta
 
@@ -64,7 +70,7 @@ export const Success: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command="mr store worktree new"
+      command={`mr store worktree new${args.porcelain === true ? ' --porcelain' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createWorktreeNewState({
@@ -85,7 +91,7 @@ export const AutoBootstrap: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command="mr store worktree new"
+      command={`mr store worktree new${args.porcelain === true ? ' --porcelain' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createWorktreeNewState({
@@ -106,7 +112,7 @@ export const BranchCreated: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command="mr store worktree new"
+      command={`mr store worktree new${args.porcelain === true ? ' --porcelain' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createWorktreeNewState({
@@ -131,7 +137,7 @@ export const AlreadyExists: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command="mr store worktree new"
+      command={`mr store worktree new${args.porcelain === true ? ' --porcelain' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createErrorState({
@@ -149,7 +155,7 @@ export const RepoNotFound: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command="mr store worktree new"
+      command={`mr store worktree new${args.porcelain === true ? ' --porcelain' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createErrorState({

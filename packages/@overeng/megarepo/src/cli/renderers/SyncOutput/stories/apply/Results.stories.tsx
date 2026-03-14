@@ -25,6 +25,7 @@ type StoryArgs = {
   dryRun: boolean
   verbose: boolean
   all: boolean
+  force: boolean
 }
 
 export default {
@@ -36,6 +37,7 @@ export default {
     dryRun: false,
     verbose: false,
     all: false,
+    force: false,
   },
   argTypes: {
     ...commonArgTypes,
@@ -49,6 +51,10 @@ export default {
     },
     all: {
       description: '--all: sync nested megarepos recursively',
+      control: { type: 'boolean' },
+    },
+    force: {
+      description: '--force: include pinned members',
       control: { type: 'boolean' },
     },
   },
@@ -68,9 +74,10 @@ export const FullApply: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.verbose, args.all],
+      [args.dryRun, args.verbose, args.all, args.force],
     )
     return (
       <TuiStoryPreview
@@ -85,7 +92,7 @@ export const FullApply: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="/home/runner/work/mr-all-blue"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -110,9 +117,10 @@ export const PartialApply: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.verbose, args.all],
+      [args.dryRun, args.verbose, args.all, args.force],
     )
     return (
       <TuiStoryPreview
@@ -127,7 +135,7 @@ export const PartialApply: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -154,6 +162,7 @@ export const WithErrors: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         syncErrorCount: 2,
         syncErrors: [
@@ -169,7 +178,7 @@ export const WithErrors: Story = {
           },
         ],
       }),
-      [args.dryRun, args.verbose, args.all],
+      [args.dryRun, args.verbose, args.all, args.force],
     )
     return (
       <TuiStoryPreview
@@ -184,7 +193,7 @@ export const WithErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="/home/runner/work/mr-all-blue"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -211,6 +220,7 @@ export const LockRequired: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         syncErrorCount: 1,
         syncErrors: [
@@ -221,7 +231,7 @@ export const LockRequired: Story = {
           },
         ],
       }),
-      [args.dryRun, args.verbose, args.all],
+      [args.dryRun, args.verbose, args.all, args.force],
     )
     return (
       <TuiStoryPreview
@@ -255,9 +265,10 @@ export const WithLockSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.verbose, args.all],
+      [args.dryRun, args.verbose, args.all, args.force],
     )
     return (
       <TuiStoryPreview
@@ -272,7 +283,7 @@ export const WithLockSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="/home/runner/work/mr-all-blue"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({

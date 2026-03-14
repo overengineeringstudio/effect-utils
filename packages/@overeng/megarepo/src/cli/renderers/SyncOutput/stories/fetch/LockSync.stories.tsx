@@ -32,6 +32,7 @@ type StoryArgs = {
   dryRun: boolean
   all: boolean
   verbose: boolean
+  force: boolean
 }
 
 export default {
@@ -43,6 +44,7 @@ export default {
     dryRun: false,
     all: false,
     verbose: true,
+    force: false,
   },
   argTypes: {
     ...commonArgTypes,
@@ -56,6 +58,10 @@ export default {
     },
     verbose: {
       description: '--verbose: show detailed lock sync information',
+      control: { type: 'boolean' },
+    },
+    force: {
+      description: '--force: include pinned members',
       control: { type: 'boolean' },
     },
   },
@@ -75,9 +81,10 @@ export const WithLockSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -92,7 +99,7 @@ export const WithLockSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -115,9 +122,10 @@ export const WithLockInputSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -132,7 +140,7 @@ export const WithLockInputSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -155,9 +163,10 @@ export const WithSourceFileSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -172,7 +181,7 @@ export const WithSourceFileSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -195,9 +204,10 @@ export const WithRefSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -212,7 +222,7 @@ export const WithRefSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -236,9 +246,10 @@ export const WithSharedSourceSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -253,7 +264,7 @@ export const WithSharedSourceSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -277,9 +288,10 @@ export const WithMixedSync: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -294,7 +306,7 @@ export const WithMixedSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),

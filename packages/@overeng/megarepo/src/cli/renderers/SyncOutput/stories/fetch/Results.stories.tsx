@@ -31,6 +31,7 @@ type StoryArgs = {
   dryRun: boolean
   all: boolean
   verbose: boolean
+  force: boolean
 }
 
 export default {
@@ -42,6 +43,7 @@ export default {
     dryRun: false,
     all: false,
     verbose: false,
+    force: false,
   },
   argTypes: {
     ...commonArgTypes,
@@ -55,6 +57,10 @@ export default {
     },
     verbose: {
       description: '--verbose: show detailed information',
+      control: { type: 'boolean' },
+    },
+    force: {
+      description: '--force: include pinned members',
       control: { type: 'boolean' },
     },
   },
@@ -72,13 +78,14 @@ export const MixedResults: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         results: exampleSyncResults,
         members: exampleSyncResults.map((r) => r.name),
         nestedMegarepos: ['effect-utils'],
         generatedFiles: ['flake.nix', '.envrc'],
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -92,7 +99,7 @@ export const MixedResults: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -109,12 +116,13 @@ export const AllUpToDate: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
         results: exampleAllSynced,
         members: exampleAllSynced.map((r) => r.name),
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -128,7 +136,7 @@ export const AllUpToDate: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/mr-all-blue"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -145,6 +153,7 @@ export const InitialFetch: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         workspace: { name: 'new-workspace', root: '/Users/dev/new-workspace' },
         results: [
@@ -156,7 +165,7 @@ export const InitialFetch: Story = {
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         generatedFiles: ['flake.nix'],
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -170,7 +179,7 @@ export const InitialFetch: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/new-workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -188,9 +197,10 @@ export const Updated: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -205,7 +215,7 @@ export const Updated: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -227,9 +237,10 @@ export const WithNewBranches: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -244,7 +255,7 @@ export const WithNewBranches: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -265,6 +276,7 @@ export const RemovedMembers: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
@@ -273,7 +285,7 @@ export const RemovedMembers: Story = {
         ],
         members: ['effect', 'old-repo', 'deprecated'],
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -287,7 +299,7 @@ export const RemovedMembers: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -304,6 +316,7 @@ export const WithGenerators: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
@@ -314,7 +327,7 @@ export const WithGenerators: Story = {
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         generatedFiles: ['flake.nix', 'flake.lock', '.vscode/megarepo.code-workspace'],
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -328,7 +341,7 @@ export const WithGenerators: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -345,11 +358,12 @@ export const SingleMember: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         results: [{ name: 'effect', status: 'synced' as const, ref: 'main' }],
         members: ['effect'],
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -363,7 +377,7 @@ export const SingleMember: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -384,6 +398,7 @@ export const ManyMembers: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         workspace: {
           name: 'large-workspace',
@@ -405,7 +420,7 @@ export const ManyMembers: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/large-workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -422,6 +437,7 @@ export const NestedMegarepos: Story = {
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
+          force: args.force,
         },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
@@ -431,7 +447,7 @@ export const NestedMegarepos: Story = {
         members: ['effect', 'effect-utils', 'livestore'],
         nestedMegarepos: ['effect-utils', 'livestore'],
       }),
-      [args.dryRun, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose, args.force],
     )
     return (
       <TuiStoryPreview
@@ -445,7 +461,7 @@ export const NestedMegarepos: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
