@@ -51,7 +51,7 @@ export const WarningWorktreeNotAvailable: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -72,7 +72,7 @@ export const WarningMemberRemovedFromConfig: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

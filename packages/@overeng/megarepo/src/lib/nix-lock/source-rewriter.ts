@@ -119,7 +119,8 @@ export const rewriteDevenvYamlUrls = (args: {
         const rawValue = urlMatch[1]!.trim()
         const isDoubleQuoted = rawValue.startsWith('"') && rawValue.endsWith('"')
         const isSingleQuoted = rawValue.startsWith("'") && rawValue.endsWith("'")
-        const cleanUrl = isDoubleQuoted === true || isSingleQuoted === true ? rawValue.slice(1, -1) : rawValue
+        const cleanUrl =
+          isDoubleQuoted === true || isSingleQuoted === true ? rawValue.slice(1, -1) : rawValue
 
         const parsed = parseNixFlakeUrl(cleanUrl)
         if (parsed === undefined) continue
@@ -131,7 +132,8 @@ export const rewriteDevenvYamlUrls = (args: {
         const newUrl = updateNixFlakeUrl({ url: cleanUrl, updates: updateArgs })
         if (newUrl === cleanUrl) continue
 
-        const newValue = isDoubleQuoted === true ? `"${newUrl}"` : isSingleQuoted === true ? `'${newUrl}'` : newUrl
+        const newValue =
+          isDoubleQuoted === true ? `"${newUrl}"` : isSingleQuoted === true ? `'${newUrl}'` : newUrl
         lines[i] = line.replace(rawValue, newValue)
         updatedInputs.push(currentInputName)
       }

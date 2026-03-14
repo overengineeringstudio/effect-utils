@@ -79,7 +79,7 @@ export const WithErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -114,7 +114,7 @@ export const AllErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -149,7 +149,7 @@ export const SkippedMembers: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -185,7 +185,7 @@ export const MixedSkipped: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -237,7 +237,7 @@ export const RefMismatchDetected: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -271,7 +271,7 @@ export const Interrupted: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -320,7 +320,7 @@ export const FetchErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),

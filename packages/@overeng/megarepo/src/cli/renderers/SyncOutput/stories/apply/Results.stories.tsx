@@ -78,7 +78,7 @@ export const FullApply: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="/home/runner/work/mr-all-blue"
-        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr apply${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -120,7 +120,7 @@ export const PartialApply: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr apply${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -177,7 +177,7 @@ export const WithErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="/home/runner/work/mr-all-blue"
-        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr apply${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({

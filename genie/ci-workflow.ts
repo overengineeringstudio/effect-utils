@@ -73,9 +73,10 @@ const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>
-  [...(opts.unrestrictedEval === true ? ['restrict-eval = false'] : []), ...(opts.extraLines ?? [])].join(
-    '\n',
-  )
+  [
+    ...(opts.unrestrictedEval === true ? ['restrict-eval = false'] : []),
+    ...(opts.extraLines ?? []),
+  ].join('\n')
 
 const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => {
   const extraConf = nixExtraConf(opts)
@@ -153,6 +154,7 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
 
+/** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
 export const jobLocalMegarepoStore =
   '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
 

@@ -50,20 +50,25 @@ export const DepsErrorState = Schema.TaggedStruct('Error', {
   message: Schema.String,
 })
 
+/** Tagged union of all deps command output states */
 export const DepsState = Schema.Union(DepsSuccessState, DepsEmptyState, DepsErrorState)
 
+/** Inferred type for the deps command state union */
 export type DepsState = typeof DepsState.Type
 
 // =============================================================================
 // Type Guards
 // =============================================================================
 
+/** Type guard for the success state */
 export const isDepsSuccess = (state: DepsState): state is typeof DepsSuccessState.Type =>
   state._tag === 'Success'
 
+/** Type guard for the empty state */
 export const isDepsEmpty = (state: DepsState): state is typeof DepsEmptyState.Type =>
   state._tag === 'Empty'
 
+/** Type guard for the error state */
 export const isDepsError = (state: DepsState): state is typeof DepsErrorState.Type =>
   state._tag === 'Error'
 
@@ -71,6 +76,7 @@ export const isDepsError = (state: DepsState): state is typeof DepsErrorState.Ty
 // Deps Actions
 // =============================================================================
 
+/** Schema for actions that transition the deps command state */
 export const DepsAction = Schema.Union(
   Schema.TaggedStruct('SetDeps', {
     members: Schema.Array(DepsMember),
@@ -79,12 +85,14 @@ export const DepsAction = Schema.Union(
   Schema.TaggedStruct('SetError', { message: Schema.String }),
 )
 
+/** Inferred type for deps command actions */
 export type DepsAction = Schema.Schema.Type<typeof DepsAction>
 
 // =============================================================================
 // Reducer
 // =============================================================================
 
+/** Pure state reducer that applies a DepsAction to produce the next DepsState */
 export const depsReducer = ({
   state: _state,
   action,

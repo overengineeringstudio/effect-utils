@@ -19,6 +19,7 @@ import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context
 import { DepsApp, DepsView } from '../renderers/DepsOutput/mod.ts'
 import type { DepsMember } from '../renderers/DepsOutput/schema.ts'
 
+/** CLI command that shows the Nix input dependency graph between megarepo members */
 export const depsCommand = Cli.Command.make(
   'deps',
   {

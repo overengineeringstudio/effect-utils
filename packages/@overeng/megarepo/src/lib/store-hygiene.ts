@@ -373,7 +373,7 @@ export const fixStoreIssues = ({
 
           const { expectedRef, worktreePath } = issue.meta
 
-          if (dryRun) {
+          if (dryRun === true) {
             results.push({
               memberName: issue.memberName,
               issueType: issue.type,
@@ -420,7 +420,7 @@ export const fixStoreIssues = ({
           const { worktreePath, source } = issue.meta
           const bareRepoPath = store.getBareRepoPath(source)
 
-          if (dryRun) {
+          if (dryRun === true) {
             results.push({
               memberName: issue.memberName,
               issueType: issue.type,
@@ -500,7 +500,7 @@ export const fixStoreIssues = ({
           const { source } = issue.meta
           const bareRepoPath = store.getBareRepoPath(source)
 
-          if (dryRun) {
+          if (dryRun === true) {
             results.push({
               memberName: issue.memberName,
               issueType: issue.type,

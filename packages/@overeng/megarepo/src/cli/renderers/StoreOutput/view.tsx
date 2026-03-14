@@ -754,7 +754,7 @@ const StoreFixView = ({
   dryRun: boolean
   noIssues: boolean
 }) => {
-  if (noIssues) {
+  if (noIssues === true) {
     return (
       <Box flexDirection="column">
         <StoreHeader basePath={basePath} title="store fix" />

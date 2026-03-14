@@ -20,6 +20,7 @@ import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
 import utilsDevPkg from './packages/@overeng/utils-dev/package.json.genie.ts'
 import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 
+/** All package.json genie definitions that belong to the root pnpm workspace */
 export const rootWorkspacePackages = [
   effectSocketPkg,
   effectAiClaudeCliPkg,
@@ -49,6 +50,7 @@ const rootWorkspace = packageJson.aggregateFromPackages({
   repoName: 'effect-utils',
 })
 
+/** Workspace member glob paths derived from the aggregated root package.json */
 export const rootWorkspaceMemberPaths = rootWorkspace.data.workspaces
 
 export default rootWorkspace

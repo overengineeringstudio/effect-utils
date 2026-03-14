@@ -84,7 +84,7 @@ export const WithLockSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -124,7 +124,7 @@ export const WithLockInputSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -164,7 +164,7 @@ export const WithSourceFileSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),

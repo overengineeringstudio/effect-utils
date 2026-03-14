@@ -77,7 +77,7 @@ export const AllRecorded: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr lock${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -119,7 +119,7 @@ export const WithUpdates: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr lock${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -161,7 +161,7 @@ export const WithSkipped: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
+        command={`mr lock${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({

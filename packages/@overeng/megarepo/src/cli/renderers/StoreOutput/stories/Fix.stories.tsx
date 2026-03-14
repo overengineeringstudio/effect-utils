@@ -54,7 +54,7 @@ export const NoIssues: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
+      command={`mr store fix${args.dryRun === true ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
@@ -73,7 +73,7 @@ export const MixedResults: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
+      command={`mr store fix${args.dryRun === true ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
@@ -92,7 +92,7 @@ export const AllFixed: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
+      command={`mr store fix${args.dryRun === true ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
@@ -112,7 +112,7 @@ export const DryRunPreview: Story = {
   render: (args) => (
     <TuiStoryPreview
       cwd="~/workspace"
-      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
+      command={`mr store fix${args.dryRun === true ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({

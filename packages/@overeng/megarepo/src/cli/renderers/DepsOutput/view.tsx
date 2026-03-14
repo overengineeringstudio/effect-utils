@@ -12,10 +12,12 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
 import type { DepsState } from './schema.ts'
 
+/** Props for the deps dependency graph view component */
 export interface DepsViewProps {
   stateAtom: Atom.Atom<DepsState>
 }
 
+/** Renders the dependency graph showing upstream members and their downstream dependents */
 export const DepsView = ({ stateAtom }: DepsViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

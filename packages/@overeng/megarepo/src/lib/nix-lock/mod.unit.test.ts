@@ -1129,7 +1129,10 @@ describe('shared lock source helpers', () => {
 
     it('should return the nested object at a partial path', () => {
       const obj = { nodes: { devenv: { locked: { rev: 'abc', type: 'github' } } } }
-      expect(getByDotPath({ obj, dotPath: '.nodes.devenv.locked' })).toEqual({ rev: 'abc', type: 'github' })
+      expect(getByDotPath({ obj, dotPath: '.nodes.devenv.locked' })).toEqual({
+        rev: 'abc',
+        type: 'github',
+      })
     })
 
     it('should return undefined for missing path', () => {
@@ -1178,7 +1181,9 @@ describe('shared lock source helpers', () => {
     it('should preserve sibling keys', () => {
       const obj = { nodes: { devenv: { locked: { rev: 'old' }, original: { type: 'github' } } } }
       const result = setByDotPath({ obj, dotPath: '.nodes.devenv.locked', value: { rev: 'new' } })
-      expect(getByDotPath({ obj: result, dotPath: '.nodes.devenv.original' })).toEqual({ type: 'github' })
+      expect(getByDotPath({ obj: result, dotPath: '.nodes.devenv.original' })).toEqual({
+        type: 'github',
+      })
     })
   })
 })
@@ -1279,7 +1284,11 @@ describe('shared lock source sync logic', () => {
         const currentValue = getByDotPath({ obj: targetJson, dotPath: config.path })
         if (JSON.stringify(currentValue) === JSON.stringify(sourceValue)) continue
 
-        const updatedJson = setByDotPath({ obj: targetJson, dotPath: config.path, value: sourceValue })
+        const updatedJson = setByDotPath({
+          obj: targetJson,
+          dotPath: config.path,
+          value: sourceValue,
+        })
         updatedLocks[memberName] = JSON.stringify(updatedJson, null, 2) + '\n'
         updatedMembers.push(memberName)
       }

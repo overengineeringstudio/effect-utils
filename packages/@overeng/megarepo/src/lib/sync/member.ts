@@ -809,7 +809,7 @@ export const syncMember = <R = never>({
           () =>
             store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType }).pipe(
               Effect.flatMap((exists) =>
-                exists
+                exists === true
                   ? Effect.void
                   : Effect.fail(
                       new Git.GitCommandError({

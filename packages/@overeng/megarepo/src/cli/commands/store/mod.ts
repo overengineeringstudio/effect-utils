@@ -847,7 +847,8 @@ const storeFixCommand = Cli.Command.make(
       const lockFile = lockFileOpt.value
 
       // Determine which members to check
-      const memberNames = Option.isSome(member) === true ? [member.value] : Object.keys(config.members)
+      const memberNames =
+        Option.isSome(member) === true ? [member.value] : Object.keys(config.members)
 
       // Validate
       const issues = yield* validateStoreMembers({
