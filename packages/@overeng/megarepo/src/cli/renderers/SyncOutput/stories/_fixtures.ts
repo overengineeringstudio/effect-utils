@@ -6,7 +6,7 @@
 
 import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
-import type { MemberLockSyncResult, SyncAction } from '../schema.ts'
+import type { LockSharedSourceUpdate, MemberLockSyncResult, SyncAction } from '../schema.ts'
 
 // =============================================================================
 // Example Data
@@ -48,18 +48,26 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
         type: 'flake.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
-          { inputName: 'livestore', memberName: 'livestore', oldRev: '1234567', newRev: '7654321' },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1234567',
+            newRev: '7654321',
+          },
         ],
       },
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -75,7 +83,13 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
       {
         type: 'flake.lock',
         updatedInputs: [
-          { inputName: 'effect', memberName: 'effect', oldRev: 'fff0000', newRev: 'aaa1111' },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect',
+            memberName: 'effect',
+            oldRev: 'fff0000',
+            newRev: 'aaa1111',
+          },
         ],
       },
     ],
@@ -91,6 +105,7 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         type: 'flake.nix',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -102,12 +117,14 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         type: 'flake.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
+            _tag: 'RevUpdate',
             inputName: 'livestore',
             memberName: 'livestore',
             oldRev: '1111111',
@@ -119,6 +136,7 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -135,6 +153,7 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         type: 'devenv.yaml',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -146,12 +165,14 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils-playwright',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -168,6 +189,7 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -176,6 +198,144 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         ],
       },
     ],
+  },
+]
+
+/** Ref propagation scenario — branch change across members */
+export const exampleRefSyncResults: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.yaml',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+    ],
+  },
+]
+
+/** Shared lock source propagation scenario */
+export const exampleSharedSourceSync: LockSharedSourceUpdate[] = [
+  {
+    _tag: 'SharedSourceUpdate',
+    sourceName: 'devenv',
+    sourceMemberName: 'effect-utils',
+    targetCount: 3,
+  },
+]
+
+/** Mixed scenario — all three update types together */
+export const exampleMixedSyncResults: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1234567',
+            newRev: '7654321',
+          },
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+]
+
+export const exampleMixedSharedSourceSync: LockSharedSourceUpdate[] = [
+  {
+    _tag: 'SharedSourceUpdate',
+    sourceName: 'devenv',
+    sourceMemberName: 'effect-utils',
+    targetCount: 3,
   },
 ]
 
@@ -195,6 +355,7 @@ export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateTy
   nestedMegarepos: [],
   generatedFiles: [],
   lockSyncResults: [],
+  sharedSourceUpdates: [],
   syncTree: {
     root: '/Users/dev/workspace',
     results: [],
@@ -225,6 +386,7 @@ export const createTimeline = (
   const nestedMegarepos = finalState.nestedMegarepos ?? []
   const generatedFiles = finalState.generatedFiles ?? []
   const lockSyncResults = finalState.lockSyncResults ?? []
+  const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []
 
   if (results.length === 0) {
     return [
@@ -305,6 +467,7 @@ export const createTimeline = (
           nestedMegarepos: isFinal === true ? nestedMegarepos : [],
           generatedFiles: isFinal === true ? generatedFiles : [],
           lockSyncResults: isFinal === true ? lockSyncResults : [],
+          sharedSourceUpdates: isFinal === true ? sharedSourceUpdates : [],
           syncErrors: runningErrors.slice(),
           syncErrorCount: runningErrorCount,
         }),
@@ -349,6 +512,7 @@ export const createCommandTimeline = ({
   const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
   const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
   const lockSyncResults = finalState.lockSyncResults ?? []
+  const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []
   const syncErrors = finalState.syncErrors ?? []
 
   const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
@@ -411,6 +575,7 @@ export const createCommandTimeline = ({
           activeMembers: isFinal === true ? [] : [...currentActive],
           results: completedResults.slice(),
           lockSyncResults: isFinal === true ? lockSyncResults : [],
+          sharedSourceUpdates: isFinal === true ? sharedSourceUpdates : [],
           syncErrors: runningErrors.slice(),
           syncErrorCount: runningErrorCount,
         }),

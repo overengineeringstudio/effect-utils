@@ -72,18 +72,26 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
         type: 'flake.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
-          { inputName: 'livestore', memberName: 'livestore', oldRev: '1234567', newRev: '7654321' },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1234567',
+            newRev: '7654321',
+          },
         ],
       },
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -99,7 +107,13 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
       {
         type: 'flake.lock',
         updatedInputs: [
-          { inputName: 'effect', memberName: 'effect', oldRev: 'fff0000', newRev: 'aaa1111' },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect',
+            memberName: 'effect',
+            oldRev: 'fff0000',
+            newRev: 'aaa1111',
+          },
         ],
       },
     ],
@@ -115,6 +129,7 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         type: 'flake.nix',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -126,12 +141,14 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         type: 'flake.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
+            _tag: 'RevUpdate',
             inputName: 'livestore',
             memberName: 'livestore',
             oldRev: '1111111',
@@ -148,6 +165,7 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         type: 'devenv.yaml',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -159,12 +177,14 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils-playwright',
             memberName: 'effect-utils',
             oldRev: 'abc1234',

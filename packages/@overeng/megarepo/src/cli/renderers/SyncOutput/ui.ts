@@ -166,6 +166,7 @@ export const startSyncUI = (options: {
         nestedMegarepos: [],
         generatedFiles: [],
         lockSyncResults: [],
+        sharedSourceUpdates: [],
         syncTree: {
           root: workspaceRoot,
           results: [],

@@ -14,7 +14,15 @@ import {
 
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
-import { createCommandState, createCommandTimeline, exampleLockSyncResults } from '../_fixtures.ts'
+import {
+  createCommandState,
+  createCommandTimeline,
+  exampleLockSyncResults,
+  exampleRefSyncResults,
+  exampleSharedSourceSync,
+  exampleMixedSyncResults,
+  exampleMixedSharedSourceSync,
+} from '../_fixtures.ts'
 import { fetchFullNixSync, fetchLockSyncResults, fetchResults } from './_fixtures.ts'
 
 type StoryArgs = {
@@ -142,6 +150,128 @@ export const WithSourceFileSync: Story = {
       () => ({
         results: fetchResults,
         lockSyncResults: fetchFullNixSync,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+        },
+      }),
+      [args.dryRun, args.all, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** Fetch with ref propagation (branch changes across members) */
+export const WithRefSync: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: fetchResults,
+        lockSyncResults: exampleRefSyncResults,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+        },
+      }),
+      [args.dryRun, args.all, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** Fetch with shared lock source propagation (e.g. devenv version) */
+export const WithSharedSourceSync: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: fetchResults,
+        lockSyncResults: [],
+        sharedSourceUpdates: exampleSharedSourceSync,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+        },
+      }),
+      [args.dryRun, args.all, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** Fetch with all three update types: rev sync, ref sync, and shared source sync */
+export const WithMixedSync: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: fetchResults,
+        lockSyncResults: exampleMixedSyncResults,
+        sharedSourceUpdates: exampleMixedSharedSourceSync,
         options: {
           mode: 'fetch' as const,
           dryRun: args.dryRun,

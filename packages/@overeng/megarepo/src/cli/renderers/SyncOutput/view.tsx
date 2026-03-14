@@ -28,7 +28,13 @@ import {
   symbols,
   syncToTaskStatus,
 } from '../../components/mod.ts'
-import type { SyncState, SyncLogEntry, MemberLockSyncResult } from './schema.ts'
+import type {
+  SyncState,
+  SyncLogEntry,
+  MemberLockSyncResult,
+  LockFileUpdate,
+  LockSharedSourceUpdate,
+} from './schema.ts'
 
 // =============================================================================
 // Types
@@ -63,6 +69,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     nestedMegarepos,
     generatedFiles,
     lockSyncResults,
+    sharedSourceUpdates,
     syncErrors,
     syncErrorCount,
   } = state
@@ -118,8 +125,9 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
         total += f.updatedInputs.length
       }
     }
+    total += (sharedSourceUpdates ?? []).length
     return total
-  }, [lockSyncResults])
+  }, [lockSyncResults, sharedSourceUpdates])
 
   // ===================
   // Progress View (during sync)
@@ -314,6 +322,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {totalLockSyncUpdates > 0 && (
         <LockSyncSection
           results={lockSyncResults ?? []}
+          sharedSourceUpdates={sharedSourceUpdates ?? []}
           totalUpdates={totalLockSyncUpdates}
           verbose={verbose}
           dryRun={dryRun}
@@ -672,14 +681,38 @@ const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: b
 // Internal Components - Lock Sync Section (Option 2: expandable section)
 // =============================================================================
 
+/** Render a single lock file update line */
+const LockFileUpdateLine = ({ update }: { update: LockFileUpdate }) => {
+  switch (update._tag) {
+    case 'RevUpdate':
+      return (
+        <Box paddingLeft={2} flexDirection="row">
+          <Text dim>
+            {update.inputName}: {update.oldRev} {symbols.arrow} {update.newRev}
+          </Text>
+        </Box>
+      )
+    case 'RefUpdate':
+      return (
+        <Box paddingLeft={2} flexDirection="row">
+          <Text color="cyan">
+            {update.inputName}: {update.oldRef} {symbols.arrow} {update.newRef}
+          </Text>
+        </Box>
+      )
+  }
+}
+
 /** Lock sync summary section with verbose expansion */
 const LockSyncSection = ({
   results,
+  sharedSourceUpdates,
   totalUpdates,
   verbose,
   dryRun,
 }: {
   results: readonly MemberLockSyncResult[]
+  sharedSourceUpdates: readonly LockSharedSourceUpdate[]
   totalUpdates: number
   verbose: boolean
   dryRun: boolean
@@ -712,12 +745,8 @@ const LockSyncSection = ({
                 return (
                   <Box key={file.type} paddingLeft={2} flexDirection="column">
                     <Text dim>{file.type}:</Text>
-                    {file.updatedInputs.map((input) => (
-                      <Box key={input.inputName} paddingLeft={2} flexDirection="row">
-                        <Text dim>
-                          {input.inputName}: {input.oldRev} {symbols.arrow} {input.newRev}
-                        </Text>
-                      </Box>
+                    {file.updatedInputs.map((input, idx) => (
+                      <LockFileUpdateLine key={`${input._tag}-${idx}`} update={input} />
                     ))}
                   </Box>
                 )
@@ -725,6 +754,21 @@ const LockSyncSection = ({
             </Box>
           )
         })}
+
+      {/* Shared source updates */}
+      {verbose && sharedSourceUpdates.length > 0 && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Text dim>shared lock sources:</Text>
+          {sharedSourceUpdates.map((update) => (
+            <Box key={update.sourceName} paddingLeft={2} flexDirection="row">
+              <Text dim>
+                {update.sourceName}: propagated from {update.sourceMemberName} to{' '}
+                {update.targetCount} member{update.targetCount > 1 ? 's' : ''}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   )
 }

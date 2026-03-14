@@ -71,7 +71,11 @@ import {
   isTTY,
   type SyncUIHandle,
 } from '../renderers/SyncOutput/mod.ts'
-import type { MemberLockSyncResult, SyncAction } from '../renderers/SyncOutput/schema.ts'
+import type {
+  MemberLockSyncResult,
+  LockSharedSourceUpdate,
+  SyncAction,
+} from '../renderers/SyncOutput/schema.ts'
 
 /**
  * Sync a megarepo at the given root path.
@@ -758,14 +762,38 @@ export const runSyncCommand = ({
           memberName: mr.memberName,
           files: mr.files.map((f) => ({
             type: f.type,
-            updatedInputs: f.updatedInputs.map((u) => ({
-              inputName: u.inputName,
-              memberName: u.memberName,
-              oldRev: u.oldRev.slice(0, 7),
-              newRev: u.newRev.slice(0, 7),
-            })),
+            updatedInputs: f.updatedInputs.map((u) => {
+              switch (u._tag) {
+                case 'RevUpdate':
+                  return {
+                    _tag: 'RevUpdate' as const,
+                    inputName: u.inputName,
+                    memberName: u.memberName,
+                    oldRev: u.oldRev.slice(0, 7),
+                    newRev: u.newRev.slice(0, 7),
+                  }
+                case 'RefUpdate':
+                  return {
+                    _tag: 'RefUpdate' as const,
+                    inputName: u.inputName,
+                    memberName: u.memberName,
+                    oldRef: u.oldRef,
+                    newRef: u.newRef,
+                  }
+              }
+            }),
           })),
         })) ?? []
+
+      const sharedSourceUpdates: ReadonlyArray<LockSharedSourceUpdate> =
+        syncResult.lockSyncResults?.sharedLockSourceResults
+          .filter((r) => r.updatedMembers.length > 0)
+          .map((r) => ({
+            _tag: 'SharedSourceUpdate' as const,
+            sourceName: r.label,
+            sourceMemberName: r.sourceMember,
+            targetCount: r.updatedMembers.length,
+          })) ?? []
 
       const syncErrors = collectSyncErrors(syncResult)
       const syncErrorItems = syncErrors.map((e) => ({
@@ -788,6 +816,7 @@ export const runSyncCommand = ({
           nestedMegarepos: [...syncResult.nestedMegarepos],
           generatedFiles,
           lockSyncResults,
+          sharedSourceUpdates,
           syncTree: toMegarepoSyncTree(syncResult),
           syncErrors: syncErrorItems,
           syncErrorCount: syncErrorItems.length,

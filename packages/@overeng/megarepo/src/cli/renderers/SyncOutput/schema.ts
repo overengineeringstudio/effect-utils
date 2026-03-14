@@ -18,26 +18,47 @@ import {
 // Lock Sync Result (for TUI display)
 // =============================================================================
 
-/** Schema for a single lock input update */
-export const LockInputUpdate = Schema.Struct({
-  /** Name of the input in the flake.lock */
+/** Rev (commit) update — mechanical propagation of resolved commit SHAs */
+export const LockRevUpdate = Schema.Struct({
+  _tag: Schema.Literal('RevUpdate'),
   inputName: Schema.String,
-  /** Name of the megarepo member this input maps to */
   memberName: Schema.String,
-  /** Previous revision (short) */
   oldRev: Schema.String,
-  /** New revision (short) */
   newRev: Schema.String,
 })
-/** Inferred type for a lock input update. */
-export type LockInputUpdate = Schema.Schema.Type<typeof LockInputUpdate>
+export type LockRevUpdate = Schema.Schema.Type<typeof LockRevUpdate>
+
+/** Ref (branch) update — intentional branch/input URL change */
+export const LockRefUpdate = Schema.Struct({
+  _tag: Schema.Literal('RefUpdate'),
+  inputName: Schema.String,
+  memberName: Schema.String,
+  oldRef: Schema.String,
+  newRef: Schema.String,
+})
+export type LockRefUpdate = Schema.Schema.Type<typeof LockRefUpdate>
+
+/** Shared lock source update — e.g. devenv version propagated from source member */
+export const LockSharedSourceUpdate = Schema.Struct({
+  _tag: Schema.Literal('SharedSourceUpdate'),
+  sourceName: Schema.String,
+  sourceMemberName: Schema.String,
+  targetCount: Schema.Number,
+})
+export type LockSharedSourceUpdate = Schema.Schema.Type<typeof LockSharedSourceUpdate>
+
+/** Union of rev and ref update types (used in lock file sync results) */
+export const LockFileUpdate = Schema.Union(LockRevUpdate, LockRefUpdate)
+export type LockFileUpdate = Schema.Schema.Type<typeof LockFileUpdate>
+
+/** Union of all lock sync update types */
+export const LockSyncUpdate = Schema.Union(LockRevUpdate, LockRefUpdate, LockSharedSourceUpdate)
+export type LockSyncUpdate = Schema.Schema.Type<typeof LockSyncUpdate>
 
 /** Schema for lock file sync result */
 export const LockFileSyncResult = Schema.Struct({
-  /** Type of lock file */
   type: Schema.Literal('flake.lock', 'devenv.lock', 'megarepo.lock', 'flake.nix', 'devenv.yaml'),
-  /** Inputs that were updated */
-  updatedInputs: Schema.Array(LockInputUpdate),
+  updatedInputs: Schema.Array(LockFileUpdate),
 })
 /** Inferred type for a lock file sync result. */
 export type LockFileSyncResult = Schema.Schema.Type<typeof LockFileSyncResult>
@@ -134,6 +155,9 @@ export const SyncState = Schema.Struct({
   /** Lock sync results (flake.lock/devenv.lock updates) */
   lockSyncResults: Schema.Array(MemberLockSyncResult),
 
+  /** Shared lock source updates (e.g. devenv version propagation) */
+  sharedSourceUpdates: Schema.Array(LockSharedSourceUpdate),
+
   /** Full nested sync tree (includes nested megarepos when --all is used). */
   syncTree: MegarepoSyncTree,
 
@@ -180,6 +204,11 @@ export const SyncAction = Schema.Union(
   /** Set lock sync results */
   Schema.TaggedStruct('SetLockSyncResults', {
     results: Schema.Array(MemberLockSyncResult),
+  }),
+
+  /** Set shared lock source updates */
+  Schema.TaggedStruct('SetSharedSourceUpdates', {
+    updates: Schema.Array(LockSharedSourceUpdate),
   }),
 
   /** Mark sync as complete */
@@ -276,6 +305,12 @@ export const syncReducer = ({
       return {
         ...state,
         lockSyncResults: action.results,
+      }
+
+    case 'SetSharedSourceUpdates':
+      return {
+        ...state,
+        sharedSourceUpdates: action.updates,
       }
 
     case 'Complete':

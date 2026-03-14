@@ -471,7 +471,7 @@ const syncNestedMegarepoLockFile = ({
     }
 
     let nestedLock = nestedLockOpt.value
-    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
+    const updatedInputs: NixLockSyncUpdate[] = []
 
     for (const [nestedMemberName, nestedMember] of Object.entries(nestedLock.members)) {
       if (nestedMember.pinned === true) {
@@ -501,6 +501,7 @@ const syncNestedMegarepoLockFile = ({
       }
 
       updatedInputs.push({
+        _tag: 'RevUpdate',
         inputName: nestedMemberName,
         memberName: nestedMemberName,
         oldRev: nestedMember.commit,
@@ -563,7 +564,7 @@ export const syncSourceFileRevs = ({
     const inputs =
       fileType === 'flake.nix' ? extractFlakeNixInputs(content) : extractDevenvYamlInputs(content)
 
-    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
+    const updatedInputs: NixLockSyncUpdate[] = []
     let updatedContent = content
 
     for (const input of inputs) {
@@ -583,6 +584,7 @@ export const syncSourceFileRevs = ({
       const newUrl = updateNixFlakeUrl({ url: input.url, updates: { rev: member.commit } })
 
       updatedInputs.push({
+        _tag: 'RevUpdate',
         inputName: input.inputName,
         memberName,
         oldRev: currentRev,
@@ -849,7 +851,7 @@ const syncMemberRefs = ({
             : extractDevenvYamlInputs(content)
 
         const updates = new Map<string, SourceUrlUpdate>()
-        const updatedInputDetails: NixLockSyncFileResult['updatedInputs'][number][] = []
+        const updatedInputDetails: NixLockSyncUpdate[] = []
 
         for (const input of inputs) {
           const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
@@ -868,10 +870,11 @@ const syncMemberRefs = ({
 
           updates.set(input.inputName, { memberName, newRef: member.ref })
           updatedInputDetails.push({
+            _tag: 'RefUpdate',
             inputName: input.inputName,
             memberName,
-            oldRev: currentRef,
-            newRev: member.ref,
+            oldRef: currentRef,
+            newRef: member.ref,
           })
         }
 
@@ -907,7 +910,7 @@ const syncMemberRefs = ({
         const inputs = extractLockFileInputs(content)
 
         const refUpdates = new Map<string, string>()
-        const updatedInputDetails: NixLockSyncFileResult['updatedInputs'][number][] = []
+        const updatedInputDetails: NixLockSyncUpdate[] = []
 
         for (const input of inputs) {
           const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
@@ -937,10 +940,11 @@ const syncMemberRefs = ({
 
           refUpdates.set(input.inputName, member.ref)
           updatedInputDetails.push({
+            _tag: 'RefUpdate',
             inputName: input.inputName,
             memberName,
-            oldRev: currentRef,
-            newRev: member.ref,
+            oldRef: currentRef,
+            newRef: member.ref,
           })
         }
 

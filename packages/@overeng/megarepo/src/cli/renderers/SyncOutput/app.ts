@@ -34,6 +34,7 @@ export const createInitialSyncState = (params: {
   nestedMegarepos: [],
   generatedFiles: [],
   lockSyncResults: [],
+  sharedSourceUpdates: [],
   syncTree: {
     root: params.workspaceRoot,
     results: [],
