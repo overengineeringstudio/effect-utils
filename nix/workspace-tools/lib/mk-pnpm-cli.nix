@@ -328,6 +328,7 @@ let
 
   filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
 
+  rootLockfileContent = builtins.readFile (absoluteSourcePathFor "pnpm-lock.yaml");
   rootWorkspaceFiles = [ "package.json" "pnpm-lock.yaml" ];
   optionalRootWorkspaceFiles = [ ".npmrc" "tsconfig.base.json" ];
 
@@ -363,6 +364,93 @@ let
       fi
     '';
 
+  /** Parse patchedDependencies path: entries from a pnpm-lock.yaml string (pure Nix). */
+  parsePatchPaths =
+    lockfileContent:
+    let
+      lines = lib.splitString "\n" lockfileContent;
+      collect =
+        {
+          inBlock,
+          paths,
+        }:
+        remaining:
+        if remaining == [ ] then
+          paths
+        else
+          let
+            line = builtins.head remaining;
+            rest = lib.tail remaining;
+            trimmed = lib.trim line;
+          in
+          if !inBlock then
+            if lib.hasPrefix "patchedDependencies:" trimmed then
+              collect {
+                inBlock = true;
+                inherit paths;
+              } rest
+            else
+              collect {
+                inherit inBlock paths;
+              } rest
+          else if trimmed == "" then
+            collect {
+              inherit inBlock paths;
+            } rest
+          else if builtins.substring 0 1 line != " " && builtins.substring 0 1 line != "\t" then
+            paths
+          else if lib.hasPrefix "path:" trimmed then
+            collect {
+              inherit inBlock;
+              paths = paths ++ [ (lib.trim (lib.removePrefix "path:" trimmed)) ];
+            } rest
+          else
+            collect {
+              inherit inBlock paths;
+            } rest;
+    in
+    collect {
+      inBlock = false;
+      paths = [ ];
+    } lines;
+
+  /**
+   * Copy patch files from a lockfile, resolving source paths through workspaceSources.
+   * Each patch path is resolved at Nix eval time via absoluteSourcePathFor so that
+   * patches under workspaceSources prefixes are found in the correct source root.
+   *
+   * Note: the resolved source root (via builtins.path) snapshots the whole matched
+   * source tree, so this has the same invalidation scope as other copyFileCmd calls.
+   */
+  copyResolvedPatchFilesCmd =
+    {
+      lockfileContent,
+      targetPrefix,
+    }:
+    let
+      patchPaths = parsePatchPaths lockfileContent;
+      copyOnePatch =
+        relPath:
+        let
+          srcPath = absoluteSourcePathFor relPath;
+          targetRelPath = if targetPrefix == "" then relPath else "${targetPrefix}/${relPath}";
+          srcPathArg = lib.escapeShellArg (toString srcPath);
+          targetRelPathArg = lib.escapeShellArg targetRelPath;
+        in
+        ''
+          target_patch=${targetRelPathArg}
+          mkdir -p "$out/$(dirname "$target_patch")"
+          chmod -R +w "$out/$(dirname "$target_patch")" 2>/dev/null || true
+          cp ${srcPathArg} "$out/$target_patch"
+        '';
+    in
+    builtins.concatStringsSep "\n" (map copyOnePatch patchPaths);
+
+  /**
+   * Copy patch files from an external install root's lockfile.
+   * These are self-contained (source and target share the same root), so shell-time
+   * awk parsing is fine — no workspaceSources resolution needed.
+   */
   copyPatchedDependencyFilesCmd =
     {
       sourceRoot,
@@ -397,6 +485,7 @@ let
           fi
 
           mkdir -p "$out/$(dirname "$target_rel_path")"
+          chmod -R +w "$out/$(dirname "$target_rel_path")" 2>/dev/null || true
           cp "$source_root/$rel_path" "$out/$target_rel_path"
         done
       fi
@@ -456,8 +545,8 @@ EOF
         else
           map copyDirCmd aggregateOwnedWorkspaceClosureDirs
       )
-      + copyPatchedDependencyFilesCmd {
-        sourceRoot = workspaceRootPath;
+      + copyResolvedPatchFilesCmd {
+        lockfileContent = rootLockfileContent;
         targetPrefix = "";
       }
       + builtins.concatStringsSep "\n" (
