@@ -27,8 +27,9 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../lock.ts'
-import { parseNixFlakeUrl, getRev, updateNixFlakeUrl } from './flake-url.ts'
-import { extractFlakeNixInputs, extractDevenvYamlInputs, matchUrlToMember } from './input-discovery.ts'
+import { parseNixFlakeUrl, getRef, getRev, updateNixFlakeUrl } from './flake-url.ts'
+import { extractFlakeNixInputs, extractDevenvYamlInputs, extractLockFileInputs, matchUrlToMember } from './input-discovery.ts'
+import { rewriteFlakeNixUrls, rewriteDevenvYamlUrls, rewriteLockFileRefs, type SourceUrlUpdate } from './source-rewriter.ts'
 import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
 import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
 
@@ -786,6 +787,167 @@ const syncSharedLockSources = ({
   )
 
 // =============================================================================
+// Ref Sync
+// =============================================================================
+
+/**
+ * Sync branch refs in source and lock files for a single member.
+ *
+ * For each input that maps to a megarepo member, compares the current ref
+ * in the file against the upstream member's ref from megarepo.lock.
+ * Updates all 4 file types: flake.nix, devenv.yaml, flake.lock, devenv.lock.
+ */
+const syncMemberRefs = ({
+  memberPath,
+  megarepoMembers,
+}: {
+  memberPath: AbsoluteDirPath
+  megarepoMembers: Record<string, LockedMember>
+}): Effect.Effect<
+  ReadonlyArray<NixLockSyncFileResult>,
+  PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const results: NixLockSyncFileResult[] = []
+
+    /** Sync refs in a source file (flake.nix or devenv.yaml) */
+    const syncSourceRefs = (
+      filename: string,
+      fileType: 'flake.nix' | 'devenv.yaml',
+    ) =>
+      Effect.gen(function* () {
+        const filePath = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename))
+        const exists = yield* fs.exists(filePath)
+        if (exists === false) return
+
+        const content = yield* fs.readFileString(filePath)
+        const inputs =
+          fileType === 'flake.nix'
+            ? extractFlakeNixInputs(content)
+            : extractDevenvYamlInputs(content)
+
+        const updates = new Map<string, SourceUrlUpdate>()
+        const updatedInputDetails: NixLockSyncFileResult['updatedInputs'][number][] = []
+
+        for (const input of inputs) {
+          const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
+          if (memberName === undefined) continue
+
+          const member = megarepoMembers[memberName]
+          if (member === undefined) continue
+
+          const parsed = parseNixFlakeUrl(input.url)
+          if (parsed === undefined) continue
+
+          const currentRef = getRef(parsed)
+          /** Don't add a ref to URLs that have no ref (bare `github:owner/repo`) */
+          if (currentRef === undefined) continue
+          if (currentRef === member.ref) continue
+
+          updates.set(input.inputName, { memberName, newRef: member.ref })
+          updatedInputDetails.push({
+            inputName: input.inputName,
+            memberName,
+            oldRev: currentRef,
+            newRev: member.ref,
+          })
+        }
+
+        if (updates.size === 0) return
+
+        const rewriter = fileType === 'flake.nix' ? rewriteFlakeNixUrls : rewriteDevenvYamlUrls
+        const result = rewriter({ content, updates })
+
+        if (result.updatedInputs.length > 0) {
+          yield* fs.writeFileString(filePath, result.content)
+          results.push({
+            path: filePath,
+            type: fileType,
+            updatedInputs: updatedInputDetails,
+          })
+        }
+      })
+
+    /** Sync refs in a lock file (flake.lock or devenv.lock) */
+    const syncLockRefs = (
+      filename: string,
+      fileType: 'flake.lock' | 'devenv.lock',
+    ) =>
+      Effect.gen(function* () {
+        const filePath = EffectPath.ops.join(memberPath, EffectPath.unsafe.relativeFile(filename))
+        const exists = yield* fs.exists(filePath)
+        if (exists === false) return
+
+        const content = yield* fs.readFileString(filePath)
+        const inputs = extractLockFileInputs(content)
+
+        const refUpdates = new Map<string, string>()
+        const updatedInputDetails: NixLockSyncFileResult['updatedInputs'][number][] = []
+
+        for (const input of inputs) {
+          const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
+          if (memberName === undefined) continue
+
+          const member = megarepoMembers[memberName]
+          if (member === undefined) continue
+
+          /** Check original.ref in the lock file node */
+          let parsed: { nodes?: Record<string, Record<string, unknown>> }
+          try {
+            parsed = JSON.parse(content) as { nodes?: Record<string, Record<string, unknown>> }
+          } catch {
+            return
+          }
+
+          const node = parsed.nodes?.[input.inputName]
+          if (node === undefined) continue
+
+          const original = node['original'] as Record<string, unknown> | undefined
+          if (original === undefined) continue
+
+          const currentRef = typeof original['ref'] === 'string' ? original['ref'] : undefined
+          /** Don't add a ref to nodes that have no ref */
+          if (currentRef === undefined) continue
+          if (currentRef === member.ref) continue
+
+          refUpdates.set(input.inputName, member.ref)
+          updatedInputDetails.push({
+            inputName: input.inputName,
+            memberName,
+            oldRev: currentRef,
+            newRev: member.ref,
+          })
+        }
+
+        if (refUpdates.size === 0) return
+
+        const result = rewriteLockFileRefs({ content, refUpdates })
+
+        if (result.updatedNodes.length > 0) {
+          yield* fs.writeFileString(filePath, result.content)
+          results.push({
+            path: filePath,
+            type: fileType,
+            updatedInputs: updatedInputDetails,
+          })
+        }
+      })
+
+    yield* syncSourceRefs(FLAKE_NIX, 'flake.nix')
+    yield* syncSourceRefs(DEVENV_YAML, 'devenv.yaml')
+    yield* syncLockRefs(FLAKE_LOCK, 'flake.lock')
+    yield* syncLockRefs(DEVENV_LOCK, 'devenv.lock')
+
+    return results
+  }).pipe(
+    Effect.withSpan('megarepo/nix-lock/ref-sync', {
+      attributes: { 'span.label': memberPath },
+    }),
+  )
+
+// =============================================================================
 // Main Sync Function
 // =============================================================================
 
@@ -946,6 +1108,13 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
               files.push(result)
             }
           }
+
+          // Ref sync: update branch refs in all 4 file types
+          const refSyncResults = yield* syncMemberRefs({
+            memberPath,
+            megarepoMembers,
+          })
+          files.push(...refSyncResults)
 
           if (files.length > 0) {
             return { memberName, files }

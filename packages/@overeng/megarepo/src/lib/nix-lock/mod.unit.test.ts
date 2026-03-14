@@ -2,8 +2,8 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type { LockedMember } from '../lock.ts'
-import { parseNixFlakeUrl, getRev, updateNixFlakeUrl } from './flake-url.ts'
-import { extractFlakeNixInputs, extractDevenvYamlInputs, matchUrlToMember } from './input-discovery.ts'
+import { parseNixFlakeUrl, getRef, getRev, updateNixFlakeUrl } from './flake-url.ts'
+import { extractFlakeNixInputs, extractDevenvYamlInputs, extractLockFileInputs, matchUrlToMember } from './input-discovery.ts'
 import { getByDotPath, setByDotPath } from './mod.ts'
 import {
   matchLockedInputToMember,
@@ -19,6 +19,12 @@ import {
   parseLockedInput,
   updateLockedInputRev,
 } from './schema.ts'
+import {
+  rewriteFlakeNixUrls,
+  rewriteDevenvYamlUrls,
+  rewriteLockFileRefs,
+  type SourceUrlUpdate,
+} from './source-rewriter.ts'
 
 // =============================================================================
 // Helper for full sync flow testing
@@ -1406,5 +1412,498 @@ describe('shared lock source sync logic', () => {
     expect(results[0]!.updatedMembers).toEqual(['repo-b', 'repo-c'])
     expect(JSON.parse(updatedLocks['repo-b']!).nodes.devenv.locked.rev).toBe('new-rev')
     expect(JSON.parse(updatedLocks['repo-c']!).nodes.devenv.locked.rev).toBe('new-rev')
+  })
+})
+
+// =============================================================================
+// Ref Sync Tests
+// =============================================================================
+
+/**
+ * Simulates the ref sync logic for source files (pure, no Effect).
+ * Mirrors the core of syncMemberRefs for flake.nix/devenv.yaml.
+ */
+const simulateSourceFileRefSync = ({
+  content,
+  fileType,
+  megarepoMembers,
+}: {
+  content: string
+  fileType: 'flake.nix' | 'devenv.yaml'
+  megarepoMembers: Record<string, LockedMember>
+}): {
+  updatedContent: string
+  updatedInputs: Array<{
+    inputName: string
+    memberName: string
+    oldRef: string
+    newRef: string
+  }>
+} => {
+  const inputs =
+    fileType === 'flake.nix'
+      ? extractFlakeNixInputs(content)
+      : extractDevenvYamlInputs(content)
+
+  const updates = new Map<string, SourceUrlUpdate>()
+  const updatedInputs: Array<{
+    inputName: string
+    memberName: string
+    oldRef: string
+    newRef: string
+  }> = []
+
+  for (const input of inputs) {
+    const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
+    if (memberName === undefined) continue
+
+    const member = megarepoMembers[memberName]
+    if (member === undefined) continue
+
+    const parsed = parseNixFlakeUrl(input.url)
+    if (parsed === undefined) continue
+
+    const currentRef = getRef(parsed)
+    if (currentRef === undefined) continue
+    if (currentRef === member.ref) continue
+
+    updates.set(input.inputName, { memberName, newRef: member.ref })
+    updatedInputs.push({
+      inputName: input.inputName,
+      memberName,
+      oldRef: currentRef,
+      newRef: member.ref,
+    })
+  }
+
+  if (updates.size === 0) return { updatedContent: content, updatedInputs }
+
+  const rewriter = fileType === 'flake.nix' ? rewriteFlakeNixUrls : rewriteDevenvYamlUrls
+  const result = rewriter({ content, updates })
+
+  return { updatedContent: result.content, updatedInputs }
+}
+
+/**
+ * Simulates the ref sync logic for lock files (pure, no Effect).
+ * Mirrors the core of syncMemberRefs for flake.lock/devenv.lock.
+ */
+const simulateLockFileRefSync = ({
+  content,
+  megarepoMembers,
+}: {
+  content: string
+  megarepoMembers: Record<string, LockedMember>
+}): {
+  updatedContent: string
+  updatedNodes: Array<{
+    inputName: string
+    memberName: string
+    oldRef: string
+    newRef: string
+  }>
+} => {
+  const inputs = extractLockFileInputs(content)
+
+  let parsed: { nodes?: Record<string, Record<string, unknown>> }
+  try {
+    parsed = JSON.parse(content) as { nodes?: Record<string, Record<string, unknown>> }
+  } catch {
+    return { updatedContent: content, updatedNodes: [] }
+  }
+
+  const refUpdates = new Map<string, string>()
+  const updatedNodes: Array<{
+    inputName: string
+    memberName: string
+    oldRef: string
+    newRef: string
+  }> = []
+
+  for (const input of inputs) {
+    const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
+    if (memberName === undefined) continue
+
+    const member = megarepoMembers[memberName]
+    if (member === undefined) continue
+
+    const node = parsed.nodes?.[input.inputName]
+    if (node === undefined) continue
+
+    const original = node['original'] as Record<string, unknown> | undefined
+    if (original === undefined) continue
+
+    const currentRef = typeof original['ref'] === 'string' ? original['ref'] : undefined
+    if (currentRef === undefined) continue
+    if (currentRef === member.ref) continue
+
+    refUpdates.set(input.inputName, member.ref)
+    updatedNodes.push({
+      inputName: input.inputName,
+      memberName,
+      oldRef: currentRef,
+      newRef: member.ref,
+    })
+  }
+
+  if (refUpdates.size === 0) return { updatedContent: content, updatedNodes }
+
+  const result = rewriteLockFileRefs({ content, refUpdates })
+  return { updatedContent: result.content, updatedNodes }
+}
+
+describe('ref sync', () => {
+  const megarepoMembers: Record<string, LockedMember> = {
+    'effect-utils': createLockedMember({
+      url: 'https://github.com/overengineeringstudio/effect-utils',
+      ref: 'schickling/2026-03-12-pnpm-refactor',
+      commit: 'abc123def456789012345678901234567890abcd',
+    }),
+    'playwright': createLockedMember({
+      url: 'https://github.com/nicknisi/playwright-nix',
+      ref: 'feature/new-branch',
+      commit: 'def456789012345678901234567890abcdef1234',
+    }),
+  }
+
+  describe('flake.nix ref sync', () => {
+    it('should update refs for all matched inputs', () => {
+      const content = `{
+  inputs = {
+    effect-utils.url = "github:overengineeringstudio/effect-utils/main";
+    playwright.url = "git+https://github.com/nicknisi/playwright-nix?ref=old-branch";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  };
+}`
+      const result = simulateSourceFileRefSync({
+        content,
+        fileType: 'flake.nix',
+        megarepoMembers,
+      })
+
+      expect(result.updatedInputs).toHaveLength(2)
+      expect(result.updatedContent).toContain(
+        'effect-utils.url = "github:overengineeringstudio/effect-utils/schickling/2026-03-12-pnpm-refactor"',
+      )
+      expect(result.updatedContent).toContain(
+        'playwright.url = "git+https://github.com/nicknisi/playwright-nix?ref=feature/new-branch"',
+      )
+      expect(result.updatedContent).toContain(
+        'nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable"',
+      )
+    })
+
+    it('should not add ref to bare URL (no current ref)', () => {
+      const content = `{
+  inputs = {
+    effect-utils.url = "github:overengineeringstudio/effect-utils";
+  };
+}`
+      const result = simulateSourceFileRefSync({
+        content,
+        fileType: 'flake.nix',
+        megarepoMembers,
+      })
+
+      expect(result.updatedInputs).toHaveLength(0)
+      expect(result.updatedContent).toBe(content)
+    })
+
+    it('should handle multiple inputs pointing at same member with ?dir=', () => {
+      const content = `{
+  inputs = {
+    effect-utils.url = "github:overengineeringstudio/effect-utils/main";
+    effect-utils-sub.url = "github:overengineeringstudio/effect-utils/main?dir=packages/sub";
+  };
+}`
+      const result = simulateSourceFileRefSync({
+        content,
+        fileType: 'flake.nix',
+        megarepoMembers,
+      })
+
+      expect(result.updatedInputs).toHaveLength(2)
+      expect(result.updatedContent).toContain(
+        'effect-utils.url = "github:overengineeringstudio/effect-utils/schickling/2026-03-12-pnpm-refactor"',
+      )
+      expect(result.updatedContent).toContain(
+        'effect-utils-sub.url = "github:overengineeringstudio/effect-utils/schickling/2026-03-12-pnpm-refactor?dir=packages/sub"',
+      )
+    })
+
+    it('should be no-op when ref already matches', () => {
+      const content = `{
+  inputs = {
+    effect-utils.url = "github:overengineeringstudio/effect-utils/schickling/2026-03-12-pnpm-refactor";
+  };
+}`
+      const result = simulateSourceFileRefSync({
+        content,
+        fileType: 'flake.nix',
+        megarepoMembers,
+      })
+
+      expect(result.updatedInputs).toHaveLength(0)
+      expect(result.updatedContent).toBe(content)
+    })
+  })
+
+  describe('devenv.yaml ref sync', () => {
+    it('should update refs in devenv.yaml', () => {
+      const content = `inputs:
+  effect-utils:
+    url: github:overengineeringstudio/effect-utils/main
+    flake: true
+  playwright:
+    url: "git+https://github.com/nicknisi/playwright-nix?ref=old-branch"
+  nixpkgs:
+    url: github:NixOS/nixpkgs/nixos-unstable
+`
+      const result = simulateSourceFileRefSync({
+        content,
+        fileType: 'devenv.yaml',
+        megarepoMembers,
+      })
+
+      expect(result.updatedInputs).toHaveLength(2)
+      expect(result.updatedContent).toContain(
+        '    url: github:overengineeringstudio/effect-utils/schickling/2026-03-12-pnpm-refactor',
+      )
+      expect(result.updatedContent).toContain(
+        '    url: "git+https://github.com/nicknisi/playwright-nix?ref=feature/new-branch"',
+      )
+      expect(result.updatedContent).toContain(
+        '    url: github:NixOS/nixpkgs/nixos-unstable',
+      )
+    })
+
+    it('should not add ref to bare URL', () => {
+      const content = `inputs:
+  effect-utils:
+    url: github:overengineeringstudio/effect-utils
+`
+      const result = simulateSourceFileRefSync({
+        content,
+        fileType: 'devenv.yaml',
+        megarepoMembers,
+      })
+
+      expect(result.updatedInputs).toHaveLength(0)
+      expect(result.updatedContent).toBe(content)
+    })
+  })
+
+  describe('lock file ref sync', () => {
+    const lockContent = JSON.stringify(
+      {
+        nodes: {
+          root: {
+            inputs: {
+              'effect-utils': 'effect-utils',
+              'effect-utils-sub': 'effect-utils-sub',
+              nixpkgs: 'nixpkgs',
+            },
+          },
+          'effect-utils': {
+            locked: {
+              owner: 'overengineeringstudio',
+              repo: 'effect-utils',
+              rev: 'abc123',
+              type: 'github',
+            },
+            original: {
+              owner: 'overengineeringstudio',
+              ref: 'main',
+              repo: 'effect-utils',
+              type: 'github',
+            },
+          },
+          'effect-utils-sub': {
+            locked: {
+              owner: 'overengineeringstudio',
+              repo: 'effect-utils',
+              rev: 'abc123',
+              type: 'github',
+            },
+            original: {
+              dir: 'packages/sub',
+              owner: 'overengineeringstudio',
+              ref: 'main',
+              repo: 'effect-utils',
+              type: 'github',
+            },
+          },
+          nixpkgs: {
+            locked: {
+              owner: 'NixOS',
+              repo: 'nixpkgs',
+              rev: 'def456',
+              type: 'github',
+            },
+            original: {
+              owner: 'NixOS',
+              ref: 'nixos-unstable',
+              repo: 'nixpkgs',
+              type: 'github',
+            },
+          },
+        },
+        version: 7,
+        root: 'root',
+      },
+      null,
+      2,
+    ) + '\n'
+
+    it('should update original.ref for matched inputs', () => {
+      const result = simulateLockFileRefSync({
+        content: lockContent,
+        megarepoMembers,
+      })
+
+      expect(result.updatedNodes).toHaveLength(2)
+      expect(result.updatedNodes[0]!.inputName).toBe('effect-utils')
+      expect(result.updatedNodes[0]!.oldRef).toBe('main')
+      expect(result.updatedNodes[0]!.newRef).toBe('schickling/2026-03-12-pnpm-refactor')
+
+      const parsed = JSON.parse(result.updatedContent)
+      expect(parsed.nodes['effect-utils'].original.ref).toBe('schickling/2026-03-12-pnpm-refactor')
+      expect(parsed.nodes['effect-utils-sub'].original.ref).toBe('schickling/2026-03-12-pnpm-refactor')
+      expect(parsed.nodes['effect-utils-sub'].original.dir).toBe('packages/sub')
+      expect(parsed.nodes.nixpkgs.original.ref).toBe('nixos-unstable')
+    })
+
+    it('should be no-op when refs already match', () => {
+      const members: Record<string, LockedMember> = {
+        'effect-utils': createLockedMember({
+          url: 'https://github.com/overengineeringstudio/effect-utils',
+          ref: 'main',
+        }),
+      }
+
+      const result = simulateLockFileRefSync({
+        content: lockContent,
+        megarepoMembers: members,
+      })
+
+      expect(result.updatedNodes).toHaveLength(0)
+      expect(result.updatedContent).toBe(lockContent)
+    })
+
+    it('should skip nodes without original.ref', () => {
+      const content = JSON.stringify(
+        {
+          nodes: {
+            root: { inputs: { dep: 'dep' } },
+            dep: {
+              locked: {
+                owner: 'overengineeringstudio',
+                repo: 'effect-utils',
+                rev: 'abc123',
+                type: 'github',
+              },
+              original: {
+                owner: 'overengineeringstudio',
+                repo: 'effect-utils',
+                type: 'github',
+              },
+            },
+          },
+          version: 7,
+          root: 'root',
+        },
+        null,
+        2,
+      ) + '\n'
+
+      const result = simulateLockFileRefSync({
+        content,
+        megarepoMembers,
+      })
+
+      expect(result.updatedNodes).toHaveLength(0)
+      expect(result.updatedContent).toBe(content)
+    })
+  })
+
+  describe('end-to-end ref sync across all 4 file types', () => {
+    it('should update refs consistently in flake.nix, devenv.yaml, flake.lock, devenv.lock', () => {
+      const members: Record<string, LockedMember> = {
+        'effect-utils': createLockedMember({
+          url: 'https://github.com/overengineeringstudio/effect-utils',
+          ref: 'schickling/new-branch',
+          commit: 'abc123def456789012345678901234567890abcd',
+        }),
+      }
+
+      const flakeNix = `{
+  inputs = {
+    effect-utils.url = "github:overengineeringstudio/effect-utils/main";
+  };
+}`
+      const devenvYaml = `inputs:
+  effect-utils:
+    url: github:overengineeringstudio/effect-utils/main
+`
+      const lockJson = {
+        nodes: {
+          root: { inputs: { 'effect-utils': 'effect-utils' } },
+          'effect-utils': {
+            locked: {
+              owner: 'overengineeringstudio',
+              repo: 'effect-utils',
+              rev: 'old-rev',
+              type: 'github',
+            },
+            original: {
+              owner: 'overengineeringstudio',
+              ref: 'main',
+              repo: 'effect-utils',
+              type: 'github',
+            },
+          },
+        },
+        version: 7,
+        root: 'root',
+      }
+      const lockContent = JSON.stringify(lockJson, null, 2) + '\n'
+
+      const flakeNixResult = simulateSourceFileRefSync({
+        content: flakeNix,
+        fileType: 'flake.nix',
+        megarepoMembers: members,
+      })
+      const devenvYamlResult = simulateSourceFileRefSync({
+        content: devenvYaml,
+        fileType: 'devenv.yaml',
+        megarepoMembers: members,
+      })
+      const flakeLockResult = simulateLockFileRefSync({
+        content: lockContent,
+        megarepoMembers: members,
+      })
+      const devenvLockResult = simulateLockFileRefSync({
+        content: lockContent,
+        megarepoMembers: members,
+      })
+
+      expect(flakeNixResult.updatedInputs).toHaveLength(1)
+      expect(flakeNixResult.updatedContent).toContain(
+        'effect-utils.url = "github:overengineeringstudio/effect-utils/schickling/new-branch"',
+      )
+
+      expect(devenvYamlResult.updatedInputs).toHaveLength(1)
+      expect(devenvYamlResult.updatedContent).toContain(
+        '    url: github:overengineeringstudio/effect-utils/schickling/new-branch',
+      )
+
+      expect(flakeLockResult.updatedNodes).toHaveLength(1)
+      const flakeLockParsed = JSON.parse(flakeLockResult.updatedContent)
+      expect(flakeLockParsed.nodes['effect-utils'].original.ref).toBe('schickling/new-branch')
+
+      expect(devenvLockResult.updatedNodes).toHaveLength(1)
+      const devenvLockParsed = JSON.parse(devenvLockResult.updatedContent)
+      expect(devenvLockParsed.nodes['effect-utils'].original.ref).toBe('schickling/new-branch')
+    })
   })
 })

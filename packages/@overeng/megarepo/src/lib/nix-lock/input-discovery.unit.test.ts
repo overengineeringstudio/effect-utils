@@ -182,7 +182,7 @@ describe('extractLockFileInputs', () => {
             rev: 'def456',
           },
         },
-        root: { inputs: {} },
+        root: { inputs: { 'my-repo': 'my-repo' } },
       },
       root: 'root',
       version: 7,
@@ -205,6 +205,63 @@ describe('extractLockFileInputs', () => {
     })
     const result = extractLockFileInputs(content)
     expect(result).toEqual([])
+  })
+
+  it('should skip transitive dependencies not listed in root.inputs', () => {
+    const content = JSON.stringify({
+      nodes: {
+        'effect-utils': {
+          locked: {
+            type: 'github',
+            owner: 'overengineeringstudio',
+            repo: 'effect-utils',
+            rev: 'abc123',
+            narHash: 'sha256-xxx',
+            lastModified: 1704067200,
+          },
+        },
+        'transitive-dep': {
+          locked: {
+            type: 'github',
+            owner: 'someorg',
+            repo: 'transitive-dep',
+            rev: 'def456',
+            narHash: 'sha256-yyy',
+            lastModified: 1704067200,
+          },
+        },
+        root: { inputs: { 'effect-utils': 'effect-utils' } },
+      },
+      root: 'root',
+      version: 7,
+    })
+    const result = extractLockFileInputs(content)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.inputName).toBe('effect-utils')
+  })
+
+  it('should use input name (key) not node name (value) when they differ', () => {
+    const content = JSON.stringify({
+      nodes: {
+        'effect-utils_2': {
+          locked: {
+            type: 'github',
+            owner: 'overengineeringstudio',
+            repo: 'effect-utils',
+            rev: 'abc123',
+            narHash: 'sha256-xxx',
+            lastModified: 1704067200,
+          },
+        },
+        root: { inputs: { 'effect-utils': 'effect-utils_2' } },
+      },
+      root: 'root',
+      version: 7,
+    })
+    const result = extractLockFileInputs(content)
+    expect(result).toHaveLength(1)
+    expect(result[0]!.inputName).toBe('effect-utils')
+    expect(result[0]!.url).toBe('github:overengineeringstudio/effect-utils')
   })
 
   it('should handle invalid JSON gracefully', () => {

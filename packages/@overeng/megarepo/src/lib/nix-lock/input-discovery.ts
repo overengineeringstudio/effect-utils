@@ -170,17 +170,25 @@ export const extractLockFileInputs = (
 ): ReadonlyArray<{ inputName: string; url: string; locked: Record<string, unknown> }> => {
   const results: Array<{ inputName: string; url: string; locked: Record<string, unknown> }> = []
 
-  let parsed: { nodes?: Record<string, Record<string, unknown>> }
+  let parsed: { root?: string; nodes?: Record<string, Record<string, unknown>> }
   try {
-    parsed = JSON.parse(content) as { nodes?: Record<string, Record<string, unknown>> }
+    parsed = JSON.parse(content) as { root?: string; nodes?: Record<string, Record<string, unknown>> }
   } catch {
     return results
   }
 
   if (parsed.nodes === undefined) return results
 
-  for (const [nodeName, node] of Object.entries(parsed.nodes)) {
-    if (nodeName === 'root') continue
+  const rootNodeName = parsed.root ?? 'root'
+  const rootNode = parsed.nodes[rootNodeName]
+  if (rootNode === undefined) return results
+
+  const rootInputs = rootNode['inputs'] as Record<string, string> | undefined
+  if (rootInputs === undefined) return results
+
+  for (const [inputName, nodeName] of Object.entries(rootInputs)) {
+    const node = parsed.nodes[nodeName]
+    if (node === undefined) continue
 
     const locked = node['locked'] as Record<string, unknown> | undefined
     if (locked === undefined) continue
@@ -188,7 +196,6 @@ export const extractLockFileInputs = (
     const parsedInput = parseLockedInput(locked)
     if (parsedInput === undefined) continue
 
-    // Reconstruct a URL from the locked data for context
     let url: string
     if (parsedInput.type === 'github' && parsedInput.owner !== undefined && parsedInput.repo !== undefined) {
       url = `github:${parsedInput.owner}/${parsedInput.repo}`
@@ -198,7 +205,7 @@ export const extractLockFileInputs = (
       continue
     }
 
-    results.push({ inputName: nodeName, url, locked })
+    results.push({ inputName, url, locked })
   }
 
   return results

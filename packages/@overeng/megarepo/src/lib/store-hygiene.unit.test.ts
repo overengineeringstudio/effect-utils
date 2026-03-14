@@ -1,5 +1,5 @@
 import { NodeContext } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -7,10 +7,14 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import type { MegarepoConfig } from './config.ts'
 import type { LockFile } from './lock.ts'
 import type { MegarepoStore } from './store.ts'
+import type { MemberSource } from './config.ts'
 import {
   validateStoreMembers,
   runPreflightChecks,
+  fixStoreIssues,
+  parseWorktreeRef,
   StoreHygieneError,
+  type StoreIssue,
 } from './store-hygiene.ts'
 
 // =============================================================================
@@ -295,6 +299,175 @@ describe('store-hygiene', () => {
           if (result instanceof StoreHygieneError) {
             expect(result.message).toContain('Store hygiene check failed')
           }
+        }),
+      ),
+    )
+  })
+
+  describe('parseWorktreeRef', () => {
+    it('parses /refs/heads/ paths', () => {
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/main/'))
+        .toEqual({ type: 'heads', ref: 'main' })
+    })
+
+    it('parses branch names with slashes', () => {
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/feature/my-branch/'))
+        .toEqual({ type: 'heads', ref: 'feature/my-branch' })
+    })
+
+    it('parses /refs/tags/ paths', () => {
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/tags/v1.0/'))
+        .toEqual({ type: 'tags', ref: 'v1.0' })
+    })
+
+    it('parses /refs/commits/ paths', () => {
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/commits/abc123def/'))
+        .toEqual({ type: 'commits', ref: 'abc123def' })
+    })
+
+    it('returns undefined for paths without /refs/', () => {
+      expect(parseWorktreeRef('/store/github.com/owner/repo/some/other/path/'))
+        .toBeUndefined()
+    })
+
+    it('handles paths without trailing slash', () => {
+      expect(parseWorktreeRef('/store/github.com/owner/repo/refs/heads/main'))
+        .toEqual({ type: 'heads', ref: 'main' })
+    })
+  })
+
+  describe('fixStoreIssues', () => {
+    const testStore = makeTestStore(
+      EffectPath.unsafe.absoluteDir('/tmp/nonexistent-fix-test-store/'),
+    )
+
+    const githubSource: MemberSource = {
+      type: 'github',
+      owner: 'owner',
+      repo: 'myrepo',
+      ref: Option.some('main'),
+    }
+
+    describe('dry-run mode', () => {
+      it('reports what would happen for ref_mismatch without doing anything', () =>
+        runWithContext(
+          Effect.gen(function* () {
+            const issues: StoreIssue[] = [{
+              severity: 'error',
+              type: 'ref_mismatch',
+              memberName: 'myrepo',
+              message: 'worktree HEAD is wrong',
+              meta: {
+                _tag: 'ref_mismatch',
+                expectedRef: 'main',
+                actualRef: 'develop',
+                worktreePath: '/tmp/test/refs/heads/main/',
+              },
+            }]
+
+            const results = yield* fixStoreIssues({ issues, store: testStore, dryRun: true })
+
+            expect(results).toHaveLength(1)
+            expect(results[0]!.status).toBe('skipped')
+            expect(results[0]!.message).toContain("would checkout 'main'")
+          }),
+        ),
+      )
+
+      it('reports what would happen for broken_worktree without doing anything', () =>
+        runWithContext(
+          Effect.gen(function* () {
+            const issues: StoreIssue[] = [{
+              severity: 'error',
+              type: 'broken_worktree',
+              memberName: 'myrepo',
+              message: '.git not found',
+              meta: {
+                _tag: 'broken_worktree',
+                worktreePath: '/tmp/test/refs/heads/main/',
+                source: githubSource,
+              },
+            }]
+
+            const results = yield* fixStoreIssues({ issues, store: testStore, dryRun: true })
+
+            expect(results).toHaveLength(1)
+            expect(results[0]!.status).toBe('skipped')
+            expect(results[0]!.message).toContain('would recreate worktree')
+          }),
+        ),
+      )
+
+      it('reports what would happen for missing_bare without doing anything', () =>
+        runWithContext(
+          Effect.gen(function* () {
+            const issues: StoreIssue[] = [{
+              severity: 'error',
+              type: 'missing_bare',
+              memberName: 'myrepo',
+              message: 'bare repo not found',
+              meta: { _tag: 'missing_bare', source: githubSource },
+            }]
+
+            const results = yield* fixStoreIssues({ issues, store: testStore, dryRun: true })
+
+            expect(results).toHaveLength(1)
+            expect(results[0]!.status).toBe('skipped')
+            expect(results[0]!.message).toContain('would clone bare repo')
+          }),
+        ),
+      )
+    })
+
+    it('skips non-error severity issues', () =>
+      runWithContext(
+        Effect.gen(function* () {
+          const issues: StoreIssue[] = [
+            { severity: 'warning', type: 'dirty', memberName: 'myrepo', message: 'uncommitted changes' },
+            { severity: 'warning', type: 'unpushed', memberName: 'myrepo', message: 'unpushed commits' },
+            { severity: 'info', type: 'orphaned', memberName: 'myrepo', message: 'orphaned' },
+          ]
+
+          const results = yield* fixStoreIssues({ issues, store: testStore })
+
+          expect(results).toHaveLength(0)
+        }),
+      ),
+    )
+
+    it('skips issues with missing metadata', () =>
+      runWithContext(
+        Effect.gen(function* () {
+          const issues: StoreIssue[] = [
+            { severity: 'error', type: 'ref_mismatch', memberName: 'myrepo', message: 'mismatch' },
+            { severity: 'error', type: 'broken_worktree', memberName: 'myrepo', message: 'broken' },
+            { severity: 'error', type: 'missing_bare', memberName: 'myrepo', message: 'missing' },
+          ]
+
+          const results = yield* fixStoreIssues({ issues, store: testStore })
+
+          expect(results).toHaveLength(3)
+          expect(results.every((r) => r.status === 'skipped')).toBe(true)
+          expect(results.every((r) => r.message === 'missing metadata for fix')).toBe(true)
+        }),
+      ),
+    )
+
+    it('skips unsupported issue types', () =>
+      runWithContext(
+        Effect.gen(function* () {
+          const issues: StoreIssue[] = [{
+            severity: 'error',
+            type: 'dirty',
+            memberName: 'myrepo',
+            message: 'dirty worktree',
+          }]
+
+          const results = yield* fixStoreIssues({ issues, store: testStore })
+
+          expect(results).toHaveLength(1)
+          expect(results[0]!.status).toBe('skipped')
+          expect(results[0]!.message).toContain("no automatic fix for 'dirty'")
         }),
       ),
     )

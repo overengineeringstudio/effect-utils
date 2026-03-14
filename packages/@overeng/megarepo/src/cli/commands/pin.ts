@@ -35,6 +35,7 @@ import {
 } from '../../lib/lock.ts'
 import { classifyRef } from '../../lib/ref.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
+import { runPreflightChecks } from '../../lib/store-hygiene.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import {
   NotInMegarepoError,
@@ -66,9 +67,13 @@ export const pinCommand = Cli.Command.make(
       Cli.Options.withDescription('Show what would be changed without making changes'),
       Cli.Options.withDefault(false),
     ),
+    noStrict: Cli.Options.boolean('no-strict').pipe(
+      Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
+      Cli.Options.withDefault(false),
+    ),
     output: outputOption,
   },
-  ({ member, checkout, dryRun, output }) =>
+  ({ member, checkout, dryRun, noStrict, output }) =>
     run(
       PinApp,
       (tui) =>
@@ -138,6 +143,15 @@ export const pinCommand = Cli.Command.make(
           )
           const lockFileOpt = yield* readLockFile(lockPath)
           let lockFile = Option.getOrElse(lockFileOpt, () => createEmptyLockFile())
+
+          // Run pre-flight hygiene checks
+          yield* runPreflightChecks({
+            memberNames: [member],
+            config,
+            lockFile,
+            store,
+            strict: !noStrict,
+          })
 
           const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
           const memberPathNormalized = memberPath.replace(/\/$/, '')

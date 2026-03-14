@@ -35,7 +35,8 @@ import {
   writeLockFile,
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
-import { type Store, StoreLayer } from '../../lib/store.ts'
+import { Store, StoreLayer } from '../../lib/store.ts'
+import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
 import {
   type GitProtocol,
   makeRepoSemaphoreMap,
@@ -98,6 +99,8 @@ export const syncMegarepo = <R = never>({
     skip: ReadonlyArray<string> | undefined
     gitProtocol: GitProtocol
     createBranches: boolean
+    /** When true, bypass store hygiene pre-flight checks */
+    noStrict?: boolean
     /** When true (fetch --apply), skip staleness check and run fetch before apply for nested --all recursion. */
     applyAfterFetch?: boolean
   }
@@ -112,6 +115,7 @@ export const syncMegarepo = <R = never>({
   | NotInMegarepoError
   | LockFileRequiredError
   | StaleLockFileError
+  | StoreHygieneError
   | PlatformError.PlatformError
   | ParseResult.ParseError,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R
@@ -224,6 +228,24 @@ export const syncMegarepo = <R = never>({
           removedMembers: staleness.removedMembers,
         })
       }
+    }
+
+    // Run pre-flight hygiene checks for write commands (lock, apply) — not fetch (read-only).
+    // Skip when applyAfterFetch is set (fetch just ran; store state may have just changed).
+    if (
+      (isLockMode === true || isApplyMode === true) &&
+      options.applyAfterFetch !== true &&
+      lockFile !== undefined
+    ) {
+      const store = yield* Store
+      const membersToCheck = allMemberNames.filter((name) => !skippedMemberNames.has(name))
+      yield* runPreflightChecks({
+        memberNames: membersToCheck,
+        config,
+        lockFile,
+        store,
+        strict: !(options.noStrict ?? false),
+      })
     }
 
     // Filter members based on --only and --skip options (uses pre-computed skippedMemberNames)
@@ -565,6 +587,7 @@ export const runSyncCommand = ({
   skip,
   gitProtocol,
   createBranches,
+  noStrict = false,
   verbose,
   applyAfterFetch = false,
 }: {
@@ -577,6 +600,7 @@ export const runSyncCommand = ({
   skip: Option.Option<string>
   gitProtocol: GitProtocol
   createBranches: boolean
+  noStrict?: boolean
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
@@ -650,6 +674,7 @@ export const runSyncCommand = ({
           skip: skipMembers,
           gitProtocol,
           createBranches,
+          noStrict,
         },
         ...(onMissingRef !== undefined ? { onMissingRef } : {}),
       })
@@ -669,6 +694,7 @@ export const runSyncCommand = ({
           skip: skipMembers,
           gitProtocol,
           createBranches,
+          noStrict,
           ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
         },
         ...(progressHandle !== undefined ? { progressHandle } : {}),
@@ -833,9 +859,13 @@ export const applyCommand = Cli.Command.make(
       ),
       Cli.Options.withDefault('auto' as const),
     ),
+    noStrict: Cli.Options.boolean('no-strict').pipe(
+      Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
+      Cli.Options.withDefault(false),
+    ),
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, verbose }) =>
     runSyncCommand({
       mode: 'apply',
       output,
@@ -846,6 +876,7 @@ export const applyCommand = Cli.Command.make(
       skip,
       gitProtocol,
       createBranches: false,
+      noStrict,
       verbose,
     }),
 ).pipe(

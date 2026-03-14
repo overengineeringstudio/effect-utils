@@ -40,6 +40,10 @@ const sharedOptions = {
     ),
     Cli.Options.withDefault('auto' as const),
   ),
+  noStrict: Cli.Options.boolean('no-strict').pipe(
+    Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
+    Cli.Options.withDefault(false),
+  ),
   verbose: verboseOption,
 } as const
 
@@ -49,7 +53,7 @@ export const lockCommand = Cli.Command.make(
   {
     ...sharedOptions,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, verbose }) =>
     runSyncCommand({
       mode: 'lock',
       output,
@@ -60,6 +64,7 @@ export const lockCommand = Cli.Command.make(
       skip,
       gitProtocol,
       createBranches: false,
+      noStrict,
       verbose,
     }),
 ).pipe(
@@ -82,7 +87,7 @@ export const fetchCommand = Cli.Command.make(
       Cli.Options.withDefault(false),
     ),
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, apply: applyAfter, createBranches, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, apply: applyAfter, createBranches, verbose }) =>
     runSyncCommand({
       mode: 'fetch',
       output,
@@ -93,6 +98,7 @@ export const fetchCommand = Cli.Command.make(
       skip,
       gitProtocol,
       createBranches,
+      noStrict,
       verbose,
       applyAfterFetch: applyAfter,
     }),

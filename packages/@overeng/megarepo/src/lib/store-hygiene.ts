@@ -292,6 +292,19 @@ export const runPreflightChecks = ({
   })
 
 // =============================================================================
+// Helpers
+// =============================================================================
+
+/** Extract the ref type and value from a worktree path like `/refs/heads/branch` or `/refs/tags/v1.0` */
+export const parseWorktreeRef = (
+  worktreePath: string,
+): { type: 'heads' | 'tags' | 'commits'; ref: string } | undefined => {
+  const match = worktreePath.match(/\/refs\/(heads|tags|commits)\/(.+?)\/?\s*$/)
+  if (match?.[1] === undefined || match[2] === undefined) return undefined
+  return { type: match[1] as 'heads' | 'tags' | 'commits', ref: match[2] }
+}
+
+// =============================================================================
 // Fix Operations
 // =============================================================================
 
@@ -413,30 +426,28 @@ export const fixStoreIssues = ({
               Effect.catchAll(() => Effect.void),
             )
 
-            // Extract ref from the worktree path
-            const pathParts = worktreePath.split('/refs/heads/')
-            const ref = pathParts[1]?.replace(/\/$/, '')
+            const parsed = parseWorktreeRef(worktreePath)
 
-            if (ref !== undefined) {
-              yield* Git.createWorktree({
-                repoPath: bareRepoPath,
-                worktreePath,
-                branch: ref,
-                createBranch: false,
-              }).pipe(
-                Effect.catchAll(() =>
-                  Git.createWorktreeDetached({
-                    repoPath: bareRepoPath,
-                    worktreePath,
-                    commit: ref,
-                  }),
-                ),
-              )
+            if (parsed !== undefined) {
+              if (parsed.type === 'heads') {
+                yield* Git.createWorktree({
+                  repoPath: bareRepoPath,
+                  worktreePath,
+                  branch: parsed.ref,
+                  createBranch: false,
+                })
+              } else {
+                yield* Git.createWorktreeDetached({
+                  repoPath: bareRepoPath,
+                  worktreePath,
+                  commit: parsed.ref,
+                })
+              }
               results.push({
                 memberName: issue.memberName,
                 issueType: issue.type,
                 status: 'fixed',
-                message: `recreated worktree for '${ref}'`,
+                message: `recreated worktree for '${parsed.ref}'`,
               })
             } else {
               results.push({
