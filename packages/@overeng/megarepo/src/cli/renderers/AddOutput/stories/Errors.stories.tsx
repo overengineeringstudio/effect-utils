@@ -55,6 +55,7 @@ type Story = StoryObj<StoryArgs>
 export const ErrorNotInMegarepo: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="mr add"
       View={AddView}
       app={AddApp}
       initialState={fixtures.createErrorNotInMegarepoState()}
@@ -70,6 +71,7 @@ export const ErrorInvalidRepo: Story = {
     const state = useMemo(() => fixtures.createErrorInvalidRepoState(args.repo), [args.repo])
     return (
       <TuiStoryPreview
+        command="mr add"
         View={AddView}
         app={AddApp}
         initialState={state}
@@ -86,6 +88,7 @@ export const ErrorAlreadyExists: Story = {
     const state = useMemo(() => fixtures.createErrorAlreadyExistsState(args.name), [args.name])
     return (
       <TuiStoryPreview
+        command="mr add"
         View={AddView}
         app={AddApp}
         initialState={state}

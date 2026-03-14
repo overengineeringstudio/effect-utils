@@ -45,7 +45,7 @@ export const Demo: Story = {
     height: { control: { type: 'range', min: 200, max: 600, step: 50 } },
   },
   render: (args) => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createLoadingState()}
@@ -59,7 +59,7 @@ export const Demo: Story = {
 
 export const Loading: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createLoadingState()}
@@ -70,7 +70,7 @@ export const Loading: Story = {
 
 export const Introspecting: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createIntrospectingState()}
@@ -81,7 +81,7 @@ export const Introspecting: Story = {
 
 export const Fetching: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createFetchingState(42)}
@@ -92,7 +92,7 @@ export const Fetching: Story = {
 
 export const FetchingMany: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createFetchingState(1500)}
@@ -103,7 +103,7 @@ export const FetchingMany: Story = {
 
 export const DoneSimple: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createDoneState()}
@@ -114,7 +114,7 @@ export const DoneSimple: Story = {
 
 export const DoneWithAssets: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createDoneState({ assetsDownloaded: 25, assetBytes: 15_728_640 })}
@@ -125,7 +125,7 @@ export const DoneWithAssets: Story = {
 
 export const DoneWithSkippedAssets: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createDoneState({ assetsSkipped: 12 })}
@@ -136,7 +136,7 @@ export const DoneWithSkippedAssets: Story = {
 
 export const DoneWithFailures: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createDoneState({ failures: 3 })}
@@ -147,7 +147,7 @@ export const DoneWithFailures: Story = {
 
 export const DoneFullStats: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createDoneState({
@@ -163,7 +163,7 @@ export const DoneFullStats: Story = {
 
 export const ErrorState: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion dump"
       View={DumpView}
       app={DumpApp}
       initialState={fixtures.createErrorState()}

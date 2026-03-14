@@ -7,6 +7,7 @@
 
 // TuiApp renderers
 export * from './AddOutput/mod.ts'
+export * from './DepsOutput/mod.ts'
 export * from './EnvOutput/mod.ts'
 export * from './ExecOutput/mod.ts'
 export * from './GenerateOutput/mod.ts'

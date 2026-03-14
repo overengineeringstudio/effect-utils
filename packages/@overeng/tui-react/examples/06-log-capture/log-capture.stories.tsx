@@ -143,6 +143,7 @@ export const Demo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="task-runner"
     />
   ),
 }
@@ -159,6 +160,7 @@ export const Pending: Story = {
       initialState={initialState}
       height={args.height}
       autoRun={false}
+      command="task-runner"
     />
   ),
 }
@@ -175,6 +177,7 @@ export const Complete: Story = {
       initialState={completeState}
       height={args.height}
       autoRun={false}
+      command="task-runner"
     />
   ),
 }

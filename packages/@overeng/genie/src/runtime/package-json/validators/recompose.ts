@@ -98,17 +98,24 @@ const validatePackageRecomposition = (args: {
       }
     }
 
-    const upstreamPatches = upstream.pnpm?.patchedDependencies ?? {}
-    const downstreamPatches = args.pkg.pnpm?.patchedDependencies ?? {}
-    for (const patchName of Object.keys(upstreamPatches)) {
-      if (!(patchName in downstreamPatches)) {
-        issues.push({
-          severity: 'error',
-          packageName: args.pkg.name,
-          dependency: patchName,
-          message: `Missing patch "${patchName}" required by "${depName}"`,
-          rule: 'recompose-patches',
-        })
+    /**
+     * Patch recomposition: non-private packages must cascade patch requirements
+     * so external consumers can discover them. Private packages skip this check
+     * because their workspace root owns patch application via pnpm-workspace.yaml.
+     */
+    if (isPrivate === false) {
+      const upstreamPatches = upstream.pnpm?.patchedDependencies ?? {}
+      const downstreamPatches = args.pkg.pnpm?.patchedDependencies ?? {}
+      for (const patchName of Object.keys(upstreamPatches)) {
+        if (!(patchName in downstreamPatches)) {
+          issues.push({
+            severity: 'error',
+            packageName: args.pkg.name,
+            dependency: patchName,
+            message: `Missing patch "${patchName}" required by "${depName}"`,
+            rule: 'recompose-patches',
+          })
+        }
       }
     }
   }

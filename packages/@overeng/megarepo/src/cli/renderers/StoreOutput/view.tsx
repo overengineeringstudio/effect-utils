@@ -13,6 +13,7 @@ import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 import type {
   StoreState,
   StoreGcResult,
+  StoreFixResult,
   StoreWorktreeStatus,
   StoreWorktreeIssue,
   StoreGcWarning,
@@ -80,6 +81,26 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           commit={state.commit}
           path={state.path}
           alreadyExists={state.status === 'already_exists'}
+        />
+      )
+    case 'WorktreeNew':
+      return (
+        <StoreWorktreeNewView
+          source={state.source}
+          ref={state.ref}
+          path={state.path}
+          commit={state.commit}
+          autoBootstrap={state.autoBootstrap}
+          branchCreated={state.branchCreated}
+        />
+      )
+    case 'Fix':
+      return (
+        <StoreFixView
+          basePath={state.basePath}
+          results={state.results}
+          dryRun={state.dryRun}
+          noIssues={state.noIssues}
         />
       )
     case 'Error':
@@ -717,6 +738,104 @@ const StoreAddView = ({
       <Text dim> ref: {ref}</Text>
       {commit && <Text dim> commit: {commit.slice(0, 7)}</Text>}
       <Text dim> path: {path}</Text>
+    </Box>
+  )
+}
+
+/** Fix view - show fix results */
+const StoreFixView = ({
+  basePath,
+  results,
+  dryRun,
+  noIssues,
+}: {
+  basePath: string
+  results: readonly StoreFixResult[]
+  dryRun: boolean
+  noIssues: boolean
+}) => {
+  if (noIssues) {
+    return (
+      <Box flexDirection="column">
+        <StoreHeader basePath={basePath} title="store fix" />
+        <Box flexDirection="row">
+          <Text color="green">{SYMBOLS.check}</Text>
+          <Text> No issues found</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  const fixed = results.filter((r) => r.status === 'fixed')
+  const skipped = results.filter((r) => r.status === 'skipped')
+  const errors = results.filter((r) => r.status === 'error')
+
+  return (
+    <Box flexDirection="column">
+      <StoreHeader basePath={basePath} title="store fix" />
+      {dryRun && <Text dim>mode: dry run</Text>}
+      <Text dim>{'─'.repeat(40)}</Text>
+      <Text> </Text>
+      {results.map((result, i) => (
+        <Box key={`${result.memberName}-${result.issueType}-${i}`} flexDirection="row">
+          {result.status === 'fixed' ? (
+            <Text color="green">{SYMBOLS.check}</Text>
+          ) : result.status === 'error' ? (
+            <Text color="red">{SYMBOLS.cross}</Text>
+          ) : (
+            <Text dim>{SYMBOLS.circle}</Text>
+          )}
+          <Text> </Text>
+          <Text bold>{result.memberName}</Text>
+          <Text dim> ({result.issueType})</Text>
+          <Text> {result.message}</Text>
+        </Box>
+      ))}
+      <Text> </Text>
+      <Box flexDirection="row">
+        {fixed.length > 0 && <Text color="green">{fixed.length} fixed</Text>}
+        {fixed.length > 0 && (skipped.length > 0 || errors.length > 0) && (
+          <Text dim> {SYMBOLS.dot} </Text>
+        )}
+        {skipped.length > 0 && <Text dim>{skipped.length} skipped</Text>}
+        {skipped.length > 0 && errors.length > 0 && <Text dim> {SYMBOLS.dot} </Text>}
+        {errors.length > 0 && (
+          <Text color="red">
+            {errors.length} error{errors.length !== 1 ? 's' : ''}
+          </Text>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
+/** WorktreeNew view - show worktree creation result */
+const StoreWorktreeNewView = ({
+  source,
+  ref,
+  path,
+  commit,
+  autoBootstrap,
+  branchCreated,
+}: {
+  source: string
+  ref: string
+  path: string
+  commit?: string | undefined
+  autoBootstrap: boolean
+  branchCreated: boolean
+}) => {
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Text color="green">{SYMBOLS.check}</Text>
+        <Text> {path}</Text>
+      </Box>
+      <Text dim> source: {source}</Text>
+      <Text dim> ref: {ref}</Text>
+      {commit && <Text dim> commit: {commit.slice(0, 7)}</Text>}
+      {autoBootstrap === true && <Text dim> auto-bootstrapped bare repo</Text>}
+      <Text dim> {branchCreated === true ? 'created branch' : 'checked out existing branch'}</Text>
     </Box>
   )
 }

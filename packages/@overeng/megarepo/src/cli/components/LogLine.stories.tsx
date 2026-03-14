@@ -45,6 +45,7 @@ type Story = StoryObj<typeof LogLine>
 export const AllTypes: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -61,6 +62,7 @@ export const AllTypes: Story = {
 export const InfoLogs: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -77,6 +79,7 @@ export const InfoLogs: Story = {
 export const ErrorLogs: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">

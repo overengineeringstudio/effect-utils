@@ -14,6 +14,7 @@ import {
 
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
+import * as sharedFixtures from '../_fixtures.ts'
 import * as fixtures from './_fixtures.ts'
 
 type StoryArgs = {
@@ -26,7 +27,7 @@ type StoryArgs = {
 
 export default {
   component: SyncView,
-  title: 'CLI/Lock/Apply',
+  title: 'CLI/Apply/Results',
   parameters: { layout: 'fullscreen' },
   args: {
     ...defaultStoryArgs,
@@ -53,7 +54,7 @@ export const FullApply: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockApplyResults,
+        results: fixtures.applyResults,
         workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
         options: {
           mode: 'apply' as const,
@@ -68,7 +69,7 @@ export const FullApply: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
+        initialState={sharedFixtures.createCommandState({
           mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
@@ -76,9 +77,10 @@ export const FullApply: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({
+              timeline: sharedFixtures.createCommandTimeline({
                 mode: 'apply',
                 finalState: stateConfig,
               }),
@@ -94,7 +96,7 @@ export const PartialApply: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockApplyPartial,
+        results: fixtures.applyPartial,
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -108,7 +110,7 @@ export const PartialApply: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
+        initialState={sharedFixtures.createCommandState({
           mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
@@ -116,9 +118,10 @@ export const PartialApply: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({
+              timeline: sharedFixtures.createCommandTimeline({
                 mode: 'apply',
                 finalState: stateConfig,
               }),
@@ -135,7 +138,7 @@ export const WithErrors: Story = {
     const stateConfig = useMemo(
       () => ({
         _tag: 'Error' as const,
-        results: fixtures.lockApplyWithErrors,
+        results: fixtures.applyWithErrors,
         workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
         options: {
           mode: 'apply' as const,
@@ -163,7 +166,7 @@ export const WithErrors: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
+        initialState={sharedFixtures.createCommandState({
           mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
@@ -171,9 +174,10 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({
+              timeline: sharedFixtures.createCommandTimeline({
                 mode: 'apply',
                 finalState: stateConfig,
               }),
@@ -190,7 +194,7 @@ export const DryRun: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockApplyResults,
+        results: fixtures.applyResults,
         workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
         options: { mode: 'apply' as const, dryRun: true, all: false, verbose: args.verbose },
       }),
@@ -200,7 +204,7 @@ export const DryRun: Story = {
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
+        initialState={sharedFixtures.createCommandState({
           mode: 'apply',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
@@ -208,9 +212,10 @@ export const DryRun: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({
+              timeline: sharedFixtures.createCommandTimeline({
                 mode: 'apply',
                 finalState: stateConfig,
               }),

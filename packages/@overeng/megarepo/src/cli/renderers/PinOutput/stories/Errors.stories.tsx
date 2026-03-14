@@ -44,6 +44,7 @@ export const ErrorNotInMegarepo: Story = {
     const finalState = useMemo(() => fixtures.createErrorNotInMegarepo(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -63,6 +64,7 @@ export const ErrorMemberNotFound: Story = {
     const finalState = useMemo(() => fixtures.createErrorMemberNotFound(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -82,6 +84,7 @@ export const ErrorNotSynced: Story = {
     const finalState = useMemo(() => fixtures.createErrorNotSynced(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -101,6 +104,7 @@ export const ErrorLocalPath: Story = {
     const finalState = useMemo(() => fixtures.createErrorLocalPath(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -120,6 +124,7 @@ export const ErrorNotInLock: Story = {
     const finalState = useMemo(() => fixtures.createErrorNotInLock(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

@@ -44,6 +44,7 @@ export const DryRunFull: Story = {
     const finalState = useMemo(() => fixtures.createDryRunFull(), [])
     return (
       <TuiStoryPreview
+        command="mr pin --dry-run"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -63,6 +64,7 @@ export const DryRunSimple: Story = {
     const finalState = useMemo(() => fixtures.createDryRunSimple(), [])
     return (
       <TuiStoryPreview
+        command="mr pin --dry-run"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

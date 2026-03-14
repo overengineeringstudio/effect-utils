@@ -1,5 +1,5 @@
 /**
- * Stories for `mr lock` — records current workspace state into megarepo.lock.
+ * Lock sync stories for `mr fetch` — shows lock file update details.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -14,29 +14,40 @@ import {
 
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
-import * as fixtures from './_fixtures.ts'
+import {
+  createCommandState,
+  createCommandTimeline,
+  exampleLockSyncResults,
+} from '../_fixtures.ts'
+import { fetchFullNixSync, fetchLockSyncResults, fetchResults } from './_fixtures.ts'
 
 type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
   dryRun: boolean
+  all: boolean
   verbose: boolean
 }
 
 export default {
   component: SyncView,
-  title: 'CLI/Lock/Sync',
+  title: 'CLI/Fetch/Lock Sync',
   parameters: { layout: 'fullscreen' },
   args: {
     ...defaultStoryArgs,
     dryRun: false,
-    verbose: false,
+    all: false,
+    verbose: true,
   },
   argTypes: {
     ...commonArgTypes,
     dryRun: {
-      description: '--dry-run: show what would be recorded without writing megarepo.lock',
+      description: '--dry-run: show what would happen without making changes',
+      control: { type: 'boolean' },
+    },
+    all: {
+      description: '--all: sync nested megarepos recursively',
       control: { type: 'boolean' },
     },
     verbose: {
@@ -48,36 +59,38 @@ export default {
 
 type Story = StoryObj<StoryArgs>
 
-/** All members recorded into megarepo.lock */
-export const AllRecorded: Story = {
+/** Fetch with lock sync results (flake.lock/devenv.lock) */
+export const WithLockSync: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockSyncAllRecorded,
+        results: fetchResults,
+        lockSyncResults: exampleLockSyncResults,
         options: {
-          mode: 'lock' as const,
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          all: false,
+          all: args.all,
           verbose: args.verbose,
         },
       }),
-      [args.dryRun, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
-          mode: 'lock',
+        initialState={createCommandState({
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({ mode: 'lock', finalState: stateConfig }),
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
             }
           : {})}
       />
@@ -85,36 +98,38 @@ export const AllRecorded: Story = {
   },
 }
 
-/** Some members skipped (dirty worktree, pinned) */
-export const WithSkipped: Story = {
+/** Fetch with lock input sync results (including flake.nix/devenv.yaml source file updates) */
+export const WithLockInputSync: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockSyncWithSkipped,
+        results: fetchResults,
+        lockSyncResults: fetchLockSyncResults,
         options: {
-          mode: 'lock' as const,
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          all: false,
+          all: args.all,
           verbose: args.verbose,
         },
       }),
-      [args.dryRun, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
-          mode: 'lock',
+        initialState={createCommandState({
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({ mode: 'lock', finalState: stateConfig }),
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
             }
           : {})}
       />
@@ -122,32 +137,38 @@ export const WithSkipped: Story = {
   },
 }
 
-/** Dry run — preview what would be recorded */
-export const DryRun: Story = {
-  args: { dryRun: true },
+/** Fetch with full nix lock sync including source file (flake.nix, devenv.yaml) updates */
+export const WithSourceFileSync: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockSyncAllRecorded,
-        options: { mode: 'lock' as const, dryRun: true, all: false, verbose: args.verbose },
+        results: fetchResults,
+        lockSyncResults: fetchFullNixSync,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+        },
       }),
-      [args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createLockState({
-          mode: 'lock',
+        initialState={createCommandState({
+          mode: 'fetch',
           overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
         })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
-              timeline: fixtures.createLockTimeline({ mode: 'lock', finalState: stateConfig }),
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
             }
           : {})}
       />

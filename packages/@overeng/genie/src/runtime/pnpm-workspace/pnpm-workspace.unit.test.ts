@@ -210,3 +210,148 @@ describe('metadata-based workspace projections', () => {
     expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 })
+
+describe('root patch coverage validation', () => {
+  const repo = createTempRepo('packages/utils', 'packages/app')
+  const catalog = defineCatalog({})
+
+  const makeUtilsWithPatches = () => {
+    const utilsComposition = catalog.compose({
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/utils',
+      }),
+    })
+    return packageJson(
+      {
+        name: '@test/utils',
+        version: '1.0.0',
+        pnpm: {
+          patchedDependencies: {
+            'some-pkg@1.0.0': 'packages/utils/patches/some-pkg@1.0.0.patch',
+          },
+        },
+      },
+      utilsComposition,
+    )
+  }
+
+  const makeApp = (deps: ReturnType<typeof packageJson>[]) => {
+    const appComposition = catalog.compose({
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/app',
+      }),
+      dependencies: {
+        workspace: deps,
+      },
+    })
+    return packageJson(
+      {
+        name: '@test/app',
+        version: '1.0.0',
+      },
+      appComposition,
+    )
+  }
+
+  it('passes when root config includes all required patches', () => {
+    const utils = makeUtilsWithPatches()
+    const app = makeApp([utils])
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      patchedDependencies: {
+        'some-pkg@1.0.0': 'repos/upstream/packages/utils/patches/some-pkg@1.0.0.patch',
+      },
+    })
+
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: repo.repoRoot,
+    })
+    expect(issues).toEqual([])
+  })
+
+  it('reports missing patch when root config omits a required patch', () => {
+    const utils = makeUtilsWithPatches()
+    const app = makeApp([utils])
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+    })
+
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: repo.repoRoot,
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues?.[0]).toMatchObject({
+      severity: 'error',
+      dependency: 'some-pkg@1.0.0',
+      rule: 'root-patch-coverage',
+    })
+  })
+
+  it('detects patches from transitive workspace deps', () => {
+    const transitiveRepo = createTempRepo('packages/utils', 'packages/app', 'packages/wrapper')
+    const utils = makeUtilsWithPatches()
+    const app = makeApp([utils])
+
+    const wrapperComposition = catalog.compose({
+      workspace: workspace({
+        repoName: transitiveRepo.repoName,
+        memberPath: 'packages/wrapper',
+      }),
+      dependencies: {
+        workspace: [app],
+      },
+    })
+    const wrapper = packageJson(
+      { name: '@test/wrapper', version: '1.0.0' },
+      wrapperComposition,
+    )
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [wrapper],
+      repoName: transitiveRepo.repoName,
+    })
+
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: transitiveRepo.repoRoot,
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues?.[0]).toMatchObject({
+      rule: 'root-patch-coverage',
+      dependency: 'some-pkg@1.0.0',
+    })
+  })
+
+  it('passes when no packages declare patches', () => {
+    const utilsComposition = catalog.compose({
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/utils',
+      }),
+    })
+    const plainUtils = packageJson(
+      { name: '@test/utils', version: '1.0.0' },
+      utilsComposition,
+    )
+    const app = makeApp([plainUtils])
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+    })
+
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: repo.repoRoot,
+    })
+    expect(issues).toEqual([])
+  })
+})

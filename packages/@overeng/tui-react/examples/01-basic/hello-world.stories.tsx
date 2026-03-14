@@ -123,6 +123,7 @@ export const Demo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="hello-world"
     />
   ),
 }
@@ -139,6 +140,7 @@ export const Displaying: Story = {
       initialState={displayingState(3)}
       height={args.height}
       autoRun={false}
+      command="hello-world"
     />
   ),
 }
@@ -155,6 +157,7 @@ export const Finished: Story = {
       initialState={finishedState}
       height={args.height}
       autoRun={false}
+      command="hello-world"
     />
   ),
 }
@@ -177,6 +180,7 @@ export const InterruptDemo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="hello-world"
     />
   ),
 }
@@ -193,6 +197,7 @@ export const Interrupted: Story = {
       initialState={interruptedState}
       height={args.height}
       autoRun={false}
+      command="hello-world"
     />
   ),
 }

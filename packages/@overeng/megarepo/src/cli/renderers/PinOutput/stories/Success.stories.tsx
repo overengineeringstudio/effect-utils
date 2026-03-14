@@ -44,6 +44,7 @@ export const PinWithRef: Story = {
     const finalState = useMemo(() => fixtures.createPinSuccessWithRef(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -63,6 +64,7 @@ export const PinCurrentCommit: Story = {
     const finalState = useMemo(() => fixtures.createPinSuccessWithCommit(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -82,6 +84,7 @@ export const Unpin: Story = {
     const finalState = useMemo(() => fixtures.createUnpinSuccess(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -101,6 +104,7 @@ export const AlreadyPinned: Story = {
     const finalState = useMemo(() => fixtures.createAlreadyPinned(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -120,6 +124,7 @@ export const AlreadyUnpinned: Story = {
     const finalState = useMemo(() => fixtures.createAlreadyUnpinned(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

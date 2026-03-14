@@ -27,6 +27,8 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../lock.ts'
+import { parseNixFlakeUrl, getRev, updateNixFlakeUrl } from './flake-url.ts'
+import { extractFlakeNixInputs, extractDevenvYamlInputs, matchUrlToMember } from './input-discovery.ts'
 import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
 import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
 
@@ -39,7 +41,7 @@ export interface NixLockSyncFileResult {
   /** Path to the lock file */
   readonly path: AbsoluteFilePath
   /** Type of lock file */
-  readonly type: 'flake.lock' | 'devenv.lock' | 'megarepo.lock'
+  readonly type: 'flake.lock' | 'devenv.lock' | 'megarepo.lock' | 'flake.nix' | 'devenv.yaml'
   /** Inputs that were updated */
   readonly updatedInputs: ReadonlyArray<{
     /** Name of the input in the flake.lock */
@@ -64,6 +66,8 @@ export interface NixLockSyncResult {
   }>
   /** Total number of inputs updated across all files */
   readonly totalUpdates: number
+  /** Results from shared lock source propagation */
+  readonly sharedLockSourceResults: ReadonlyArray<SharedLockSourceResult>
 }
 
 /** Options for syncing Nix lock files */
@@ -514,6 +518,274 @@ const syncNestedMegarepoLockFile = ({
   )
 
 // =============================================================================
+// Source File Rev Sync
+// =============================================================================
+
+const FLAKE_NIX = 'flake.nix'
+const DEVENV_YAML = 'devenv.yaml'
+
+/**
+ * Update `&rev=` / `?rev=` in a source file's input URLs to match megarepo.lock.
+ *
+ * For flake.nix: replaces `url = "OLD_URL"` with the updated URL.
+ * For devenv.yaml: replaces `url: OLD_URL` lines with the updated URL.
+ */
+export const syncSourceFileRevs = ({
+  filePath,
+  fileType,
+  megarepoMembers,
+}: {
+  filePath: AbsoluteFilePath
+  fileType: 'flake.nix' | 'devenv.yaml'
+  megarepoMembers: Record<string, LockedMember>
+}): Effect.Effect<
+  NixLockSyncFileResult,
+  PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    const content = yield* fs.readFileString(filePath)
+    const inputs =
+      fileType === 'flake.nix'
+        ? extractFlakeNixInputs(content)
+        : extractDevenvYamlInputs(content)
+
+    const updatedInputs: NixLockSyncFileResult['updatedInputs'][number][] = []
+    let updatedContent = content
+
+    for (const input of inputs) {
+      const memberName = matchUrlToMember({ url: input.url, members: megarepoMembers })
+      if (memberName === undefined) continue
+
+      const member = megarepoMembers[memberName]
+      if (member === undefined) continue
+
+      const parsed = parseNixFlakeUrl(input.url)
+      if (parsed === undefined) continue
+
+      const currentRev = getRev(parsed)
+      if (currentRev === undefined) continue
+      if (currentRev === member.commit) continue
+
+      const newUrl = updateNixFlakeUrl(input.url, { rev: member.commit })
+
+      updatedInputs.push({
+        inputName: input.inputName,
+        memberName,
+        oldRev: currentRev,
+        newRev: member.commit,
+      })
+
+      // Replace the URL in the file content
+      updatedContent = updatedContent.replaceAll(input.url, newUrl)
+    }
+
+    if (updatedInputs.length > 0) {
+      yield* fs.writeFileString(filePath, updatedContent)
+    }
+
+    return {
+      path: filePath,
+      type: fileType,
+      updatedInputs,
+    }
+  }).pipe(
+    Effect.withSpan('megarepo/nix-lock/source-file', {
+      attributes: { 'span.label': filePath, path: filePath, type: fileType },
+    }),
+  )
+
+// =============================================================================
+// Shared Lock Source Sync
+// =============================================================================
+
+/** Result of syncing a single shared lock source entry */
+export interface SharedLockSourceResult {
+  readonly label: string
+  readonly sourceMember: string
+  readonly path: string
+  readonly updatedMembers: ReadonlyArray<string>
+  readonly skippedMembers: ReadonlyArray<string>
+}
+
+/**
+ * Resolve a dot-notation path (e.g. ".nodes.devenv.locked") to a value in an object.
+ * Returns undefined if the path doesn't exist.
+ */
+export const getByDotPath = (obj: unknown, dotPath: string): unknown => {
+  const segments = dotPath
+    .split('.')
+    .filter((s) => s.length > 0)
+
+  let current: unknown = obj
+  for (const segment of segments) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined
+    }
+    current = (current as Record<string, unknown>)[segment]
+  }
+  return current
+}
+
+/**
+ * Set a value at a dot-notation path in an object.
+ * Creates intermediate objects as needed.
+ * Returns a new object (shallow clones along the path).
+ */
+export const setByDotPath = (obj: unknown, dotPath: string, value: unknown): unknown => {
+  const segments = dotPath
+    .split('.')
+    .filter((s) => s.length > 0)
+
+  if (segments.length === 0) return value
+
+  const root = typeof obj === 'object' && obj !== null ? { ...(obj as Record<string, unknown>) } : {}
+  let current: Record<string, unknown> = root
+
+  for (let i = 0; i < segments.length - 1; i++) {
+    const segment = segments[i]!
+    const existing = current[segment]
+    if (typeof existing === 'object' && existing !== null) {
+      current[segment] = { ...(existing as Record<string, unknown>) }
+    } else {
+      current[segment] = {}
+    }
+    current = current[segment] as Record<string, unknown>
+  }
+
+  current[segments[segments.length - 1]!] = value
+  return root
+}
+
+/**
+ * Sync shared lock sources: copy lock entries from a source member to all other members.
+ *
+ * For each entry in sharedLockSources config:
+ * 1. Read the source member's devenv.lock (or flake.lock)
+ * 2. Extract the value at the given JSON path
+ * 3. For all other members that have a devenv.lock: set the value at the same path
+ */
+const syncSharedLockSources = ({
+  megarepoRoot,
+  sharedLockSources,
+  memberNames,
+  excludeMembers,
+}: {
+  megarepoRoot: AbsoluteDirPath
+  sharedLockSources: Record<string, { source: string; path: string }>
+  memberNames: ReadonlyArray<string>
+  excludeMembers: ReadonlySet<string>
+}): Effect.Effect<
+  ReadonlyArray<SharedLockSourceResult>,
+  PlatformError.PlatformError,
+  FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const results: SharedLockSourceResult[] = []
+
+    for (const [label, config] of Object.entries(sharedLockSources)) {
+      const sourceMemberPath = getMemberPath({ megarepoRoot, name: config.source })
+      const sourceDevenvLockPath = EffectPath.ops.join(
+        sourceMemberPath,
+        EffectPath.unsafe.relativeFile(DEVENV_LOCK),
+      )
+
+      const sourceExists = yield* fs.exists(sourceDevenvLockPath)
+      if (sourceExists === false) {
+        results.push({
+          label,
+          sourceMember: config.source,
+          path: config.path,
+          updatedMembers: [],
+          skippedMembers: [],
+        })
+        continue
+      }
+
+      const sourceContent = yield* fs.readFileString(sourceDevenvLockPath)
+      let sourceJson: unknown
+      try {
+        sourceJson = JSON.parse(sourceContent)
+      } catch {
+        results.push({
+          label,
+          sourceMember: config.source,
+          path: config.path,
+          updatedMembers: [],
+          skippedMembers: [],
+        })
+        continue
+      }
+
+      const sourceValue = getByDotPath(sourceJson, config.path)
+      if (sourceValue === undefined) {
+        results.push({
+          label,
+          sourceMember: config.source,
+          path: config.path,
+          updatedMembers: [],
+          skippedMembers: [],
+        })
+        continue
+      }
+
+      const updatedMembers: string[] = []
+      const skippedMembers: string[] = []
+
+      for (const memberName of memberNames) {
+        if (memberName === config.source) continue
+        if (excludeMembers.has(memberName)) {
+          skippedMembers.push(memberName)
+          continue
+        }
+
+        const memberPath = getMemberPath({ megarepoRoot, name: memberName })
+        const devenvLockPath = EffectPath.ops.join(
+          memberPath,
+          EffectPath.unsafe.relativeFile(DEVENV_LOCK),
+        )
+
+        const hasDevenvLock = yield* fs.exists(devenvLockPath)
+        if (hasDevenvLock === false) continue
+
+        const content = yield* fs.readFileString(devenvLockPath)
+        let targetJson: unknown
+        try {
+          targetJson = JSON.parse(content)
+        } catch {
+          skippedMembers.push(memberName)
+          continue
+        }
+
+        const currentValue = getByDotPath(targetJson, config.path)
+        // Skip if the value is already identical
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        if (JSON.stringify(currentValue) === JSON.stringify(sourceValue)) continue
+
+        const updatedJson = setByDotPath(targetJson, config.path, sourceValue)
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        yield* fs.writeFileString(devenvLockPath, JSON.stringify(updatedJson, null, 2) + '\n')
+        updatedMembers.push(memberName)
+      }
+
+      results.push({
+        label,
+        sourceMember: config.source,
+        path: config.path,
+        updatedMembers,
+        skippedMembers,
+      })
+    }
+
+    return results
+  }).pipe(
+    Effect.withSpan('megarepo/nix-lock/shared-lock-sources'),
+  )
+
+// =============================================================================
 // Main Sync Function
 // =============================================================================
 
@@ -641,6 +913,40 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
             }
           }
 
+          // Check for flake.nix (source file rev sync)
+          const flakeNixPath = EffectPath.ops.join(
+            memberPath,
+            EffectPath.unsafe.relativeFile(FLAKE_NIX),
+          )
+          const hasFlakeNix = yield* fs.exists(flakeNixPath)
+          if (hasFlakeNix === true) {
+            const result = yield* syncSourceFileRevs({
+              filePath: flakeNixPath,
+              fileType: 'flake.nix',
+              megarepoMembers,
+            })
+            if (result.updatedInputs.length > 0) {
+              files.push(result)
+            }
+          }
+
+          // Check for devenv.yaml (source file rev sync)
+          const devenvYamlPath = EffectPath.ops.join(
+            memberPath,
+            EffectPath.unsafe.relativeFile(DEVENV_YAML),
+          )
+          const hasDevenvYaml = yield* fs.exists(devenvYamlPath)
+          if (hasDevenvYaml === true) {
+            const result = yield* syncSourceFileRevs({
+              filePath: devenvYamlPath,
+              fileType: 'devenv.yaml',
+              megarepoMembers,
+            })
+            if (result.updatedInputs.length > 0) {
+              files.push(result)
+            }
+          }
+
           if (files.length > 0) {
             return { memberName, files }
           }
@@ -658,9 +964,22 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
       0,
     )
 
+    // Sync shared lock sources (e.g. devenv version propagation)
+    const sharedLockSources = options.config.lockSync?.sharedLockSources
+    const sharedLockSourceResults =
+      sharedLockSources !== undefined && Object.keys(sharedLockSources).length > 0
+        ? yield* syncSharedLockSources({
+            megarepoRoot: options.megarepoRoot,
+            sharedLockSources,
+            memberNames,
+            excludeMembers,
+          })
+        : []
+
     return {
       memberResults,
       totalUpdates,
+      sharedLockSourceResults,
     } satisfies NixLockSyncResult
   }),
 )
@@ -683,3 +1002,30 @@ export {
   normalizeGitUrl,
   urlsMatch,
 } from './matcher.ts'
+export {
+  type NixFlakeUrl,
+  parseNixFlakeUrl,
+  serializeNixFlakeUrl,
+  updateNixFlakeUrl,
+  getOwnerRepo,
+  getRef,
+  getRev,
+  getDir,
+} from './flake-url.ts'
+export {
+  type DiscoveredInput,
+  type MemberDependencies,
+  type DependencyGraph,
+  extractFlakeNixInputs,
+  extractDevenvYamlInputs,
+  extractLockFileInputs,
+  matchUrlToMember,
+  discoverMemberInputs,
+  buildDependencyGraph,
+} from './input-discovery.ts'
+export {
+  type SourceUrlUpdate,
+  rewriteFlakeNixUrls,
+  rewriteDevenvYamlUrls,
+  rewriteLockFileRefs,
+} from './source-rewriter.ts'

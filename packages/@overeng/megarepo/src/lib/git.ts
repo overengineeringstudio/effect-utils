@@ -231,12 +231,17 @@ export const createWorktree = (args: {
   worktreePath: string
   branch: string
   createBranch?: boolean
+  /** Start point for new branch (only used with createBranch: true) */
+  startPoint?: string
 }) =>
   Effect.gen(function* () {
     const cmdArgs = ['worktree', 'add']
     if (args.createBranch === true) {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
+      if (args.startPoint !== undefined) {
+        cmdArgs.push(args.startPoint)
+      }
     } else {
       cmdArgs.push(args.worktreePath, args.branch)
     }

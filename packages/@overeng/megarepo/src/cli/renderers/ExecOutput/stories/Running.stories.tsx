@@ -99,6 +99,7 @@ export const RunningVerboseParallel: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec npm version"
         View={ExecView}
         app={ExecApp}
         initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}
@@ -129,6 +130,7 @@ export const RunningVerboseSequential: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec git status"
         View={ExecView}
         app={ExecApp}
         initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}

@@ -36,6 +36,7 @@ export {
   type TimelineEvent,
   type OutputTab,
 } from './TuiStoryPreview.tsx'
+export { PowerlinePrompt, type PowerlinePromptProps } from './PowerlinePrompt.tsx'
 export { createStaticApp } from './static-app.ts'
 export { tuiPreview } from './preview.ts'
 export { xtermTheme, containerStyles, previewTextStyles } from './theme.ts'

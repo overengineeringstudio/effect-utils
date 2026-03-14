@@ -44,6 +44,7 @@ export const WarningWorktreeNotAvailable: Story = {
     const finalState = useMemo(() => fixtures.createWarningWorktreeNotAvailable(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -63,6 +64,7 @@ export const WarningMemberRemovedFromConfig: Story = {
     const finalState = useMemo(() => fixtures.createWarningMemberRemovedFromConfig(), [])
     return (
       <TuiStoryPreview
+        command="mr pin"
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

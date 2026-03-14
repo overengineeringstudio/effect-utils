@@ -49,6 +49,7 @@ export const LockMissing: Story = {
       initialState={fixtures.createLockMissingState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
     />
   ),
 }
@@ -62,6 +63,7 @@ export const LockStale: Story = {
       initialState={fixtures.createLockStaleState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
     />
   ),
 }
@@ -75,6 +77,7 @@ export const StaleLockRef: Story = {
       initialState={fixtures.createStaleLockState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
     />
   ),
 }
@@ -88,6 +91,7 @@ export const CommitDrift: Story = {
       initialState={fixtures.createCommitDriftState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
     />
   ),
 }

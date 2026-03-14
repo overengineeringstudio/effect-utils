@@ -1,340 +1,44 @@
 /**
- * Shared fixtures for Lock command stories.
+ * Fixtures for `mr lock` stories.
  *
  * @internal
  */
 
 import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
-import type { SyncState as SyncStateType } from '../../mod.ts'
-import type { MemberLockSyncResult, SyncAction } from '../../schema.ts'
-import { createBaseState } from '../_fixtures.ts'
 
 // =============================================================================
-// Lock Sync Fixtures
+// Lock Results
 // =============================================================================
 
 /** All members recorded into megarepo.lock successfully */
-export const lockSyncAllRecorded: MemberSyncResult[] = [
+export const lockAllRecorded: MemberSyncResult[] = [
   { name: 'effect', status: 'recorded', commit: 'a1b2c3d4e5', previousCommit: '9f8e7d6c5b' },
   { name: 'effect-utils', status: 'recorded', commit: 'f0e1d2c3b4', previousCommit: 'a5b6c7d8e9' },
   { name: 'livestore', status: 'recorded', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'already_synced' },
 ]
 
-/** Lock sync with some members skipped (dirty worktree, pinned) */
-export const lockSyncWithSkipped: MemberSyncResult[] = [
+/** Lock with some members skipped (dirty worktree, pinned) */
+export const lockWithSkipped: MemberSyncResult[] = [
   { name: 'effect', status: 'recorded', commit: 'a1b2c3d4e5' },
   { name: 'effect-utils', status: 'skipped', message: 'dirty worktree' },
   { name: 'livestore', status: 'recorded', commit: '1a2b3c4d5e' },
   { name: 'dotfiles', status: 'skipped', message: 'pinned' },
 ]
 
-// =============================================================================
-// Lock Update Fixtures
-// =============================================================================
-
-/** Lock update fetches new refs and updates workspace */
-export const lockUpdateResults: MemberSyncResult[] = [
+/** Lock recording with commit changes (some changed, some unchanged) */
+export const lockWithUpdates: MemberSyncResult[] = [
   {
     name: 'effect',
-    status: 'updated',
+    status: 'recorded',
     commit: 'abc1234def',
     previousCommit: '9876543fed',
-    ref: 'main',
   },
   {
     name: 'effect-utils',
-    status: 'updated',
+    status: 'recorded',
     commit: 'def5678abc',
     previousCommit: 'fedcba987',
-    ref: 'main',
   },
   { name: 'livestore', status: 'already_synced' },
-  { name: 'dotfiles', status: 'synced', ref: 'main' },
 ]
-
-/** Lock update with --create-branches (new branches created) */
-export const lockUpdateWithNewBranches: MemberSyncResult[] = [
-  { name: 'effect', status: 'cloned', ref: 'feature/new-api' },
-  {
-    name: 'effect-utils',
-    status: 'updated',
-    commit: 'def5678abc',
-    previousCommit: 'fedcba987',
-    ref: 'main',
-  },
-  { name: 'livestore', status: 'synced', ref: 'feature/new-api' },
-  { name: 'dotfiles', status: 'already_synced' },
-]
-
-/** Lock update with errors (network, auth) */
-export const lockUpdateWithErrors: MemberSyncResult[] = [
-  {
-    name: 'effect',
-    status: 'updated',
-    commit: 'abc1234def',
-    previousCommit: '9876543fed',
-    ref: 'main',
-  },
-  { name: 'effect-utils', status: 'error', message: 'network timeout during fetch' },
-  { name: 'livestore', status: 'already_synced' },
-  { name: 'private-repo', status: 'error', message: 'authentication failed' },
-]
-
-/** Lock update with lock input sync results (including flake.nix/devenv.yaml source file updates) */
-export const lockUpdateLockSyncResults: MemberLockSyncResult[] = [
-  {
-    memberName: 'effect',
-    files: [
-      {
-        type: 'flake.lock',
-        updatedInputs: [
-          {
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-          { inputName: 'livestore', memberName: 'livestore', oldRev: '1234567', newRev: '7654321' },
-        ],
-      },
-      {
-        type: 'devenv.lock',
-        updatedInputs: [
-          {
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    memberName: 'dotfiles',
-    files: [
-      {
-        type: 'flake.lock',
-        updatedInputs: [
-          { inputName: 'effect', memberName: 'effect', oldRev: 'fff0000', newRev: 'aaa1111' },
-        ],
-      },
-    ],
-  },
-]
-
-/** Lock update with full nix lock sync including source file (flake.nix, devenv.yaml) and shared lock updates */
-export const lockUpdateFullNixSync: MemberLockSyncResult[] = [
-  {
-    memberName: 'dotfiles',
-    files: [
-      {
-        type: 'flake.nix',
-        updatedInputs: [
-          {
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-        ],
-      },
-      {
-        type: 'flake.lock',
-        updatedInputs: [
-          {
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-          {
-            inputName: 'livestore',
-            memberName: 'livestore',
-            oldRev: '1111111',
-            newRev: '2222222',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    memberName: 'overeng',
-    files: [
-      {
-        type: 'devenv.yaml',
-        updatedInputs: [
-          {
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-        ],
-      },
-      {
-        type: 'devenv.lock',
-        updatedInputs: [
-          {
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-          {
-            inputName: 'effect-utils-playwright',
-            memberName: 'effect-utils',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
-          },
-        ],
-      },
-    ],
-  },
-]
-
-// =============================================================================
-// Lock Apply Fixtures
-// =============================================================================
-
-/** Lock apply in CI - all members applied from lockfile */
-export const lockApplyResults: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
-  { name: 'effect-utils', status: 'applied', commit: 'f0e1d2c3b4' },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'applied', commit: '9f8e7d6c5b' },
-  { name: 'schickling.dev', status: 'applied', commit: 'deadbeef42' },
-]
-
-/** Lock apply with some already at correct commit */
-export const lockApplyPartial: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
-  { name: 'effect-utils', status: 'already_synced' },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'already_synced' },
-]
-
-/** Lock apply failure (lockfile out of date, network issues) */
-export const lockApplyWithErrors: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
-  {
-    name: 'effect-utils',
-    status: 'error',
-    message: 'commit f0e1d2c not found — run mr fetch',
-  },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'error', message: 'repository not found' },
-]
-
-// =============================================================================
-// State Factories
-// =============================================================================
-
-/** Creates a lock state for a given mode with default options. */
-export const createLockState = ({
-  mode,
-  overrides,
-}: {
-  mode: 'lock' | 'fetch' | 'apply'
-  overrides: Partial<SyncStateType> & { results: MemberSyncResult[] }
-}): SyncStateType =>
-  createBaseState({
-    options: { mode, dryRun: false, all: false, verbose: false, ...overrides.options },
-    members: overrides.results.map((r) => r.name),
-    ...overrides,
-  })
-
-// =============================================================================
-// Timeline Factory for Animated Stories
-// =============================================================================
-
-/**
- * Creates a timeline that animates through a lock operation with parallel execution.
- * Models concurrency=4: multiple members syncing simultaneously with staggered completion.
- */
-export const createLockTimeline = ({
-  mode,
-  finalState,
-}: {
-  mode: 'lock' | 'fetch' | 'apply'
-  finalState: Partial<SyncStateType> & { results: MemberSyncResult[] }
-}): Array<{ at: number; action: typeof SyncAction.Type }> => {
-  const results = finalState.results
-  const members = finalState.members ?? results.map((r) => r.name)
-  const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
-  const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
-  const lockSyncResults = finalState.lockSyncResults ?? []
-  const syncErrors = finalState.syncErrors ?? []
-
-  const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
-  const concurrency = 4
-  const resultInterval = 600
-
-  // Step 0: first batch of members become active
-  const initialActive = members.slice(0, concurrency)
-  timeline.push({
-    at: 0,
-    action: {
-      _tag: 'SetState',
-      state: createBaseState({
-        workspace,
-        options,
-        _tag: 'Syncing',
-        members,
-        activeMembers: initialActive,
-        results: [],
-        startedAt: Date.now(),
-      }),
-    },
-  })
-
-  // Progressive results with parallel slot management
-  let nextToStart = concurrency
-  const completedResults: typeof results = []
-  const currentActive = [...initialActive]
-  let runningErrorCount = 0
-  const runningErrors: Array<(typeof syncErrors)[number]> = []
-
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i]!
-    completedResults.push(result)
-
-    const activeIdx = currentActive.indexOf(result.name)
-    if (activeIdx !== -1) currentActive.splice(activeIdx, 1)
-
-    if (nextToStart < members.length) {
-      currentActive.push(members[nextToStart]!)
-      nextToStart++
-    }
-
-    if (result.status === 'error') {
-      runningErrorCount++
-      const matchingError = syncErrors.find((e) => e.memberName === result.name)
-      if (matchingError !== undefined) runningErrors.push(matchingError)
-    }
-
-    const isFinal = i === results.length - 1
-    const hasErrors = runningErrorCount > 0
-
-    timeline.push({
-      at: (i + 1) * resultInterval,
-      action: {
-        _tag: 'SetState',
-        state: createBaseState({
-          workspace,
-          options,
-          _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
-          members,
-          activeMembers: isFinal === true ? [] : [...currentActive],
-          results: completedResults.slice(),
-          lockSyncResults: isFinal === true ? lockSyncResults : [],
-          syncErrors: runningErrors.slice(),
-          syncErrorCount: runningErrorCount,
-        }),
-      },
-    })
-  }
-
-  return timeline
-}

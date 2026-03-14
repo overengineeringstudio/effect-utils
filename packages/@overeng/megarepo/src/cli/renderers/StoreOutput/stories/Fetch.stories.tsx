@@ -66,6 +66,7 @@ export const Success: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr store fetch"
         View={StoreView}
         app={StoreApp}
         initialState={
@@ -96,6 +97,7 @@ export const WithErrors: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr store fetch"
         View={StoreView}
         app={StoreApp}
         initialState={
@@ -137,6 +139,7 @@ export const AllErrors: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr store fetch"
         View={StoreView}
         app={StoreApp}
         initialState={

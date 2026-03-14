@@ -1,5 +1,5 @@
 /**
- * Result state stories for SyncOutput - various completion scenarios.
+ * Result state stories for `mr fetch` — various completion scenarios.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -12,50 +12,49 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { SyncApp } from '../mod.ts'
-import { SyncView } from '../view.tsx'
-import * as fixtures from './_fixtures.ts'
+import { SyncApp } from '../../mod.ts'
+import { SyncView } from '../../view.tsx'
+import {
+  createBaseState,
+  createCommandState,
+  createCommandTimeline,
+  createTimeline,
+  exampleAllSynced,
+  exampleSyncResults,
+} from '../_fixtures.ts'
+import { fetchResults, fetchWithNewBranches } from './_fixtures.ts'
 
 type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
   dryRun: boolean
-  mode: 'apply' | 'lock' | 'fetch'
   all: boolean
   verbose: boolean
 }
 
 export default {
   component: SyncView,
-  title: 'CLI/Sync/Results',
-  parameters: {
-    layout: 'fullscreen',
-  },
+  title: 'CLI/Fetch/Results',
+  parameters: { layout: 'fullscreen' },
   args: {
     ...defaultStoryArgs,
     dryRun: false,
-    mode: 'apply',
     all: false,
     verbose: false,
   },
   argTypes: {
     ...commonArgTypes,
     dryRun: {
-      description: '--dry-run flag: show what would happen without making changes',
+      description: '--dry-run: show what would happen without making changes',
       control: { type: 'boolean' },
     },
-    mode: {
-      description: 'Sync mode for the example state',
-      control: { type: 'select' },
-      options: ['apply', 'lock', 'fetch'],
-    },
     all: {
-      description: '--all flag: sync nested megarepos recursively',
+      description: '--all: sync nested megarepos recursively',
       control: { type: 'boolean' },
     },
     verbose: {
-      description: '--verbose flag: show detailed lock sync information',
+      description: '--verbose: show detailed information',
       control: { type: 'boolean' },
     },
   },
@@ -63,83 +62,85 @@ export default {
 
 type Story = StoryObj<StoryArgs>
 
-/** Mixed sync results - cloned, synced, updated, skipped */
+/** Mixed sync results — cloned, synced, updated, skipped */
 export const MixedResults: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
-        results: fixtures.exampleSyncResults,
-        members: fixtures.exampleSyncResults.map((r) => r.name),
+        results: exampleSyncResults,
+        members: exampleSyncResults.map((r) => r.name),
         nestedMegarepos: ['effect-utils'],
         generatedFiles: ['flake.nix', '.envrc'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
 /** All members already synced */
-export const AllSynced: Story = {
+export const AllUpToDate: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
         workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
-        results: fixtures.exampleAllSynced,
-        members: fixtures.exampleAllSynced.map((r) => r.name),
+        results: exampleAllSynced,
+        members: exampleAllSynced.map((r) => r.name),
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
-/** First sync - all members cloned */
-export const FirstSync: Story = {
+/** First fetch — all members cloned */
+export const InitialFetch: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
@@ -153,67 +154,97 @@ export const FirstSync: Story = {
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         generatedFiles: ['flake.nix'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
-/** Lock updates from local changes */
-export const LockUpdates: Story = {
+/** Members fetched and updated */
+export const Updated: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
+        results: fetchResults,
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
-        results: [
-          {
-            name: 'effect',
-            status: 'recorded' as const,
-            commit: 'abc1234def',
-            previousCommit: '9876543fed',
-          },
-          {
-            name: 'effect-utils',
-            status: 'recorded' as const,
-            commit: 'def5678abc',
-            previousCommit: 'fedcba987',
-          },
-          { name: 'livestore', status: 'already_synced' as const },
-        ],
-        members: ['effect', 'effect-utils', 'livestore'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** New branches created during fetch */
+export const WithNewBranches: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: fetchWithNewBranches,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+        },
+      }),
+      [args.dryRun, args.all, args.verbose],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
       />
     )
   },
@@ -225,40 +256,33 @@ export const RemovedMembers: Story = {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
-          {
-            name: 'old-repo',
-            status: 'removed' as const,
-            message: '/store/old-repo-abc123',
-          },
-          {
-            name: 'deprecated',
-            status: 'removed' as const,
-            message: '/store/deprecated-def456',
-          },
+          { name: 'old-repo', status: 'removed' as const, message: '/store/old-repo-abc123' },
+          { name: 'deprecated', status: 'removed' as const, message: '/store/deprecated-def456' },
         ],
         members: ['effect', 'old-repo', 'deprecated'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -270,8 +294,8 @@ export const WithGenerators: Story = {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
@@ -284,20 +308,21 @@ export const WithGenerators: Story = {
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         generatedFiles: ['flake.nix', 'flake.lock', '.vscode/megarepo.code-workspace'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -309,28 +334,29 @@ export const SingleMember: Story = {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
         results: [{ name: 'effect', status: 'synced' as const, ref: 'main' }],
         members: ['effect'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -346,8 +372,8 @@ export const ManyMembers: Story = {
       }))
       return {
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
@@ -358,32 +384,33 @@ export const ManyMembers: Story = {
         results,
         members: results.map((r) => r.name),
       }
-    }, [args.dryRun, args.mode, args.all, args.verbose])
+    }, [args.dryRun, args.all, args.verbose])
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
-/** Nested megarepos hint (shows when not using --all) */
+/** Nested megarepos hint */
 export const NestedMegarepos: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
         options: {
+          mode: 'fetch' as const,
           dryRun: args.dryRun,
-          mode: args.mode,
           all: args.all,
           verbose: args.verbose,
         },
@@ -395,62 +422,60 @@ export const NestedMegarepos: Story = {
         members: ['effect', 'effect-utils', 'livestore'],
         nestedMegarepos: ['effect-utils', 'livestore'],
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.dryRun, args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
-/** Lock sync results - shows inline badge and verbose expandable section */
-export const WithLockSync: Story = {
-  args: {
-    verbose: true, // Default to verbose to show expandable section
-  },
+/** Dry run — preview what would be fetched */
+export const DryRun: Story = {
+  args: { dryRun: true },
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
+        results: fetchResults,
         options: {
-          dryRun: args.dryRun,
-          mode: args.mode,
+          mode: 'fetch' as const,
+          dryRun: true,
           all: args.all,
           verbose: args.verbose,
         },
-        results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
-          { name: 'livestore', status: 'already_synced' as const },
-          { name: 'dotfiles', status: 'synced' as const, ref: 'main' },
-        ],
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
-        lockSyncResults: fixtures.exampleLockSyncResults,
       }),
-      [args.dryRun, args.mode, args.all, args.verbose],
+      [args.all, args.verbose],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
       />
     )
   },

@@ -318,6 +318,7 @@ export const Demo: Story = {
       playbackSpeed={args.playbackSpeed}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }
@@ -333,6 +334,7 @@ export const Progress: Story = {
       height={args.height}
       autoRun={false}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }
@@ -348,6 +350,7 @@ export const Complete: Story = {
       height={args.height}
       autoRun={false}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }
@@ -363,6 +366,7 @@ export const Failed: Story = {
       height={args.height}
       autoRun={false}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }
@@ -378,6 +382,7 @@ export const RollingBack: Story = {
       height={args.height}
       autoRun={false}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }
@@ -393,6 +398,7 @@ export const Validating: Story = {
       height={args.height}
       autoRun={false}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --dry-run"
     />
   ),
 }
@@ -408,6 +414,7 @@ export const Idle: Story = {
       height={args.height}
       autoRun={false}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }
@@ -632,6 +639,7 @@ export const LongLines: Story = {
       playbackSpeed={args.playbackSpeed}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="deploy --env production --services api,web,worker"
     />
   ),
 }

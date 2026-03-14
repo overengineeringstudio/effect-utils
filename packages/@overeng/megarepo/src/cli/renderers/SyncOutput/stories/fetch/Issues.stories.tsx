@@ -1,5 +1,5 @@
 /**
- * Issue/error/skipped stories for SyncOutput.
+ * Issue/error/skipped stories for `mr fetch`.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -12,45 +12,43 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
-import { SyncApp } from '../mod.ts'
-import { SyncView } from '../view.tsx'
-import * as fixtures from './_fixtures.ts'
+import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import { SyncApp } from '../../mod.ts'
+import { SyncView } from '../../view.tsx'
+import {
+  createBaseState,
+  createCommandState,
+  createCommandTimeline,
+  createTimeline,
+  exampleSyncResultsWithErrors,
+} from '../_fixtures.ts'
+import { fetchWithErrors } from './_fixtures.ts'
 
 type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
   dryRun: boolean
-  mode: 'apply' | 'lock' | 'fetch'
   all: boolean
 }
 
 export default {
   component: SyncView,
-  title: 'CLI/Sync/Issues',
-  parameters: {
-    layout: 'fullscreen',
-  },
+  title: 'CLI/Fetch/Issues',
+  parameters: { layout: 'fullscreen' },
   args: {
     ...defaultStoryArgs,
     dryRun: false,
-    mode: 'apply',
     all: false,
   },
   argTypes: {
     ...commonArgTypes,
     dryRun: {
-      description: '--dry-run flag: show what would happen without making changes',
+      description: '--dry-run: show what would happen without making changes',
       control: { type: 'boolean' },
     },
-    mode: {
-      description: 'Sync mode for the example state',
-      control: { type: 'select' },
-      options: ['apply', 'lock', 'fetch'],
-    },
     all: {
-      description: '--all flag: sync nested megarepos recursively',
+      description: '--all: sync nested megarepos recursively',
       control: { type: 'boolean' },
     },
   },
@@ -63,24 +61,25 @@ export const WithErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
-        results: fixtures.exampleSyncResultsWithErrors,
-        members: fixtures.exampleSyncResultsWithErrors.map((r) => r.name),
+        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all },
+        results: exampleSyncResultsWithErrors,
+        members: exampleSyncResultsWithErrors.map((r) => r.name),
       }),
-      [args.dryRun, args.mode, args.all],
+      [args.dryRun, args.all],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -91,7 +90,7 @@ export const AllErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
+        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all },
         results: [
           { name: 'effect', status: 'error' as const, message: 'network timeout' },
           { name: 'effect-utils', status: 'error' as const, message: 'authentication failed' },
@@ -100,20 +99,21 @@ export const AllErrors: Story = {
         ],
         members: ['effect', 'effect-utils', 'livestore', 'private-repo'],
       }),
-      [args.dryRun, args.mode, args.all],
+      [args.dryRun, args.all],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -124,7 +124,7 @@ export const SkippedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
+        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           { name: 'dirty-repo', status: 'skipped' as const, message: 'dirty worktree' },
@@ -133,20 +133,21 @@ export const SkippedMembers: Story = {
         ] satisfies MemberSyncResult[],
         members: ['effect', 'dirty-repo', 'pinned-repo', 'private-repo'],
       }),
-      [args.dryRun, args.mode, args.all],
+      [args.dryRun, args.all],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -157,7 +158,7 @@ export const MixedSkipped: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
+        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all },
         results: [
           { name: 'effect', status: 'already_synced' as const },
           { name: 'dirty-repo', status: 'skipped' as const, message: '5 uncommitted changes' },
@@ -167,32 +168,33 @@ export const MixedSkipped: Story = {
         ] satisfies MemberSyncResult[],
         members: ['effect', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
       }),
-      [args.dryRun, args.mode, args.all],
+      [args.dryRun, args.all],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
-/** Issue #88: Ref mismatch detection */
+/** Ref mismatch detection */
 export const RefMismatchDetected: Story = {
   args: { height: 500 },
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
+        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all },
         results: [
           { name: 'effect', status: 'synced' as const, ref: 'main' },
           {
@@ -217,20 +219,21 @@ export const RefMismatchDetected: Story = {
         ] satisfies MemberSyncResult[],
         members: ['effect', 'effect-utils', 'livestore', 'other-repo'],
       }),
-      [args.dryRun, args.mode, args.all],
+      [args.dryRun, args.all],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
@@ -241,7 +244,7 @@ export const Interrupted: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: { dryRun: args.dryRun, mode: args.mode, all: args.all },
+        options: { mode: 'fetch' as const, dryRun: args.dryRun, all: args.all },
         _tag: 'Interrupted' as const,
         members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
         results: [
@@ -249,20 +252,73 @@ export const Interrupted: Story = {
           { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
         ] satisfies MemberSyncResult[],
       }),
-      [args.dryRun, args.mode, args.all],
+      [args.dryRun, args.all],
     )
     return (
       <TuiStoryPreview
         View={SyncView}
         app={SyncApp}
-        initialState={fixtures.createBaseState(
+        initialState={createBaseState(
           args.interactive === true ? { _tag: 'Success' } : stateConfig,
         )}
         height={args.height}
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+      />
+    )
+  },
+}
+
+/** Fetch errors with detailed sync error messages */
+export const FetchErrors: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        _tag: 'Error' as const,
+        results: fetchWithErrors,
+        options: {
+          mode: 'fetch' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: false,
+        },
+        syncErrorCount: 2,
+        syncErrors: [
+          {
+            megarepoRoot: '/Users/dev/workspace',
+            memberName: 'effect-utils',
+            message: 'network timeout during fetch',
+          },
+          {
+            megarepoRoot: '/Users/dev/workspace',
+            memberName: 'private-repo',
+            message: 'authentication failed',
+          },
+        ],
+      }),
+      [args.dryRun, args.all],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createCommandState({
+          mode: 'fetch',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
+        {...(args.interactive === true
+          ? {
+              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+            }
+          : {})}
       />
     )
   },

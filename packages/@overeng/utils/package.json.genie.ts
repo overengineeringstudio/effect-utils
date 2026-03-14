@@ -1,6 +1,7 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
+  utilsPatches,
   workspaceMember,
   packageJson,
   privatePackageDefaults,
@@ -73,6 +74,9 @@ export default packageJson(
         node: './src/cuid/cuid.node.ts',
         default: './src/cuid/mod.ts',
       },
+    },
+    pnpm: {
+      patchedDependencies: utilsPatches,
     },
     publishConfig: {
       access: 'public',

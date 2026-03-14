@@ -37,6 +37,7 @@ type Story = StoryObj<StoryArgs>
 export const NotInMegarepo: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="mr exec"
       View={ExecView}
       app={ExecApp}
       initialState={fixtures.errorState}
@@ -49,6 +50,7 @@ export const NotInMegarepo: Story = {
 export const MemberNotFound: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="mr exec"
       View={ExecView}
       app={ExecApp}
       initialState={fixtures.memberNotFoundState}

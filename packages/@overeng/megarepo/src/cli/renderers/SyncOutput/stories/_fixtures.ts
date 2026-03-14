@@ -314,3 +314,109 @@ export const createTimeline = (
 
   return timeline
 }
+
+// =============================================================================
+// Command-specific State & Timeline Factories
+// =============================================================================
+
+/** Creates a command-specific state with the given mode and overrides. */
+export const createCommandState = ({
+  mode,
+  overrides,
+}: {
+  mode: 'lock' | 'fetch' | 'apply'
+  overrides: Partial<SyncStateType> & { results: MemberSyncResult[] }
+}): SyncStateType =>
+  createBaseState({
+    options: { mode, dryRun: false, all: false, verbose: false, ...overrides.options },
+    members: overrides.results.map((r) => r.name),
+    ...overrides,
+  })
+
+/**
+ * Creates a timeline that animates through a command operation with parallel execution.
+ * Models concurrency=4: multiple members syncing simultaneously with staggered completion.
+ */
+export const createCommandTimeline = ({
+  mode,
+  finalState,
+}: {
+  mode: 'lock' | 'fetch' | 'apply'
+  finalState: Partial<SyncStateType> & { results: MemberSyncResult[] }
+}): Array<{ at: number; action: typeof SyncAction.Type }> => {
+  const results = finalState.results
+  const members = finalState.members ?? results.map((r) => r.name)
+  const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
+  const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
+  const lockSyncResults = finalState.lockSyncResults ?? []
+  const syncErrors = finalState.syncErrors ?? []
+
+  const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
+  const concurrency = 4
+  const resultInterval = 600
+
+  const initialActive = members.slice(0, concurrency)
+  timeline.push({
+    at: 0,
+    action: {
+      _tag: 'SetState',
+      state: createBaseState({
+        workspace,
+        options,
+        _tag: 'Syncing',
+        members,
+        activeMembers: initialActive,
+        results: [],
+        startedAt: Date.now(),
+      }),
+    },
+  })
+
+  let nextToStart = concurrency
+  const completedResults: typeof results = []
+  const currentActive = [...initialActive]
+  let runningErrorCount = 0
+  const runningErrors: Array<(typeof syncErrors)[number]> = []
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]!
+    completedResults.push(result)
+
+    const activeIdx = currentActive.indexOf(result.name)
+    if (activeIdx !== -1) currentActive.splice(activeIdx, 1)
+
+    if (nextToStart < members.length) {
+      currentActive.push(members[nextToStart]!)
+      nextToStart++
+    }
+
+    if (result.status === 'error') {
+      runningErrorCount++
+      const matchingError = syncErrors.find((e) => e.memberName === result.name)
+      if (matchingError !== undefined) runningErrors.push(matchingError)
+    }
+
+    const isFinal = i === results.length - 1
+    const hasErrors = runningErrorCount > 0
+
+    timeline.push({
+      at: (i + 1) * resultInterval,
+      action: {
+        _tag: 'SetState',
+        state: createBaseState({
+          workspace,
+          options,
+          _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
+          members,
+          activeMembers: isFinal === true ? [] : [...currentActive],
+          results: completedResults.slice(),
+          lockSyncResults: isFinal === true ? lockSyncResults : [],
+          syncErrors: runningErrors.slice(),
+          syncErrorCount: runningErrorCount,
+        }),
+      },
+    })
+  }
+
+  return timeline
+}

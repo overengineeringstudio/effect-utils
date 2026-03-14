@@ -1041,9 +1041,19 @@ const rootPnpmWorkspaceYaml = ({
       ? projectedMembers
       : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
 
-  return createPnpmWorkspaceYaml({
-    ...config,
-    packages: allMembers,
+  const fullConfig = { ...config, packages: allMembers }
+
+  return createGenieOutput({
+    data: fullConfig,
+    stringify: (ctx: GenieContext) =>
+      stringify(buildPnpmWorkspaceYaml({ data: fullConfig, location: ctx.location })),
+    validate: (ctx: GenieContext) => [
+      ...validatePnpmWorkspaceData({ data: fullConfig, location: ctx.location }),
+      ...validateRootPatchCoverage({
+        packages,
+        rootPatchedDependencies: config.patchedDependencies,
+      }),
+    ],
   })
 }
 
@@ -1076,6 +1086,69 @@ const validatePnpmWorkspaceData = ({
           rule: 'pnpm-workspace-absolute-path',
         })
       }
+    }
+  }
+
+  return issues
+}
+
+/**
+ * Collect all pnpm patch keys required by packages in the workspace closure.
+ * Traverses transitive workspace deps recursively.
+ */
+const collectRequiredPatchKeysFromPackages = (
+  packages: readonly WorkspacePackageLike[],
+): Set<string> => {
+  const keys = new Set<string>()
+  const visited = new Set<string>()
+
+  const traverse = (deps: readonly WorkspacePackageLike[]) => {
+    for (const dep of deps) {
+      const visitedKey = `${dep.meta.workspace.repoName}:${dep.meta.workspace.memberPath}`
+      if (visited.has(visitedKey) === true) continue
+      visited.add(visitedKey)
+
+      const patches = dep.data.pnpm?.patchedDependencies
+      if (patches !== undefined) {
+        for (const key of Object.keys(patches)) {
+          keys.add(key)
+        }
+      }
+
+      traverse(dep.meta.workspace.deps)
+    }
+  }
+
+  traverse(packages)
+  return keys
+}
+
+/**
+ * Validate that a root pnpm-workspace.yaml includes all patch keys
+ * required by workspace members in its transitive closure.
+ */
+const validateRootPatchCoverage = ({
+  packages,
+  rootPatchedDependencies,
+}: {
+  packages: readonly WorkspacePackageLike[]
+  rootPatchedDependencies: Record<string, string> | undefined
+}): GenieValidationIssue[] => {
+  const requiredKeys = collectRequiredPatchKeysFromPackages(packages)
+  if (requiredKeys.size === 0) return []
+
+  const rootKeys = new Set(Object.keys(rootPatchedDependencies ?? {}))
+  const issues: GenieValidationIssue[] = []
+
+  for (const key of requiredKeys) {
+    if (rootKeys.has(key) === false) {
+      issues.push({
+        severity: 'error',
+        packageName: '(root workspace)',
+        dependency: key,
+        message: `Root pnpm-workspace.yaml is missing patch "${key}" required by a workspace member. Use createPnpmPatchedDependencies() to project patches from imported repos.`,
+        rule: 'root-patch-coverage',
+      })
     }
   }
 

@@ -158,6 +158,7 @@ export const CompleteSuccess: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec npm version"
         View={ExecView}
         app={ExecApp}
         initialState={
@@ -194,6 +195,7 @@ export const CompleteMixed: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec npm version"
         View={ExecView}
         app={ExecApp}
         initialState={
@@ -230,6 +232,7 @@ export const CompleteWithSkipped: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec npm install"
         View={ExecView}
         app={ExecApp}
         initialState={
@@ -266,6 +269,7 @@ export const CompleteAllErrors: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec foo"
         View={ExecView}
         app={ExecApp}
         initialState={
@@ -305,6 +309,7 @@ export const CompleteVerbose: Story = {
     )
     return (
       <TuiStoryPreview
+        command="mr exec npm version"
         View={ExecView}
         app={ExecApp}
         initialState={

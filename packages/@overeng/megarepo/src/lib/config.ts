@@ -92,7 +92,7 @@ export class VscodeGeneratorConfig extends Schema.Class<VscodeGeneratorConfig>(
  *
  * When enabled, megarepo updates `rev` fields in member repos'
  * flake.lock and devenv.lock files to match commits in megarepo.lock.
- * With `mr sync --all`, it also reconciles nested megarepo.lock files.
+ * With `mr apply --all`, it also reconciles nested megarepo.lock files.
  * This keeps all lock files in sync with megarepo as the source of truth.
  *
  * Lock sync is **auto-detected** by default: if `devenv.lock` or `flake.lock`
@@ -111,6 +111,22 @@ export class LockSyncConfig extends Schema.Class<LockSyncConfig>('LockSyncConfig
    * These members' lock files will not be modified
    */
   exclude: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * Copy lock entries from a source member to all others.
+   * Useful for propagating shared dependency versions (e.g. devenv) across members.
+   *
+   * Key: arbitrary label for the shared source
+   * Value: { source: member name to copy from, path: dot-notation JSON path (e.g. ".nodes.devenv.locked") }
+   */
+  sharedLockSources: Schema.optional(
+    Schema.Record({
+      key: Schema.String,
+      value: Schema.Struct({
+        source: Schema.String,
+        path: Schema.String,
+      }),
+    }),
+  ),
 }) {}
 
 /** All generator configurations */

@@ -93,7 +93,7 @@ export default {
   title: 'Components/StatusIcon',
   component: StatusIcon,
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => <StatusIconShowcase />} initialState={null} />
+    <TuiStoryPreview command="mr status" app={StaticApp} View={() => <StatusIconShowcase />} initialState={null} />
   ),
   parameters: {
     layout: 'fullscreen',
@@ -121,6 +121,7 @@ export const AllStatuses: Story = {}
 export const ActiveSpinner: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row" gap={1}>
@@ -136,6 +137,7 @@ export const ActiveSpinner: Story = {
 export const SuccessCheck: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row" gap={1}>
@@ -151,6 +153,7 @@ export const SuccessCheck: Story = {
 export const ErrorCross: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row" gap={1}>

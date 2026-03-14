@@ -43,6 +43,7 @@ type Story = StoryObj<typeof Summary>
 export const MixedResults: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => <Summary counts={{ cloned: 3, synced: 2, updated: 1, errors: 1 }} />}
       initialState={null}
@@ -53,6 +54,7 @@ export const MixedResults: Story = {
 export const AllSuccess: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => <Summary counts={{ synced: 5 }} />}
       initialState={null}
@@ -63,6 +65,7 @@ export const AllSuccess: Story = {
 export const WithErrors: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => <Summary counts={{ synced: 3, errors: 2 }} />}
       initialState={null}
@@ -73,6 +76,7 @@ export const WithErrors: Story = {
 export const AlreadySynced: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => <Summary counts={{ alreadySynced: 5 }} />}
       initialState={null}
@@ -82,13 +86,14 @@ export const AlreadySynced: Story = {
 
 export const NoChanges: Story = {
   render: () => (
-    <TuiStoryPreview app={StaticApp} View={() => <Summary counts={{}} />} initialState={null} />
+    <TuiStoryPreview command="mr status" app={StaticApp} View={() => <Summary counts={{}} />} initialState={null} />
   ),
 }
 
 export const DryRunMode: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column" gap={1}>
@@ -104,6 +109,7 @@ export const DryRunMode: Story = {
 export const FullExample: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Summary

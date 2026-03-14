@@ -46,12 +46,12 @@ const makeSuccessState = (
 })
 
 export const Loading: Story = {
-  render: () => <TuiStoryPreview View={DiffView} app={DiffApp} initialState={makeLoadingState()} />,
+  render: () => <TuiStoryPreview command="notion diff" View={DiffView} app={DiffApp} initialState={makeLoadingState()} />,
 }
 
 export const NoDifferences: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeNoDifferencesState({
@@ -64,7 +64,7 @@ export const NoDifferences: Story = {
 
 export const WithAddedProperties: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeSuccessState({
@@ -81,7 +81,7 @@ export const WithAddedProperties: Story = {
 
 export const WithRemovedProperties: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeSuccessState({
@@ -98,7 +98,7 @@ export const WithRemovedProperties: Story = {
 
 export const WithTypeChanges: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeSuccessState({
@@ -125,7 +125,7 @@ export const WithTypeChanges: Story = {
 
 export const MixedChanges: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeSuccessState({
@@ -154,7 +154,7 @@ export const MixedChanges: Story = {
 
 export const WithOptionsChanges: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeSuccessState({
@@ -172,7 +172,7 @@ export const WithOptionsChanges: Story = {
 
 export const FullDiff: Story = {
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeSuccessState({
@@ -200,7 +200,7 @@ export const FullDiff: Story = {
 export const ErrorState: Story = {
   name: 'Error',
   render: () => (
-    <TuiStoryPreview
+    <TuiStoryPreview command="notion diff"
       View={DiffView}
       app={DiffApp}
       initialState={makeErrorState('Schema file not found: ./schema.ts')}

@@ -49,6 +49,7 @@ export const Default: Story = {
       initialState={fixtures.createDefaultState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls"
     />
   ),
 }
@@ -62,6 +63,7 @@ export const SingleMember: Story = {
       initialState={fixtures.createSingleMemberState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls"
     />
   ),
 }
@@ -75,6 +77,7 @@ export const EmptyWorkspace: Story = {
       initialState={fixtures.createEmptyState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls"
     />
   ),
 }
@@ -88,6 +91,7 @@ export const ManyMembers: Story = {
       initialState={fixtures.createManyMembersState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls"
     />
   ),
 }
@@ -101,6 +105,7 @@ export const AllMegarepos: Story = {
       initialState={fixtures.createAllMegareposState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls --all"
     />
   ),
 }
