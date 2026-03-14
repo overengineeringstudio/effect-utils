@@ -38,6 +38,7 @@ type Story = StoryObj<StoryArgs>
 export const DefaultGraph: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr deps"
       View={DepsView}
       app={DepsApp}
@@ -52,6 +53,7 @@ export const DefaultGraph: Story = {
 export const EmptyGraph: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr deps"
       View={DepsView}
       app={DepsApp}
@@ -66,6 +68,7 @@ export const EmptyGraph: Story = {
 export const SingleUpstream: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr deps"
       View={DepsView}
       app={DepsApp}

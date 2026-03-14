@@ -63,6 +63,7 @@ type Story = StoryObj<StoryArgs>
 export const Success: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store worktree new"
       View={StoreView}
       app={StoreApp}
@@ -83,6 +84,7 @@ export const Success: Story = {
 export const AutoBootstrap: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store worktree new"
       View={StoreView}
       app={StoreApp}
@@ -103,6 +105,7 @@ export const AutoBootstrap: Story = {
 export const BranchCreated: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store worktree new"
       View={StoreView}
       app={StoreApp}
@@ -127,6 +130,7 @@ export const BranchCreated: Story = {
 export const AlreadyExists: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store worktree new"
       View={StoreView}
       app={StoreApp}
@@ -144,6 +148,7 @@ export const AlreadyExists: Story = {
 export const RepoNotFound: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store worktree new"
       View={StoreView}
       app={StoreApp}

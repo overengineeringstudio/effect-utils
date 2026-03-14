@@ -77,6 +77,7 @@ export const FullApply: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="/home/runner/work/mr-all-blue"
         command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -118,6 +119,7 @@ export const PartialApply: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -174,44 +176,7 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
-        {...(args.interactive === true
-          ? {
-              timeline: sharedFixtures.createCommandTimeline({
-                mode: 'apply',
-                finalState: stateConfig,
-              }),
-            }
-          : {})}
-      />
-    )
-  },
-}
-
-/** Dry run — preview what commits would be checked out */
-export const DryRun: Story = {
-  args: { dryRun: true },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.applyResults,
-        workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
-        options: { mode: 'apply' as const, dryRun: true, all: false, verbose: args.verbose },
-      }),
-      [args.verbose],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={sharedFixtures.createCommandState({
-          mode: 'apply',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
+        cwd="/home/runner/work/mr-all-blue"
         command={`mr apply${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {

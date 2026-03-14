@@ -76,6 +76,7 @@ export const AllRecorded: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -117,6 +118,7 @@ export const WithUpdates: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -158,43 +160,7 @@ export const WithSkipped: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
-        {...(args.interactive === true
-          ? {
-              timeline: sharedFixtures.createCommandTimeline({
-                mode: 'lock',
-                finalState: stateConfig,
-              }),
-            }
-          : {})}
-      />
-    )
-  },
-}
-
-/** Dry run — preview what would be recorded */
-export const DryRun: Story = {
-  args: { dryRun: true },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.lockAllRecorded,
-        options: { mode: 'lock' as const, dryRun: true, all: false, verbose: args.verbose },
-      }),
-      [args.verbose],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={sharedFixtures.createCommandState({
-          mode: 'lock',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr lock${args.dryRun ? ' --dry-run' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {

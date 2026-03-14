@@ -62,6 +62,7 @@ type Story = StoryObj<StoryArgs>
 export const WithRepos: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store ls"
       View={StoreView}
       app={StoreApp}
@@ -75,6 +76,7 @@ export const WithRepos: Story = {
 export const Empty: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store ls"
       View={StoreView}
       app={StoreApp}
@@ -88,6 +90,7 @@ export const Empty: Story = {
 export const ManyRepos: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr store ls"
       View={StoreView}
       app={StoreApp}

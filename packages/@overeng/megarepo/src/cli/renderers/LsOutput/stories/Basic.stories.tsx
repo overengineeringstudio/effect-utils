@@ -50,6 +50,7 @@ export const Default: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
+      cwd="~/my-workspace"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const SingleMember: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
+      cwd="~/minimal"
     />
   ),
 }
@@ -78,6 +80,7 @@ export const EmptyWorkspace: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
+      cwd="~/empty-workspace"
     />
   ),
 }
@@ -92,6 +95,7 @@ export const ManyMembers: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
+      cwd="~/large-workspace"
     />
   ),
 }
@@ -106,6 +110,7 @@ export const AllMegarepos: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls --all"
+      cwd="~/all-megarepos"
     />
   ),
 }

@@ -20,6 +20,7 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  dryRun: boolean
 }
 
 export default {
@@ -30,9 +31,11 @@ export default {
   },
   args: {
     ...defaultStoryArgs,
+    dryRun: false,
   },
   argTypes: {
     ...commonArgTypes,
+    dryRun: { description: '--dry-run: preview changes without applying', control: { type: 'boolean' } },
   },
 } satisfies Meta
 
@@ -44,7 +47,8 @@ export const WarningWorktreeNotAvailable: Story = {
     const finalState = useMemo(() => fixtures.createWarningWorktreeNotAvailable(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -64,7 +68,8 @@ export const WarningMemberRemovedFromConfig: Story = {
     const finalState = useMemo(() => fixtures.createWarningMemberRemovedFromConfig(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

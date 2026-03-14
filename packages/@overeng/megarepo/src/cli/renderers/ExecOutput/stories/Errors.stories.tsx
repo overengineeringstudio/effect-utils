@@ -37,6 +37,7 @@ type Story = StoryObj<StoryArgs>
 export const NotInMegarepo: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr exec"
       View={ExecView}
       app={ExecApp}
@@ -50,6 +51,7 @@ export const NotInMegarepo: Story = {
 export const MemberNotFound: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr exec"
       View={ExecView}
       app={ExecApp}

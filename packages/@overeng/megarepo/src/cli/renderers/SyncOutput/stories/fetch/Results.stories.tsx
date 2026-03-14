@@ -91,6 +91,7 @@ export const MixedResults: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -126,6 +127,7 @@ export const AllUpToDate: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/mr-all-blue"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -167,6 +169,7 @@ export const InitialFetch: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/new-workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -201,6 +204,7 @@ export const Updated: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -239,6 +243,7 @@ export const WithNewBranches: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -281,6 +286,7 @@ export const RemovedMembers: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -321,6 +327,7 @@ export const WithGenerators: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -355,6 +362,7 @@ export const SingleMember: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -396,6 +404,7 @@ export const ManyMembers: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/large-workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -435,47 +444,9 @@ export const NestedMegarepos: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
-}
-
-/** Dry run — preview what would be fetched */
-export const DryRun: Story = {
-  args: { dryRun: true },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        options: {
-          mode: 'fetch' as const,
-          dryRun: true,
-          all: args.all,
-          verbose: args.verbose,
-        },
-      }),
-      [args.all, args.verbose],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
       />
     )
   },

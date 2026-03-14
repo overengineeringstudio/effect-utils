@@ -50,6 +50,7 @@ export const LocalPaths: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
+      cwd="~/local-dev"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const ErrorState: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
+      cwd="~/unknown"
     />
   ),
 }

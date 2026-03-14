@@ -78,6 +78,7 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -112,6 +113,7 @@ export const AllErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -146,6 +148,7 @@ export const SkippedMembers: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -181,6 +184,7 @@ export const MixedSkipped: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -232,6 +236,7 @@ export const RefMismatchDetected: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -265,6 +270,7 @@ export const Interrupted: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -313,6 +319,7 @@ export const FetchErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}`}
         {...(args.interactive === true
           ? {

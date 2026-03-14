@@ -55,6 +55,7 @@ export const NestedMegarepos: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status --all"
+      cwd="~/mr-all-blue"
     />
   ),
 }
@@ -70,6 +71,7 @@ export const DeeplyNested: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status --all"
+      cwd="~/deep-workspace"
     />
   ),
 }
@@ -85,6 +87,7 @@ export const CurrentLocation: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status --all"
+      cwd="~/mr-all-blue"
     />
   ),
 }
@@ -103,6 +106,7 @@ export const PinnedMembers: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -117,6 +121,7 @@ export const LocalPathMembers: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/local-dev"
     />
   ),
 }
@@ -131,6 +136,7 @@ export const ManyMembers: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/large-workspace"
     />
   ),
 }
@@ -149,6 +155,7 @@ export const MultipleProblems: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/problematic-workspace"
     />
   ),
 }

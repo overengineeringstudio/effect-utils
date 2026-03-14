@@ -5,7 +5,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import {
+  ALL_OUTPUT_TABS,
+  commonArgTypes,
+  defaultStoryArgs,
+  TuiStoryPreview,
+} from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
@@ -14,6 +19,7 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  dryRun: boolean
 }
 
 export default {
@@ -29,23 +35,14 @@ export default {
     },
   },
   args: {
-    height: 400,
-    interactive: false,
-    playbackSpeed: 1,
+    ...defaultStoryArgs,
+    dryRun: false,
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    interactive: {
-      description: 'Enable animated timeline playback',
+    ...commonArgTypes,
+    dryRun: {
+      description: '--dry-run: preview fixes without applying',
       control: { type: 'boolean' },
-    },
-    playbackSpeed: {
-      description: 'Playback speed multiplier (when interactive)',
-      control: { type: 'range', min: 0.5, max: 3, step: 0.5 },
-      if: { arg: 'interactive' },
     },
   },
 } satisfies Meta
@@ -56,12 +53,13 @@ type Story = StoryObj<StoryArgs>
 export const NoIssues: Story = {
   render: (args) => (
     <TuiStoryPreview
-      command="mr store fix"
+      cwd="~/workspace"
+      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
         results: [],
-        dryRun: false,
+        dryRun: args.dryRun,
         noIssues: true,
       })}
       height={args.height}
@@ -74,12 +72,13 @@ export const NoIssues: Story = {
 export const MixedResults: Story = {
   render: (args) => (
     <TuiStoryPreview
-      command="mr store fix"
+      cwd="~/workspace"
+      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
         results: fixtures.fixResultsMixed,
-        dryRun: false,
+        dryRun: args.dryRun,
         noIssues: false,
       })}
       height={args.height}
@@ -92,12 +91,13 @@ export const MixedResults: Story = {
 export const AllFixed: Story = {
   render: (args) => (
     <TuiStoryPreview
-      command="mr store fix"
+      cwd="~/workspace"
+      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
         results: fixtures.fixResultsAllFixed,
-        dryRun: false,
+        dryRun: args.dryRun,
         noIssues: false,
       })}
       height={args.height}
@@ -106,16 +106,18 @@ export const AllFixed: Story = {
   ),
 }
 
-/** Dry run mode - shows what would be fixed */
-export const DryRun: Story = {
+/** Dry run preview with skipped results showing what would be fixed */
+export const DryRunPreview: Story = {
+  args: { dryRun: true },
   render: (args) => (
     <TuiStoryPreview
-      command="mr store fix --dry-run"
+      cwd="~/workspace"
+      command={`mr store fix${args.dryRun ? ' --dry-run' : ''}`}
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createFixState({
         results: fixtures.fixResultsDryRun,
-        dryRun: true,
+        dryRun: args.dryRun,
         noIssues: false,
       })}
       height={args.height}

@@ -50,6 +50,7 @@ export const AllDirty: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const AllNotSynced: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/new-workspace"
     />
   ),
 }
@@ -78,6 +80,7 @@ export const WithWarnings: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }

@@ -50,6 +50,7 @@ export const Default: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const AllClean: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -78,6 +80,7 @@ export const SingleMember: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/minimal"
     />
   ),
 }
@@ -92,6 +95,7 @@ export const EmptyWorkspace: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/empty-workspace"
     />
   ),
 }

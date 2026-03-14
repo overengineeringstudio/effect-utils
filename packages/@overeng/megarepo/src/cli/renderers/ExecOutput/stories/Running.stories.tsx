@@ -99,6 +99,7 @@ export const RunningVerboseParallel: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
         command="mr exec npm version"
         View={ExecView}
         app={ExecApp}
@@ -130,6 +131,7 @@ export const RunningVerboseSequential: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
         command="mr exec git status"
         View={ExecView}
         app={ExecApp}

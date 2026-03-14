@@ -20,6 +20,7 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  dryRun: boolean
 }
 
 export default {
@@ -30,9 +31,11 @@ export default {
   },
   args: {
     ...defaultStoryArgs,
+    dryRun: false,
   },
   argTypes: {
     ...commonArgTypes,
+    dryRun: { description: '--dry-run: preview changes without applying', control: { type: 'boolean' } },
   },
 } satisfies Meta
 
@@ -44,7 +47,8 @@ export const PinWithRef: Story = {
     const finalState = useMemo(() => fixtures.createPinSuccessWithRef(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -64,7 +68,8 @@ export const PinCurrentCommit: Story = {
     const finalState = useMemo(() => fixtures.createPinSuccessWithCommit(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -84,7 +89,8 @@ export const Unpin: Story = {
     const finalState = useMemo(() => fixtures.createUnpinSuccess(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -104,7 +110,8 @@ export const AlreadyPinned: Story = {
     const finalState = useMemo(() => fixtures.createAlreadyPinned(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -124,7 +131,52 @@ export const AlreadyUnpinned: Story = {
     const finalState = useMemo(() => fixtures.createAlreadyUnpinned(), [])
     return (
       <TuiStoryPreview
-        command="mr pin"
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
+}
+
+/** Dry run with full details - ref change, symlink change, worktree creation */
+export const DryRunFull: Story = {
+  args: { dryRun: true },
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createDryRunFull(), [])
+    return (
+      <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
+        View={PinView}
+        app={PinApp}
+        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+      />
+    )
+  },
+}
+
+/** Dry run with minimal changes - just pinned flag */
+export const DryRunSimple: Story = {
+  args: { dryRun: true },
+  render: (args) => {
+    const finalState = useMemo(() => fixtures.createDryRunSimple(), [])
+    return (
+      <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

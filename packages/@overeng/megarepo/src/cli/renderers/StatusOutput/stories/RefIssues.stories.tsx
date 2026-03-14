@@ -50,6 +50,7 @@ export const SymlinkDrift: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const MultipleSymlinkDrift: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }
@@ -78,6 +80,7 @@ export const RefMismatch: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }

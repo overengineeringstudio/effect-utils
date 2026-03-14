@@ -50,6 +50,7 @@ export const LockMissing: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const LockStale: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -78,6 +80,7 @@ export const StaleLockRef: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }
@@ -92,6 +95,7 @@ export const CommitDrift: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }

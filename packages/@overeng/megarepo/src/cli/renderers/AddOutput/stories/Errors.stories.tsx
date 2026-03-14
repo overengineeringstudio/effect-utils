@@ -55,6 +55,7 @@ type Story = StoryObj<StoryArgs>
 export const ErrorNotInMegarepo: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
       command="mr add"
       View={AddView}
       app={AddApp}

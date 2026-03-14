@@ -87,6 +87,7 @@ export const WithLockSync: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -126,6 +127,7 @@ export const WithLockInputSync: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {
@@ -165,6 +167,7 @@ export const WithSourceFileSync: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
         command={`mr fetch${args.dryRun ? ' --dry-run' : ''}${args.all ? ' --all' : ''}${args.verbose ? ' --verbose' : ''}`}
         {...(args.interactive === true
           ? {

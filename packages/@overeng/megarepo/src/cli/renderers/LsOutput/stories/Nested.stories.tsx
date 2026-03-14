@@ -50,6 +50,7 @@ export const WithAllFlag: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls --all"
+      cwd="~/my-workspace"
     />
   ),
 }
@@ -64,6 +65,7 @@ export const DeeplyNested: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls --all"
+      cwd="~/deep-workspace"
     />
   ),
 }
