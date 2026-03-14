@@ -140,6 +140,24 @@ describe('validatePackageRecompositionForPackage', () => {
     })
   })
 
+  it('private package: skips patch recomposition (workspace root handles patches)', () => {
+    const upstream = makePackage({
+      name: '@test/utils',
+      path: 'packages/utils',
+      pnpm: { patchedDependencies: { 'some-pkg@1.0.0': 'patches/some-pkg.patch' } },
+    })
+    const downstream = makePackage({
+      name: '@test/app',
+      path: 'packages/app',
+      private: true,
+      dependencies: { '@test/utils': 'workspace:*' },
+    })
+    const ctx = makeContext([upstream, downstream])
+
+    const issues = validatePackageRecompositionForPackage({ ctx, pkgName: '@test/app' })
+    expect(issues).toEqual([])
+  })
+
   it('private package: accepts peer dep satisfied via dependencies', () => {
     const upstream = makePackage({
       name: '@test/utils',

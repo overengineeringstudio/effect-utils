@@ -7,11 +7,10 @@ export default createPlaywrightConfig({
   testIgnore: ['**/fixtures/**'],
   webServer: {
     /**
-     * Ensure the Vite command resolves relative to this package,
-     * even when the Playwright CLI runs from the workspace root.
+     * Run Vite from the package cwd through `pnpm exec` so it resolves
+     * against the active workspace topology instead of the ambient PATH.
      */
     cwd: fileURLToPath(new URL('.', import.meta.url)),
-    command:
-      './node_modules/.bin/vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
+    command: 'pnpm exec vite --config src/browser/__tests__/vite.config.ts --port {{port}}',
   },
 })

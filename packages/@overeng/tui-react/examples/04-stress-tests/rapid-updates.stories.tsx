@@ -160,6 +160,7 @@ export const Demo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="rapid-updates"
     />
   ),
 }
@@ -176,6 +177,7 @@ export const Running: Story = {
       initialState={runningState({ frame: 150, fps: 58, progress: 50 })}
       height={args.height}
       autoRun={false}
+      command="rapid-updates"
     />
   ),
 }
@@ -192,6 +194,7 @@ export const FinishedExcellent: Story = {
       initialState={finishedState({ totalFrames: 300, avgFps: 60 })}
       height={args.height}
       autoRun={false}
+      command="rapid-updates"
     />
   ),
 }
@@ -208,6 +211,7 @@ export const FinishedGood: Story = {
       initialState={finishedState({ totalFrames: 200, avgFps: 40 })}
       height={args.height}
       autoRun={false}
+      command="rapid-updates"
     />
   ),
 }
@@ -224,6 +228,7 @@ export const Interrupted: Story = {
       initialState={interruptedState({ frame: 100, fps: 55, progress: 33 })}
       height={args.height}
       autoRun={false}
+      command="rapid-updates"
     />
   ),
 }

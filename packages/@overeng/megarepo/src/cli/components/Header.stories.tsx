@@ -46,6 +46,7 @@ type Story = StoryObj<typeof Header>
 export const Default: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => <Header name="mr-workspace" root="/Users/dev/workspace" />}
       initialState={null}
@@ -56,9 +57,10 @@ export const Default: Story = {
 export const WithModes: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
-        <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'frozen']} />
+        <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'apply']} />
       )}
       initialState={null}
     />
@@ -68,6 +70,7 @@ export const WithModes: Story = {
 export const NameOnly: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => <Header name="mr-workspace" />}
       initialState={null}

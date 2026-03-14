@@ -51,6 +51,7 @@ let
         fi
 
         deploy_dir="${pkg.path}/storybook-static"
+        workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' "${pkg.path}/package.json")"
 
         if [ ! -d "$deploy_dir" ]; then
           echo "Skipping ${pkg.name}: no build output at $deploy_dir" >&2
@@ -64,6 +65,7 @@ let
         short_sha="$(${git} rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
         alias_flag=""
+        filter_flag=""
         message="${pkg.name}"
 
         case "$deploy_type" in
@@ -89,6 +91,10 @@ let
             ;;
         esac
 
+        if [ -n "$workspace_filter" ]; then
+          filter_flag="--filter=$workspace_filter"
+        fi
+
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
         # TODO: Switch back to `bunx netlify-cli` once upstream fixes chalk v5/v4 ESM/CJS conflict
@@ -97,6 +103,7 @@ let
         pnpm --package=netlify-cli dlx netlify deploy \
           --dir="$deploy_dir" \
           --site="${site}" \
+          $filter_flag \
           --no-build \
           $alias_flag \
           --message="$message"

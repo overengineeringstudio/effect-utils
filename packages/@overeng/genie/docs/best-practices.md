@@ -40,14 +40,28 @@ Genie uses `Strict<T, TBase>` generics to catch typos (extra properties) at comp
 
 **Available types:**
 
-| Factory               | Type to use with `satisfies` |
-| --------------------- | ---------------------------- |
-| `githubRuleset()`     | `GithubRulesetArgs`          |
-| `githubWorkflow()`    | `GitHubWorkflowArgs`         |
-| `packageJson()`       | `PackageJsonData`            |
-| `workspaceRoot()`     | `WorkspaceRootData`          |
-| `tsconfigJson()`      | `TSConfigArgs`               |
-| `pnpmWorkspaceYaml()` | `PnpmWorkspaceData`          |
-| `oxlintConfig()`      | `OxlintConfigArgs`           |
-| `oxfmtConfig()`       | `OxfmtConfigArgs`            |
-| `megarepoJson()`      | `MegarepoConfigArgs`         |
+| Factory            | Type to use with `satisfies` |
+| ------------------ | ---------------------------- |
+| `githubRuleset()`  | `GithubRulesetArgs`          |
+| `githubWorkflow()` | `GitHubWorkflowArgs`         |
+| `packageJson()`    | `PackageJsonData`            |
+| `tsconfigJson()`   | `TSConfigArgs`               |
+| `oxlintConfig()`   | `OxlintConfigArgs`           |
+| `oxfmtConfig()`    | `OxfmtConfigArgs`            |
+| `megarepoJson()`   | `MegarepoConfigArgs`         |
+
+For workspace root and pnpm workspace projections, use the composition
+wrappers with an explicit `repoName`:
+
+- `packageJson.aggregateFromPackages({ packages, name, repoName })`
+- `pnpmWorkspaceYaml.root({ packages, repoName, ...config })`
+
+Treat the `packages` array as the single source of truth for workspace
+membership. If something belongs in the workspace, include its package
+generator output rather than maintaining a parallel path list.
+
+`extraMembers` is an exceptional compromise for rare cases where workspace
+members are intentionally not genie-managed (e.g. standalone, copyable examples
+in livestore). Prefer creating a real package generator for each member over
+using `extraMembers`. Do not use `extraMembers` as a shortcut to avoid writing
+a genie generator.

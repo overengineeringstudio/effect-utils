@@ -25,5 +25,6 @@ export {
   type MemberSyncResult,
   type MemberSyncStatus,
   type SyncMemberError,
+  type SyncMode,
   type SyncOptions,
 } from './types.ts'

@@ -5,7 +5,7 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
+import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Effect, Option, Schema } from 'effect'
 import React from 'react'
 
@@ -22,12 +22,81 @@ import {
 import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
 import { classifyRef } from '../../../lib/ref.ts'
+import { validateStoreMembers, fixStoreIssues } from '../../../lib/store-hygiene.ts'
 import { Store, StoreLayer } from '../../../lib/store.ts'
 import { getCloneUrl } from '../../../lib/sync/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { StoreCommandError } from '../../errors.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type { StoreWorktreeStatus, StoreWorktreeIssue } from '../../renderers/StoreOutput/mod.ts'
+
+/** Entry returned by collectStoreWorktrees — `broken` indicates a directory that looks like a worktree but is missing its .git file */
+type CollectedWorktree = {
+  ref: string
+  refType: 'heads' | 'tags' | 'commits'
+  path: AbsoluteDirPath
+  broken: boolean
+}
+
+const collectStoreWorktrees = ({
+  fs,
+  refTypePath,
+  currentPath,
+  refType,
+}: {
+  fs: FileSystem.FileSystem
+  refTypePath: AbsoluteDirPath
+  currentPath: AbsoluteDirPath
+  refType: 'heads' | 'tags' | 'commits'
+}): Effect.Effect<Array<CollectedWorktree>, PlatformError.PlatformError> =>
+  Effect.gen(function* () {
+    const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
+    const isWorktree = yield* fs.exists(gitPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+    if (isWorktree === true) {
+      return [
+        {
+          ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
+          refType,
+          path: currentPath,
+          broken: false,
+        },
+      ]
+    }
+
+    const entries = yield* fs.readDirectory(currentPath)
+    const result: Array<CollectedWorktree> = []
+
+    for (const entry of entries) {
+      if (entry.startsWith('.') === true) continue
+
+      const entryPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeDir(`${entry}/`))
+      const entryStat = yield* fs.stat(entryPath).pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (entryStat?.type !== 'Directory') continue
+
+      result.push(
+        ...(yield* collectStoreWorktrees({
+          fs,
+          refTypePath,
+          currentPath: entryPath,
+          refType,
+        })),
+      )
+    }
+
+    /** If no worktrees found and this isn't the refType root, it's a broken worktree */
+    if (result.length === 0 && currentPath !== refTypePath) {
+      return [
+        {
+          ref: currentPath.slice(refTypePath.length).replace(/\/$/, ''),
+          refType,
+          path: currentPath,
+          broken: true,
+        },
+      ]
+    }
+
+    return result
+  })
 
 /** List repos in the store */
 const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ output }) =>
@@ -47,7 +116,10 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
         }),
       { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/ls')),
+  }).pipe(
+    Effect.provide(StoreLayer),
+    Effect.withSpan('megarepo/store/ls', { attributes: { 'span.label': 'ls' } }),
+  ),
 ).pipe(Cli.Command.withDescription('List repositories in the store'))
 
 /** Show store status and detect issues */
@@ -93,133 +165,138 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
       }
     }
 
-    // List all repos and analyze worktrees
+    // List all repos and analyze worktrees in parallel
     const repos = yield* store.listRepos()
-    const worktreeStatuses: StoreWorktreeStatus[] = []
-    let totalWorktreeCount = 0
 
-    for (const repo of repos) {
-      // Check if .bare/ exists
-      const bareRepoPath = EffectPath.ops.join(
-        repo.fullPath,
-        EffectPath.unsafe.relativeDir('.bare/'),
-      )
-      const bareExists = yield* fs.exists(bareRepoPath)
+    const repoResults = yield* Effect.all(
+      repos.map((repo) =>
+        Effect.gen(function* () {
+          const bareRepoPath = EffectPath.ops.join(
+            repo.fullPath,
+            EffectPath.unsafe.relativeDir('.bare/'),
+          )
+          const bareExists = yield* fs.exists(bareRepoPath)
 
-      // List worktrees for this repo
-      const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
-      const refsExists = yield* fs.exists(refsDir)
-      if (refsExists === false) continue
+          const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
+          const refsExists = yield* fs.exists(refsDir)
+          if (refsExists === false) return []
 
-      const refTypes = yield* fs.readDirectory(refsDir)
-      for (const refTypeDir of refTypes) {
-        if (refTypeDir !== 'heads' && refTypeDir !== 'tags' && refTypeDir !== 'commits') continue
+          const refTypes = yield* fs.readDirectory(refsDir)
+          const validRefTypes = refTypes.filter(
+            (d): d is 'heads' | 'tags' | 'commits' =>
+              d === 'heads' || d === 'tags' || d === 'commits',
+          )
 
-        const refTypePath = EffectPath.ops.join(
-          refsDir,
-          EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
-        )
-        const refTypeStat = yield* fs
-          .stat(refTypePath)
-          .pipe(Effect.catchAll(() => Effect.succeed(null)))
-        if (refTypeStat?.type !== 'Directory') continue
+          const allWorktrees: Array<CollectedWorktree> = []
 
-        const encodedRefs = yield* fs.readDirectory(refTypePath)
-        for (const encodedRef of encodedRefs) {
-          const worktreePath = EffectPath.ops.join(
-            refTypePath,
-            EffectPath.unsafe.relativeDir(`${encodedRef}/`),
-          ) as AbsoluteDirPath
-          const worktreeStat = yield* fs
-            .stat(worktreePath)
-            .pipe(Effect.catchAll(() => Effect.succeed(null)))
-          if (worktreeStat?.type !== 'Directory') continue
-
-          totalWorktreeCount++
-          const expectedRef = decodeURIComponent(encodedRef)
-          const issues: StoreWorktreeIssue[] = []
-
-          // Check for missing bare repo
-          if (bareExists === false) {
-            issues.push({
-              type: 'missing_bare',
-              severity: 'error',
-              message: '.bare/ directory not found',
-            })
-          }
-
-          // Check if worktree is a valid git repo
-          // In worktrees, .git is a file (not directory) containing "gitdir: <path>"
-          const gitPath = EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('.git'))
-          const gitExists = yield* fs
-            .exists(gitPath)
-            .pipe(Effect.catchAll(() => Effect.succeed(false)))
-          if (gitExists === false) {
-            issues.push({
-              type: 'broken_worktree',
-              severity: 'error',
-              message: '.git not found in worktree',
-            })
-          } else {
-            // Check for ref mismatch (only for branches)
-            if (refTypeDir === 'heads') {
-              const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-                Effect.catchAll(() => Effect.succeed(Option.none<string>())),
-              )
-              if (Option.isSome(actualBranch) === true && actualBranch.value !== expectedRef) {
-                issues.push({
-                  type: 'ref_mismatch',
-                  severity: 'error',
-                  message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
-                })
-              }
-            }
-
-            // Check for dirty worktree
-            const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
-              Effect.catchAll(() =>
-                Effect.succeed({
-                  isDirty: false,
-                  hasUnpushed: false,
-                  changesCount: 0,
-                }),
-              ),
+          for (const refTypeDir of validRefTypes) {
+            const refTypePath = EffectPath.ops.join(
+              refsDir,
+              EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
             )
-            if (worktreeStatus.isDirty === true) {
-              issues.push({
-                type: 'dirty',
-                severity: 'warning',
-                message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
-              })
-            }
-            if (worktreeStatus.hasUnpushed === true) {
-              issues.push({
-                type: 'unpushed',
-                severity: 'warning',
-                message: 'has unpushed commits',
-              })
-            }
-          }
+            const refTypeStat = yield* fs
+              .stat(refTypePath)
+              .pipe(Effect.catchAll(() => Effect.succeed(null)))
+            if (refTypeStat?.type !== 'Directory') continue
 
-          // Check if orphaned (not in current megarepo's lock)
-          if (inUsePaths.has(worktreePath) === false) {
-            issues.push({
-              type: 'orphaned',
-              severity: 'info',
-              message: 'not in current megarepo.lock',
+            const worktrees = yield* collectStoreWorktrees({
+              fs,
+              refTypePath,
+              currentPath: refTypePath,
+              refType: refTypeDir,
             })
+            allWorktrees.push(...worktrees)
           }
 
-          worktreeStatuses.push({
-            repo: repo.relativePath,
-            ref: expectedRef,
-            refType: refTypeDir as 'heads' | 'tags' | 'commits',
-            path: worktreePath,
-            issues,
-          })
-        }
-      }
-    }
+          // Analyze all worktrees for this repo in parallel
+          return yield* Effect.all(
+            allWorktrees.map(
+              ({ path: worktreePath, ref: expectedRef, refType: refTypeDir, broken }) =>
+                Effect.gen(function* () {
+                  const issues: StoreWorktreeIssue[] = []
+
+                  if (bareExists === false) {
+                    issues.push({
+                      type: 'missing_bare',
+                      severity: 'error',
+                      message: '.bare/ directory not found',
+                    })
+                  }
+
+                  if (broken === true) {
+                    issues.push({
+                      type: 'broken_worktree',
+                      severity: 'error',
+                      message: '.git not found in worktree',
+                    })
+                  } else {
+                    if (refTypeDir === 'heads') {
+                      const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
+                        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+                      )
+                      if (
+                        Option.isSome(actualBranch) === true &&
+                        actualBranch.value !== expectedRef
+                      ) {
+                        issues.push({
+                          type: 'ref_mismatch',
+                          severity: 'error',
+                          message: `path says '${expectedRef}' but HEAD is '${actualBranch.value}'`,
+                        })
+                      }
+                    }
+
+                    const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+                      Effect.catchAll(() =>
+                        Effect.succeed({
+                          isDirty: false,
+                          hasUnpushed: false,
+                          changesCount: 0,
+                        }),
+                      ),
+                    )
+                    if (worktreeStatus.isDirty === true) {
+                      issues.push({
+                        type: 'dirty',
+                        severity: 'warning',
+                        message: `${worktreeStatus.changesCount} uncommitted change${worktreeStatus.changesCount !== 1 ? 's' : ''}`,
+                      })
+                    }
+                    if (worktreeStatus.hasUnpushed === true) {
+                      issues.push({
+                        type: 'unpushed',
+                        severity: 'warning',
+                        message: 'has unpushed commits',
+                      })
+                    }
+                  }
+
+                  if (inUsePaths.has(worktreePath) === false) {
+                    issues.push({
+                      type: 'orphaned',
+                      severity: 'info',
+                      message: 'not in current megarepo.lock',
+                    })
+                  }
+
+                  return {
+                    repo: repo.relativePath,
+                    ref: expectedRef,
+                    refType: refTypeDir,
+                    path: worktreePath,
+                    issues,
+                  } satisfies StoreWorktreeStatus
+                }),
+            ),
+            { concurrency: 8 },
+          )
+        }),
+      ),
+      { concurrency: 8 },
+    )
+
+    const worktreeStatuses = repoResults.flat()
+    const totalWorktreeCount = worktreeStatuses.length
 
     // Use TuiApp for output
     yield* run(
@@ -236,7 +313,10 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
         }),
       { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/status')),
+  }).pipe(
+    Effect.provide(StoreLayer),
+    Effect.withSpan('megarepo/store/status', { attributes: { 'span.label': 'status' } }),
+  ),
 ).pipe(Cli.Command.withDescription('Show store status and detect issues'))
 
 /** Fetch all repos in the store */
@@ -289,7 +369,10 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
         }),
       { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
     ).pipe(Effect.provide(outputModeLayer(output)))
-  }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/fetch')),
+  }).pipe(
+    Effect.provide(StoreLayer),
+    Effect.withSpan('megarepo/store/fetch', { attributes: { 'span.label': 'fetch' } }),
+  ),
 ).pipe(Cli.Command.withDescription('Fetch all repositories in the store'))
 
 /**
@@ -369,134 +452,160 @@ const storeGcCommand = Cli.Command.make(
             ? { type: 'only_current_megarepo' }
             : undefined
 
-      // List all repos and their worktrees
+      // List all repos and process their worktrees (parallel across repos,
+      // sequential within a repo to avoid git conflicts on the same bare repo)
       const repos = yield* store.listRepos()
-      const results: Array<{
-        repo: string
-        ref: string
-        path: string
-        status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
-        message?: string
-      }> = []
 
-      for (const repo of repos) {
-        // List worktrees for this repo
-        // We need to construct a mock source for listing
-        const worktrees = yield* Effect.gen(function* () {
-          const refsDir = EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('refs/'))
-          const exists = yield* fs.exists(refsDir)
-          if (exists === false) return []
-
-          const result: Array<{
-            ref: string
-            refType: string
-            path: AbsoluteDirPath
-          }> = []
-
-          const refTypes = yield* fs.readDirectory(refsDir)
-          for (const refTypeDir of refTypes) {
-            if (refTypeDir !== 'heads' && refTypeDir !== 'tags' && refTypeDir !== 'commits')
-              continue
-
-            const refTypePath = EffectPath.ops.join(
-              refsDir,
-              EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
-            )
-            const refTypeStat = yield* fs
-              .stat(refTypePath)
-              .pipe(Effect.catchAll(() => Effect.succeed(null)))
-            if (refTypeStat?.type !== 'Directory') continue
-
-            const encodedRefs = yield* fs.readDirectory(refTypePath)
-            for (const encodedRef of encodedRefs) {
-              const worktreePath = EffectPath.ops.join(
-                refTypePath,
-                EffectPath.unsafe.relativeDir(`${encodedRef}/`),
-              )
-              const worktreeStat = yield* fs
-                .stat(worktreePath)
-                .pipe(Effect.catchAll(() => Effect.succeed(null)))
-              if (worktreeStat?.type !== 'Directory') continue
-
-              const ref = decodeURIComponent(encodedRef)
-              result.push({ ref, refType: refTypeDir, path: worktreePath })
-            }
-          }
-
-          return result
-        })
-
-        for (const worktree of worktrees) {
-          // Check if worktree is in use
-          if (inUsePaths.has(worktree.path) === true) {
-            results.push({
-              repo: repo.relativePath,
-              ref: worktree.ref,
-              path: worktree.path,
-              status: 'skipped_in_use',
-            })
-            continue
-          }
-
-          // Check if worktree is dirty
-          const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
-            Effect.catchAll(() =>
-              Effect.succeed({
-                isDirty: false,
-                hasUnpushed: false,
-                changesCount: 0,
-              }),
-            ),
-          )
-
-          if ((status.isDirty === true || status.hasUnpushed === true) && force === false) {
-            results.push({
-              repo: repo.relativePath,
-              ref: worktree.ref,
-              path: worktree.path,
-              status: 'skipped_dirty',
-              message:
-                status.isDirty === true
-                  ? `${status.changesCount} uncommitted change(s)`
-                  : 'has unpushed commits',
-            })
-            continue
-          }
-
-          // Remove the worktree
-          if (dryRun === false) {
-            yield* Effect.gen(function* () {
-              const bareRepoPath = EffectPath.ops.join(
+      const repoGcResults = yield* Effect.all(
+        repos.map((repo) =>
+          Effect.gen(function* () {
+            const worktrees = yield* Effect.gen(function* () {
+              const refsDir = EffectPath.ops.join(
                 repo.fullPath,
-                EffectPath.unsafe.relativeDir('.bare/'),
+                EffectPath.unsafe.relativeDir('refs/'),
               )
-              yield* Git.removeWorktree({
-                repoPath: bareRepoPath,
-                worktreePath: worktree.path,
-                force: force,
-              }).pipe(
-                Effect.catchAll(() =>
-                  // If git worktree remove fails, try removing the directory directly
-                  fs.remove(worktree.path, { recursive: true }),
-                ),
-              )
-            }).pipe(
-              Effect.catchAll((error) =>
-                Effect.succeed({
-                  error: error instanceof Error === true ? error.message : String(error),
+              const exists = yield* fs.exists(refsDir)
+              if (exists === false) return []
+
+              const result: Array<CollectedWorktree> = []
+
+              const refTypes = yield* fs.readDirectory(refsDir)
+              for (const refTypeDir of refTypes) {
+                if (refTypeDir !== 'heads' && refTypeDir !== 'tags' && refTypeDir !== 'commits')
+                  continue
+
+                const refTypePath = EffectPath.ops.join(
+                  refsDir,
+                  EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
+                )
+                const refTypeStat = yield* fs
+                  .stat(refTypePath)
+                  .pipe(Effect.catchAll(() => Effect.succeed(null)))
+                if (refTypeStat?.type !== 'Directory') continue
+
+                result.push(
+                  ...(yield* collectStoreWorktrees({
+                    fs,
+                    refTypePath,
+                    currentPath: refTypePath,
+                    refType: refTypeDir,
+                  })),
+                )
+              }
+
+              return result
+            })
+
+            // First: check status of all worktrees in parallel (the expensive part)
+            const worktreeStatuses = yield* Effect.all(
+              worktrees.map((worktree) =>
+                Effect.gen(function* () {
+                  if (inUsePaths.has(worktree.path) === true) {
+                    return { worktree, action: 'skipped_in_use' as const, status: undefined }
+                  }
+
+                  /** Broken worktrees have no .git — skip git status, proceed directly to removal */
+                  if (worktree.broken === true) {
+                    return {
+                      worktree,
+                      action: 'check' as const,
+                      status: { isDirty: false, hasUnpushed: false, changesCount: 0 },
+                    }
+                  }
+
+                  const status = yield* Git.getWorktreeStatus(worktree.path).pipe(
+                    Effect.catchAll(() =>
+                      Effect.succeed({
+                        isDirty: false,
+                        hasUnpushed: false,
+                        changesCount: 0,
+                      }),
+                    ),
+                  )
+                  return { worktree, action: 'check' as const, status }
                 }),
               ),
+              { concurrency: 8 },
             )
-          }
 
-          results.push({
-            repo: repo.relativePath,
-            ref: worktree.ref,
-            path: worktree.path,
-            status: 'removed',
-          })
-        }
-      }
+            // Then: process removals sequentially (git operations on the same bare repo)
+            const repoResults: Array<{
+              repo: string
+              ref: string
+              path: string
+              status: 'removed' | 'skipped_dirty' | 'skipped_in_use' | 'error'
+              message?: string
+            }> = []
+
+            for (const { worktree, action, status } of worktreeStatuses) {
+              if (action === 'skipped_in_use') {
+                repoResults.push({
+                  repo: repo.relativePath,
+                  ref: worktree.ref,
+                  path: worktree.path,
+                  status: 'skipped_in_use',
+                })
+                continue
+              }
+
+              if (
+                status !== undefined &&
+                (status.isDirty === true || status.hasUnpushed === true) &&
+                force === false
+              ) {
+                repoResults.push({
+                  repo: repo.relativePath,
+                  ref: worktree.ref,
+                  path: worktree.path,
+                  status: 'skipped_dirty',
+                  message:
+                    status.isDirty === true
+                      ? `${status.changesCount} uncommitted change(s)`
+                      : 'has unpushed commits',
+                })
+                continue
+              }
+
+              if (dryRun === false) {
+                yield* Effect.gen(function* () {
+                  if (worktree.broken === true) {
+                    /** Broken worktrees can't be removed via git — just delete the directory */
+                    yield* fs.remove(worktree.path, { recursive: true })
+                  } else {
+                    const bareRepoPath = EffectPath.ops.join(
+                      repo.fullPath,
+                      EffectPath.unsafe.relativeDir('.bare/'),
+                    )
+                    yield* Git.removeWorktree({
+                      repoPath: bareRepoPath,
+                      worktreePath: worktree.path,
+                      force: force,
+                    }).pipe(Effect.catchAll(() => fs.remove(worktree.path, { recursive: true })))
+                  }
+                }).pipe(
+                  Effect.catchAll((error) =>
+                    Effect.succeed({
+                      error: error instanceof Error === true ? error.message : String(error),
+                    }),
+                  ),
+                )
+              }
+
+              repoResults.push({
+                repo: repo.relativePath,
+                ref: worktree.ref,
+                path: worktree.path,
+                status: 'removed',
+              })
+            }
+
+            return repoResults
+          }),
+        ),
+        { concurrency: 8 },
+      )
+
+      const results = repoGcResults.flat()
 
       // Use TuiApp for output
       yield* run(
@@ -514,7 +623,10 @@ const storeGcCommand = Cli.Command.make(
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/gc')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/store/gc', { attributes: { 'span.label': 'gc' } }),
+    ),
 ).pipe(Cli.Command.withDescription('Garbage collect unused worktrees'))
 
 /**
@@ -651,9 +763,8 @@ const storeAddCommand = Cli.Command.make(
       }
 
       // Get the current commit
-      const commit = yield* Git.getCurrentCommit(worktreePath).pipe(
-        Effect.catchAll(() => Effect.succeed(undefined)),
-      )
+      const commitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+      const commit = Option.getOrUndefined(commitOpt)
 
       // Use TuiApp for output
       const alreadyExists = bareExists && worktreeExists
@@ -672,8 +783,413 @@ const storeAddCommand = Cli.Command.make(
           }),
         { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
-    }).pipe(Effect.provide(StoreLayer), Effect.withSpan('megarepo/store/add')),
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/store/add', { attributes: { 'span.label': sourceString } }),
+    ),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
+
+/** Fix store issues */
+const storeFixCommand = Cli.Command.make(
+  'fix',
+  {
+    output: outputOption,
+    member: Cli.Args.text({ name: 'member' }).pipe(
+      Cli.Args.withDescription('Member to fix (optional, fixes all if omitted)'),
+      Cli.Args.optional,
+    ),
+    dryRun: Cli.Options.boolean('dry-run').pipe(
+      Cli.Options.withDescription('Show what would be fixed without making changes'),
+      Cli.Options.withDefault(false),
+    ),
+  },
+  ({ output, member, dryRun }) =>
+    Effect.gen(function* () {
+      const cwd = yield* Cwd
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
+
+      const root = yield* findMegarepoRoot(cwd)
+      if (Option.isNone(root) === true) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'not_in_megarepo',
+                message: 'Not in a megarepo directory. Run this command from within a megarepo.',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'Not in a megarepo' })
+      }
+
+      const configPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+      )
+      const configContent = yield* fs.readFileString(configPath)
+      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+
+      const lockPath = EffectPath.ops.join(
+        root.value,
+        EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+      )
+      const lockFileOpt = yield* readLockFile(lockPath)
+      if (Option.isNone(lockFileOpt) === true) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'no_lock',
+                message: 'No megarepo.lock found. Run `mr fetch` first.',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'No lock file' })
+      }
+
+      const lockFile = lockFileOpt.value
+
+      // Determine which members to check
+      const memberNames =
+        Option.isSome(member) === true ? [member.value] : Object.keys(config.members)
+
+      // Validate
+      const issues = yield* validateStoreMembers({
+        memberNames,
+        config,
+        lockFile,
+        store,
+      })
+
+      if (issues.length === 0) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetFix',
+                basePath: store.basePath,
+                results: [],
+                dryRun,
+                noIssues: true,
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return
+      }
+
+      // Fix issues
+      const results = yield* fixStoreIssues({ issues, store, dryRun })
+
+      yield* run(
+        StoreApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetFix',
+              basePath: store.basePath,
+              results,
+              dryRun,
+              noIssues: false,
+            })
+          }),
+        { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/store/fix', { attributes: { 'span.label': 'fix' } }),
+    ),
+).pipe(Cli.Command.withDescription('Fix store issues'))
+
+/**
+ * Create a new worktree in the store.
+ * Auto-bootstraps bare repo if not present, fetches, then creates the worktree.
+ */
+const storeWorktreeNewCommand = Cli.Command.make(
+  'new',
+  {
+    repo: Cli.Args.text({ name: 'repo' }).pipe(
+      Cli.Args.withDescription('Repository (owner/repo, URL, or store-relative path)'),
+    ),
+    ref: Cli.Options.text('ref').pipe(
+      Cli.Options.withDescription('Branch or tag name to check out'),
+      Cli.Options.optional,
+    ),
+    base: Cli.Options.text('base').pipe(
+      Cli.Options.withDescription('Base ref for creating a new branch (used with --ref)'),
+      Cli.Options.optional,
+    ),
+    commit: Cli.Options.text('commit').pipe(
+      Cli.Options.withDescription('Commit SHA to check out (detached HEAD)'),
+      Cli.Options.optional,
+    ),
+    porcelain: Cli.Options.boolean('porcelain').pipe(
+      Cli.Options.withDescription(
+        'Output only the worktree path for scripting (e.g. cd $(mr store worktree new ... --porcelain))',
+      ),
+      Cli.Options.withDefault(false),
+    ),
+    output: outputOption,
+  },
+  ({ repo: repoString, ref: refOpt, base: baseOpt, commit: commitOpt, porcelain, output }) =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const fs = yield* FileSystem.FileSystem
+
+      const ref = Option.getOrUndefined(refOpt)
+      const base = Option.getOrUndefined(baseOpt)
+      const commit = Option.getOrUndefined(commitOpt)
+
+      // Validate: must specify --ref or --commit, not both
+      if (ref === undefined && commit === undefined) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'missing_ref',
+                message: 'Must specify --ref <branch|tag> or --commit <sha>',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'Must specify --ref or --commit' })
+      }
+
+      if (ref !== undefined && commit !== undefined) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'conflicting_options',
+                message: 'Cannot specify both --ref and --commit',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'Cannot specify both --ref and --commit' })
+      }
+
+      if (base !== undefined && ref === undefined) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'base_without_ref',
+                message: '--base requires --ref to specify the new branch name',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({
+          message: '--base requires --ref',
+        })
+      }
+
+      // Parse repo source
+      const source = parseSourceString(repoString)
+      if (source === undefined) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'invalid_source',
+                message: `Invalid repository: ${repoString}`,
+                source: repoString,
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'Invalid repository' })
+      }
+
+      if (isRemoteSource(source) === false) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'local_path',
+                message: 'Cannot create worktree for local path',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'Cannot use local path' })
+      }
+
+      const cloneUrl = getCloneUrl(source)
+      if (cloneUrl === undefined) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'no_url',
+                message: 'Cannot determine clone URL',
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({ message: 'Cannot get clone URL' })
+      }
+
+      // Auto-bootstrap: clone bare repo if not in store
+      const bareRepoPath = store.getBareRepoPath(source)
+      const bareExists = yield* store.hasBareRepo(source)
+      const autoBootstrap = bareExists === false
+
+      if (autoBootstrap === true) {
+        const repoBasePath = store.getRepoBasePath(source)
+        yield* fs.makeDirectory(repoBasePath, { recursive: true })
+        yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+      }
+
+      // Fetch to ensure refs are up to date
+      yield* Git.fetchBare({ repoPath: bareRepoPath })
+
+      // Determine target ref and worktree creation mode
+      const targetRef = commit ?? ref!
+      const isNewBranch = base !== undefined
+      const refType = commit !== undefined ? ('commit' as const) : classifyRef(targetRef)
+
+      // Compute worktree path
+      const worktreePath = store.getWorktreePath({ source, ref: targetRef, refType })
+
+      // Fail if worktree already exists
+      const worktreeExists = yield* store.hasWorktree({ source, ref: targetRef, refType })
+      if (worktreeExists === true) {
+        yield* run(
+          StoreApp,
+          (tui) =>
+            Effect.sync(() => {
+              tui.dispatch({
+                _tag: 'SetError',
+                error: 'worktree_exists',
+                message: `Worktree already exists at ${worktreePath}`,
+              })
+            }),
+          { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+        ).pipe(Effect.provide(outputModeLayer(output)))
+        return yield* new StoreCommandError({
+          message: `Worktree already exists at ${worktreePath}`,
+        })
+      }
+
+      // Create parent directory
+      const worktreeParent = EffectPath.ops.parent(worktreePath)
+      if (worktreeParent !== undefined) {
+        yield* fs.makeDirectory(worktreeParent, { recursive: true })
+      }
+
+      // Create the worktree
+      if (commit !== undefined) {
+        // Detached HEAD at specific commit
+        yield* Git.createWorktreeDetached({
+          repoPath: bareRepoPath,
+          worktreePath,
+          commit,
+        })
+      } else if (isNewBranch === true) {
+        // New branch from base
+        yield* Git.createWorktree({
+          repoPath: bareRepoPath,
+          worktreePath,
+          branch: ref!,
+          createBranch: true,
+          startPoint: base,
+        })
+      } else {
+        // Existing branch or tag
+        if (refType === 'tag') {
+          yield* Git.createWorktreeDetached({
+            repoPath: bareRepoPath,
+            worktreePath,
+            commit: targetRef,
+          })
+        } else {
+          yield* Git.createWorktree({
+            repoPath: bareRepoPath,
+            worktreePath,
+            branch: targetRef,
+            createBranch: false,
+          }).pipe(
+            Effect.catchAll(() =>
+              Git.createWorktree({
+                repoPath: bareRepoPath,
+                worktreePath,
+                branch: `origin/${targetRef}`,
+                createBranch: false,
+              }),
+            ),
+            Effect.catchAll(() =>
+              Git.createWorktreeDetached({
+                repoPath: bareRepoPath,
+                worktreePath,
+                commit: targetRef,
+              }),
+            ),
+          )
+        }
+      }
+
+      // Get the current commit in the new worktree
+      const commitSha = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+      const resolvedCommit = Option.getOrUndefined(commitSha)
+
+      // Porcelain: raw path output for scripting (e.g. cd $(mr store worktree new ... --porcelain))
+      if (porcelain === true) {
+        yield* Effect.sync(() => process.stdout.write(worktreePath.replace(/\/$/, '') + '\n'))
+        return
+      }
+
+      // Output
+      yield* run(
+        StoreApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetWorktreeNew',
+              source: repoString,
+              ref: targetRef,
+              path: worktreePath,
+              commit: resolvedCommit,
+              autoBootstrap,
+              branchCreated: isNewBranch,
+            })
+          }),
+        { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(output)))
+    }).pipe(
+      Effect.provide(StoreLayer),
+      Effect.withSpan('megarepo/store/worktree/new', {
+        attributes: { 'span.label': repoString },
+      }),
+    ),
+).pipe(Cli.Command.withDescription('Create a new worktree in the store'))
+
+/** Worktree subcommand group */
+const storeWorktreeCommand = Cli.Command.make('worktree', {}).pipe(
+  Cli.Command.withSubcommands([storeWorktreeNewCommand]),
+  Cli.Command.withDescription('Manage worktrees in the store'),
+)
 
 /** Store subcommand group */
 export const storeCommand = Cli.Command.make('store', {}).pipe(
@@ -683,6 +1199,8 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeStatusCommand,
     storeFetchCommand,
     storeGcCommand,
+    storeFixCommand,
+    storeWorktreeCommand,
   ]),
   Cli.Command.withDescription('Manage the shared git store'),
 )

@@ -55,7 +55,7 @@ export const runGenieValidation = ({
             message: `Validation import failed: ${error instanceof Error ? error.message : String(error)}`,
             rule: 'validation-import',
           })
-          return Effect.succeed(undefined)
+          return Effect.void
         }),
       )
 

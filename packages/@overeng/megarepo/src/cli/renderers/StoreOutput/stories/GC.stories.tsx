@@ -77,48 +77,8 @@ export const Mixed: Story = {
     )
     return (
       <TuiStoryPreview
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
-}
-
-export const DryRun: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-branch',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'fix/deprecated',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-        ],
-        dryRun: true,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -149,6 +109,8 @@ export const OnlyCurrentMegarepo: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -192,6 +154,8 @@ export const NotInMegarepo: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -222,6 +186,8 @@ export const CustomWarning: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -251,6 +217,8 @@ export const Empty: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(stateConfig)}
@@ -297,6 +265,8 @@ export const AllSkipped: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -351,6 +321,8 @@ export const AllRemoved: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -402,6 +374,8 @@ export const AllErrors: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -480,6 +454,8 @@ export const ManyInUse: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -531,6 +507,8 @@ export const DirtyWithDetails: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -573,6 +551,8 @@ export const DryRunForceMode: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc --dry-run"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(
@@ -648,6 +628,8 @@ export const LargeCleanup: Story = {
     )
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command="mr store gc"
         View={StoreView}
         app={StoreApp}
         initialState={fixtures.createGcState(

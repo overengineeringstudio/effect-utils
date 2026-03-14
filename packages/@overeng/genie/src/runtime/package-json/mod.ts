@@ -7,19 +7,19 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
-import type { GenieContext, GenieOutput, Strict } from '../mod.ts'
-import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
+import { createGenieOutput } from '../core.ts'
+import type { GenieContext, GenieOutput, Strict } from '../core.ts'
+import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
+import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
+import {
+  validatePackageRecompositionForPackage,
+  validateWorkspaceMetadataPresenceForPackageJson,
+  validateWorkspaceMetadataForPackageJson,
+} from './validators/recompose.ts'
 
 // Re-export catalog utilities (useful for defining version catalogs)
-export {
-  CatalogBrand,
-  defineCatalog,
-  CatalogConflictError,
-  type Catalog,
-  type CatalogBrandType,
-  type CatalogInput,
-  type ExtendedCatalogInput,
-} from './catalog.ts'
+export { defineCatalog, CatalogConflictError, type Catalog, type CatalogInput } from './catalog.ts'
 
 export {
   defineOverrides,
@@ -29,8 +29,6 @@ export {
   type OverridesInput,
   type ExtendedOverridesInput,
 } from './overrides.ts'
-
-export { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 /**
  * Field ordering for package.json (matches syncpack sortFirst convention).
@@ -277,8 +275,12 @@ export type PackageJsonData = {
   /**
    * pnpm-specific configuration.
    *
-   * For self-contained packages with their own pnpm-lock.yaml, use this field
-   * to configure pnpm-specific options like patchedDependencies.
+   * Use this field to configure pnpm-specific options like
+   * `patchedDependencies`.
+   *
+   * In the current workspace model, the authoritative `pnpm-lock.yaml` lives
+   * at the selected topology root rather than inside workspace member
+   * packages.
    */
   pnpm?: {
     overrides?: Record<string, string>
@@ -288,47 +290,57 @@ export type PackageJsonData = {
   }
 }
 
-/** Workspace root package.json data (includes workspace-specific fields) */
-export type WorkspaceRootData = PackageJsonData & {
-  /** Workspace configuration */
-  workspaces?: string[] | { packages?: string[]; catalog?: Record<string, string> }
-  /** pnpm-specific configuration */
-  pnpm?: {
-    overrides?: Record<string, string>
-    patchedDependencies?: Record<string, string>
-    onlyBuiltDependencies?: readonly string[]
-    neverBuiltDependencies?: readonly string[]
-    packageExtensions?: Record<
-      string,
-      {
-        dependencies?: Record<string, string>
-        peerDependencies?: Record<string, string>
-      }
-    >
-    peerDependencyRules?: {
-      allowedVersions?: Record<string, string>
-      ignoreMissing?: readonly string[]
-      allowAny?: readonly string[]
-    }
-    allowedDeprecatedVersions?: Record<string, string>
-    requiredScripts?: readonly string[]
-    updateConfig?: {
-      ignoreDependencies?: readonly string[]
-    }
-  }
-  /** Yarn/npm resolutions */
-  resolutions?: Record<string, string>
-  /** Bun trusted dependencies */
-  trustedDependencies?: string[]
-  /** Bun/npm overrides */
-  overrides?: Record<string, string>
-  /** Bun/pnpm patched dependencies */
-  patchedDependencies?: Record<string, string>
-  /** Bun version catalog */
-  catalog?: Record<string, string>
-  /** Bun named version catalogs */
-  catalogs?: Record<string, Record<string, string>>
+/** Stable workspace identity used during import-time package composition. */
+export type WorkspaceIdentity = {
+  repoName: string
+  memberPath: string
+  pnpmPackageClosure?: PnpmPackageClosureConfig
 }
+
+/** Static workspace-composition metadata stored in non-emitted generator meta. */
+export type WorkspaceMetadata = WorkspaceIdentity & {
+  deps: readonly WorkspacePackageLike[]
+}
+
+/** Emitted repository aggregate manifest shape. */
+export type AggregatePackageJsonData = {
+  name: string
+  workspaces: readonly string[]
+  private: true
+  packageManager: string
+}
+
+/** Package-level metadata wrapper attached to generators that participate in workspace recomposition. */
+export type WorkspaceMeta = {
+  workspace: WorkspaceMetadata
+}
+
+/** Minimal shape needed to compose emitted package data with non-emitted workspace metadata. */
+export type WorkspacePackageLike = {
+  data: PackageJsonData
+  meta: WorkspaceMeta
+}
+
+/** Package.json genie output that carries workspace-composition metadata. */
+export type WorkspacePackage = GenieOutput<PackageJsonData, WorkspaceMeta>
+
+type PackageJsonComposedData = Omit<
+  PackageJsonData,
+  'dependencies' | 'devDependencies' | 'peerDependencies'
+> & {
+  dependencies?: never
+  devDependencies?: never
+  peerDependencies?: never
+}
+
+type PackageJsonMetadataInput<TMeta extends object = {}> = TMeta & {
+  workspace?: never
+  composition?: never
+  [PackageJsonCompositionBrand]?: never
+}
+
+const isPackageJsonComposition = (meta: unknown): meta is PackageJsonComposition =>
+  typeof meta === 'object' && meta !== null && PackageJsonCompositionBrand in meta
 
 /**
  * Sort object keys according to a defined order.
@@ -370,51 +382,20 @@ const sortExports = (
     return a.localeCompare(b)
   })
 
-  for (const path of paths) {
-    sorted[path] = sortExportConditions(exports[path]!)
+  for (const exportPath of paths) {
+    sorted[exportPath] = sortExportConditions(exports[exportPath]!)
   }
   return sorted
 }
 
-/**
- * Compute relative path from one repo-relative location to another.
- * @param from - Source location (e.g., 'packages/@overeng/genie')
- * @param to - Target location (e.g., 'packages/@overeng/utils')
- * @returns Relative path (e.g., '../utils')
- */
-const computeRelativePath = ({ from, to }: { from: string; to: string }): string => {
-  // Normalize '.' to empty string (repo root)
-  const normalizedFrom = from === '.' ? '' : from
-  const fromParts = normalizedFrom.split('/').filter(Boolean)
-  const toParts = to.split('/').filter(Boolean)
-
-  // Find common prefix length
-  let common = 0
-  while (
-    common < fromParts.length &&
-    common < toParts.length &&
-    fromParts[common] === toParts[common]
-  ) {
-    common++
-  }
-
-  // Build relative path: go up from 'from', then down to 'to'
-  const upCount = fromParts.length - common
-  const downPath = toParts.slice(common).join('/')
-  const relativePath = '../'.repeat(upCount) + downPath
-
-  return relativePath || '.'
-}
-
-/** Prefix for internal file dependencies that use absolute repo paths */
+/** Prefixes for internal dependencies that use absolute repo paths */
 const INTERNAL_FILE_PREFIX = 'file:packages/'
-/** Prefix for internal link dependencies that use absolute repo paths */
 const INTERNAL_LINK_PREFIX = 'link:packages/'
+const INTERNAL_REPO_LINK_PREFIX = 'link:repos/'
 
 /**
- * Resolve dependency versions, converting internal `file:packages/...` and `link:packages/...` paths to relative paths.
- * @param deps - Dependencies object
- * @param currentLocation - Current package's repo-relative location
+ * Resolve dependency versions, converting internal repo-absolute paths to relative paths.
+ * Handles `file:packages/...`, `link:packages/...`, and `link:repos/...` (cross-repo) prefixes.
  */
 const resolveDeps = ({
   deps,
@@ -428,17 +409,18 @@ const resolveDeps = ({
   const resolved: Record<string, string> = {}
   for (const [name, version] of Object.entries(deps).toSorted(([a], [b]) => a.localeCompare(b))) {
     if (version.startsWith(INTERNAL_FILE_PREFIX) === true) {
-      // Convert absolute repo path to relative path
       const targetLocation = version.slice('file:'.length)
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
         to: targetLocation,
       })
       resolved[name] = `file:${relativePath}`
-    } else if (version.startsWith(INTERNAL_LINK_PREFIX) === true) {
-      // Convert absolute repo path to relative path for link: protocol
+    } else if (
+      version.startsWith(INTERNAL_LINK_PREFIX) === true ||
+      version.startsWith(INTERNAL_REPO_LINK_PREFIX) === true
+    ) {
       const targetLocation = version.slice('link:'.length)
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
         to: targetLocation,
       })
@@ -475,15 +457,17 @@ const resolvePatchPaths = ({
   if (patches === undefined) return undefined
 
   const resolved: Record<string, string> = {}
-  for (const [pkg, path] of Object.entries(patches).toSorted(([a], [b]) => a.localeCompare(b))) {
-    if (path.startsWith('./') === true || path.startsWith('../') === true) {
+  for (const [pkg, patchPath] of Object.entries(patches).toSorted(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (patchPath.startsWith('./') === true || patchPath.startsWith('../') === true) {
       // Already relative to current package
-      resolved[pkg] = path
+      resolved[pkg] = patchPath
     } else {
       // Repo-relative path - compute relative path from current location
-      const relativePath = computeRelativePath({
+      const relativePath = relativeRepoPath({
         from: currentLocation,
-        to: path,
+        to: patchPath,
       })
       resolved[pkg] = relativePath
     }
@@ -600,66 +584,223 @@ const buildPackageJson = <T extends PackageJsonData>({
  * })
  * ```
  *
- * @example Composing peer dependencies
+ * @example Coupled dependency composition
  * ```ts
- * import { packageJson } from '@overeng/genie'
  * import utilsPkg from '../utils/package.json.genie.ts'
+ * import { catalog, packageJson } from '@overeng/genie'
  *
- * export default packageJson({
- *   name: '@myorg/app',
- *   dependencies: { '@myorg/utils': 'workspace:*' },
- *   peerDependencies: {
- *     ...utilsPkg.data.peerDependencies,  // Inherit peer deps
+ * const composition = catalog.compose({
+ *   workspace: {
+ *     repoName: 'my-repo',
+ *     memberPath: 'packages/app',
  *   },
- *   // If the app also installs those peers locally, use catalog versions
- *   // in dependencies/devDependencies instead of copying peer ranges.
+ *   dependencies: {
+ *     workspace: [utilsPkg],
+ *     external: catalog.pick('effect'),
+ *   },
+ *   mode: 'install',
  * })
+ *
+ * export default packageJson(
+ *   {
+ *     name: '@myorg/app',
+ *   },
+ *   composition,
+ * )
  * ```
  */
-export const packageJson = <const T extends PackageJsonData>(
+function createPackageJson<const T extends PackageJsonData>(
   data: Strict<T, PackageJsonData>,
-): GenieOutput<T> => ({
-  data,
-  stringify: (ctx) =>
-    JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-  validate: (ctx: GenieContext) =>
-    data.name !== undefined
-      ? validatePackageRecompositionForPackage({ ctx, pkgName: data.name })
-      : [],
-})
+): GenieOutput<T>
+function createPackageJson<const T extends PackageJsonComposedData>(
+  data: Strict<T, PackageJsonComposedData>,
+  composition: PackageJsonComposition,
+): GenieOutput<T, WorkspaceMeta>
+function createPackageJson<const T extends PackageJsonData, const TMeta extends object>(
+  data: Strict<T, PackageJsonData>,
+  meta: PackageJsonMetadataInput<TMeta>,
+): GenieOutput<T, TMeta>
+/**
+ * Genie convention: the first arg is emitted data and the second arg is
+ * non-emitted metadata.
+ *
+ * For package.json generators, workspace metadata must flow through the
+ * branded composition object returned by `catalog.compose(...)` so emitted
+ * dependencies and workspace closure stay coupled. Pass plain metadata only
+ * for unrelated concerns.
+ */
+// oxlint-disable-next-line overeng/named-args
+function createPackageJson<const T extends PackageJsonData, const TMeta>(
+  data: Strict<T, PackageJsonData>,
+  meta?: TMeta,
+) {
+  const hasManualDepsWithComposition =
+    isPackageJsonComposition(meta) === true &&
+    (data.dependencies !== undefined ||
+      data.devDependencies !== undefined ||
+      data.peerDependencies !== undefined)
+  const hasRawWorkspaceMetadata =
+    isPackageJsonComposition(meta) === false &&
+    meta !== undefined &&
+    typeof meta === 'object' &&
+    meta !== null &&
+    'workspace' in meta &&
+    typeof meta.workspace === 'object' &&
+    meta.workspace !== null
+  const hasWrappedComposition =
+    isPackageJsonComposition(meta) === false &&
+    meta !== undefined &&
+    typeof meta === 'object' &&
+    meta !== null &&
+    'composition' in meta
+  const composition = isPackageJsonComposition(meta) === true ? meta : undefined
+
+  const effectiveData =
+    composition !== undefined
+      ? ({
+          ...data,
+          ...(Object.keys(composition.dependencies).length === 0
+            ? {}
+            : { dependencies: composition.dependencies }),
+          ...(Object.keys(composition.devDependencies).length === 0
+            ? {}
+            : { devDependencies: composition.devDependencies }),
+          ...(Object.keys(composition.peerDependencies).length === 0
+            ? {}
+            : { peerDependencies: composition.peerDependencies }),
+        } satisfies PackageJsonData)
+      : data
+
+  const effectiveMeta =
+    composition !== undefined
+      ? ({ workspace: composition.workspace } satisfies WorkspaceMeta)
+      : meta
+
+  const effectiveWorkspaceMeta =
+    effectiveMeta !== undefined &&
+    typeof effectiveMeta === 'object' &&
+    effectiveMeta !== null &&
+    'workspace' in effectiveMeta &&
+    typeof effectiveMeta.workspace === 'object' &&
+    effectiveMeta.workspace !== null
+      ? (effectiveMeta.workspace as WorkspaceMetadata)
+      : undefined
+
+  return createGenieOutput({
+    data: effectiveData,
+    stringify: (ctx: GenieContext) =>
+      JSON.stringify(buildPackageJson({ data: effectiveData, location: ctx.location }), null, 2) +
+      '\n',
+    validate: (ctx: GenieContext) => [
+      ...(effectiveData.name !== undefined
+        ? validatePackageRecompositionForPackage({ ctx, pkgName: effectiveData.name })
+        : []),
+      ...(effectiveWorkspaceMeta === undefined
+        ? validateWorkspaceMetadataPresenceForPackageJson({
+            data: effectiveData,
+          })
+        : []),
+      ...(effectiveWorkspaceMeta === undefined
+        ? []
+        : validateWorkspaceMetadataForPackageJson({
+            data: effectiveData,
+            metadata: effectiveWorkspaceMeta,
+          })),
+      ...(hasManualDepsWithComposition === true
+        ? [
+            {
+              severity: 'error' as const,
+              packageName: effectiveData.name ?? '(anonymous package)',
+              dependency: '(composition)',
+              message:
+                'Do not define dependencies/devDependencies/peerDependencies in packageJson(data, composition). Put them into the composition so emitted deps and workspace metadata stay coupled.',
+              rule: 'package-json-composition-coupling',
+            },
+          ]
+        : []),
+      ...(hasRawWorkspaceMetadata === true
+        ? [
+            {
+              severity: 'error' as const,
+              packageName: effectiveData.name ?? '(anonymous package)',
+              dependency: '(workspace metadata)',
+              message:
+                'Do not pass workspace metadata directly to packageJson(...). Use packageJson(data, composition) so emitted dependencies and workspace closure come from one coupled source.',
+              rule: 'package-json-workspace-composition-required',
+            },
+          ]
+        : []),
+      ...(hasWrappedComposition === true
+        ? [
+            {
+              severity: 'error' as const,
+              packageName: effectiveData.name ?? '(anonymous package)',
+              dependency: '(composition)',
+              message:
+                'Do not wrap the composition object as { composition }. Pass packageJson(data, composition) so the authoring boundary stays crisp.',
+              rule: 'package-json-wrapped-composition-disallowed',
+            },
+          ]
+        : []),
+    ],
+    ...(effectiveMeta === undefined ? {} : { meta: effectiveMeta }),
+  })
+}
 
 /**
- * Creates a package.json configuration for a workspace root.
+ * Default package manager emitted for aggregate manifests.
  *
- * Similar to `packageJson` but includes workspace-specific fields like
- * `workspaces`, `pnpm`, `resolutions`, etc.
- *
- * Returns a `GenieOutput` with the structured data accessible via `.data`
- * for composition with other genie files.
- *
- * @example
- * ```ts
- * import { workspaceRoot } from '@overeng/genie'
- * import { catalog } from './genie/catalog.ts'
- *
- * export default workspaceRoot({
- *   name: 'my-monorepo',
- *   private: true,
- *   packageManager: 'pnpm@9.15.0',
- *   workspaces: ['packages/*'],
- *   devDependencies: {
- *     typescript: catalog.typescript,
- *   },
- *   pnpm: {
- *     patchedDependencies: { ... },
- *   },
- * })
- * ```
+ * Aggregates are repository coordination files, not package-level authoring
+ * surfaces, so this stays centralized instead of being repeated by callers.
  */
-export const workspaceRoot = <const T extends WorkspaceRootData>(
-  data: Strict<T, WorkspaceRootData>,
-): GenieOutput<T> => ({
-  data,
-  stringify: (ctx) =>
-    JSON.stringify(buildPackageJson({ data, location: ctx.location }), null, 2) + '\n',
-})
+const DEFAULT_AGGREGATE_PACKAGE_MANAGER = 'pnpm@10.29.2'
+
+/**
+ * Project an aggregate manifest from package metadata for an explicit repo view.
+ *
+ * The aggregate manifest is not a runnable package and does not own
+ * dependencies, scripts, exports, or publish settings. It exists only to
+ * declare related workspace members. Constraining it prevents root-level
+ * dependency and tooling creep, while actual package ownership remains with
+ * real workspace packages.
+ *
+ * `extraMembers` allows adding non-genie-managed workspace member paths
+ * (e.g. standalone examples) that cannot be derived from package metadata.
+ */
+const aggregatePackageJsonFromPackages = ({
+  packages,
+  name,
+  repoName,
+  extraMembers = [],
+}: {
+  packages: readonly WorkspacePackageLike[]
+  name: string
+  repoName: string
+  extraMembers?: readonly string[]
+}) => {
+  const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
+  const allMembers =
+    extraMembers.length === 0
+      ? projectedMembers
+      : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
+
+  const aggregate: AggregatePackageJsonData = {
+    name,
+    private: true,
+    packageManager: DEFAULT_AGGREGATE_PACKAGE_MANAGER,
+    workspaces: allMembers,
+  }
+
+  return createGenieOutput({
+    data: aggregate,
+    stringify: (ctx: GenieContext) =>
+      JSON.stringify(buildPackageJson({ data: aggregate, location: ctx.location }), null, 2) + '\n',
+  })
+}
+
+/** Package manifest authoring API plus constrained aggregate projection. */
+export const packageJson = Object.assign(createPackageJson, {
+  aggregateFromPackages: aggregatePackageJsonFromPackages,
+}) as typeof createPackageJson & {
+  aggregateFromPackages: typeof aggregatePackageJsonFromPackages
+}

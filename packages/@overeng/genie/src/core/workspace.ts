@@ -22,37 +22,29 @@ const shouldSkipDir = (name: string): boolean => DEFAULT_SKIP_DIRS.has(name)
 
 const normalizePath = (input: string): string => input.replace(/\\/g, '/')
 
-const findFiles = Effect.fn('workspace/findFiles')(function* ({
-  root,
-  fileName,
+const findWorkspaceRoot = Effect.fn('workspace/findWorkspaceRoot')(function* ({
+  cwd,
 }: {
-  root: string
-  fileName: string
+  cwd: string
 }) {
   const fs = yield* FileSystem.FileSystem
   const pathService = yield* Path.Path
-  const results: string[] = []
 
-  const walk: (dir: string) => Effect.Effect<void, Error, FileSystem.FileSystem | Path.Path> =
-    Effect.fnUntraced(function* (dir) {
-      const entries = yield* fs.readDirectory(dir).pipe(Effect.catchAll(() => Effect.succeed([])))
-      for (const entry of entries) {
-        if (shouldSkipDir(entry) === true) continue
-        const fullPath = pathService.join(dir, entry)
-        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-        if (stat === undefined) continue
-        if (stat.type === 'Directory') {
-          yield* walk(fullPath)
-          continue
-        }
-        if (entry === fileName) {
-          results.push(fullPath)
-        }
-      }
-    })
+  let currentDir = cwd
+  while (true) {
+    const workspaceFile = pathService.join(currentDir, 'pnpm-workspace.yaml')
+    const stat = yield* fs.stat(workspaceFile).pipe(Effect.catchAll(() => Effect.void))
+    if (stat?.type === 'File') {
+      return currentDir
+    }
 
-  yield* walk(root)
-  return results
+    const parentDir = pathService.dirname(currentDir)
+    if (parentDir === currentDir) {
+      return undefined
+    }
+
+    currentDir = parentDir
+  }
 })
 
 const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function* ({
@@ -70,7 +62,7 @@ const findPackageJsonDirs = Effect.fn('workspace/findPackageJsonDirs')(function*
       for (const entry of entries) {
         if (shouldSkipDir(entry) === true) continue
         const fullPath = pathService.join(dir, entry)
-        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        const stat = yield* fs.stat(fullPath).pipe(Effect.catchAll(() => Effect.void))
         if (stat === undefined) continue
         if (stat.type === 'Directory') {
           yield* walk(fullPath)
@@ -124,25 +116,23 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
     const fs = yield* FileSystem.FileSystem
     const pathService = yield* Path.Path
 
-    const workspaceFiles = yield* findFiles({ root: cwd, fileName: 'pnpm-workspace.yaml' })
-    if (workspaceFiles.length === 0) return []
+    const workspaceRoot = yield* findWorkspaceRoot({ cwd })
+    if (workspaceRoot === undefined) return []
 
-    const packageDirs = yield* findPackageJsonDirs({ root: cwd })
+    const workspaceFile = pathService.join(workspaceRoot, 'pnpm-workspace.yaml')
+    const packageDirs = yield* findPackageJsonDirs({ root: workspaceRoot })
     const matched = new Set<string>()
 
-    for (const workspaceFile of workspaceFiles) {
-      const workspaceDir = pathService.dirname(workspaceFile)
-      const content = yield* fs
-        .readFileString(workspaceFile)
-        .pipe(Effect.catchAll(() => Effect.succeed('')))
-      const patterns = parsePnpmWorkspacePackages(content)
-      if (patterns.length === 0) continue
+    const content = yield* fs
+      .readFileString(workspaceFile)
+      .pipe(Effect.catchAll(() => Effect.succeed('')))
+    const patterns = parsePnpmWorkspacePackages(content)
+    if (patterns.length === 0) return []
 
-      for (const packageDir of packageDirs) {
-        const relPath = normalizePath(pathService.relative(workspaceDir, packageDir)) || '.'
-        if (matchesAnyPattern({ name: relPath, patterns }) === true) {
-          matched.add(pathService.join(packageDir, 'package.json'))
-        }
+    for (const packageDir of packageDirs) {
+      const relPath = normalizePath(pathService.relative(workspaceRoot, packageDir)) || '.'
+      if (matchesAnyPattern({ name: relPath, patterns }) === true) {
+        matched.add(pathService.join(packageDir, 'package.json'))
       }
     }
 
@@ -201,8 +191,8 @@ export const resolveWorkspaceProvider = Effect.fn('workspace/resolveWorkspacePro
     })
   }
 
-  const pnpmWorkspaceFiles = yield* findFiles({ root: cwd, fileName: 'pnpm-workspace.yaml' })
-  if (pnpmWorkspaceFiles.length > 0) {
+  const workspaceRoot = yield* findWorkspaceRoot({ cwd })
+  if (workspaceRoot !== undefined) {
     return createProvider({
       name: 'pnpm',
       discover: ({ cwd: root }) => discoverPnpmPackageJsonPaths({ cwd: root }),

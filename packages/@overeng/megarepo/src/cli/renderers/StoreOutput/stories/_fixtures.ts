@@ -47,6 +47,27 @@ export const createErrorState = (opts: {
 })
 
 // =============================================================================
+// WorktreeNew Command - State Factory
+// =============================================================================
+
+export const createWorktreeNewState = (opts: {
+  source: string
+  ref: string
+  path: string
+  commit?: string
+  autoBootstrap: boolean
+  branchCreated: boolean
+}): StoreStateType => ({
+  _tag: 'WorktreeNew',
+  source: opts.source,
+  ref: opts.ref,
+  path: opts.path,
+  commit: opts.commit,
+  autoBootstrap: opts.autoBootstrap,
+  branchCreated: opts.branchCreated,
+})
+
+// =============================================================================
 // Fetch Command - Example Data & State Factory
 // =============================================================================
 
@@ -350,4 +371,75 @@ export const createStatusState = (opts: {
   worktreeCount: opts.worktreeCount,
   diskUsage: opts.diskUsage,
   worktrees: opts.worktrees,
+})
+
+// =============================================================================
+// Fix Command - Example Data & State Factory
+// =============================================================================
+
+import type { StoreFixResult } from '../mod.ts'
+
+export type { StoreFixResult }
+
+export const fixResultsMixed: StoreFixResult[] = [
+  {
+    memberName: 'livestore',
+    issueType: 'ref_mismatch',
+    status: 'fixed',
+    message: "checked out expected branch 'dev'",
+  },
+  {
+    memberName: 'effect-utils',
+    issueType: 'broken_worktree',
+    status: 'fixed',
+    message: 're-linked .git file to bare repository',
+  },
+  {
+    memberName: 'dotfiles',
+    issueType: 'missing_bare',
+    status: 'error',
+    message: 'failed to clone: network timeout',
+  },
+]
+
+export const fixResultsAllFixed: StoreFixResult[] = [
+  {
+    memberName: 'livestore',
+    issueType: 'ref_mismatch',
+    status: 'fixed',
+    message: "checked out expected branch 'dev'",
+  },
+  {
+    memberName: 'effect-utils',
+    issueType: 'broken_worktree',
+    status: 'fixed',
+    message: 're-linked .git file to bare repository',
+  },
+]
+
+export const fixResultsDryRun: StoreFixResult[] = [
+  {
+    memberName: 'livestore',
+    issueType: 'ref_mismatch',
+    status: 'skipped',
+    message: "would check out expected branch 'dev'",
+  },
+  {
+    memberName: 'effect-utils',
+    issueType: 'broken_worktree',
+    status: 'skipped',
+    message: 'would re-link .git file to bare repository',
+  },
+]
+
+export const createFixState = (opts: {
+  results: StoreFixResult[]
+  dryRun: boolean
+  noIssues: boolean
+}): StoreStateType => ({
+  _tag: 'Fix',
+  basePath: '/Users/dev/.megarepo',
+  results: opts.results,
+  dryRun: opts.dryRun,
+  noIssues: opts.noIssues,
 })

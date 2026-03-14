@@ -1,7 +1,7 @@
 // Shell Entry (enterShell) dashboard
 // How long do shell entry tasks take, with breakdown by task.
 //
-// Shell entry runs optional tasks: pnpm:install, genie:run, megarepo:sync, ts:patch-lsp, ts:emit
+// Shell entry runs optional tasks: pnpm:install, genie:run, megarepo:sync, ts:emit
 // These tasks are only executed when their dependencies change (git hash caching).
 // Use FORCE_SETUP=1 to force re-run even when cached.
 local g = import 'g.libsonnet';
@@ -30,7 +30,7 @@ local traceTable(title, query, limit=50) =
 
 g.dashboard.new('Shell Entry Performance')
 + g.dashboard.withUid('otel-shell-entry')
-+ g.dashboard.withDescription('Performance breakdown of devenv shell entry tasks (pnpm:install, genie:run, megarepo:sync, ts:patch-lsp, ts:emit)')
++ g.dashboard.withDescription('Performance breakdown of devenv shell entry tasks (pnpm:install, genie:run, megarepo:sync, ts:emit)')
 + g.dashboard.graphTooltip.withSharedCrosshair()
 + g.dashboard.withTimezone('browser')
 + g.dashboard.withPanels(
@@ -39,8 +39,8 @@ g.dashboard.new('Shell Entry Performance')
     g.panel.row.new('Shell Entry Tasks'),
 
     traceTable(
-      'All shell entry tasks (pnpm:install, genie:run, megarepo:sync, ts:patch-lsp, ts:emit)',
-      '{resource.service.name="dt-task" && name=~"pnpm:install|genie:run|megarepo:sync|ts:patch-lsp|ts:emit"}',
+      'All shell entry tasks (pnpm:install, genie:run, megarepo:sync, ts:emit)',
+      '{resource.service.name="dt-task" && name=~"pnpm:install|genie:run|megarepo:sync|ts:emit"}',
       50,
     ),
 
@@ -56,12 +56,6 @@ g.dashboard.new('Shell Entry Performance')
     traceTable(
       'genie:run',
       '{resource.service.name="dt-task" && name="genie:run"}',
-      30,
-    ),
-
-    traceTable(
-      'ts:patch-lsp',
-      '{resource.service.name="dt-task" && name="ts:patch-lsp"}',
       30,
     ),
 

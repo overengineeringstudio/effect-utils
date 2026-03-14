@@ -41,15 +41,20 @@
     }
   },
   "dependencies": {
+    "@effect/opentelemetry": "0.61.0",
+    "@effect/platform": "0.94.2",
+    "@effect/platform-node": "0.104.1",
+    "@effect/vitest": "0.27.0",
     "@noble/hashes": "1.7.1",
     "@opentelemetry/api": "1.9.0",
+    "effect": "3.19.15",
     "effect-distributed-lock": "0.0.11",
-    "ioredis": "5.6.1"
+    "ioredis": "5.6.1",
+    "vitest": "3.2.4"
   },
   "devDependencies": {
     "@effect/cluster": "0.56.1",
     "@effect/experimental": "0.58.0",
-    "@effect/language-service": "0.69.2",
     "@effect/opentelemetry": "0.61.0",
     "@effect/platform": "0.94.2",
     "@effect/platform-node": "0.104.1",
@@ -83,6 +88,11 @@
     "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.58.2",
     "effect": "^3.19.15"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch"
+    }
   },
   "$genie": {
     "source": "package.json.genie.ts",

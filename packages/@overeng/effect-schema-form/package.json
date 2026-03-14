@@ -13,7 +13,6 @@
     }
   },
   "devDependencies": {
-    "@effect/language-service": "0.69.2",
     "@types/react": "19.2.7",
     "effect": "3.19.15",
     "react": "19.2.3",

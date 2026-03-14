@@ -95,29 +95,56 @@ type Story = StoryObj<typeof InfoView>
 
 export const Loading: Story = {
   render: () => (
-    <TuiStoryPreview View={InfoView} app={InfoApp} initialState={createLoadingState()} />
+    <TuiStoryPreview
+      command="notion info"
+      View={InfoView}
+      app={InfoApp}
+      initialState={createLoadingState()}
+    />
   ),
 }
 
 export const Success: Story = {
   render: () => (
-    <TuiStoryPreview View={InfoView} app={InfoApp} initialState={createSuccessState()} />
+    <TuiStoryPreview
+      command="notion info"
+      View={InfoView}
+      app={InfoApp}
+      initialState={createSuccessState()}
+    />
   ),
 }
 
 export const ManyProperties: Story = {
   render: () => (
-    <TuiStoryPreview View={InfoView} app={InfoApp} initialState={createManyPropertiesState()} />
+    <TuiStoryPreview
+      command="notion info"
+      View={InfoView}
+      app={InfoApp}
+      initialState={createManyPropertiesState()}
+    />
   ),
 }
 
 export const SingleProperty: Story = {
   render: () => (
-    <TuiStoryPreview View={InfoView} app={InfoApp} initialState={createSinglePropertyState()} />
+    <TuiStoryPreview
+      command="notion info"
+      View={InfoView}
+      app={InfoApp}
+      initialState={createSinglePropertyState()}
+    />
   ),
 }
 
 export const ErrorState: Story = {
   name: 'Error',
-  render: () => <TuiStoryPreview View={InfoView} app={InfoApp} initialState={createErrorState()} />,
+  render: () => (
+    <TuiStoryPreview
+      command="notion info"
+      View={InfoView}
+      app={InfoApp}
+      initialState={createErrorState()}
+    />
+  ),
 }

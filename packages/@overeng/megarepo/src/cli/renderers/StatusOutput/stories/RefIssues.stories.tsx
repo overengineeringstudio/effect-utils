@@ -49,6 +49,8 @@ export const SymlinkDrift: Story = {
       initialState={fixtures.createSymlinkDriftState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }
@@ -62,6 +64,8 @@ export const MultipleSymlinkDrift: Story = {
       initialState={fixtures.createMultipleSymlinkDriftState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }
@@ -75,6 +79,8 @@ export const RefMismatch: Story = {
       initialState={fixtures.createRefMismatchState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/my-megarepo"
     />
   ),
 }

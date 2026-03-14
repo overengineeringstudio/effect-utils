@@ -40,12 +40,20 @@ type Story = StoryObj<typeof Separator>
 // =============================================================================
 
 export const Default: Story = {
-  render: () => <TuiStoryPreview app={StaticApp} View={() => <Separator />} initialState={null} />,
+  render: () => (
+    <TuiStoryPreview
+      command="mr status"
+      app={StaticApp}
+      View={() => <Separator />}
+      initialState={null}
+    />
+  ),
 }
 
 export const CustomWidth: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column" gap={1}>
@@ -62,6 +70,7 @@ export const CustomWidth: Story = {
 export const InContext: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr status"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">

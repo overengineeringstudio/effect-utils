@@ -13,6 +13,9 @@ export {
   StoreFetchState,
   StoreGcState,
   StoreAddState,
+  StoreWorktreeNewState,
+  StoreFixState,
+  StoreFixResult,
   StoreErrorState,
   StoreRepo,
   StoreFetchResult,
@@ -27,6 +30,8 @@ export {
   isStoreFetch,
   isStoreGc,
   isStoreAdd,
+  isStoreWorktreeNew,
+  isStoreFix,
 } from './schema.ts'
 export type {
   StoreState as StoreStateType,
@@ -37,6 +42,7 @@ export type {
   StoreWorktreeIssue as StoreWorktreeIssueType,
   StoreWorktreeStatus as StoreWorktreeStatusType,
   StoreGcWarning as StoreGcWarningType,
+  StoreFixResult as StoreFixResultType,
 } from './schema.ts'
 
 // App

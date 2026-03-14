@@ -49,6 +49,8 @@ export const AllDirty: Story = {
       initialState={fixtures.createAllDirtyState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -62,6 +64,8 @@ export const AllNotSynced: Story = {
       initialState={fixtures.createAllNotSyncedState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/new-workspace"
     />
   ),
 }
@@ -75,6 +79,8 @@ export const WithWarnings: Story = {
       initialState={fixtures.createWarningsState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/workspace"
     />
   ),
 }

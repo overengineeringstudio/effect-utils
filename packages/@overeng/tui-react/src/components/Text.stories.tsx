@@ -29,6 +29,7 @@ type Story = StoryObj<typeof Text>
 export const Basic: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Hello, World!'}</Text>}
     />
@@ -41,6 +42,7 @@ export const Basic: Story = {
 export const WithColor: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Success message'}</Text>}
     />
@@ -54,6 +56,7 @@ export const WithColor: Story = {
 export const Bold: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Bold text'}</Text>}
     />
@@ -67,6 +70,7 @@ export const Bold: Story = {
 export const Dim: Story = {
   render: (args) => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => <Text {...args}>{args.children ?? 'Dimmed text'}</Text>}
     />
@@ -81,6 +85,7 @@ export const Dim: Story = {
 export const AllColors: Story = {
   render: () => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => (
         <Box>
@@ -102,6 +107,7 @@ export const AllColors: Story = {
 export const AllStyles: Story = {
   render: () => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => (
         <Box>
@@ -122,6 +128,7 @@ export const AllStyles: Story = {
 export const Combined: Story = {
   render: () => (
     <TuiStoryPreview
+      command="text-demo"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row">

@@ -248,9 +248,9 @@ Vitest.describe('import-map', () => {
         // genie source has imports
         yield* writeFile(
           genieSourcePath,
-          `import { workspaceRoot } from './genie/internal.ts'
+          `import { packageJson } from './genie/internal.ts'
 
-export default workspaceRoot({
+export default packageJson({
   name: 'test',
   private: true,
   imports: {

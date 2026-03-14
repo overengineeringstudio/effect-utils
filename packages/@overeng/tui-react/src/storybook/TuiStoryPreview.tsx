@@ -52,6 +52,7 @@ import {
 import { TuiRegistryContext } from '../effect/TuiApp.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
+import { PowerlinePrompt } from './PowerlinePrompt.tsx'
 import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from './theme.ts'
 
 // =============================================================================
@@ -105,6 +106,10 @@ export interface TuiStoryPreviewProps<S, A> {
   tabs?: OutputTab[]
   /** Initial active tab */
   defaultTab?: OutputTab
+  /** CLI command shown in a powerline-style prompt above the output (e.g. "deploy --env production") */
+  command: string
+  /** Working directory shown in the powerline prompt (defaults to "~/project") */
+  cwd?: string
 }
 
 // =============================================================================
@@ -122,6 +127,8 @@ export const TuiStoryPreview = <S, A>({
   playbackSpeed = 1,
   tabs = DEFAULT_TABS,
   defaultTab = 'tty',
+  command,
+  cwd,
 }: TuiStoryPreviewProps<S, A>): React.ReactElement => {
   const { stateSchema, reducer } = app.config
   const initialState = initialStateProp ?? app.config.initial
@@ -133,17 +140,14 @@ export const TuiStoryPreview = <S, A>({
   // Force re-render when atom changes (for panes that need current state value)
   const [, forceUpdate] = useState(0)
 
-  // Atom-based state management (replaces React useState for state)
+  // Atom-based state management — atom is derived from initialState so it
+  // resets when props change (e.g. Storybook controls toggling verbose/force)
   const registryRef = useRef<Registry.Registry | null>(null)
-  const stateAtomRef = useRef<Atom.Writable<S> | null>(null)
   if (registryRef.current === null) {
     registryRef.current = Registry.make()
   }
-  if (stateAtomRef.current === null) {
-    stateAtomRef.current = Atom.make(initialState)
-  }
   const registry = registryRef.current
-  const stateAtom = stateAtomRef.current
+  const stateAtom = useMemo(() => Atom.make(initialState), [initialState])
 
   // Refs for visual terminal only
   const containerRef = useRef<HTMLDivElement>(null)
@@ -321,7 +325,7 @@ export const TuiStoryPreview = <S, A>({
   const ViewCast = View as React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ fontFamily: 'system-ui, sans-serif', borderRadius: '8px', overflow: 'hidden' }}>
       {/* Tabs */}
       <div
         style={{
@@ -355,6 +359,9 @@ export const TuiStoryPreview = <S, A>({
           {TAB_DESCRIPTIONS[activeTab]}
         </div>
       </div>
+
+      {/* Powerline prompt */}
+      <PowerlinePrompt command={command} cwd={cwd} />
 
       {/* Content */}
       <div style={{ height, overflow: 'hidden' }}>

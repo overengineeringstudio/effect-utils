@@ -54,6 +54,8 @@ export const NestedMegarepos: Story = {
       initialState={fixtures.createNestedMegareposState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status --all"
+      cwd="~/mr-all-blue"
     />
   ),
 }
@@ -68,6 +70,8 @@ export const DeeplyNested: Story = {
       initialState={fixtures.createDeeplyNestedState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status --all"
+      cwd="~/deep-workspace"
     />
   ),
 }
@@ -82,6 +86,8 @@ export const CurrentLocation: Story = {
       initialState={fixtures.createCurrentLocationState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status --all"
+      cwd="~/mr-all-blue"
     />
   ),
 }
@@ -99,6 +105,8 @@ export const PinnedMembers: Story = {
       initialState={fixtures.createPinnedMembersState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -112,6 +120,8 @@ export const LocalPathMembers: Story = {
       initialState={fixtures.createLocalPathMembersState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/local-dev"
     />
   ),
 }
@@ -125,6 +135,8 @@ export const ManyMembers: Story = {
       initialState={fixtures.createManyMembersState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/large-workspace"
     />
   ),
 }
@@ -142,6 +154,8 @@ export const MultipleProblems: Story = {
       initialState={fixtures.createMultipleProblemsState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/problematic-workspace"
     />
   ),
 }

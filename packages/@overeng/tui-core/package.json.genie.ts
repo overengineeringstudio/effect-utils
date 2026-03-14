@@ -1,24 +1,33 @@
 import {
   catalog,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 
-export default packageJson({
-  name: '@overeng/tui-core',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/mod.ts',
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/mod.js',
+const deps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/tui-core'),
+  devDependencies: {
+    external: {
+      ...catalog.pick('@types/node', 'typescript', 'vitest'),
     },
   },
-  dependencies: {},
-  devDependencies: {
-    ...catalog.pick('@types/node', 'typescript', 'vitest'),
-  },
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: '@overeng/tui-core',
+    ...privatePackageDefaults,
+    exports: {
+      '.': './src/mod.ts',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+      },
+    },
+  } satisfies PackageJsonData,
+  deps,
+)

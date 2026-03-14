@@ -63,12 +63,12 @@ const readHolderLock = Effect.fn('FileSystemBacking.readHolderLock')(function* (
     Effect.catchAllCause((cause) => {
       const failure = Cause.failureOption(cause).pipe(Option.getOrUndefined)
       if (failure !== undefined && isNotFoundError(failure) === true) {
-        return Effect.succeed(undefined)
+        return Effect.void
       }
 
       const defect = Cause.dieOption(cause).pipe(Option.getOrUndefined)
       if (defect !== undefined && isNotFoundError(defect) === true) {
-        return Effect.succeed(undefined)
+        return Effect.void
       }
 
       if (failure !== undefined) {

@@ -16,6 +16,8 @@ export const createInitialStatusState = (): typeof StatusState.Type => ({
   name: '',
   root: '',
   syncNeeded: false,
+  workspaceSyncNeeded: false,
+  lockSyncNeeded: false,
   syncReasons: [],
   members: [],
   all: false,

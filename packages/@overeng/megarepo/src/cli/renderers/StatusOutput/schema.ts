@@ -124,12 +124,12 @@ export interface MemberStatus {
   gitStatus?: GitStatus | undefined
   /**
    * Present when lock ref doesn't match current state, but current state matches source intent.
-   * Fix: run `mr sync` to update lock.
+   * Fix: run `mr lock` to update lock.
    */
   staleLock?: StaleLock | undefined
   /**
    * Present when symlink/lock ref differs from source ref.
-   * Fix: edit megarepo.json or run `mr sync --pull`.
+   * Fix: edit megarepo.json or run `mr apply`.
    */
   symlinkDrift?: SymlinkDrift | undefined
   /** Present when local worktree commit differs from locked commit */
@@ -157,12 +157,12 @@ export const MemberStatus: Schema.Schema<MemberStatus> = Schema.suspend(() =>
     gitStatus: Schema.optional(GitStatus),
     /**
      * Present when lock ref doesn't match current state, but current state matches source intent.
-     * Fix: run `mr sync` to update lock.
+     * Fix: run `mr lock` to update lock.
      */
     staleLock: Schema.optional(StaleLock),
     /**
      * Present when symlink/lock ref differs from source ref.
-     * Fix: edit megarepo.json or run `mr sync --pull`.
+     * Fix: edit megarepo.json or run `mr apply`.
      */
     symlinkDrift: Schema.optional(SymlinkDrift),
     /** Present when local worktree commit differs from locked commit */
@@ -222,6 +222,12 @@ export const StatusState = Schema.Struct({
 
   /** Quick boolean: does the workspace need a sync? */
   syncNeeded: Schema.Boolean,
+
+  /** Whether repos/worktrees need to be reconciled to megarepo.json. */
+  workspaceSyncNeeded: Schema.Boolean,
+
+  /** Whether megarepo.lock needs to be written to match the current workspace. */
+  lockSyncNeeded: Schema.Boolean,
 
   /** Human-readable reasons why sync is needed (empty if syncNeeded=false) */
   syncReasons: Schema.Array(Schema.String),

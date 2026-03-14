@@ -104,7 +104,7 @@ export const EffectProvider = <TEnv, TErr>({
     })
 
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      void Effect.runFork(Fiber.interrupt(fiber))
       if (managedRuntime !== undefined) {
         managedRuntime.dispose().catch(() => {
           // Ignore disposal errors during cleanup
@@ -190,7 +190,7 @@ export const useEffectRunner = <TEnv,>(): (<TA, TE>(
         Runtime.runFork(typedRuntime),
       )
       return () => {
-        Effect.runFork(Fiber.interrupt(fiber))
+        void Effect.runFork(Fiber.interrupt(fiber))
       }
     },
     [typedRuntime, onError],

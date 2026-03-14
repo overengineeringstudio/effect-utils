@@ -49,6 +49,8 @@ export const WithAllFlag: Story = {
       initialState={fixtures.createWithAllFlagState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls --all"
+      cwd="~/my-workspace"
     />
   ),
 }
@@ -62,6 +64,8 @@ export const DeeplyNested: Story = {
       initialState={fixtures.createDeeplyNestedState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls --all"
+      cwd="~/deep-workspace"
     />
   ),
 }

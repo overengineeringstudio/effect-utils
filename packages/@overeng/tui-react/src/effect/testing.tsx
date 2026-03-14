@@ -232,7 +232,7 @@ export const createTestTuiState = <S, A>(
       // Capture the action
       actions.push(action)
       // Also publish to PubSub for the actions stream
-      Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
+      void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
     }
 
     const api: TuiAppApi<S, A> = {

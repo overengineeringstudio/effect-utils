@@ -3,8 +3,6 @@ import { describe, expect, test } from 'vitest'
 
 import {
   classifyRef,
-  decodeRef,
-  encodeRef,
   extractRefFromSymlinkPath,
   isCommitSha,
   isImmutableRef,
@@ -12,34 +10,6 @@ import {
   parseSourceRef,
   refTypeToPathSegment,
 } from './ref.ts'
-
-describe('ref encoding', () => {
-  test('encodeRef preserves simple refs', () => {
-    expect(encodeRef('main')).toBe('main')
-    expect(encodeRef('develop')).toBe('develop')
-    expect(encodeRef('v1.0.0')).toBe('v1.0.0')
-  })
-
-  test('encodeRef encodes slashes', () => {
-    expect(encodeRef('feature/foo')).toBe('feature%2Ffoo')
-    expect(encodeRef('feature/foo/bar')).toBe('feature%2Ffoo%2Fbar')
-  })
-
-  test('encodeRef encodes percent signs', () => {
-    expect(encodeRef('100%complete')).toBe('100%25complete')
-  })
-
-  test('decodeRef reverses encodeRef', () => {
-    const refs = ['main', 'feature/foo', '100%complete', 'feature/foo/bar']
-    for (const ref of refs) {
-      expect(decodeRef(encodeRef(ref))).toBe(ref)
-    }
-  })
-
-  test('decodeRef handles already-decoded refs', () => {
-    expect(decodeRef('main')).toBe('main')
-  })
-})
 
 describe('parseSourceRef', () => {
   test('parses source without ref', () => {
@@ -210,16 +180,16 @@ describe('extractRefFromSymlinkPath', () => {
     expect(result).toEqual({ ref: 'main', type: 'branch' })
   })
 
-  test('extracts URL-encoded branch name with slash', () => {
+  test('extracts nested branch name with slash', () => {
     const result = extractRefFromSymlinkPath(
-      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/refactor%2Fgenie-igor-ci',
+      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/refactor/genie-igor-ci',
     )
     expect(result).toEqual({ ref: 'refactor/genie-igor-ci', type: 'branch' })
   })
 
-  test('extracts deeply nested URL-encoded branch name', () => {
+  test('extracts deeply nested branch name', () => {
     const result = extractRefFromSymlinkPath(
-      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/feature%2Fteam%2Fproject',
+      '/Users/foo/.megarepo/github.com/org/repo/refs/heads/feature/team/project',
     )
     expect(result).toEqual({ ref: 'feature/team/project', type: 'branch' })
   })

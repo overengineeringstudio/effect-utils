@@ -450,7 +450,7 @@ describe('Final state output', () => {
       yield* fiber.interruptAsFork(fiber.id())
 
       // Wait for it to complete
-      yield* fiber.await
+      const _ = yield* fiber.await
     }).pipe(
       Effect.andThen(() => {
         expect(capturedOutput).toHaveLength(1)

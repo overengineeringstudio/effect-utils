@@ -14,7 +14,7 @@
  * For consuming CLIs from OTHER repos, use the Nix-built packages instead:
  *   effectUtils.packages.${pkgs.system}.genie
  *
- * See: context/nix-devenv/cli-patterns.md
+ * See the stack-level Nix/devenv CLI distribution policy docs.
  *
  * Arguments:
  * - name: CLI binary name

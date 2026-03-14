@@ -8,9 +8,6 @@
  */
 
 import {
-  CatalogBrand,
-  computeRelativePath,
-  createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
@@ -21,13 +18,13 @@ import {
   packageJson,
   pnpmWorkspaceYaml,
   tsconfigJson,
-  workspaceRoot,
   type GenieOutput,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
   type MegarepoConfigArgs,
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
+  type AggregatePackageJsonData,
   type PackageJsonData,
   type PatchesRegistry,
   type PnpmSettings,
@@ -35,14 +32,22 @@ import {
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
-  type WorkspaceRootData,
+  type WorkspaceIdentity,
+  type WorkspaceMeta,
+  type WorkspaceMetadata,
+  type WorkspacePackage,
+  type WorkspacePackageLike,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
+/**
+ * Exceptional export: downstream repos that define `workspaceMember()` factories
+ * need this type for the optional `pnpmPackageClosure` parameter in `WorkspaceIdentity`.
+ * Prefer not using package closures unless your repo genuinely needs Nix-time
+ * workspace subsetting (currently only livestore).
+ */
+import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
-  CatalogBrand,
-  computeRelativePath,
-  createWorkspaceDepsResolver,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
@@ -53,9 +58,9 @@ export {
   packageJson,
   pnpmWorkspaceYaml,
   tsconfigJson,
-  workspaceRoot,
 }
 export type {
+  AggregatePackageJsonData,
   GenieOutput,
   GithubRulesetArgs,
   GitHubWorkflowArgs,
@@ -64,69 +69,18 @@ export type {
   OxlintConfigArgs,
   PackageJsonData,
   PatchesRegistry,
+  PnpmPackageClosureConfig,
   PnpmSettings,
   PnpmWorkspaceData,
   ScriptValue,
   TSConfigArgs,
   TSConfigCompilerOptions,
-  WorkspaceRootData,
+  WorkspaceIdentity,
+  WorkspaceMeta,
+  WorkspaceMetadata,
+  WorkspacePackage,
+  WorkspacePackageLike,
 }
-
-// =============================================================================
-// pnpm Workspace Helpers
-// =============================================================================
-
-/**
- * Convenience shorthand for pnpm-workspace.yaml generation.
- *
- * By default, includes the current directory and all sibling packages (`../*`).
- * Pass custom patterns to include cross-repo packages.
- *
- * Sets `dedupePeerDependents: true` to prevent React duplication issues
- * when packages with peer dependencies are used across package boundaries.
- *
- * For full API access, use `pnpmWorkspaceYaml()` directly.
- *
- * @see https://pnpm.io/pnpm-workspace_yaml
- *
- * @example
- * ```typescript
- * // Standalone package (no siblings)
- * export default pnpmWorkspace('.')
- *
- * // Basic usage - includes siblings
- * export default pnpmWorkspace()
- *
- * // With specific workspace deps
- * export default pnpmWorkspace('../utils', '../tui-react')
- *
- * // With cross-repo packages
- * export default pnpmWorkspace(
- *   '../*',
- *   '../../repos/effect-utils/packages/@overeng/*'
- * )
- *
- * // For full config access, use pnpmWorkspaceYaml directly:
- * export default pnpmWorkspaceYaml({
- *   packages: ['.', '../*'],
- *   dedupePeerDependents: true,
- *   catalog: { react: '18.2.0' },
- * })
- * ```
- */
-export const pnpmWorkspace = (...patterns: string[]) => {
-  // '.' means standalone (no siblings), otherwise default to '../*'
-  const isStandalone = patterns.length === 1 && patterns[0] === '.'
-  const additionalPatterns = isStandalone === true ? [] : patterns.length > 0 ? patterns : ['../*']
-
-  return pnpmWorkspaceYaml({
-    packages: ['.', ...additionalPatterns],
-    dedupePeerDependents: true,
-  })
-}
-
-/** A package.json genie output, used as input for workspace deps resolution. */
-export type PackageJsonGenie = GenieOutput<PackageJsonData>
 
 /**
  * Catalog versions - single source of truth for dependency versions
@@ -178,7 +132,6 @@ export const catalog = defineCatalog({
   '@effect/sql': '0.49.0',
   '@effect/experimental': '0.58.0',
   '@effect/workflow': '0.16.0',
-  '@effect/language-service': '0.69.2',
   '@effect/rpc': '0.73.0',
   '@effect/opentelemetry': '0.61.0',
 
@@ -250,8 +203,8 @@ export const catalog = defineCatalog({
   ioredis: '5.6.1',
 
   // OpenTUI / Effect Atom (experimental)
-  '@effect-atom/atom': '0.4.13',
-  '@effect-atom/atom-react': '0.4.5',
+  '@effect-atom/atom': '0.5.3',
+  '@effect-atom/atom-react': '0.5.0',
   '@opentui/core': '0.1.74',
   '@opentui/react': '0.1.74',
 
@@ -265,6 +218,24 @@ export const catalog = defineCatalog({
   'string-width': '7.2.0',
   'cli-truncate': '5.1.1',
 })
+
+/**
+ * Shared pnpm policy settings for all megarepos.
+ *
+ * This is the SSOT for pnpm strictness/layout policy. Every megarepo
+ * root workspace should spread this so policy stays consistent.
+ */
+export const commonPnpmPolicySettings = {
+  dedupePeerDependents: true as const,
+  strictPeerDependencies: true as const,
+  supportedArchitectures: {
+    os: ['linux', 'darwin'],
+    cpu: ['x64', 'arm64'],
+  },
+  settings: {
+    nodeLinker: 'hoisted' as const,
+  },
+}
 
 /** Common fields for private packages */
 export const privatePackageDefaults = {
@@ -287,19 +258,26 @@ export const domLib = ['ES2024', 'DOM', 'DOM.Iterable'] as const
 /** React JSX configuration for React packages */
 export const reactJsx = { jsx: 'react-jsx' as const }
 
-// =============================================================================
-// Effect Language Service Helpers
-// =============================================================================
+const relativeRepoPath = ({ from, to }: { from: string; to: string }) => {
+  const normalizedFrom = from === '.' ? '' : from
+  const fromParts = normalizedFrom.split('/').filter(Boolean)
+  const toParts = to.split('/').filter(Boolean)
 
-/**
- * DevDependencies required for Effect Language Service.
- * Includes both the language service and typescript (required for patching).
- *
- * Patching is handled centrally by the `ts:patch-lsp` devenv task (see ts.nix),
- * not by per-package postinstall scripts. Packages still need these devDeps
- * for tsconfig plugin module resolution.
- */
-export const effectLspDevDeps = () => catalog.pick('@effect/language-service', 'typescript')
+  let common = 0
+  while (
+    common < fromParts.length &&
+    common < toParts.length &&
+    fromParts[common] === toParts[common]
+  ) {
+    common++
+  }
+
+  const upCount = fromParts.length - common
+  const downPath = toParts.slice(common).join('/')
+  const relativePath = '../'.repeat(upCount) + downPath
+
+  return relativePath === '' ? '.' : relativePath
+}
 
 // =============================================================================
 // TypeScript Reference Helpers
@@ -379,7 +357,7 @@ const generatePatchCommands = ({
       const relativePath =
         patchPath.startsWith('./') === true || patchPath.startsWith('../') === true
           ? patchPath
-          : computeRelativePath({ from: location, to: patchPath })
+          : relativeRepoPath({ from: location, to: patchPath })
       return `patch --forward -p1 -d node_modules/${pkgName} < ${relativePath} || true`
     })
     .filter((x): x is string => x !== undefined)
@@ -505,9 +483,8 @@ export const baseTsconfigCompilerOptions = {
   forceConsistentCasingInFileNames: true,
   plugins: [
     {
-      // Important: Do not disable/weaken these warnings.
-      // Keep Effect Language Service checks active in CLI so they are visible during
-      // typecheck/build. These remain non-fatal but are reported as CLI warnings.
+      // Upstream tsgo currently reads Effect-specific diagnostics/options from
+      // this plugin entry, while plain tsc ignores it when the npm package is absent.
       name: '@effect/language-service',
       reportSuggestionsAsWarningsInTsc: true,
       pipeableMinArgCount: 2,
@@ -606,7 +583,8 @@ export {
   runDevenvTasksBefore,
   validateNixStoreStep,
   standardCIEnv,
-  syncMegarepoStep,
+  syncMegarepoWorkspaceStep,
+  applyMegarepoLockStep,
   RUNNER_PROFILES,
   type RunnerProfile,
 } from './ci-workflow.ts'

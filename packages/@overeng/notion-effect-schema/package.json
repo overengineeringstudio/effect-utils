@@ -13,7 +13,6 @@
     }
   },
   "devDependencies": {
-    "@effect/language-service": "0.69.2",
     "@effect/vitest": "0.27.0",
     "@overeng/utils-dev": "workspace:*",
     "@types/node": "25.3.3",

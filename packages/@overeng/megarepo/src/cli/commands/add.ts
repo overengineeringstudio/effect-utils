@@ -154,9 +154,8 @@ export const addCommand = Cli.Command.make(
                 sourceString: parsed.sourceString,
                 megarepoRoot: root.value,
                 lockFile: undefined,
+                mode: 'fetch',
                 dryRun: false,
-                pull: true, // Fetch when adding
-                frozen: false,
                 force: false,
               })
 

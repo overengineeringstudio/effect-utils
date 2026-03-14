@@ -1,11 +1,13 @@
 import { otelSdkDeps } from '../../../genie/external.ts'
 import {
   catalog,
-  effectLspDevDeps,
+  utilsPatches,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
 const peerDepNames = [
@@ -20,66 +22,82 @@ const peerDepNames = [
   'effect',
 ] as const
 
-export default packageJson({
-  name: '@overeng/utils',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/isomorphic/mod.ts',
-    './node': './src/node/mod.ts',
-    './node/cli-help-rewrite': './src/node/cli-help-rewrite.ts',
-    './node/cli-version': './src/node/cli-version.ts',
-    './node/otel': './src/node/otel.ts',
-    './node/playwright': './src/node/playwright/mod.ts',
-    // Separate config export avoids runtime @playwright/test import.
-    './node/playwright/config': './src/node/playwright/config/mod.ts',
-    './node/storybook': './src/node/storybook/mod.ts',
-    // Separate config export avoids runtime storybook import in non-storybook contexts.
-    './node/storybook/config': './src/node/storybook/config/mod.ts',
-    './browser': './src/browser/mod.ts',
-    './cuid': {
-      browser: './src/cuid/cuid.browser.ts',
-      node: './src/cuid/cuid.node.ts',
-      default: './src/cuid/mod.ts',
-    },
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/isomorphic/mod.js',
-      './node': './dist/node/mod.js',
-      './node/cli-help-rewrite': './dist/node/cli-help-rewrite.js',
-      './node/cli-version': './dist/node/cli-version.js',
-      './node/otel': './dist/node/otel.js',
-      './node/playwright': './dist/node/playwright/mod.js',
-      './node/playwright/config': './dist/node/playwright/config/mod.js',
-      './node/storybook': './dist/node/storybook/mod.js',
-      './node/storybook/config': './dist/node/storybook/config/mod.js',
-      './browser': './dist/browser/mod.js',
-      './cuid': {
-        browser: './dist/cuid/cuid.browser.js',
-        node: './dist/cuid/cuid.node.js',
-        default: './dist/cuid/mod.js',
-      },
-    },
-  },
+const runtimeDeps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/utils'),
   dependencies: {
-    ...catalog.pick('@noble/hashes', '@opentelemetry/api', 'effect-distributed-lock', 'ioredis'),
+    external: catalog.pick(
+      '@noble/hashes',
+      '@opentelemetry/api',
+      'effect-distributed-lock',
+      'ioredis',
+    ),
   },
   devDependencies: {
-    ...catalog.pick(
-      ...peerDepNames,
-      // Peer deps of @effect/opentelemetry (needed for local dev/test)
-      ...otelSdkDeps,
-      // Dev-only deps
-      '@effect/vitest',
-      '@overeng/utils-dev',
-      '@types/node',
-      'storybook',
-      '@storybook/react-vite',
-      'vite',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
+    workspace: [utilsDevPkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        ...otelSdkDeps,
+        '@effect/vitest',
+        '@types/node',
+        'storybook',
+        '@storybook/react-vite',
+        'typescript',
+        'vite',
+        'vitest',
+      ),
+    },
   },
-  peerDependencies: catalog.peers(...peerDepNames),
-} satisfies PackageJsonData)
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
+  },
+  mode: 'install',
+})
+
+export default packageJson(
+  {
+    name: '@overeng/utils',
+    ...privatePackageDefaults,
+    exports: {
+      '.': './src/isomorphic/mod.ts',
+      './node': './src/node/mod.ts',
+      './node/cli-help-rewrite': './src/node/cli-help-rewrite.ts',
+      './node/cli-version': './src/node/cli-version.ts',
+      './node/otel': './src/node/otel.ts',
+      './node/playwright': './src/node/playwright/mod.ts',
+      './node/playwright/config': './src/node/playwright/config/mod.ts',
+      './node/storybook': './src/node/storybook/mod.ts',
+      './node/storybook/config': './src/node/storybook/config/mod.ts',
+      './browser': './src/browser/mod.ts',
+      './cuid': {
+        browser: './src/cuid/cuid.browser.ts',
+        node: './src/cuid/cuid.node.ts',
+        default: './src/cuid/mod.ts',
+      },
+    },
+    pnpm: {
+      patchedDependencies: utilsPatches,
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/isomorphic/mod.js',
+        './node': './dist/node/mod.js',
+        './node/cli-help-rewrite': './dist/node/cli-help-rewrite.js',
+        './node/cli-version': './dist/node/cli-version.js',
+        './node/otel': './dist/node/otel.js',
+        './node/playwright': './dist/node/playwright/mod.js',
+        './node/playwright/config': './dist/node/playwright/config/mod.js',
+        './node/storybook': './dist/node/storybook/mod.js',
+        './node/storybook/config': './dist/node/storybook/config/mod.js',
+        './browser': './dist/browser/mod.js',
+        './cuid': {
+          browser: './dist/cuid/cuid.browser.js',
+          node: './dist/cuid/cuid.node.js',
+          default: './dist/cuid/mod.js',
+        },
+      },
+    },
+  } satisfies PackageJsonData,
+  runtimeDeps,
+)

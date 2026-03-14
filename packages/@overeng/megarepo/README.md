@@ -1,99 +1,77 @@
 # megarepo
 
-Megarepo (`mr`) is a tool for composing multiple git repositories into a unified development environment. It manages a global store of bare repos with worktrees, creates symlinks into your workspace, and tracks exact commits in a lock file for reproducible CI builds.
+Megarepo (`mr`) composes multiple git repositories into a shared development workspace. It materializes member repos from `megarepo.json` into `repos/`, and records exact commits in `megarepo.lock` when you explicitly manage the lock.
 
 ## Why megarepo?
 
-- **Shared worktrees** - Multiple projects can share the same checkout, saving disk space and keeping changes in sync
-- **Lock file for CI** - `megarepo.lock` records exact commits for reproducible builds with `mr sync --frozen`
-- **Simple config** - Just a `megarepo.json` with member names and GitHub shorthand or URLs
-- **No runtime overhead** - Pure git worktrees and symlinks; members don't know they're in a megarepo
+- Shared worktrees in `~/.megarepo` avoid duplicate clones across workspaces
+- `megarepo.json` declares branch or tag intent
+- `megarepo.lock` records exact commits for CI and reproducible setups
+- Workspace sync and lock management are separate operations
 
 ## Quick Start
 
 ```bash
-# Initialize a new megarepo
 mr init
-
-# Add a member (supports GitHub shorthand, URLs, or local paths)
 mr add effect-ts/effect
 mr add effect-ts/effect#v3.0.0 --name effect-v3
 mr add ./packages/local-lib --name local-lib
 
-# Sync all members (clone/update worktrees, create symlinks)
-mr sync
-
-# Update members to latest commits
-mr sync --pull
+mr fetch --apply
+mr lock
 ```
 
-## Commands
+## Command Model
 
-| Command              | Description                                       |
-| -------------------- | ------------------------------------------------- |
-| `mr init`            | Initialize a new megarepo in current directory    |
-| `mr add <repo>`      | Add a member to megarepo.json                     |
-| `mr sync`            | Ensure worktrees exist and symlinks are correct   |
-| `mr sync --frozen`   | CI mode: fail if lock is missing or stale         |
-| `mr sync --pull`     | Fetch latest commits and update lock file         |
-| `mr status`          | Show megarepo state                               |
-| `mr ls`              | List members                                      |
-| `mr pin <member>`    | Pin member to current commit (skip during update) |
-| `mr unpin <member>`  | Unpin member                                      |
-| `mr exec <cmd>`      | Run command across all members                    |
-| `mr store ls`        | List repos in global store                        |
-| `mr store gc`        | Remove unused worktrees                           |
-| `mr generate vscode` | Generate VS Code workspace file                   |
+| Command            | Purpose                                                                   |
+| ------------------ | ------------------------------------------------------------------------- |
+| `mr fetch --apply` | Fetch configured refs, reconcile workspace, and update `megarepo.lock`    |
+| `mr lock`          | Record the current synced workspace state into `megarepo.lock`            |
+| `mr apply`         | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI |
 
-## Source Formats
+## Typical Flow
 
-```json
-{
-  "members": {
-    "effect": "effect-ts/effect", // GitHub shorthand, default branch
-    "effect-v3": "effect-ts/effect#v3.0.0", // specific tag
-    "effect-next": "effect-ts/effect#next", // specific branch
-    "gitlab-lib": "https://gitlab.com/org/repo",
-    "local-lib": "./packages/local" // local path (not in lock file)
-  }
-}
+```bash
+mr fetch --apply
+
+# work in repos/*
+
+mr lock
+git add megarepo.lock
+git commit -m "Update megarepo lock"
+```
+
+To intentionally move dependencies forward:
+
+```bash
+mr fetch --apply
+```
+
+For CI:
+
+```bash
+mr apply --git-protocol=https
 ```
 
 ## Directory Layout
 
-After `mr sync`:
+After `mr fetch --apply` and `mr lock`:
 
-```
+```text
 my-megarepo/
-├── megarepo.json              # Config (committed)
-├── megarepo.lock              # Lock file (committed for CI)
-├── devenv.nix                 # Devenv configuration
-├── .envrc                     # Simple: use devenv
+├── megarepo.json
+├── megarepo.lock
 └── repos/
     ├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
     ├── effect-v3 -> ~/.megarepo/github.com/effect-ts/effect/refs/tags/v3.0.0/
-    └── local-lib/             # Local path: actual directory, not symlink
+    └── local-lib -> ./packages/local-lib
 ```
+
+Branch worktrees use raw Git ref paths in the store, for example `feature/foo` becomes `refs/heads/feature/foo/`.
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) - Installation and first megarepo setup
-- [Commands Reference](docs/commands.md) - Complete CLI documentation
-- [Workflows](docs/workflows.md) - Common usage patterns
-- [Specification](docs/spec.md) - Technical specification
-
-### Integrations
-
-- [Bun](docs/integrations/bun.md) - Package manager workspace setup
-- [TypeScript](docs/integrations/typescript.md) - Cross-repo type paths
-
-## Environment Variables
-
-| Variable         | Description           | Default       |
-| ---------------- | --------------------- | ------------- |
-| `MEGAREPO_STORE` | Global store location | `~/.megarepo` |
-| `DEVENV_ROOT`    | Megarepo root path    | (from devenv) |
-
-## License
-
-MIT
+- [Getting Started](docs/getting-started.md)
+- [Commands Reference](docs/commands.md)
+- [Workflows](docs/workflows.md)
+- [Specification](docs/spec.md)
