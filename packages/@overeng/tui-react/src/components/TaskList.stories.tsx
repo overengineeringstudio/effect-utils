@@ -251,7 +251,7 @@ export const InContext: Story = {
       View={() => (
         <Box>
           <Box flexDirection="row">
-            <Text bold>mr sync</Text>
+            <Text bold>mr fetch --apply</Text>
             <Text dim> schickling/megarepo-all</Text>
           </Box>
           <Box paddingTop={1}>

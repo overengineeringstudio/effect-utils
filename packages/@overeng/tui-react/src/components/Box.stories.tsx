@@ -118,7 +118,7 @@ export const ComplexLayout: Story = {
       View={() => (
         <Box>
           <Box flexDirection="row">
-            <Text bold>mr sync</Text>
+            <Text bold>mr fetch --apply</Text>
             <Text dim> workspace/project</Text>
           </Box>
           <Text> </Text>

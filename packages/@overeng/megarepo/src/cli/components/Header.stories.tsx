@@ -60,7 +60,7 @@ export const WithModes: Story = {
       command="mr status"
       app={StaticApp}
       View={() => (
-        <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'lock apply']} />
+        <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'apply']} />
       )}
       initialState={null}
     />

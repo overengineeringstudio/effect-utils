@@ -161,7 +161,7 @@ These generate the linter and formatter configs. Run `genie` to create `.oxlintr
 direnv allow
 ```
 
-The `megarepo:sync` task runs automatically during devenv shell entry on fresh clone/worktree, so manual `mr sync` is typically not needed. Use `mr status` to check sync state or `mr sync` to force re-sync.
+The `megarepo:sync` task runs automatically during devenv shell entry on fresh clone/worktree, so manual `mr fetch --apply` is typically not needed. Use `mr status` to check sync state or `mr fetch --apply` to force re-sync.
 
 ## Updating Inputs
 

@@ -6,7 +6,7 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 
 ## Assumptions
 
-- A1 - Megarepo (`mr`) is the standard repo management tool; repos declare dependencies via `megarepo.json` and use `mr sync` to materialize them.
+- A1 - Megarepo (`mr`) is the standard repo management tool; repos declare dependencies via `megarepo.json` and use `mr fetch --apply` to materialize them.
 - A2 - Devenv is the primary development workflow; flakes define packages, devenv consumes them via inputs.
 - A3 - Shared infrastructure (devenv modules, CLI tools, nix helpers) lives in `effect-utils`.
 
@@ -56,7 +56,7 @@ We manage multiple interconnected repositories using a megarepo approach. Each r
 
 - R20 - Nested megarepos must work independently of their parent megarepo.
 - R21 - Devenv can override flake inputs for local development (`--override-input`).
-- R22 - Cover megarepo workspace builds vs standalone `mr sync` in tests.
+- R22 - Cover megarepo workspace builds vs standalone `mr fetch --apply` in tests.
 
 ## See Also
 
