@@ -500,10 +500,16 @@ export const syncMegarepo = <R = never>({
                   ...(onMissingRef !== undefined ? { onMissingRef } : {}),
                 })
               }).pipe(
-                Effect.catchAll(() =>
+                Effect.catchAll((error) =>
                   Effect.succeed({
                     root: nestedRoot,
-                    results: [],
+                    results: [
+                      {
+                        name: nestedName,
+                        status: 'error' as const,
+                        message: `Nested sync failed: ${'message' in error ? error.message : String(error)}`,
+                      },
+                    ],
                     nestedMegarepos: [],
                     nestedResults: [],
                     lockSyncResults: undefined,
