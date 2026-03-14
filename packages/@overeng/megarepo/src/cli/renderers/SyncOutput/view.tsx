@@ -772,7 +772,7 @@ const LockFileUpdateLine = ({ update }: { update: LockFileUpdate }) => {
       return (
         <Box paddingLeft={2} flexDirection="row">
           <Text dim>
-            {update.inputName}: {update.oldRev} {symbols.arrow} {update.newRev}
+            {update.inputName}  rev {update.oldRev} {symbols.arrow} {update.newRev}
           </Text>
         </Box>
       )
@@ -780,7 +780,7 @@ const LockFileUpdateLine = ({ update }: { update: LockFileUpdate }) => {
       return (
         <Box paddingLeft={2} flexDirection="row">
           <Text color="cyan">
-            {update.inputName}: {update.oldRef} {symbols.arrow} {update.newRef}
+            {update.inputName}  ref {update.oldRef} {symbols.arrow} {update.newRef}
           </Text>
         </Box>
       )
@@ -801,17 +801,19 @@ const LockSyncSection = ({
   verbose: boolean
   dryRun: boolean
 }) => {
-  const memberCount = results.filter((r) => r.files.some((f) => f.updatedInputs.length > 0)).length
+  const memberCount =
+    results.filter((r) => r.files.some((f) => f.updatedInputs.length > 0)).length +
+    sharedSourceUpdates.reduce((sum, u) => sum + u.targetCount, 0)
 
   return (
-    <Box paddingTop={1}>
+    <Box paddingTop={1} flexDirection="column">
       {/* Summary line */}
       <Box flexDirection="row">
         <Text color="cyan">{symbols.check}</Text>
         <Text> </Text>
         <Text>
-          {dryRun === true ? 'Would update' : 'Updated'} {totalUpdates} lock input
-          {totalUpdates > 1 ? 's' : ''} across {memberCount} member{memberCount > 1 ? 's' : ''}
+          Nix lock sync: {totalUpdates} update{totalUpdates > 1 ? 's' : ''} across {memberCount}{' '}
+          member{memberCount > 1 ? 's' : ''}
         </Text>
       </Box>
 
