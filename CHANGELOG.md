@@ -87,6 +87,10 @@ All notable changes to this project will be documented in this file.
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
 - **docs/bun**: Document the upstream nested-workspace `patchedDependencies` blocker and link the Bun issue
 - **docs/bun**: Note the Bun-only local workspace fork workaround for patched dependencies
+- **@overeng/effect-rpc-tanstack**: Add custom fetch transport support to `layerClient`
+  - Allows SSR callers to reuse Effect's built-in `FetchHttpClient` with an injected fetch implementation
+  - Adds `fetchFromWebHandler(...)` for adapting colocated web handlers to fetch-compatible transport
+  - Avoids app-local reimplementation of Effect HTTP request body/stream handling
 - **docs/node-modules-install**: Clarify the pnpm GVS requirement for single-instance JS/TS dependency identity and add install-performance requirements
 
 ### Removed

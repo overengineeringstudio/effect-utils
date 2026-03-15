@@ -150,6 +150,25 @@ export const userClient = {
 }
 ```
 
+### SSR With An In-Process Handler
+
+When SSR needs to call a colocated RPC handler in-process, reuse Effect's built-in `FetchHttpClient`
+and override only the fetch implementation:
+
+```typescript
+import { requestHandler } from '@tanstack/react-start/server'
+import { fetchFromWebHandler, layerClient } from '@overeng/effect-rpc-tanstack/client'
+
+const serverFetch = fetchFromWebHandler((request) =>
+  requestHandler((req: Request) => rpcHandler.handler(req))(request, undefined),
+)
+
+const ProtocolLive = layerClient({
+  url: 'http://localhost/api/rpc',
+  fetch: typeof window === 'undefined' ? serverFetch : undefined,
+})
+```
+
 ### 5. Use in routes
 
 ```typescript
@@ -228,8 +247,14 @@ Creates an `RpcClient.Protocol` layer that uses HTTP transport.
 
 - `options.url` - The URL of the RPC endpoint
 - `options.transformClient` - Optional HTTP client transformer
+- `options.fetch` - Optional custom fetch implementation when using the default `FetchHttpClient`
+- `options.requestInit` - Optional default fetch options when using the default `FetchHttpClient`
 - `options.httpClientLayer` - Optional custom HTTP client layer
 - `options.serializationLayer` - Optional serialization layer (defaults to NDJSON)
+
+#### `fetchFromWebHandler(handler)`
+
+Adapts a web `Request -> Response` handler to a fetch-compatible function for SSR/in-process transport.
 
 ### Router
 
