@@ -105,7 +105,7 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
 
       for (const [nestedMemberName, nestedSourceString] of Object.entries(nestedConfig.members)) {
         // Apply --only filter
-        if (Option.isSome(onlyMembers) === true && !onlyMembers.value.has(nestedMemberName))
+        if (Option.isSome(onlyMembers) === true && onlyMembers.value.has(nestedMemberName) === false)
           continue
 
         const nestedUrlKey = getMemberUrlKey(nestedSourceString)

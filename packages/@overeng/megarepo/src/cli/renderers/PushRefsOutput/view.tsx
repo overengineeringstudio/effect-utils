@@ -38,8 +38,8 @@ export const PushRefsView = ({ stateAtom }: PushRefsViewProps) => {
       )
 
     case 'Result': {
-      const prefix = state.dryRun ? '[dry-run] ' : ''
-      const verb = state.dryRun ? 'would update' : 'updated'
+      const prefix = state.dryRun === true ? '[dry-run] ' : ''
+      const verb = state.dryRun === true ? 'would update' : 'updated'
 
       return (
         <Box flexDirection="column">
