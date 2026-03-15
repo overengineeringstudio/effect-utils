@@ -455,6 +455,7 @@ export const renderTreeSimple = ({
       }
 
       // Hard clip: if a child produced more lines than yoga allocated
+      // eslint-disable-next-line no-unmodified-loop-condition -- computedHeight is const; loop terminates via lines.pop()
       while (computedHeight > 0 && lines.length - startLineCount > computedHeight) {
         lines.pop()
       }

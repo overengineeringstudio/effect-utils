@@ -94,7 +94,7 @@ export const waitForURLChange: (args: {
         effect: () =>
           page
             .waitForURL(
-              (url) => url.toString() !== currentUrl,
+              (candidateUrl) => candidateUrl.toString() !== currentUrl,
               waitUntil !== undefined ? { waitUntil } : {},
             )
             .then(() => undefined),
@@ -116,20 +116,20 @@ export const waitForURLChange: (args: {
  */
 export const waitForURL: (args: {
   /** URL pattern to wait for (string / RegExp / predicate). */
-  url: URLMatch
+  urlMatch: URLMatch
   /** Optional wait strategy for the load state during the URL change. */
   waitUntil?: WaitUntil
   /** Optional timeout in milliseconds. */
   timeoutMs?: number
 }) => Effect.Effect<void, PwOpError, PwPage> = Effect.fn('pw.page.waitForURL')(
-  ({ url, waitUntil, timeoutMs }) =>
+  ({ urlMatch, waitUntil, timeoutMs }) =>
     Effect.gen(function* () {
       const page = yield* PwPage
       yield* tryPw({
         op: 'pw.page.waitForURL',
         effect: () =>
           page
-            .waitForURL(url, {
+            .waitForURL(urlMatch, {
               ...(waitUntil !== undefined ? { waitUntil } : {}),
               ...(timeoutMs !== undefined ? { timeout: timeoutMs } : {}),
             })
@@ -140,7 +140,11 @@ export const waitForURL: (args: {
             'pw.waitUntil': waitUntil ?? '',
             'pw.timeout.ms': timeoutMs ?? 0,
             'pw.urlMatch':
-              typeof url === 'string' ? url : url instanceof RegExp ? url.source : 'function',
+              typeof urlMatch === 'string'
+                ? urlMatch
+                : urlMatch instanceof RegExp
+                  ? urlMatch.source
+                  : 'function',
           }),
         ),
       )

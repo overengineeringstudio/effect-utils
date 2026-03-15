@@ -14,7 +14,7 @@ export function getHeaders(
     }
 
     // Time: O(nRows * nCols)
-    const colHeaders = rowHeaders.reduce<string[]>((colHeaders, rowHeader) => {
+    const colHeaders = rowHeaders.reduce<string[]>((accHeaders, rowHeader) => {
       const row = (data as Record<string | number, unknown>)[rowHeader]
       if (typeof row === 'object' && row !== null) {
         /* O(nCols) Could optimize `includes` here */
@@ -25,9 +25,9 @@ export function getHeaders(
             xs.push(x)
           }
           return xs
-        }, colHeaders)
+        }, accHeaders)
       }
-      return colHeaders
+      return accHeaders
     }, [])
     return {
       rowHeaders: rowHeaders,

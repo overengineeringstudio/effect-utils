@@ -366,9 +366,9 @@ export const stripPrefix = (args: {
   const normalizedPath = path.replace(/\\/g, '/')
   const normalizedPrefix = removeTrailingSlash(prefix).replace(/\\/g, '/')
 
-  const relative = normalizedPath.slice(normalizedPrefix.length)
+  const stripped = normalizedPath.slice(normalizedPrefix.length)
   // Remove leading slash if present
-  const result = relative.startsWith('/') === true ? relative.slice(1) : relative
+  const result = stripped.startsWith('/') === true ? stripped.slice(1) : stripped
 
   return (result || './') as RelativePath
 }

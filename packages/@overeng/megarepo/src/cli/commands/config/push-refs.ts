@@ -94,8 +94,9 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
       }
 
       // Parse --only filter
-      const onlyMembers = Option.map(options.only, (s) =>
-        new Set(s.split(',').map((m) => m.trim())),
+      const onlyMembers = Option.map(
+        options.only,
+        (s) => new Set(s.split(',').map((m) => m.trim())),
       )
 
       // Find shared members and compute updates
@@ -104,7 +105,8 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
 
       for (const [nestedMemberName, nestedSourceString] of Object.entries(nestedConfig.members)) {
         // Apply --only filter
-        if (Option.isSome(onlyMembers) === true && !onlyMembers.value.has(nestedMemberName)) continue
+        if (Option.isSome(onlyMembers) === true && !onlyMembers.value.has(nestedMemberName))
+          continue
 
         const nestedUrlKey = getMemberUrlKey(nestedSourceString)
         if (nestedUrlKey === undefined) continue
@@ -129,9 +131,9 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
       // Write updated config (unless dry-run)
       if (options.dryRun === false) {
         const updatedConfig = { ...nestedConfig, members: updatedMembers }
-        const encoded = yield* Schema.encode(
-          Schema.parseJson(MegarepoConfig, { space: 2 }),
-        )(updatedConfig)
+        const encoded = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
+          updatedConfig,
+        )
         yield* fs.writeFileString(configPath, encoded + '\n')
       }
 
@@ -209,7 +211,10 @@ export const pushRefsCommand = Cli.Command.make(
               const results: NestedResult[] = []
 
               for (const memberName of Object.keys(options.levelMembers)) {
-                const memberPath = getMemberPath({ megarepoRoot: options.levelRoot, name: memberName })
+                const memberPath = getMemberPath({
+                  megarepoRoot: options.levelRoot,
+                  name: memberName,
+                })
                 const nestedConfigPath = EffectPath.ops.join(
                   memberPath,
                   EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
@@ -235,7 +240,10 @@ export const pushRefsCommand = Cli.Command.make(
                   const nestedConfig = yield* Schema.decodeUnknown(
                     Schema.parseJson(MegarepoConfig),
                   )(nestedContent)
-                  const nestedResults = yield* processLevel({ levelRoot: memberPath, levelMembers: nestedConfig.members })
+                  const nestedResults = yield* processLevel({
+                    levelRoot: memberPath,
+                    levelMembers: nestedConfig.members,
+                  })
                   results.push(...nestedResults)
                 }
               }
@@ -243,7 +251,10 @@ export const pushRefsCommand = Cli.Command.make(
               return results
             })
 
-          const results = yield* processLevel({ levelRoot: megarepoRoot, levelMembers: config.members })
+          const results = yield* processLevel({
+            levelRoot: megarepoRoot,
+            levelMembers: config.members,
+          })
 
           if (results.length === 0) {
             tui.dispatch({ _tag: 'SetAligned' })
@@ -262,10 +273,7 @@ export const pushRefsCommand = Cli.Command.make(
           }
         }),
       { view: React.createElement(PushRefsView, { stateAtom: PushRefsApp.stateAtom }) },
-    ).pipe(
-      Effect.provide(outputModeLayer(output)),
-      Effect.withSpan('megarepo/config/push-refs'),
-    ),
+    ).pipe(Effect.provide(outputModeLayer(output)), Effect.withSpan('megarepo/config/push-refs')),
 ).pipe(
   Cli.Command.withDescription(
     'Propagate member refs from this megarepo to nested megarepo configs',

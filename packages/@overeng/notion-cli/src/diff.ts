@@ -277,11 +277,11 @@ export const formatDiff = ({ diff, databaseId, filePath }: FormatDiffOptions): s
 
   for (const opt of diff.options) {
     lines.push(`  ~ ${opt.name}: options changed`)
-    for (const added of opt.added) {
-      lines.push(`      + ${added}`)
+    for (const addedOpt of opt.added) {
+      lines.push(`      + ${addedOpt}`)
     }
-    for (const removed of opt.removed) {
-      lines.push(`      - ${removed}`)
+    for (const removedOpt of opt.removed) {
+      lines.push(`      - ${removedOpt}`)
     }
   }
 

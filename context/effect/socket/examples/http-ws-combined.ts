@@ -42,10 +42,10 @@ const handleConnection = Effect.fn('http-ws.connection')(function* (socket: Sock
 
       const receive = Stream.fromIterable<Uint8Array | string | CloseEvent>([]).pipe(
         Stream.pipeThroughChannel(toChannelString(socket)),
-        Stream.mapEffect((text) =>
+        Stream.mapEffect((msg) =>
           Effect.gen(function* () {
-            yield* Effect.log(`ws recv ${text}`)
-            yield* write(`echo:${text}`)
+            yield* Effect.log(`ws recv ${msg}`)
+            yield* write(`echo:${msg}`)
           }),
         ),
         Stream.runDrain,

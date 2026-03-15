@@ -90,8 +90,8 @@ const runBouncingWindows = ({
       Effect.gen(function* () {
         // Handle terminal resize
         const resizeHandler = () => {
-          const { width, height } = getTermSize()
-          tui.dispatch({ _tag: 'Resize', width, height })
+          const termSize = getTermSize()
+          tui.dispatch({ _tag: 'Resize', width: termSize.width, height: termSize.height })
         }
         process.stdout.on('resize', resizeHandler)
 

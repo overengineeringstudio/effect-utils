@@ -428,7 +428,7 @@ export const createRoot = ({
       reconciler.updateContainerSync(wrapWithProviders(element), fiberRoot, null, () => {})
       reconciler.flushSyncWork()
     },
-    unmount: (options?: UnmountOptions) => {
+    unmount: (unmountOptions?: UnmountOptions) => {
       // Flush pending React work and render final state before unmounting
       // This ensures all dispatched state updates are visible in the output
       doFlush()
@@ -440,7 +440,7 @@ export const createRoot = ({
         process.stdout.off('resize', resizeHandler)
       }
       // Dispose renderer (preserves content for persist mode)
-      renderer.dispose({ mode: options?.mode ?? 'persist' })
+      renderer.dispose({ mode: unmountOptions?.mode ?? 'persist' })
       // Clean up React internals (won't trigger render due to disposed flag)
       reconciler.updateContainerSync(null, fiberRoot, null, () => {})
       reconciler.flushSyncWork()
