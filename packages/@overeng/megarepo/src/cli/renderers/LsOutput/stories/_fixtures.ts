@@ -4,6 +4,7 @@
  * @internal
  */
 
+import { WORKSPACE, storePath } from '../../_story-constants.ts'
 import type { LsState as LsStateType, MemberInfo } from '../mod.ts'
 
 // =============================================================================
@@ -123,6 +124,7 @@ export const createDefaultState = (options?: SuccessStateOptions): LsStateType =
   members: exampleMembers,
   all: options?.all ?? false,
   megarepoName: 'dev-workspace',
+  root: WORKSPACE.root,
   currentMemberPath: options?.currentMemberPath,
 })
 
@@ -132,6 +134,7 @@ export const createCurrentLocationState = (options?: SuccessStateOptions): LsSta
   members: exampleMembers,
   all: options?.all ?? false,
   megarepoName: 'dev-workspace',
+  root: WORKSPACE.root,
   currentMemberPath: options?.currentMemberPath ?? ['dev-tools'],
 })
 
@@ -140,6 +143,7 @@ export const createWithAllFlagState = (options?: SuccessStateOptions): LsStateTy
   members: nestedMembers,
   all: options?.all ?? true,
   megarepoName: 'dev-workspace',
+  root: WORKSPACE.root,
 })
 
 export const createDeeplyNestedState = (options?: SuccessStateOptions): LsStateType => ({
@@ -147,6 +151,7 @@ export const createDeeplyNestedState = (options?: SuccessStateOptions): LsStateT
   members: deeplyNestedMembers,
   all: options?.all ?? true,
   megarepoName: 'deep-workspace',
+  root: storePath({ source: 'alice/deep-workspace', ref: 'main' }),
 })
 
 export const createLocalPathsState = (options?: SuccessStateOptions): LsStateType => ({
@@ -154,6 +159,7 @@ export const createLocalPathsState = (options?: SuccessStateOptions): LsStateTyp
   members: localPathMembers,
   all: options?.all ?? false,
   megarepoName: 'local-dev',
+  root: storePath({ source: 'alice/local-dev', ref: 'main' }),
 })
 
 export const createSingleMemberState = (options?: SuccessStateOptions): LsStateType => ({
@@ -168,6 +174,7 @@ export const createSingleMemberState = (options?: SuccessStateOptions): LsStateT
   ],
   all: options?.all ?? false,
   megarepoName: 'minimal',
+  root: storePath({ source: 'alice/minimal', ref: 'main' }),
 })
 
 export const createEmptyState = (options?: SuccessStateOptions): LsStateType => ({
@@ -175,6 +182,7 @@ export const createEmptyState = (options?: SuccessStateOptions): LsStateType => 
   members: [],
   all: options?.all ?? false,
   megarepoName: 'empty-workspace',
+  root: storePath({ source: 'alice/empty-workspace', ref: 'main' }),
 })
 
 export const createErrorState = (): LsStateType => ({
@@ -193,6 +201,7 @@ export const createManyMembersState = (options?: SuccessStateOptions): LsStateTy
   })),
   all: options?.all ?? false,
   megarepoName: 'large-workspace',
+  root: storePath({ source: 'alice/large-workspace', ref: 'main' }),
 })
 
 export const createAllMegareposState = (options?: SuccessStateOptions): LsStateType => ({
@@ -219,4 +228,5 @@ export const createAllMegareposState = (options?: SuccessStateOptions): LsStateT
   ],
   all: options?.all ?? false,
   megarepoName: 'all-megarepos',
+  root: storePath({ source: 'alice/all-megarepos', ref: 'main' }),
 })

@@ -1,24 +1,24 @@
 /**
- * Header Component
+ * WorkspaceRootLabel Component
  *
- * Workspace header with name, path, and mode indicators.
+ * Single-line workspace identifier using abbreviated store path (owner/repo@ref).
  */
 
 import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
 
+import { abbreviateStorePath } from '../../lib/store-path.ts'
+
 // =============================================================================
 // Types
 // =============================================================================
 
-/** Props for the Header component that renders workspace name, path, and mode indicators. */
-export interface HeaderProps {
-  /** Workspace name (bold) */
-  name: string
-  /** Workspace root path */
-  root?: string
-  /** Mode indicators (e.g., "workspace", "dry run") */
+/** Props for the WorkspaceRootLabel component. */
+export interface WorkspaceRootLabelProps {
+  /** Full store path to abbreviate */
+  storePath: string
+  /** Mode indicators (e.g., "dry run", "force") */
   modes?: readonly string[]
 }
 
@@ -27,34 +27,11 @@ export interface HeaderProps {
 // =============================================================================
 
 /**
- * Header - Workspace header
- *
- * Renders workspace info in expanded format:
- * ```
- * mr-workspace
- *   root: /path/to/workspace
- *   mode: dry run
- * ```
- *
- * @example
- * ```tsx
- * <Header name="mr-workspace" root="/path" modes={['dry run']} />
- * ```
+ * Single-line root label: `owner/repo@ref (modes)`
  */
-export const Header = ({ name, root, modes }: HeaderProps) => (
-  <Box flexDirection="column">
-    <Text bold>{name}</Text>
-    {root && (
-      <Box flexDirection="row">
-        <Text dim>{'  root: '}</Text>
-        <Text>{root}</Text>
-      </Box>
-    )}
-    {modes && modes.length > 0 && (
-      <Text dim>
-        {'  mode: '}
-        {modes.join(', ')}
-      </Text>
-    )}
+export const WorkspaceRootLabel = ({ storePath, modes }: WorkspaceRootLabelProps) => (
+  <Box flexDirection="row">
+    <Text bold>{abbreviateStorePath(storePath)}</Text>
+    {modes !== undefined && modes.length > 0 && <Text dim> ({modes.join(', ')})</Text>}
   </Box>
 )

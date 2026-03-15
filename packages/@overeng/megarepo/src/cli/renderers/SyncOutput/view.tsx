@@ -21,7 +21,7 @@ import {
   type SyncMode,
 } from '../../../lib/sync/schema.ts'
 import {
-  Header,
+  WorkspaceRootLabel,
   TaskItem,
   StatusIcon,
   LogLine as LogLineComponent,
@@ -170,7 +170,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
         {/* Dynamic region */}
         <Box paddingTop={logs.length > 0 ? 1 : 0}>
-          <Header name={workspace.name} root={workspace.root} modes={modes} />
+          <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
           <Text> </Text>
 
           {/* Progress items */}
@@ -207,7 +207,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   if (_tag === 'Interrupted') {
     return (
       <Box>
-        <Header name={workspace.name} root={workspace.root} modes={modes} />
+        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
         <Text> </Text>
         <Text color="yellow" bold>
           {symbols.circle} Sync interrupted
@@ -225,7 +225,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   if (_tag === 'PreflightFailed') {
     return (
       <Box>
-        <Header name={workspace.name} root={workspace.root} modes={modes} />
+        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
         <Text> </Text>
         <PreflightFailedView issues={state.preflightIssues} mode={options.mode} />
       </Box>
@@ -259,7 +259,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   return (
     <Box>
       {/* Header */}
-      <Header name={workspace.name} root={workspace.root} modes={modes} />
+      <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
 
       {/* Skipped members info */}
       {options.skippedMembers !== undefined && options.skippedMembers.length > 0 && (

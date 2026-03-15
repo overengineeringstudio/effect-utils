@@ -155,7 +155,14 @@ export const lsCommand = Cli.Command.make(
               all,
             })
 
-            tui.dispatch({ _tag: 'SetMembers', members, all, megarepoName, currentMemberPath })
+            tui.dispatch({
+              _tag: 'SetMembers',
+              members,
+              all,
+              megarepoName,
+              root: root.value,
+              currentMemberPath,
+            })
           }),
         { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))
