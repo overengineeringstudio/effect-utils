@@ -86,16 +86,16 @@ const withOverrides = (_: {
 }
 
 const successMembers = [
-  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
-  { name: 'livestore', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
+  { name: 'core-lib', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'dev-tools', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  { name: 'app-platform', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
 ]
 
 const mixedMembers = [
-  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  { name: 'core-lib', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'dev-tools', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
   {
-    name: 'livestore',
+    name: 'app-platform',
     status: 'error' as const,
     exitCode: 1,
     stderr: 'Command failed: npm version',
@@ -104,14 +104,14 @@ const mixedMembers = [
 
 const skippedMembers = [
   {
-    name: 'effect',
+    name: 'core-lib',
     status: 'success' as const,
     exitCode: 0,
     stdout: 'added 125 packages in 2.3s',
   },
-  { name: 'effect-utils', status: 'skipped' as const, stderr: 'Member not synced' },
+  { name: 'dev-tools', status: 'skipped' as const, stderr: 'Member not synced' },
   {
-    name: 'livestore',
+    name: 'app-platform',
     status: 'success' as const,
     exitCode: 0,
     stdout: 'added 45 packages in 1.1s',
@@ -120,19 +120,19 @@ const skippedMembers = [
 
 const allErrorMembers = [
   {
-    name: 'effect',
+    name: 'core-lib',
     status: 'error' as const,
     exitCode: 1,
     stderr: 'Command not found: foo',
   },
   {
-    name: 'effect-utils',
+    name: 'dev-tools',
     status: 'error' as const,
     exitCode: 1,
     stderr: 'Permission denied',
   },
   {
-    name: 'livestore',
+    name: 'app-platform',
     status: 'error' as const,
     exitCode: 127,
     stderr: 'sh: command not found',
@@ -140,8 +140,8 @@ const allErrorMembers = [
 ]
 
 const verboseMembers = [
-  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  { name: 'core-lib', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'dev-tools', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
 ]
 
 /** All commands completed successfully */

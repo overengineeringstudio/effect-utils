@@ -98,10 +98,10 @@ export const ManyRepos: Story = {
         { relativePath: 'github.com/effect-ts/effect' },
         { relativePath: 'github.com/effect-ts/effect-schema' },
         { relativePath: 'github.com/effect-ts/effect-platform' },
-        { relativePath: 'github.com/overengineeringstudio/effect-utils' },
-        { relativePath: 'github.com/overengineeringstudio/tui-react' },
-        { relativePath: 'github.com/schickling/dotfiles' },
-        { relativePath: 'github.com/schickling/config' },
+        { relativePath: 'github.com/acme-org/dev-tools' },
+        { relativePath: 'github.com/acme-org/tui-react' },
+        { relativePath: 'github.com/alice/dotfiles' },
+        { relativePath: 'github.com/alice/infra-config' },
         { relativePath: 'gitlab.com/company/internal-lib' },
       ])}
       height={args.height}

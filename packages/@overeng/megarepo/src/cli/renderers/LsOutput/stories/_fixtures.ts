@@ -12,20 +12,20 @@ import type { LsState as LsStateType, MemberInfo } from '../mod.ts'
 
 export const exampleMembers: MemberInfo[] = [
   {
-    name: 'effect',
-    source: 'effect-ts/effect',
+    name: 'core-lib',
+    source: 'alice/core-lib',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
-    name: 'effect-utils',
-    source: 'overengineeringstudio/effect-utils',
+    name: 'dev-tools',
+    source: 'acme-org/dev-tools',
     owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
-    name: 'livestore',
-    source: 'livestorejs/livestore',
+    name: 'app-platform',
+    source: 'acme-org/app-platform',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
@@ -33,39 +33,39 @@ export const exampleMembers: MemberInfo[] = [
 
 export const nestedMembers: MemberInfo[] = [
   {
-    name: 'effect',
-    source: 'effect-ts/effect',
+    name: 'core-lib',
+    source: 'alice/core-lib',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
-    name: 'effect-utils',
-    source: 'overengineeringstudio/effect-utils',
+    name: 'dev-tools',
+    source: 'acme-org/dev-tools',
     owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'tui-react',
     source: 'local',
-    owner: { _tag: 'Nested', path: ['effect-utils'] },
+    owner: { _tag: 'Nested', path: ['dev-tools'] },
     isMegarepo: false,
   },
   {
     name: 'cli-ui',
     source: 'local',
-    owner: { _tag: 'Nested', path: ['effect-utils'] },
+    owner: { _tag: 'Nested', path: ['dev-tools'] },
     isMegarepo: false,
   },
   {
-    name: 'livestore',
-    source: 'livestorejs/livestore',
+    name: 'app-platform',
+    source: 'acme-org/app-platform',
     owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'examples',
     source: 'local',
-    owner: { _tag: 'Nested', path: ['livestore'] },
+    owner: { _tag: 'Nested', path: ['app-platform'] },
     isMegarepo: false,
   },
 ]
@@ -106,7 +106,7 @@ export const localPathMembers: MemberInfo[] = [
   },
   {
     name: 'shared-utils',
-    source: '/Users/dev/shared-utils',
+    source: '/Users/dev/.megarepo/github.com/alice/shared-utils/refs/heads/main/',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
@@ -122,14 +122,14 @@ export const createDefaultState = (options?: SuccessStateOptions): LsStateType =
   _tag: 'Success',
   members: exampleMembers,
   all: options?.all ?? false,
-  megarepoName: 'my-workspace',
+  megarepoName: 'dev-workspace',
 })
 
 export const createWithAllFlagState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: nestedMembers,
   all: options?.all ?? true,
-  megarepoName: 'my-workspace',
+  megarepoName: 'dev-workspace',
 })
 
 export const createDeeplyNestedState = (options?: SuccessStateOptions): LsStateType => ({
@@ -150,8 +150,8 @@ export const createSingleMemberState = (options?: SuccessStateOptions): LsStateT
   _tag: 'Success',
   members: [
     {
-      name: 'effect',
-      source: 'effect-ts/effect',
+      name: 'core-lib',
+      source: 'alice/core-lib',
       owner: { _tag: 'Root' },
       isMegarepo: false,
     },
@@ -189,20 +189,20 @@ export const createAllMegareposState = (options?: SuccessStateOptions): LsStateT
   _tag: 'Success',
   members: [
     {
-      name: 'effect-utils',
-      source: 'overengineeringstudio/effect-utils',
+      name: 'dev-tools',
+      source: 'acme-org/dev-tools',
       owner: { _tag: 'Root' },
       isMegarepo: true,
     },
     {
-      name: 'livestore',
-      source: 'livestorejs/livestore',
+      name: 'app-platform',
+      source: 'acme-org/app-platform',
       owner: { _tag: 'Root' },
       isMegarepo: true,
     },
     {
       name: 'dotfiles',
-      source: 'schickling/dotfiles',
+      source: 'alice/dotfiles',
       owner: { _tag: 'Root' },
       isMegarepo: true,
     },

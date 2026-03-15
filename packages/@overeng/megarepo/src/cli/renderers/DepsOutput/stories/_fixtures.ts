@@ -12,34 +12,34 @@ import type { DepsState as DepsStateType, DepsMember } from '../mod.ts'
 
 export const exampleDepsGraph: DepsMember[] = [
   {
-    name: 'effect-utils',
+    name: 'dev-tools',
     downstreamMembers: [
       { name: 'dotfiles', files: ['flake.nix', 'flake.lock'] },
-      { name: 'livestore', files: ['flake.nix'] },
-      { name: 'overeng', files: ['devenv.yaml', 'devenv.lock'] },
+      { name: 'app-platform', files: ['flake.nix'] },
+      { name: 'studio-org', files: ['devenv.yaml', 'devenv.lock'] },
     ],
   },
   {
-    name: 'livestore',
+    name: 'app-platform',
     downstreamMembers: [{ name: 'dotfiles', files: ['flake.nix'] }],
   },
   {
     name: 'nixpkgs',
     downstreamMembers: [
       { name: 'dotfiles', files: ['flake.nix', 'flake.lock'] },
-      { name: 'effect-utils', files: ['flake.nix', 'flake.lock'] },
-      { name: 'livestore', files: ['flake.nix', 'flake.lock'] },
-      { name: 'overeng', files: ['devenv.yaml', 'devenv.lock'] },
+      { name: 'dev-tools', files: ['flake.nix', 'flake.lock'] },
+      { name: 'app-platform', files: ['flake.nix', 'flake.lock'] },
+      { name: 'studio-org', files: ['devenv.yaml', 'devenv.lock'] },
     ],
   },
 ]
 
 export const singleUpstreamGraph: DepsMember[] = [
   {
-    name: 'effect-utils',
+    name: 'dev-tools',
     downstreamMembers: [
-      { name: 'livestore', files: ['flake.nix'] },
-      { name: 'overeng', files: ['devenv.yaml'] },
+      { name: 'app-platform', files: ['flake.nix'] },
+      { name: 'studio-org', files: ['devenv.yaml'] },
     ],
   },
 ]

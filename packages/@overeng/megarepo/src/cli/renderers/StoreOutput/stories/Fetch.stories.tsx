@@ -63,8 +63,8 @@ export const Success: Story = {
       () => ({
         results: [
           { path: 'github.com/effect-ts/effect', status: 'fetched' as const },
-          { path: 'github.com/overengineeringstudio/effect-utils', status: 'fetched' as const },
-          { path: 'github.com/schickling/dotfiles', status: 'fetched' as const },
+          { path: 'github.com/acme-org/dev-tools', status: 'fetched' as const },
+          { path: 'github.com/alice/dotfiles', status: 'fetched' as const },
         ],
         elapsedMs: 1850,
       }),

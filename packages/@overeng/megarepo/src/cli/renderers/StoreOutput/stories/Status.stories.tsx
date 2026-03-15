@@ -127,10 +127,10 @@ export const RefMismatch: Story = {
         worktreeCount: 2,
         worktrees: [
           {
-            repo: 'github.com/livestorejs/livestore/',
+            repo: 'github.com/acme-org/app-platform/',
             ref: 'dev',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/livestorejs/livestore/refs/heads/dev/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/app-platform/refs/heads/dev/',
             issues: [
               {
                 type: 'ref_mismatch',
@@ -140,10 +140,10 @@ export const RefMismatch: Story = {
             ],
           },
           {
-            repo: 'github.com/schickling/schickling-stiftung/',
+            repo: 'github.com/alice/homepage/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/schickling/schickling-stiftung/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/alice/homepage/refs/heads/main/',
             issues: [
               {
                 type: 'ref_mismatch',
@@ -172,24 +172,24 @@ export const DirtyWorktrees: Story = {
         worktreeCount: 3,
         worktrees: [
           {
-            repo: 'github.com/effect-ts/effect/',
+            repo: 'github.com/acme-org/studio-org/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/studio-org/refs/heads/main/',
             issues: [{ type: 'dirty', severity: 'warning', message: '5 uncommitted changes' }],
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils/',
+            repo: 'github.com/acme-org/dev-tools/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/main/',
             issues: [{ type: 'dirty', severity: 'warning', message: '36 uncommitted changes' }],
           },
           {
-            repo: 'github.com/schickling/dotfiles/',
+            repo: 'github.com/alice/dotfiles/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/schickling/dotfiles/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/alice/dotfiles/refs/heads/main/',
             issues: [
               { type: 'dirty', severity: 'warning', message: '9 uncommitted changes' },
               { type: 'unpushed', severity: 'warning', message: 'has unpushed commits' },
@@ -215,28 +215,28 @@ export const OrphanedWorktrees: Story = {
         worktreeCount: 5,
         worktrees: [
           {
-            repo: 'github.com/effect-ts/effect/',
+            repo: 'github.com/acme-org/studio-org/',
             ref: 'f4972eda6c3179070d0167a30985b760afa0a9f9',
             refType: 'commits',
-            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/commits/f4972eda6c3179070d0167a30985b760afa0a9f9/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/studio-org/refs/commits/f4972eda6c3179070d0167a30985b760afa0a9f9/',
             issues: [
               { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
             ],
           },
           {
-            repo: 'github.com/overtone-app/overtone/',
+            repo: 'github.com/alice/core-lib/',
             ref: '2026-genie-refactor',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/overtone-app/overtone/refs/heads/2026-genie-refactor/',
+            path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/2026-genie-refactor/',
             issues: [
               { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
             ],
           },
           {
-            repo: 'github.com/overtone-app/overtone/',
+            repo: 'github.com/alice/core-lib/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/overtone-app/overtone/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/main/',
             issues: [
               { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
             ],
@@ -261,19 +261,19 @@ export const BrokenWorktrees: Story = {
         worktreeCount: 2,
         worktrees: [
           {
-            repo: 'github.com/effect-ts/effect/',
+            repo: 'github.com/acme-org/studio-org/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/studio-org/refs/heads/main/',
             issues: [
               { type: 'broken_worktree', severity: 'error', message: '.git not found in worktree' },
             ],
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils/',
+            repo: 'github.com/acme-org/dev-tools/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/main/',
             issues: [
               { type: 'missing_bare', severity: 'error', message: '.bare/ directory not found' },
             ],
@@ -299,10 +299,10 @@ export const AllIssueTypes: Story = {
         diskUsage: '4.7 GB',
         worktrees: [
           {
-            repo: 'github.com/livestorejs/livestore/',
+            repo: 'github.com/acme-org/app-platform/',
             ref: 'dev',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/livestorejs/livestore/refs/heads/dev/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/app-platform/refs/heads/dev/',
             issues: [
               {
                 type: 'ref_mismatch',
@@ -314,29 +314,29 @@ export const AllIssueTypes: Story = {
             ],
           },
           {
-            repo: 'github.com/effect-ts/effect/',
+            repo: 'github.com/acme-org/studio-org/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/studio-org/refs/heads/main/',
             issues: [
               { type: 'broken_worktree', severity: 'error', message: '.git not found in worktree' },
             ],
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils/',
+            repo: 'github.com/acme-org/dev-tools/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/main/',
             issues: [
               { type: 'dirty', severity: 'warning', message: '36 uncommitted changes' },
               { type: 'unpushed', severity: 'warning', message: 'has unpushed commits' },
             ],
           },
           {
-            repo: 'github.com/schickling/dotfiles/',
+            repo: 'github.com/alice/dotfiles/',
             ref: 'improve-agent-manager',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/schickling/dotfiles/refs/heads/improve-agent-manager/',
+            path: '/Users/dev/.megarepo/github.com/alice/dotfiles/refs/heads/improve-agent-manager/',
             issues: [
               { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
             ],
@@ -381,19 +381,19 @@ export const LargeStore: Story = {
         worktrees: [
           ...fixtures.mixedIssuesWorktrees,
           {
-            repo: 'github.com/private/repo1/',
+            repo: 'github.com/alice/homepage/',
             ref: 'main',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/private/repo1/refs/heads/main/',
+            path: '/Users/dev/.megarepo/github.com/alice/homepage/refs/heads/main/',
             issues: [
               { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },
             ],
           },
           {
-            repo: 'github.com/private/repo2/',
+            repo: 'github.com/acme-org/studio-org/',
             ref: 'dev',
             refType: 'heads',
-            path: '/Users/dev/.megarepo/github.com/private/repo2/refs/heads/dev/',
+            path: '/Users/dev/.megarepo/github.com/acme-org/studio-org/refs/heads/dev/',
             issues: [
               { type: 'dirty', severity: 'warning', message: '3 uncommitted changes' },
               { type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' },

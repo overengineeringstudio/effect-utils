@@ -32,9 +32,9 @@ export const runningVerboseParallelState: ExecStateType = {
   mode: 'parallel',
   verbose: true,
   members: [
-    { name: 'effect', status: 'running' },
-    { name: 'effect-utils', status: 'pending' },
-    { name: 'livestore', status: 'pending' },
+    { name: 'core-lib', status: 'running' },
+    { name: 'dev-tools', status: 'pending' },
+    { name: 'app-platform', status: 'pending' },
   ],
 }
 
@@ -44,8 +44,8 @@ export const runningVerboseSequentialState: ExecStateType = {
   mode: 'sequential',
   verbose: true,
   members: [
-    { name: 'effect', status: 'success', exitCode: 0, stdout: 'On branch main' },
-    { name: 'effect-utils', status: 'running' },
+    { name: 'core-lib', status: 'success', exitCode: 0, stdout: 'On branch main' },
+    { name: 'dev-tools', status: 'running' },
   ],
 }
 
@@ -60,9 +60,9 @@ export const completeSuccessState: ExecStateType = {
   verbose: false,
   hasErrors: false,
   members: [
-    { name: 'effect', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
-    { name: 'effect-utils', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
-    { name: 'livestore', status: 'success', exitCode: 0, stdout: 'v0.5.0' },
+    { name: 'core-lib', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
+    { name: 'dev-tools', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
+    { name: 'app-platform', status: 'success', exitCode: 0, stdout: 'v0.5.0' },
   ],
 }
 
@@ -73,9 +73,9 @@ export const completeMixedState: ExecStateType = {
   verbose: false,
   hasErrors: true,
   members: [
-    { name: 'effect', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
-    { name: 'effect-utils', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
-    { name: 'livestore', status: 'error', exitCode: 1, stderr: 'Command failed: npm version' },
+    { name: 'core-lib', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
+    { name: 'dev-tools', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
+    { name: 'app-platform', status: 'error', exitCode: 1, stderr: 'Command failed: npm version' },
   ],
 }
 
@@ -86,9 +86,9 @@ export const completeWithSkippedState: ExecStateType = {
   verbose: false,
   hasErrors: false,
   members: [
-    { name: 'effect', status: 'success', exitCode: 0, stdout: 'added 125 packages in 2.3s' },
-    { name: 'effect-utils', status: 'skipped', stderr: 'Member not synced' },
-    { name: 'livestore', status: 'success', exitCode: 0, stdout: 'added 45 packages in 1.1s' },
+    { name: 'core-lib', status: 'success', exitCode: 0, stdout: 'added 125 packages in 2.3s' },
+    { name: 'dev-tools', status: 'skipped', stderr: 'Member not synced' },
+    { name: 'app-platform', status: 'success', exitCode: 0, stdout: 'added 45 packages in 1.1s' },
   ],
 }
 
@@ -99,9 +99,9 @@ export const completeAllErrorsState: ExecStateType = {
   verbose: false,
   hasErrors: true,
   members: [
-    { name: 'effect', status: 'error', exitCode: 1, stderr: 'Command not found: foo' },
-    { name: 'effect-utils', status: 'error', exitCode: 1, stderr: 'Permission denied' },
-    { name: 'livestore', status: 'error', exitCode: 127, stderr: 'sh: command not found' },
+    { name: 'core-lib', status: 'error', exitCode: 1, stderr: 'Command not found: foo' },
+    { name: 'dev-tools', status: 'error', exitCode: 1, stderr: 'Permission denied' },
+    { name: 'app-platform', status: 'error', exitCode: 127, stderr: 'sh: command not found' },
   ],
 }
 
@@ -112,8 +112,8 @@ export const completeVerboseState: ExecStateType = {
   verbose: true,
   hasErrors: false,
   members: [
-    { name: 'effect', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
-    { name: 'effect-utils', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
+    { name: 'core-lib', status: 'success', exitCode: 0, stdout: 'v3.0.0' },
+    { name: 'dev-tools', status: 'success', exitCode: 0, stdout: 'v1.2.3' },
   ],
 }
 

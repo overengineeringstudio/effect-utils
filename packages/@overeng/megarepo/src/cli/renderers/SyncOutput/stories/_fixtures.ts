@@ -4,7 +4,8 @@
  * @internal
  */
 
-import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
+import type { MegarepoSyncTree, MemberSyncResult } from '../../../../lib/sync/schema.ts'
+import { MEMBERS, WORKSPACE } from '../../_story-constants.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
 import type {
   LockSharedSourceUpdate,
@@ -18,9 +19,9 @@ import type {
 // =============================================================================
 
 export const exampleSyncResults: MemberSyncResult[] = [
-  { name: 'effect', status: 'already_synced' },
-  { name: 'effect-utils', status: 'synced', ref: 'main' },
-  { name: 'livestore', status: 'cloned', ref: 'main' },
+  { name: 'core-lib', status: 'already_synced' },
+  { name: 'dev-tools', status: 'synced', ref: 'main' },
+  { name: 'app-platform', status: 'cloned', ref: 'main' },
   {
     name: 'dotfiles',
     status: 'updated',
@@ -31,38 +32,38 @@ export const exampleSyncResults: MemberSyncResult[] = [
 ]
 
 export const exampleSyncResultsWithErrors: MemberSyncResult[] = [
-  { name: 'effect', status: 'synced', ref: 'main' },
+  { name: 'core-lib', status: 'synced', ref: 'main' },
   { name: 'broken-repo', status: 'error', message: 'network timeout' },
   { name: 'missing-repo', status: 'error', message: 'repository not found' },
-  { name: 'effect-utils', status: 'already_synced' },
+  { name: 'dev-tools', status: 'already_synced' },
 ]
 
 export const exampleAllSynced: MemberSyncResult[] = [
-  { name: 'effect', status: 'already_synced' },
-  { name: 'effect-utils', status: 'already_synced' },
-  { name: 'livestore', status: 'already_synced' },
+  { name: 'core-lib', status: 'already_synced' },
+  { name: 'dev-tools', status: 'already_synced' },
+  { name: 'app-platform', status: 'already_synced' },
   { name: 'dotfiles', status: 'already_synced' },
-  { name: 'schickling.dev', status: 'already_synced' },
+  { name: 'homepage', status: 'already_synced' },
 ]
 
 export const exampleLockSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'effect',
+    memberName: 'core-lib',
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'livestore',
-            memberName: 'livestore',
+            inputName: 'app-platform',
+            memberName: 'app-platform',
             oldRev: '1234567',
             newRev: '7654321',
           },
@@ -73,8 +74,8 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -90,8 +91,8 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect',
-            memberName: 'effect',
+            inputName: 'core-lib',
+            memberName: 'core-lib',
             oldRev: 'fff0000',
             newRev: 'aaa1111',
           },
@@ -111,8 +112,8 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -123,15 +124,15 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'livestore',
-            memberName: 'livestore',
+            inputName: 'app-platform',
+            memberName: 'app-platform',
             oldRev: '1111111',
             newRev: '2222222',
           },
@@ -142,8 +143,8 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -152,15 +153,15 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
     ],
   },
   {
-    memberName: 'overeng',
+    memberName: 'studio-org',
     files: [
       {
         type: 'devenv.yaml',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -171,15 +172,15 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils-playwright',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools-browser',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -188,15 +189,15 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
     ],
   },
   {
-    memberName: 'schickling.dev',
+    memberName: 'homepage',
     files: [
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -216,10 +217,10 @@ export const exampleRefSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRef: 'main',
-            newRef: 'schickling/2026-03-08-foo',
+            newRef: 'alice/2026-03-08-feature',
           },
         ],
       },
@@ -228,27 +229,27 @@ export const exampleRefSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRef: 'main',
-            newRef: 'schickling/2026-03-08-foo',
+            newRef: 'alice/2026-03-08-feature',
           },
         ],
       },
     ],
   },
   {
-    memberName: 'overeng',
+    memberName: 'studio-org',
     files: [
       {
         type: 'devenv.yaml',
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRef: 'main',
-            newRef: 'schickling/2026-03-08-foo',
+            newRef: 'alice/2026-03-08-feature',
           },
         ],
       },
@@ -257,10 +258,10 @@ export const exampleRefSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRef: 'main',
-            newRef: 'schickling/2026-03-08-foo',
+            newRef: 'alice/2026-03-08-feature',
           },
         ],
       },
@@ -273,7 +274,7 @@ export const exampleSharedSourceSync: LockSharedSourceUpdate[] = [
   {
     _tag: 'SharedSourceUpdate',
     sourceName: 'devenv',
-    sourceMemberName: 'effect-utils',
+    sourceMemberName: 'dev-tools',
     targetCount: 3,
   },
 ]
@@ -288,10 +289,10 @@ export const exampleMixedSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRef: 'main',
-            newRef: 'schickling/2026-03-08-foo',
+            newRef: 'alice/2026-03-08-feature',
           },
         ],
       },
@@ -300,32 +301,32 @@ export const exampleMixedSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'livestore',
-            memberName: 'livestore',
+            inputName: 'app-platform',
+            memberName: 'app-platform',
             oldRev: '1234567',
             newRev: '7654321',
           },
           {
             _tag: 'RefUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRef: 'main',
-            newRef: 'schickling/2026-03-08-foo',
+            newRef: 'alice/2026-03-08-feature',
           },
         ],
       },
     ],
   },
   {
-    memberName: 'overeng',
+    memberName: 'studio-org',
     files: [
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -339,8 +340,52 @@ export const exampleMixedSharedSourceSync: LockSharedSourceUpdate[] = [
   {
     _tag: 'SharedSourceUpdate',
     sourceName: 'devenv',
-    sourceMemberName: 'effect-utils',
+    sourceMemberName: 'dev-tools',
     targetCount: 3,
+  },
+]
+
+// =============================================================================
+// Nested Megarepo Fixtures
+// =============================================================================
+
+/** Nested sync tree for dev-tools megarepo (used in --all stories) */
+export const exampleNestedSyncTrees: MegarepoSyncTree[] = [
+  {
+    root: `${WORKSPACE.root}/repos/${MEMBERS.devTools}`,
+    results: [
+      { name: MEMBERS.cliFramework, status: 'synced' as const, ref: 'main' },
+      { name: MEMBERS.uiKit, status: 'already_synced' as const },
+    ],
+    nestedMegarepos: [],
+    nestedResults: [],
+  },
+  {
+    root: `${WORKSPACE.root}/repos/${MEMBERS.appPlatform}`,
+    results: [{ name: MEMBERS.examples, status: 'already_synced' as const }],
+    nestedMegarepos: [],
+    nestedResults: [],
+  },
+]
+
+/** Lock sync results for nested megarepo members */
+export const exampleNestedLockSyncResults: MemberLockSyncResult[] = [
+  {
+    memberName: 'cli-framework',
+    files: [
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'ui-kit',
+            memberName: 'ui-kit',
+            oldRev: 'aaa1111',
+            newRev: 'bbb2222',
+          },
+        ],
+      },
+    ],
   },
 ]
 
@@ -350,7 +395,7 @@ export const exampleMixedSharedSourceSync: LockSharedSourceUpdate[] = [
 
 export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
   _tag: 'Success',
-  workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
+  workspace: WORKSPACE,
   options: { mode: 'apply', dryRun: false, all: false, verbose: false },
   members: [],
   activeMembers: [],
@@ -362,7 +407,7 @@ export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateTy
   lockSyncResults: [],
   sharedSourceUpdates: [],
   syncTree: {
-    root: '/Users/dev/workspace',
+    root: WORKSPACE.root,
     results: [],
     nestedMegarepos: [],
     nestedResults: [],
@@ -381,14 +426,14 @@ export const examplePreflightIssues: PreflightIssue[] = [
   {
     severity: 'error',
     type: 'ref_mismatch',
-    memberName: 'livestore',
+    memberName: 'app-platform',
     message: "worktree HEAD is 'refactor/genie' but expected 'dev'",
     fix: "run 'git -C ~/.megarepo/.../refs/heads/dev checkout dev' or 'mr store fix'",
   },
   {
     severity: 'error',
     type: 'broken_worktree',
-    memberName: 'effect-utils',
+    memberName: 'dev-tools',
     message: '.git not found in worktree at ~/.megarepo/.../refs/heads/main',
     fix: "run 'mr apply' to recreate the worktree",
   },
@@ -424,7 +469,7 @@ export const createTimeline = (
 ): Array<{ at: number; action: typeof SyncAction.Type }> => {
   const results = finalState.results ?? []
   const members = finalState.members ?? results.map((r) => r.name)
-  const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
+  const workspace = finalState.workspace ?? WORKSPACE
   const options = finalState.options ?? { mode: 'apply', dryRun: false, all: false }
   const nestedMegarepos = finalState.nestedMegarepos ?? []
   const generatedFiles = finalState.generatedFiles ?? []
@@ -552,7 +597,7 @@ export const createCommandTimeline = ({
 }): Array<{ at: number; action: typeof SyncAction.Type }> => {
   const results = finalState.results
   const members = finalState.members ?? results.map((r) => r.name)
-  const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
+  const workspace = finalState.workspace ?? WORKSPACE
   const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
   const lockSyncResults = finalState.lockSyncResults ?? []
   const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []

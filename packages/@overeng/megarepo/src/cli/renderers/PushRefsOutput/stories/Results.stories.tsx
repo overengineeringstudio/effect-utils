@@ -1,5 +1,5 @@
 /**
- * Error stories for PinOutput - various error conditions.
+ * Result stories for PushRefsOutput - successful ref propagation scenarios.
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -12,8 +12,8 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { PinApp } from '../mod.ts'
-import { PinView } from '../view.tsx'
+import { PushRefsApp } from '../mod.ts'
+import { PushRefsView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
 
 type StoryArgs = {
@@ -24,8 +24,8 @@ type StoryArgs = {
 }
 
 export default {
-  component: PinView,
-  title: 'CLI/Config/Pin/Errors',
+  component: PushRefsView,
+  title: 'CLI/Config/PushRefs/Results',
   parameters: {
     layout: 'fullscreen',
   },
@@ -36,7 +36,7 @@ export default {
   argTypes: {
     ...commonArgTypes,
     dryRun: {
-      description: '--dry-run: preview changes without applying',
+      description: '--dry-run: preview changes without writing files',
       control: { type: 'boolean' },
     },
   },
@@ -44,16 +44,16 @@ export default {
 
 type Story = StoryObj<StoryArgs>
 
-/** Error: Not running in a megarepo workspace */
-export const ErrorNotInMegarepo: Story = {
+/** All nested megarepo refs already aligned */
+export const AlreadyAligned: Story = {
   render: (args) => {
-    const finalState = useMemo(() => fixtures.createErrorNotInMegarepo(), [])
+    const finalState = useMemo(() => fixtures.createAligned(), [])
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
+        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+        View={PushRefsView}
+        app={PushRefsApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
@@ -65,16 +65,19 @@ export const ErrorNotInMegarepo: Story = {
   },
 }
 
-/** Error: Member not found in configuration */
-export const ErrorMemberNotFound: Story = {
+/** Single ref update in one nested megarepo */
+export const SingleUpdate: Story = {
   render: (args) => {
-    const finalState = useMemo(() => fixtures.createErrorMemberNotFound(), [])
+    const finalState = useMemo(
+      () => (args.dryRun === true ? fixtures.createDryRunSingle() : fixtures.createSingleUpdate()),
+      [args.dryRun],
+    )
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
+        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+        View={PushRefsView}
+        app={PushRefsApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
@@ -86,16 +89,20 @@ export const ErrorMemberNotFound: Story = {
   },
 }
 
-/** Error: Member not synced yet */
-export const ErrorNotSynced: Story = {
+/** Multiple ref updates across several nested megarepos */
+export const MultipleUpdates: Story = {
   render: (args) => {
-    const finalState = useMemo(() => fixtures.createErrorNotSynced(), [])
+    const finalState = useMemo(
+      () =>
+        args.dryRun === true ? fixtures.createDryRunMultiple() : fixtures.createMultipleUpdates(),
+      [args.dryRun],
+    )
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
+        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+        View={PushRefsView}
+        app={PushRefsApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}
@@ -107,37 +114,16 @@ export const ErrorNotSynced: Story = {
   },
 }
 
-/** Error: Cannot pin local path members */
-export const ErrorLocalPath: Story = {
+/** Update with genie file warning */
+export const WithGenieWarning: Story = {
   render: (args) => {
-    const finalState = useMemo(() => fixtures.createErrorLocalPath(), [])
+    const finalState = useMemo(() => fixtures.createWithGenieWarning(), [])
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
-}
-
-/** Error: Member not in lock file */
-export const ErrorNotInLock: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createErrorNotInLock(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
+        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+        View={PushRefsView}
+        app={PushRefsApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
         height={args.height}
         autoRun={args.interactive}

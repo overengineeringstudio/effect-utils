@@ -116,10 +116,10 @@ export const BranchCreated: Story = {
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createWorktreeNewState({
-        source: 'schickling/dotfiles',
+        source: 'alice/dotfiles',
         ref: 'feat/experiment',
         commit: '789abc012345',
-        path: '/Users/me/.megarepo/store/github.com/schickling/dotfiles/refs/heads/feat/experiment',
+        path: '/Users/me/.megarepo/store/github.com/alice/dotfiles/refs/heads/feat/experiment',
         autoBootstrap: false,
         branchCreated: true,
       })}

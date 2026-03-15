@@ -117,12 +117,12 @@ export const AllErrors: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'error' as const, message: 'network timeout' },
-          { name: 'effect-utils', status: 'error' as const, message: 'authentication failed' },
-          { name: 'livestore', status: 'error' as const, message: 'repository not found' },
+          { name: 'core-lib', status: 'error' as const, message: 'network timeout' },
+          { name: 'dev-tools', status: 'error' as const, message: 'authentication failed' },
+          { name: 'app-platform', status: 'error' as const, message: 'repository not found' },
           { name: 'private-repo', status: 'error' as const, message: 'permission denied' },
         ],
-        members: ['effect', 'effect-utils', 'livestore', 'private-repo'],
+        members: ['core-lib', 'dev-tools', 'app-platform', 'private-repo'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -158,12 +158,12 @@ export const SkippedMembers: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: 'core-lib', status: 'synced' as const, ref: 'main' },
           { name: 'dirty-repo', status: 'skipped' as const, message: 'dirty worktree' },
           { name: 'pinned-repo', status: 'skipped' as const, message: 'pinned' },
           { name: 'private-repo', status: 'skipped' as const, message: 'authentication required' },
         ] satisfies MemberSyncResult[],
-        members: ['effect', 'dirty-repo', 'pinned-repo', 'private-repo'],
+        members: ['core-lib', 'dirty-repo', 'pinned-repo', 'private-repo'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -199,13 +199,13 @@ export const MixedSkipped: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'already_synced' as const },
+          { name: 'core-lib', status: 'already_synced' as const },
           { name: 'dirty-repo', status: 'skipped' as const, message: '5 uncommitted changes' },
           { name: 'pinned-repo', status: 'skipped' as const, message: 'pinned to v1.0.0' },
           { name: 'auth-repo', status: 'skipped' as const, message: 'authentication required' },
           { name: 'missing-ref', status: 'skipped' as const, message: 'ref feature/x not found' },
         ] satisfies MemberSyncResult[],
-        members: ['effect', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
+        members: ['core-lib', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -242,9 +242,9 @@ export const RefMismatchDetected: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: 'core-lib', status: 'synced' as const, ref: 'main' },
           {
-            name: 'effect-utils',
+            name: 'dev-tools',
             status: 'skipped' as const,
             refMismatch: {
               expectedRef: 'main',
@@ -253,7 +253,7 @@ export const RefMismatchDetected: Story = {
             },
           },
           {
-            name: 'livestore',
+            name: 'app-platform',
             status: 'skipped' as const,
             refMismatch: {
               expectedRef: 'main',
@@ -261,9 +261,9 @@ export const RefMismatchDetected: Story = {
               isDetached: true,
             },
           },
-          { name: 'other-repo', status: 'synced' as const, ref: 'develop' },
+          { name: 'studio-org', status: 'synced' as const, ref: 'develop' },
         ] satisfies MemberSyncResult[],
-        members: ['effect', 'effect-utils', 'livestore', 'other-repo'],
+        members: ['core-lib', 'dev-tools', 'app-platform', 'studio-org'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -299,10 +299,10 @@ export const Interrupted: Story = {
           force: args.force,
         },
         _tag: 'Interrupted' as const,
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        members: ['core-lib', 'dev-tools', 'app-platform', 'dotfiles'],
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
+          { name: 'core-lib', status: 'synced' as const, ref: 'main' },
+          { name: 'dev-tools', status: 'cloned' as const, ref: 'main' },
         ] satisfies MemberSyncResult[],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -343,12 +343,12 @@ export const FetchErrors: Story = {
         syncErrorCount: 2,
         syncErrors: [
           {
-            megarepoRoot: '/Users/dev/workspace',
-            memberName: 'effect-utils',
+            megarepoRoot: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/',
+            memberName: 'dev-tools',
             message: 'network timeout during fetch',
           },
           {
-            megarepoRoot: '/Users/dev/workspace',
+            megarepoRoot: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/',
             memberName: 'private-repo',
             message: 'authentication failed',
           },

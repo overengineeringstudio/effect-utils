@@ -31,7 +31,7 @@ export default {
   args: {
     height: 400,
     repo: 'not-a-valid-repo',
-    name: 'effect',
+    name: 'core-lib',
   },
   argTypes: {
     height: {

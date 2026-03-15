@@ -25,7 +25,7 @@ type StoryArgs = {
 
 export default {
   component: PinView,
-  title: 'CLI/Pin/Results',
+  title: 'CLI/Config/Pin/Results',
   parameters: {
     layout: 'fullscreen',
   },
@@ -51,7 +51,7 @@ export const PinWithRef: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -72,7 +72,7 @@ export const PinCurrentCommit: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -93,7 +93,7 @@ export const Unpin: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -114,7 +114,7 @@ export const AlreadyPinned: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -135,7 +135,7 @@ export const AlreadyUnpinned: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -157,7 +157,7 @@ export const DryRunFull: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -179,7 +179,7 @@ export const DryRunSimple: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

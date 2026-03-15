@@ -68,7 +68,7 @@ export const FullApply: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.applyResults,
-        workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
+        workspace: { name: 'dev-workspace-blue', root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -91,7 +91,7 @@ export const FullApply: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="/home/runner/work/mr-all-blue"
+        cwd="/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/"
         command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
@@ -156,7 +156,7 @@ export const WithErrors: Story = {
       () => ({
         _tag: 'Error' as const,
         results: fixtures.applyWithErrors,
-        workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
+        workspace: { name: 'dev-workspace-blue', root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -167,12 +167,12 @@ export const WithErrors: Story = {
         syncErrorCount: 2,
         syncErrors: [
           {
-            megarepoRoot: '/home/runner/work/mr-all-blue',
-            memberName: 'effect-utils',
+            megarepoRoot: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+            memberName: 'dev-tools',
             message: 'commit f0e1d2c not found — run mr fetch',
           },
           {
-            megarepoRoot: '/home/runner/work/mr-all-blue',
+            megarepoRoot: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
             memberName: 'dotfiles',
             message: 'repository not found',
           },
@@ -192,7 +192,7 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="/home/runner/work/mr-all-blue"
+        cwd="/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/"
         command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {
@@ -214,7 +214,7 @@ export const LockRequired: Story = {
       () => ({
         _tag: 'Error' as const,
         results: [],
-        workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
+        workspace: { name: 'dev-workspace', root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/' },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -225,7 +225,7 @@ export const LockRequired: Story = {
         syncErrorCount: 1,
         syncErrors: [
           {
-            megarepoRoot: '/Users/dev/workspace',
+            megarepoRoot: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/',
             memberName: '',
             message: 'No megarepo.lock found. Run `mr fetch` to create one.',
           },
@@ -259,7 +259,7 @@ export const WithLockSync: Story = {
       () => ({
         results: fixtures.applyWithLockSync,
         lockSyncResults: exampleLockSyncResults,
-        workspace: { name: 'mr-all-blue', root: '/home/runner/work/mr-all-blue' },
+        workspace: { name: 'dev-workspace-blue', root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -282,7 +282,7 @@ export const WithLockSync: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="/home/runner/work/mr-all-blue"
+        cwd="/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/"
         command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true
           ? {

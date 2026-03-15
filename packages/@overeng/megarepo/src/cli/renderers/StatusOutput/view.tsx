@@ -386,7 +386,7 @@ const WarningItem = ({ problem }: { problem: Problem }) => {
                   <Text>{'      '}</Text>
                   <Text color="cyan">fix: </Text>
                   <Text>
-                    mr pin {m.name} -c {mismatch.actualRef}
+                    mr config pin {m.name} -c {mismatch.actualRef}
                   </Text>
                 </Box>
                 <Box flexDirection="row">

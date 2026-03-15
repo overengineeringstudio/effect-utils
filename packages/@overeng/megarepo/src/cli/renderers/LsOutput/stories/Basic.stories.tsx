@@ -50,7 +50,7 @@ export const Default: Story = {
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command="mr ls"
-      cwd="~/my-workspace"
+      cwd="~/workspace"
     />
   ),
 }

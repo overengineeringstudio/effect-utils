@@ -41,8 +41,8 @@ export default {
   args: {
     ...defaultStoryArgs,
     sync: true,
-    name: 'effect',
-    source: 'effect-ts/effect',
+    name: 'core-lib',
+    source: 'alice/core-lib',
   },
   argTypes: {
     ...commonArgTypes,

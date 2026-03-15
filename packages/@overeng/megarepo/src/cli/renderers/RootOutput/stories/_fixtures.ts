@@ -12,8 +12,8 @@ import type { RootStateType } from '../mod.ts'
 
 export const successState: RootStateType = {
   _tag: 'Success',
-  root: '/Users/dev/megarepo/',
-  name: 'my-workspace',
+  root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/',
+  name: 'dev-workspace',
   source: 'search',
 }
 
@@ -36,5 +36,5 @@ export const invalidCwdState: RootStateType = {
 export const invalidCwdNotDirState: RootStateType = {
   _tag: 'Error',
   error: 'invalid_cwd',
-  message: '--cwd path is not a directory: /Users/dev/some-file.txt',
+  message: '--cwd path is not a directory: /Users/dev/.megarepo/github.com/alice/some-file.txt',
 }

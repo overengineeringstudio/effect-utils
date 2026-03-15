@@ -67,15 +67,15 @@ const filterMembers = <T extends { name: string }>(_: {
 }
 
 const parallelMembers = [
-  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
-  { name: 'effect-utils', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
-  { name: 'livestore', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
+  { name: 'core-lib', status: 'success' as const, exitCode: 0, stdout: 'v3.0.0' },
+  { name: 'dev-tools', status: 'success' as const, exitCode: 0, stdout: 'v1.2.3' },
+  { name: 'app-platform', status: 'success' as const, exitCode: 0, stdout: 'v0.5.0' },
 ]
 
 const sequentialMembers = [
-  { name: 'effect', status: 'success' as const, exitCode: 0, stdout: 'On branch main' },
+  { name: 'core-lib', status: 'success' as const, exitCode: 0, stdout: 'On branch main' },
   {
-    name: 'effect-utils',
+    name: 'dev-tools',
     status: 'success' as const,
     exitCode: 0,
     stdout: 'On branch feature',

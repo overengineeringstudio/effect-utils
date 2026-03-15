@@ -101,7 +101,7 @@ export const SingleIssue: Story = {
             severity: 'error',
             type: 'missing_bare',
             memberName: 'dotfiles',
-            message: 'bare repo not found at ~/.megarepo/github.com/schickling/dotfiles/bare',
+            message: 'bare repo not found at ~/.megarepo/github.com/alice/dotfiles/bare',
             fix: "run 'mr apply' to clone the bare repo",
           },
         ],

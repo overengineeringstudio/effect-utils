@@ -13,49 +13,51 @@ import type { MemberLockSyncResult } from '../../schema.ts'
 
 /** Fetch results with mixed updates */
 export const fetchResults: MemberSyncResult[] = [
+  { name: 'dotfiles', status: 'synced', ref: 'main' },
+  { name: 'homepage', status: 'already_synced' },
   {
-    name: 'effect',
+    name: 'dev-tools',
+    status: 'updated',
+    commit: 'def5678abc',
+    previousCommit: 'fedcba987',
+    ref: 'main',
+  },
+  {
+    name: 'app-platform',
     status: 'updated',
     commit: 'abc1234def',
     previousCommit: '9876543fed',
     ref: 'main',
   },
-  {
-    name: 'effect-utils',
-    status: 'updated',
-    commit: 'def5678abc',
-    previousCommit: 'fedcba987',
-    ref: 'main',
-  },
-  { name: 'livestore', status: 'already_synced' },
-  { name: 'dotfiles', status: 'synced', ref: 'main' },
+  { name: 'core-lib', status: 'already_synced' },
+  { name: 'studio-org', status: 'synced', ref: 'main' },
 ]
 
 /** Fetch with --create-branches (new branches created) */
 export const fetchWithNewBranches: MemberSyncResult[] = [
-  { name: 'effect', status: 'cloned', ref: 'feature/new-api' },
+  { name: 'core-lib', status: 'cloned', ref: 'feature/new-api' },
   {
-    name: 'effect-utils',
+    name: 'dev-tools',
     status: 'updated',
     commit: 'def5678abc',
     previousCommit: 'fedcba987',
     ref: 'main',
   },
-  { name: 'livestore', status: 'synced', ref: 'feature/new-api' },
+  { name: 'app-platform', status: 'synced', ref: 'feature/new-api' },
   { name: 'dotfiles', status: 'already_synced' },
 ]
 
 /** Fetch with errors (network, auth) */
 export const fetchWithErrors: MemberSyncResult[] = [
   {
-    name: 'effect',
+    name: 'core-lib',
     status: 'updated',
     commit: 'abc1234def',
     previousCommit: '9876543fed',
     ref: 'main',
   },
-  { name: 'effect-utils', status: 'error', message: 'network timeout during fetch' },
-  { name: 'livestore', status: 'already_synced' },
+  { name: 'dev-tools', status: 'error', message: 'network timeout during fetch' },
+  { name: 'app-platform', status: 'already_synced' },
   { name: 'private-repo', status: 'error', message: 'authentication failed' },
 ]
 
@@ -66,22 +68,22 @@ export const fetchWithErrors: MemberSyncResult[] = [
 /** Lock input sync results (flake.lock/devenv.lock updates) */
 export const fetchLockSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'effect',
+    memberName: 'core-lib',
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'livestore',
-            memberName: 'livestore',
+            inputName: 'app-platform',
+            memberName: 'app-platform',
             oldRev: '1234567',
             newRev: '7654321',
           },
@@ -92,8 +94,8 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -109,8 +111,8 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect',
-            memberName: 'effect',
+            inputName: 'core-lib',
+            memberName: 'core-lib',
             oldRev: 'fff0000',
             newRev: 'aaa1111',
           },
@@ -130,8 +132,8 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -142,15 +144,15 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'livestore',
-            memberName: 'livestore',
+            inputName: 'app-platform',
+            memberName: 'app-platform',
             oldRev: '1111111',
             newRev: '2222222',
           },
@@ -159,15 +161,15 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
     ],
   },
   {
-    memberName: 'overeng',
+    memberName: 'studio-org',
     files: [
       {
         type: 'devenv.yaml',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
@@ -178,15 +180,15 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'effect-utils-playwright',
-            memberName: 'effect-utils',
+            inputName: 'dev-tools-browser',
+            memberName: 'dev-tools',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },

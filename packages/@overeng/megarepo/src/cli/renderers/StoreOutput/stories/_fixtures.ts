@@ -72,9 +72,9 @@ export const createWorktreeNewState = (opts: {
 // =============================================================================
 
 export const exampleFetchResults: StoreFetchResult[] = [
-  { path: 'github.com/effect-ts/effect', status: 'fetched' },
-  { path: 'github.com/overengineeringstudio/effect-utils', status: 'fetched' },
-  { path: 'github.com/schickling/dotfiles', status: 'error', message: 'network timeout' },
+  { path: 'github.com/alice/core-lib', status: 'fetched' },
+  { path: 'github.com/acme-org/dev-tools', status: 'fetched' },
+  { path: 'github.com/alice/dotfiles', status: 'error', message: 'network timeout' },
 ]
 
 export const createFetchState = (opts: {
@@ -162,21 +162,21 @@ export const createFetchTimeline = (finalState: {
 
 export const exampleGcResults: StoreGcResult[] = [
   {
-    repo: 'github.com/effect-ts/effect',
+    repo: 'github.com/alice/core-lib',
     ref: 'feat/old-branch',
-    path: '/store/...',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/feat/old-branch/',
     status: 'removed',
   },
   {
-    repo: 'github.com/effect-ts/effect',
+    repo: 'github.com/alice/core-lib',
     ref: 'main',
-    path: '/store/...',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/main/',
     status: 'skipped_in_use',
   },
   {
-    repo: 'github.com/overengineeringstudio/effect-utils',
+    repo: 'github.com/acme-org/dev-tools',
     ref: 'dev',
-    path: '/store/...',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/dev/',
     status: 'skipped_dirty',
   },
 ]
@@ -288,9 +288,9 @@ export const createGcTimeline = (config: {
 // =============================================================================
 
 export const exampleStoreRepos: StoreRepo[] = [
-  { relativePath: 'github.com/effect-ts/effect' },
-  { relativePath: 'github.com/overengineeringstudio/effect-utils' },
-  { relativePath: 'github.com/schickling/dotfiles' },
+  { relativePath: 'github.com/alice/core-lib' },
+  { relativePath: 'github.com/acme-org/dev-tools' },
+  { relativePath: 'github.com/alice/dotfiles' },
 ]
 
 export const createLsState = (repos: StoreRepo[]): StoreStateType => ({
@@ -305,34 +305,34 @@ export const createLsState = (repos: StoreRepo[]): StoreStateType => ({
 
 export const healthyWorktrees: StoreWorktreeStatus[] = [
   {
-    repo: 'github.com/effect-ts/effect/',
+    repo: 'github.com/alice/core-lib/',
     ref: 'main',
     refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/main/',
     issues: [],
   },
   {
-    repo: 'github.com/overengineeringstudio/effect-utils/',
+    repo: 'github.com/acme-org/dev-tools/',
     ref: 'main',
     refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/main/',
     issues: [],
   },
 ]
 
 export const mixedIssuesWorktrees: StoreWorktreeStatus[] = [
   {
-    repo: 'github.com/effect-ts/effect/',
+    repo: 'github.com/alice/core-lib/',
     ref: 'main',
     refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/effect-ts/effect/refs/heads/main/',
+    path: '/Users/dev/.megarepo/github.com/alice/core-lib/refs/heads/main/',
     issues: [],
   },
   {
-    repo: 'github.com/livestorejs/livestore/',
+    repo: 'github.com/acme-org/app-platform/',
     ref: 'dev',
     refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/livestorejs/livestore/refs/heads/dev/',
+    path: '/Users/dev/.megarepo/github.com/acme-org/app-platform/refs/heads/dev/',
     issues: [
       {
         type: 'ref_mismatch',
@@ -344,17 +344,17 @@ export const mixedIssuesWorktrees: StoreWorktreeStatus[] = [
     ],
   },
   {
-    repo: 'github.com/overengineeringstudio/effect-utils/',
+    repo: 'github.com/acme-org/dev-tools/',
     ref: 'main',
     refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/overengineeringstudio/effect-utils/refs/heads/main/',
+    path: '/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/main/',
     issues: [{ type: 'dirty', severity: 'warning', message: '36 uncommitted changes' }],
   },
   {
-    repo: 'github.com/schickling/dotfiles/',
+    repo: 'github.com/alice/dotfiles/',
     ref: 'main',
     refType: 'heads',
-    path: '/Users/dev/.megarepo/github.com/schickling/dotfiles/refs/heads/main/',
+    path: '/Users/dev/.megarepo/github.com/alice/dotfiles/refs/heads/main/',
     issues: [{ type: 'orphaned', severity: 'info', message: 'not in current megarepo.lock' }],
   },
 ]
@@ -383,13 +383,13 @@ export type { StoreFixResult }
 
 export const fixResultsMixed: StoreFixResult[] = [
   {
-    memberName: 'livestore',
+    memberName: 'app-platform',
     issueType: 'ref_mismatch',
     status: 'fixed',
     message: "checked out expected branch 'dev'",
   },
   {
-    memberName: 'effect-utils',
+    memberName: 'dev-tools',
     issueType: 'broken_worktree',
     status: 'fixed',
     message: 're-linked .git file to bare repository',
@@ -404,13 +404,13 @@ export const fixResultsMixed: StoreFixResult[] = [
 
 export const fixResultsAllFixed: StoreFixResult[] = [
   {
-    memberName: 'livestore',
+    memberName: 'app-platform',
     issueType: 'ref_mismatch',
     status: 'fixed',
     message: "checked out expected branch 'dev'",
   },
   {
-    memberName: 'effect-utils',
+    memberName: 'dev-tools',
     issueType: 'broken_worktree',
     status: 'fixed',
     message: 're-linked .git file to bare repository',
@@ -419,13 +419,13 @@ export const fixResultsAllFixed: StoreFixResult[] = [
 
 export const fixResultsDryRun: StoreFixResult[] = [
   {
-    memberName: 'livestore',
+    memberName: 'app-platform',
     issueType: 'ref_mismatch',
     status: 'skipped',
     message: "would check out expected branch 'dev'",
   },
   {
-    memberName: 'effect-utils',
+    memberName: 'dev-tools',
     issueType: 'broken_worktree',
     status: 'skipped',
     message: 'would re-link .git file to bare repository',

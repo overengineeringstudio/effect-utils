@@ -14,7 +14,7 @@ export { fetchCommand } from './fetch.ts'
 export { initCommand } from './init.ts'
 export { lockCommand } from './lock.ts'
 export { lsCommand } from './ls.ts'
-export { pinCommand, unpinCommand } from './pin.ts'
+export { configCommand } from './config/mod.ts'
 export { rootCommand } from './root.ts'
 export { statusCommand } from './status.ts'
 

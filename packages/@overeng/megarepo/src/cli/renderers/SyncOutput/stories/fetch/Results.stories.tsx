@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { MEMBERS, MEGAREPO_MEMBERS } from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {
@@ -82,7 +83,7 @@ export const MixedResults: Story = {
         },
         results: exampleSyncResults,
         members: exampleSyncResults.map((r) => r.name),
-        nestedMegarepos: ['effect-utils'],
+        nestedMegarepos: [MEMBERS.devTools],
         generatedFiles: ['flake.nix', '.envrc'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -118,7 +119,7 @@ export const AllUpToDate: Story = {
           verbose: args.verbose,
           force: args.force,
         },
-        workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
+        workspace: { name: 'dev-workspace-blue', root: '/Users/dev/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
         results: exampleAllSynced,
         members: exampleAllSynced.map((r) => r.name),
       }),
@@ -135,7 +136,7 @@ export const AllUpToDate: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="~/mr-all-blue"
+        cwd="~/dev-workspace-blue"
         command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
@@ -155,14 +156,14 @@ export const InitialFetch: Story = {
           verbose: args.verbose,
           force: args.force,
         },
-        workspace: { name: 'new-workspace', root: '/Users/dev/new-workspace' },
+        workspace: { name: 'new-workspace', root: '/Users/dev/.megarepo/github.com/alice/new-workspace/refs/heads/main/' },
         results: [
-          { name: 'effect', status: 'cloned' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
-          { name: 'livestore', status: 'cloned' as const, ref: 'dev' },
+          { name: 'core-lib', status: 'cloned' as const, ref: 'main' },
+          { name: 'dev-tools', status: 'cloned' as const, ref: 'main' },
+          { name: 'app-platform', status: 'cloned' as const, ref: 'dev' },
           { name: 'dotfiles', status: 'cloned' as const, ref: 'main' },
         ],
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        members: ['core-lib', 'dev-tools', 'app-platform', 'dotfiles'],
         generatedFiles: ['flake.nix'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -279,11 +280,11 @@ export const RemovedMembers: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: 'core-lib', status: 'synced' as const, ref: 'main' },
           { name: 'old-repo', status: 'removed' as const, message: '/store/old-repo-abc123' },
           { name: 'deprecated', status: 'removed' as const, message: '/store/deprecated-def456' },
         ],
-        members: ['effect', 'old-repo', 'deprecated'],
+        members: ['core-lib', 'old-repo', 'deprecated'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -319,12 +320,12 @@ export const WithGenerators: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
-          { name: 'livestore', status: 'cloned' as const, ref: 'main' },
+          { name: 'core-lib', status: 'synced' as const, ref: 'main' },
+          { name: 'dev-tools', status: 'synced' as const, ref: 'main' },
+          { name: 'app-platform', status: 'cloned' as const, ref: 'main' },
           { name: 'dotfiles', status: 'already_synced' as const },
         ],
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        members: ['core-lib', 'dev-tools', 'app-platform', 'dotfiles'],
         generatedFiles: ['flake.nix', 'flake.lock', '.vscode/megarepo.code-workspace'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -360,8 +361,8 @@ export const SingleMember: Story = {
           verbose: args.verbose,
           force: args.force,
         },
-        results: [{ name: 'effect', status: 'synced' as const, ref: 'main' }],
-        members: ['effect'],
+        results: [{ name: 'core-lib', status: 'synced' as const, ref: 'main' }],
+        members: ['core-lib'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -402,7 +403,7 @@ export const ManyMembers: Story = {
         },
         workspace: {
           name: 'large-workspace',
-          root: '/Users/dev/large-workspace',
+          root: '/Users/dev/.megarepo/github.com/alice/large-workspace/refs/heads/main/',
         },
         results,
         members: results.map((r) => r.name),
@@ -440,12 +441,12 @@ export const NestedMegarepos: Story = {
           force: args.force,
         },
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
-          { name: 'livestore', status: 'synced' as const, ref: 'main' },
+          { name: 'core-lib', status: 'synced' as const, ref: 'main' },
+          { name: 'dev-tools', status: 'synced' as const, ref: 'main' },
+          { name: 'app-platform', status: 'synced' as const, ref: 'main' },
         ],
-        members: ['effect', 'effect-utils', 'livestore'],
-        nestedMegarepos: ['effect-utils', 'livestore'],
+        members: ['core-lib', 'dev-tools', 'app-platform'],
+        nestedMegarepos: [...MEGAREPO_MEMBERS],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
