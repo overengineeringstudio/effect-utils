@@ -216,16 +216,19 @@ const defaultStyle: HighlightStyle = {
 }
 
 /**
- * H1:  No highlighting at all
- * H2:  Cyan name + dark bg for current, cyan name for ancestor
- * H3:  Cyan name + dark bg for current only (no ancestor)
- * H4:  Dim everything except current (spotlight)
- * H5:  Underline current, dim ancestor
- * H6:  Arrow marker "▸ " before current name
- * H7:  Bold white on blue bg for current, italic cyan for ancestor
- * H8:  Green current name + green bg tint, ancestor gets subtle green
- * H9:  Inverse-ish: bright white on ansi256:24 (dark blue) for current, dim others
- * H10: Minimal — just italic current name, nothing else
+ * Background highlight variants (H1-H5): H7-style with dimmer/neutral bg colors
+ * Minimal/text-only variants (H6-H10): H10-style subtle text treatments
+ *
+ * H1:  ansi256:236 (very dark gray) bg, white name
+ * H2:  ansi256:237 (dark gray) bg, white name
+ * H3:  ansi256:238 (medium-dark gray) bg, white name
+ * H4:  ansi256:239 (medium gray) bg, white name
+ * H5:  ansi256:236 bg, cyan name (like H2 from before)
+ * H6:  Italic cyan name only
+ * H7:  Bold cyan name + dim others
+ * H8:  Underline white name
+ * H9:  Arrow marker "▸" before current
+ * H10: Bold white name + dim others (spotlight)
  */
 const resolveStyle = ({
   variant,
@@ -235,78 +238,61 @@ const resolveStyle = ({
   role: HighlightRole
 }): HighlightStyle => {
   if (role === undefined) {
-    // Non-highlighted nodes: some variants dim them
-    if (variant === 'H4') return { ...defaultStyle, nameDim: true, dimNonCurrent: true }
-    if (variant === 'H9') return { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+    if (variant === 'H7' || variant === 'H10')
+      return { ...defaultStyle, nameDim: true, dimNonCurrent: true }
     return defaultStyle
   }
 
   switch (variant) {
     case 'H1':
-      return defaultStyle
+      return role === 'current'
+        ? { ...defaultStyle, nameColor: 'white', bgColor: { ansi256: 236 }, extendBg: true }
+        : { ...defaultStyle, nameColor: 'cyan' }
 
     case 'H2':
       return role === 'current'
-        ? { ...defaultStyle, nameColor: 'cyan', bgColor: { ansi256: 236 }, extendBg: true }
+        ? { ...defaultStyle, nameColor: 'white', bgColor: { ansi256: 237 }, extendBg: true }
         : { ...defaultStyle, nameColor: 'cyan' }
 
     case 'H3':
       return role === 'current'
-        ? { ...defaultStyle, nameColor: 'cyan', bgColor: { ansi256: 236 }, extendBg: true }
-        : defaultStyle
+        ? { ...defaultStyle, nameColor: 'white', bgColor: { ansi256: 238 }, extendBg: true }
+        : { ...defaultStyle, nameColor: 'cyan' }
 
     case 'H4':
       return role === 'current'
-        ? { ...defaultStyle, nameColor: 'white' }
-        : { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+        ? { ...defaultStyle, nameColor: 'white', bgColor: { ansi256: 239 }, extendBg: true }
+        : { ...defaultStyle, nameColor: 'cyan' }
 
     case 'H5':
       return role === 'current'
-        ? { ...defaultStyle, nameUnderline: true, nameColor: 'cyan' }
-        : { ...defaultStyle, nameDim: true }
+        ? { ...defaultStyle, nameColor: 'cyan', bgColor: { ansi256: 236 }, extendBg: true }
+        : { ...defaultStyle, nameColor: 'cyan' }
 
     case 'H6':
       return role === 'current'
-        ? { ...defaultStyle, nameColor: 'cyan', marker: '▸ ' }
-        : role === 'ancestor'
-          ? { ...defaultStyle, nameColor: 'cyan' }
-          : defaultStyle
+        ? { ...defaultStyle, nameItalic: true, nameColor: 'cyan' }
+        : defaultStyle
 
     case 'H7':
       return role === 'current'
-        ? {
-            ...defaultStyle,
-            nameColor: 'white',
-            bgColor: { ansi256: 25 },
-            extendBg: true,
-          }
-        : { ...defaultStyle, nameColor: 'cyan', nameItalic: true }
+        ? { ...defaultStyle, nameColor: 'cyan' }
+        : { ...defaultStyle, nameDim: true, dimNonCurrent: true }
 
     case 'H8':
       return role === 'current'
-        ? {
-            ...defaultStyle,
-            nameColor: 'greenBright',
-            bgColor: { ansi256: 22 },
-            extendBg: true,
-          }
-        : { ...defaultStyle, nameColor: 'green' }
+        ? { ...defaultStyle, nameUnderline: true, nameColor: 'white' }
+        : defaultStyle
 
     case 'H9':
       return role === 'current'
-        ? {
-            ...defaultStyle,
-            nameColor: 'whiteBright',
-            bgColor: { ansi256: 24 },
-            extendBg: true,
-            dimNonCurrent: true,
-          }
-        : { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+        ? { ...defaultStyle, nameColor: 'cyan', marker: '▸ ' }
+        : defaultStyle
 
     case 'H10':
       return role === 'current'
-        ? { ...defaultStyle, nameItalic: true, nameColor: 'cyan' }
-        : defaultStyle
+        ? { ...defaultStyle, nameColor: 'white' }
+        : { ...defaultStyle, nameDim: true, dimNonCurrent: true }
   }
 }
 
@@ -335,7 +321,7 @@ const getRole = ({
 
 /** Whether the variant supports ancestor highlighting */
 const hasAncestorSupport = (variant: HighlightVariant): boolean =>
-  variant === 'H2' || variant === 'H6' || variant === 'H7' || variant === 'H8'
+  variant === 'H1' || variant === 'H2' || variant === 'H3' || variant === 'H4' || variant === 'H5'
 
 const MemberInfo = ({
   m,
@@ -516,16 +502,16 @@ const ExplorationApp = createTuiApp({
 })
 
 const VARIANT_DESCRIPTIONS: Record<HighlightVariant, string> = {
-  H1: 'No highlighting',
-  H2: 'Cyan name + dark bg (current), cyan name (ancestor)',
-  H3: 'Cyan name + dark bg (current only, no ancestor)',
-  H4: 'Spotlight — dim everything except current',
-  H5: 'Underline current (cyan), dim ancestor',
-  H6: 'Arrow marker "▸" before current, cyan ancestor',
-  H7: 'White on blue bg (current), italic cyan (ancestor)',
-  H8: 'Green tint bg (current), subtle green (ancestor)',
-  H9: 'White on dark blue (current), dim all others',
-  H10: 'Minimal — just italic cyan name for current',
+  H1: 'BG: ansi256:236 (very dark gray), white name',
+  H2: 'BG: ansi256:237 (dark gray), white name',
+  H3: 'BG: ansi256:238 (medium-dark gray), white name',
+  H4: 'BG: ansi256:239 (medium gray), white name',
+  H5: 'BG: ansi256:236, cyan name',
+  H6: 'Text: italic cyan name only',
+  H7: 'Text: bold cyan name, dim others',
+  H8: 'Text: underline white name',
+  H9: 'Text: arrow marker "▸" before current',
+  H10: 'Text: bold white name, dim others (spotlight)',
 }
 
 const ExplorationView = ({ stateAtom }: { stateAtom: Atom.Atom<ExplorationState> }) => {
