@@ -43,13 +43,9 @@ export const lockCommand = Cli.Command.make(
       ),
       Cli.Options.withDefault('auto' as const),
     ),
-    noStrict: Cli.Options.boolean('no-strict').pipe(
-      Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
-      Cli.Options.withDefault(false),
-    ),
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, noStrict, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
     runCommand({
       mode: 'lock',
       output,
@@ -60,7 +56,6 @@ export const lockCommand = Cli.Command.make(
       skip,
       gitProtocol,
       createBranches: false,
-      noStrict,
       verbose,
     }),
 ).pipe(

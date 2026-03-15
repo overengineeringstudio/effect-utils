@@ -97,8 +97,6 @@ export const syncMegarepo = <R = never>({
     skip: ReadonlyArray<string> | undefined
     gitProtocol: GitProtocol
     createBranches: boolean
-    /** When true, bypass store hygiene pre-flight checks */
-    noStrict?: boolean
     /** When true (fetch --apply), skip staleness check and run fetch before apply for nested --all recursion. */
     applyAfterFetch?: boolean
   }
@@ -242,7 +240,7 @@ export const syncMegarepo = <R = never>({
         config,
         lockFile,
         store,
-        strict: !(options.noStrict ?? false),
+        mode: isApplyMode === true ? 'apply' : 'lock',
       })
     }
 
@@ -593,7 +591,6 @@ export const runCommand = ({
   skip,
   gitProtocol,
   createBranches,
-  noStrict = false,
   verbose,
   applyAfterFetch = false,
 }: {
@@ -606,7 +603,6 @@ export const runCommand = ({
   skip: Option.Option<string>
   gitProtocol: GitProtocol
   createBranches: boolean
-  noStrict?: boolean
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
@@ -680,7 +676,6 @@ export const runCommand = ({
           skip: skipMembers,
           gitProtocol,
           createBranches,
-          noStrict,
         },
         ...(onMissingRef !== undefined ? { onMissingRef } : {}),
       })
@@ -700,7 +695,6 @@ export const runCommand = ({
           skip: skipMembers,
           gitProtocol,
           createBranches,
-          noStrict,
           ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
         },
         ...(progressHandle !== undefined ? { progressHandle } : {}),

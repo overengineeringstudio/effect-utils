@@ -414,9 +414,7 @@ const PreflightFailedView = ({
       ))}
       <Text> </Text>
       <Separator />
-      <Text dim>
-        Run 'mr store fix' to resolve issues, or pass '--no-strict' to skip pre-flight checks
-      </Text>
+      <Text dim>Run 'mr store fix' to resolve issues</Text>
     </Box>
   )
 }

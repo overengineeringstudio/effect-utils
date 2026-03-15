@@ -244,22 +244,24 @@ export const validateStoreMembers = ({
 /**
  * Run pre-flight hygiene checks before write operations.
  *
- * - Error-severity issues: fail with actionable error message
- * - Warning-severity: log warning, proceed
- * - Info-severity: silent
+ * The `mode` determines which issues are blocking:
+ * - `apply`: `missing_bare` is expected (apply will clone it), only `ref_mismatch` and `broken_worktree` block
+ * - `lock`: all error-severity issues block (bare must already exist to read worktree state)
+ *
+ * Warning-severity issues are always logged but never block.
  */
 export const runPreflightChecks = ({
   memberNames,
   config,
   lockFile,
   store,
-  strict = true,
+  mode,
 }: {
   memberNames: readonly string[]
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
-  strict?: boolean | undefined
+  mode: 'apply' | 'lock'
 }): Effect.Effect<
   void,
   StoreHygieneError | PlatformError.PlatformError,
@@ -275,17 +277,28 @@ export const runPreflightChecks = ({
 
     if (issues.length === 0) return
 
-    const errors = issues.filter((i) => i.severity === 'error')
     const warnings = issues.filter((i) => i.severity === 'warning')
+
+    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors
+    const blockingErrors = issues.filter(
+      (i) => i.severity === 'error' && !(mode === 'apply' && i.type === 'missing_bare'),
+    )
 
     // Log warnings
     for (const warning of warnings) {
       yield* Effect.logWarning(`[${warning.memberName}] ${warning.message}`)
     }
 
-    // Fail on errors (unless non-strict mode)
-    if (strict === true && errors.length > 0) {
-      const errorMessages = errors
+    // Log non-blocking missing_bare as info in apply mode
+    if (mode === 'apply') {
+      const missingBareIssues = issues.filter((i) => i.type === 'missing_bare')
+      for (const issue of missingBareIssues) {
+        yield* Effect.logInfo(`[${issue.memberName}] ${issue.message} (will be cloned)`)
+      }
+    }
+
+    if (blockingErrors.length > 0) {
+      const errorMessages = blockingErrors
         .map((e) => {
           const fixHint = e.fix !== undefined ? `\n  fix: ${e.fix}` : ''
           return `  ${e.memberName}: ${e.message}${fixHint}`
@@ -293,7 +306,7 @@ export const runPreflightChecks = ({
         .join('\n')
 
       return yield* new StoreHygieneError({
-        message: `Store hygiene check failed with ${errors.length} error${errors.length !== 1 ? 's' : ''}:\n${errorMessages}`,
+        message: `Store hygiene check failed with ${blockingErrors.length} error${blockingErrors.length !== 1 ? 's' : ''}:\n${errorMessages}`,
         issues: issues.map((i) => ({
           severity: i.severity,
           type: i.type,
