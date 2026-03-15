@@ -240,7 +240,7 @@ export const syncMegarepo = <R = never>({
         config,
         lockFile,
         store,
-        mode: isApplyMode ? 'apply' : 'lock',
+        mode: isApplyMode === true ? 'apply' : 'lock',
       })
     }
 

@@ -110,7 +110,7 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Type check
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run ts:check --mode before"
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run ts:check --mode before"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -254,7 +254,7 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Format + lint
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -401,7 +401,7 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Unit tests
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run test:run --mode before"
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run test:run --mode before"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -548,7 +548,7 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Nix hash check
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run nix:check --mode before"
+        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run nix:check --mode before"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -703,9 +703,9 @@ jobs:
             exit 0
           fi
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\n%s' "$NIX_CONFIG" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
+            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\n%s' "$NIX_CONFIG" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\n%s' "$NIX_CONFIG" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
+            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\n%s' "$NIX_CONFIG" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()
