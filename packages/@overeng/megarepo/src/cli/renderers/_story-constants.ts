@@ -73,6 +73,38 @@ export const STANDARD_MEMBERS = [
   MEMBERS.studioOrg,
 ] as const
 
+/** Commit SHAs for story fixtures — shared across StatusOutput and SyncOutput */
+export const COMMITS = {
+  coreLib: { current: 'a1b2c3d4e5', previous: '9f8e7d6c5b' },
+  devTools: { current: 'f0e1d2c3b4', previous: 'a5b6c7d8e9' },
+  appPlatform: { current: '1a2b3c4d5e', previous: '9876543fed' },
+  dotfiles: { current: 'abc1234def', previous: 'fedcba9876' },
+  homepage: { current: 'deadbeef42', previous: 'cafebabe13' },
+  studioOrg: { current: '7654321abc', previous: 'bbb2222ccc' },
+} as const
+
+/** Members that are pinned in the default story workspace */
+export const PINNED_MEMBERS = [MEMBERS.coreLib] as const
+
+/** Build command string from mode + flags, eliminating inline template duplication */
+export const buildSyncCommand = ({
+  mode,
+  ...flags
+}: {
+  mode: string
+  dryRun: boolean
+  all: boolean
+  verbose: boolean
+  force: boolean
+}) => {
+  const parts = [`mr ${mode}`]
+  if (flags.all === true) parts.push('--all')
+  if (flags.dryRun === true) parts.push('--dry-run')
+  if (flags.verbose === true) parts.push('--verbose')
+  if (flags.force === true) parts.push('--force')
+  return parts.join(' ')
+}
+
 /** Megarepo CLI flag argTypes for Storybook controls */
 export const flagArgTypes = {
   dryRun: {

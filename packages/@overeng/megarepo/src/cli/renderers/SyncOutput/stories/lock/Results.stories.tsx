@@ -12,7 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { flagArgTypes } from '../../../_story-constants.ts'
+import { buildSyncCommand, flagArgTypes } from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import * as sharedFixtures from '../_fixtures.ts'
@@ -79,7 +79,13 @@ export const AllRecorded: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'lock',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -122,7 +128,13 @@ export const WithUpdates: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'lock',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -141,7 +153,10 @@ export const WithSkipped: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        results: fixtures.lockWithSkipped,
+        results: sharedFixtures.applyForceFlag({
+          results: fixtures.lockWithSkipped,
+          force: args.force,
+        }),
         options: {
           mode: 'lock' as const,
           dryRun: args.dryRun,
@@ -165,7 +180,13 @@ export const WithSkipped: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr lock${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'lock',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -174,6 +195,51 @@ export const WithSkipped: Story = {
               }),
             }
           : {})}
+      />
+    )
+  },
+}
+
+/** Pinned members — toggle force flag to see pinned vs skipped */
+export const WithPinnedMembers: Story = {
+  args: { force: false },
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        results: sharedFixtures.applyForceFlag({
+          results: fixtures.lockWithPinned,
+          force: args.force,
+        }),
+        options: {
+          mode: 'lock' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
+      }),
+      [args.dryRun, args.verbose, args.all, args.force],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={sharedFixtures.createCommandState({
+          mode: 'lock',
+          overrides: stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command={buildSyncCommand({
+          mode: 'lock',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
       />
     )
   },

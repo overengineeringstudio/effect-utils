@@ -5,6 +5,7 @@
  */
 
 import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import { COMMITS, MEMBERS } from '../../../_story-constants.ts'
 import type { MemberLockSyncResult } from '../../schema.ts'
 
 // =============================================================================
@@ -13,52 +14,52 @@ import type { MemberLockSyncResult } from '../../schema.ts'
 
 /** Fetch results with mixed updates */
 export const fetchResults: MemberSyncResult[] = [
-  { name: 'dotfiles', status: 'synced', ref: 'main' },
-  { name: 'homepage', status: 'already_synced' },
+  { name: MEMBERS.dotfiles, status: 'synced', ref: 'main' },
+  { name: MEMBERS.homepage, status: 'already_synced' },
   {
-    name: 'dev-tools',
+    name: MEMBERS.devTools,
     status: 'updated',
-    commit: 'def5678abc',
-    previousCommit: 'fedcba987',
+    commit: COMMITS.devTools.current,
+    previousCommit: COMMITS.devTools.previous,
     ref: 'main',
   },
   {
-    name: 'app-platform',
+    name: MEMBERS.appPlatform,
     status: 'updated',
-    commit: 'abc1234def',
-    previousCommit: '9876543fed',
+    commit: COMMITS.appPlatform.current,
+    previousCommit: COMMITS.appPlatform.previous,
     ref: 'main',
   },
-  { name: 'core-lib', status: 'already_synced' },
-  { name: 'studio-org', status: 'synced', ref: 'main' },
+  { name: MEMBERS.coreLib, status: 'already_synced' },
+  { name: MEMBERS.studioOrg, status: 'synced', ref: 'main' },
 ]
 
 /** Fetch with --create-branches (new branches created) */
 export const fetchWithNewBranches: MemberSyncResult[] = [
-  { name: 'core-lib', status: 'cloned', ref: 'feature/new-api' },
+  { name: MEMBERS.coreLib, status: 'cloned', ref: 'feature/new-api' },
   {
-    name: 'dev-tools',
+    name: MEMBERS.devTools,
     status: 'updated',
-    commit: 'def5678abc',
-    previousCommit: 'fedcba987',
+    commit: COMMITS.devTools.current,
+    previousCommit: COMMITS.devTools.previous,
     ref: 'main',
   },
-  { name: 'app-platform', status: 'synced', ref: 'feature/new-api' },
-  { name: 'dotfiles', status: 'already_synced' },
+  { name: MEMBERS.appPlatform, status: 'synced', ref: 'feature/new-api' },
+  { name: MEMBERS.dotfiles, status: 'already_synced' },
 ]
 
 /** Fetch with errors (network, auth) */
 export const fetchWithErrors: MemberSyncResult[] = [
   {
-    name: 'core-lib',
+    name: MEMBERS.coreLib,
     status: 'updated',
-    commit: 'abc1234def',
-    previousCommit: '9876543fed',
+    commit: COMMITS.coreLib.current,
+    previousCommit: COMMITS.coreLib.previous,
     ref: 'main',
   },
-  { name: 'dev-tools', status: 'error', message: 'network timeout during fetch' },
-  { name: 'app-platform', status: 'already_synced' },
-  { name: 'private-repo', status: 'error', message: 'authentication failed' },
+  { name: MEMBERS.devTools, status: 'error', message: 'network timeout during fetch' },
+  { name: MEMBERS.appPlatform, status: 'already_synced' },
+  { name: MEMBERS.studioOrg, status: 'error', message: 'authentication failed' },
 ]
 
 // =============================================================================
@@ -68,24 +69,24 @@ export const fetchWithErrors: MemberSyncResult[] = [
 /** Lock input sync results (flake.lock/devenv.lock updates) */
 export const fetchLockSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'core-lib',
+    memberName: MEMBERS.coreLib,
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'app-platform',
-            memberName: 'app-platform',
-            oldRev: '1234567',
-            newRev: '7654321',
+            inputName: MEMBERS.appPlatform,
+            memberName: MEMBERS.appPlatform,
+            oldRev: COMMITS.appPlatform.previous,
+            newRev: COMMITS.appPlatform.current,
           },
         ],
       },
@@ -94,27 +95,27 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
     ],
   },
   {
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'core-lib',
-            memberName: 'core-lib',
-            oldRev: 'fff0000',
-            newRev: 'aaa1111',
+            inputName: MEMBERS.coreLib,
+            memberName: MEMBERS.coreLib,
+            oldRev: COMMITS.coreLib.previous,
+            newRev: COMMITS.coreLib.current,
           },
         ],
       },
@@ -125,17 +126,17 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
 /** Full nix lock sync including source file (flake.nix, devenv.yaml) updates */
 export const fetchFullNixSync: MemberLockSyncResult[] = [
   {
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     files: [
       {
         type: 'flake.nix',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
@@ -144,34 +145,34 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'app-platform',
-            memberName: 'app-platform',
-            oldRev: '1111111',
-            newRev: '2222222',
+            inputName: MEMBERS.appPlatform,
+            memberName: MEMBERS.appPlatform,
+            oldRev: COMMITS.appPlatform.previous,
+            newRev: COMMITS.appPlatform.current,
           },
         ],
       },
     ],
   },
   {
-    memberName: 'studio-org',
+    memberName: MEMBERS.studioOrg,
     files: [
       {
         type: 'devenv.yaml',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
@@ -180,17 +181,17 @@ export const fetchFullNixSync: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools-browser',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: `${MEMBERS.devTools}-browser`,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },

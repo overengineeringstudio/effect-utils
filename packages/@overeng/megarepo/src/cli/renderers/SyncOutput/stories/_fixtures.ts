@@ -5,7 +5,7 @@
  */
 
 import type { MegarepoSyncTree, MemberSyncResult } from '../../../../lib/sync/schema.ts'
-import { MEMBERS, WORKSPACE } from '../../_story-constants.ts'
+import { COMMITS, MEMBERS, PINNED_MEMBERS, WORKSPACE } from '../../_story-constants.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
 import type {
   LockSharedSourceUpdate,
@@ -15,57 +15,75 @@ import type {
 } from '../schema.ts'
 
 // =============================================================================
+// Helpers
+// =============================================================================
+
+/** When force=false, pinned members show as "skipped (pinned)". When force=true, they keep their real result. */
+export const applyForceFlag = ({
+  results,
+  force,
+}: {
+  results: MemberSyncResult[]
+  force: boolean
+}): MemberSyncResult[] =>
+  results.map((r) =>
+    force === false && (PINNED_MEMBERS as readonly string[]).includes(r.name) === true
+      ? { name: r.name, status: 'skipped' as const, message: 'pinned' }
+      : r,
+  )
+
+// =============================================================================
 // Example Data
 // =============================================================================
 
 export const exampleSyncResults: MemberSyncResult[] = [
-  { name: 'core-lib', status: 'already_synced' },
-  { name: 'dev-tools', status: 'synced', ref: 'main' },
-  { name: 'app-platform', status: 'cloned', ref: 'main' },
+  { name: MEMBERS.coreLib, status: 'already_synced' },
+  { name: MEMBERS.devTools, status: 'synced', ref: 'main' },
+  { name: MEMBERS.appPlatform, status: 'cloned', ref: 'main' },
   {
-    name: 'dotfiles',
+    name: MEMBERS.dotfiles,
     status: 'updated',
-    commit: 'abc1234def',
-    previousCommit: '9876543fed',
+    commit: COMMITS.dotfiles.current,
+    previousCommit: COMMITS.dotfiles.previous,
   },
-  { name: 'private-repo', status: 'skipped', message: 'dirty worktree' },
+  { name: MEMBERS.studioOrg, status: 'skipped', message: 'dirty worktree' },
 ]
 
 export const exampleSyncResultsWithErrors: MemberSyncResult[] = [
-  { name: 'core-lib', status: 'synced', ref: 'main' },
-  { name: 'broken-repo', status: 'error', message: 'network timeout' },
-  { name: 'missing-repo', status: 'error', message: 'repository not found' },
-  { name: 'dev-tools', status: 'already_synced' },
+  { name: MEMBERS.coreLib, status: 'synced', ref: 'main' },
+  { name: MEMBERS.homepage, status: 'error', message: 'network timeout' },
+  { name: MEMBERS.studioOrg, status: 'error', message: 'repository not found' },
+  { name: MEMBERS.devTools, status: 'already_synced' },
 ]
 
 export const exampleAllSynced: MemberSyncResult[] = [
-  { name: 'core-lib', status: 'already_synced' },
-  { name: 'dev-tools', status: 'already_synced' },
-  { name: 'app-platform', status: 'already_synced' },
-  { name: 'dotfiles', status: 'already_synced' },
-  { name: 'homepage', status: 'already_synced' },
+  { name: MEMBERS.coreLib, status: 'already_synced' },
+  { name: MEMBERS.devTools, status: 'already_synced' },
+  { name: MEMBERS.appPlatform, status: 'already_synced' },
+  { name: MEMBERS.dotfiles, status: 'already_synced' },
+  { name: MEMBERS.homepage, status: 'already_synced' },
 ]
 
 export const exampleLockSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'core-lib',
+    memberName: MEMBERS.coreLib,
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'app-platform',
-            memberName: 'app-platform',
-            oldRev: '1234567',
-            newRev: '7654321',
+            inputName: MEMBERS.appPlatform,
+            memberName: MEMBERS.appPlatform,
+            oldRev: COMMITS.appPlatform.previous,
+            newRev: COMMITS.appPlatform.current,
           },
         ],
       },
@@ -74,27 +92,27 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
     ],
   },
   {
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'core-lib',
-            memberName: 'core-lib',
-            oldRev: 'fff0000',
-            newRev: 'aaa1111',
+            inputName: MEMBERS.coreLib,
+            memberName: MEMBERS.coreLib,
+            oldRev: COMMITS.coreLib.previous,
+            newRev: COMMITS.coreLib.current,
           },
         ],
       },
@@ -105,17 +123,17 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
 /** Lock sync results including source file (flake.nix, devenv.yaml) updates */
 export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
   {
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     files: [
       {
         type: 'flake.nix',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
@@ -124,17 +142,17 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
           {
             _tag: 'RevUpdate',
-            inputName: 'app-platform',
-            memberName: 'app-platform',
-            oldRev: '1111111',
-            newRev: '2222222',
+            inputName: MEMBERS.appPlatform,
+            memberName: MEMBERS.appPlatform,
+            oldRev: COMMITS.appPlatform.previous,
+            newRev: COMMITS.appPlatform.current,
           },
         ],
       },
@@ -143,27 +161,27 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
     ],
   },
   {
-    memberName: 'studio-org',
+    memberName: MEMBERS.studioOrg,
     files: [
       {
         type: 'devenv.yaml',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
@@ -172,34 +190,34 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
           {
             _tag: 'RevUpdate',
             inputName: 'dev-tools-browser',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
     ],
   },
   {
-    memberName: 'homepage',
+    memberName: MEMBERS.homepage,
     files: [
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
@@ -210,15 +228,15 @@ export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
 /** Ref propagation scenario — branch change across members */
 export const exampleRefSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     files: [
       {
         type: 'flake.nix',
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
             oldRef: 'main',
             newRef: 'alice/2026-03-08-feature',
           },
@@ -229,8 +247,8 @@ export const exampleRefSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
             oldRef: 'main',
             newRef: 'alice/2026-03-08-feature',
           },
@@ -239,15 +257,15 @@ export const exampleRefSyncResults: MemberLockSyncResult[] = [
     ],
   },
   {
-    memberName: 'studio-org',
+    memberName: MEMBERS.studioOrg,
     files: [
       {
         type: 'devenv.yaml',
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
             oldRef: 'main',
             newRef: 'alice/2026-03-08-feature',
           },
@@ -258,8 +276,8 @@ export const exampleRefSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
             oldRef: 'main',
             newRef: 'alice/2026-03-08-feature',
           },
@@ -274,7 +292,7 @@ export const exampleSharedSourceSync: LockSharedSourceUpdate[] = [
   {
     _tag: 'SharedSourceUpdate',
     sourceName: 'devenv',
-    sourceMemberName: 'dev-tools',
+    sourceMemberName: MEMBERS.devTools,
     targetCount: 3,
   },
 ]
@@ -282,15 +300,15 @@ export const exampleSharedSourceSync: LockSharedSourceUpdate[] = [
 /** Mixed scenario — all three update types together */
 export const exampleMixedSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     files: [
       {
         type: 'flake.nix',
         updatedInputs: [
           {
             _tag: 'RefUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
             oldRef: 'main',
             newRef: 'alice/2026-03-08-feature',
           },
@@ -301,15 +319,15 @@ export const exampleMixedSyncResults: MemberLockSyncResult[] = [
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'app-platform',
-            memberName: 'app-platform',
-            oldRev: '1234567',
-            newRev: '7654321',
+            inputName: MEMBERS.appPlatform,
+            memberName: MEMBERS.appPlatform,
+            oldRev: COMMITS.appPlatform.previous,
+            newRev: COMMITS.appPlatform.current,
           },
           {
             _tag: 'RefUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
             oldRef: 'main',
             newRef: 'alice/2026-03-08-feature',
           },
@@ -318,17 +336,17 @@ export const exampleMixedSyncResults: MemberLockSyncResult[] = [
     ],
   },
   {
-    memberName: 'studio-org',
+    memberName: MEMBERS.studioOrg,
     files: [
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'dev-tools',
-            memberName: 'dev-tools',
-            oldRev: 'abc1234',
-            newRev: 'def5678',
+            inputName: MEMBERS.devTools,
+            memberName: MEMBERS.devTools,
+            oldRev: COMMITS.devTools.previous,
+            newRev: COMMITS.devTools.current,
           },
         ],
       },
@@ -340,7 +358,7 @@ export const exampleMixedSharedSourceSync: LockSharedSourceUpdate[] = [
   {
     _tag: 'SharedSourceUpdate',
     sourceName: 'devenv',
-    sourceMemberName: 'dev-tools',
+    sourceMemberName: MEMBERS.devTools,
     targetCount: 3,
   },
 ]
@@ -371,17 +389,17 @@ export const exampleNestedSyncTrees: MegarepoSyncTree[] = [
 /** Lock sync results for nested megarepo members */
 export const exampleNestedLockSyncResults: MemberLockSyncResult[] = [
   {
-    memberName: 'cli-framework',
+    memberName: MEMBERS.cliFramework,
     files: [
       {
         type: 'flake.lock',
         updatedInputs: [
           {
             _tag: 'RevUpdate',
-            inputName: 'ui-kit',
+            inputName: MEMBERS.uiKit,
             memberName: 'ui-kit',
-            oldRev: 'aaa1111',
-            newRev: 'bbb2222',
+            oldRev: COMMITS.studioOrg.previous,
+            newRev: COMMITS.studioOrg.current,
           },
         ],
       },
@@ -426,21 +444,21 @@ export const examplePreflightIssues: PreflightIssue[] = [
   {
     severity: 'error',
     type: 'ref_mismatch',
-    memberName: 'app-platform',
+    memberName: MEMBERS.appPlatform,
     message: "worktree HEAD is 'refactor/genie' but expected 'dev'",
     fix: "run 'git -C ~/.megarepo/.../refs/heads/dev checkout dev' or 'mr store fix'",
   },
   {
     severity: 'error',
     type: 'broken_worktree',
-    memberName: 'dev-tools',
+    memberName: MEMBERS.devTools,
     message: '.git not found in worktree at ~/.megarepo/.../refs/heads/main',
     fix: "run 'mr apply' to recreate the worktree",
   },
   {
     severity: 'warning',
     type: 'dirty',
-    memberName: 'dotfiles',
+    memberName: MEMBERS.dotfiles,
     message: '12 uncommitted changes',
   },
 ]

@@ -12,11 +12,11 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { flagArgTypes } from '../../../_story-constants.ts'
+import { buildSyncCommand, CI_WORKSPACE, flagArgTypes, MEMBERS } from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import * as sharedFixtures from '../_fixtures.ts'
-import { exampleLockSyncResults } from '../_fixtures.ts'
+import { applyForceFlag, exampleLockSyncResults } from '../_fixtures.ts'
 import * as fixtures from './_fixtures.ts'
 
 type StoryArgs = {
@@ -57,10 +57,7 @@ export const FullApply: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.applyResults,
-        workspace: {
-          name: 'dev-workspace-blue',
-          root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
-        },
+        workspace: CI_WORKSPACE,
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -83,8 +80,14 @@ export const FullApply: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        cwd={CI_WORKSPACE.root}
+        command={buildSyncCommand({
+          mode: 'apply',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -127,7 +130,13 @@ export const PartialApply: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'apply',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -148,10 +157,7 @@ export const WithErrors: Story = {
       () => ({
         _tag: 'Error' as const,
         results: fixtures.applyWithErrors,
-        workspace: {
-          name: 'dev-workspace-blue',
-          root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
-        },
+        workspace: CI_WORKSPACE,
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -162,15 +168,13 @@ export const WithErrors: Story = {
         syncErrorCount: 2,
         syncErrors: [
           {
-            megarepoRoot:
-              '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
-            memberName: 'dev-tools',
-            message: 'commit f0e1d2c not found — run mr fetch',
+            megarepoRoot: CI_WORKSPACE.root,
+            memberName: MEMBERS.devTools,
+            message: `commit ${fixtures.applyWithErrors[1]!.name} not found — run mr fetch`,
           },
           {
-            megarepoRoot:
-              '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
-            memberName: 'dotfiles',
+            megarepoRoot: CI_WORKSPACE.root,
+            memberName: MEMBERS.dotfiles,
             message: 'repository not found',
           },
         ],
@@ -189,8 +193,14 @@ export const WithErrors: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        cwd={CI_WORKSPACE.root}
+        command={buildSyncCommand({
+          mode: 'apply',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
@@ -259,10 +269,7 @@ export const WithLockSync: Story = {
       () => ({
         results: fixtures.applyWithLockSync,
         lockSyncResults: exampleLockSyncResults,
-        workspace: {
-          name: 'dev-workspace-blue',
-          root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
-        },
+        workspace: CI_WORKSPACE,
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -285,8 +292,68 @@ export const WithLockSync: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/"
-        command={`mr apply${args.all === true ? ' --all' : ''}${args.dryRun === true ? ' --dry-run' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        cwd={CI_WORKSPACE.root}
+        command={buildSyncCommand({
+          mode: 'apply',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
+        {...(args.interactive === true
+          ? {
+              timeline: sharedFixtures.createCommandTimeline({
+                mode: 'apply',
+                finalState: stateConfig,
+              }),
+            }
+          : {})}
+      />
+    )
+  },
+}
+
+/** Apply with pinned members — force flag controls whether pinned members are included */
+export const WithPinnedMembers: Story = {
+  render: (args) => {
+    const results = useMemo(
+      () => applyForceFlag({ results: fixtures.applyWithPinned, force: args.force }),
+      [args.force],
+    )
+    const stateConfig = useMemo(
+      () => ({
+        results,
+        workspace: CI_WORKSPACE,
+        options: {
+          mode: 'apply' as const,
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        },
+      }),
+      [results, args.dryRun, args.verbose, args.all, args.force],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={sharedFixtures.createCommandState({
+          mode: 'apply',
+          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+        })}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd={CI_WORKSPACE.root}
+        command={buildSyncCommand({
+          mode: 'apply',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: sharedFixtures.createCommandTimeline({
