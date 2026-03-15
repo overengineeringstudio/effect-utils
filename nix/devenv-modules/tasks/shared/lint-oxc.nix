@@ -55,6 +55,7 @@
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
   scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
   # Git pathspec exclusion patterns applied to coverage check (e.g. "packages/vendored/")
@@ -83,26 +84,35 @@ let
       flags = "${warningsFlag} ${extraFlags}";
     in
     "oxlint --import-plugin ${flags} ${typeAwareFlags} ${lintPathsArg}";
-in
-{
-  # Provide tsgolint when type-aware linting is enabled
-  packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ];
 
-  tasks = {
-    # Lint check tasks
-    # Uses default config files (.oxfmtrc.json, .oxlintrc.json) - no -c flags needed
+  guardedTasks = {
     "lint:check:format" = {
+      guard = "oxfmt";
       description = "Check code formatting with oxfmt";
       exec = trace.exec "lint:check:format" "oxfmt --check ${lintPathsArg}";
       execIfModified = execIfModifiedPatterns;
     };
     "lint:check:oxlint" = {
+      guard = "oxlint";
       description = "Run oxlint linter";
       exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
       execIfModified = execIfModifiedPatterns;
     } // lib.optionalAttrs (tsconfig != null) {
       after = [ "pnpm:install" ];
     };
+    "lint:fix:format" = {
+      guard = "oxfmt";
+      description = "Fix code formatting with oxfmt";
+      exec = trace.exec "lint:fix:format" "oxfmt ${lintPathsArg}";
+    };
+    "lint:fix:oxlint" = {
+      guard = "oxlint";
+      description = "Fix lint issues with oxlint";
+      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--fix");
+    };
+  };
+
+  otherTasks = {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
@@ -154,16 +164,6 @@ in
         "lint:check:genie:coverage"
       ];
     };
-
-    # Lint fix tasks
-    "lint:fix:format" = {
-      description = "Fix code formatting with oxfmt";
-      exec = trace.exec "lint:fix:format" "oxfmt ${lintPathsArg}";
-    };
-    "lint:fix:oxlint" = {
-      description = "Fix lint issues with oxlint";
-      exec = trace.exec "lint:fix:oxlint" (mkOxlintCmd "--fix");
-    };
     "lint:fix" = {
       description = "Fix all lint issues";
       after = [
@@ -172,4 +172,11 @@ in
       ];
     };
   };
+in
+{
+  # Provide tsgolint when type-aware linting is enabled
+  packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ]
+    ++ cliGuard.fromTasks guardedTasks;
+
+  tasks = (cliGuard.stripGuards guardedTasks) // otherTasks;
 }

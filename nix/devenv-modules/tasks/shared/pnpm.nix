@@ -26,6 +26,7 @@
 }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
 
@@ -130,15 +131,9 @@ let
     }
   '';
 
-in
-{
-  enterShell = lib.mkIf globalCache ''
-    export npm_config_cache="$HOME/.cache/pnpm"
-    export npm_config_manage_package_manager_versions=false
-  '';
-
-  tasks = {
+  allTasks = {
     "pnpm:install" = {
+      guard = "pnpm";
       description = "Install the repo-root pnpm workspace from the authoritative root lockfile";
       after = installAfter;
       exec = trace.exec "pnpm:install" ''
@@ -191,6 +186,7 @@ in
     };
 
     "pnpm:update" = {
+      guard = "pnpm";
       description = "Update the authoritative repo-root pnpm lockfile";
       after = [ "genie:run" ] ++ updateAfter;
       exec = trace.exec "pnpm:update" ''
@@ -202,6 +198,7 @@ in
     };
 
     "pnpm:clean" = {
+      guard = "pnpm";
       description = "Remove repo-root and package-level node_modules";
       after = cleanAfter;
       exec = trace.exec "pnpm:clean" ''
@@ -217,4 +214,15 @@ in
       '';
     };
   };
+
+in
+{
+  packages = cliGuard.fromTasks allTasks;
+
+  enterShell = lib.mkIf globalCache ''
+    export npm_config_cache="$HOME/.cache/pnpm"
+    export npm_config_manage_package_manager_versions=false
+  '';
+
+  tasks = cliGuard.stripGuards allTasks;
 }

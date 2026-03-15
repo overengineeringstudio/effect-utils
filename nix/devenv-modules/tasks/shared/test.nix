@@ -32,9 +32,10 @@
   installTask ? "pnpm:install",
   extraTests ? [],
 }:
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [];
 
   # Per-package test task using the workspace-aware vitest entrypoint.
@@ -58,23 +59,28 @@ let
     };
   };
 
+  guardedTasks = {
+    "test:run" = {
+      guard = "vitest";
+      description = "Run all tests";
+      exec = if hasPackages then null else "pnpm exec vitest run";
+      after = if hasPackages
+        then map (pkg: "test:${pkg.name}") packages ++ extraTests
+        else [ "genie:run" ];
+    };
+    "test:watch" = {
+      guard = "vitest";
+      description = "Run tests in watch mode";
+      exec = "pnpm exec vitest";
+      after = [ "genie:run" ];
+    };
+  };
+
 in {
+  packages = cliGuard.fromTasks guardedTasks;
+
   tasks = lib.mkMerge (
     (if hasPackages then map mkTestTask packages else [])
-    ++ [{
-      "test:run" = {
-        description = "Run all tests";
-        exec = if hasPackages then null else "pnpm exec vitest run";
-        after = if hasPackages
-          then map (pkg: "test:${pkg.name}") packages ++ extraTests
-          else [ "genie:run" ];
-      };
-
-      "test:watch" = {
-        description = "Run tests in watch mode";
-        exec = "pnpm exec vitest";
-        after = [ "genie:run" ];
-      };
-    }]
+    ++ [ (cliGuard.stripGuards guardedTasks) ]
   );
 }
