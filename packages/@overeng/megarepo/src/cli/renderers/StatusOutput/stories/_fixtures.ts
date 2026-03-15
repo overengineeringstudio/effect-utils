@@ -12,7 +12,20 @@ import type { StatusState, MemberStatus } from '../mod.ts'
 // State Options
 // =============================================================================
 
-type StateOptions = { all?: boolean }
+type StateOptions = { all?: boolean; currentMemberPath?: readonly string[] }
+
+/** Strips nestedMembers from members, matching CLI behavior when `all=false`. */
+const stripNested = (members: MemberStatus[]): MemberStatus[] =>
+  members.map((m) => ({ ...m, nestedMembers: undefined }))
+
+/** Conditionally strips nested members based on `all` flag. */
+const applyAllFlag = ({
+  members,
+  all,
+}: {
+  members: MemberStatus[]
+  all: boolean
+}): MemberStatus[] => (all === true ? members : stripNested(members))
 
 // =============================================================================
 // Example Data
@@ -132,7 +145,7 @@ export const createDefaultState = (options?: StateOptions): typeof StatusState.T
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
   syncNeeded: true,
   syncReasons: ["Member 'app-platform' symlink missing"],
-  members: exampleMembers,
+  members: applyAllFlag({ members: exampleMembers, all: options?.all ?? false }),
   all: options?.all ?? false,
 })
 
@@ -879,204 +892,35 @@ export const createManyMembersState = (options?: StateOptions): typeof StatusSta
 // Complex / Nested
 // =============================================================================
 
-export const createNestedMegareposState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
-  all: options?.all ?? true,
-  name: 'mr-all-blue',
-  root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
-  syncNeeded: false,
-  syncReasons: [],
-  members: [
-    {
-      name: 'dev-tools',
-      exists: true,
-      symlinkExists: true,
-      source: 'acme-org/dev-tools',
-      isLocal: false,
-      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-      isMegarepo: true,
-      nestedMembers: [
+export const createNestedMegareposState = (options?: StateOptions): typeof StatusState.Type => {
+  const all = options?.all ?? true
+  return {
+    workspaceSyncNeeded: false,
+    lockSyncNeeded: false,
+    all,
+    name: 'mr-all-blue',
+    root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
+    syncNeeded: false,
+    syncReasons: [],
+    members: applyAllFlag({
+      all,
+      members: [
         {
-          name: 'cli-ui',
+          name: 'dev-tools',
           exists: true,
           symlinkExists: true,
-          source: 'local',
-          isLocal: true,
-          lockInfo: undefined,
-          isMegarepo: false,
-          nestedMembers: undefined,
-          gitStatus: {
-            isDirty: false,
-            changesCount: 0,
-            hasUnpushed: false,
-            branch: 'main',
-            shortRev: 'def5678',
-          },
-        },
-        {
-          name: 'tui-react',
-          exists: true,
-          symlinkExists: true,
-          source: 'local',
-          isLocal: true,
-          lockInfo: undefined,
-          isMegarepo: false,
-          nestedMembers: undefined,
-          gitStatus: {
-            isDirty: true,
-            changesCount: 2,
-            hasUnpushed: false,
-            branch: 'feature',
-            shortRev: 'fed9876',
-          },
-        },
-      ],
-      gitStatus: {
-        isDirty: false,
-        changesCount: 0,
-        hasUnpushed: false,
-        branch: 'main',
-        shortRev: 'abc1234',
-      },
-    },
-    {
-      name: 'app-platform',
-      exists: true,
-      symlinkExists: true,
-      source: 'acme-org/app-platform',
-      isLocal: false,
-      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-      isMegarepo: true,
-      nestedMembers: [
-        {
-          name: 'examples',
-          exists: true,
-          symlinkExists: true,
-          source: 'local',
-          isLocal: true,
-          lockInfo: undefined,
-          isMegarepo: false,
-          nestedMembers: undefined,
-          gitStatus: {
-            isDirty: false,
-            changesCount: 0,
-            hasUnpushed: false,
-            branch: 'dev',
-            shortRev: 'aaa1111',
-          },
-        },
-      ],
-      gitStatus: {
-        isDirty: false,
-        changesCount: 0,
-        hasUnpushed: false,
-        branch: 'dev',
-        shortRev: '9876543',
-      },
-    },
-  ],
-})
-
-export const createCurrentLocationState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
-  all: options?.all ?? false,
-  name: 'mr-all-blue',
-  root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
-  syncNeeded: false,
-  syncReasons: [],
-  members: [
-    {
-      name: 'dev-tools',
-      exists: true,
-      symlinkExists: true,
-      source: 'acme-org/dev-tools',
-      isLocal: false,
-      lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
-      isMegarepo: true,
-      nestedMembers: [
-        {
-          name: 'tui-react',
-          exists: true,
-          symlinkExists: true,
-          source: 'local',
-          isLocal: true,
-          lockInfo: undefined,
-          isMegarepo: false,
-          nestedMembers: undefined,
-          gitStatus: {
-            isDirty: false,
-            changesCount: 0,
-            hasUnpushed: false,
-            branch: 'main',
-            shortRev: 'def5678',
-          },
-        },
-      ],
-      gitStatus: {
-        isDirty: false,
-        changesCount: 0,
-        hasUnpushed: false,
-        branch: 'main',
-        shortRev: 'abc1234',
-      },
-    },
-    {
-      name: 'app-platform',
-      exists: true,
-      symlinkExists: true,
-      source: 'acme-org/app-platform',
-      isLocal: false,
-      lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
-      isMegarepo: false,
-      nestedMembers: undefined,
-      gitStatus: {
-        isDirty: false,
-        changesCount: 0,
-        hasUnpushed: false,
-        branch: 'dev',
-        shortRev: '9876543',
-      },
-    },
-  ],
-  currentMemberPath: options?.all === true ? ['dev-tools', 'tui-react'] : ['dev-tools'],
-})
-
-export const createDeeplyNestedState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
-  all: options?.all ?? false,
-  name: 'deep-workspace',
-  root: '/Users/dev/.megarepo/github.com/alice/deep-workspace/refs/heads/main',
-  syncNeeded: false,
-  syncReasons: [],
-  members: [
-    {
-      name: 'level-1',
-      exists: true,
-      symlinkExists: true,
-      source: 'org/level-1',
-      isLocal: false,
-      lockInfo: { ref: 'main', commit: 'aaa1111', pinned: false },
-      isMegarepo: true,
-      nestedMembers: [
-        {
-          name: 'level-2a',
-          exists: true,
-          symlinkExists: true,
-          source: 'org/level-2a',
+          source: 'acme-org/dev-tools',
           isLocal: false,
-          lockInfo: { ref: 'main', commit: 'bbb2222', pinned: false },
+          lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
           isMegarepo: true,
           nestedMembers: [
             {
-              name: 'level-3',
+              name: 'cli-ui',
               exists: true,
               symlinkExists: true,
-              source: 'org/level-3',
-              isLocal: false,
-              lockInfo: { ref: 'main', commit: 'ccc3333', pinned: false },
+              source: 'local',
+              isLocal: true,
+              lockInfo: undefined,
               isMegarepo: false,
               nestedMembers: undefined,
               gitStatus: {
@@ -1084,7 +928,24 @@ export const createDeeplyNestedState = (options?: StateOptions): typeof StatusSt
                 changesCount: 0,
                 hasUnpushed: false,
                 branch: 'main',
-                shortRev: 'ccc3333',
+                shortRev: 'def5678',
+              },
+            },
+            {
+              name: 'tui-react',
+              exists: true,
+              symlinkExists: true,
+              source: 'local',
+              isLocal: true,
+              lockInfo: undefined,
+              isMegarepo: false,
+              nestedMembers: undefined,
+              gitStatus: {
+                isDirty: true,
+                changesCount: 2,
+                hasUnpushed: false,
+                branch: 'feature',
+                shortRev: 'fed9876',
               },
             },
           ],
@@ -1093,38 +954,212 @@ export const createDeeplyNestedState = (options?: StateOptions): typeof StatusSt
             changesCount: 0,
             hasUnpushed: false,
             branch: 'main',
-            shortRev: 'bbb2222',
+            shortRev: 'abc1234',
           },
         },
         {
-          name: 'level-2b',
+          name: 'app-platform',
           exists: true,
           symlinkExists: true,
-          source: 'org/level-2b',
+          source: 'acme-org/app-platform',
           isLocal: false,
-          lockInfo: { ref: 'dev', commit: 'ddd4444', pinned: false },
-          isMegarepo: false,
-          nestedMembers: undefined,
+          lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+          isMegarepo: true,
+          nestedMembers: [
+            {
+              name: 'examples',
+              exists: true,
+              symlinkExists: true,
+              source: 'local',
+              isLocal: true,
+              lockInfo: undefined,
+              isMegarepo: false,
+              nestedMembers: undefined,
+              gitStatus: {
+                isDirty: false,
+                changesCount: 0,
+                hasUnpushed: false,
+                branch: 'dev',
+                shortRev: 'aaa1111',
+              },
+            },
+          ],
           gitStatus: {
-            isDirty: true,
-            changesCount: 3,
+            isDirty: false,
+            changesCount: 0,
             hasUnpushed: false,
             branch: 'dev',
-            shortRev: 'ddd4444',
+            shortRev: '9876543',
           },
         },
       ],
-      gitStatus: {
-        isDirty: false,
-        changesCount: 0,
-        hasUnpushed: false,
-        branch: 'main',
-        shortRev: 'aaa1111',
-      },
-    },
-  ],
-  currentMemberPath: options?.all === true ? ['level-1', 'level-2a', 'level-3'] : ['level-1'],
-})
+    }),
+  }
+}
+
+export const createCurrentLocationState = (options?: StateOptions): typeof StatusState.Type => {
+  const all = options?.all ?? false
+  return {
+    workspaceSyncNeeded: false,
+    lockSyncNeeded: false,
+    all,
+    name: 'mr-all-blue',
+    root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
+    syncNeeded: false,
+    syncReasons: [],
+    members: applyAllFlag({
+      all,
+      members: [
+        {
+          name: 'dev-tools',
+          exists: true,
+          symlinkExists: true,
+          source: 'acme-org/dev-tools',
+          isLocal: false,
+          lockInfo: { ref: 'main', commit: 'abc1234', pinned: false },
+          isMegarepo: true,
+          nestedMembers: [
+            {
+              name: 'tui-react',
+              exists: true,
+              symlinkExists: true,
+              source: 'local',
+              isLocal: true,
+              lockInfo: undefined,
+              isMegarepo: false,
+              nestedMembers: undefined,
+              gitStatus: {
+                isDirty: false,
+                changesCount: 0,
+                hasUnpushed: false,
+                branch: 'main',
+                shortRev: 'def5678',
+              },
+            },
+          ],
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'main',
+            shortRev: 'abc1234',
+          },
+        },
+        {
+          name: 'app-platform',
+          exists: true,
+          symlinkExists: true,
+          source: 'acme-org/app-platform',
+          isLocal: false,
+          lockInfo: { ref: 'dev', commit: '9876543', pinned: false },
+          isMegarepo: false,
+          nestedMembers: undefined,
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'dev',
+            shortRev: '9876543',
+          },
+        },
+      ],
+    }),
+    currentMemberPath:
+      options?.currentMemberPath ??
+      (options?.all === true ? ['dev-tools', 'tui-react'] : ['dev-tools']),
+  }
+}
+
+export const createDeeplyNestedState = (options?: StateOptions): typeof StatusState.Type => {
+  const all = options?.all ?? false
+  return {
+    workspaceSyncNeeded: false,
+    lockSyncNeeded: false,
+    all,
+    name: 'deep-workspace',
+    root: '/Users/dev/.megarepo/github.com/alice/deep-workspace/refs/heads/main',
+    syncNeeded: false,
+    syncReasons: [],
+    members: applyAllFlag({
+      all,
+      members: [
+        {
+          name: 'level-1',
+          exists: true,
+          symlinkExists: true,
+          source: 'org/level-1',
+          isLocal: false,
+          lockInfo: { ref: 'main', commit: 'aaa1111', pinned: false },
+          isMegarepo: true,
+          nestedMembers: [
+            {
+              name: 'level-2a',
+              exists: true,
+              symlinkExists: true,
+              source: 'org/level-2a',
+              isLocal: false,
+              lockInfo: { ref: 'main', commit: 'bbb2222', pinned: false },
+              isMegarepo: true,
+              nestedMembers: [
+                {
+                  name: 'level-3',
+                  exists: true,
+                  symlinkExists: true,
+                  source: 'org/level-3',
+                  isLocal: false,
+                  lockInfo: { ref: 'main', commit: 'ccc3333', pinned: false },
+                  isMegarepo: false,
+                  nestedMembers: undefined,
+                  gitStatus: {
+                    isDirty: false,
+                    changesCount: 0,
+                    hasUnpushed: false,
+                    branch: 'main',
+                    shortRev: 'ccc3333',
+                  },
+                },
+              ],
+              gitStatus: {
+                isDirty: false,
+                changesCount: 0,
+                hasUnpushed: false,
+                branch: 'main',
+                shortRev: 'bbb2222',
+              },
+            },
+            {
+              name: 'level-2b',
+              exists: true,
+              symlinkExists: true,
+              source: 'org/level-2b',
+              isLocal: false,
+              lockInfo: { ref: 'dev', commit: 'ddd4444', pinned: false },
+              isMegarepo: false,
+              nestedMembers: undefined,
+              gitStatus: {
+                isDirty: true,
+                changesCount: 3,
+                hasUnpushed: false,
+                branch: 'dev',
+                shortRev: 'ddd4444',
+              },
+            },
+          ],
+          gitStatus: {
+            isDirty: false,
+            changesCount: 0,
+            hasUnpushed: false,
+            branch: 'main',
+            shortRev: 'aaa1111',
+          },
+        },
+      ],
+    }),
+    currentMemberPath:
+      options?.currentMemberPath ??
+      (options?.all === true ? ['level-1', 'level-2a', 'level-3'] : ['level-1']),
+  }
+}
 
 export const createMultipleProblemsState = (options?: StateOptions): typeof StatusState.Type => ({
   workspaceSyncNeeded: false,

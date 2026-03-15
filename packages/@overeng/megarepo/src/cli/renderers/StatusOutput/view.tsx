@@ -55,11 +55,7 @@ export const StatusView = ({ stateAtom }: StatusViewProps) => {
       <WorkspaceWarnings problems={problems} />
 
       {/* Members — tree rooted at workspace */}
-      <MembersTree
-        members={members}
-        prefix=""
-        currentPath={all === true ? undefined : currentMemberPath}
-      />
+      <MembersTree members={members} prefix="" currentPath={currentMemberPath} />
 
       {/* Hint for nested megarepos */}
       {!all && hasNestedMegarepos && (
@@ -428,19 +424,19 @@ const MemberLine = ({ member, prefix = '' }: { member: MemberStatus; prefix?: st
     <Text bold>{member.name}</Text>
     <Text> </Text>
     <BranchInfo member={member} />
-    {member.gitStatus?.isDirty !== undefined && (
+    {member.gitStatus?.isDirty === true && (
       <>
         <Text> </Text>
         <Text color="yellow">{symbols.dirty}</Text>
       </>
     )}
-    {member.gitStatus?.hasUnpushed !== undefined && (
+    {member.gitStatus?.hasUnpushed === true && (
       <>
         <Text> </Text>
         <Text color="red">{symbols.ahead}</Text>
       </>
     )}
-    {member.lockInfo?.pinned !== undefined && (
+    {member.lockInfo?.pinned === true && (
       <>
         <Text> </Text>
         <Text color="yellow">pinned</Text>
@@ -452,7 +448,7 @@ const MemberLine = ({ member, prefix = '' }: { member: MemberStatus; prefix?: st
         <Text dim>({member.commitDrift.localCommit.slice(0, 7)} → lock)</Text>
       </>
     )}
-    {member.isMegarepo !== undefined && (
+    {member.isMegarepo === true && (
       <>
         <Text> </Text>
         <Text color="cyan">[megarepo]</Text>
@@ -488,13 +484,19 @@ const MembersTree = ({
                 prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
               />
             </ScopeProvider>
-            {member.isMegarepo !== undefined &&
+            {member.isMegarepo === true &&
               member.nestedMembers !== undefined &&
               member.nestedMembers.length > 0 && (
                 <MembersTree
                   members={member.nestedMembers}
                   prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
-                  currentPath={isOnCurrentPath === true ? currentPath.slice(1) : undefined}
+                  currentPath={
+                    isOnCurrentPath === true
+                      ? currentPath.length > 1
+                        ? currentPath.slice(1)
+                        : undefined
+                      : undefined
+                  }
                 />
               )}
           </React.Fragment>

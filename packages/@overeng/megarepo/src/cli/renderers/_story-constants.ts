@@ -92,3 +92,59 @@ export const flagArgTypes = {
     control: { type: 'boolean' },
   },
 } as const
+
+/** Storybook select control for simulating the user's current working directory */
+export const cwdArgType = {
+  description: 'Simulated working directory (controls scope dimming)',
+  control: { type: 'select' },
+  options: [
+    '(root)',
+    MEMBERS.dotfiles,
+    MEMBERS.homepage,
+    MEMBERS.coreLib,
+    MEMBERS.devTools,
+    `${MEMBERS.devTools}/${MEMBERS.cliFramework}`,
+    `${MEMBERS.devTools}/${MEMBERS.uiKit}`,
+    MEMBERS.appPlatform,
+    `${MEMBERS.appPlatform}/${MEMBERS.examples}`,
+    MEMBERS.studioOrg,
+  ],
+} as const
+
+/**
+ * Parse a cwd arg value into `currentMemberPath` (for state) and `cwd` display string.
+ *
+ * `"(root)"` → `{ currentMemberPath: undefined, cwd: "~/workspace" }`
+ * `"dev-tools"` → `{ currentMemberPath: ['dev-tools'], cwd: "~/workspace/dev-tools" }`
+ */
+export const parseCwdArg = ({
+  value,
+  workspaceName = 'workspace',
+}: {
+  value: string
+  workspaceName?: string
+}): { currentMemberPath: readonly string[] | undefined; cwd: string } => {
+  if (value === '(root)') {
+    return { currentMemberPath: undefined, cwd: `~/${workspaceName}` }
+  }
+  const segments = value.split('/')
+  return { currentMemberPath: segments, cwd: `~/${workspaceName}/${value}` }
+}
+
+/** Apply cwd arg to a state object, only adding `currentMemberPath` when non-root. */
+export const applyCwd = <S>({
+  state,
+  cwdArg,
+  workspaceName,
+}: {
+  state: S
+  cwdArg: string
+  workspaceName?: string
+}): { initialState: S; cwd: string } => {
+  const { currentMemberPath, cwd } = parseCwdArg({
+    value: cwdArg,
+    ...(workspaceName !== undefined ? { workspaceName } : {}),
+  })
+  if (currentMemberPath === undefined) return { initialState: state, cwd }
+  return { initialState: { ...state, currentMemberPath } as S, cwd }
+}

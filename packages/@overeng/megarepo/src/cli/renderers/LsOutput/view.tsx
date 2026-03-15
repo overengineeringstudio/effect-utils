@@ -35,8 +35,8 @@ export interface LsViewProps {
  * - An error message (error)
  *
  * When --all is used, shows hierarchical display grouped by megarepo.
- * Scope dimming: in default mode, dims all members except the one the user's cwd is inside.
- * When --all is used, no dimming — everything renders equally.
+ * Scope dimming: dims all members except the one the user's cwd is inside.
+ * Works in both flat and --all modes, highlighting the current path through the tree.
  */
 export const LsView = ({ stateAtom }: LsViewProps) => {
   const state = useTuiAtomValue(stateAtom)
@@ -54,7 +54,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
 
   // Handle success state
   const { members, all, currentMemberPath, root } = state
-  const scopePath = all === true ? undefined : currentMemberPath
+  const scopePath = currentMemberPath
 
   if (members.length === 0) {
     return <Text dim>No members in megarepo</Text>
@@ -93,7 +93,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   return (
     <Box flexDirection="column">
       <WorkspaceRootLabel storePath={root} />
-      <MemberTree nodes={nodes} prefix="" />
+      <MemberTree nodes={nodes} prefix="" currentPath={scopePath} />
     </Box>
   )
 }
@@ -142,25 +142,48 @@ const buildTree = (members: readonly MemberInfo[]): TreeNode[] => {
 // Internal - Tree Rendering
 // =============================================================================
 
-const MemberTree = ({ nodes, prefix }: { nodes: TreeNode[]; prefix: string }) => (
+const MemberTree = ({
+  nodes,
+  prefix,
+  currentPath,
+}: {
+  nodes: TreeNode[]
+  prefix: string
+  currentPath: readonly string[] | undefined
+}) => (
   <>
     {nodes.map((node, i) => {
       const isLast = i === nodes.length - 1
       const branchChar = isLast === true ? tree.last : tree.middle
       const childPrefix = prefix + (isLast === true ? tree.empty : tree.vertical)
+      const isOnCurrentPath = currentPath !== undefined && currentPath[0] === node.member.name
       return (
         <React.Fragment key={node.member.name}>
-          <MemberRow prefix={`${prefix}${branchChar}`}>
-            <Text bold>{node.member.name}</Text>
-            <Text dim> ({node.member.source})</Text>
-            {node.member.isMegarepo === true && (
-              <>
-                <Text> </Text>
-                <Text color="cyan">[megarepo]</Text>
-              </>
-            )}
-          </MemberRow>
-          {node.children.length > 0 && <MemberTree nodes={node.children} prefix={childPrefix} />}
+          <ScopeProvider inScope={currentPath === undefined || isOnCurrentPath}>
+            <MemberRow prefix={`${prefix}${branchChar}`}>
+              <Text bold>{node.member.name}</Text>
+              <Text dim> ({node.member.source})</Text>
+              {node.member.isMegarepo === true && (
+                <>
+                  <Text> </Text>
+                  <Text color="cyan">[megarepo]</Text>
+                </>
+              )}
+            </MemberRow>
+          </ScopeProvider>
+          {node.children.length > 0 && (
+            <MemberTree
+              nodes={node.children}
+              prefix={childPrefix}
+              currentPath={
+                isOnCurrentPath === true
+                  ? currentPath.length > 1
+                    ? currentPath.slice(1)
+                    : undefined
+                  : undefined
+              }
+            />
+          )}
         </React.Fragment>
       )
     })}
