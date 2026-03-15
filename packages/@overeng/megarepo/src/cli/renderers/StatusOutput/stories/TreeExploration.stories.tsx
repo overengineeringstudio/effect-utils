@@ -1,15 +1,13 @@
 /**
- * Tree Rendering Exploration V1
+ * Tree Rendering Exploration V2
  *
- * Exploring tree layout variants for `mr status` with workspace as root node.
+ * Exploring highlight variants for `mr status` with workspace as root node.
+ * Fixed on T1 (full tree from root). 10 highlight variants exploring different
+ * visual treatments for indicating the current location in the tree.
  *
  * Variant dimensions:
- * - T (Tree structure): How workspace root connects to members
- * - H (Highlighting): How current location is indicated
- *
- * Still exploring:
- * - T1 vs T2 vs T3 (tree structure)
- * - H1 vs H2 vs H3 (location highlighting)
+ * - H (Highlighting): How current location is visually indicated
+ * - Location: Which node is "current" (root, top-member, nested-member, none)
  */
 
 import type { Atom } from '@effect-atom/atom'
@@ -28,8 +26,7 @@ import { StatusView } from '../view.tsx'
 // Variant Types
 // =============================================================================
 
-type TreeVariant = 'T1' | 'T2' | 'T3'
-type HighlightVariant = 'H1' | 'H2' | 'H3'
+type HighlightVariant = 'H1' | 'H2' | 'H3' | 'H4' | 'H5' | 'H6' | 'H7' | 'H8' | 'H9' | 'H10'
 type LocationVariant = 'root' | 'top-member' | 'nested-member' | 'none'
 
 // =============================================================================
@@ -192,29 +189,191 @@ const {
 // Rendering helpers
 // =============================================================================
 
+/** Role of a node relative to the current location */
+type HighlightRole = 'current' | 'ancestor' | undefined
+
+/** Resolved styles for a highlight variant + role */
+interface HighlightStyle {
+  readonly nameColor?: import('@overeng/tui-core').Color | undefined
+  readonly nameBold: boolean
+  readonly nameDim: boolean
+  readonly nameUnderline: boolean
+  readonly nameItalic: boolean
+  readonly bgColor?: import('@overeng/tui-core').Color | undefined
+  readonly extendBg: boolean
+  readonly checkColor?: import('@overeng/tui-core').Color | undefined
+  readonly marker?: string | undefined
+  readonly dimNonCurrent: boolean
+}
+
+const defaultStyle: HighlightStyle = {
+  nameBold: true,
+  nameDim: false,
+  nameUnderline: false,
+  nameItalic: false,
+  extendBg: false,
+  dimNonCurrent: false,
+}
+
+/**
+ * H1:  No highlighting at all
+ * H2:  Cyan name + dark bg for current, cyan name for ancestor
+ * H3:  Cyan name + dark bg for current only (no ancestor)
+ * H4:  Dim everything except current (spotlight)
+ * H5:  Underline current, dim ancestor
+ * H6:  Arrow marker "▸ " before current name
+ * H7:  Bold white on blue bg for current, italic cyan for ancestor
+ * H8:  Green current name + green bg tint, ancestor gets subtle green
+ * H9:  Inverse-ish: bright white on ansi256:24 (dark blue) for current, dim others
+ * H10: Minimal — just italic current name, nothing else
+ */
+const resolveStyle = ({
+  variant,
+  role,
+}: {
+  variant: HighlightVariant
+  role: HighlightRole
+}): HighlightStyle => {
+  if (role === undefined) {
+    // Non-highlighted nodes: some variants dim them
+    if (variant === 'H4') return { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+    if (variant === 'H9') return { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+    return defaultStyle
+  }
+
+  switch (variant) {
+    case 'H1':
+      return defaultStyle
+
+    case 'H2':
+      return role === 'current'
+        ? { ...defaultStyle, nameColor: 'cyan', bgColor: { ansi256: 236 }, extendBg: true }
+        : { ...defaultStyle, nameColor: 'cyan' }
+
+    case 'H3':
+      return role === 'current'
+        ? { ...defaultStyle, nameColor: 'cyan', bgColor: { ansi256: 236 }, extendBg: true }
+        : defaultStyle
+
+    case 'H4':
+      return role === 'current'
+        ? { ...defaultStyle, nameColor: 'white' }
+        : { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+
+    case 'H5':
+      return role === 'current'
+        ? { ...defaultStyle, nameUnderline: true, nameColor: 'cyan' }
+        : { ...defaultStyle, nameDim: true }
+
+    case 'H6':
+      return role === 'current'
+        ? { ...defaultStyle, nameColor: 'cyan', marker: '▸ ' }
+        : role === 'ancestor'
+          ? { ...defaultStyle, nameColor: 'cyan' }
+          : defaultStyle
+
+    case 'H7':
+      return role === 'current'
+        ? {
+            ...defaultStyle,
+            nameColor: 'white',
+            bgColor: { ansi256: 25 },
+            extendBg: true,
+          }
+        : { ...defaultStyle, nameColor: 'cyan', nameItalic: true }
+
+    case 'H8':
+      return role === 'current'
+        ? {
+            ...defaultStyle,
+            nameColor: 'greenBright',
+            bgColor: { ansi256: 22 },
+            extendBg: true,
+          }
+        : { ...defaultStyle, nameColor: 'green' }
+
+    case 'H9':
+      return role === 'current'
+        ? {
+            ...defaultStyle,
+            nameColor: 'whiteBright',
+            bgColor: { ansi256: 24 },
+            extendBg: true,
+            dimNonCurrent: true,
+          }
+        : { ...defaultStyle, nameDim: true, dimNonCurrent: true }
+
+    case 'H10':
+      return role === 'current'
+        ? { ...defaultStyle, nameItalic: true, nameColor: 'cyan' }
+        : defaultStyle
+  }
+}
+
+const getRole = ({
+  location,
+  memberName,
+  parentName,
+  hasAncestor,
+}: {
+  location: LocationVariant
+  memberName: string
+  parentName?: string | undefined
+  hasAncestor: boolean
+}): HighlightRole => {
+  if (location === 'none' || location === 'root') return undefined
+  if (location === 'top-member') {
+    if (memberName === 'dev-tools') return 'current'
+    return undefined
+  }
+  if (location === 'nested-member') {
+    if (memberName === 'ui-kit' && parentName === 'dev-tools') return 'current'
+    if (hasAncestor === true && memberName === 'dev-tools') return 'ancestor'
+  }
+  return undefined
+}
+
+/** Whether the variant supports ancestor highlighting */
+const hasAncestorSupport = (variant: HighlightVariant): boolean =>
+  variant === 'H2' || variant === 'H6' || variant === 'H7' || variant === 'H8'
+
 const MemberInfo = ({
   m,
   prefix = '',
-  highlight,
+  style,
 }: {
   m: MemberStatus
   prefix?: string
-  highlight?: 'current' | 'ancestor' | undefined
+  style: HighlightStyle
 }) => {
-  const bgColor = highlight === 'current' ? { ansi256: 236 } : undefined
-  const nameColor = highlight === 'current' ? 'cyan' : highlight === 'ancestor' ? 'cyan' : undefined
+  const dimAll =
+    style.dimNonCurrent === true && style.bgColor === undefined && style.nameColor === undefined
 
   return (
-    <Box flexDirection="row" backgroundColor={bgColor} extendBackground={highlight === 'current'}>
-      <Text>{prefix}</Text>
-      <Text color="green">{check} </Text>
-      <Text bold color={nameColor}>
+    <Box flexDirection="row" backgroundColor={style.bgColor} extendBackground={style.extendBg}>
+      <Text dim={dimAll}>{prefix}</Text>
+      <Text color={style.checkColor ?? (dimAll === true ? undefined : 'green')} dim={dimAll}>
+        {check}{' '}
+      </Text>
+      {style.marker !== undefined && <Text color={style.nameColor}>{style.marker}</Text>}
+      <Text
+        bold={style.nameBold}
+        dim={style.nameDim}
+        italic={style.nameItalic}
+        underline={style.nameUnderline}
+        color={style.nameColor}
+      >
         {m.name}
       </Text>
-      <Text> </Text>
+      <Text dim={dimAll}> </Text>
       {m.gitStatus !== undefined && (
         <>
-          <Text color={m.gitStatus.branch === 'main' ? 'green' : 'magenta'}>
+          <Text
+            color={
+              dimAll === true ? undefined : m.gitStatus.branch === 'main' ? 'green' : 'magenta'
+            }
+            dim={dimAll}
+          >
             {m.gitStatus.branch}
           </Text>
           <Text dim>@{m.gitStatus.shortRev}</Text>
@@ -222,74 +381,64 @@ const MemberInfo = ({
       )}
       {m.gitStatus?.isDirty === true && (
         <>
-          <Text> </Text>
-          <Text color="yellow">{dirty}</Text>
+          <Text dim={dimAll}> </Text>
+          <Text color={dimAll === true ? undefined : 'yellow'} dim={dimAll}>
+            {dirty}
+          </Text>
         </>
       )}
       {m.gitStatus?.hasUnpushed === true && (
         <>
-          <Text> </Text>
-          <Text color="red">{ahead}</Text>
+          <Text dim={dimAll}> </Text>
+          <Text color={dimAll === true ? undefined : 'red'} dim={dimAll}>
+            {ahead}
+          </Text>
         </>
       )}
       {m.lockInfo?.pinned === true && (
         <>
-          <Text> </Text>
-          <Text color="yellow">pinned</Text>
+          <Text dim={dimAll}> </Text>
+          <Text color={dimAll === true ? undefined : 'yellow'} dim={dimAll}>
+            pinned
+          </Text>
         </>
       )}
       {m.isMegarepo === true && (
         <>
-          <Text> </Text>
-          <Text color="cyan">[megarepo]</Text>
+          <Text dim={dimAll}> </Text>
+          <Text color={dimAll === true ? undefined : 'cyan'} dim={dimAll}>
+            [megarepo]
+          </Text>
         </>
       )}
     </Box>
   )
 }
 
-const getHighlight = (
-  highlight: HighlightVariant,
-  location: LocationVariant,
-  memberName: string,
-  parentName?: string,
-): 'current' | 'ancestor' | undefined => {
-  if (highlight === 'H1') return undefined
-  if (location === 'none' || location === 'root') return undefined
-
-  if (location === 'top-member') {
-    if (memberName === 'dev-tools') return 'current'
-    return undefined
-  }
-
-  if (location === 'nested-member') {
-    if (memberName === 'ui-kit' && parentName === 'dev-tools') return 'current'
-    if (highlight === 'H2' && memberName === 'dev-tools') return 'ancestor'
-  }
-  return undefined
-}
-
 const RootName = ({
-  highlight,
+  variant,
   location,
 }: {
-  highlight: HighlightVariant
+  variant: HighlightVariant
   location: LocationVariant
 }) => {
   const isRootCurrent = location === 'root'
-  const isAncestor = highlight === 'H2' && location !== 'none' && location !== 'root'
+  const isAncestor =
+    hasAncestorSupport(variant) === true && location !== 'none' && location !== 'root'
+  const role: HighlightRole =
+    isRootCurrent === true ? 'current' : isAncestor === true ? 'ancestor' : undefined
+  const style = resolveStyle({ variant, role })
+  const dimAll = style.dimNonCurrent === true && role === undefined
 
   return (
-    <Box
-      flexDirection="row"
-      backgroundColor={isRootCurrent === true && highlight !== 'H1' ? { ansi256: 236 } : undefined}
-      extendBackground={isRootCurrent === true && highlight !== 'H1'}
-    >
+    <Box flexDirection="row" backgroundColor={style.bgColor} extendBackground={style.extendBg}>
+      {style.marker !== undefined && <Text color={style.nameColor}>{style.marker}</Text>}
       <Text
-        bold
-        color={
-          (isRootCurrent === true && highlight !== 'H1') || isAncestor === true ? 'cyan' : undefined
-        }
+        bold={style.nameBold || !dimAll}
+        dim={dimAll || style.nameDim}
+        italic={style.nameItalic}
+        underline={style.nameUnderline}
+        color={style.nameColor}
       >
         dev-workspace
       </Text>
@@ -298,182 +447,135 @@ const RootName = ({
 }
 
 // =============================================================================
-// T1: Full tree from root — all members are children of workspace
+// Tree with highlight variant
 // =============================================================================
 
-const TreeT1 = ({
-  highlight,
+/**
+ * To pass parent context to nested renderItem calls, we track parent→children
+ * mapping and look up the parent name by checking which member owns this nested item.
+ */
+const parentOf = (name: string): string | undefined => {
+  for (const m of members) {
+    if (m.nestedMembers?.some((n) => n.name === name) === true) return m.name
+  }
+  return undefined
+}
+
+const HighlightedTree = ({
+  variant,
   location,
 }: {
-  highlight: HighlightVariant
+  variant: HighlightVariant
   location: LocationVariant
-}) => (
-  <Box>
-    <RootName highlight={highlight} location={location} />
-    <Tree<MemberStatus>
-      items={members}
-      getChildren={(m) =>
-        m.nestedMembers !== undefined && m.nestedMembers.length > 0 ? m.nestedMembers : undefined
-      }
-      renderItem={(m, { prefix }) => (
-        <MemberInfo m={m} prefix={prefix} highlight={getHighlight(highlight, location, m.name)} />
-      )}
-    />
-  </Box>
-)
+}) => {
+  const ancestor = hasAncestorSupport(variant)
 
-// =============================================================================
-// T2: Full tree + blank continuation lines between megarepo groups
-// =============================================================================
-
-const TreeT2 = ({
-  highlight,
-  location,
-}: {
-  highlight: HighlightVariant
-  location: LocationVariant
-}) => (
-  <Box>
-    <RootName highlight={highlight} location={location} />
-    <Tree<MemberStatus>
-      items={members}
-      getChildren={(m) =>
-        m.nestedMembers !== undefined && m.nestedMembers.length > 0 ? m.nestedMembers : undefined
-      }
-      renderItem={(m, { prefix }) => (
-        <MemberInfo m={m} prefix={prefix} highlight={getHighlight(highlight, location, m.name)} />
-      )}
-      renderChildContent={(m, { continuationPrefix }) => {
-        const hasChildren = m.nestedMembers !== undefined && m.nestedMembers.length > 0
-        if (hasChildren === false) return null
-        return <Text>{continuationPrefix}</Text>
-      }}
-    />
-  </Box>
-)
-
-// =============================================================================
-// T3: Indented — no tree chars for root level, tree only for nesting
-// =============================================================================
-
-const TreeT3 = ({
-  highlight,
-  location,
-}: {
-  highlight: HighlightVariant
-  location: LocationVariant
-}) => (
-  <Box>
-    <RootName highlight={highlight} location={location} />
-    <Text> </Text>
-    {members.map((m) => (
-      <React.Fragment key={m.name}>
-        <MemberInfo m={m} prefix={'  '} highlight={getHighlight(highlight, location, m.name)} />
-        {m.nestedMembers !== undefined && m.nestedMembers.length > 0 && (
-          <Box paddingLeft={2}>
-            <Tree<MemberStatus>
-              items={m.nestedMembers}
-              renderItem={(nested, { prefix }) => (
-                <MemberInfo
-                  m={nested}
-                  prefix={prefix}
-                  highlight={getHighlight(highlight, location, nested.name, m.name)}
-                />
-              )}
-            />
-          </Box>
-        )}
-      </React.Fragment>
-    ))}
-  </Box>
-)
+  return (
+    <Box>
+      <RootName variant={variant} location={location} />
+      <Tree<MemberStatus>
+        items={members}
+        getChildren={(m) =>
+          m.nestedMembers !== undefined && m.nestedMembers.length > 0 ? m.nestedMembers : undefined
+        }
+        renderItem={(m, { prefix, depth }) => {
+          const parent = depth > 0 ? parentOf(m.name) : undefined
+          const role = getRole({
+            location,
+            memberName: m.name,
+            parentName: parent,
+            hasAncestor: ancestor,
+          })
+          return <MemberInfo m={m} prefix={prefix} style={resolveStyle({ variant, role })} />
+        }}
+      />
+    </Box>
+  )
+}
 
 // =============================================================================
 // Exploration App — state-driven so Storybook controls trigger re-renders
 // =============================================================================
 
 interface ExplorationState {
-  readonly treeVariant: TreeVariant
   readonly highlightVariant: HighlightVariant
   readonly location: LocationVariant
 }
 
 const ExplorationApp = createTuiApp({
   stateSchema: Schema.Struct({
-    treeVariant: Schema.Literal('T1', 'T2', 'T3'),
-    highlightVariant: Schema.Literal('H1', 'H2', 'H3'),
+    highlightVariant: Schema.Literal('H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10'),
     location: Schema.Literal('root', 'top-member', 'nested-member', 'none'),
   }),
   actionSchema: Schema.Never,
   initial: {
-    treeVariant: 'T1' as TreeVariant,
     highlightVariant: 'H2' as HighlightVariant,
     location: 'nested-member' as LocationVariant,
   },
   reducer: ({ state }) => state,
 })
 
+const VARIANT_DESCRIPTIONS: Record<HighlightVariant, string> = {
+  H1: 'No highlighting',
+  H2: 'Cyan name + dark bg (current), cyan name (ancestor)',
+  H3: 'Cyan name + dark bg (current only, no ancestor)',
+  H4: 'Spotlight — dim everything except current',
+  H5: 'Underline current (cyan), dim ancestor',
+  H6: 'Arrow marker "▸" before current, cyan ancestor',
+  H7: 'White on blue bg (current), italic cyan (ancestor)',
+  H8: 'Green tint bg (current), subtle green (ancestor)',
+  H9: 'White on dark blue (current), dim all others',
+  H10: 'Minimal — just italic cyan name for current',
+}
+
 const ExplorationView = ({ stateAtom }: { stateAtom: Atom.Atom<ExplorationState> }) => {
   const state = useTuiAtomValue(stateAtom)
-  const TreeComponent =
-    state.treeVariant === 'T1' ? TreeT1 : state.treeVariant === 'T2' ? TreeT2 : TreeT3
 
   return (
     <Box>
       <Box>
         <Text bold dim>
-          {'─── Variant Legend '}
-          {'─'.repeat(50)}
-        </Text>
-      </Box>
-      <Text dim>T1: Full tree from root (├── └── │)</Text>
-      <Text dim>T2: Full tree + blank lines between megarepo groups</Text>
-      <Text dim>T3: Indented list, tree chars only for nesting</Text>
-      <Text dim>H1: No highlighting</Text>
-      <Text dim>H2: Path highlighting (ancestor=cyan, current=cyan+bg)</Text>
-      <Text dim>H3: Current-only highlighting (current=cyan+bg, no ancestor)</Text>
-      <Text> </Text>
-      <Box>
-        <Text bold dim>
-          {'─── Preview '}
-          {'─'.repeat(57)}
+          {'─── '}
+          {state.highlightVariant}: {VARIANT_DESCRIPTIONS[state.highlightVariant]}{' '}
+          {'─'.repeat(Math.max(0, 60 - VARIANT_DESCRIPTIONS[state.highlightVariant].length))}
         </Text>
       </Box>
       <Text> </Text>
-      <TreeComponent highlight={state.highlightVariant} location={state.location} />
+      <HighlightedTree variant={state.highlightVariant} location={state.location} />
       <Text> </Text>
       <Text dim>5 direct · 3 nested · 8/8 synced</Text>
     </Box>
   )
 }
 
-const SideBySideView = ({ stateAtom }: { stateAtom: Atom.Atom<ExplorationState> }) => {
+const ALL_VARIANTS: HighlightVariant[] = [
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'H7',
+  'H8',
+  'H9',
+  'H10',
+]
+
+const GalleryView = ({ stateAtom }: { stateAtom: Atom.Atom<ExplorationState> }) => {
   const state = useTuiAtomValue(stateAtom)
 
   return (
     <Box>
-      <Text bold color="cyan">
-        T1: Full tree
-      </Text>
-      <TreeT1 highlight={state.highlightVariant} location={state.location} />
-      <Text> </Text>
-      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
-      <Text> </Text>
-      <Text> </Text>
-      <Text bold color="cyan">
-        T2: Full tree + spacing
-      </Text>
-      <TreeT2 highlight={state.highlightVariant} location={state.location} />
-      <Text> </Text>
-      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
-      <Text> </Text>
-      <Text> </Text>
-      <Text bold color="cyan">
-        T3: Indented list
-      </Text>
-      <TreeT3 highlight={state.highlightVariant} location={state.location} />
-      <Text> </Text>
-      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
+      {ALL_VARIANTS.map((v) => (
+        <React.Fragment key={v}>
+          <Text bold color="cyan">
+            {v}: {VARIANT_DESCRIPTIONS[v]}
+          </Text>
+          <HighlightedTree variant={v} location={state.location} />
+          <Text dim>5 direct · 3 nested · 8/8 synced</Text>
+          <Text> </Text>
+        </React.Fragment>
+      ))}
     </Box>
   )
 }
@@ -489,7 +591,6 @@ export default {
 
 type StoryArgs = {
   height: number
-  treeVariant: TreeVariant
   highlightVariant: HighlightVariant
   location: LocationVariant
 }
@@ -497,22 +598,16 @@ type Story = StoryObj<StoryArgs>
 
 const defaultArgs: StoryArgs = {
   height: 600,
-  treeVariant: 'T1',
   highlightVariant: 'H2',
   location: 'nested-member',
 }
 
 const defaultArgTypes = {
   height: { control: { type: 'range' as const, min: 300, max: 1000, step: 50 } },
-  treeVariant: {
-    description: 'Tree structure variant',
-    control: { type: 'inline-radio' as const },
-    options: ['T1', 'T2', 'T3'],
-  },
   highlightVariant: {
     description: 'Current location highlighting',
     control: { type: 'inline-radio' as const },
-    options: ['H1', 'H2', 'H3'],
+    options: ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7', 'H8', 'H9', 'H10'],
   },
   location: {
     description: 'Simulated pwd location',
@@ -521,7 +616,7 @@ const defaultArgTypes = {
   },
 }
 
-/** Interactive variant picker */
+/** Interactive single-variant picker */
 export const Exploration: Story = {
   args: defaultArgs,
   argTypes: defaultArgTypes,
@@ -530,7 +625,6 @@ export const Exploration: Story = {
       View={ExplorationView}
       app={ExplorationApp}
       initialState={{
-        treeVariant: args.treeVariant,
         highlightVariant: args.highlightVariant,
         location: args.location,
       }}
@@ -541,16 +635,18 @@ export const Exploration: Story = {
   ),
 }
 
-/** Side-by-side comparison of all tree variants */
-export const SideBySide: Story = {
-  args: { ...defaultArgs, height: 800 },
-  argTypes: defaultArgTypes,
+/** Gallery of all 10 highlight variants */
+export const Gallery: Story = {
+  args: { ...defaultArgs, height: 2000 },
+  argTypes: {
+    ...defaultArgTypes,
+    height: { control: { type: 'range' as const, min: 300, max: 3000, step: 50 } },
+  },
   render: (args) => (
     <TuiStoryPreview
-      View={SideBySideView}
+      View={GalleryView}
       app={ExplorationApp}
       initialState={{
-        treeVariant: args.treeVariant,
         highlightVariant: args.highlightVariant,
         location: args.location,
       }}
