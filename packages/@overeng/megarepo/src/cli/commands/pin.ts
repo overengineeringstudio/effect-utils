@@ -34,6 +34,7 @@ import {
   writeLockFile,
 } from '../../lib/lock.ts'
 import { classifyRef } from '../../lib/ref.ts'
+import { runPreflightChecks } from '../../lib/store-hygiene.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
 import {
@@ -51,7 +52,7 @@ import { PinApp, PinView } from '../renderers/PinOutput/mod.ts'
  * Pin a member to a specific ref.
  * When -c is provided, switches to a different ref (branch, tag, or commit).
  * Without -c, pins to the current commit.
- * Pinned members won't be updated by `mr sync --pull` unless explicitly named.
+ * Pinned members won't be updated by `mr fetch` unless explicitly forced.
  */
 export const pinCommand = Cli.Command.make(
   'pin',
@@ -138,6 +139,15 @@ export const pinCommand = Cli.Command.make(
           )
           const lockFileOpt = yield* readLockFile(lockPath)
           let lockFile = Option.getOrElse(lockFileOpt, () => createEmptyLockFile())
+
+          // Run pre-flight hygiene checks (pin operates on existing worktrees like lock)
+          yield* runPreflightChecks({
+            memberNames: [member],
+            config,
+            lockFile,
+            store,
+            mode: 'lock',
+          })
 
           const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
           const memberPathNormalized = memberPath.replace(/\/$/, '')

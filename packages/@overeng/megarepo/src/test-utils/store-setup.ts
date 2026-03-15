@@ -17,7 +17,7 @@ import {
   LOCK_FILE_NAME,
   writeLockFile,
 } from '../lib/lock.ts'
-import { encodeRef, refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
+import { refTypeToPathSegment, classifyRef } from '../lib/ref.ts'
 
 // =============================================================================
 // Types
@@ -163,10 +163,9 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       for (const branch of repoFixture.branches ?? []) {
         const refType = classifyRef(branch)
         const pathSegment = refTypeToPathSegment(refType)
-        const encodedRef = encodeRef(branch)
         const worktreePath = EffectPath.ops.join(
           repoBasePath,
-          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${encodedRef}/`),
+          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${branch}/`),
         )
 
         yield* fs.makeDirectory(worktreePath, { recursive: true })
@@ -189,10 +188,9 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       for (const tag of repoFixture.tags ?? []) {
         const refType = classifyRef(tag)
         const pathSegment = refTypeToPathSegment(refType)
-        const encodedRef = encodeRef(tag)
         const worktreePath = EffectPath.ops.join(
           repoBasePath,
-          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${encodedRef}/`),
+          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${tag}/`),
         )
 
         yield* fs.makeDirectory(worktreePath, { recursive: true })
@@ -213,10 +211,9 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
       for (const commitRef of repoFixture.commits ?? []) {
         const refType = classifyRef(commitRef)
         const pathSegment = refTypeToPathSegment(refType)
-        const encodedRef = encodeRef(commitRef)
         const worktreePath = EffectPath.ops.join(
           repoBasePath,
-          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${encodedRef}/`),
+          EffectPath.unsafe.relativeDir(`refs/${pathSegment}/${commitRef}/`),
         )
 
         yield* fs.makeDirectory(worktreePath, { recursive: true })

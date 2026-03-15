@@ -1,28 +1,37 @@
 import {
   catalog,
-  effectLspDevDeps,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
 
 const peerDepNames = ['effect', 'react'] as const
-
-export default packageJson({
-  name: '@overeng/effect-schema-form',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/mod.ts',
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/mod.js',
+const deps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/effect-schema-form'),
+  devDependencies: {
+    external: {
+      ...catalog.pick(...peerDepNames, '@types/react', 'typescript', 'vitest'),
     },
   },
-  devDependencies: {
-    ...catalog.pick(...peerDepNames, '@types/react', 'vitest'),
-    ...effectLspDevDeps(),
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
   },
-  peerDependencies: catalog.peers(...peerDepNames),
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: '@overeng/effect-schema-form',
+    ...privatePackageDefaults,
+    exports: {
+      '.': './src/mod.ts',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+      },
+    },
+  } satisfies PackageJsonData,
+  deps,
+)

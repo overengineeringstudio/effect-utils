@@ -8,6 +8,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    tsgo.url = "github:Effect-TS/tsgo";
   };
 
   outputs =
@@ -15,6 +16,7 @@
       self,
       nixpkgs,
       flake-utils,
+      tsgo,
       ...
     }:
     let
@@ -73,6 +75,7 @@
         packages = cliPackages // {
           beads = import ./nix/beads.nix { inherit pkgs; };
           cli-build-stamp = cliBuildStamp.package;
+          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           genie-dirty = cliPackagesDirty.genie;
           megarepo-dirty = cliPackagesDirty.megarepo;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
@@ -120,6 +123,7 @@
           test-playwright = import ./nix/devenv-modules/tasks/shared/test-playwright.nix;
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
+          ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
           vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
@@ -131,6 +135,9 @@
           # Note: local/ directory contains effect-utils specific tasks (not exported)
         };
       };
+
+      # CLI guard helpers: .mkCliGuard for single guards, .fromTasks/.stripGuards for task-driven guards
+      lib.cliGuard = { pkgs }: import ./nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; };
 
       # Builder function for external repos to create their own Bun CLIs
       lib.mkBunCli = { pkgs }: import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
@@ -187,6 +194,6 @@
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie
       #   effectUtils.packages.${system}.megarepo
-      # See: context/nix-devenv/cli-patterns.md
+      # See the stack-level Nix/devenv CLI distribution policy docs.
     };
 }

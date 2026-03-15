@@ -63,7 +63,7 @@ export const useOState = <S,>(ref: SubscriptionRef.SubscriptionRef<S>): S => {
     )
 
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      void Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [ref])
 
@@ -139,7 +139,7 @@ export const useOKeyboard = ({
         meta: key.meta,
       })
 
-      Effect.runFork(PubSub.publish(pubSubRef.current, event))
+      void Effect.runFork(PubSub.publish(pubSubRef.current, event))
 
       // Call custom handler if provided
       onKey?.(key)
@@ -180,7 +180,7 @@ export const createKeyboardHandler = ({
       meta: key.meta,
     })
 
-    Effect.runFork(PubSub.publish(eventPubSub, event))
+    void Effect.runFork(PubSub.publish(eventPubSub, event))
     onKey?.(key)
   }
 }
@@ -212,7 +212,7 @@ export const createResizeHandler = ({
   // oxlint-disable-next-line overeng/named-args -- callback signature required by external API
   return (width: number, height: number) => {
     const event = resizeEvent({ cols: width, rows: height })
-    Effect.runFork(PubSub.publish(eventPubSub, event))
+    void Effect.runFork(PubSub.publish(eventPubSub, event))
     onResize?.(width, height)
   }
 }
@@ -257,7 +257,7 @@ export const useODispatch = <S, A>({
 }): ((action: A) => void) => {
   return useCallback(
     (action: A) => {
-      Effect.runFork(SubscriptionRef.update(ref, (state) => reducer({ state, action })))
+      void Effect.runFork(SubscriptionRef.update(ref, (state) => reducer({ state, action })))
     },
     [ref, reducer],
   )

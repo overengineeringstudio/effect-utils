@@ -6,7 +6,12 @@
 
 import type { MemberSyncResult } from '../../../../lib/sync/schema.ts'
 import type { SyncState as SyncStateType } from '../mod.ts'
-import type { MemberLockSyncResult, SyncAction } from '../schema.ts'
+import type {
+  LockSharedSourceUpdate,
+  MemberLockSyncResult,
+  PreflightIssue,
+  SyncAction,
+} from '../schema.ts'
 
 // =============================================================================
 // Example Data
@@ -48,18 +53,26 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
         type: 'flake.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
             newRev: 'def5678',
           },
-          { inputName: 'livestore', memberName: 'livestore', oldRev: '1234567', newRev: '7654321' },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1234567',
+            newRev: '7654321',
+          },
         ],
       },
       {
         type: 'devenv.lock',
         updatedInputs: [
           {
+            _tag: 'RevUpdate',
             inputName: 'effect-utils',
             memberName: 'effect-utils',
             oldRev: 'abc1234',
@@ -75,10 +88,259 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
       {
         type: 'flake.lock',
         updatedInputs: [
-          { inputName: 'effect', memberName: 'effect', oldRev: 'fff0000', newRev: 'aaa1111' },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect',
+            memberName: 'effect',
+            oldRev: 'fff0000',
+            newRev: 'aaa1111',
+          },
         ],
       },
     ],
+  },
+]
+
+/** Lock sync results including source file (flake.nix, devenv.yaml) updates */
+export const exampleLockSyncWithSourceFiles: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1111111',
+            newRev: '2222222',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.yaml',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils-playwright',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'schickling.dev',
+    files: [
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+]
+
+/** Ref propagation scenario — branch change across members */
+export const exampleRefSyncResults: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.yaml',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+    ],
+  },
+]
+
+/** Shared lock source propagation scenario */
+export const exampleSharedSourceSync: LockSharedSourceUpdate[] = [
+  {
+    _tag: 'SharedSourceUpdate',
+    sourceName: 'devenv',
+    sourceMemberName: 'effect-utils',
+    targetCount: 3,
+  },
+]
+
+/** Mixed scenario — all three update types together */
+export const exampleMixedSyncResults: MemberLockSyncResult[] = [
+  {
+    memberName: 'dotfiles',
+    files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+      {
+        type: 'flake.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'livestore',
+            memberName: 'livestore',
+            oldRev: '1234567',
+            newRev: '7654321',
+          },
+          {
+            _tag: 'RefUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRef: 'main',
+            newRef: 'schickling/2026-03-08-foo',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    memberName: 'overeng',
+    files: [
+      {
+        type: 'devenv.lock',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: 'effect-utils',
+            memberName: 'effect-utils',
+            oldRev: 'abc1234',
+            newRev: 'def5678',
+          },
+        ],
+      },
+    ],
+  },
+]
+
+export const exampleMixedSharedSourceSync: LockSharedSourceUpdate[] = [
+  {
+    _tag: 'SharedSourceUpdate',
+    sourceName: 'devenv',
+    sourceMemberName: 'effect-utils',
+    targetCount: 3,
   },
 ]
 
@@ -89,15 +351,16 @@ export const exampleLockSyncResults: MemberLockSyncResult[] = [
 export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
   _tag: 'Success',
   workspace: { name: 'my-workspace', root: '/Users/dev/workspace' },
-  options: { dryRun: false, frozen: false, pull: false, all: false, verbose: false },
+  options: { mode: 'apply', dryRun: false, all: false, verbose: false },
   members: [],
-  activeMember: null,
+  activeMembers: [],
   results: [],
   logs: [],
   startedAt: null,
   nestedMegarepos: [],
   generatedFiles: [],
   lockSyncResults: [],
+  sharedSourceUpdates: [],
   syncTree: {
     root: '/Users/dev/workspace',
     results: [],
@@ -106,16 +369,55 @@ export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateTy
   },
   syncErrors: [],
   syncErrorCount: 0,
+  preflightIssues: [],
   ...overrides,
 })
+
+// =============================================================================
+// Pre-flight Failure - Example Data & State Factory
+// =============================================================================
+
+export const examplePreflightIssues: PreflightIssue[] = [
+  {
+    severity: 'error',
+    type: 'ref_mismatch',
+    memberName: 'livestore',
+    message: "worktree HEAD is 'refactor/genie' but expected 'dev'",
+    fix: "run 'git -C ~/.megarepo/.../refs/heads/dev checkout dev' or 'mr store fix'",
+  },
+  {
+    severity: 'error',
+    type: 'broken_worktree',
+    memberName: 'effect-utils',
+    message: '.git not found in worktree at ~/.megarepo/.../refs/heads/main',
+    fix: "run 'mr apply' to recreate the worktree",
+  },
+  {
+    severity: 'warning',
+    type: 'dirty',
+    memberName: 'dotfiles',
+    message: '12 uncommitted changes',
+  },
+]
+
+export const createPreflightFailedState = (opts: {
+  mode: 'apply' | 'lock' | 'fetch'
+  issues: PreflightIssue[]
+}): SyncStateType =>
+  createBaseState({
+    _tag: 'PreflightFailed',
+    options: { mode: opts.mode, dryRun: false, all: false, verbose: false },
+    preflightIssues: opts.issues,
+  })
 
 // =============================================================================
 // Timeline Factory for Animated Stories
 // =============================================================================
 
 /**
- * Creates a timeline that animates through syncing each member and ends with the provided final state.
- * This ensures interactive mode shows the same end result as static mode.
+ * Creates a timeline that animates through syncing members with parallel execution.
+ * Models concurrency=4 (like real TTY mode): up to 4 members start together,
+ * results arrive at staggered intervals, and new members start as slots free up.
  */
 export const createTimeline = (
   finalState: Partial<SyncStateType>,
@@ -123,12 +425,13 @@ export const createTimeline = (
   const results = finalState.results ?? []
   const members = finalState.members ?? results.map((r) => r.name)
   const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
-  const options = finalState.options ?? { dryRun: false, frozen: false, pull: false, all: false }
+  const options = finalState.options ?? { mode: 'apply', dryRun: false, all: false }
   const nestedMegarepos = finalState.nestedMegarepos ?? []
   const generatedFiles = finalState.generatedFiles ?? []
+  const lockSyncResults = finalState.lockSyncResults ?? []
+  const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []
 
   if (results.length === 0) {
-    // No results - just show complete state
     return [
       {
         at: 0,
@@ -141,9 +444,11 @@ export const createTimeline = (
   }
 
   const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
-  const stepDuration = 800
+  const concurrency = 4
+  const resultInterval = 600
 
-  // Start syncing
+  // Step 0: start syncing — first batch of members become active
+  const initialActive = members.slice(0, concurrency)
   timeline.push({
     at: 0,
     action: {
@@ -153,22 +458,46 @@ export const createTimeline = (
         options,
         _tag: 'Syncing',
         members,
-        activeMember: members[0] ?? null,
+        activeMembers: initialActive,
         results: [],
         startedAt: Date.now(),
       }),
     },
   })
 
-  // Add each result progressively
+  // Progressive results — as each completes, the next queued member starts
+  let nextToStart = concurrency
+  const completedResults: Array<(typeof results)[number]> = []
+  const currentActive = [...initialActive]
+  let runningErrors: Array<{ megarepoRoot: string; memberName: string; message: string | null }> =
+    []
+  let runningErrorCount = 0
+
   for (let i = 0; i < results.length; i++) {
-    const currentResults = results.slice(0, i + 1)
-    const nextMember = i + 1 < members.length ? (members[i + 1] ?? null) : null
+    const result = results[i]!
+    completedResults.push(result)
+
+    // Remove completed member from active
+    const activeIdx = currentActive.indexOf(result.name)
+    if (activeIdx !== -1) currentActive.splice(activeIdx, 1)
+
+    // Start next queued member if any
+    if (nextToStart < members.length) {
+      currentActive.push(members[nextToStart]!)
+      nextToStart++
+    }
+
+    if (result.status === 'error') {
+      runningErrorCount++
+      const matchingError = (finalState.syncErrors ?? []).find((e) => e.memberName === result.name)
+      if (matchingError !== undefined) runningErrors.push(matchingError)
+    }
+
     const isFinal = i === results.length - 1
-    const hasErrors = isFinal && currentResults.some((r) => r.status === 'error')
+    const hasErrors = runningErrorCount > 0
 
     timeline.push({
-      at: (i + 1) * stepDuration,
+      at: (i + 1) * resultInterval,
       action: {
         _tag: 'SetState',
         state: createBaseState({
@@ -176,10 +505,122 @@ export const createTimeline = (
           options,
           _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
           members,
-          activeMember: nextMember,
-          results: currentResults,
-          nestedMegarepos: i === results.length - 1 ? nestedMegarepos : [],
-          generatedFiles: i === results.length - 1 ? generatedFiles : [],
+          activeMembers: isFinal === true ? [] : [...currentActive],
+          results: completedResults.slice(),
+          nestedMegarepos: isFinal === true ? nestedMegarepos : [],
+          generatedFiles: isFinal === true ? generatedFiles : [],
+          lockSyncResults: isFinal === true ? lockSyncResults : [],
+          sharedSourceUpdates: isFinal === true ? sharedSourceUpdates : [],
+          syncErrors: runningErrors.slice(),
+          syncErrorCount: runningErrorCount,
+        }),
+      },
+    })
+  }
+
+  return timeline
+}
+
+// =============================================================================
+// Command-specific State & Timeline Factories
+// =============================================================================
+
+/** Creates a command-specific state with the given mode and overrides. */
+export const createCommandState = ({
+  mode,
+  overrides,
+}: {
+  mode: 'lock' | 'fetch' | 'apply'
+  overrides: Partial<SyncStateType> & { results: MemberSyncResult[] }
+}): SyncStateType =>
+  createBaseState({
+    options: { mode, dryRun: false, all: false, verbose: false, ...overrides.options },
+    members: overrides.results.map((r) => r.name),
+    ...overrides,
+  })
+
+/**
+ * Creates a timeline that animates through a command operation with parallel execution.
+ * Models concurrency=4: multiple members syncing simultaneously with staggered completion.
+ */
+export const createCommandTimeline = ({
+  mode,
+  finalState,
+}: {
+  mode: 'lock' | 'fetch' | 'apply'
+  finalState: Partial<SyncStateType> & { results: MemberSyncResult[] }
+}): Array<{ at: number; action: typeof SyncAction.Type }> => {
+  const results = finalState.results
+  const members = finalState.members ?? results.map((r) => r.name)
+  const workspace = finalState.workspace ?? { name: 'my-workspace', root: '/Users/dev/workspace' }
+  const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
+  const lockSyncResults = finalState.lockSyncResults ?? []
+  const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []
+  const syncErrors = finalState.syncErrors ?? []
+
+  const timeline: Array<{ at: number; action: typeof SyncAction.Type }> = []
+  const concurrency = 4
+  const resultInterval = 600
+
+  const initialActive = members.slice(0, concurrency)
+  timeline.push({
+    at: 0,
+    action: {
+      _tag: 'SetState',
+      state: createBaseState({
+        workspace,
+        options,
+        _tag: 'Syncing',
+        members,
+        activeMembers: initialActive,
+        results: [],
+        startedAt: Date.now(),
+      }),
+    },
+  })
+
+  let nextToStart = concurrency
+  const completedResults: typeof results = []
+  const currentActive = [...initialActive]
+  let runningErrorCount = 0
+  const runningErrors: Array<(typeof syncErrors)[number]> = []
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]!
+    completedResults.push(result)
+
+    const activeIdx = currentActive.indexOf(result.name)
+    if (activeIdx !== -1) currentActive.splice(activeIdx, 1)
+
+    if (nextToStart < members.length) {
+      currentActive.push(members[nextToStart]!)
+      nextToStart++
+    }
+
+    if (result.status === 'error') {
+      runningErrorCount++
+      const matchingError = syncErrors.find((e) => e.memberName === result.name)
+      if (matchingError !== undefined) runningErrors.push(matchingError)
+    }
+
+    const isFinal = i === results.length - 1
+    const hasErrors = runningErrorCount > 0
+
+    timeline.push({
+      at: (i + 1) * resultInterval,
+      action: {
+        _tag: 'SetState',
+        state: createBaseState({
+          workspace,
+          options,
+          _tag: isFinal === true ? (hasErrors === true ? 'Error' : 'Success') : 'Syncing',
+          members,
+          activeMembers: isFinal === true ? [] : [...currentActive],
+          results: completedResults.slice(),
+          lockSyncResults: isFinal === true ? lockSyncResults : [],
+          sharedSourceUpdates: isFinal === true ? sharedSourceUpdates : [],
+          syncErrors: runningErrors.slice(),
+          syncErrorCount: runningErrorCount,
         }),
       },
     })

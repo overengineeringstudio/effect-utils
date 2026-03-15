@@ -178,7 +178,7 @@ export const createTuiLogger = (
           }
 
           // Fire and forget - we don't want logging to block
-          Runtime.runFork(runtime)(appendLog(entry))
+          void Runtime.runFork(runtime)(appendLog(entry))
         }
       },
     )
@@ -261,7 +261,7 @@ export const useTuiLogs = (
     )
 
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber))
+      void Effect.runFork(Fiber.interrupt(fiber))
     }
   }
 

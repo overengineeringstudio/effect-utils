@@ -1,6 +1,33 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { CatalogConflictError, defineCatalog } from './catalog.ts'
+import { packageJson } from './mod.ts'
+
+const createTempRepo = (...memberPaths: string[]) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-workspace-'))
+  fs.mkdirSync(path.join(repoRoot, '.git'))
+
+  return {
+    repoRoot,
+    repoName: path.basename(repoRoot),
+    memberDirs: Object.fromEntries(
+      memberPaths.map((memberPath) => {
+        const memberDir = path.join(repoRoot, memberPath)
+        fs.mkdirSync(memberDir, { recursive: true })
+        return [memberPath, memberDir]
+      }),
+    ) as Record<string, string>,
+  }
+}
+
+const workspace = ({ repoName, memberPath }: { repoName: string; memberPath: string }) => ({
+  repoName,
+  memberPath,
+})
 
 describe('defineCatalog', () => {
   describe('standalone catalog', () => {
@@ -264,6 +291,212 @@ describe('defineCatalog', () => {
 
       expect(catalog['@effect/platform']).toBe('0.94.1')
       expect(catalog['@types/node']).toBe('25.0.3')
+    })
+  })
+
+  describe('compose', () => {
+    const catalog = defineCatalog({
+      '@effect/platform': '0.94.1',
+      effect: '3.19.14',
+      react: '19.2.3',
+    })
+    const repo = createTempRepo('packages/utils', 'packages/core', 'packages/app')
+
+    it('derives emitted dependencies and workspace metadata from imported packages', () => {
+      const utilsComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
+      })
+      const utils = packageJson(
+        {
+          name: '@test/utils',
+          version: '1.0.0',
+        },
+        utilsComposition,
+      )
+      const coreComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/core',
+        }),
+        dependencies: {
+          workspace: [utils],
+        },
+      })
+      const core = packageJson(
+        {
+          name: '@test/core',
+          version: '1.0.0',
+        },
+        coreComposition,
+      )
+
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [core],
+          external: catalog.pick('effect', 'react'),
+        },
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@test/core': 'workspace:*',
+        effect: '3.19.14',
+        react: '19.2.3',
+      })
+      expect(composed.workspace).toEqual({
+        repoName: repo.repoName,
+        memberPath: 'packages/app',
+        deps: [core],
+      })
+    })
+
+    it('installs inherited peers explicitly in install mode', () => {
+      const utilsComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
+        peerDependencies: {
+          external: catalog.pick('effect', '@effect/platform'),
+        },
+      })
+      const utils = packageJson(
+        {
+          name: '@test/utils',
+          version: '1.0.0',
+        },
+        utilsComposition,
+      )
+
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [utils],
+          external: catalog.pick('react'),
+        },
+        mode: 'install',
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@effect/platform': '0.94.1',
+        '@test/utils': 'workspace:*',
+        effect: '3.19.14',
+        react: '19.2.3',
+      })
+    })
+
+    it('collects inherited peers transitively in install mode', () => {
+      const utilsComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
+        peerDependencies: {
+          external: catalog.pick('effect'),
+        },
+      })
+      const utils = packageJson(
+        {
+          name: '@test/utils',
+          version: '1.0.0',
+        },
+        utilsComposition,
+      )
+      const coreComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/core',
+        }),
+        dependencies: {
+          workspace: [utils],
+        },
+      })
+      const core = packageJson(
+        {
+          name: '@test/core',
+          version: '1.0.0',
+        },
+        coreComposition,
+      )
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [core],
+        },
+        mode: 'install',
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@test/core': 'workspace:*',
+        effect: '3.19.14',
+      })
+    })
+
+    it('throws when install mode cannot resolve an inherited peer version', () => {
+      const appComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        peerDependencies: {
+          external: {
+            missing: '1.0.0',
+          },
+        },
+      })
+      const app = packageJson(
+        {
+          name: '@test/app',
+          version: '1.0.0',
+        },
+        appComposition,
+      )
+
+      expect(() =>
+        catalog.compose({
+          workspace: workspace({
+            repoName: repo.repoName,
+            memberPath: 'packages/app',
+          }),
+          dependencies: {
+            workspace: [app],
+          },
+          mode: 'install',
+        }),
+      ).toThrow('Catalog is missing explicit install version for inherited peer "missing"')
+    })
+
+    it('returns empty workspace metadata when no workspace packages are provided', () => {
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          external: catalog.pick('effect'),
+        },
+      })
+
+      expect(composed.dependencies).toEqual({
+        effect: '3.19.14',
+      })
+      expect(composed.workspace).toEqual({
+        repoName: repo.repoName,
+        memberPath: 'packages/app',
+        deps: [],
+      })
     })
   })
 })

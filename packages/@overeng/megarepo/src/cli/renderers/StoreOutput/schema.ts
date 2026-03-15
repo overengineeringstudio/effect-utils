@@ -126,11 +126,44 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
  * Add state - add to store
  */
 export const StoreAddState = Schema.TaggedStruct('Add', {
-  status: Schema.Literal('added', 'already_exists'),
+  status: Schema.Literal('added', 'already_exists', 'created'),
   source: Schema.String,
   ref: Schema.String,
   commit: Schema.optional(Schema.String),
   path: Schema.String,
+})
+
+/** Schema for a store fix result entry. */
+export const StoreFixResult = Schema.Struct({
+  memberName: Schema.String,
+  issueType: Schema.String,
+  status: Schema.Literal('fixed', 'skipped', 'error'),
+  message: Schema.String,
+})
+
+/** Inferred type for a store fix result. */
+export type StoreFixResult = Schema.Schema.Type<typeof StoreFixResult>
+
+/**
+ * Fix state - fix store issues
+ */
+export const StoreFixState = Schema.TaggedStruct('Fix', {
+  basePath: Schema.String,
+  results: Schema.Array(StoreFixResult),
+  dryRun: Schema.Boolean,
+  noIssues: Schema.Boolean,
+})
+
+/**
+ * WorktreeNew state - create a new worktree in the store
+ */
+export const StoreWorktreeNewState = Schema.TaggedStruct('WorktreeNew', {
+  source: Schema.String,
+  ref: Schema.String,
+  path: Schema.String,
+  commit: Schema.optional(Schema.String),
+  autoBootstrap: Schema.Boolean,
+  branchCreated: Schema.Boolean,
 })
 
 /**
@@ -151,6 +184,8 @@ export const StoreState = Schema.Union(
   StoreFetchState,
   StoreGcState,
   StoreAddState,
+  StoreWorktreeNewState,
+  StoreFixState,
   StoreErrorState,
 )
 
@@ -184,6 +219,14 @@ export const isStoreGc = (state: StoreState): state is typeof StoreGcState.Type 
 export const isStoreAdd = (state: StoreState): state is typeof StoreAddState.Type =>
   state._tag === 'Add'
 
+/** Type guard that checks if the store state is a worktree-new result. */
+export const isStoreWorktreeNew = (state: StoreState): state is typeof StoreWorktreeNewState.Type =>
+  state._tag === 'WorktreeNew'
+
+/** Type guard that checks if the store state is a fix result. */
+export const isStoreFix = (state: StoreState): state is typeof StoreFixState.Type =>
+  state._tag === 'Fix'
+
 // =============================================================================
 // Store Actions
 // =============================================================================
@@ -216,11 +259,25 @@ export const StoreAction = Schema.Union(
     showForceHint: Schema.Boolean,
   }),
   Schema.TaggedStruct('SetAdd', {
-    status: Schema.Literal('added', 'already_exists'),
+    status: Schema.Literal('added', 'already_exists', 'created'),
     source: Schema.String,
     ref: Schema.String,
     commit: Schema.optional(Schema.String),
     path: Schema.String,
+  }),
+  Schema.TaggedStruct('SetWorktreeNew', {
+    source: Schema.String,
+    ref: Schema.String,
+    path: Schema.String,
+    commit: Schema.optional(Schema.String),
+    autoBootstrap: Schema.Boolean,
+    branchCreated: Schema.Boolean,
+  }),
+  Schema.TaggedStruct('SetFix', {
+    basePath: Schema.String,
+    results: Schema.Array(StoreFixResult),
+    dryRun: Schema.Boolean,
+    noIssues: Schema.Boolean,
   }),
   Schema.TaggedStruct('SetError', {
     error: Schema.String,
@@ -280,6 +337,24 @@ export const storeReducer = ({
         ref: action.ref,
         commit: action.commit,
         path: action.path,
+      }
+    case 'SetWorktreeNew':
+      return {
+        _tag: 'WorktreeNew',
+        source: action.source,
+        ref: action.ref,
+        path: action.path,
+        commit: action.commit,
+        autoBootstrap: action.autoBootstrap,
+        branchCreated: action.branchCreated,
+      }
+    case 'SetFix':
+      return {
+        _tag: 'Fix',
+        basePath: action.basePath,
+        results: action.results,
+        dryRun: action.dryRun,
+        noIssues: action.noIssues,
       }
     case 'SetError':
       return {

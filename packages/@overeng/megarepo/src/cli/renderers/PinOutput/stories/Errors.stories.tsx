@@ -20,6 +20,7 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
+  dryRun: boolean
 }
 
 export default {
@@ -30,9 +31,14 @@ export default {
   },
   args: {
     ...defaultStoryArgs,
+    dryRun: false,
   },
   argTypes: {
     ...commonArgTypes,
+    dryRun: {
+      description: '--dry-run: preview changes without applying',
+      control: { type: 'boolean' },
+    },
   },
 } satisfies Meta
 
@@ -44,6 +50,8 @@ export const ErrorNotInMegarepo: Story = {
     const finalState = useMemo(() => fixtures.createErrorNotInMegarepo(), [])
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -63,6 +71,8 @@ export const ErrorMemberNotFound: Story = {
     const finalState = useMemo(() => fixtures.createErrorMemberNotFound(), [])
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -82,6 +92,8 @@ export const ErrorNotSynced: Story = {
     const finalState = useMemo(() => fixtures.createErrorNotSynced(), [])
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -101,6 +113,8 @@ export const ErrorLocalPath: Story = {
     const finalState = useMemo(() => fixtures.createErrorLocalPath(), [])
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -120,6 +134,8 @@ export const ErrorNotInLock: Story = {
     const finalState = useMemo(() => fixtures.createErrorNotInLock(), [])
     return (
       <TuiStoryPreview
+        cwd="~/workspace"
+        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

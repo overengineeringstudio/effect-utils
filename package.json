@@ -1,0 +1,31 @@
+{
+  "name": "effect-utils-workspace",
+  "private": true,
+  "workspaces": [
+    "context/effect/socket",
+    "context/opentui",
+    "packages/@overeng/effect-ai-claude-cli",
+    "packages/@overeng/effect-path",
+    "packages/@overeng/effect-react",
+    "packages/@overeng/effect-rpc-tanstack",
+    "packages/@overeng/effect-rpc-tanstack/examples/basic",
+    "packages/@overeng/effect-schema-form",
+    "packages/@overeng/effect-schema-form-aria",
+    "packages/@overeng/genie",
+    "packages/@overeng/megarepo",
+    "packages/@overeng/notion-cli",
+    "packages/@overeng/notion-effect-client",
+    "packages/@overeng/notion-effect-schema",
+    "packages/@overeng/oxc-config",
+    "packages/@overeng/react-inspector",
+    "packages/@overeng/tui-core",
+    "packages/@overeng/tui-react",
+    "packages/@overeng/utils",
+    "packages/@overeng/utils-dev"
+  ],
+  "packageManager": "pnpm@10.29.2",
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  }
+}

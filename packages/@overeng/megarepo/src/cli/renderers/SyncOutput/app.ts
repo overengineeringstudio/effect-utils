@@ -22,19 +22,19 @@ export const createInitialSyncState = (params: {
     root: params.workspaceRoot,
   },
   options: {
+    mode: 'apply',
     dryRun: false,
-    frozen: false,
-    pull: false,
     all: false,
   },
   members: [],
-  activeMember: null,
+  activeMembers: [],
   results: [],
   logs: [],
   startedAt: null,
   nestedMegarepos: [],
   generatedFiles: [],
   lockSyncResults: [],
+  sharedSourceUpdates: [],
   syncTree: {
     root: params.workspaceRoot,
     results: [],
@@ -43,6 +43,7 @@ export const createInitialSyncState = (params: {
   },
   syncErrors: [],
   syncErrorCount: 0,
+  preflightIssues: [],
 })
 
 /**
@@ -69,6 +70,7 @@ export const SyncApp = createTuiApp({
   exitCode: (state) => {
     if (state._tag === 'Interrupted') return 130 // SIGINT
     if (state._tag === 'Error') return 1
+    if (state._tag === 'PreflightFailed') return 1
     return 0
   },
 })

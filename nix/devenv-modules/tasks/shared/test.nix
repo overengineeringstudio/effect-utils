@@ -1,7 +1,7 @@
 # Test tasks (vitest)
 #
-# Self-contained test tasks - each package uses its own vitest from node_modules.
-# This ensures packages are independently testable without cross-package dependencies.
+# Self-contained test tasks that run in package cwd while using the repo-root
+# hoisted install via `pnpm exec`.
 #
 # Usage in devenv.nix:
 #   # Per-package tests (recommended):
@@ -11,8 +11,8 @@
 #         { path = "packages/@overeng/genie"; name = "genie"; }
 #         { path = "packages/@overeng/tui-core"; name = "tui-core"; }
 #       ];
-#       # Optional: install task prefix (default: "pnpm", use "bun" for bun:install)
-#       installTaskPrefix = "pnpm";
+#       # Optional: install task name (default: "pnpm:install")
+#       installTask = "pnpm:install";
 #     })
 #   ];
 #
@@ -29,20 +29,20 @@
 #   - test:<name> - Run tests for specific package (when packages provided)
 {
   packages ? [],
-  installTaskPrefix ? "pnpm",
+  installTask ? "pnpm:install",
   extraTests ? [],
 }:
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [];
 
-  # Per-package test task using package's own vitest
+  # Per-package test task using the workspace-aware vitest entrypoint.
   mkTestTask = pkg: {
     "test:${pkg.name}" = {
       description = "Run tests for ${pkg.name}";
-      # Use package's own vitest from node_modules/.bin/vitest
-      exec = trace.exec "test:${pkg.name}" "node_modules/.bin/vitest run";
+      exec = trace.exec "test:${pkg.name}" "pnpm exec vitest run";
       cwd = pkg.path;
       execIfModified = [
         "${pkg.path}/src/**/*.ts"
@@ -55,29 +55,32 @@ let
         "${pkg.path}/test/**/*.test.tsx"
         "${pkg.path}/vitest.config.ts"
       ];
-      # Conservative barrier: wait for all installs to finish before running tests.
-      # TODO(#254): Replace full install barrier with canonical resolver-driven granular blockers.
-      after = [ "${installTaskPrefix}:install" ];
+      after = [ installTask ];
+    };
+  };
+
+  guardedTasks = {
+    "test:run" = {
+      guard = "vitest";
+      description = "Run all tests";
+      exec = if hasPackages then null else "pnpm exec vitest run";
+      after = if hasPackages
+        then map (pkg: "test:${pkg.name}") packages ++ extraTests
+        else [ "genie:run" ];
+    };
+    "test:watch" = {
+      guard = "vitest";
+      description = "Run tests in watch mode";
+      exec = "pnpm exec vitest";
+      after = [ "genie:run" ];
     };
   };
 
 in {
+  packages = cliGuard.fromTasks guardedTasks;
+
   tasks = lib.mkMerge (
     (if hasPackages then map mkTestTask packages else [])
-    ++ [{
-      "test:run" = {
-        description = "Run all tests";
-        exec = if hasPackages then null else "vitest run";
-        after = if hasPackages
-          then map (pkg: "test:${pkg.name}") packages ++ extraTests
-          else [ "genie:run" ];
-      };
-
-      "test:watch" = {
-        description = "Run tests in watch mode";
-        exec = "vitest";
-        after = [ "genie:run" ];
-      };
-    }]
+    ++ [ (cliGuard.stripGuards guardedTasks) ]
   );
 }

@@ -47,6 +47,10 @@ let
         exec = ''
           set -euo pipefail
 
+          # Ensure native Node modules (e.g. sharp) can find libstdc++ on NixOS,
+          # where prebuilt binaries lack proper RPATH for Nix store paths.
+          export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
           if [ -z "''${VERCEL_TOKEN:-}" ]; then
             echo "Error: VERCEL_TOKEN is not set." >&2
             echo "Set it via: export VERCEL_TOKEN=\$(op read 'op://...')" >&2
@@ -87,26 +91,91 @@ let
           esac
 
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
-          ${pkgs.bun}/bin/bunx vercel pull --cwd "${cwd}" --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
+          (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" --token "$VERCEL_TOKEN")
+
+          # Clear rootDirectory from pulled settings to prevent path doubling.
+          # Vercel CLI joins rootDirectory with the working directory for both build
+          # and deploy, causing paths like packages/app/packages/app.
+          if [ -f "${cwd}/.vercel/project.json" ]; then
+            ${pkgs.jq}/bin/jq '.settings.rootDirectory = null' "${cwd}/.vercel/project.json" > "${cwd}/.vercel/project.json.tmp" \
+              && mv "${cwd}/.vercel/project.json.tmp" "${cwd}/.vercel/project.json"
+          fi
+
+          # Override installCommand to no-op — dependencies are managed by devenv tasks.
+          vercel_json="${cwd}/vercel.json"
+          original_vercel_json=""
+          cleanup_vercel_json() {
+            if [ -n "$original_vercel_json" ]; then
+              echo "$original_vercel_json" > "$vercel_json"
+            elif [ -f "$vercel_json" ] && [ "''${_vercel_json_created:-}" = "1" ]; then
+              rm -f "$vercel_json"
+            fi
+          }
+
+          deploy_log=""
+          original_root_dir=""
+          cleanup() {
+            cleanup_vercel_json
+            # Restore rootDirectory in remote project settings if we cleared it.
+            if [ -n "$original_root_dir" ]; then
+              echo "Restoring rootDirectory in Vercel project settings..."
+              ${pkgs.curl}/bin/curl -sf -X PATCH \
+                "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"rootDirectory\":\"$original_root_dir\"}" > /dev/null || true
+            fi
+            if [ -n "$deploy_log" ]; then
+              rm -f "$deploy_log"
+            fi
+          }
+          trap cleanup EXIT
+
+          if [ -f "$vercel_json" ]; then
+            original_vercel_json="$(cat "$vercel_json")"
+            ${pkgs.jq}/bin/jq '. + {"installCommand": "true"}' "$vercel_json" > "$vercel_json.tmp" && mv "$vercel_json.tmp" "$vercel_json"
+          else
+            echo '{"installCommand":"true"}' > "$vercel_json"
+            _vercel_json_created=1
+          fi
 
           echo "Building ${deployment.name} locally with vercel build..."
           if [ -n "$build_flag" ]; then
-            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes $build_flag --token "$VERCEL_TOKEN"
+            (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel build --yes $build_flag --token "$VERCEL_TOKEN")
           else
-            ${pkgs.bun}/bin/bunx vercel build --cwd "${cwd}" --yes --token "$VERCEL_TOKEN"
+            (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel build --yes --token "$VERCEL_TOKEN")
           fi
+
+          cleanup_vercel_json
 
           if [ ! -d "${cwd}/.vercel/output" ]; then
             echo "Error: Missing prebuilt output directory: ${cwd}/.vercel/output" >&2
             exit 1
           fi
 
+          # Clear rootDirectory from remote project settings before deploying.
+          # vercel deploy --prebuilt fetches rootDirectory from the Vercel API (not
+          # local project.json) and joins it with the working directory, causing
+          # path doubling like packages/app/packages/app. We save the original
+          # value and restore it in the cleanup trap.
+          original_root_dir="$(${pkgs.curl}/bin/curl -sf \
+            "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            | ${pkgs.jq}/bin/jq -r '.rootDirectory // empty')"
+          if [ -n "$original_root_dir" ]; then
+            echo "Temporarily clearing rootDirectory ($original_root_dir) from Vercel project settings..."
+            ${pkgs.curl}/bin/curl -sf -X PATCH \
+              "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"rootDirectory":null}' > /dev/null
+          fi
+
+          deploy_log="$(mktemp)"
           case "$deploy_type" in
             prod)
               echo "Deploying ${deployment.name} prebuilt output to production..."
-              deploy_log="$(mktemp)"
-              trap 'rm -f "$deploy_log"' EXIT
-              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --prod --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             pr|preview)
@@ -116,9 +185,7 @@ let
               else
                 echo "Deploying ${deployment.name} prebuilt preview..."
               fi
-              deploy_log="$(mktemp)"
-              trap 'rm -f "$deploy_log"' EXIT
-              ${pkgs.bun}/bin/bunx vercel deploy --cwd "${cwd}" --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
+              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             *)

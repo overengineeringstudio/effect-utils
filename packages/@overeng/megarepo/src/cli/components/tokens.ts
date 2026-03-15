@@ -44,7 +44,8 @@ export type SyncResultStatus =
   | 'cloned'
   | 'synced'
   | 'updated'
-  | 'locked'
+  | 'recorded'
+  | 'applied'
   | 'already_synced'
   | 'skipped'
   | 'error'
@@ -75,7 +76,8 @@ export const syncStatusConfig: Record<SyncResultStatus, StatusConfig> = {
   cloned: { icon: symbols.check, color: 'green' },
   synced: { icon: symbols.check, color: 'green' },
   updated: { icon: symbols.check, color: 'green' },
-  locked: { icon: symbols.check, color: 'cyan' },
+  recorded: { icon: symbols.check, color: 'cyan' },
+  applied: { icon: symbols.check, color: 'cyan' },
   already_synced: { icon: symbols.check, dim: true },
   skipped: { icon: symbols.circle, color: 'yellow' },
   error: { icon: symbols.cross, color: 'red' },
@@ -88,7 +90,8 @@ export const syncToTaskStatus = (status: SyncResultStatus): TaskStatus => {
     case 'cloned':
     case 'synced':
     case 'updated':
-    case 'locked':
+    case 'recorded':
+    case 'applied':
     case 'already_synced':
     case 'removed':
       return 'success'

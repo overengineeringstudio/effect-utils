@@ -49,6 +49,8 @@ export const Default: Story = {
       initialState={fixtures.createDefaultState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -62,6 +64,8 @@ export const AllClean: Story = {
       initialState={fixtures.createCleanState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/workspace"
     />
   ),
 }
@@ -75,6 +79,8 @@ export const SingleMember: Story = {
       initialState={fixtures.createSingleMemberState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/minimal"
     />
   ),
 }
@@ -88,6 +94,8 @@ export const EmptyWorkspace: Story = {
       initialState={fixtures.createEmptyWorkspaceState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr status"
+      cwd="~/empty-workspace"
     />
   ),
 }

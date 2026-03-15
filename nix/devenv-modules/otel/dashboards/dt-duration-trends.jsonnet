@@ -335,7 +335,7 @@ g.dashboard.new('dt Task Duration Trends')
   at(
     taskDurationPanel(
       'Shell entry sub-tasks (p50 / p95)',
-      'setup:gate|pnpm:install|genie:run|megarepo:sync|ts:patch-lsp|ts:emit|setup:completions|devenv:.*',
+      'setup:gate|pnpm:install|genie:run|megarepo:sync|ts:emit|setup:completions|devenv:.*',
     ),
     12, y.shellContent, 12, 8,
   ),

@@ -21,4 +21,5 @@ export default tsconfigJson({
     noImplicitReturns: false,
   },
   include: ['src/**/*'],
+  references: [{ path: '../utils' }],
 } satisfies TSConfigArgs)

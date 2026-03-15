@@ -37,6 +37,8 @@ type Story = StoryObj<StoryArgs>
 export const NotFound: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr"
       View={RootView}
       app={RootApp}
       initialState={fixtures.notFoundState}
@@ -49,6 +51,8 @@ export const NotFound: Story = {
 export const InvalidCwdNotExists: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr"
       View={RootView}
       app={RootApp}
       initialState={fixtures.invalidCwdState}
@@ -61,6 +65,8 @@ export const InvalidCwdNotExists: Story = {
 export const InvalidCwdNotDirectory: Story = {
   render: (args) => (
     <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr"
       View={RootView}
       app={RootApp}
       initialState={fixtures.invalidCwdNotDirState}

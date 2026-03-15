@@ -48,4 +48,4 @@ export {
   type StatusGroup,
 } from './introspect.ts'
 // Output
-export { formatCode, writeSchemaToFile } from './output.ts'
+export { formatCode, writeSchemaToFile, WriteSchemaToFileError } from './output.ts'

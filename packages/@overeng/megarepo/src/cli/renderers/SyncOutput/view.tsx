@@ -17,6 +17,7 @@ import {
   computeSyncSummary,
   type MemberSyncResult,
   type SyncErrorItem,
+  type SyncMode,
 } from '../../../lib/sync/schema.ts'
 import {
   Header,
@@ -28,7 +29,14 @@ import {
   symbols,
   syncToTaskStatus,
 } from '../../components/mod.ts'
-import type { SyncState, SyncLogEntry, MemberLockSyncResult } from './schema.ts'
+import type {
+  SyncState,
+  SyncLogEntry,
+  MemberLockSyncResult,
+  LockFileUpdate,
+  LockSharedSourceUpdate,
+  PreflightIssue,
+} from './schema.ts'
 
 // =============================================================================
 // Types
@@ -57,12 +65,13 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
     workspace,
     options,
     members,
-    activeMember,
+    activeMembers,
     results,
     logs,
     nestedMegarepos,
     generatedFiles,
     lockSyncResults,
+    sharedSourceUpdates,
     syncErrors,
     syncErrorCount,
   } = state
@@ -71,9 +80,18 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
   // Build mode indicators
   const modes: string[] = []
+  switch (options.mode) {
+    case 'apply':
+      modes.push('apply')
+      break
+    case 'lock':
+      modes.push('lock')
+      break
+    case 'fetch':
+      modes.push('fetch')
+      break
+  }
   if (options.dryRun === true) modes.push('dry run')
-  if (options.frozen === true) modes.push('frozen')
-  if (options.pull === true) modes.push('pull')
   if (options.force === true) modes.push('force')
   if (options.all === true) modes.push('all')
 
@@ -109,8 +127,9 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
         total += f.updatedInputs.length
       }
     }
+    total += (sharedSourceUpdates ?? []).length
     return total
-  }, [lockSyncResults])
+  }, [lockSyncResults, sharedSourceUpdates])
 
   // ===================
   // Progress View (during sync)
@@ -135,8 +154,9 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <ProgressItem
               key={name}
               name={name}
-              isActive={name === activeMember}
+              isActive={activeMembers.includes(name)}
               result={resultsByName.get(name)}
+              mode={options.mode}
             />
           ))}
 
@@ -176,13 +196,27 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   }
 
   // ===================
+  // Pre-flight Failed View
+  // ===================
+  if (_tag === 'PreflightFailed') {
+    return (
+      <Box>
+        <Header name={workspace.name} root={workspace.root} modes={modes} />
+        <Text> </Text>
+        <PreflightFailedView issues={state.preflightIssues} mode={options.mode} />
+      </Box>
+    )
+  }
+
+  // ===================
   // Final View (complete or idle)
   // ===================
   const hasChanges =
     summaryCounts.cloned > 0 ||
     summaryCounts.synced > 0 ||
     summaryCounts.updated > 0 ||
-    summaryCounts.locked > 0 ||
+    summaryCounts.recorded > 0 ||
+    summaryCounts.applied > 0 ||
     summaryCounts.removed > 0 ||
     summaryCounts.errors > 0
 
@@ -190,7 +224,8 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   const cloned = results.filter((r) => r.status === 'cloned')
   const synced = results.filter((r) => r.status === 'synced')
   const updated = results.filter((r) => r.status === 'updated')
-  const locked = results.filter((r) => r.status === 'locked')
+  const recorded = results.filter((r) => r.status === 'recorded')
+  const applied = results.filter((r) => r.status === 'applied')
   const removed = results.filter((r) => r.status === 'removed')
   const errors = results.filter((r) => r.status === 'error')
   const nestedErrors = syncErrors.filter((e) => e.megarepoRoot !== workspace.root)
@@ -228,10 +263,23 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
             <SyncedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
           ))}
           {updated.map((r) => (
-            <UpdatedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
+            <UpdatedLine
+              key={r.name}
+              result={r}
+              lockSync={lockSyncByMember.get(r.name)}
+              mode={options.mode}
+            />
           ))}
-          {locked.map((r) => (
-            <LockedLine key={r.name} result={r} lockSync={lockSyncByMember.get(r.name)} />
+          {recorded.map((r) => (
+            <RecordedLine
+              key={r.name}
+              result={r}
+              lockSync={lockSyncByMember.get(r.name)}
+              dryRun={dryRun}
+            />
+          ))}
+          {applied.map((r) => (
+            <AppliedLine key={r.name} result={r} dryRun={dryRun} />
           ))}
           {removed.map((r) => (
             <RemovedLine key={r.name} result={r} dryRun={dryRun} />
@@ -259,12 +307,14 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
                   key={r.name}
                   result={r}
                   lockSync={lockSyncByMember.get(r.name)}
+                  mode={options.mode}
                 />
               ))
             ) : (
               <Box flexDirection="row">
                 <Text dim>
-                  {symbols.check} {alreadySynced.length} members already synced
+                  {symbols.check} {alreadySynced.length} members{' '}
+                  {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
                 </Text>
               </Box>
             ))}
@@ -279,12 +329,14 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           cloned: summaryCounts.cloned,
           synced: summaryCounts.synced,
           updated: summaryCounts.updated,
-          locked: summaryCounts.locked,
+          recorded: summaryCounts.recorded,
+          applied: summaryCounts.applied,
           removed: summaryCounts.removed,
           errors: errorCount,
           alreadySynced: summaryCounts.alreadySynced,
         }}
         dryRun={dryRun}
+        mode={options.mode}
       />
 
       {/* Generated files */}
@@ -294,6 +346,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {totalLockSyncUpdates > 0 && (
         <LockSyncSection
           results={lockSyncResults ?? []}
+          sharedSourceUpdates={sharedSourceUpdates ?? []}
           totalUpdates={totalLockSyncUpdates}
           verbose={verbose}
           dryRun={dryRun}
@@ -304,6 +357,64 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       {nestedMegarepos.length > 0 && !options.all && (
         <NestedMegareposHint count={nestedMegarepos.length} />
       )}
+    </Box>
+  )
+}
+
+// =============================================================================
+// Internal Components - Pre-flight Failed View
+// =============================================================================
+
+const PreflightFailedView = ({
+  issues,
+  mode: _mode,
+}: {
+  issues: readonly PreflightIssue[]
+  mode: string
+}) => {
+  const errors = issues.filter((i) => i.severity === 'error')
+  const warnings = issues.filter((i) => i.severity === 'warning')
+
+  return (
+    <Box flexDirection="column">
+      <Text color="red" bold>
+        {symbols.cross} Store hygiene check failed
+      </Text>
+      <Text> </Text>
+      {errors.map((issue, i) => (
+        <Box key={`err-${issue.memberName}-${issue.type}-${i}`} flexDirection="column">
+          <Box flexDirection="row">
+            <Text color="red">{symbols.cross}</Text>
+            <Text> </Text>
+            <Text bold>{issue.memberName}</Text>
+            <Text dim> ({issue.type})</Text>
+          </Box>
+          <Box paddingLeft={4}>
+            <Text dim>{issue.message}</Text>
+          </Box>
+          {issue.fix !== undefined && (
+            <Box paddingLeft={4}>
+              <Text dim>fix: {issue.fix}</Text>
+            </Box>
+          )}
+        </Box>
+      ))}
+      {warnings.map((issue, i) => (
+        <Box key={`warn-${issue.memberName}-${issue.type}-${i}`} flexDirection="column">
+          <Box flexDirection="row">
+            <Text color="yellow">{symbols.circle}</Text>
+            <Text> </Text>
+            <Text bold>{issue.memberName}</Text>
+            <Text dim> ({issue.type})</Text>
+          </Box>
+          <Box paddingLeft={4}>
+            <Text dim>{issue.message}</Text>
+          </Box>
+        </Box>
+      ))}
+      <Text> </Text>
+      <Separator />
+      <Text dim>Run 'mr store fix' to resolve issues</Text>
     </Box>
   )
 }
@@ -416,21 +527,24 @@ const SyncedLine = ({
   )
 }
 
-/** Result line for updated member */
+/** Result line for updated member (shows "fetched" in fetch mode, "updated" otherwise) */
 const UpdatedLine = ({
   result,
   lockSync,
+  mode,
 }: {
   result: MemberSyncResult
   lockSync: MemberLockSyncResult | undefined
+  mode: SyncMode
 }) => {
+  const verb = mode === 'fetch' ? 'fetched' : 'updated'
   return (
     <Box flexDirection="row">
       <StatusIcon status="updated" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="green">updated</Text>
+      <Text color="green">{verb}</Text>
       <Text> </Text>
       <CommitTransition result={result} />
       <LockSyncBadge lockSync={lockSync} />
@@ -438,24 +552,50 @@ const UpdatedLine = ({
   )
 }
 
-/** Result line for locked member */
-const LockedLine = ({
+/** Result line for recorded member (lock sync — wrote commit to lockfile) */
+const RecordedLine = ({
   result,
   lockSync,
+  dryRun,
 }: {
   result: MemberSyncResult
   lockSync: MemberLockSyncResult | undefined
+  dryRun: boolean
 }) => {
+  const verb = dryRun === true ? 'would record' : 'recorded'
+  const hasTransition = result.previousCommit !== undefined
   return (
     <Box flexDirection="row">
-      <StatusIcon status="locked" variant="sync" />
+      <StatusIcon status="recorded" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="cyan">lock updated</Text>
+      <Text color="cyan">{verb}</Text>
       <Text> </Text>
-      <CommitTransition result={result} />
+      {hasTransition === true ? (
+        <CommitTransition result={result} />
+      ) : result.commit !== undefined ? (
+        <>
+          <Text dim>{result.commit.slice(0, 7)}</Text>
+          <Text dim> (new entry)</Text>
+        </>
+      ) : null}
       <LockSyncBadge lockSync={lockSync} />
+    </Box>
+  )
+}
+
+/** Result line for applied member (lock apply — checked out commit from lockfile) */
+const AppliedLine = ({ result, dryRun }: { result: MemberSyncResult; dryRun: boolean }) => {
+  const verb = dryRun === true ? 'would check out' : 'checked out'
+  return (
+    <Box flexDirection="row">
+      <StatusIcon status="applied" variant="sync" />
+      <Text> </Text>
+      <Text bold>{result.name}</Text>
+      <Text> </Text>
+      <Text color="cyan">{verb}</Text>
+      {result.commit !== undefined && <Text dim> {result.commit.slice(0, 7)}</Text>}
     </Box>
   )
 }
@@ -578,21 +718,24 @@ const SkippedLine = ({ result }: { result: MemberSyncResult }) => {
   )
 }
 
-/** Result line for already synced member */
+/** Result line for already synced member (shows "already up to date" in fetch mode) */
 const AlreadySyncedLine = ({
   result,
   lockSync,
+  mode,
 }: {
   result: MemberSyncResult
   lockSync: MemberLockSyncResult | undefined
+  mode: SyncMode
 }) => {
+  const label = mode === 'fetch' ? 'already up to date' : 'already synced'
   return (
     <Box flexDirection="row">
       <StatusIcon status="already_synced" variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text dim>already synced</Text>
+      <Text dim>{label}</Text>
       <LockSyncBadge lockSync={lockSync} />
     </Box>
   )
@@ -626,29 +769,57 @@ const GeneratedFiles = ({ files, dryRun }: { files: readonly string[]; dryRun: b
 // Internal Components - Lock Sync Section (Option 2: expandable section)
 // =============================================================================
 
+/** Render a single lock file update line */
+const LockFileUpdateLine = ({ update }: { update: LockFileUpdate }) => {
+  switch (update._tag) {
+    case 'RevUpdate':
+      return (
+        <Box paddingLeft={2} flexDirection="row">
+          <Text dim>
+            {update.inputName} rev {update.oldRev} {symbols.arrow} {update.newRev}
+          </Text>
+        </Box>
+      )
+    case 'RefUpdate':
+      return (
+        <Box paddingLeft={2} flexDirection="row">
+          <Text color="cyan">
+            {update.inputName} ref {update.oldRef} {symbols.arrow} {update.newRef}
+          </Text>
+        </Box>
+      )
+  }
+}
+
 /** Lock sync summary section with verbose expansion */
 const LockSyncSection = ({
   results,
+  sharedSourceUpdates,
   totalUpdates,
   verbose,
-  dryRun,
+  dryRun: _dryRun,
 }: {
   results: readonly MemberLockSyncResult[]
+  sharedSourceUpdates: readonly LockSharedSourceUpdate[]
   totalUpdates: number
   verbose: boolean
   dryRun: boolean
 }) => {
-  const memberCount = results.filter((r) => r.files.some((f) => f.updatedInputs.length > 0)).length
+  const memberCount =
+    results.filter((r) => r.files.some((f) => f.updatedInputs.length > 0)).length +
+    sharedSourceUpdates.reduce((sum, u) => sum + u.targetCount, 0)
 
   return (
-    <Box paddingTop={1}>
+    <Box flexDirection="column">
+      {/* Empty line before section */}
+      <Text> </Text>
       {/* Summary line */}
       <Box flexDirection="row">
         <Text color="cyan">{symbols.check}</Text>
         <Text> </Text>
         <Text>
-          {dryRun === true ? 'Would update' : 'Updated'} {totalUpdates} lock input
-          {totalUpdates > 1 ? 's' : ''} across {memberCount} member{memberCount > 1 ? 's' : ''}
+          Nix lock sync: {totalUpdates} update{totalUpdates > 1 ? 's' : ''} across {memberCount}{' '}
+          member{memberCount > 1 ? 's' : ''}
         </Text>
       </Box>
 
@@ -666,12 +837,8 @@ const LockSyncSection = ({
                 return (
                   <Box key={file.type} paddingLeft={2} flexDirection="column">
                     <Text dim>{file.type}:</Text>
-                    {file.updatedInputs.map((input) => (
-                      <Box key={input.inputName} paddingLeft={2} flexDirection="row">
-                        <Text dim>
-                          {input.inputName}: {input.oldRev} {symbols.arrow} {input.newRev}
-                        </Text>
-                      </Box>
+                    {file.updatedInputs.map((input, idx) => (
+                      <LockFileUpdateLine key={`${input._tag}-${idx}`} update={input} />
                     ))}
                   </Box>
                 )
@@ -679,6 +846,21 @@ const LockSyncSection = ({
             </Box>
           )
         })}
+
+      {/* Shared source updates */}
+      {verbose && sharedSourceUpdates.length > 0 && (
+        <Box paddingLeft={2} flexDirection="column">
+          <Text dim>shared lock sources:</Text>
+          {sharedSourceUpdates.map((update) => (
+            <Box key={update.sourceName} paddingLeft={2} flexDirection="row">
+              <Text dim>
+                {update.sourceName}: propagated from {update.sourceMemberName} to{' '}
+                {update.targetCount} member{update.targetCount > 1 ? 's' : ''}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   )
 }
@@ -693,7 +875,7 @@ const NestedMegareposHint = ({ count }: { count: number }) => {
       <Text dim>
         Note: {count} member{count > 1 ? 's' : ''} contain nested megarepos
       </Text>
-      <Text dim> Run 'mr sync --all' to sync them</Text>
+      <Text dim> Run 'mr apply --all' to sync them</Text>
     </Box>
   )
 }
@@ -707,14 +889,16 @@ const ProgressItem = ({
   name,
   isActive,
   result,
+  mode,
 }: {
   name: string
   isActive: boolean
   result: MemberSyncResult | undefined
+  mode: SyncMode
 }) => {
   if (result !== undefined) {
     // Show completed result using TaskItem with mapped status
-    const message = getResultMessage(result)
+    const message = getResultMessage({ result, mode })
     return (
       <TaskItem
         id={name}
@@ -748,20 +932,31 @@ const formatCommitTransition = (result: MemberSyncResult): string | undefined =>
 }
 
 /** Get display message for a sync result */
-const getResultMessage = (result: MemberSyncResult): string | undefined => {
+const getResultMessage = ({
+  result,
+  mode,
+}: {
+  result: MemberSyncResult
+  mode: SyncMode
+}): string | undefined => {
   switch (result.status) {
     case 'cloned':
       return result.ref !== undefined ? `cloned (${result.ref})` : 'cloned'
     case 'synced':
       return result.ref !== undefined ? `synced (${result.ref})` : 'synced'
     case 'updated': {
+      const verb = mode === 'fetch' ? 'fetched' : 'updated'
       const transition = formatCommitTransition(result)
-      return transition !== undefined ? `updated ${transition}` : 'updated'
+      return transition !== undefined ? `${verb} ${transition}` : verb
     }
-    case 'locked': {
+    case 'recorded': {
       const transition = formatCommitTransition(result)
-      return transition !== undefined ? `lock updated ${transition}` : 'lock updated'
+      return transition !== undefined ? `recorded ${transition}` : 'recorded'
     }
+    case 'applied':
+      return result.commit !== undefined
+        ? `checked out ${result.commit.slice(0, 7)}`
+        : 'checked out'
     case 'already_synced':
       return undefined // No message for already synced
     case 'skipped':

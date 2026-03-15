@@ -31,8 +31,14 @@ export { RUNNER_PROFILES, type RunnerProfile }
 // Shared Config
 // =============================================================================
 
-/** Self-hosted NixOS runner labels */
-export const selfHostedRunner = ['self-hosted', 'nix'] as const
+/** Self-hosted NixOS runner labels (x86_64-linux, e.g. dev3) */
+export const linuxX64Runner = ['sh-linux-x64', 'nix'] as const
+
+/** Self-hosted NixOS runner labels (aarch64-linux, e.g. dev4) */
+export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
+
+/** @deprecated Use linuxX64Runner */
+export const selfHostedRunner = linuxX64Runner
 
 /** Standard shell defaults for CI run steps */
 export const bashShellDefaults = {
@@ -73,9 +79,10 @@ const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
 export const nixExtraConf = (opts: NixConfigOptions = {}) =>
-  [...(opts.unrestrictedEval ? ['restrict-eval = false'] : []), ...(opts.extraLines ?? [])].join(
-    '\n',
-  )
+  [
+    ...(opts.unrestrictedEval === true ? ['restrict-eval = false'] : []),
+    ...(opts.extraLines ?? []),
+  ].join('\n')
 
 const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => {
   const extraConf = nixExtraConf(opts)
@@ -88,29 +95,14 @@ const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => 
 }
 
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
-  withAppendedNixConfig(`${devenvBinRef} tasks run ${args.join(' ')} --mode before`, opts)
-
-/**
- * Shell snippet that wraps a compound command with lazy Nix store repair on failure.
- * On first failure, runs `nix-store --verify --check-contents --repair`,
- * clears eval cache, and retries once. Uses subshells so multi-statement
- * commands (like withAppendedNixConfig output) are treated as a single unit.
- *
- * Tradeoff: genuine task failures (e.g. type errors, test failures) pay a one-time
- * ~30-60s penalty for the unnecessary repair attempt before re-failing. This is
- * acceptable because store corruption is the rarer failure mode and saving ~25s on
- * every successful run across all jobs outweighs the occasional false retry.
- *
- * Safe to embed in if/elif branches.
- *
- * @see https://github.com/overengineeringstudio/effect-utils/issues/201
- */
-const withStoreRepairRetry = (command: string) =>
-  `(${command}) || { echo "::warning::Task failed, attempting Nix store repair and retry..."; DIAG_DIR="${'${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}}'}"; nix-store --verify --check-contents --repair > "$DIAG_DIR/nix-store-verify-repair.log" 2>&1 || true; rm -rf ~/.cache/nix/eval-cache-*; (${command}); }`
+  withAppendedNixConfig(
+    `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+    opts,
+  )
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  withStoreRepairRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
+  runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
@@ -127,7 +119,7 @@ export const namespaceRunner = (profile: RunnerProfile | (string & {}), runId: s
 /** Checkout repository via actions/checkout@v4 */
 export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: string }) => ({
   uses: 'actions/checkout@v4' as const,
-  ...(opts && Object.keys(opts).length > 0 ? { with: opts } : {}),
+  ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
 })
 
 /**
@@ -145,7 +137,7 @@ export const installNixStep = (opts?: { extraConf?: string }) => ({
       'extra-substituters = https://devenv.cachix.org',
       'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
       'access-tokens = github.com=${{ github.token }}',
-      ...(opts?.extraConf ? [opts.extraConf] : []),
+      ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
   },
 })
@@ -156,7 +148,7 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
   uses: 'cachix/cachix-action@v16' as const,
   with: {
     name: opts.name,
-    ...(opts.authToken ? { authToken: opts.authToken } : {}),
+    ...(opts.authToken !== undefined ? { authToken: opts.authToken } : {}),
   },
 })
 
@@ -171,6 +163,10 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
 
+/** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
+export const jobLocalMegarepoStore =
+  '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
+
 /** Install megarepo CLI from effect-utils */
 export const installMegarepoStep = {
   name: 'Install megarepo CLI',
@@ -178,33 +174,38 @@ export const installMegarepoStep = {
   shell: 'bash',
 } as const
 
-/** Sync megarepo dependencies */
-export const syncMegarepoStep = (opts?: { frozen?: boolean; skip?: string[] }) => {
-  const args = ['mr', 'sync']
-  if (opts?.frozen !== false) args.push('--frozen')
-  if (opts?.skip) for (const s of opts.skip) args.push('--skip', s)
+/** Fetch latest refs and apply megarepo workspace. */
+export const syncMegarepoWorkspaceStep = (opts?: { skip?: string[] }) => {
+  const args = ['mr', 'fetch', '--apply']
+  if (opts?.skip !== undefined) for (const s of opts.skip) args.push('--skip', s)
   return {
     name: 'Sync megarepo dependencies',
-    run: args.join(' '),
+    env: { MEGAREPO_STORE: jobLocalMegarepoStore },
+    run: `mkdir -p "$MEGAREPO_STORE"
+echo "Using job-local megarepo store: $MEGAREPO_STORE"
+${args.join(' ')}`,
     shell: 'bash',
   }
 }
 
 /**
- * Sync megarepo dependencies using the locked effect-utils commit from megarepo.lock.
+ * Apply megarepo.lock using the locked effect-utils commit from megarepo.lock.
  * Resolves the commit inline and uses `nix run` to avoid `nix profile install`
  * (which can conflict on self-hosted).
  */
-export const syncMegarepoFromLockStep = (opts?: { skip?: string[] }) => {
+export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
   const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
   return {
     name: 'Sync megarepo dependencies',
+    env: { MEGAREPO_STORE: jobLocalMegarepoStore },
     run: `EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
 if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
   echo '::error::megarepo.lock missing members["effect-utils"].commit'
   exit 1
 fi
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --frozen${skipArgs ? ` ${skipArgs}` : ''}`,
+mkdir -p "$MEGAREPO_STORE"
+echo "Using job-local megarepo store: $MEGAREPO_STORE"
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
@@ -214,14 +215,12 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- sync --f
  *
  * Previously ran `devenv info` (~25s) as an eager canary to detect any store
  * corruption before tasks run. Now uses `nix-store --check-validity` (~1-2s)
- * which only verifies the devenv store path itself — not its full transitive
- * closure. Corruption in deeper deps is caught lazily at task time by
- * `withStoreRepairRetry`, which retries after repair.
+ * which only verifies the devenv store path itself. If the store path is
+ * invalid, runs a targeted repair on just that path and re-resolves.
  *
  * Still captures diagnostics dir + runner fingerprint for #272 instrumentation.
  *
  * @see https://github.com/namespacelabs/nscloud-setup/issues/8
- * @see https://github.com/overengineeringstudio/effect-utils/issues/201
  * @see https://github.com/overengineeringstudio/effect-utils/issues/272
  */
 export const validateNixStoreStep = {
@@ -252,10 +251,9 @@ DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
 DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
 # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
-# Deeper transitive-dep corruption is caught lazily at task time via retry wrapper.
 if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
-  echo "::warning::devenv store path invalid, repairing..."
-  nix-store --verify --check-contents --repair > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+  echo "::warning::devenv store path invalid, repairing targeted path..."
+  nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
   rm -rf ~/.cache/nix/eval-cache-*
   DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
   DEVENV_BIN="$DEVENV_OUT/bin/devenv"
@@ -361,6 +359,79 @@ export const dispatchAlignmentStep = (opts: {
     ].join(' && '),
     shell: 'bash',
   })
+
+// =============================================================================
+// Vercel Deploy Helpers
+// =============================================================================
+
+/**
+ * Deploy a single Vercel project via devenv task.
+ * Prod on push-to-main/schedule/dispatch, preview on PRs.
+ * Captures deploy URL from task output and exports it to GITHUB_ENV.
+ */
+export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) => ({
+  name: `Deploy ${project.name} to Vercel`,
+  shell: 'bash' as const,
+  run: [
+    'if [ -z "${VERCEL_TOKEN:-}" ]; then',
+    '  echo "::error::VERCEL_TOKEN is not set"',
+    '  exit 1',
+    'fi',
+    'tmp_log="$(mktemp)"',
+    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')} 2>&1 | tee "$tmp_log"`,
+    'else',
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
+    'fi',
+    'deploy_exit=${PIPESTATUS[0]}',
+    `url=$(grep -oE 'https://[^[:space:]]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
+    `if [ -n "$url" ]; then echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"; fi`,
+    'rm -f "$tmp_log"',
+    'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',
+  ].join('\n'),
+})
+
+/**
+ * Configure git author so Vercel Deployment Protection
+ * associates the deploy with a team member.
+ */
+export const vercelGitAuthorStep = (opts: { name: string; email: string }) => ({
+  name: 'Configure git author for Vercel',
+  shell: 'bash' as const,
+  run: [
+    `git config user.name "${opts.name}"`,
+    `git config user.email "${opts.email}"`,
+    'git commit --amend --no-edit --reset-author',
+  ].join('\n'),
+})
+
+/** Post deploy URLs for one or more Vercel projects as a PR comment + job summary. */
+export const vercelDeployCommentStep = (projects: readonly { name: string; urlEnvKey: string }[]) =>
+  deployCommentStep({
+    summaryTitle: 'Vercel Deploy',
+    tableHeaders: ['Target', 'URL'],
+    noRowsMessage: 'No Vercel deploy URLs detected.',
+    modeScript: [
+      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+      '  label="prod"',
+      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+      '  label="PR #${{ github.event.pull_request.number }}"',
+      'else',
+      '  exit 0',
+      'fi',
+    ].join('\n'),
+    rowsScript: projects
+      .map(
+        (p) =>
+          `if [ -n "\${${p.urlEnvKey}:-}" ]; then\n  rows="\${rows}| ${p.name} | \${${p.urlEnvKey}} |\\n"\nfi`,
+      )
+      .join('\n'),
+    commentTitle: 'Vercel Preview',
+  })
+
+// =============================================================================
+// Netlify Deploy Helpers
+// =============================================================================
 
 /**
  * Deploy step for Netlify storybooks via devenv tasks.

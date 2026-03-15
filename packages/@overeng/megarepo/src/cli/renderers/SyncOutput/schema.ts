@@ -15,29 +15,70 @@ import {
 } from '../../../lib/sync/schema.ts'
 
 // =============================================================================
+// Pre-flight Hygiene Issue (for display)
+// =============================================================================
+
+/** Schema for a store hygiene issue shown in pre-flight failure output */
+export const PreflightIssue = Schema.Struct({
+  severity: Schema.Literal('error', 'warning', 'info'),
+  type: Schema.String,
+  memberName: Schema.String,
+  message: Schema.String,
+  fix: Schema.optional(Schema.String),
+})
+/** Inferred type for a pre-flight hygiene issue */
+export type PreflightIssue = Schema.Schema.Type<typeof PreflightIssue>
+
+// =============================================================================
 // Lock Sync Result (for TUI display)
 // =============================================================================
 
-/** Schema for a single lock input update */
-export const LockInputUpdate = Schema.Struct({
-  /** Name of the input in the flake.lock */
+/** Rev (commit) update — mechanical propagation of resolved commit SHAs */
+export const LockRevUpdate = Schema.Struct({
+  _tag: Schema.Literal('RevUpdate'),
   inputName: Schema.String,
-  /** Name of the megarepo member this input maps to */
   memberName: Schema.String,
-  /** Previous revision (short) */
   oldRev: Schema.String,
-  /** New revision (short) */
   newRev: Schema.String,
 })
-/** Inferred type for a lock input update. */
-export type LockInputUpdate = Schema.Schema.Type<typeof LockInputUpdate>
+/** Inferred type for a rev update */
+export type LockRevUpdate = Schema.Schema.Type<typeof LockRevUpdate>
+
+/** Ref (branch) update — intentional branch/input URL change */
+export const LockRefUpdate = Schema.Struct({
+  _tag: Schema.Literal('RefUpdate'),
+  inputName: Schema.String,
+  memberName: Schema.String,
+  oldRef: Schema.String,
+  newRef: Schema.String,
+})
+/** Inferred type for a ref update */
+export type LockRefUpdate = Schema.Schema.Type<typeof LockRefUpdate>
+
+/** Shared lock source update — e.g. devenv version propagated from source member */
+export const LockSharedSourceUpdate = Schema.Struct({
+  _tag: Schema.Literal('SharedSourceUpdate'),
+  sourceName: Schema.String,
+  sourceMemberName: Schema.String,
+  targetCount: Schema.Number,
+})
+/** Inferred type for a shared source update */
+export type LockSharedSourceUpdate = Schema.Schema.Type<typeof LockSharedSourceUpdate>
+
+/** Union of rev and ref update types (used in lock file sync results) */
+export const LockFileUpdate = Schema.Union(LockRevUpdate, LockRefUpdate)
+/** Inferred type for a lock file update (rev or ref) */
+export type LockFileUpdate = Schema.Schema.Type<typeof LockFileUpdate>
+
+/** Union of all lock sync update types */
+export const LockSyncUpdate = Schema.Union(LockRevUpdate, LockRefUpdate, LockSharedSourceUpdate)
+/** Inferred type for any lock sync update (rev, ref, or shared source) */
+export type LockSyncUpdate = Schema.Schema.Type<typeof LockSyncUpdate>
 
 /** Schema for lock file sync result */
 export const LockFileSyncResult = Schema.Struct({
-  /** Type of lock file */
-  type: Schema.Literal('flake.lock', 'devenv.lock', 'megarepo.lock'),
-  /** Inputs that were updated */
-  updatedInputs: Schema.Array(LockInputUpdate),
+  type: Schema.Literal('flake.lock', 'devenv.lock', 'megarepo.lock', 'flake.nix', 'devenv.yaml'),
+  updatedInputs: Schema.Array(LockFileUpdate),
 })
 /** Inferred type for a lock file sync result. */
 export type LockFileSyncResult = Schema.Schema.Type<typeof LockFileSyncResult>
@@ -57,7 +98,13 @@ export type MemberLockSyncResult = Schema.Schema.Type<typeof MemberLockSyncResul
 // =============================================================================
 
 /** Schema for the sync command outcome/progress state. */
-export const SyncOutcome = Schema.Literal('Syncing', 'Success', 'Error', 'Interrupted')
+export const SyncOutcome = Schema.Literal(
+  'Syncing',
+  'Success',
+  'Error',
+  'Interrupted',
+  'PreflightFailed',
+)
 /** Inferred type for sync outcome literals. */
 export type SyncOutcome = Schema.Schema.Type<typeof SyncOutcome>
 
@@ -82,7 +129,7 @@ export type SyncLogEntry = Schema.Schema.Type<typeof SyncLogEntry>
  * Unified state for sync command.
  *
  * Supports both:
- * - TTY progress mode: shows spinners, live updates via `phase`, `members`, `activeMember`
+ * - TTY progress mode: shows spinners, live updates via `phase`, `members`, `activeMembers`
  * - Final output mode: shows results summary via `results`
  *
  * JSON output structure:
@@ -113,8 +160,8 @@ export const SyncState = Schema.Struct({
   /** All member names being synced (populated at start for progress tracking) */
   members: Schema.Array(Schema.String),
 
-  /** Currently syncing member (for spinner display) */
-  activeMember: Schema.NullOr(Schema.String),
+  /** Currently syncing members (for spinner display, supports parallel sync) */
+  activeMembers: Schema.Array(Schema.String),
 
   /** Sync results for each member (populated progressively) */
   results: Schema.Array(MemberSyncResult),
@@ -134,6 +181,9 @@ export const SyncState = Schema.Struct({
   /** Lock sync results (flake.lock/devenv.lock updates) */
   lockSyncResults: Schema.Array(MemberLockSyncResult),
 
+  /** Shared lock source updates (e.g. devenv version propagation) */
+  sharedSourceUpdates: Schema.Array(LockSharedSourceUpdate),
+
   /** Full nested sync tree (includes nested megarepos when --all is used). */
   syncTree: MegarepoSyncTree,
 
@@ -142,6 +192,9 @@ export const SyncState = Schema.Struct({
 
   /** Total number of sync errors (root + nested). */
   syncErrorCount: Schema.Number,
+
+  /** Pre-flight hygiene issues (populated when _tag === 'PreflightFailed') */
+  preflightIssues: Schema.Array(PreflightIssue),
 })
 
 /** Inferred type for sync command state including workspace, options, phase, and results. */
@@ -182,6 +235,11 @@ export const SyncAction = Schema.Union(
     results: Schema.Array(MemberLockSyncResult),
   }),
 
+  /** Set shared lock source updates */
+  Schema.TaggedStruct('SetSharedSourceUpdates', {
+    updates: Schema.Array(LockSharedSourceUpdate),
+  }),
+
   /** Mark sync as complete */
   Schema.TaggedStruct('Complete', {
     nestedMegarepos: Schema.Array(Schema.String),
@@ -190,6 +248,11 @@ export const SyncAction = Schema.Union(
 
   /** Handle interruption (Ctrl+C) */
   Schema.TaggedStruct('Interrupted', {}),
+
+  /** Set pre-flight failure state */
+  Schema.TaggedStruct('PreflightFailed', {
+    issues: Schema.Array(PreflightIssue),
+  }),
 )
 
 /** Inferred type for sync actions. */
@@ -216,7 +279,7 @@ export const syncReducer = ({
         ...state,
         _tag: 'Syncing',
         members: action.members,
-        activeMember: null,
+        activeMembers: [],
         results: [],
         logs: [],
         startedAt: Date.now(),
@@ -233,15 +296,17 @@ export const syncReducer = ({
     case 'SetActiveMember':
       return {
         ...state,
-        activeMember: action.name,
+        activeMembers:
+          state.activeMembers.includes(action.name) === true
+            ? state.activeMembers
+            : [...state.activeMembers, action.name],
       }
 
     case 'AddResult':
       return {
         ...state,
         results: [...state.results, action.result],
-        // Clear active member if this was the active one
-        activeMember: state.activeMember === action.result.name ? null : state.activeMember,
+        activeMembers: state.activeMembers.filter((m) => m !== action.result.name),
         syncErrors:
           action.result.status === 'error'
             ? [
@@ -276,11 +341,17 @@ export const syncReducer = ({
         lockSyncResults: action.results,
       }
 
+    case 'SetSharedSourceUpdates':
+      return {
+        ...state,
+        sharedSourceUpdates: action.updates,
+      }
+
     case 'Complete':
       return {
         ...state,
         _tag: state.syncErrorCount > 0 ? 'Error' : 'Success',
-        activeMember: null,
+        activeMembers: [],
         nestedMegarepos: action.nestedMegarepos,
         generatedFiles: action.generatedFiles,
       }
@@ -289,7 +360,15 @@ export const syncReducer = ({
       return {
         ...state,
         _tag: 'Interrupted',
-        activeMember: null,
+        activeMembers: [],
+      }
+
+    case 'PreflightFailed':
+      return {
+        ...state,
+        _tag: 'PreflightFailed',
+        activeMembers: [],
+        preflightIssues: action.issues,
       }
   }
 }

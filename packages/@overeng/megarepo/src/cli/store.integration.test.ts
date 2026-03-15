@@ -258,7 +258,7 @@ describe('store worktree paths', () => {
   )
 
   it.effect(
-    'should encode special characters in ref names',
+    'should preserve raw nested branch paths in ref names',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -276,8 +276,7 @@ describe('store worktree paths', () => {
           source,
           ref: 'feature/my-branch',
         })
-        // The slash should be URL-encoded
-        expect(pathWithSlash).toContain('feature%2Fmy-branch')
+        expect(pathWithSlash).toContain('refs/heads/feature/my-branch/')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

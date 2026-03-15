@@ -13,17 +13,20 @@ import { MR_VERSION } from '../lib/version.ts'
 // Import extracted commands
 import {
   addCommand,
+  applyCommand,
+  depsCommand,
   envCommand,
   execCommand,
+  fetchCommand,
   generateCommand,
   initCommand,
+  lockCommand,
   lsCommand,
   pinCommand,
   unpinCommand,
   rootCommand,
   statusCommand,
   storeCommand,
-  syncCommand,
 } from './commands/mod.ts'
 
 // Re-export context for use by other modules
@@ -52,13 +55,16 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
     envCommand,
     statusCommand,
     lsCommand,
-    syncCommand,
+    fetchCommand,
+    applyCommand,
+    lockCommand,
     addCommand,
     pinCommand,
     unpinCommand,
     execCommand,
     storeCommand,
     generateCommand,
+    depsCommand,
   ]),
   Cli.Command.provide(({ cwd }) =>
     Option.isSome(cwd) === true ? Cwd.fromPath(cwd.value) : Cwd.live,

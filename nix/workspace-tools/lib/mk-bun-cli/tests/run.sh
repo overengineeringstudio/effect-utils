@@ -158,10 +158,10 @@ JSON
 sync_megarepo() {
   local root="$1"
   if ! command -v bun >/dev/null 2>&1; then
-    echo "bun is required to run mr sync" >&2
+    echo "bun is required to run mr fetch --apply" >&2
     exit 1
   fi
-  (cd "$root" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" sync)
+  (cd "$root" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" fetch --apply)
 }
 
 run_build() {
@@ -277,7 +277,7 @@ if [ "$SKIP_NESTED" -eq 0 ]; then
     echo "bun is required to run nested megarepo validation" >&2
     exit 1
   fi
-  (cd "$WORKSPACE_REAL" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" sync --deep)
+  (cd "$WORKSPACE_REAL" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" fetch --apply --all)
   nested_root="$(cd "$NESTED_ROOT" && bun "$ROOT/packages/@overeng/megarepo/bin/mr.ts" root)"
   nested_root="${nested_root%/}"
   expected_root="${WORKSPACE_REAL%/}"

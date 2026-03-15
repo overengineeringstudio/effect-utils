@@ -239,6 +239,6 @@ export const createEffectRoute = <TFilePath extends keyof FileRoutesByPath>(path
         : {}),
     } satisfies Parameters<typeof tanstackRoute>[0]
 
-    return tanstackRoute(config)
+    return tanstackRoute(config as Parameters<typeof tanstackRoute>[0])
   }
 }

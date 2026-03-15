@@ -1,10 +1,11 @@
 import {
   catalog,
-  effectLspDevDeps,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
   '@effect/platform',
@@ -16,35 +17,48 @@ const peerDepNames = [
   'react',
   'react-dom',
 ] as const
-
-export default packageJson({
-  name: '@overeng/effect-rpc-tanstack',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/mod.ts',
-    './client': './src/client.ts',
-    './server': './src/server.ts',
-    './router': './src/router.ts',
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/mod.js',
-      './client': './dist/client.js',
-      './server': './dist/server.js',
-      './router': './dist/router.js',
+const workspaceDeps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/effect-rpc-tanstack', {
+    extraMemberPaths: ['packages/@overeng/effect-rpc-tanstack/examples/basic'],
+  }),
+  devDependencies: {
+    workspace: [utilsPkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        '@effect/experimental',
+        '@effect/sql',
+        '@types/react',
+        'typescript',
+        'vite',
+        'vitest',
+      ),
     },
   },
-  devDependencies: {
-    ...catalog.pick(
-      ...peerDepNames,
-      '@effect/experimental',
-      '@effect/sql',
-      '@types/react',
-      'vite',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
+  peerDependencies: {
+    external: catalog.pick(...peerDepNames),
   },
-  peerDependencies: catalog.peers(...peerDepNames),
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: '@overeng/effect-rpc-tanstack',
+    ...privatePackageDefaults,
+    exports: {
+      '.': './src/mod.ts',
+      './client': './src/client.ts',
+      './server': './src/server.ts',
+      './router': './src/router.ts',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+        './client': './dist/client.js',
+        './server': './dist/server.js',
+        './router': './dist/router.js',
+      },
+    },
+  } satisfies PackageJsonData,
+  workspaceDeps,
+)

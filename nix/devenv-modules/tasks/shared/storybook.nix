@@ -7,8 +7,8 @@
 #         { path = "packages/@overeng/tui-react"; name = "tui-react"; port = 6006; }
 #         { path = "packages/@overeng/megarepo"; name = "megarepo"; port = 6007; }
 #       ];
-#       # Optional: install task prefix (default: "pnpm", use "bun" for bun:install)
-#       installTaskPrefix = "pnpm";
+#       # Optional: install task name (default: "pnpm:install")
+#       installTask = "pnpm:install";
 #     })
 #   ];
 #
@@ -26,22 +26,19 @@
 #   devenv will automatically find the next available port.
 {
   packages ? [ ],
-  installTaskPrefix ? "pnpm",
+  installTask ? "pnpm:install",
 }:
 { lib, config, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   hasPackages = packages != [ ];
 
-  # Use storybook binary directly from package's node_modules (relative to cwd)
-  storybookBin = "./node_modules/.bin/storybook";
-
   mkBuildTask = pkg: {
     "storybook:build:${pkg.name}" = {
       description = "Build storybook for ${pkg.name}";
-      exec = trace.exec "storybook:build:${pkg.name}" "${storybookBin} build";
+      exec = trace.exec "storybook:build:${pkg.name}" "pnpm exec storybook build";
       cwd = pkg.path;
-      after = [ "${installTaskPrefix}:install:${pkg.name}" ];
+      after = [ installTask ];
     };
   };
 
@@ -64,7 +61,7 @@ let
       exec = ''
         _host="''${TS_HOSTNAME:-localhost}"
         echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"
-        ${storybookBin} dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
+        pnpm exec storybook dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
       '';
       cwd = pkg.path;
     };

@@ -31,6 +31,7 @@ type Story = StoryObj<typeof Box>
 export const Basic: Story = {
   render: () => (
     <TuiStoryPreview
+      command="box-demo"
       app={StaticApp}
       View={() => (
         <Box>
@@ -46,6 +47,7 @@ export const Basic: Story = {
 export const Row: Story = {
   render: () => (
     <TuiStoryPreview
+      command="box-demo"
       app={StaticApp}
       View={() => (
         <Box flexDirection="row">
@@ -60,6 +62,7 @@ export const Row: Story = {
 export const Column: Story = {
   render: () => (
     <TuiStoryPreview
+      command="box-demo"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -75,6 +78,7 @@ export const Column: Story = {
 export const WithPadding: Story = {
   render: () => (
     <TuiStoryPreview
+      command="box-demo"
       app={StaticApp}
       View={() => (
         <Box padding={2}>
@@ -89,6 +93,7 @@ export const WithPadding: Story = {
 export const Nested: Story = {
   render: () => (
     <TuiStoryPreview
+      command="box-demo"
       app={StaticApp}
       View={() => (
         <Box>
@@ -108,11 +113,12 @@ export const Nested: Story = {
 export const ComplexLayout: Story = {
   render: () => (
     <TuiStoryPreview
+      command="box-demo"
       app={StaticApp}
       View={() => (
         <Box>
           <Box flexDirection="row">
-            <Text bold>mr sync</Text>
+            <Text bold>mr fetch --apply</Text>
             <Text dim> workspace/project</Text>
           </Box>
           <Text> </Text>

@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { type Error as PlatformError, FileSystem, Path } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import type { StatResult } from './types.ts'
@@ -129,8 +129,8 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
           ? target
           : pathService.resolve(pathService.dirname(fullPath), target),
       ),
-      // readLink fails for non-symlinks; treat those as "no target".
-      Effect.catchAll(() => Effect.succeed(undefined)),
+      Effect.option,
+      Effect.map(Option.getOrUndefined),
     )
 
   const isWithinRoot = (target: string): boolean =>

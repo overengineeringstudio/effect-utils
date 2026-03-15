@@ -1,41 +1,57 @@
 # pnpm-workspace
 
-Generate `pnpm-workspace.yaml` files for pnpm monorepos.
+Generate the repo-root `pnpm-workspace.yaml`.
+
+## Mental Model
+
+- `pnpmWorkspaceYaml.root(...)` projects a root aggregate
+  `pnpm-workspace.yaml` from multiple package outputs for an explicit repo view
+- requires an explicit `repoName` — projection does not infer the current repo
+- `extraMembers` is an exceptional compromise for non-genie-managed workspace
+  member paths (e.g. standalone, copyable examples) that cannot be derived from
+  package metadata — prefer real package generators over `extraMembers`
+- package metadata must already contain static import-time workspace facts;
+  runtime `ctx` is only used during projection
+- package closures used by Nix/tooling are derived internally from package
+  metadata and are not committed workspace manifests
 
 ## Usage
 
-```ts
-import { pnpmWorkspace } from '@overeng/genie/lib'
-import { catalog, workspacePackages, onlyBuiltDependencies } from './genie/repo.ts'
+### Root aggregate projection
 
-export default pnpmWorkspace({
-  packages: workspacePackages,
-  catalog,
-  onlyBuiltDependencies,
+```ts
+import appPkg from './packages/app/package.json.genie.ts'
+import sharedPkg from './packages/shared/package.json.genie.ts'
+import { pnpmWorkspaceYaml } from './genie/internal.ts'
+
+export default pnpmWorkspaceYaml.root({
+  packages: [appPkg, sharedPkg],
+  repoName: 'my-repo',
+  dedupePeerDependents: true,
 })
 ```
 
-## Features
-
-- **Workspace packages**: Define which directories contain workspace packages
-- **Catalog**: Centralized version management for dependencies
-- **Build-only dependencies**: Configure packages that should only be built (not hoisted)
-
-## Configuration
-
-Typically used with a `genie/repo.ts` file:
+### With non-genie-managed workspace members (exceptional)
 
 ```ts
-// genie/repo.ts
-export const workspacePackages = ['packages/*', 'apps/*'] as const
-
-export const catalog = {
-  effect: '3.12.0',
-  '@effect/platform': '0.90.0',
-  typescript: '5.9.0',
-  vitest: '3.0.0',
-  // ...
-}
-
-export const onlyBuiltDependencies = ['esbuild', '@esbuild/*'] as const
+export default pnpmWorkspaceYaml.root({
+  packages: [appPkg, sharedPkg],
+  repoName: 'my-repo',
+  extraMembers: ['examples/*'],
+  dedupePeerDependents: true,
+})
 ```
+
+## Why wrappers exist
+
+The wrapper is the public projection API because repo authoring should project
+from package metadata, not maintain workspace member lists manually. Low-level
+workspace graph helpers are intentionally internal.
+
+Use real package generator outputs as workspace seeds. If a repo member should
+participate in the workspace, give it a package generator and include that
+output instead of threading extra member paths through the public API.
+
+For rare cases where workspace members are intentionally not genie-managed
+(e.g. standalone, copyable examples), `extraMembers` is an exceptional
+compromise. Prefer creating real package generators over using `extraMembers`.

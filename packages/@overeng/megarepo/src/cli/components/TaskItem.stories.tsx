@@ -47,6 +47,7 @@ type Story = StoryObj<typeof TaskItem>
 export const AllStates: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr exec"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -65,6 +66,7 @@ export const AllStates: Story = {
 export const WithErrors: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr exec"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -83,6 +85,7 @@ export const WithErrors: Story = {
 export const AllPending: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr exec"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -101,6 +104,7 @@ export const AllPending: Story = {
 export const AllSuccess: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr exec"
       app={StaticApp}
       View={() => (
         <Box flexDirection="column">
@@ -119,6 +123,7 @@ export const AllSuccess: Story = {
 export const SingleActive: Story = {
   render: () => (
     <TuiStoryPreview
+      command="mr exec"
       app={StaticApp}
       View={() => <TaskItem id="1" label="livestore" status="active" message="cloning..." />}
       initialState={null}

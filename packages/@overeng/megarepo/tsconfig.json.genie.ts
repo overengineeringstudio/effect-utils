@@ -12,6 +12,11 @@ export default tsconfigJson({
     ...reactJsx,
     types: ['node', 'bun'],
   },
-  include: ['src/**/*', 'test/**/*', 'bin/**/*'],
-  references: [{ path: '../tui-react' }, { path: '../effect-path' }, { path: '../utils' }],
+  include: ['src/**/*', 'test/**/*', 'bin/**/*', '../../../types/css.d.ts'],
+  references: [
+    { path: '../tui-core' },
+    { path: '../tui-react' },
+    { path: '../effect-path' },
+    { path: '../utils' },
+  ],
 } satisfies TSConfigArgs)

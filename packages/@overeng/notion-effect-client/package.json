@@ -17,7 +17,6 @@
     "@overeng/notion-effect-schema": "workspace:*"
   },
   "devDependencies": {
-    "@effect/language-service": "0.69.2",
     "@effect/platform": "0.94.2",
     "@effect/vitest": "0.27.0",
     "@overeng/utils": "workspace:*",

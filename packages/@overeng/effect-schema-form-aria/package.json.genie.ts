@@ -1,55 +1,61 @@
 import {
   catalog,
-  effectLspDevDeps,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
 } from '../../../genie/internal.ts'
 import schemaFormPkg from '../effect-schema-form/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['react-aria-components', 'react-dom'] as const
-
-export default packageJson({
-  name: '@overeng/effect-schema-form-aria',
-  ...privatePackageDefaults,
-  exports: {
-    '.': './src/mod.ts',
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/mod.js',
-    },
-  },
-  scripts: {
-    storybook: 'storybook dev -p 6010',
-    'storybook:build': 'storybook build',
-  },
+const runtimeDeps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/effect-schema-form-aria'),
   dependencies: {
-    ...catalog.pick('@overeng/effect-schema-form'),
+    workspace: [schemaFormPkg],
   },
   devDependencies: {
-    ...catalog.pick(
-      ...peerDepNames,
-      // From @overeng/effect-schema-form peer deps
-      'effect',
-      'react',
-      '@overeng/utils',
-      '@storybook/react',
-      '@storybook/react-vite',
-      '@tailwindcss/vite',
-      '@types/react',
-      '@vitejs/plugin-react',
-      'storybook',
-      'tailwindcss',
-      'vite',
-      'vitest',
-    ),
-    ...effectLspDevDeps(),
+    workspace: [utilsPkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        'effect',
+        'react',
+        '@storybook/react',
+        '@storybook/react-vite',
+        '@tailwindcss/vite',
+        '@types/react',
+        '@vitejs/plugin-react',
+        'storybook',
+        'tailwindcss',
+        'typescript',
+        'vite',
+        'vitest',
+      ),
+    },
   },
   peerDependencies: {
-    // Expose @overeng/effect-schema-form peer deps transitively (consumers need them)
-    ...schemaFormPkg.data.peerDependencies,
-    ...catalog.peers(...peerDepNames),
+    workspace: [schemaFormPkg],
+    external: catalog.pick(...peerDepNames),
   },
-} satisfies PackageJsonData)
+})
+
+export default packageJson(
+  {
+    name: '@overeng/effect-schema-form-aria',
+    ...privatePackageDefaults,
+    exports: {
+      '.': './src/mod.ts',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+      },
+    },
+    scripts: {
+      storybook: 'storybook dev -p 6010',
+      'storybook:build': 'storybook build',
+    },
+  },
+  runtimeDeps,
+)

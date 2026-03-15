@@ -44,5 +44,10 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react"
   },
-  "include": ["src/**/*", "test/**/*"]
+  "include": ["src/**/*", "test/**/*"],
+  "references": [
+    {
+      "path": "../utils"
+    }
+  ]
 }

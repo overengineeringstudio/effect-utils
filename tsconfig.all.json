@@ -1,6 +1,7 @@
 // Generated file - DO NOT EDIT
 // Source: tsconfig.all.json.genie.ts
 {
+  "files": [],
   "references": [
     {
       "path": "./context/effect/socket"
@@ -51,10 +52,10 @@
       "path": "./packages/@overeng/react-inspector"
     },
     {
-      "path": "./packages/@overeng/tui-react"
+      "path": "./packages/@overeng/tui-core"
     },
     {
-      "path": "./packages/@overeng/tui-core"
+      "path": "./packages/@overeng/tui-react"
     },
     {
       "path": "./packages/@overeng/utils"
@@ -62,6 +63,5 @@
     {
       "path": "./packages/@overeng/utils-dev"
     }
-  ],
-  "files": []
+  ]
 }

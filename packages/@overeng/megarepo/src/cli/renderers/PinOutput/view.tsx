@@ -144,7 +144,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       const getWarningMessage = () => {
         switch (state.warning) {
           case 'worktree_not_available':
-            return "Commit worktree not available (repo not in store). Run 'mr sync' to complete."
+            return "Commit worktree not available (repo not in store). Run 'mr apply' to complete."
           case 'member_removed_from_config':
             return `Member '${state.member}' was removed from config but still in lock file`
         }
@@ -157,7 +157,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
             <Text color="yellow"> {state.message ?? getWarningMessage()}</Text>
           </Box>
           {state.warning === 'member_removed_from_config' && (
-            <Text dim>{'  Consider running: mr sync --pull'}</Text>
+            <Text dim>{'  Consider running: mr fetch'}</Text>
           )}
         </Box>
       )
@@ -175,7 +175,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
             <Text color="red">{symbols.status.cross}</Text>
             <Text> {state.message}</Text>
           </Box>
-          {state.error === 'not_synced' && <Text dim>{'  Run: mr sync'}</Text>}
+          {state.error === 'not_synced' && <Text dim>{'  Run: mr apply'}</Text>}
         </Box>
       )
     }

@@ -1,347 +1,352 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { packageJson } from '../mod.ts'
-import { computeRelativePath, createWorkspaceDepsResolver } from './mod.ts'
+import { defineCatalog } from '../package-json/catalog.ts'
+import type { WorkspacePackage } from '../package-json/mod.ts'
+import { pnpmWorkspaceYaml, projectPnpmPackageClosure } from './mod.ts'
 
-// =============================================================================
-// Helper: create a minimal package.json genie output for testing
-// =============================================================================
+const createTempRepo = (...memberPaths: string[]) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-workspace-'))
+  fs.mkdirSync(path.join(repoRoot, '.git'))
 
-const makePkg = ({
-  name,
-  ...rest
-}: {
-  name: string
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-}) =>
-  packageJson({
-    name,
-    version: '0.1.0',
-    ...rest,
-  })
-
-// =============================================================================
-// computeRelativePath
-// =============================================================================
-
-describe('computeRelativePath', () => {
-  it('computes sibling path', () => {
-    expect(computeRelativePath({ from: 'packages/app', to: 'packages/shared' })).toBe('../shared')
-  })
-
-  it('computes path across different depths', () => {
-    expect(computeRelativePath({ from: 'packages/app', to: 'packages/@local/shared' })).toBe(
-      '../@local/shared',
-    )
-  })
-
-  it('computes path going up multiple levels', () => {
-    expect(
-      computeRelativePath({
-        from: 'packages/@local/deep',
-        to: 'repos/effect-utils/packages/@overeng/utils',
+  return {
+    repoRoot,
+    repoName: path.basename(repoRoot),
+    memberDirs: Object.fromEntries(
+      memberPaths.map((memberPath) => {
+        const memberDir = path.join(repoRoot, memberPath)
+        fs.mkdirSync(memberDir, { recursive: true })
+        return [memberPath, memberDir]
       }),
-    ).toBe('../../../repos/effect-utils/packages/@overeng/utils')
+    ) as Record<string, string>,
+  }
+}
+
+const workspace = ({
+  repoName,
+  memberPath,
+  pnpmPackageClosure,
+}: {
+  repoName: string
+  memberPath: string
+  pnpmPackageClosure?: {
+    extraMemberPaths?: readonly string[]
+  }
+}) => ({
+  repoName,
+  memberPath,
+  ...(pnpmPackageClosure !== undefined ? { pnpmPackageClosure } : {}),
+})
+
+describe('metadata-based workspace projections', () => {
+  const repo = createTempRepo('packages/utils', 'packages/app')
+  const catalog = defineCatalog({})
+  const utilsComposition = catalog.compose({
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/utils',
+    }),
+  })
+  const utils = packageJson(
+    {
+      name: '@test/utils',
+      version: '1.0.0',
+    },
+    utilsComposition,
+  )
+  const appComposition = catalog.compose({
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/app',
+      pnpmPackageClosure: {
+        extraMemberPaths: ['packages/examples/basic'],
+      },
+    }),
+    dependencies: {
+      workspace: [utils],
+    },
+  })
+  const app = packageJson(
+    {
+      name: '@test/app',
+      version: '1.0.0',
+    },
+    appComposition,
+  )
+  const exampleComposition = catalog.compose({
+    workspace: workspace({
+      repoName: repo.repoName,
+      memberPath: 'packages/examples/basic',
+    }),
+  })
+  const example = packageJson(
+    {
+      name: '@test/example-basic',
+      version: '1.0.0',
+    },
+    exampleComposition,
+  )
+
+  it('projects package-closure workspace members from package metadata', () => {
+    const workspaceProjection = projectPnpmPackageClosure({
+      pkg: app,
+    })
+
+    expect(workspaceProjection.workspaceClosureDirs).toEqual([
+      'packages/app',
+      'packages/examples/basic',
+      'packages/utils',
+    ])
+    expect(workspaceProjection.packageRelativeMemberPaths).toEqual([
+      '.',
+      '../examples/basic',
+      '../utils',
+    ])
   })
 
-  it('returns "." for same path', () => {
-    expect(computeRelativePath({ from: 'packages/app', to: 'packages/app' })).toBe('.')
+  it('projects root workspace members recursively from package metadata', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app, example],
+      repoName: repo.repoName,
+      dedupePeerDependents: true,
+    })
+
+    expect(workspaceFile.data.packages).toEqual([
+      'packages/app',
+      'packages/examples/basic',
+      'packages/utils',
+    ])
   })
 
-  it('handles from "." (repo root)', () => {
-    expect(computeRelativePath({ from: '.', to: 'packages/utils' })).toBe('packages/utils')
+  it('stops root workspace projection at foreign repo boundaries', () => {
+    const foreignRepo = createTempRepo('packages/shared')
+    const foreignShared = packageJson(
+      {
+        name: '@foreign/shared',
+        version: '1.0.0',
+      },
+      catalog.compose({
+        workspace: workspace({
+          repoName: foreignRepo.repoName,
+          memberPath: 'packages/shared',
+        }),
+      }),
+    )
+    const crossRepoApp = packageJson(
+      {
+        name: '@test/cross-repo-app',
+        version: '1.0.0',
+      },
+      catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [utils, foreignShared],
+        },
+      }),
+    )
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [crossRepoApp, utils, foreignShared],
+      repoName: repo.repoName,
+      dedupePeerDependents: true,
+    })
+
+    expect(workspaceFile.data.packages).toEqual(['packages/app', 'packages/utils'])
   })
 
-  it('handles from "" (empty string)', () => {
-    expect(computeRelativePath({ from: '', to: 'packages/utils' })).toBe('packages/utils')
+  it('includes extraMembers in root workspace projection', () => {
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app, example],
+      repoName: repo.repoName,
+      extraMembers: ['examples/*'],
+      dedupePeerDependents: true,
+    })
+
+    expect(workspaceFile.data.packages).toEqual([
+      'examples/*',
+      'packages/app',
+      'packages/examples/basic',
+      'packages/utils',
+    ])
+  })
+
+  it('projects workspace root workspaces from package metadata', () => {
+    const workspaceRoot = packageJson.aggregateFromPackages({
+      packages: [app],
+      name: 'workspace-root',
+      repoName: repo.repoName,
+    })
+
+    expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
+  })
+
+  it('excludes direct foreign seeds from workspace root workspaces', () => {
+    const foreignRepo = createTempRepo('packages/shared')
+    const foreignShared = packageJson(
+      {
+        name: '@foreign/shared',
+        version: '1.0.0',
+      },
+      catalog.compose({
+        workspace: workspace({
+          repoName: foreignRepo.repoName,
+          memberPath: 'packages/shared',
+        }),
+      }),
+    )
+
+    const workspaceRoot = packageJson.aggregateFromPackages({
+      packages: [app, utils, foreignShared],
+      name: 'workspace-root',
+      repoName: repo.repoName,
+    })
+
+    expect(workspaceRoot.data.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 })
 
-// =============================================================================
-// createWorkspaceDepsResolver
-// =============================================================================
+describe('root patch coverage validation', () => {
+  const repo = createTempRepo('packages/utils', 'packages/app')
+  const catalog = defineCatalog({})
 
-describe('createWorkspaceDepsResolver', () => {
-  describe('single prefix (flat siblings)', () => {
-    const resolveDeps = createWorkspaceDepsResolver({
-      prefixes: ['@org/'],
-      resolveWorkspacePath: (name) => `../${name.split('/')[1]}`,
+  const makeUtilsWithPatches = () => {
+    const utilsComposition = catalog.compose({
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/utils',
+      }),
     })
-
-    it('resolves direct dependencies', () => {
-      const pkg = makePkg({
-        name: '@org/app',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      const utils = makePkg({ name: '@org/utils' })
-
-      const paths = resolveDeps({ pkg, deps: [utils], location: '.' })
-      expect(paths).toEqual(['../utils'])
-    })
-
-    it('resolves devDependencies', () => {
-      const pkg = makePkg({
-        name: '@org/app',
-        devDependencies: { '@org/test-utils': 'workspace:*' },
-      })
-      const testUtils = makePkg({ name: '@org/test-utils' })
-
-      const paths = resolveDeps({ pkg, deps: [testUtils], location: '.' })
-      expect(paths).toEqual(['../test-utils'])
-    })
-
-    it('resolves peerDependencies', () => {
-      const pkg = makePkg({
-        name: '@org/ui',
-        peerDependencies: { '@org/core': 'workspace:*' },
-      })
-      const core = makePkg({ name: '@org/core' })
-
-      const paths = resolveDeps({ pkg, deps: [core], location: '.' })
-      expect(paths).toEqual(['../core'])
-    })
-
-    it('ignores external packages', () => {
-      const pkg = makePkg({
-        name: '@org/app',
-        dependencies: {
-          '@org/utils': 'workspace:*',
-          effect: '3.0.0',
-          react: '19.0.0',
+    return packageJson(
+      {
+        name: '@test/utils',
+        version: '1.0.0',
+        pnpm: {
+          patchedDependencies: {
+            'some-pkg@1.0.0': 'packages/utils/patches/some-pkg@1.0.0.patch',
+          },
         },
-      })
-      const utils = makePkg({ name: '@org/utils' })
+      },
+      utilsComposition,
+    )
+  }
 
-      const paths = resolveDeps({ pkg, deps: [utils], location: '.' })
-      expect(paths).toEqual(['../utils'])
+  const makeApp = (deps: WorkspacePackage[]) => {
+    const appComposition = catalog.compose({
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/app',
+      }),
+      dependencies: {
+        workspace: deps,
+      },
     })
+    return packageJson(
+      {
+        name: '@test/app',
+        version: '1.0.0',
+      },
+      appComposition,
+    )
+  }
 
-    it('resolves transitive dependencies', () => {
-      const app = makePkg({
-        name: '@org/app',
-        dependencies: { '@org/ui': 'workspace:*' },
-      })
-      const ui = makePkg({
-        name: '@org/ui',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      const utils = makePkg({ name: '@org/utils' })
+  it('passes when root config includes all required patches', () => {
+    const utils = makeUtilsWithPatches()
+    const app = makeApp([utils])
 
-      const paths = resolveDeps({ pkg: app, deps: [ui, utils], location: '.' })
-      expect(paths).toEqual(['../ui', '../utils'])
-    })
-
-    it('deduplicates paths from diamond dependencies', () => {
-      //   app -> ui -> utils
-      //   app -> core -> utils
-      const app = makePkg({
-        name: '@org/app',
-        dependencies: {
-          '@org/ui': 'workspace:*',
-          '@org/core': 'workspace:*',
-        },
-      })
-      const ui = makePkg({
-        name: '@org/ui',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      const core = makePkg({
-        name: '@org/core',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      const utils = makePkg({ name: '@org/utils' })
-
-      const paths = resolveDeps({ pkg: app, deps: [ui, core, utils], location: '.' })
-      expect(paths).toEqual(['../core', '../ui', '../utils'])
-    })
-
-    it('returns sorted paths', () => {
-      const pkg = makePkg({
-        name: '@org/app',
-        dependencies: {
-          '@org/zlib': 'workspace:*',
-          '@org/alpha': 'workspace:*',
-          '@org/middle': 'workspace:*',
-        },
-      })
-      const alpha = makePkg({ name: '@org/alpha' })
-      const middle = makePkg({ name: '@org/middle' })
-      const zlib = makePkg({ name: '@org/zlib' })
-
-      const paths = resolveDeps({ pkg, deps: [alpha, middle, zlib], location: '.' })
-      expect(paths).toEqual(['../alpha', '../middle', '../zlib'])
-    })
-
-    it('returns empty array when no internal deps', () => {
-      const pkg = makePkg({
-        name: '@org/standalone',
-        dependencies: { effect: '3.0.0' },
-      })
-
-      const paths = resolveDeps({ pkg, deps: [], location: '.' })
-      expect(paths).toEqual([])
-    })
-
-    it('includes extraPackages', () => {
-      const pkg = makePkg({
-        name: '@org/app',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      const utils = makePkg({ name: '@org/utils' })
-
-      const paths = resolveDeps({
-        pkg,
-        deps: [utils],
-        location: '.',
-        extraPackages: ['../examples'],
-      })
-      expect(paths).toEqual(['../examples', '../utils'])
-    })
-
-    it('handles circular dependency graphs without infinite loop', () => {
-      //   a -> b -> a (circular)
-      const a = makePkg({
-        name: '@org/a',
-        dependencies: { '@org/b': 'workspace:*' },
-      })
-      const b = makePkg({
-        name: '@org/b',
-        dependencies: { '@org/a': 'workspace:*' },
-      })
-
-      const paths = resolveDeps({ pkg: a, deps: [b], location: '.' })
-      expect(paths).toEqual(['../a', '../b'])
-    })
-  })
-
-  describe('multiple prefixes (cross-repo)', () => {
-    const locations: Record<string, string> = {
-      '@overeng/utils': 'repos/effect-utils/packages/@overeng/utils',
-      '@local/shared': 'packages/@local/shared',
-      '@local/ui': 'packages/@local/ui',
-    }
-
-    const resolveDeps = createWorkspaceDepsResolver({
-      prefixes: ['@overeng/', '@local/'],
-      resolveWorkspacePath: (name, from) => {
-        const target = locations[name]
-        if (target === undefined) throw new Error(`Unknown: ${name}`)
-        return computeRelativePath({ from, to: target })
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
+      patchedDependencies: {
+        'some-pkg@1.0.0': 'repos/upstream/packages/utils/patches/some-pkg@1.0.0.patch',
       },
     })
 
-    it('resolves deps across prefixes', () => {
-      const app = makePkg({
-        name: '@local/app',
-        dependencies: {
-          '@local/shared': 'workspace:*',
-          '@overeng/utils': 'workspace:*',
-        },
-      })
-      const shared = makePkg({ name: '@local/shared' })
-      const utils = makePkg({ name: '@overeng/utils' })
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: repo.repoRoot,
+    })
+    expect(issues).toEqual([])
+  })
 
-      const paths = resolveDeps({ pkg: app, deps: [shared, utils], location: 'packages/app' })
-      expect(paths).toEqual([
-        '../../repos/effect-utils/packages/@overeng/utils',
-        '../@local/shared',
-      ])
+  it('reports missing patch when root config omits a required patch', () => {
+    const utils = makeUtilsWithPatches()
+    const app = makeApp([utils])
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
     })
 
-    it('uses location for relative path computation', () => {
-      const pkg = makePkg({
-        name: '@local/deep-pkg',
-        dependencies: { '@local/shared': 'workspace:*' },
-      })
-      const shared = makePkg({ name: '@local/shared' })
-
-      const fromShallow = resolveDeps({
-        pkg,
-        deps: [shared],
-        location: 'packages/app',
-      })
-      const fromDeep = resolveDeps({
-        pkg,
-        deps: [shared],
-        location: 'packages/@local/ui',
-      })
-
-      expect(fromShallow).toEqual(['../@local/shared'])
-      expect(fromDeep).toEqual(['../shared'])
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: repo.repoRoot,
     })
-
-    it('resolves transitive cross-prefix deps', () => {
-      // app (@local) -> shared (@local) -> utils (@overeng)
-      const app = makePkg({
-        name: '@local/app',
-        dependencies: { '@local/shared': 'workspace:*' },
-      })
-      const shared = makePkg({
-        name: '@local/shared',
-        dependencies: { '@overeng/utils': 'workspace:*' },
-      })
-      const utils = makePkg({ name: '@overeng/utils' })
-
-      const paths = resolveDeps({
-        pkg: app,
-        deps: [shared, utils],
-        location: 'packages/app',
-      })
-      expect(paths).toEqual([
-        '../../repos/effect-utils/packages/@overeng/utils',
-        '../@local/shared',
-      ])
+    expect(issues).toHaveLength(1)
+    expect(issues?.[0]).toMatchObject({
+      severity: 'error',
+      dependency: 'some-pkg@1.0.0',
+      rule: 'root-patch-coverage',
     })
   })
 
-  describe('edge cases', () => {
-    const resolveDeps = createWorkspaceDepsResolver({
-      prefixes: ['@org/'],
-      resolveWorkspacePath: (name) => `../${name.split('/')[1]}`,
+  it('detects patches from transitive workspace deps', () => {
+    const transitiveRepo = createTempRepo('packages/utils', 'packages/app', 'packages/wrapper')
+    const utils = makeUtilsWithPatches()
+    const app = makeApp([utils])
+
+    const wrapperComposition = catalog.compose({
+      workspace: workspace({
+        repoName: transitiveRepo.repoName,
+        memberPath: 'packages/wrapper',
+      }),
+      dependencies: {
+        workspace: [app],
+      },
+    })
+    const wrapper = packageJson({ name: '@test/wrapper', version: '1.0.0' }, wrapperComposition)
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [wrapper],
+      repoName: transitiveRepo.repoName,
     })
 
-    it('handles package with no name', () => {
-      const pkg = makePkg({
-        name: '@org/app',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      // Anonymous dep — won't be found in registry but dependency is still resolved
-      const anonymous = packageJson({ version: '0.1.0' })
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: transitiveRepo.repoRoot,
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues?.[0]).toMatchObject({
+      rule: 'root-patch-coverage',
+      dependency: 'some-pkg@1.0.0',
+    })
+  })
 
-      const paths = resolveDeps({ pkg, deps: [anonymous], location: '.' })
-      expect(paths).toEqual(['../utils'])
+  it('passes when no packages declare patches', () => {
+    const utilsComposition = catalog.compose({
+      workspace: workspace({
+        repoName: repo.repoName,
+        memberPath: 'packages/utils',
+      }),
+    })
+    const plainUtils = packageJson({ name: '@test/utils', version: '1.0.0' }, utilsComposition)
+    const app = makeApp([plainUtils])
+
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [app],
+      repoName: repo.repoName,
     })
 
-    it('handles deps not in registry (unresolved transitive)', () => {
-      // app depends on @org/utils which depends on @org/core,
-      // but @org/core is not in the deps array
-      const app = makePkg({
-        name: '@org/app',
-        dependencies: { '@org/utils': 'workspace:*' },
-      })
-      const utils = makePkg({
-        name: '@org/utils',
-        dependencies: { '@org/core': 'workspace:*' },
-      })
-      // @org/core not provided in deps — still gets a path, just no further traversal
-
-      const paths = resolveDeps({ pkg: app, deps: [utils], location: '.' })
-      expect(paths).toEqual(['../core', '../utils'])
+    const issues = workspaceFile.validate?.({
+      location: '.',
+      cwd: repo.repoRoot,
     })
-
-    it('collects deps from all provided packages, not just pkg', () => {
-      // dep1 has its own internal deps that should be collected
-      const app = makePkg({ name: '@org/app' })
-      const dep1 = makePkg({
-        name: '@org/dep1',
-        dependencies: { '@org/shared': 'workspace:*' },
-      })
-      const shared = makePkg({ name: '@org/shared' })
-
-      const paths = resolveDeps({ pkg: app, deps: [dep1, shared], location: '.' })
-      expect(paths).toEqual(['../shared'])
-    })
+    expect(issues).toEqual([])
   })
 })

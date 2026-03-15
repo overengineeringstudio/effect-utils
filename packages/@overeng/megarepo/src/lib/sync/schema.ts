@@ -21,11 +21,17 @@ export const MemberSyncStatus = Schema.Literal(
   'skipped',
   'error',
   'updated',
-  'locked',
+  'recorded',
+  'applied',
   'removed',
 )
 /** Inferred type for the possible outcomes of syncing a single member. */
 export type MemberSyncStatus = Schema.Schema.Type<typeof MemberSyncStatus>
+
+/** Sync mode. */
+export const SyncMode = Schema.Literal('fetch', 'apply', 'lock')
+/** Inferred type for sync mode. */
+export type SyncMode = Schema.Schema.Type<typeof SyncMode>
 
 /** Sync result for a single member */
 export const MemberSyncResult = Schema.Struct({
@@ -49,11 +55,10 @@ export type MemberSyncResult = Schema.Schema.Type<typeof MemberSyncResult>
 // Sync Options (flags)
 // =============================================================================
 
-/** Schema for sync command flags (dry-run, frozen, pull, all, force, etc.). */
+/** Schema for sync command flags. */
 export const SyncOptions = Schema.Struct({
+  mode: SyncMode,
   dryRun: Schema.Boolean,
-  frozen: Schema.Boolean,
-  pull: Schema.Boolean,
   all: Schema.Boolean,
   force: Schema.optional(Schema.Boolean),
   verbose: Schema.optional(Schema.Boolean),
@@ -65,9 +70,8 @@ export type SyncOptions = Schema.Schema.Type<typeof SyncOptions>
 
 /** Default sync options */
 export const defaultSyncOptions: SyncOptions = {
+  mode: 'apply',
   dryRun: false,
-  frozen: false,
-  pull: false,
   all: false,
 }
 
@@ -80,7 +84,8 @@ export const SyncSummary = Schema.Struct({
   cloned: Schema.Number,
   synced: Schema.Number,
   updated: Schema.Number,
-  locked: Schema.Number,
+  recorded: Schema.Number,
+  applied: Schema.Number,
   alreadySynced: Schema.Number,
   skipped: Schema.Number,
   errors: Schema.Number,
@@ -127,7 +132,8 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
   let cloned = 0
   let synced = 0
   let updated = 0
-  let locked = 0
+  let recorded = 0
+  let applied = 0
   let alreadySynced = 0
   let skipped = 0
   let errors = 0
@@ -144,8 +150,11 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
       case 'updated':
         updated++
         break
-      case 'locked':
-        locked++
+      case 'recorded':
+        recorded++
+        break
+      case 'applied':
+        applied++
         break
       case 'already_synced':
         alreadySynced++
@@ -166,7 +175,8 @@ export const computeSyncSummary = (results: readonly MemberSyncResult[]): SyncSu
     cloned,
     synced,
     updated,
-    locked,
+    recorded,
+    applied,
     alreadySynced,
     skipped,
     errors,

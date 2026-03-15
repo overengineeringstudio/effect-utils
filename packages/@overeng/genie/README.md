@@ -56,7 +56,7 @@ in
 # After modifying genie source code
 dt nix:build:genie
 
-# After pnpm-lock.yaml changes (updates dependency hash)
+# After repo-root pnpm-lock.yaml changes (updates dependency hash)
 dt nix:hash:genie
 
 # Build all CLI packages (optional)

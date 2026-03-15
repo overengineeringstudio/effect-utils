@@ -173,6 +173,7 @@ export const Demo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="bouncing-windows"
     />
   ),
 }
@@ -195,6 +196,7 @@ export const SingleWindow: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="bouncing-windows"
     />
   ),
 }
@@ -217,6 +219,7 @@ export const SixWindows: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="bouncing-windows"
     />
   ),
 }
@@ -233,6 +236,7 @@ export const Finished: Story = {
       initialState={finishedState({ frames: 300, windows: 3 })}
       height={args.height}
       autoRun={false}
+      command="bouncing-windows"
     />
   ),
 }
@@ -249,6 +253,7 @@ export const Interrupted: Story = {
       initialState={interruptedState({ frame: 150, windows: 3 })}
       height={args.height}
       autoRun={false}
+      command="bouncing-windows"
     />
   ),
 }

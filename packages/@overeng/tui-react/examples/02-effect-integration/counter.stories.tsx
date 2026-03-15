@@ -139,6 +139,7 @@ export const Demo: Story = {
       autoRun={args.autoRun}
       playbackSpeed={args.playbackSpeed}
       height={args.height}
+      command="counter"
     />
   ),
 }
@@ -155,6 +156,7 @@ export const Running: Story = {
       initialState={runningState({ count: 5, history: ['[12:00:01] Incremented to 5'] })}
       height={args.height}
       autoRun={false}
+      command="counter"
     />
   ),
 }
@@ -171,6 +173,7 @@ export const Loading: Story = {
       initialState={loadingState(3)}
       height={args.height}
       autoRun={false}
+      command="counter"
     />
   ),
 }
@@ -187,6 +190,7 @@ export const Complete: Story = {
       initialState={completeState(2)}
       height={args.height}
       autoRun={false}
+      command="counter"
     />
   ),
 }
@@ -203,6 +207,7 @@ export const Interrupted: Story = {
       initialState={interruptedState(3)}
       height={args.height}
       autoRun={false}
+      command="counter"
     />
   ),
 }

@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **nix/workspace-tools/mk-pnpm-deps**: Make pnpm deps hashes platform-agnostic by fetching the lockfile package set directly into the store
+  - Replaces host-sensitive `pnpm install`-based FOD generation with lockfile-driven `pnpm store add`
+  - Keeps store normalization deterministic by zeroing `checkedAt`, sorting file maps, and pruning orphan CAS files
+  - Produces the same normalized store hash across `x86_64-linux` and `aarch64-linux` for the validated package set
+- **nix/workspace-tools/mk-pnpm-deps**: Stabilize pnpm deps FOD input ordering and store normalization
+  - Sorts staged external install roots and lockfile inputs before dependency fetch
+  - Fails fast if store normalization encounters multiple `v*` roots or leftover symlinks
 - **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
   - Allows ranged `peerDependencies`
   - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`
@@ -17,13 +24,22 @@ All notable changes to this project will be documented in this file.
   - Excludes vendored/generated trees like `node_modules` during lint cache invalidation
   - Keeps `oxlint` install-free by using the bundled Nix JS plugin instead of the source plugin path
   - Retains the package-local `genie` install dependency because `genie --check` still runs via the repo's source-mode CLI
-- **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from deployed workspace closures instead of raw recursive workspace installs
-  - Stages only the target package and its workspace closure into the Nix build
-  - Uses `pnpm deploy` with staged `inject-workspace-packages=true` to materialize an isolated build tree
-  - Compiles the deployed entrypoint with Bun, reducing coupling to the raw dev workspace layout
-  - Narrows pnpm deps fetching to the target lockfile, workspace member manifests, and referenced patch files
-  - Removes legacy `--force` / explicit `--recursive` fetch behavior and normalizes the store against the staged package lockfile
-  - Extends the smoke harness with a targeted regression check for `pnpm deploy --config.inject-workspace-packages=true --frozen-lockfile`
+- **devenv/tasks/shared/check.nix**: Give aggregate check tasks explicit no-op commands so `devenv tasks run check:*` actually traverses their dependencies
+  - Prevents current `devenv` from treating `check:quick` / `check:all` as skipped `No command` wrappers
+  - Restores the intended shared quick-check entrypoint for downstream repos
+- **Effect TypeScript tooling**: Pin the exported `effect-tsgo` flake input back to the last known-good upstream revision
+  - Reverts the `tsgo` flake lock refresh after confirming `Effect-TS/tsgo@df2eaaa` currently fails to build its own `effect-tsgo` package
+  - Keeps downstream `devenv` shells green until the upstream patch set catches up again
+- **nix/workspace-tools/mk-pnpm-cli**: Build pnpm CLIs from filtered aggregate-root workspaces instead of package-level deploy closures
+  - Moves patched dependency path discovery out of Nix evaluation and into the staging derivation
+  - Preserves lockfile-driven patch staging for root and external install roots without recursive eval-time YAML walks
+  - Unblocks downstream composed flake evaluation that was previously overflowing in `parsePatchedDependencyPaths`
+  - Stages the target package and its workspace closure under one canonical root workspace
+  - Installs dependencies at that staged root with the same aggregate lockfile model used by local dev
+  - Compiles the target entrypoint with Bun from the staged package directory, reducing coupling to bespoke deploy-time workspace surgery
+  - Narrows pnpm deps fetching to the staged root lockfile, closure package manifests, and referenced patch files
+  - Removes legacy deploy-specific behavior and normalizes the store against the staged aggregate workspace input
+  - Keeps the smoke harness focused on real Nix builds of the `genie` and `megarepo` packages
 - **@overeng/tui-react**: Add `@types/react` and `@types/react-reconciler` to peer dependencies
   - Consumers need these type packages to type-check the `.tsx` source exports
 - **devenv/tasks/shared/vercel.nix**: Export deploy URLs as task output env vars and fail fast when URL extraction fails
@@ -33,6 +49,24 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **devenv/tasks/shared/ts-effect-lsp.nix**: document the tracked future unification of the standalone Effect LSP task with `ts:check`
+  - Adds a linked TODO for collapsing the separate task once the main workspace TypeScript check becomes `Effect-TS/tsgo`-backed
+- **@overeng/genie**: tighten pnpm workspace SSOT around package seeds
+  - Removes `extraPackages` from `pnpmWorkspaceYaml.root(...)` and the matching `additionalMemberPaths` graph helper escape hatch
+  - Removes committed package-level `pnpm-workspace.yaml` projections in favor of internal build-time package closures
+  - Removes `pnpmWorkspaceYaml.manual(...)` and `packageJson.aggregate(...)`; all root projection now goes through `pnpmWorkspaceYaml.root(...)` and `packageJson.aggregateFromPackages(...)` with explicit `repoName`
+  - Adds `extraMembers` as an exceptional escape hatch for non-genie-managed workspace members (e.g. standalone examples in livestore) — prefer real package generators over `extraMembers` whenever possible
+  - Stops `genie/external.ts` from depending on internal workspace-graph helpers and documents the seed-only aggregate model
+- **Effect TypeScript tooling**: switch local language-service integration to Nix-provided `effect-tsgo`
+  - Repoints the dev environment to upstream `Effect-TS/tsgo`
+  - Renames generator helpers/comments to describe the current tsgo-based model
+  - Keeps the `@effect/language-service` tsconfig plugin entry only as the current upstream tsgo configuration channel
+- **pnpm/dev workspace**: Switch dev installs to a generated repo-root hoisted pnpm workspace
+  - Adds generated root `package.json` and `pnpm-workspace.yaml` with explicit workspace members
+  - Makes `pnpm:install` own the repo-root install state and keeps the repo-root `pnpm-lock.yaml` as the only authoritative lockfile
+  - Updates package-scoped task execution to use `pnpm exec` so Vitest, Storybook, and Vite resolve against the active workspace topology
+  - Derives package closures for Nix/tooling at build time instead of committing package-level `pnpm-workspace.yaml` files
+  - Clarifies in the install spec that the current symlinked `repos/*` Megarepo realization keeps imported members on a cross-repo `link:` boundary rather than making them aggregate-root workspace importers
 - **@overeng/utils**: Make Storybook `viteFinal` typing opt-in generic for linked Vite workspaces
   - Keeps the default helper API free of foreign Vite types
   - Lets consumers opt into their own local `vite` config type when they need a typed `viteFinal` hook
@@ -47,6 +81,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **devenv/tasks/shared/ts-effect-lsp.nix**: add reusable `ts:effect-lsp` tsgo diagnostics task
+  - Exports `effect-tsgo` from the flake package set for downstream devenv consumers
+  - Keeps the task standalone so repos can opt into Effect diagnostics without conflating them with stylistic lint
 - **@overeng/genie**: Added `githubAction` runtime generator for type-safe `action.yml` generation
 - **docs/bun**: Document the upstream nested-workspace `patchedDependencies` blocker and link the Bun issue
 - **docs/bun**: Note the Bun-only local workspace fork workaround for patched dependencies
@@ -54,9 +91,13 @@ All notable changes to this project will be documented in this file.
   - Allows SSR callers to reuse Effect's built-in `FetchHttpClient` with an injected fetch implementation
   - Adds `fetchFromWebHandler(...)` for adapting colocated web handlers to fetch-compatible transport
   - Avoids app-local reimplementation of Effect HTTP request body/stream handling
+- **docs/node-modules-install**: Clarify the pnpm GVS requirement for single-instance JS/TS dependency identity and add install-performance requirements
 
 ### Removed
 
+- **devenv/tasks/shared/ts.nix**: remove the legacy `ts:patch-lsp` patching flow from the shared TypeScript task module
+  - Drops the `lspPatchCmd`, `lspPatchAfter`, and `lspPatchDir` parameters from the exported shared task API
+  - Removes stale shell-entry and OTEL references to `ts:patch-lsp`
 - **devenv/tasks/shared/setup.nix**: Remove `setup:opt:*` wrapper tasks and `setup:optional` gate
   - Optional tasks now use native `@complete` dependency suffix instead of nested `devenv tasks run` wrappers
   - Eliminates 6x shell re-evaluation, ~5.9s trace gap, fork-bomb guards, and filesystem locks

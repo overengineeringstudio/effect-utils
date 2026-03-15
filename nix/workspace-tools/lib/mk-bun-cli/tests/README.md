@@ -28,7 +28,7 @@ bash effect-utils/nix/workspace-tools/lib/mk-bun-cli/tests/run.sh
 
 ## Notes
 
-- The harness uses `mr sync` to populate the `repos/` directory with symlinks.
+- The harness uses `mr fetch --apply` to populate the `repos/` directory with symlinks.
 - Builds use direct paths like `path:$WORKSPACE/repos/<repo>#packages.<system>.<target>`.
 - Devenv validation overrides `effect-utils` to the repos directory.
 - All builds use `--no-link` to avoid `result` symlinks in the workspace.

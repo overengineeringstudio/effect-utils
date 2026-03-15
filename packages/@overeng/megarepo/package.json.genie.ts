@@ -1,10 +1,11 @@
 import {
   catalog,
-  effectLspDevDeps,
+  workspaceMember,
   packageJson,
   privatePackageDefaults,
-  type PackageJsonData,
 } from '../../../genie/internal.ts'
+import effectPathPkg from '../effect-path/package.json.genie.ts'
+import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -17,66 +18,64 @@ const peerDepNames = [
   'effect',
 ] as const
 
-const tuiReactPeerNames = Object.keys(tuiReactPkg.data.peerDependencies ?? {})
-
-export default packageJson({
-  name: '@overeng/megarepo',
-  ...privatePackageDefaults,
-  scripts: {
-    storybook: 'storybook dev -p 6007',
-    'storybook:build': 'storybook build',
-  },
-  exports: {
-    '.': './src/mod.ts',
-    './cli': './src/cli.ts',
-  },
-  publishConfig: {
-    access: 'public',
-    exports: {
-      '.': './dist/mod.js',
-      './cli': './dist/cli.js',
-    },
-  },
+const runtimeDeps = catalog.compose({
+  workspace: workspaceMember('packages/@overeng/megarepo'),
   dependencies: {
-    ...catalog.pick('@overeng/utils', '@overeng/effect-path', '@overeng/tui-react', 'react'),
-  },
-  // Inject tui-react so it resolves React from *this* package's .pnpm store,
-  // not from tui-react's own independent workspace store. Without this, pnpm
-  // workspace symlinks cause two physical React copies → "Invalid hook call".
-  // See: requirements.md R8 (singleton runtimes)
-  dependenciesMeta: {
-    '@overeng/tui-react': { injected: true },
+    workspace: [effectPathPkg, tuiReactPkg, utilsPkg],
+    external: catalog.pick('react'),
   },
   devDependencies: {
-    ...catalog.pick(
-      // Peer deps (for testing)
-      ...peerDepNames,
-      ...tuiReactPeerNames,
-      // Testing
-      '@effect/vitest',
-      '@types/bun',
-      '@types/node',
-      '@types/react',
-      'vitest',
-      // Storybook
-      'storybook',
-      '@storybook/react',
-      '@storybook/react-vite',
-      // xterm (terminal emulator for Storybook)
-      '@xterm/xterm',
-      '@xterm/addon-fit',
-      // Build tools
-      'react-dom',
-      'react-reconciler', // Peer dep of @overeng/tui-react
-      'vite',
-      '@vitejs/plugin-react',
-    ),
-    ...effectLspDevDeps(),
+    workspace: [tuiCorePkg],
+    external: {
+      ...catalog.pick(
+        ...peerDepNames,
+        '@effect/vitest',
+        '@types/bun',
+        '@types/node',
+        '@types/react',
+        'vitest',
+        'storybook',
+        '@storybook/react',
+        '@storybook/react-vite',
+        '@xterm/xterm',
+        '@xterm/addon-fit',
+        'react-dom',
+        'react-reconciler',
+        'typescript',
+        'vite',
+        '@vitejs/plugin-react',
+      ),
+    },
   },
   peerDependencies: {
-    // Expose @overeng/utils peer deps transitively (consumers need them)
-    ...utilsPkg.data.peerDependencies,
-    ...tuiReactPkg.data.peerDependencies,
-    ...catalog.peers(...peerDepNames),
+    workspace: [utilsPkg, tuiReactPkg],
+    external: catalog.pick(...peerDepNames),
   },
-} satisfies PackageJsonData)
+  mode: 'install',
+})
+
+export default packageJson(
+  {
+    name: '@overeng/megarepo',
+    ...privatePackageDefaults,
+    scripts: {
+      storybook: 'storybook dev -p 6007',
+      'storybook:build': 'storybook build',
+    },
+    exports: {
+      '.': './src/mod.ts',
+      './cli': './src/cli.ts',
+    },
+    publishConfig: {
+      access: 'public',
+      exports: {
+        '.': './dist/mod.js',
+        './cli': './dist/cli.js',
+      },
+    },
+    dependenciesMeta: {
+      '@overeng/tui-react': { injected: true },
+    },
+  },
+  runtimeDeps,
+)

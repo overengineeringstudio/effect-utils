@@ -3,9 +3,7 @@
 End-to-end smoke coverage for the `mk-pnpm-cli` builder.
 
 The harness builds the real `genie` and `megarepo` package outputs through Nix
-and verifies that the resulting binaries start successfully. It also runs the
-same `pnpm deploy --config.inject-workspace-packages=true --frozen-lockfile`
-shape used by the builder against the real package lockfiles.
+and verifies that the resulting binaries start successfully.
 
 ## Run
 

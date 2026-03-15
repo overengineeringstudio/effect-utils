@@ -11,3 +11,8 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+  tsgo:
+    url: github:Effect-TS/tsgo
+    inputs:
+      nixpkgs:
+        follows: nixpkgs

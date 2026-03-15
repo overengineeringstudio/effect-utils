@@ -49,6 +49,8 @@ export const LocalPaths: Story = {
       initialState={fixtures.createLocalPathsState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls"
+      cwd="~/local-dev"
     />
   ),
 }
@@ -62,6 +64,8 @@ export const ErrorState: Story = {
       initialState={fixtures.createErrorState()}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
+      command="mr ls"
+      cwd="~/unknown"
     />
   ),
 }
