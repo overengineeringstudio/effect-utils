@@ -105,6 +105,32 @@ export const buildSyncCommand = ({
   return parts.join(' ')
 }
 
+/** Build SyncOptions matching the real CLI contract where force/verbose/skippedMembers are optional */
+export const buildSyncOptions = ({
+  mode,
+  dryRun,
+  all,
+  verbose,
+  force,
+  skippedMembers,
+}: {
+  mode: 'apply' | 'fetch' | 'lock'
+  dryRun: boolean
+  all: boolean
+  verbose: boolean
+  force: boolean
+  skippedMembers?: readonly string[]
+}) => ({
+  mode,
+  dryRun,
+  all,
+  ...(verbose === true ? { verbose: true as const } : {}),
+  ...(force === true ? { force: true as const } : {}),
+  ...(skippedMembers !== undefined && skippedMembers.length > 0
+    ? { skippedMembers: [...skippedMembers] }
+    : {}),
+})
+
 /** Megarepo CLI flag argTypes for Storybook controls */
 export const flagArgTypes = {
   dryRun: {

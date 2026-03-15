@@ -13,7 +13,13 @@ import {
 } from '@overeng/tui-react/storybook'
 
 import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
-import { buildSyncCommand, flagArgTypes, MEMBERS, WORKSPACE } from '../../../_story-constants.ts'
+import {
+  buildSyncCommand,
+  buildSyncOptions,
+  flagArgTypes,
+  MEMBERS,
+  WORKSPACE,
+} from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {
@@ -62,13 +68,13 @@ export const WithErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: exampleSyncResultsWithErrors,
         members: exampleSyncResultsWithErrors.map((r) => r.name),
       }),
@@ -104,13 +110,13 @@ export const AllErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'error' as const, message: 'network timeout' },
           { name: MEMBERS.devTools, status: 'error' as const, message: 'authentication failed' },
@@ -151,13 +157,13 @@ export const SkippedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           { name: MEMBERS.devTools, status: 'skipped' as const, message: 'dirty worktree' },
@@ -202,13 +208,13 @@ export const MixedSkipped: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'already_synced' as const },
           { name: MEMBERS.devTools, status: 'skipped' as const, message: '5 uncommitted changes' },
@@ -265,13 +271,13 @@ export const RefMismatchDetected: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           {
@@ -328,19 +334,67 @@ export const Interrupted: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         _tag: 'Interrupted' as const,
         members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
         results: [
           { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           { name: MEMBERS.devTools, status: 'cloned' as const, ref: 'main' },
         ] satisfies MemberSyncResult[],
+      }),
+      [args.dryRun, args.all, args.verbose, args.force],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createBaseState(
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
+        )}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+      />
+    )
+  },
+}
+
+/** Members excluded via --only or --skip flags */
+export const WithSkippedMembers: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        options: buildSyncOptions({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+          skippedMembers: [MEMBERS.studioOrg, MEMBERS.homepage],
+        }),
+        results: [
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.appPlatform, status: 'already_synced' as const },
+          { name: MEMBERS.dotfiles, status: 'synced' as const, ref: 'main' },
+        ] satisfies MemberSyncResult[],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -376,13 +430,13 @@ export const FetchErrors: Story = {
       () => ({
         _tag: 'Error' as const,
         results: fetchWithErrors,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         syncErrorCount: 2,
         syncErrors: [
           {

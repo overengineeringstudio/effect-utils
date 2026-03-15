@@ -14,6 +14,7 @@ import {
 
 import {
   buildSyncCommand,
+  buildSyncOptions,
   flagArgTypes,
   MEMBERS,
   MEGAREPO_MEMBERS,
@@ -68,13 +69,13 @@ export const MixedResults: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: exampleSyncResults,
         members: exampleSyncResults.map((r) => r.name),
         nestedMegarepos: [MEMBERS.devTools],
@@ -112,13 +113,13 @@ export const AllUpToDate: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         workspace: {
           name: 'dev-workspace-blue',
           root: `${STORE_BASE}/github.com/alice/dev-workspace-blue/refs/heads/main/`,
@@ -158,13 +159,13 @@ export const InitialFetch: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         workspace: {
           name: 'new-workspace',
           root: `${STORE_BASE}/github.com/alice/new-workspace/refs/heads/main/`,
@@ -211,13 +212,13 @@ export const Updated: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fetchResults,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -257,13 +258,13 @@ export const WithNewBranches: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fetchWithNewBranches,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -302,13 +303,13 @@ export const RemovedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           { name: 'old-repo', status: 'removed' as const, message: '/store/old-repo-abc123' },
@@ -348,13 +349,13 @@ export const WithGenerators: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
@@ -396,13 +397,13 @@ export const SingleMember: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [{ name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' }],
         members: [MEMBERS.coreLib],
       }),
@@ -442,13 +443,13 @@ export const ManyMembers: Story = {
         status: 'already_synced' as const,
       }))
       return {
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         workspace: {
           name: 'large-workspace',
           root: `${STORE_BASE}/github.com/alice/large-workspace/refs/heads/main/`,
@@ -487,13 +488,13 @@ export const NestedMegarepos: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
           { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },

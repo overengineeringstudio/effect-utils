@@ -14,6 +14,7 @@ import {
 
 import {
   buildSyncCommand,
+  buildSyncOptions,
   flagArgTypes,
   MEGAREPO_MEMBERS,
   WORKSPACE,
@@ -83,13 +84,13 @@ export const WithLockSync: Story = {
         results: fetchResults,
         lockSyncResults: exampleLockSyncResults,
         ...nestedFields(args.all),
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -131,13 +132,13 @@ export const WithLockInputSync: Story = {
         results: fetchResults,
         lockSyncResults: fetchLockSyncResults,
         ...nestedFields(args.all),
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -179,13 +180,13 @@ export const WithSourceFileSync: Story = {
         results: fetchResults,
         lockSyncResults: fetchFullNixSync,
         ...nestedFields(args.all),
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -227,13 +228,13 @@ export const WithRefSync: Story = {
         results: fetchResults,
         lockSyncResults: exampleRefSyncResults,
         ...nestedFields(args.all),
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -276,13 +277,13 @@ export const WithSharedSourceSync: Story = {
         lockSyncResults: [],
         sharedSourceUpdates: exampleSharedSourceSync,
         ...nestedFields(args.all),
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -325,13 +326,13 @@ export const WithMixedSync: Story = {
         lockSyncResults: exampleMixedSyncResults,
         sharedSourceUpdates: exampleMixedSharedSourceSync,
         ...nestedFields(args.all),
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )

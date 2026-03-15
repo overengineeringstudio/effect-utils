@@ -12,12 +12,40 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { buildSyncCommand, CI_WORKSPACE, flagArgTypes, MEMBERS } from '../../../_story-constants.ts'
+import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import {
+  buildSyncCommand,
+  buildSyncOptions,
+  CI_WORKSPACE,
+  flagArgTypes,
+  MEGAREPO_MEMBERS,
+  MEMBERS,
+  WORKSPACE,
+} from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import * as sharedFixtures from '../_fixtures.ts'
-import { applyForceFlag, exampleLockSyncResults } from '../_fixtures.ts'
+import { applyForceFlag, exampleLockSyncResults, exampleNestedSyncTrees } from '../_fixtures.ts'
 import * as fixtures from './_fixtures.ts'
+
+/** Builds syncTree and nestedMegarepos fields based on --all flag */
+const nestedFields = ({
+  all,
+  root,
+  results,
+}: {
+  all: boolean
+  root: string
+  results: MemberSyncResult[]
+}) => ({
+  nestedMegarepos: all === true ? [] : [...MEGAREPO_MEMBERS],
+  syncTree: {
+    root,
+    results,
+    nestedMegarepos: all === true ? [] : [...MEGAREPO_MEMBERS],
+    nestedResults: all === true ? exampleNestedSyncTrees : [],
+  },
+})
 
 type StoryArgs = {
   height: number
@@ -58,13 +86,14 @@ export const FullApply: Story = {
       () => ({
         results: fixtures.applyResults,
         workspace: CI_WORKSPACE,
-        options: {
-          mode: 'apply' as const,
+        options: buildSyncOptions({
+          mode: 'apply',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({ all: args.all, root: CI_WORKSPACE.root, results: fixtures.applyResults }),
       }),
       [args.dryRun, args.verbose, args.all, args.force],
     )
@@ -107,13 +136,14 @@ export const PartialApply: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.applyPartial,
-        options: {
-          mode: 'apply' as const,
+        options: buildSyncOptions({
+          mode: 'apply',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({ all: args.all, root: WORKSPACE.root, results: fixtures.applyPartial }),
       }),
       [args.dryRun, args.verbose, args.all, args.force],
     )
@@ -158,13 +188,18 @@ export const WithErrors: Story = {
         _tag: 'Error' as const,
         results: fixtures.applyWithErrors,
         workspace: CI_WORKSPACE,
-        options: {
-          mode: 'apply' as const,
+        options: buildSyncOptions({
+          mode: 'apply',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({
+          all: args.all,
+          root: CI_WORKSPACE.root,
+          results: fixtures.applyWithErrors,
+        }),
         syncErrorCount: 2,
         syncErrors: [
           {
@@ -225,13 +260,13 @@ export const LockRequired: Story = {
           name: 'dev-workspace',
           root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/',
         },
-        options: {
-          mode: 'apply' as const,
+        options: buildSyncOptions({
+          mode: 'apply',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         syncErrorCount: 1,
         syncErrors: [
           {
@@ -270,13 +305,18 @@ export const WithLockSync: Story = {
         results: fixtures.applyWithLockSync,
         lockSyncResults: exampleLockSyncResults,
         workspace: CI_WORKSPACE,
-        options: {
-          mode: 'apply' as const,
+        options: buildSyncOptions({
+          mode: 'apply',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({
+          all: args.all,
+          root: CI_WORKSPACE.root,
+          results: fixtures.applyWithLockSync,
+        }),
       }),
       [args.dryRun, args.verbose, args.all, args.force],
     )
@@ -324,13 +364,14 @@ export const WithPinnedMembers: Story = {
       () => ({
         results,
         workspace: CI_WORKSPACE,
-        options: {
-          mode: 'apply' as const,
+        options: buildSyncOptions({
+          mode: 'apply',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({ all: args.all, root: CI_WORKSPACE.root, results }),
       }),
       [results, args.dryRun, args.verbose, args.all, args.force],
     )

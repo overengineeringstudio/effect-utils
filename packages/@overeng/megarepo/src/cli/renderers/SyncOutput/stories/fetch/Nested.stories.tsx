@@ -14,6 +14,7 @@ import {
 
 import {
   buildSyncCommand,
+  buildSyncOptions,
   flagArgTypes,
   MEGAREPO_MEMBERS,
   WORKSPACE,
@@ -79,13 +80,13 @@ export const TreeBasic: Story = {
         results: fetchResults,
         ...nestedFields(args.all),
         lockSyncResults: [...fetchLockSyncResults, ...exampleNestedLockSyncResults],
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -128,13 +129,13 @@ export const TreeVerbose: Story = {
         results: fetchResults,
         ...nestedFields(args.all),
         lockSyncResults: [...fetchLockSyncResults, ...exampleNestedLockSyncResults],
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -177,13 +178,13 @@ export const TreeDryRun: Story = {
         results: fetchResults,
         ...nestedFields(args.all),
         lockSyncResults: [...fetchLockSyncResults, ...exampleNestedLockSyncResults],
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -226,13 +227,13 @@ export const MegarepoHint: Story = {
         results: fetchResults,
         ...nestedFields(args.all),
         lockSyncResults: fetchLockSyncResults,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )

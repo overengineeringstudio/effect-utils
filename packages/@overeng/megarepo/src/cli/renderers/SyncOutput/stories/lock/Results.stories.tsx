@@ -12,11 +12,30 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { buildSyncCommand, flagArgTypes } from '../../../_story-constants.ts'
+import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import {
+  buildSyncCommand,
+  buildSyncOptions,
+  flagArgTypes,
+  MEGAREPO_MEMBERS,
+  WORKSPACE,
+} from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
+import { exampleNestedSyncTrees } from '../_fixtures.ts'
 import * as sharedFixtures from '../_fixtures.ts'
 import * as fixtures from './_fixtures.ts'
+
+/** Builds syncTree and nestedMegarepos fields based on --all flag */
+const nestedFields = ({ all, results }: { all: boolean; results: MemberSyncResult[] }) => ({
+  nestedMegarepos: all === true ? [] : [...MEGAREPO_MEMBERS],
+  syncTree: {
+    root: WORKSPACE.root,
+    results,
+    nestedMegarepos: all === true ? [] : [...MEGAREPO_MEMBERS],
+    nestedResults: all === true ? exampleNestedSyncTrees : [],
+  },
+})
 
 type StoryArgs = {
   height: number
@@ -56,13 +75,14 @@ export const AllRecorded: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.lockAllRecorded,
-        options: {
-          mode: 'lock' as const,
+        options: buildSyncOptions({
+          mode: 'lock',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({ all: args.all, results: fixtures.lockAllRecorded }),
       }),
       [args.dryRun, args.verbose, args.all, args.force],
     )
@@ -105,13 +125,14 @@ export const WithUpdates: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.lockWithUpdates,
-        options: {
-          mode: 'lock' as const,
+        options: buildSyncOptions({
+          mode: 'lock',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
+        ...nestedFields({ all: args.all, results: fixtures.lockWithUpdates }),
       }),
       [args.dryRun, args.verbose, args.all, args.force],
     )
@@ -151,22 +172,23 @@ export const WithUpdates: Story = {
 /** Some members skipped (dirty worktree, pinned) */
 export const WithSkipped: Story = {
   render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: sharedFixtures.applyForceFlag({
-          results: fixtures.lockWithSkipped,
-          force: args.force,
-        }),
-        options: {
-          mode: 'lock' as const,
+    const stateConfig = useMemo(() => {
+      const results = sharedFixtures.applyForceFlag({
+        results: fixtures.lockWithSkipped,
+        force: args.force,
+      })
+      return {
+        results,
+        options: buildSyncOptions({
+          mode: 'lock',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
-      }),
-      [args.dryRun, args.verbose, args.all, args.force],
-    )
+        }),
+        ...nestedFields({ all: args.all, results }),
+      }
+    }, [args.dryRun, args.verbose, args.all, args.force])
     return (
       <TuiStoryPreview
         View={SyncView}
@@ -204,22 +226,23 @@ export const WithSkipped: Story = {
 export const WithPinnedMembers: Story = {
   args: { force: false },
   render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: sharedFixtures.applyForceFlag({
-          results: fixtures.lockWithPinned,
-          force: args.force,
-        }),
-        options: {
-          mode: 'lock' as const,
+    const stateConfig = useMemo(() => {
+      const results = sharedFixtures.applyForceFlag({
+        results: fixtures.lockWithPinned,
+        force: args.force,
+      })
+      return {
+        results,
+        options: buildSyncOptions({
+          mode: 'lock',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
-      }),
-      [args.dryRun, args.verbose, args.all, args.force],
-    )
+        }),
+        ...nestedFields({ all: args.all, results }),
+      }
+    }, [args.dryRun, args.verbose, args.all, args.force])
     return (
       <TuiStoryPreview
         View={SyncView}

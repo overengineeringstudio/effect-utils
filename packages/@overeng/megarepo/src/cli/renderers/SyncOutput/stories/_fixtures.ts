@@ -414,7 +414,7 @@ export const exampleNestedLockSyncResults: MemberLockSyncResult[] = [
 export const createBaseState = (overrides?: Partial<SyncStateType>): SyncStateType => ({
   _tag: 'Success',
   workspace: WORKSPACE,
-  options: { mode: 'apply', dryRun: false, all: false, verbose: false },
+  options: { mode: 'apply', dryRun: false, all: false },
   members: [],
   activeMembers: [],
   results: [],
@@ -469,7 +469,7 @@ export const createPreflightFailedState = (opts: {
 }): SyncStateType =>
   createBaseState({
     _tag: 'PreflightFailed',
-    options: { mode: opts.mode, dryRun: false, all: false, verbose: false },
+    options: { mode: opts.mode, dryRun: false, all: false },
     preflightIssues: opts.issues,
   })
 
@@ -597,7 +597,7 @@ export const createCommandState = ({
   overrides: Partial<SyncStateType> & { results: MemberSyncResult[] }
 }): SyncStateType =>
   createBaseState({
-    options: { mode, dryRun: false, all: false, verbose: false, ...overrides.options },
+    options: { mode, dryRun: false, all: false, ...overrides.options },
     members: overrides.results.map((r) => r.name),
     ...overrides,
   })
@@ -616,7 +616,7 @@ export const createCommandTimeline = ({
   const results = finalState.results
   const members = finalState.members ?? results.map((r) => r.name)
   const workspace = finalState.workspace ?? WORKSPACE
-  const options = finalState.options ?? { mode, dryRun: false, all: false, verbose: false }
+  const options = finalState.options ?? { mode, dryRun: false, all: false }
   const lockSyncResults = finalState.lockSyncResults ?? []
   const sharedSourceUpdates = finalState.sharedSourceUpdates ?? []
   const syncErrors = finalState.syncErrors ?? []
