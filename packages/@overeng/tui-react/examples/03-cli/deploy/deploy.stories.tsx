@@ -305,7 +305,7 @@ export const Demo: Story = {
     },
     height: {
       description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
+      control: { type: 'range', min: 200, max: 1200, step: 50 },
     },
   },
   render: (args) => (
