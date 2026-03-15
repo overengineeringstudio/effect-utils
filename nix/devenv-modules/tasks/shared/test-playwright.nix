@@ -21,9 +21,11 @@
   installTask ? "pnpm:install",
   playwrightBin ? "playwright",
 }:
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+
   mkTestTask = pkg: {
     "test:pw:${pkg.name}" = {
       description = "Run playwright tests for ${pkg.name}";
@@ -33,14 +35,19 @@ let
     };
   };
 
+  guardedTasks = {
+    "test:pw:run" = {
+      guard = playwrightBin;
+      description = "Run all playwright e2e tests";
+      after = map (pkg: "test:pw:${pkg.name}") packages;
+    };
+  };
+
 in {
+  packages = cliGuard.fromTasks guardedTasks;
+
   tasks = lib.mkMerge (
     map mkTestTask packages
-    ++ [{
-      "test:pw:run" = {
-        description = "Run all playwright e2e tests";
-        after = map (pkg: "test:pw:${pkg.name}") packages;
-      };
-    }]
+    ++ [ (cliGuard.stripGuards guardedTasks) ]
   );
 }

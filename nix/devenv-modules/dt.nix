@@ -16,6 +16,10 @@
 # TODO: Remove once devenv supports defaultMode for tasks (https://github.com/cachix/devenv/issues/2417)
 { pkgs, ... }:
 {
+  # cli-guard passthrough: DT_PASSTHROUGH=1 lets task exec scripts call
+  # guarded CLIs. enterShell unsets it so interactive shell usage hits guards.
+  env.DT_PASSTHROUGH = "1";
+
   # Wrapper that runs tasks with --mode before so dependencies run automatically.
   # When OTEL is configured (otel-span on PATH + OTEL_EXPORTER_OTLP_ENDPOINT set),
   # wraps execution in an OTLP trace span for observability.
@@ -49,14 +53,16 @@
       # Clear TRACEPARENT to avoid inheriting stale context from devenv shell
       # re-evaluations. otel-span reads OTEL_TASK_TRACEPARENT instead (which
       # survives re-evaluations) and exports both for child processes.
-      if ! TRACEPARENT="" otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
+      # DT_PASSTHROUGH=1 bypasses cli-guard wrappers so tasks can call real binaries
+      if ! TRACEPARENT="" DT_PASSTHROUGH=1 otel-span run "dt" "$task_name" --log-url $_eval_attr --attr "dt.args=$*" \
         -- devenv tasks run "$@" --mode before $_dt_extra_args; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before" >&2
         exit 1
       fi
     else
       # No OTEL: run directly
-      if ! devenv tasks run "$@" --mode before $_dt_extra_args; then
+      # DT_PASSTHROUGH=1 bypasses cli-guard wrappers so tasks can call real binaries
+      if ! DT_PASSTHROUGH=1 devenv tasks run "$@" --mode before $_dt_extra_args; then
         echo "dt: task failed. Re-run with: devenv tasks run $* --mode before" >&2
         exit 1
       fi
@@ -67,6 +73,11 @@
 
   # Shell completions for bash/zsh with descriptions
   enterShell = ''
+    # Activate cli-guard wrappers for interactive shell usage.
+    # DT_PASSTHROUGH=1 was set via env (for task execution); unset it now
+    # so that direct CLI calls (e.g. `pnpm install`) show the guard message.
+    unset DT_PASSTHROUGH
+
     : "''${ZSH_VERSION:=}"
     # Shell completions for `dt` command (cached for performance)
     # Uses task config JSON for names and descriptions

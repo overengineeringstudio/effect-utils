@@ -11,13 +11,14 @@
 #   tasks."genie:run".after = [ "pnpm:install:genie" ];
 #   tasks."genie:watch".after = [ "pnpm:install:genie" ];
 #   tasks."genie:check".after = [ "pnpm:install:genie" ];
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-in
-{
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+
   tasks = {
     "genie:run" = {
+      guard = "genie";
       description = "Generate config files from .genie.ts sources";
       exec = trace.exec "genie:run" "genie";
       status = trace.status "genie:run" "binary" ''
@@ -28,12 +29,18 @@ in
       '';
     };
     "genie:watch" = {
+      guard = "genie";
       description = "Watch and regenerate config files";
       exec = "genie --watch";
     };
     "genie:check" = {
+      guard = "genie";
       description = "Check if generated files are up to date (CI)";
       exec = trace.exec "genie:check" "genie --check";
     };
   };
+in
+{
+  packages = cliGuard.fromTasks tasks;
+  tasks = cliGuard.stripGuards tasks;
 }
