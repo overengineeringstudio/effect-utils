@@ -114,7 +114,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   const nestedByParent = useMemo(() => {
     const map = new Map<string, MegarepoSyncTree>()
     for (const nested of syncTree.nestedResults) {
-      const segments = nested.root.split('/')
+      const segments = nested.root.split('/').filter((s) => s.length > 0)
       const parentName = segments[segments.length - 1]
       if (parentName !== undefined) {
         map.set(parentName, nested)
