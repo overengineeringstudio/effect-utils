@@ -95,7 +95,10 @@ const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => 
 }
 
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
-  withAppendedNixConfig(`${devenvBinRef} tasks run ${args.join(' ')} --mode before`, opts)
+  withAppendedNixConfig(
+    `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+    opts,
+  )
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
