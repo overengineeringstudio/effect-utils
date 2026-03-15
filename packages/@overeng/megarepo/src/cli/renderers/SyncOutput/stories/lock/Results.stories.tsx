@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import * as sharedFixtures from '../_fixtures.ts'
@@ -40,22 +41,10 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: show what would be recorded without writing megarepo.lock',
-      control: { type: 'boolean' },
-    },
-    verbose: {
-      description: '--verbose: show detailed commit information',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all: sync nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force: include pinned members',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    verbose: flagArgTypes.verbose,
+    all: flagArgTypes.all,
+    force: flagArgTypes.force,
   },
 } satisfies Meta
 

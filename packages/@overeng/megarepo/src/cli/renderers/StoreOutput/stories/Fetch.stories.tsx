@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
 
@@ -44,10 +45,7 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: show what would happen without making changes',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
   },
 } satisfies Meta
 

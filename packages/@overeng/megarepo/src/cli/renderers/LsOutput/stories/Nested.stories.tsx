@@ -5,9 +5,10 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { LsApp } from '../mod.ts'
+import { flagArgTypes } from '../../_story-constants.ts'
 import { LsView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
 
@@ -27,14 +28,8 @@ export default {
     all: true,
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    all: {
-      description: '--all flag: show nested megarepo members recursively',
-      control: { type: 'boolean' },
-    },
+    height: commonArgTypes.height,
+    all: flagArgTypes.all,
   },
 } satisfies Meta
 

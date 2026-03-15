@@ -12,7 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { MEMBERS, MEGAREPO_MEMBERS } from '../../../_story-constants.ts'
+import { flagArgTypes, MEMBERS, MEGAREPO_MEMBERS } from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {
@@ -48,22 +48,10 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: show what would happen without making changes',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all: sync nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
-    verbose: {
-      description: '--verbose: show detailed information',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force: include pinned members',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    all: flagArgTypes.all,
+    verbose: flagArgTypes.verbose,
+    force: flagArgTypes.force,
   },
 } satisfies Meta
 

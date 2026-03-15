@@ -72,3 +72,23 @@ export const STANDARD_MEMBERS = [
   MEMBERS.coreLib,
   MEMBERS.studioOrg,
 ] as const
+
+/** Megarepo CLI flag argTypes for Storybook controls */
+export const flagArgTypes = {
+  dryRun: {
+    description: '--dry-run: show what would happen without making changes',
+    control: { type: 'boolean' },
+  },
+  all: {
+    description: '--all: include nested megarepos recursively',
+    control: { type: 'boolean' },
+  },
+  verbose: {
+    description: '--verbose: show detailed information',
+    control: { type: 'boolean' },
+  },
+  force: {
+    description: '--force: include pinned members',
+    control: { type: 'boolean' },
+  },
+} as const

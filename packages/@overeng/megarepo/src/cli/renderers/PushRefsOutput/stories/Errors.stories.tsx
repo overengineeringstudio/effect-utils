@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import { PushRefsApp } from '../mod.ts'
 import { PushRefsView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
@@ -35,10 +36,7 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: preview changes without writing files',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
   },
 } satisfies Meta
 

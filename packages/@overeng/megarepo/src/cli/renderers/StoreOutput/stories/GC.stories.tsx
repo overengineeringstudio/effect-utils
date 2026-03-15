@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
 
@@ -42,18 +43,9 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run flag: show what would be removed without removing',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force flag: remove dirty worktrees too',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all flag: remove all worktrees',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    force: flagArgTypes.force,
+    all: flagArgTypes.all,
   },
 } satisfies Meta
 

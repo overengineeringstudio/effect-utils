@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import { PinApp } from '../mod.ts'
 import { PinView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
@@ -35,10 +36,7 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: preview changes without applying',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
   },
 } satisfies Meta
 

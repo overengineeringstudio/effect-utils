@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
@@ -23,10 +23,7 @@ export default {
     height: 400,
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
+    height: commonArgTypes.height,
   },
 } satisfies Meta
 

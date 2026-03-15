@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import type { ExecStateType } from '../mod.ts'
 import { ExecApp } from '../mod.ts'
 import { ExecView } from '../view.tsx'
@@ -40,10 +41,7 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    verbose: {
-      description: '--verbose flag',
-      control: { type: 'boolean' },
-    },
+    verbose: flagArgTypes.verbose,
     mode: {
       description: '--mode flag',
       control: { type: 'select' },
