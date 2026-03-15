@@ -116,13 +116,23 @@ export const localPathMembers: MemberInfo[] = [
 // State Factories
 // =============================================================================
 
-type SuccessStateOptions = { all?: boolean }
+type SuccessStateOptions = { all?: boolean; currentMemberPath?: readonly string[] }
 
 export const createDefaultState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: exampleMembers,
   all: options?.all ?? false,
   megarepoName: 'dev-workspace',
+  currentMemberPath: options?.currentMemberPath,
+})
+
+/** Default listing with scope dimming (user inside dev-tools) */
+export const createCurrentLocationState = (options?: SuccessStateOptions): LsStateType => ({
+  _tag: 'Success',
+  members: exampleMembers,
+  all: options?.all ?? false,
+  megarepoName: 'dev-workspace',
+  currentMemberPath: options?.currentMemberPath ?? ['dev-tools'],
 })
 
 export const createWithAllFlagState = (options?: SuccessStateOptions): LsStateType => ({

@@ -314,6 +314,30 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 - **Copy-paste ready hints**: Error messages include concrete values, not placeholders
 - **Filtering with `--only`/`--skip`**: Bulk commands like `sync` use these for member filtering
 
+### CLI Output Scope Model
+
+Member-list views use a **spotlight** rendering model:
+
+- **Default mode:** Items inside the current scope (cwd-based) render
+  with full styling, while items outside the scope are fully dimmed.
+  When no scope is active (e.g. user is at the workspace root), all
+  items render normally.
+- **`--all` mode:** No dimming — all items render with full styling.
+  The user asked for the full picture, so everything is shown equally.
+
+| Command     | Scope definition                                         |
+|-------------|----------------------------------------------------------|
+| `mr status` | Member the user's cwd is inside (`currentMemberPath`)    |
+| `mr ls`     | Same — cwd position within the member tree               |
+| `mr fetch`  | Planned: member(s) actively syncing or that changed      |
+| `mr exec`   | Planned: member(s) being executed on (vs skipped)        |
+
+**Enforcement:** Scope is provided via React context (`ScopeContext`).
+The shared `MemberRow` component reads scope and applies `dim` to all
+text elements when out of scope. Individual renderers never manually
+set `dim` for scope purposes — they set `inScope` on the context and
+`MemberRow` handles the rest.
+
 ### Core Commands
 
 #### `mr fetch --apply`

@@ -55,9 +55,8 @@ export const NestedMegarepos: Story = {
   ),
 }
 
-/** Deeply nested megarepos with current location highlighting */
+/** Deeply nested megarepos with current location scope dimming */
 export const DeeplyNested: Story = {
-  args: { all: true },
   render: (args) => (
     <TuiStoryPreview
       View={StatusView}
@@ -65,15 +64,14 @@ export const DeeplyNested: Story = {
       initialState={fixtures.createDeeplyNestedState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
-      command="mr status --all"
+      command={args.all ? 'mr status --all' : 'mr status'}
       cwd="~/deep-workspace"
     />
   ),
 }
 
-/** Current location highlighting */
+/** Current location scope dimming — toggle --all to see dimming disabled */
 export const CurrentLocation: Story = {
-  args: { all: true },
   render: (args) => (
     <TuiStoryPreview
       View={StatusView}
@@ -81,7 +79,7 @@ export const CurrentLocation: Story = {
       initialState={fixtures.createCurrentLocationState({ all: args.all })}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
-      command="mr status --all"
+      command={args.all ? 'mr status --all' : 'mr status'}
       cwd="~/mr-all-blue"
     />
   ),

@@ -11,6 +11,7 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols, unicodeSymbols } from '@overeng/tui-react'
 
+import { MemberRow, ScopeProvider } from '../../components/mod.ts'
 import type { LsState, MemberInfo } from './schema.ts'
 
 // =============================================================================
@@ -69,6 +70,8 @@ export interface LsViewProps {
  * - An error message (error)
  *
  * When --all is used, shows hierarchical display grouped by megarepo.
+ * Scope dimming: in default mode, dims all members except the one the user's cwd is inside.
+ * When --all is used, no dimming — everything renders equally.
  */
 export const LsView = ({ stateAtom }: LsViewProps) => {
   const state = useTuiAtomValue(stateAtom)
@@ -85,7 +88,8 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   }
 
   // Handle success state
-  const { members, all, megarepoName } = state
+  const { members, all, megarepoName, currentMemberPath } = state
+  const scopePath = all === true ? undefined : currentMemberPath
 
   if (members.length === 0) {
     return <Text dim>No members in megarepo</Text>
@@ -97,25 +101,27 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
       <Box flexDirection="column">
         {members.map((member, i) => {
           const isLast = i === members.length - 1
+          const isInScope = scopePath === undefined || scopePath[0] === member.name
           return (
-            <Box key={member.name} flexDirection="row">
-              <Text dim>{isLast === true ? tree.last : tree.middle}</Text>
-              <Text bold>{member.name}</Text>
-              <Text dim> ({member.source})</Text>
-              {member.isMegarepo !== undefined && (
-                <>
-                  <Text> </Text>
-                  <Text color="cyan">[megarepo]</Text>
-                </>
-              )}
-            </Box>
+            <ScopeProvider key={member.name} inScope={isInScope}>
+              <MemberRow prefix={isLast === true ? tree.last : tree.middle}>
+                <Text bold>{member.name}</Text>
+                <Text dim> ({member.source})</Text>
+                {member.isMegarepo !== undefined && (
+                  <>
+                    <Text> </Text>
+                    <Text color="cyan">[megarepo]</Text>
+                  </>
+                )}
+              </MemberRow>
+            </ScopeProvider>
           )
         })}
       </Box>
     )
   }
 
-  // Hierarchical display for --all mode
+  // Hierarchical display for --all mode (no scope dimming)
   const groups = groupByOwner(members)
   const sortedPaths = Array.from(groups.keys()).toSorted()
 
@@ -141,8 +147,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
             {groupMembers.map((member, i) => {
               const isLast = i === groupMembers.length - 1
               return (
-                <Box key={member.name} flexDirection="row">
-                  <Text dim>{isLast === true ? tree.last : tree.middle}</Text>
+                <MemberRow key={member.name} prefix={isLast === true ? tree.last : tree.middle}>
                   <Text bold>{member.name}</Text>
                   <Text dim> ({member.source})</Text>
                   {member.isMegarepo !== undefined && (
@@ -151,7 +156,7 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
                       <Text color="cyan">[megarepo]</Text>
                     </>
                   )}
-                </Box>
+                </MemberRow>
               )
             })}
 

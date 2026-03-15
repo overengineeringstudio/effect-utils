@@ -14,7 +14,13 @@ import { run } from '@overeng/tui-react'
 
 import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
-import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import {
+  Cwd,
+  detectCurrentMemberPath,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+} from '../context.ts'
 import { LsApp, LsView } from '../renderers/LsOutput/mod.ts'
 import type { MemberInfo } from '../renderers/LsOutput/schema.ts'
 
@@ -142,7 +148,14 @@ export const lsCommand = Cli.Command.make(
               all,
             })
 
-            tui.dispatch({ _tag: 'SetMembers', members, all, megarepoName })
+            // Detect current member path for scope dimming
+            const currentMemberPath = detectCurrentMemberPath({
+              cwd,
+              megarepoRoot: root.value,
+              all,
+            })
+
+            tui.dispatch({ _tag: 'SetMembers', members, all, megarepoName, currentMemberPath })
           }),
         { view: React.createElement(LsView, { stateAtom: LsApp.stateAtom }) },
       ).pipe(Effect.provide(outputModeLayer(output)))

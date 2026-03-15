@@ -95,6 +95,21 @@ export const ManyMembers: Story = {
   ),
 }
 
+/** Current location scope dimming — toggle --all to disable dimming */
+export const CurrentLocation: Story = {
+  render: (args) => (
+    <TuiStoryPreview
+      View={LsView}
+      app={LsApp}
+      initialState={fixtures.createCurrentLocationState({ all: args.all })}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+      command={args.all ? 'mr ls --all' : 'mr ls'}
+      cwd="~/workspace"
+    />
+  ),
+}
+
 /** Workspace where all members are megarepos */
 export const AllMegarepos: Story = {
   render: (args) => (

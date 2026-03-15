@@ -981,7 +981,7 @@ export const createNestedMegareposState = (options?: StateOptions): typeof Statu
 export const createCurrentLocationState = (options?: StateOptions): typeof StatusState.Type => ({
   workspaceSyncNeeded: false,
   lockSyncNeeded: false,
-  all: options?.all ?? true,
+  all: options?.all ?? false,
   name: 'mr-all-blue',
   root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
   syncNeeded: false,
@@ -1040,13 +1040,13 @@ export const createCurrentLocationState = (options?: StateOptions): typeof Statu
       },
     },
   ],
-  currentMemberPath: ['dev-tools', 'tui-react'],
+  currentMemberPath: options?.all === true ? ['dev-tools', 'tui-react'] : ['dev-tools'],
 })
 
 export const createDeeplyNestedState = (options?: StateOptions): typeof StatusState.Type => ({
   workspaceSyncNeeded: false,
   lockSyncNeeded: false,
-  all: options?.all ?? true,
+  all: options?.all ?? false,
   name: 'deep-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/deep-workspace/refs/heads/main',
   syncNeeded: false,
@@ -1123,7 +1123,7 @@ export const createDeeplyNestedState = (options?: StateOptions): typeof StatusSt
       },
     },
   ],
-  currentMemberPath: ['level-1', 'level-2a', 'level-3'],
+  currentMemberPath: options?.all === true ? ['level-1', 'level-2a', 'level-3'] : ['level-1'],
 })
 
 export const createMultipleProblemsState = (options?: StateOptions): typeof StatusState.Type => ({
