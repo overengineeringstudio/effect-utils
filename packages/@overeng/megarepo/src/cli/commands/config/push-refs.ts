@@ -104,7 +104,7 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
 
       for (const [nestedMemberName, nestedSourceString] of Object.entries(nestedConfig.members)) {
         // Apply --only filter
-        if (Option.isSome(onlyMembers) && !onlyMembers.value.has(nestedMemberName)) continue
+        if (Option.isSome(onlyMembers) === true && !onlyMembers.value.has(nestedMemberName)) continue
 
         const nestedUrlKey = getMemberUrlKey(nestedSourceString)
         if (nestedUrlKey === undefined) continue
@@ -150,6 +150,7 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
 // CLI Command
 // =============================================================================
 
+/** CLI command to propagate member refs from the parent megarepo to nested megarepo configs */
 export const pushRefsCommand = Cli.Command.make(
   'push-refs',
   {
@@ -175,7 +176,7 @@ export const pushRefsCommand = Cli.Command.make(
           const cwd = yield* Cwd
           const root = yield* findMegarepoRoot(cwd)
 
-          if (Option.isNone(root)) {
+          if (Option.isNone(root) === true) {
             tui.dispatch({
               _tag: 'SetError',
               error: 'not_in_megarepo',
@@ -200,15 +201,15 @@ export const pushRefsCommand = Cli.Command.make(
           )
 
           // Find nested megarepos and push refs
-          const processLevel = (
-            levelRoot: AbsoluteDirPath,
-            levelMembers: Record<string, string>,
-          ): Effect.Effect<ReadonlyArray<NestedResult>, Error, FileSystem.FileSystem> =>
+          const processLevel = (options: {
+            levelRoot: AbsoluteDirPath
+            levelMembers: Record<string, string>
+          }): Effect.Effect<ReadonlyArray<NestedResult>, Error, FileSystem.FileSystem> =>
             Effect.gen(function* () {
               const results: NestedResult[] = []
 
-              for (const memberName of Object.keys(levelMembers)) {
-                const memberPath = getMemberPath({ megarepoRoot: levelRoot, name: memberName })
+              for (const memberName of Object.keys(options.levelMembers)) {
+                const memberPath = getMemberPath({ megarepoRoot: options.levelRoot, name: memberName })
                 const nestedConfigPath = EffectPath.ops.join(
                   memberPath,
                   EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
@@ -219,7 +220,7 @@ export const pushRefsCommand = Cli.Command.make(
                 const result = yield* pushRefsToNested({
                   nestedName: memberName,
                   nestedRoot: memberPath,
-                  parentMembers: levelMembers,
+                  parentMembers: options.levelMembers,
                   dryRun,
                   only,
                 })
@@ -229,12 +230,12 @@ export const pushRefsCommand = Cli.Command.make(
                 }
 
                 // Recurse into nested megarepos if --all
-                if (all) {
+                if (all === true) {
                   const nestedContent = yield* fs.readFileString(nestedConfigPath)
                   const nestedConfig = yield* Schema.decodeUnknown(
                     Schema.parseJson(MegarepoConfig),
                   )(nestedContent)
-                  const nestedResults = yield* processLevel(memberPath, nestedConfig.members)
+                  const nestedResults = yield* processLevel({ levelRoot: memberPath, levelMembers: nestedConfig.members })
                   results.push(...nestedResults)
                 }
               }
@@ -242,7 +243,7 @@ export const pushRefsCommand = Cli.Command.make(
               return results
             })
 
-          const results = yield* processLevel(megarepoRoot, config.members)
+          const results = yield* processLevel({ levelRoot: megarepoRoot, levelMembers: config.members })
 
           if (results.length === 0) {
             tui.dispatch({ _tag: 'SetAligned' })

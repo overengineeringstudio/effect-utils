@@ -12,10 +12,12 @@ import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 import { StatusIcon, Separator } from '../../components/mod.ts'
 import type { PushRefsState } from './schema.ts'
 
+/** Props for the push-refs TUI view component */
 export interface PushRefsViewProps {
   stateAtom: Atom.Atom<PushRefsState>
 }
 
+/** Renders the push-refs command output based on current state */
 export const PushRefsView = ({ stateAtom }: PushRefsViewProps) => {
   const state = useTuiAtomValue(stateAtom)
   const symbols = useSymbols()

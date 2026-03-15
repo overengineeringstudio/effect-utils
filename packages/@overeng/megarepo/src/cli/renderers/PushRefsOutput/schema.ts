@@ -11,6 +11,7 @@ import { Schema } from 'effect'
 // Nested types
 // =============================================================================
 
+/** Schema for a single ref source change on a nested member */
 export const RefUpdateSchema = Schema.Struct({
   nestedMember: Schema.String,
   sharedMemberName: Schema.String,
@@ -18,6 +19,7 @@ export const RefUpdateSchema = Schema.Struct({
   newSource: Schema.String,
 })
 
+/** Schema for aggregated ref updates within a single nested megarepo */
 export const NestedResultSchema = Schema.Struct({
   name: Schema.String,
   updates: Schema.Array(RefUpdateSchema),
@@ -28,8 +30,10 @@ export const NestedResultSchema = Schema.Struct({
 // States
 // =============================================================================
 
+/** Initial state before any scanning has started */
 export const PushRefsIdleState = Schema.TaggedStruct('Idle', {})
 
+/** State while scanning nested megarepo configs */
 export const PushRefsScanningState = Schema.TaggedStruct('Scanning', {})
 
 /** All nested megarepo refs already match the parent */
@@ -42,11 +46,13 @@ export const PushRefsResultState = Schema.TaggedStruct('Result', {
   dryRun: Schema.Boolean,
 })
 
+/** Terminal error state with error details */
 export const PushRefsErrorState = Schema.TaggedStruct('Error', {
   error: Schema.String,
   message: Schema.String,
 })
 
+/** Union of all possible push-refs TUI states */
 export const PushRefsState = Schema.Union(
   PushRefsIdleState,
   PushRefsScanningState,
@@ -61,6 +67,7 @@ export type PushRefsState = typeof PushRefsState.Type
 // Actions
 // =============================================================================
 
+/** Union of all actions dispatched to the push-refs reducer */
 export const PushRefsAction = Schema.Union(
   Schema.TaggedStruct('SetScanning', {}),
   Schema.TaggedStruct('SetAligned', {}),
@@ -81,6 +88,7 @@ export type PushRefsAction = typeof PushRefsAction.Type
 // Reducer
 // =============================================================================
 
+/** Pure state transition function for push-refs actions */
 export const pushRefsReducer = ({
   state: _state,
   action,

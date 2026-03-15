@@ -49,17 +49,6 @@ export interface SyncViewProps {
 }
 
 // =============================================================================
-// Tree Symbols
-// =============================================================================
-
-const tree = {
-  middle: unicodeSymbols.tree.branch,
-  last: unicodeSymbols.tree.last,
-  vertical: unicodeSymbols.tree.vertical,
-  empty: unicodeSymbols.tree.empty,
-}
-
-// =============================================================================
 // Main View Component
 // =============================================================================
 
@@ -472,6 +461,17 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       )}
     </Box>
   )
+}
+
+// =============================================================================
+// Tree Symbols
+// =============================================================================
+
+const tree = {
+  middle: unicodeSymbols.tree.branch,
+  last: unicodeSymbols.tree.last,
+  vertical: unicodeSymbols.tree.vertical,
+  empty: unicodeSymbols.tree.empty,
 }
 
 // =============================================================================

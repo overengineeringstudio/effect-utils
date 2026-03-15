@@ -20,13 +20,13 @@
 export const STORE_BASE = '/Users/dev/.megarepo' as const
 
 /** Helper to construct a valid store worktree path */
-export const storePath = (source: string, ref: string) =>
+export const storePath = ({ source, ref }: { source: string; ref: string }) =>
   `${STORE_BASE}/github.com/${source}/refs/heads/${ref}/` as const
 
 /** Default workspace used in most stories */
 export const WORKSPACE = {
   name: 'dev-workspace',
-  root: storePath('alice/dev-workspace', 'main'),
+  root: storePath({ source: 'alice/dev-workspace', ref: 'main' }),
 } as const
 
 /** CI workspace used in apply/deploy stories */
