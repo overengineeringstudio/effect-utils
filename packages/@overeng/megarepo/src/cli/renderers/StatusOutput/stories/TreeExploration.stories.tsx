@@ -12,11 +12,13 @@
  * - H1 vs H2 vs H3 (location highlighting)
  */
 
+import type { Atom } from '@effect-atom/atom'
 import type { Meta, StoryObj } from '@storybook/react'
+import { Schema } from 'effect'
 import React from 'react'
 
-import { Box, Text, Tree, unicodeSymbols } from '@overeng/tui-react'
-import { ALL_OUTPUT_TABS, createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { Box, Text, Tree, createTuiApp, unicodeSymbols, useTuiAtomValue } from '@overeng/tui-react'
+import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StatusApp } from '../mod.ts'
 import type { MemberStatus } from '../schema.ts'
@@ -387,10 +389,94 @@ const TreeT3 = ({
 )
 
 // =============================================================================
-// Static app for exploration previews
+// Exploration App — state-driven so Storybook controls trigger re-renders
 // =============================================================================
 
-const ExplorationApp = createStaticApp()
+interface ExplorationState {
+  readonly treeVariant: TreeVariant
+  readonly highlightVariant: HighlightVariant
+  readonly location: LocationVariant
+}
+
+const ExplorationApp = createTuiApp({
+  stateSchema: Schema.Struct({
+    treeVariant: Schema.Literal('T1', 'T2', 'T3'),
+    highlightVariant: Schema.Literal('H1', 'H2', 'H3'),
+    location: Schema.Literal('root', 'top-member', 'nested-member', 'none'),
+  }),
+  actionSchema: Schema.Never,
+  initial: {
+    treeVariant: 'T1' as TreeVariant,
+    highlightVariant: 'H2' as HighlightVariant,
+    location: 'nested-member' as LocationVariant,
+  },
+  reducer: ({ state }) => state,
+})
+
+const ExplorationView = ({ stateAtom }: { stateAtom: Atom.Atom<ExplorationState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+  const TreeComponent =
+    state.treeVariant === 'T1' ? TreeT1 : state.treeVariant === 'T2' ? TreeT2 : TreeT3
+
+  return (
+    <Box>
+      <Box>
+        <Text bold dim>
+          {'─── Variant Legend '}
+          {'─'.repeat(50)}
+        </Text>
+      </Box>
+      <Text dim>T1: Full tree from root (├── └── │)</Text>
+      <Text dim>T2: Full tree + blank lines between megarepo groups</Text>
+      <Text dim>T3: Indented list, tree chars only for nesting</Text>
+      <Text dim>H1: No highlighting</Text>
+      <Text dim>H2: Path highlighting (ancestor=cyan, current=cyan+bg)</Text>
+      <Text dim>H3: Current-only highlighting (current=cyan+bg, no ancestor)</Text>
+      <Text> </Text>
+      <Box>
+        <Text bold dim>
+          {'─── Preview '}
+          {'─'.repeat(57)}
+        </Text>
+      </Box>
+      <Text> </Text>
+      <TreeComponent highlight={state.highlightVariant} location={state.location} />
+      <Text> </Text>
+      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
+    </Box>
+  )
+}
+
+const SideBySideView = ({ stateAtom }: { stateAtom: Atom.Atom<ExplorationState> }) => {
+  const state = useTuiAtomValue(stateAtom)
+
+  return (
+    <Box>
+      <Text bold color="cyan">
+        T1: Full tree
+      </Text>
+      <TreeT1 highlight={state.highlightVariant} location={state.location} />
+      <Text> </Text>
+      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
+      <Text> </Text>
+      <Text> </Text>
+      <Text bold color="cyan">
+        T2: Full tree + spacing
+      </Text>
+      <TreeT2 highlight={state.highlightVariant} location={state.location} />
+      <Text> </Text>
+      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
+      <Text> </Text>
+      <Text> </Text>
+      <Text bold color="cyan">
+        T3: Indented list
+      </Text>
+      <TreeT3 highlight={state.highlightVariant} location={state.location} />
+      <Text> </Text>
+      <Text dim>5 direct · 3 nested · 8/8 synced</Text>
+    </Box>
+  )
+}
 
 // =============================================================================
 // Story
@@ -439,94 +525,40 @@ const defaultArgTypes = {
 export const Exploration: Story = {
   args: defaultArgs,
   argTypes: defaultArgTypes,
-  render: (args) => {
-    const TreeComponent =
-      args.treeVariant === 'T1' ? TreeT1 : args.treeVariant === 'T2' ? TreeT2 : TreeT3
-
-    const ExplorationView = () => (
-      <Box>
-        <Box>
-          <Text bold dim>
-            {'─── Variant Legend '}
-            {'─'.repeat(50)}
-          </Text>
-        </Box>
-        <Text dim>T1: Full tree from root (├── └── │)</Text>
-        <Text dim>T2: Full tree + blank lines between megarepo groups</Text>
-        <Text dim>T3: Indented list, tree chars only for nesting</Text>
-        <Text dim>H1: No highlighting</Text>
-        <Text dim>H2: Path highlighting (ancestor=cyan, current=cyan+bg)</Text>
-        <Text dim>H3: Current-only highlighting (current=cyan+bg, no ancestor)</Text>
-        <Text> </Text>
-        <Box>
-          <Text bold dim>
-            {'─── Preview '}
-            {'─'.repeat(57)}
-          </Text>
-        </Box>
-        <Text> </Text>
-        <TreeComponent highlight={args.highlightVariant} location={args.location} />
-        <Text> </Text>
-        <Text dim>5 direct · 3 nested · 8/8 synced</Text>
-      </Box>
-    )
-
-    return (
-      <TuiStoryPreview
-        View={ExplorationView}
-        app={ExplorationApp}
-        initialState={null}
-        height={args.height}
-        tabs={ALL_OUTPUT_TABS}
-        command="mr status --all"
-      />
-    )
-  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={ExplorationView}
+      app={ExplorationApp}
+      initialState={{
+        treeVariant: args.treeVariant,
+        highlightVariant: args.highlightVariant,
+        location: args.location,
+      }}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+      command="mr status --all"
+    />
+  ),
 }
 
 /** Side-by-side comparison of all tree variants */
 export const SideBySide: Story = {
   args: { ...defaultArgs, height: 800 },
   argTypes: defaultArgTypes,
-  render: (args) => {
-    const SideBySideView = () => (
-      <Box>
-        <Text bold color="cyan">
-          T1: Full tree
-        </Text>
-        <TreeT1 highlight={args.highlightVariant} location={args.location} />
-        <Text> </Text>
-        <Text dim>5 direct · 3 nested · 8/8 synced</Text>
-        <Text> </Text>
-        <Text> </Text>
-        <Text bold color="cyan">
-          T2: Full tree + spacing
-        </Text>
-        <TreeT2 highlight={args.highlightVariant} location={args.location} />
-        <Text> </Text>
-        <Text dim>5 direct · 3 nested · 8/8 synced</Text>
-        <Text> </Text>
-        <Text> </Text>
-        <Text bold color="cyan">
-          T3: Indented list
-        </Text>
-        <TreeT3 highlight={args.highlightVariant} location={args.location} />
-        <Text> </Text>
-        <Text dim>5 direct · 3 nested · 8/8 synced</Text>
-      </Box>
-    )
-
-    return (
-      <TuiStoryPreview
-        View={SideBySideView}
-        app={ExplorationApp}
-        initialState={null}
-        height={args.height}
-        tabs={ALL_OUTPUT_TABS}
-        command="mr status --all"
-      />
-    )
-  },
+  render: (args) => (
+    <TuiStoryPreview
+      View={SideBySideView}
+      app={ExplorationApp}
+      initialState={{
+        treeVariant: args.treeVariant,
+        highlightVariant: args.highlightVariant,
+        location: args.location,
+      }}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+      command="mr status --all"
+    />
+  ),
 }
 
 /** Current status output (baseline) for comparison */
