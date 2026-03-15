@@ -67,13 +67,9 @@ export const pinCommand = Cli.Command.make(
       Cli.Options.withDescription('Show what would be changed without making changes'),
       Cli.Options.withDefault(false),
     ),
-    noStrict: Cli.Options.boolean('no-strict').pipe(
-      Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
-      Cli.Options.withDefault(false),
-    ),
     output: outputOption,
   },
-  ({ member, checkout, dryRun, noStrict, output }) =>
+  ({ member, checkout, dryRun, output }) =>
     run(
       PinApp,
       (tui) =>
@@ -144,13 +140,13 @@ export const pinCommand = Cli.Command.make(
           const lockFileOpt = yield* readLockFile(lockPath)
           let lockFile = Option.getOrElse(lockFileOpt, () => createEmptyLockFile())
 
-          // Run pre-flight hygiene checks
+          // Run pre-flight hygiene checks (pin operates on existing worktrees like lock)
           yield* runPreflightChecks({
             memberNames: [member],
             config,
             lockFile,
             store,
-            strict: !noStrict,
+            mode: 'lock',
           })
 
           const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })

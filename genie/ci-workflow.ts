@@ -202,7 +202,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- fetch --apply --all --git-protocol=https${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all --git-protocol=https${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }

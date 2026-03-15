@@ -39,10 +39,6 @@ const sharedOptions = {
     ),
     Cli.Options.withDefault('auto' as const),
   ),
-  noStrict: Cli.Options.boolean('no-strict').pipe(
-    Cli.Options.withDescription('Bypass store hygiene pre-flight checks'),
-    Cli.Options.withDefault(false),
-  ),
   verbose: verboseOption,
 } as const
 
@@ -70,7 +66,6 @@ export const fetchCommand = Cli.Command.make(
     only,
     skip,
     gitProtocol,
-    noStrict,
     apply: applyAfter,
     createBranches,
     verbose,
@@ -85,7 +80,6 @@ export const fetchCommand = Cli.Command.make(
       skip,
       gitProtocol,
       createBranches,
-      noStrict,
       verbose,
       applyAfterFetch: applyAfter,
     }),

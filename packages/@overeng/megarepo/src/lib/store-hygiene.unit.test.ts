@@ -259,10 +259,11 @@ describe('store-hygiene', () => {
           config: makeTestConfig({ local: './path' }),
           lockFile: makeTestLockFile({}),
           store: makeTestStore(EffectPath.unsafe.absoluteDir('/tmp/test-store/')),
+          mode: 'lock',
         }),
       ))
 
-    it('fails with StoreHygieneError on error-severity issues', () =>
+    it('fails with StoreHygieneError on error-severity issues in lock mode', () =>
       runWithContext(
         Effect.gen(function* () {
           const result = yield* Effect.flip(
@@ -275,6 +276,7 @@ describe('store-hygiene', () => {
               store: makeTestStore(
                 EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
               ),
+              mode: 'lock',
             }),
           )
 
@@ -287,7 +289,7 @@ describe('store-hygiene', () => {
         }),
       ))
 
-    it('succeeds in non-strict mode even with errors', () =>
+    it('succeeds in apply mode with missing_bare (apply will clone)', () =>
       runWithContext(
         runPreflightChecks({
           memberNames: ['myrepo'],
@@ -296,7 +298,7 @@ describe('store-hygiene', () => {
             myrepo: { ref: 'main', commit: 'a'.repeat(40) },
           }),
           store: makeTestStore(EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/')),
-          strict: false,
+          mode: 'apply',
         }),
       ))
 
@@ -313,6 +315,7 @@ describe('store-hygiene', () => {
               store: makeTestStore(
                 EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
               ),
+              mode: 'lock',
             }),
           )
 
