@@ -495,7 +495,7 @@ const MembersTree = ({
                       ? currentPath.length > 1
                         ? currentPath.slice(1)
                         : undefined
-                      : undefined
+                      : []
                   }
                 />
               )}

@@ -180,7 +180,7 @@ const MemberTree = ({
                   ? currentPath.length > 1
                     ? currentPath.slice(1)
                     : undefined
-                  : undefined
+                  : []
               }
             />
           )}
