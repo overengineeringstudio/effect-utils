@@ -30,7 +30,7 @@ export const Flat: Story = {
       View={() => (
         <Tree<FileNode>
           items={[{ name: 'alpha' }, { name: 'beta' }, { name: 'gamma' }]}
-          renderItem={(item, { prefix }) => (
+          renderItem={({ item, prefix }) => (
             <Box flexDirection="row">
               <Text>{prefix}</Text>
               <Text>{item.name}</Text>
@@ -64,7 +64,7 @@ export const Nested: Story = {
             { name: 'tsconfig.json' },
           ]}
           getChildren={(item) => item.children}
-          renderItem={(item, { prefix }) => (
+          renderItem={({ item, prefix }) => (
             <Box flexDirection="row">
               <Text>{prefix}</Text>
               <Text bold={item.children !== undefined}>{item.name}</Text>
@@ -119,7 +119,7 @@ export const WithStatusIcons: Story = {
               { name: 'dotfiles', status: 'success', branch: 'main' },
             ]}
             getChildren={(item) => item.children}
-            renderItem={(item, { prefix }) => (
+            renderItem={({ item, prefix }) => (
               <Box flexDirection="row">
                 <Text>{prefix}</Text>
                 {statusIcon(item.status)}
@@ -150,7 +150,7 @@ export const WithChildContent: Story = {
             { name: 'livestore' },
           ]}
           getChildren={(item) => item.children}
-          renderItem={(item, { prefix }) => (
+          renderItem={({ item, prefix }) => (
             <Box flexDirection="row">
               <Text>{prefix}</Text>
               <Text color="green">✓</Text>
@@ -158,7 +158,7 @@ export const WithChildContent: Story = {
               <Text bold>{item.name}</Text>
             </Box>
           )}
-          renderChildContent={(item, { continuationPrefix }) =>
+          renderChildContent={({ item, continuationPrefix }) =>
             item.name === 'dotfiles' ? (
               <Box flexDirection="row">
                 <Text dim>{continuationPrefix} flake.lock updated (2 inputs)</Text>

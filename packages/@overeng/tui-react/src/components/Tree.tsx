@@ -10,10 +10,10 @@
  * <Tree
  *   items={files}
  *   getChildren={(f) => f.children}
- *   renderItem={(f, { prefix }) => (
+ *   renderItem={({ item, prefix }) => (
  *     <Box flexDirection="row">
  *       <Text>{prefix}</Text>
- *       <Text>{f.name}</Text>
+ *       <Text>{item.name}</Text>
  *     </Box>
  *   )}
  * />
@@ -52,10 +52,10 @@ export interface TreeProps<TItem> {
   /** Extract children for recursive rendering. Return undefined/empty for leaf nodes */
   readonly getChildren?: ((item: TItem) => readonly TItem[] | undefined) | undefined
   /** Render a single item. Must include the `prefix` in its output for tree lines to appear */
-  readonly renderItem: (item: TItem, context: TreeItemContext) => ReactNode
+  readonly renderItem: (args: { item: TItem } & TreeItemContext) => ReactNode
   /** Optional content to render below each item (e.g. details, lock info). Gets a continuation prefix that aligns with the tree */
   readonly renderChildContent?:
-    | ((item: TItem, context: TreeChildContentContext) => ReactNode)
+    | ((args: { item: TItem } & TreeChildContentContext) => ReactNode)
     | undefined
 }
 
@@ -102,13 +102,15 @@ const TreeLevel = <TItem,>(props: TreeLevelProps<TItem>): ReactNode => {
 
         return (
           <React.Fragment key={index}>
-            {renderItem(item, {
+            {renderItem({
+              item,
               prefix: `${prefix}${branchChar}`,
               isLast,
               index,
               depth,
             })}
-            {renderChildContent?.(item, {
+            {renderChildContent?.({
+              item,
               continuationPrefix: childPrefix,
               depth,
             })}

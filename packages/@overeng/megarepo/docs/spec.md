@@ -325,12 +325,12 @@ Member-list views use a **spotlight** rendering model:
 - **`--all` mode:** No dimming — all items render with full styling.
   The user asked for the full picture, so everything is shown equally.
 
-| Command     | Scope definition                                         |
-|-------------|----------------------------------------------------------|
-| `mr status` | Member the user's cwd is inside (`currentMemberPath`)    |
-| `mr ls`     | Same — cwd position within the member tree               |
-| `mr fetch`  | Planned: member(s) actively syncing or that changed      |
-| `mr exec`   | Planned: member(s) being executed on (vs skipped)        |
+| Command     | Scope definition                                      |
+| ----------- | ----------------------------------------------------- |
+| `mr status` | Member the user's cwd is inside (`currentMemberPath`) |
+| `mr ls`     | Same — cwd position within the member tree            |
+| `mr fetch`  | Planned: member(s) actively syncing or that changed   |
+| `mr exec`   | Planned: member(s) being executed on (vs skipped)     |
 
 **Enforcement:** Scope is provided via React context (`ScopeContext`).
 The shared `MemberRow` component reads scope and applies `dim` to all

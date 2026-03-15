@@ -30,7 +30,7 @@ describe('Tree', () => {
     const output = await renderAndCapture(
       <Tree
         items={items}
-        renderItem={(item, { prefix }) => (
+        renderItem={({ item, prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
@@ -59,7 +59,7 @@ describe('Tree', () => {
       <Tree
         items={items}
         getChildren={(item) => item.children}
-        renderItem={(item, { prefix }) => (
+        renderItem={({ item, prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
@@ -94,7 +94,7 @@ describe('Tree', () => {
       <Tree
         items={items}
         getChildren={(item) => item.children}
-        renderItem={(item, { prefix }) => (
+        renderItem={({ item, prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
@@ -115,7 +115,7 @@ describe('Tree', () => {
     const output = await renderAndCapture(
       <Tree
         items={[{ name: 'only' }]}
-        renderItem={(item: FileNode, { prefix }) => (
+        renderItem={({ item, prefix }: { item: FileNode; prefix: string }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
@@ -137,7 +137,7 @@ describe('Tree', () => {
       <Tree
         items={items}
         getChildren={(item) => item.children}
-        renderItem={(item, { prefix, depth, index }) => (
+        renderItem={({ item, prefix, depth, index }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>
@@ -166,13 +166,13 @@ describe('Tree', () => {
       <Tree
         items={items}
         getChildren={(item) => item.children}
-        renderItem={(item, { prefix }) => (
+        renderItem={({ item, prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
           </Box>
         )}
-        renderChildContent={(item, { continuationPrefix }) =>
+        renderChildContent={({ item, continuationPrefix }) =>
           item.name === 'project-a' ? (
             <Box flexDirection="row">
               <Text>{continuationPrefix}</Text>
@@ -197,13 +197,13 @@ describe('Tree', () => {
     const output = await renderAndCapture(
       <Tree
         items={items}
-        renderItem={(item, { prefix }) => (
+        renderItem={({ item, prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
           </Box>
         )}
-        renderChildContent={(item, { continuationPrefix }) =>
+        renderChildContent={({ item, continuationPrefix }) =>
           item.name === 'last' ? (
             <Box flexDirection="row">
               <Text>{continuationPrefix}extra</Text>
@@ -224,7 +224,7 @@ describe('Tree', () => {
     const output = await renderAndCapture(
       <Tree
         items={[]}
-        renderItem={(_item: FileNode, { prefix }) => (
+        renderItem={({ prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}item</Text>
           </Box>
@@ -242,7 +242,7 @@ describe('Tree', () => {
       <Tree
         items={items}
         getChildren={() => undefined}
-        renderItem={(item, { prefix }) => (
+        renderItem={({ item, prefix }) => (
           <Box flexDirection="row">
             <Text>{prefix}</Text>
             <Text>{item.name}</Text>
