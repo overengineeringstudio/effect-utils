@@ -107,7 +107,10 @@ export const AllUpToDate: Story = {
           verbose: args.verbose,
           force: args.force,
         },
-        workspace: { name: 'dev-workspace-blue', root: '/Users/dev/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
+        workspace: {
+          name: 'dev-workspace-blue',
+          root: '/Users/dev/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+        },
         results: exampleAllSynced,
         members: exampleAllSynced.map((r) => r.name),
       }),
@@ -144,7 +147,10 @@ export const InitialFetch: Story = {
           verbose: args.verbose,
           force: args.force,
         },
-        workspace: { name: 'new-workspace', root: '/Users/dev/.megarepo/github.com/alice/new-workspace/refs/heads/main/' },
+        workspace: {
+          name: 'new-workspace',
+          root: '/Users/dev/.megarepo/github.com/alice/new-workspace/refs/heads/main/',
+        },
         results: [
           { name: 'core-lib', status: 'cloned' as const, ref: 'main' },
           { name: 'dev-tools', status: 'cloned' as const, ref: 'main' },

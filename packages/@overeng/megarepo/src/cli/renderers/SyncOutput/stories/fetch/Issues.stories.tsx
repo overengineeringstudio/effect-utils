@@ -12,8 +12,8 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
-import { flagArgTypes } from '../../../_story-constants.ts'
 import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import { flagArgTypes } from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {

@@ -7,8 +7,8 @@ import React from 'react'
 
 import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
-import { StatusApp } from '../mod.ts'
 import { flagArgTypes } from '../../_story-constants.ts'
+import { StatusApp } from '../mod.ts'
 import { StatusView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
 

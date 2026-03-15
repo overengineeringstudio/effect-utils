@@ -57,7 +57,10 @@ export const FullApply: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fixtures.applyResults,
-        workspace: { name: 'dev-workspace-blue', root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
+        workspace: {
+          name: 'dev-workspace-blue',
+          root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+        },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -145,7 +148,10 @@ export const WithErrors: Story = {
       () => ({
         _tag: 'Error' as const,
         results: fixtures.applyWithErrors,
-        workspace: { name: 'dev-workspace-blue', root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
+        workspace: {
+          name: 'dev-workspace-blue',
+          root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+        },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -156,12 +162,14 @@ export const WithErrors: Story = {
         syncErrorCount: 2,
         syncErrors: [
           {
-            megarepoRoot: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+            megarepoRoot:
+              '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
             memberName: 'dev-tools',
             message: 'commit f0e1d2c not found — run mr fetch',
           },
           {
-            megarepoRoot: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+            megarepoRoot:
+              '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
             memberName: 'dotfiles',
             message: 'repository not found',
           },
@@ -203,7 +211,10 @@ export const LockRequired: Story = {
       () => ({
         _tag: 'Error' as const,
         results: [],
-        workspace: { name: 'dev-workspace', root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/' },
+        workspace: {
+          name: 'dev-workspace',
+          root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main/',
+        },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
@@ -248,7 +259,10 @@ export const WithLockSync: Story = {
       () => ({
         results: fixtures.applyWithLockSync,
         lockSyncResults: exampleLockSyncResults,
-        workspace: { name: 'dev-workspace-blue', root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/' },
+        workspace: {
+          name: 'dev-workspace-blue',
+          root: '/home/runner/.megarepo/github.com/alice/dev-workspace-blue/refs/heads/main/',
+        },
         options: {
           mode: 'apply' as const,
           dryRun: args.dryRun,
