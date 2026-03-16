@@ -172,9 +172,14 @@ export type OpenCodeRecord = typeof OpenCodeRecord.Type
 
 type SqliteValue = string | number | bigint | Uint8Array | null
 
+interface SqliteQueryArgs {
+  readonly sql: string
+  readonly params?: ReadonlyArray<SqliteValue>
+}
+
 interface ReadonlySqliteDatabase {
-  readonly get: (sql: string, params?: ReadonlyArray<SqliteValue>) => unknown
-  readonly all: (sql: string, params?: ReadonlyArray<SqliteValue>) => ReadonlyArray<unknown>
+  readonly get: (args: SqliteQueryArgs) => unknown
+  readonly all: (args: SqliteQueryArgs) => ReadonlyArray<unknown>
   readonly close: () => void
 }
 
@@ -199,8 +204,8 @@ interface BunSqliteModule {
 
 const hasBunRuntime = () => 'Bun' in globalThis
 
-const loadBunSqliteModule = () =>
-  Function('return import("bun:sqlite")')() as Promise<BunSqliteModule>
+// oxlint-disable-next-line eslint-plugin-import(no-dynamic-require) -- dynamic import needed to avoid bundler resolution of bun:sqlite
+const loadBunSqliteModule = () => import('bun:sqlite' as string) as Promise<BunSqliteModule>
 
 const openReadonlySqliteDatabase = Effect.fn(
   'AgentSessionIngest.OpenCode.openReadonlySqliteDatabase',
@@ -208,41 +213,47 @@ const openReadonlySqliteDatabase = Effect.fn(
   (path: string): Effect.Effect<ReadonlySqliteDatabase, SessionArtifactReadError> =>
     Effect.tryPromise({
       try: async () => {
-        if (hasBunRuntime()) {
+        if (hasBunRuntime() === true) {
           const { Database } = await loadBunSqliteModule()
           const database = new Database(path, { readonly: true })
-          const runQuery = <TValue>(
-            sql: string,
-            params: ReadonlyArray<SqliteValue> | undefined,
-            run: (query: BunSqliteQuery) => TValue,
-            runWithOne: (query: BunSqliteQuery, first: SqliteValue) => TValue,
-            runWithTwo: (query: BunSqliteQuery, first: SqliteValue, second: SqliteValue) => TValue,
-          ) => {
-            const query = database.query(sql)
-            if (params === undefined || params.length === 0) return run(query)
-            if (params.length === 1) return runWithOne(query, params[0]!)
-            if (params.length === 2) return runWithTwo(query, params[0]!, params[1]!)
+          const runQuery = <TValue>(options: {
+            readonly sql: string
+            readonly params: ReadonlyArray<SqliteValue> | undefined
+            readonly run: (query: BunSqliteQuery) => TValue
+            readonly runWithOne: (query: BunSqliteQuery, first: SqliteValue) => TValue
+            readonly runWithTwo: (
+              query: BunSqliteQuery,
+              first: SqliteValue,
+              second: SqliteValue,
+            ) => TValue
+          }) => {
+            const query = database.query(options.sql)
+            if (options.params === undefined || options.params.length === 0)
+              return options.run(query)
+            if (options.params.length === 1) return options.runWithOne(query, options.params[0]!)
+            if (options.params.length === 2)
+              return options.runWithTwo(query, options.params[0]!, options.params[1]!)
 
             throw new Error('OpenCode adapter only supports up to two SQLite bind parameters')
           }
 
           return {
-            get: (sql, params) =>
-              runQuery(
+            get: ({ sql, params }) =>
+              runQuery({
                 sql,
                 params,
-                (query) => query.get(),
-                (query, first) => query.get(first),
-                (query, first, second) => query.get(first, second),
-              ),
-            all: (sql, params) =>
-              runQuery(
+                run: (query) => query.get(),
+                runWithOne: (query, first) => query.get(first),
+                runWithTwo: (query, first, second) => query.get(first, second),
+              }),
+            all: ({ sql, params }) =>
+              runQuery({
                 sql,
                 params,
-                (query) => query.all(),
-                (query, first) => query.all(first),
-                (query, first, second) => query.all(first, second),
-              ),
+                run: (query) => query.all(),
+                runWithOne: (query, first) => query.all(first),
+                runWithTwo: (query, first, second) => query.all(first, second),
+              }),
             close: () => database.close(),
           } satisfies ReadonlySqliteDatabase
         }
@@ -250,8 +261,8 @@ const openReadonlySqliteDatabase = Effect.fn(
         const { DatabaseSync } = await import('node:sqlite')
         const database = new DatabaseSync(path, { readOnly: true })
         return {
-          get: (sql, params) => database.prepare(sql).get(...(params ?? [])),
-          all: (sql, params) => database.prepare(sql).all(...(params ?? [])),
+          get: ({ sql, params }) => database.prepare(sql).get(...(params ?? [])),
+          all: ({ sql, params }) => database.prepare(sql).all(...(params ?? [])),
           close: () => database.close(),
         } satisfies ReadonlySqliteDatabase
       },
@@ -354,13 +365,13 @@ export const makeOpenCodeAdapter = (options: {
     path: options.databasePath,
     f: (database) =>
       database
-        .all(
-          `
+        .all({
+          sql: `
           select id, time_archived
           from session
           order by time_updated desc
         `,
-        )
+        })
         .map((rawRow) => {
           const row = Schema.decodeUnknownSync(OpenCodeSessionDiscoveryRow)(rawRow)
           return Schema.decodeUnknownSync(ArtifactDescriptor)({
@@ -389,14 +400,14 @@ export const makeOpenCodeAdapter = (options: {
       const sessionRow = yield* withReadonlyDb({
         path: artifact.path,
         f: (database) =>
-          database.get(
-            `
+          database.get({
+            sql: `
               select id, slug, directory, title, version, time_created, time_updated, time_archived
               from session
               where id = ?
             `,
-            [artifact.artifactId],
-          ),
+            params: [artifact.artifactId],
+          }),
       })
 
       if (sessionRow === undefined) {
@@ -450,29 +461,29 @@ export const makeOpenCodeAdapter = (options: {
       const messageRows = yield* withReadonlyDb({
         path: artifact.path,
         f: (database) =>
-          database.all(
-            `
+          database.all({
+            sql: `
               select id, session_id, time_created, time_updated, data
               from message
               where session_id = ? and time_updated >= ?
               order by time_updated asc, id asc
             `,
-            [artifact.artifactId, watermark],
-          ),
+            params: [artifact.artifactId, watermark],
+          }),
       })
 
       const partRows = yield* withReadonlyDb({
         path: artifact.path,
         f: (database) =>
-          database.all(
-            `
+          database.all({
+            sql: `
               select id, session_id, time_created, time_updated, data
               from part
               where session_id = ? and time_updated >= ?
               order by time_updated asc, id asc
             `,
-            [artifact.artifactId, watermark],
-          ),
+            params: [artifact.artifactId, watermark],
+          }),
       })
 
       const sessionRecord = yield* Schema.decodeUnknown(OpenCodeSessionRecord)({

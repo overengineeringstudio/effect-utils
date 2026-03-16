@@ -34,75 +34,82 @@ export interface JsonlAdapterOptions<TSchema extends Schema.Schema<any, any, nev
 /** Shared adapter constructor for append-only JSONL transcript sources. */
 export const makeAppendOnlyJsonlAdapter = <TSchema extends Schema.Schema<any, any, never>>(
   options: JsonlAdapterOptions<TSchema>,
-): SessionSourceAdapter<Schema.Schema.Type<TSchema>> => ({
-  sourceId: options.sourceId,
-  discoverArtifacts: options.discoverArtifacts.pipe(
-    Effect.map((artifacts) => artifacts.map((entry) => entry.artifact)),
-  ),
-  ingestArtifact: ({ artifact, checkpoint }) =>
-    Effect.gen(function* () {
-      const discoveredArtifacts = yield* options.discoverArtifacts
-      const discovered = discoveredArtifacts.find(
-        (entry) =>
-          entry.artifact.sourceId === artifact.sourceId &&
-          entry.artifact.artifactId === artifact.artifactId &&
-          entry.artifact.path === artifact.path,
-      )
+): SessionSourceAdapter<Schema.Schema.Type<TSchema>> => {
+  let cachedDiscovery: ReadonlyArray<JsonlArtifactDiscovery> | undefined
 
-      const read = yield* readAppendOnlyTextFileSince({
-        path: artifact.path,
-        offsetBytes:
-          checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
-        ...(checkpoint?.cursor._tag === 'AppendOnlyCursor' && {
-          previousContentVersion: checkpoint.cursor.contentVersion,
-        }),
-        ...(discovered?.initialReadMaxBytes !== undefined && {
-          initialReadMaxBytes: discovered.initialReadMaxBytes,
-        }),
-      })
+  const discoverWithCache = options.discoverArtifacts.pipe(
+    Effect.tap((artifacts) => Effect.sync(() => (cachedDiscovery = artifacts))),
+  )
 
-      const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
-        Effect.try({
-          try: () => Schema.decodeUnknownSync(options.recordSchema)(JSON.parse(line)),
-          catch: (cause) =>
-            new SessionArtifactDecodeError({
-              message: options.decodeErrorMessage,
-              sourceId: artifact.sourceId,
-              artifactId: artifact.artifactId,
-              rawRecord: line,
-              cause,
-            }),
-        }).pipe(Effect.map((record) => record as Schema.Schema.Type<TSchema>)),
-      )
+  return {
+    sourceId: options.sourceId,
+    discoverArtifacts: discoverWithCache.pipe(
+      Effect.map((artifacts) => artifacts.map((entry) => entry.artifact)),
+    ),
+    ingestArtifact: ({ artifact, checkpoint }) =>
+      Effect.gen(function* () {
+        const discovered = cachedDiscovery?.find(
+          (entry) =>
+            entry.artifact.sourceId === artifact.sourceId &&
+            entry.artifact.artifactId === artifact.artifactId &&
+            entry.artifact.path === artifact.path,
+        )
 
-      return {
-        artifact,
-        records,
-        checkpoint: yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
-          sourceId: artifact.sourceId,
-          artifactId: artifact.artifactId,
+        const read = yield* readAppendOnlyTextFileSince({
           path: artifact.path,
-          status: artifact.status,
-          cursor: {
-            _tag: 'AppendOnlyCursor',
-            offsetBytes: read.nextOffsetBytes,
-            contentVersion: read.contentVersion,
-          },
-          updatedAtEpochMs: Date.now(),
-        }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new SessionCheckpointDecodeError({
-                message: options.checkpointErrorMessage,
-                path: artifact.path,
+          offsetBytes:
+            checkpoint?.cursor._tag === 'AppendOnlyCursor' ? checkpoint.cursor.offsetBytes : 0,
+          ...(checkpoint?.cursor._tag === 'AppendOnlyCursor' && {
+            previousContentVersion: checkpoint.cursor.contentVersion,
+          }),
+          ...(discovered?.initialReadMaxBytes !== undefined && {
+            initialReadMaxBytes: discovered.initialReadMaxBytes,
+          }),
+        })
+
+        const records = yield* Effect.forEach(splitCompleteJsonlRecords(read.text), (line) =>
+          Effect.try({
+            try: () => Schema.decodeUnknownSync(options.recordSchema)(JSON.parse(line)),
+            catch: (cause) =>
+              new SessionArtifactDecodeError({
+                message: options.decodeErrorMessage,
+                sourceId: artifact.sourceId,
+                artifactId: artifact.artifactId,
+                rawRecord: line,
                 cause,
               }),
+          }).pipe(Effect.map((record) => record as Schema.Schema.Type<TSchema>)),
+        )
+
+        return {
+          artifact,
+          records,
+          checkpoint: yield* Schema.decodeUnknown(IngestionCheckpointSchema)({
+            sourceId: artifact.sourceId,
+            artifactId: artifact.artifactId,
+            path: artifact.path,
+            status: artifact.status,
+            cursor: {
+              _tag: 'AppendOnlyCursor',
+              offsetBytes: read.nextOffsetBytes,
+              contentVersion: read.contentVersion,
+            },
+            updatedAtEpochMs: Date.now(),
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new SessionCheckpointDecodeError({
+                  message: options.checkpointErrorMessage,
+                  path: artifact.path,
+                  cause,
+                }),
+            ),
           ),
-        ),
-      } satisfies {
-        readonly artifact: ArtifactDescriptor
-        readonly records: ReadonlyArray<Schema.Schema.Type<TSchema>>
-        readonly checkpoint: IngestionCheckpoint
-      }
-    }),
-})
+        } satisfies {
+          readonly artifact: ArtifactDescriptor
+          readonly records: ReadonlyArray<Schema.Schema.Type<TSchema>>
+          readonly checkpoint: IngestionCheckpoint
+        }
+      }),
+  }
+}
