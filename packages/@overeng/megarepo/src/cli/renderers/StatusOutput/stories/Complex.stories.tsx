@@ -5,8 +5,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
+import { applyCwd, cwdArgType, flagArgTypes, MEMBERS } from '../../_story-constants.ts'
 import { StatusApp } from '../mod.ts'
 import { StatusView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
@@ -14,6 +15,7 @@ import * as fixtures from './_fixtures.ts'
 type StoryArgs = {
   height: number
   all: boolean
+  cwd: string
 }
 
 export default {
@@ -25,16 +27,12 @@ export default {
   args: {
     height: 400,
     all: false,
+    cwd: '(root)',
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    all: {
-      description: '--all flag: show nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
+    height: commonArgTypes.height,
+    all: flagArgTypes.all,
+    cwd: cwdArgType,
   },
 } satisfies Meta
 
@@ -47,49 +45,67 @@ type Story = StoryObj<StoryArgs>
 /** Nested megarepos (--all flag) */
 export const NestedMegarepos: Story = {
   args: { all: true },
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createNestedMegareposState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status --all"
-      cwd="~/mr-all-blue"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createNestedMegareposState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status --all"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
-/** Deeply nested megarepos with current location highlighting */
+/** Deeply nested megarepos with current location scope dimming */
 export const DeeplyNested: Story = {
-  args: { all: true },
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createDeeplyNestedState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status --all"
-      cwd="~/deep-workspace"
-    />
-  ),
+  args: { cwd: MEMBERS.devTools },
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createDeeplyNestedState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command={args.all === true ? 'mr status --all' : 'mr status'}
+        cwd={cwd}
+      />
+    )
+  },
 }
 
-/** Current location highlighting */
+/** Current location scope dimming — toggle --all to see dimming disabled */
 export const CurrentLocation: Story = {
-  args: { all: true },
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createCurrentLocationState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status --all"
-      cwd="~/mr-all-blue"
-    />
-  ),
+  args: { cwd: MEMBERS.devTools },
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createCurrentLocationState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command={args.all === true ? 'mr status --all' : 'mr status'}
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 // =============================================================================
@@ -98,47 +114,65 @@ export const CurrentLocation: Story = {
 
 /** Members pinned to specific refs */
 export const PinnedMembers: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createPinnedMembersState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/workspace"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createPinnedMembersState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 /** Local path members (../path or /absolute/path) */
 export const LocalPathMembers: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createLocalPathMembersState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/local-dev"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createLocalPathMembersState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 /** Large workspace with many members */
 export const ManyMembers: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createManyMembersState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/large-workspace"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createManyMembersState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 // =============================================================================
@@ -147,15 +181,21 @@ export const ManyMembers: Story = {
 
 /** Multiple different types of problems at once */
 export const MultipleProblems: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createMultipleProblemsState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/problematic-workspace"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createMultipleProblemsState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }

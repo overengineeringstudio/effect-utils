@@ -58,6 +58,10 @@ export const LsSuccessState = Schema.TaggedStruct('Success', {
   all: Schema.Boolean,
   /** Name of the root megarepo */
   megarepoName: Schema.String,
+  /** Store path to the root megarepo */
+  root: Schema.String,
+  /** Path to current member (for scope dimming) */
+  currentMemberPath: Schema.optional(Schema.Array(Schema.String)),
 })
 
 /**
@@ -102,6 +106,8 @@ export const LsAction = Schema.Union(
     members: Schema.Array(MemberInfo),
     all: Schema.Boolean,
     megarepoName: Schema.String,
+    root: Schema.String,
+    currentMemberPath: Schema.optional(Schema.Array(Schema.String)),
   }),
   Schema.TaggedStruct('SetError', { error: Schema.String, message: Schema.String }),
 )
@@ -128,6 +134,8 @@ export const lsReducer = ({
         members: action.members,
         all: action.all,
         megarepoName: action.megarepoName,
+        root: action.root,
+        currentMemberPath: action.currentMemberPath,
       }
     case 'SetError':
       return { _tag: 'Error', error: action.error, message: action.message }

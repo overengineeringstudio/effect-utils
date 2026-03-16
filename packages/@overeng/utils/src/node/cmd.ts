@@ -331,7 +331,7 @@ export const cmdCollect = <R = never>(opts: {
 
     yield* Effect.logDebug(`Collecting '${debugStr}' in '${cwd}'`)
 
-    const cmd = buildCommand({ input: normalizedInput, useShell }).pipe(
+    const builtCmd = buildCommand({ input: normalizedInput, useShell }).pipe(
       Command.stdout('pipe'),
       Command.stderr('pipe'),
       Command.workingDirectory(cwd),
@@ -342,7 +342,7 @@ export const cmdCollect = <R = never>(opts: {
     const { onOutput } = opts
 
     return yield* Effect.scoped(
-      Command.start(cmd).pipe(
+      Command.start(builtCmd).pipe(
         Effect.flatMap((proc) =>
           Effect.all(
             {

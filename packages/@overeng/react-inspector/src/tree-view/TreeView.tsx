@@ -36,11 +36,11 @@ const ConnectedTreeNode = memo((props: any) => {
       {
         // only render if the node is expanded
         expanded === true
-          ? [...dataIterator(data)].map(({ name, data, ...renderNodeProps }) => {
+          ? [...dataIterator(data)].map(({ name, data: childData, ...renderNodeProps }) => {
               return (
                 <ConnectedTreeNode
                   name={name}
-                  data={data}
+                  data={childData}
                   depth={depth + 1}
                   path={`${path}.${name}`}
                   key={name}

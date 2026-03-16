@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
@@ -40,10 +40,7 @@ export default {
     porcelain: false,
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
+    height: commonArgTypes.height,
     interactive: {
       description: 'Enable animated timeline playback (no animation for instant results)',
       control: { type: 'boolean' },
@@ -116,10 +113,10 @@ export const BranchCreated: Story = {
       View={StoreView}
       app={StoreApp}
       initialState={fixtures.createWorktreeNewState({
-        source: 'schickling/dotfiles',
+        source: 'alice/dotfiles',
         ref: 'feat/experiment',
         commit: '789abc012345',
-        path: '/Users/me/.megarepo/store/github.com/schickling/dotfiles/refs/heads/feat/experiment',
+        path: '/Users/me/.megarepo/store/github.com/alice/dotfiles/refs/heads/feat/experiment',
         autoBootstrap: false,
         branchCreated: true,
       })}

@@ -37,23 +37,23 @@ const TableInspector: FC<any> = ({
   })
 
   const handleIndexTHClick = useCallback(() => {
-    setState(({ sortIndexColumn, sortAscending }) => ({
+    setState(({ sortIndexColumn: prevSortIndexColumn, sortAscending: prevSortAscending }) => ({
       sorted: true,
       sortIndexColumn: true,
       sortColumn: undefined,
       // when changed to a new column, default to asending
-      sortAscending: sortIndexColumn === true ? !sortAscending : true,
+      sortAscending: prevSortIndexColumn === true ? !prevSortAscending : true,
     }))
   }, [])
 
   const handleTHClick = useCallback((col: string) => {
-    setState(({ sortColumn, sortAscending }) => ({
+    setState(({ sortColumn: prevSortColumn, sortAscending: prevSortAscending }) => ({
       sorted: true,
       sortIndexColumn: false,
       // update sort column
       sortColumn: col,
       // when changed to a new column, default to asending
-      sortAscending: col === sortColumn ? !sortAscending : true,
+      sortAscending: col === prevSortColumn ? !prevSortAscending : true,
     }))
   }, [])
 
@@ -107,10 +107,10 @@ const TableInspector: FC<any> = ({
         const type1 = typeof v1
         const type2 = typeof v2
         // use '<' operator to compare same type of values or compare type precedence order #
-        const lt = (v1: any, v2: any) => {
-          if (v1 < v2) {
+        const lt = (x: any, y: any) => {
+          if (x < y) {
             return -1
-          } else if (v1 > v2) {
+          } else if (x > y) {
             return 1
           } else {
             return 0

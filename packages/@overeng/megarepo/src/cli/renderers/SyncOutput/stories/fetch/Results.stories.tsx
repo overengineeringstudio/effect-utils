@@ -12,6 +12,14 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import {
+  buildSyncCommand,
+  buildSyncOptions,
+  flagArgTypes,
+  MEMBERS,
+  MEGAREPO_MEMBERS,
+  STORE_BASE,
+} from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {
@@ -47,22 +55,10 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: show what would happen without making changes',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all: sync nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
-    verbose: {
-      description: '--verbose: show detailed information',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force: include pinned members',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    all: flagArgTypes.all,
+    verbose: flagArgTypes.verbose,
+    force: flagArgTypes.force,
   },
 } satisfies Meta
 
@@ -73,16 +69,16 @@ export const MixedResults: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: exampleSyncResults,
         members: exampleSyncResults.map((r) => r.name),
-        nestedMegarepos: ['effect-utils'],
+        nestedMegarepos: [MEMBERS.devTools],
         generatedFiles: ['flake.nix', '.envrc'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -99,26 +95,35 @@ export const MixedResults: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
   },
 }
 
-/** All members already synced */
+/** All members already up to date */
 export const AllUpToDate: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
+        }),
+        workspace: {
+          name: 'dev-workspace-blue',
+          root: `${STORE_BASE}/github.com/alice/dev-workspace-blue/refs/heads/main/`,
         },
-        workspace: { name: 'mr-all-blue', root: '/Users/dev/mr-all-blue' },
         results: exampleAllSynced,
         members: exampleAllSynced.map((r) => r.name),
       }),
@@ -135,8 +140,14 @@ export const AllUpToDate: Story = {
         autoRun={args.interactive}
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
-        cwd="~/mr-all-blue"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        cwd="~/dev-workspace-blue"
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -148,21 +159,24 @@ export const InitialFetch: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
+        }),
+        workspace: {
+          name: 'new-workspace',
+          root: `${STORE_BASE}/github.com/alice/new-workspace/refs/heads/main/`,
         },
-        workspace: { name: 'new-workspace', root: '/Users/dev/new-workspace' },
         results: [
-          { name: 'effect', status: 'cloned' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
-          { name: 'livestore', status: 'cloned' as const, ref: 'dev' },
-          { name: 'dotfiles', status: 'cloned' as const, ref: 'main' },
+          { name: MEMBERS.coreLib, status: 'cloned' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'cloned' as const, ref: 'main' },
+          { name: MEMBERS.appPlatform, status: 'cloned' as const, ref: 'dev' },
+          { name: MEMBERS.dotfiles, status: 'cloned' as const, ref: 'main' },
         ],
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
         generatedFiles: ['flake.nix'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -179,7 +193,13 @@ export const InitialFetch: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/new-workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -192,13 +212,13 @@ export const Updated: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fetchResults,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -215,7 +235,13 @@ export const Updated: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -232,13 +258,13 @@ export const WithNewBranches: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fetchWithNewBranches,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -255,7 +281,13 @@ export const WithNewBranches: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -271,19 +303,19 @@ export const RemovedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           { name: 'old-repo', status: 'removed' as const, message: '/store/old-repo-abc123' },
           { name: 'deprecated', status: 'removed' as const, message: '/store/deprecated-def456' },
         ],
-        members: ['effect', 'old-repo', 'deprecated'],
+        members: [MEMBERS.coreLib, 'old-repo', 'deprecated'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -299,7 +331,13 @@ export const RemovedMembers: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -311,20 +349,20 @@ export const WithGenerators: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
-          { name: 'livestore', status: 'cloned' as const, ref: 'main' },
-          { name: 'dotfiles', status: 'already_synced' as const },
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.appPlatform, status: 'cloned' as const, ref: 'main' },
+          { name: MEMBERS.dotfiles, status: 'already_synced' as const },
         ],
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
         generatedFiles: ['flake.nix', 'flake.lock', '.vscode/megarepo.code-workspace'],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -341,7 +379,13 @@ export const WithGenerators: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -353,15 +397,15 @@ export const SingleMember: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
-        results: [{ name: 'effect', status: 'synced' as const, ref: 'main' }],
-        members: ['effect'],
+        }),
+        results: [{ name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' }],
+        members: [MEMBERS.coreLib],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -377,7 +421,13 @@ export const SingleMember: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -393,16 +443,16 @@ export const ManyMembers: Story = {
         status: 'already_synced' as const,
       }))
       return {
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         workspace: {
           name: 'large-workspace',
-          root: '/Users/dev/large-workspace',
+          root: `${STORE_BASE}/github.com/alice/large-workspace/refs/heads/main/`,
         },
         results,
         members: results.map((r) => r.name),
@@ -420,7 +470,13 @@ export const ManyMembers: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/large-workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -432,20 +488,20 @@ export const NestedMegarepos: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'synced' as const, ref: 'main' },
-          { name: 'livestore', status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.appPlatform, status: 'synced' as const, ref: 'main' },
         ],
-        members: ['effect', 'effect-utils', 'livestore'],
-        nestedMegarepos: ['effect-utils', 'livestore'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform],
+        nestedMegarepos: [...MEGAREPO_MEMBERS],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -461,7 +517,13 @@ export const NestedMegarepos: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )

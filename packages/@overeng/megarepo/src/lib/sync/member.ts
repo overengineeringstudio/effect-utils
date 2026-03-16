@@ -426,7 +426,7 @@ export const syncMember = <R = never>({
             lockUpdated,
           } satisfies MemberSyncResult
         }
-        // Apply mode: symlink correct, no ref mismatch → already synced (will fast-forward later if needed)
+        // Apply mode: symlink correct, no ref mismatch → already up to date (will fast-forward later if needed)
         // Don't early return here — fall through to let the fast-forward logic run
       }
 
@@ -892,11 +892,15 @@ export const syncMember = <R = never>({
                 }),
             ),
           )
-          // Re-read HEAD to confirm actual state after merge
+          // Re-read HEAD to confirm actual state after merge.
+          // Only report "updated" when HEAD actually changed — a no-op merge
+          // (e.g. worktree already ahead of locked commit) should not count.
           const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
-          targetCommit = headAfterMerge
-          remotePreviousCommit = currentCommit
-          remoteUpdated = true
+          if (headAfterMerge !== currentCommit) {
+            targetCommit = headAfterMerge
+            remotePreviousCommit = currentCommit
+            remoteUpdated = true
+          }
         }
       }
     }

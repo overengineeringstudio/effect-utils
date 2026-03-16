@@ -1,5 +1,5 @@
 /**
- * Header Stories
+ * WorkspaceRootLabel Stories
  */
 
 import type { Meta, StoryObj } from '@storybook/react'
@@ -9,35 +9,30 @@ import { createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 const StaticApp = createStaticApp()
 
-import { Header } from './Header.tsx'
+import { WorkspaceRootLabel } from './Header.tsx'
 
 // =============================================================================
 // Meta
 // =============================================================================
 
 export default {
-  title: 'Components/Header',
-  component: Header,
+  title: 'Components/WorkspaceRootLabel',
+  component: WorkspaceRootLabel,
   parameters: {
     layout: 'fullscreen',
     docs: {
       description: {
         component: `
-Workspace header with name, path, and mode indicators.
+Single-line workspace root label using abbreviated store path.
 
-Renders in expanded multi-line format:
-\`\`\`
-mr-workspace
-  root: /path/to/workspace
-  mode: dry run
-\`\`\`
+Renders: \`owner/repo@ref (modes)\`
         `,
       },
     },
   },
-} satisfies Meta<typeof Header>
+} satisfies Meta<typeof WorkspaceRootLabel>
 
-type Story = StoryObj<typeof Header>
+type Story = StoryObj<typeof WorkspaceRootLabel>
 
 // =============================================================================
 // Stories
@@ -48,7 +43,9 @@ export const Default: Story = {
     <TuiStoryPreview
       command="mr status"
       app={StaticApp}
-      View={() => <Header name="mr-workspace" root="/Users/dev/workspace" />}
+      View={() => (
+        <WorkspaceRootLabel storePath="/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main" />
+      )}
       initialState={null}
     />
   ),
@@ -57,22 +54,27 @@ export const Default: Story = {
 export const WithModes: Story = {
   render: () => (
     <TuiStoryPreview
-      command="mr status"
+      command="mr fetch --dry-run"
       app={StaticApp}
       View={() => (
-        <Header name="mr-workspace" root="/Users/dev/workspace" modes={['dry run', 'apply']} />
+        <WorkspaceRootLabel
+          storePath="/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main"
+          modes={['fetch', 'dry run']}
+        />
       )}
       initialState={null}
     />
   ),
 }
 
-export const NameOnly: Story = {
+export const FeatureBranch: Story = {
   render: () => (
     <TuiStoryPreview
       command="mr status"
       app={StaticApp}
-      View={() => <Header name="mr-workspace" />}
+      View={() => (
+        <WorkspaceRootLabel storePath="/Users/dev/.megarepo/github.com/acme-org/dev-tools/refs/heads/feature/new-ui" />
+      )}
       initialState={null}
     />
   ),

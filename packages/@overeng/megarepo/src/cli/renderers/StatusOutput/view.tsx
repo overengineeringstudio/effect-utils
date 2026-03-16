@@ -2,7 +2,7 @@
  * StatusOutput View
  *
  * React component for rendering status output.
- * Supports nested megarepo tree display with problem-first badges.
+ * Supports nested megarepo tree display with inline member warnings.
  *
  * Uses megarepo's design system components for consistent styling.
  */
@@ -12,7 +12,7 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
-import { Separator } from '../../components/mod.ts'
+import { MemberRow, ScopeProvider, WorkspaceRootLabel } from '../../components/mod.ts'
 import type { StatusState, MemberStatus, LockStaleness, GitStatus, SymlinkDrift } from './schema.ts'
 
 // =============================================================================
@@ -45,66 +45,17 @@ export interface StatusViewProps {
  */
 export const StatusView = ({ stateAtom }: StatusViewProps) => {
   const state = useTuiAtomValue(stateAtom)
-  const { name, root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
+  const { root, members, all, lastSyncTime, lockStaleness, currentMemberPath } = state
   const problems = analyzeProblems({ members, lockStaleness })
-  const hasNesting = members.some(
-    (m) => m.nestedMembers !== undefined && m.nestedMembers.length > 0,
-  )
   const hasNestedMegarepos = members.some((m) => m.isMegarepo)
 
   return (
     <Box>
-      {/* Header */}
-      <Text bold>{name}</Text>
-      <Box flexDirection="row">
-        <Text dim>{'  root: '}</Text>
-        <Text>{root}</Text>
-      </Box>
-      <Text> </Text>
+      <WorkspaceRootLabel storePath={root} />
+      <WorkspaceWarnings problems={problems} />
 
-      {/* Warnings */}
-      <WarningsSection problems={problems} />
-
-      {/* Members */}
-      {hasNesting === true ? (
-        // Tree mode (when --all is used and there are nested members)
-        <>
-          {members.map((member, i) => {
-            const isOnCurrentPath =
-              currentMemberPath !== undefined && currentMemberPath[0] === member.name
-            const isCurrent = isOnCurrentPath && currentMemberPath.length === 1
-
-            return (
-              <React.Fragment key={member.name}>
-                <MemberLine member={member} isCurrent={isCurrent} />
-                {member.isMegarepo !== undefined &&
-                  member.nestedMembers !== undefined &&
-                  member.nestedMembers.length > 0 && (
-                    <MembersTree
-                      members={member.nestedMembers}
-                      prefix=""
-                      currentPath={
-                        isOnCurrentPath === true ? currentMemberPath.slice(1) : undefined
-                      }
-                    />
-                  )}
-                {i < members.length - 1 && <Text> </Text>}
-              </React.Fragment>
-            )
-          })}
-        </>
-      ) : (
-        // Flat mode
-        <>
-          {members.map((member) => {
-            const isCurrent =
-              currentMemberPath !== undefined &&
-              currentMemberPath.length === 1 &&
-              currentMemberPath[0] === member.name
-            return <MemberLine key={member.name} member={member} isCurrent={isCurrent} />
-          })}
-        </>
-      )}
+      {/* Members — tree rooted at workspace */}
+      <MembersTree members={members} prefix="" currentPath={currentMemberPath} />
 
       {/* Hint for nested megarepos */}
       {!all && hasNestedMegarepos && (
@@ -252,28 +203,6 @@ const analyzeProblems = ({
   return warnings
 }
 
-/** Generate a unique key for a problem based on its tag and content */
-const getProblemKey = (problem: Problem): string => {
-  switch (problem._tag) {
-    case 'not_synced':
-      return `not_synced-${problem.members.map((m) => m.name).join(',')}`
-    case 'dirty':
-      return `dirty-${problem.members.map((m) => m.name).join(',')}`
-    case 'unpushed':
-      return `unpushed-${problem.members.map((m) => m.name).join(',')}`
-    case 'lock_missing':
-      return 'lock_missing'
-    case 'lock_stale':
-      return `lock_stale-${problem.missingFromLock.join(',')}-${problem.extraInLock.join(',')}`
-    case 'stale_lock':
-      return `stale_lock-${problem.members.map((m) => m.name).join(',')}`
-    case 'symlink_drift':
-      return `symlink_drift-${problem.members.map((m) => m.name).join(',')}`
-    case 'ref_mismatch':
-      return `ref_mismatch-${problem.members.map((m) => m.name).join(',')}`
-  }
-}
-
 /** Count members at different levels */
 const countMembers = (members: readonly MemberStatus[]) => {
   const direct = members.length
@@ -336,313 +265,110 @@ const detectUsedSymbols = (members: readonly MemberStatus[]) => {
 // Internal Components - Warnings
 // =============================================================================
 
-/** Warning badge - matches cli-ui badge('WARNING', 'warning') */
-const WarningBadge = () => {
+/** Workspace-level warnings (lock_missing, lock_stale) rendered as compact banners */
+const WorkspaceWarnings = ({ problems }: { problems: Problem[] }) => {
+  const workspaceProblems = problems.filter(
+    (p) => p._tag === 'lock_missing' || p._tag === 'lock_stale',
+  )
+  if (workspaceProblems.length === 0) return null
   return (
-    <Text backgroundColor="yellow" color="black" bold>
-      {' WARNING '}
-    </Text>
+    <>
+      {workspaceProblems.map((problem) => {
+        switch (problem._tag) {
+          case 'lock_missing':
+            return (
+              <Box key="lock_missing" flexDirection="row">
+                <Text color="yellow">⚠ lock file missing</Text>
+                <Text dim> — fix: mr lock</Text>
+              </Box>
+            )
+          case 'lock_stale':
+            return (
+              <Box key="lock_stale" flexDirection="row">
+                <Text color="yellow">⚠ lock file stale</Text>
+                <Text dim> — fix: mr lock</Text>
+              </Box>
+            )
+          default:
+            return null
+        }
+      })}
+    </>
   )
 }
 
-/** Single warning item */
-const WarningItem = ({ problem }: { problem: Problem }) => {
-  switch (problem._tag) {
-    case 'ref_mismatch': {
-      const count = problem.members.length
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold color="red">
-              {count} member{count > 1 ? 's' : ''}
-            </Text>
-            <Text> </Text>
-            <Text dim>git HEAD differs from store path</Text>
-          </Box>
-          {problem.members.map((m) => {
-            const mismatch = m.refMismatch!
-            return (
-              <Box key={m.name}>
-                <Box flexDirection="row">
-                  <Text>{'    '}</Text>
-                  <Text bold>{m.name}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text dim>store path: </Text>
-                  <Text color="green">{mismatch.expectedRef}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text dim>git HEAD: </Text>
-                  <Text color="yellow">
-                    {mismatch.isDetached !== undefined
-                      ? `detached at ${mismatch.actualRef}`
-                      : mismatch.actualRef}
-                  </Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text color="cyan">fix: </Text>
-                  <Text>
-                    mr pin {m.name} -c {mismatch.actualRef}
-                  </Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'             '}</Text>
-                  <Text dim>→ creates worktree for {mismatch.actualRef}, updates lock</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'           '}</Text>
-                  <Text dim>or: </Text>
-                  <Text>git checkout {mismatch.expectedRef}</Text>
-                  <Text dim> (in repos/{m.name})</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'             '}</Text>
-                  <Text dim>→ restores expected state (fails if uncommitted changes)</Text>
-                </Box>
-              </Box>
-            )
-          })}
-        </Box>
-      )
-    }
-    case 'stale_lock': {
-      const count = problem.members.length
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold color="yellow">
-              {count} member{count > 1 ? 's' : ''}
-            </Text>
-            <Text> </Text>
-            <Text dim>lock tracking wrong ref</Text>
-          </Box>
-          {problem.members.map((m) => {
-            const stale = m.staleLock!
-            return (
-              <Box key={m.name}>
-                <Box flexDirection="row">
-                  <Text>{'    '}</Text>
-                  <Text bold>{m.name}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text dim>lock: </Text>
-                  <Text color="yellow">{stale.lockRef}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text dim>actual: </Text>
-                  <Text color="green">{stale.actualRef}</Text>
-                  <Text dim> (matches source)</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text color="cyan">fix: </Text>
-                  <Text>mr lock --only {m.name}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'             '}</Text>
-                  <Text dim>→ updates lock ref to {stale.actualRef}</Text>
-                </Box>
-              </Box>
-            )
-          })}
-        </Box>
-      )
-    }
-    case 'symlink_drift': {
-      const count = problem.members.length
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold color="red">
-              {count} member{count > 1 ? 's' : ''}
-            </Text>
-            <Text> </Text>
-            <Text dim>tracking different ref than source</Text>
-          </Box>
-          {problem.members.map((m) => {
-            const drift = m.symlinkDrift!
-            return (
-              <Box key={m.name}>
-                <Box flexDirection="row">
-                  <Text>{'    '}</Text>
-                  <Text bold>{m.name}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text dim>current: </Text>
-                  <Text color="yellow">{drift.symlinkRef}</Text>
-                  <Text dim> (lock + symlink)</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text dim>source: </Text>
-                  <Text color="green">{drift.sourceRef}</Text>
-                  <Text dim> (from megarepo.json)</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'      '}</Text>
-                  <Text color="cyan">fix: </Text>
-                  <Text>add #{drift.symlinkRef} to megarepo.json</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'             '}</Text>
-                  <Text dim>→ keeps tracking {drift.symlinkRef}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'           '}</Text>
-                  <Text dim>or: </Text>
-                  <Text>mr apply --only {m.name}</Text>
-                </Box>
-                <Box flexDirection="row">
-                  <Text>{'             '}</Text>
-                  <Text dim>→ switches to {drift.sourceRef}</Text>
-                </Box>
-              </Box>
-            )
-          })}
-        </Box>
-      )
-    }
-    case 'lock_missing':
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold>Lock file missing</Text>
-          </Box>
-          <Text dim>{'    Remote members are not tracked in lock file'}</Text>
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> mr lock</Text>
-          </Box>
-        </Box>
-      )
-    case 'lock_stale':
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold>Lock file is stale</Text>
-          </Box>
-          {problem.missingFromLock.length > 0 && (
-            <Box flexDirection="row">
-              <Text>{'    '}</Text>
-              <Text dim>Not in lock:</Text>
-              <Text> {problem.missingFromLock.join(', ')}</Text>
-            </Box>
-          )}
-          {problem.extraInLock.length > 0 && (
-            <Box flexDirection="row">
-              <Text>{'    '}</Text>
-              <Text dim>Removed from config:</Text>
-              <Text> {problem.extraInLock.join(', ')}</Text>
-            </Box>
-          )}
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> mr lock</Text>
-          </Box>
-        </Box>
-      )
-    case 'not_synced': {
-      const count = problem.members.length
-      const names = problem.members.map((m) => m.name)
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold>
-              {count} member{count > 1 ? 's' : ''}
-            </Text>
-            <Text> </Text>
-            <Text dim>not synced</Text>
-          </Box>
-          <Text dim>{'    ' + names.join(', ')}</Text>
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> mr apply</Text>
-          </Box>
-        </Box>
-      )
-    }
-    case 'dirty': {
-      const count = problem.members.length
-      const names = problem.members.map((m) => {
-        const changes = m.gitStatus?.changesCount ?? 0
-        return changes > 0 ? `${m.name} (${changes})` : m.name
-      })
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold>
-              {count} member{count > 1 ? 's' : ''}
-            </Text>
-            <Text> </Text>
-            <Text dim>have uncommitted changes</Text>
-          </Box>
-          <Text dim>{'    ' + names.join(', ')}</Text>
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> git status {'<member>'}</Text>
-          </Box>
-        </Box>
-      )
-    }
-    case 'unpushed': {
-      const count = problem.members.length
-      const names = problem.members.map((m) => m.name)
-      return (
-        <Box>
-          <Box flexDirection="row">
-            <Text>{'  '}</Text>
-            <Text bold>
-              {count} member{count > 1 ? 's' : ''}
-            </Text>
-            <Text> </Text>
-            <Text dim>have unpushed commits</Text>
-          </Box>
-          <Text dim>{'    ' + names.join(', ')}</Text>
-          <Box flexDirection="row">
-            <Text>{'    '}</Text>
-            <Text color="cyan">fix:</Text>
-            <Text> cd {'<member>'} && git push</Text>
-          </Box>
-        </Box>
-      )
-    }
+/** Per-member warnings rendered as sub-lines below each member in the tree */
+const MemberWarnings = ({ member, prefix }: { member: MemberStatus; prefix: string }) => {
+  const warnings: React.ReactNode[] = []
+
+  if (member.exists === false) {
+    warnings.push(
+      <Box key="not-synced" flexDirection="row">
+        <Text dim>{prefix}</Text>
+        <Text color="yellow">⚠ not synced</Text>
+        <Text dim> — fix: mr apply</Text>
+      </Box>,
+    )
   }
-}
+  if (member.refMismatch !== undefined) {
+    const m = member.refMismatch
+    const desc = m.isDetached === true ? `detached at ${m.actualRef}` : `HEAD is '${m.actualRef}'`
+    warnings.push(
+      <Box key="ref-mismatch" flexDirection="row">
+        <Text dim>{prefix}</Text>
+        <Text color="red">⚠ ref mismatch</Text>
+        <Text dim>
+          {' '}
+          ({desc}, expected '{m.expectedRef}')
+        </Text>
+      </Box>,
+    )
+  }
+  if (member.staleLock !== undefined) {
+    warnings.push(
+      <Box key="stale-lock" flexDirection="row">
+        <Text dim>{prefix}</Text>
+        <Text color="yellow">⚠ stale lock</Text>
+        <Text dim>
+          {' '}
+          (lock: {member.staleLock.lockRef}, actual: {member.staleLock.actualRef})
+        </Text>
+      </Box>,
+    )
+  }
+  if (member.symlinkDrift !== undefined) {
+    warnings.push(
+      <Box key="symlink-drift" flexDirection="row">
+        <Text dim>{prefix}</Text>
+        <Text color="red">⚠ ref drift</Text>
+        <Text dim>
+          {' '}
+          (tracking '{member.symlinkDrift.symlinkRef}', source says '{member.symlinkDrift.sourceRef}
+          ')
+        </Text>
+      </Box>,
+    )
+  }
+  if (member.gitStatus?.isDirty === true) {
+    const count = member.gitStatus.changesCount ?? 0
+    warnings.push(
+      <Box key="dirty" flexDirection="row">
+        <Text dim>{prefix}</Text>
+        <Text color="yellow">⚠ uncommitted</Text>
+        {count > 0 && <Text dim> ({count})</Text>}
+      </Box>,
+    )
+  }
+  if (member.gitStatus?.hasUnpushed === true) {
+    warnings.push(
+      <Box key="unpushed" flexDirection="row">
+        <Text dim>{prefix}</Text>
+        <Text color="red">⚠ unpushed</Text>
+      </Box>,
+    )
+  }
 
-/** Warnings section */
-const WarningsSection = ({ problems }: { problems: Problem[] }) => {
-  if (problems.length === 0) return null
-  return (
-    <Box>
-      <WarningBadge />
-      <Text> </Text>
-      {problems.map((problem) => (
-        <Box key={getProblemKey(problem)}>
-          <WarningItem problem={problem} />
-          <Text> </Text>
-        </Box>
-      ))}
-      <Separator />
-      <Text> </Text>
-    </Box>
-  )
+  return <>{warnings}</>
 }
 
 // =============================================================================
@@ -690,67 +416,47 @@ const BranchInfo = ({ member }: { member: MemberStatus }) => {
   return null
 }
 
-/** Single member line */
-const MemberLine = ({
-  member,
-  isCurrent,
-  prefix = '',
-}: {
-  member: MemberStatus
-  isCurrent: boolean
-  prefix?: string
-}) => {
-  // Use 256-color dark gray (index 236) for current line highlight
-  const bgColor = isCurrent === true ? { ansi256: 236 } : undefined
-
-  return (
-    <Box flexDirection="row" backgroundColor={bgColor} extendBackground={isCurrent}>
-      <Text>{prefix}</Text>
-      <MemberSymbol member={member} />
-      <Text> </Text>
-      {isCurrent === true ? (
-        <Text bold color="cyan">
-          {member.name}
-        </Text>
-      ) : (
-        <Text bold>{member.name}</Text>
-      )}
-      <Text> </Text>
-      <BranchInfo member={member} />
-      {member.gitStatus?.isDirty !== undefined && (
-        <>
-          <Text> </Text>
-          <Text color="yellow">{symbols.dirty}</Text>
-        </>
-      )}
-      {member.gitStatus?.hasUnpushed !== undefined && (
-        <>
-          <Text> </Text>
-          <Text color="red">{symbols.ahead}</Text>
-        </>
-      )}
-      {member.lockInfo?.pinned !== undefined && (
-        <>
-          <Text> </Text>
-          <Text color="yellow">pinned</Text>
-        </>
-      )}
-      {member.commitDrift !== undefined && (
-        <>
-          <Text> </Text>
-          <Text dim>({member.commitDrift.localCommit.slice(0, 7)} → lock)</Text>
-        </>
-      )}
-      {member.isMegarepo !== undefined && (
-        <>
-          <Text> </Text>
-          <Text color="cyan">[megarepo]</Text>
-        </>
-      )}
-      {!member.exists && <Text dim> (not synced)</Text>}
-    </Box>
-  )
-}
+/** Single member line — scope dimming is handled by MemberRow via ScopeContext */
+const MemberLine = ({ member, prefix = '' }: { member: MemberStatus; prefix?: string }) => (
+  <MemberRow prefix={prefix}>
+    <MemberSymbol member={member} />
+    <Text> </Text>
+    <Text bold>{member.name}</Text>
+    <Text> </Text>
+    <BranchInfo member={member} />
+    {member.gitStatus?.isDirty === true && (
+      <>
+        <Text> </Text>
+        <Text color="yellow">{symbols.dirty}</Text>
+      </>
+    )}
+    {member.gitStatus?.hasUnpushed === true && (
+      <>
+        <Text> </Text>
+        <Text color="red">{symbols.ahead}</Text>
+      </>
+    )}
+    {member.lockInfo?.pinned === true && (
+      <>
+        <Text> </Text>
+        <Text color="yellow">pinned</Text>
+      </>
+    )}
+    {member.commitDrift !== undefined && (
+      <>
+        <Text> </Text>
+        <Text dim>({member.commitDrift.localCommit.slice(0, 7)} → lock)</Text>
+      </>
+    )}
+    {member.isMegarepo === true && (
+      <>
+        <Text> </Text>
+        <Text color="cyan">[megarepo]</Text>
+      </>
+    )}
+    {!member.exists && <Text dim> (not synced)</Text>}
+  </MemberRow>
+)
 
 /** Recursive tree rendering */
 const MembersTree = ({
@@ -768,18 +474,29 @@ const MembersTree = ({
         const isLast = i === members.length - 1
         const branchChar = isLast === true ? tree.last : tree.middle
         const isOnCurrentPath = currentPath !== undefined && currentPath[0] === member.name
-        const isCurrent = isOnCurrentPath && currentPath.length === 1
 
         return (
           <React.Fragment key={member.name}>
-            <MemberLine member={member} isCurrent={isCurrent} prefix={`${prefix}${branchChar}`} />
-            {member.isMegarepo !== undefined &&
+            <ScopeProvider inScope={currentPath === undefined || isOnCurrentPath}>
+              <MemberLine member={member} prefix={`${prefix}${branchChar}`} />
+              <MemberWarnings
+                member={member}
+                prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
+              />
+            </ScopeProvider>
+            {member.isMegarepo === true &&
               member.nestedMembers !== undefined &&
               member.nestedMembers.length > 0 && (
                 <MembersTree
                   members={member.nestedMembers}
                   prefix={prefix + (isLast === true ? tree.empty : tree.vertical)}
-                  currentPath={isOnCurrentPath === true ? currentPath.slice(1) : undefined}
+                  currentPath={
+                    isOnCurrentPath === true
+                      ? currentPath.length > 1
+                        ? currentPath.slice(1)
+                        : undefined
+                      : []
+                  }
                 />
               )}
           </React.Fragment>

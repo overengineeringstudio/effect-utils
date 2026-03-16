@@ -2716,7 +2716,7 @@ describe('sync worktree ref mismatch detection', () => {
    * the worktree path no longer matches its git HEAD. This violates invariant #8:
    * "Worktree path matches HEAD: The ref encoded in a worktree's store path should match its git HEAD"
    *
-   * Currently, `mr apply` reports "already synced" without detecting this drift.
+   * Currently, `mr apply` reports "already up to date" without detecting this drift.
    * The expected behavior is to warn about the mismatch.
    */
   it.effect(

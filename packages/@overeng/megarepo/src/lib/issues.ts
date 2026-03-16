@@ -130,7 +130,7 @@ export const formatRefMismatchMessage = ({
     // Detached HEAD case
     const lines = [
       `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree is detached at ${refMismatch.actualRef}`,
-      `  hint: use 'mr pin ${memberName} -c ${refMismatch.actualRef}' to pin this commit,`,
+      `  hint: use 'mr config pin ${memberName} -c ${refMismatch.actualRef}' to pin this commit,`,
       `        or 'git checkout ${refMismatch.expectedRef}' to restore expected state`,
     ]
     return lines.join('\n')
@@ -139,7 +139,7 @@ export const formatRefMismatchMessage = ({
   // Different branch case
   const lines = [
     `ref mismatch: store path implies '${refMismatch.expectedRef}' but worktree HEAD is '${refMismatch.actualRef}'`,
-    `  hint: use 'mr pin ${memberName} -c ${refMismatch.actualRef}' to create proper worktree,`,
+    `  hint: use 'mr config pin ${memberName} -c ${refMismatch.actualRef}' to create proper worktree,`,
     `        or 'git checkout ${refMismatch.expectedRef}' to restore expected state`,
   ]
   return lines.join('\n')

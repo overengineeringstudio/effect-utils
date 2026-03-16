@@ -285,7 +285,7 @@ const getIssueHint = ({
       const match = issue.message.match(/HEAD is '([^']+)'/)
       const actualRef = match?.[1] ?? 'actual-ref'
       return {
-        fix: `mr pin <member> -c ${actualRef}`,
+        fix: `mr config pin <member> -c ${actualRef}`,
         explanation: 'create proper worktree for current branch',
       }
     }

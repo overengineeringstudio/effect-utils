@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import { PinApp } from '../mod.ts'
 import { PinView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
@@ -25,7 +26,7 @@ type StoryArgs = {
 
 export default {
   component: PinView,
-  title: 'CLI/Pin/Warnings',
+  title: 'CLI/Config/Pin/Warnings',
   parameters: {
     layout: 'fullscreen',
   },
@@ -35,10 +36,7 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: preview changes without applying',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
   },
 } satisfies Meta
 
@@ -51,7 +49,7 @@ export const WarningWorktreeNotAvailable: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
@@ -72,7 +70,7 @@ export const WarningMemberRemovedFromConfig: Story = {
     return (
       <TuiStoryPreview
         cwd="~/workspace"
-        command={`mr pin${args.dryRun === true ? ' --dry-run' : ''}`}
+        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
         View={PinView}
         app={PinApp}
         initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}

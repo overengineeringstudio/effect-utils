@@ -17,6 +17,7 @@ export const createInitialLsState = (): typeof LsState.Type => ({
   members: [],
   all: false,
   megarepoName: '',
+  root: '',
 })
 
 /**

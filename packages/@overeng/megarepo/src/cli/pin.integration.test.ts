@@ -1,7 +1,7 @@
 /**
  * Pin Command Integration Tests
  *
- * Tests for the `mr pin` command logic, including the -c flag for switching refs.
+ * Tests for the `mr config pin` command logic, including the -c flag for switching refs.
  * These tests use direct function calls instead of CLI subprocess to avoid timeouts.
  */
 
@@ -67,7 +67,7 @@ const createMinimalTestSetup = () =>
     }
   })
 
-describe('mr pin', () => {
+describe('mr config pin', () => {
   describe('config update logic', () => {
     it.effect(
       'should update megarepo.json when switching refs',

@@ -314,6 +314,30 @@ my-megarepo/repos/effect-utils -> /Users/dev/.megarepo/github.com/overeng/effect
 - **Copy-paste ready hints**: Error messages include concrete values, not placeholders
 - **Filtering with `--only`/`--skip`**: Bulk commands like `sync` use these for member filtering
 
+### CLI Output Scope Model
+
+Member-list views use a **spotlight** rendering model:
+
+- **Default mode:** Items inside the current scope (cwd-based) render
+  with full styling, while items outside the scope are fully dimmed.
+  When no scope is active (e.g. user is at the workspace root), all
+  items render normally.
+- **`--all` mode:** No dimming — all items render with full styling.
+  The user asked for the full picture, so everything is shown equally.
+
+| Command     | Scope definition                                      |
+| ----------- | ----------------------------------------------------- |
+| `mr status` | Member the user's cwd is inside (`currentMemberPath`) |
+| `mr ls`     | Same — cwd position within the member tree            |
+| `mr fetch`  | Planned: member(s) actively syncing or that changed   |
+| `mr exec`   | Planned: member(s) being executed on (vs skipped)     |
+
+**Enforcement:** Scope is provided via React context (`ScopeContext`).
+The shared `MemberRow` component reads scope and applies `dim` to all
+text elements when out of scope. Individual renderers never manually
+set `dim` for scope purposes — they set `inScope` on the context and
+`MemberRow` handles the rest.
+
 ### Core Commands
 
 #### `mr fetch --apply`
@@ -385,7 +409,7 @@ tracking different ref than source
 
 This happens when the lock was updated to track a branch but megarepo.json wasn't edited to match.
 
-This distinction prevents silent "already synced" messages and provides targeted fix suggestions.
+This distinction prevents silent "already up to date" messages and provides targeted fix suggestions.
 
 **Options:**
 
@@ -1072,7 +1096,7 @@ This occurs when someone uses `git checkout` directly inside a store worktree. T
 4. **Bare repo always exists**: If any worktree exists, `.bare/` exists
 5. **Path reveals mutability**: `refs/heads/*` is mutable, all else immutable
 6. **Lock file is source of truth**: Sync uses lock for commits, config for intent
-7. **No silent drift**: Sync never reports "already synced" when lock and symlink refs differ
+7. **No silent drift**: Sync never reports "already up to date" when lock and symlink refs differ
 8. **Worktree path matches HEAD**: The ref encoded in a worktree's store path should match its git HEAD
 
 ---

@@ -59,13 +59,13 @@ const parseImportMapFromGenieSource = (sourceContent: string): ImportMap => {
 export const findNearestPackageJson = Effect.fn('findNearestPackageJson')(function* (
   fromPath: string,
 ) {
-  const fs = yield* FileSystem.FileSystem
+  const effectFs = yield* FileSystem.FileSystem
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
 
   while (dir !== root) {
     const packageJsonPath = path.join(dir, 'package.json')
-    const exists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
+    const exists = yield* effectFs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
     if (exists === true) {
       return Option.some(packageJsonPath)
     }
@@ -85,7 +85,7 @@ export const findNearestPackageJson = Effect.fn('findNearestPackageJson')(functi
 export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports')(function* (
   fromPath: string,
 ) {
-  const fs = yield* FileSystem.FileSystem
+  const effectFs = yield* FileSystem.FileSystem
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
 
@@ -93,9 +93,11 @@ export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports'
     const packageJsonPath = path.join(dir, 'package.json')
 
     // Check if package.json exists and has imports
-    const pkgExists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
+    const pkgExists = yield* effectFs
+      .exists(packageJsonPath)
+      .pipe(Effect.orElseSucceed(() => false))
     if (pkgExists === true) {
-      const contentResult = yield* fs.readFileString(packageJsonPath).pipe(
+      const contentResult = yield* effectFs.readFileString(packageJsonPath).pipe(
         Effect.either,
         Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
       )
@@ -109,9 +111,11 @@ export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports'
 
     // Also check for package.json.genie.ts with imports (bootstrap case)
     const genieSourcePath = path.join(dir, 'package.json.genie.ts')
-    const genieExists = yield* fs.exists(genieSourcePath).pipe(Effect.orElseSucceed(() => false))
+    const genieExists = yield* effectFs
+      .exists(genieSourcePath)
+      .pipe(Effect.orElseSucceed(() => false))
     if (genieExists === true) {
-      const sourceResult = yield* fs.readFileString(genieSourcePath).pipe(
+      const sourceResult = yield* effectFs.readFileString(genieSourcePath).pipe(
         Effect.either,
         Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
       )
@@ -179,12 +183,12 @@ export const findPackageJsonWithImportsSync = (fromPath: string): string | undef
  * genie source has imports but the generated file hasn't been updated yet.
  */
 export const extractImportMap = Effect.fn('extractImportMap')(function* (packageJsonPath: string) {
-  const fs = yield* FileSystem.FileSystem
+  const effectFs = yield* FileSystem.FileSystem
 
   // First try the generated package.json
-  const pkgExists = yield* fs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
+  const pkgExists = yield* effectFs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))
   if (pkgExists === true) {
-    const contentResult = yield* fs.readFileString(packageJsonPath).pipe(
+    const contentResult = yield* effectFs.readFileString(packageJsonPath).pipe(
       Effect.either,
       Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
     )
@@ -199,9 +203,11 @@ export const extractImportMap = Effect.fn('extractImportMap')(function* (package
   // Fallback: try to extract from package.json.genie.ts source
   // This enables bootstrapping when genie source has imports but generated file doesn't
   const genieSourcePath = `${packageJsonPath}.genie.ts`
-  const genieExists = yield* fs.exists(genieSourcePath).pipe(Effect.orElseSucceed(() => false))
+  const genieExists = yield* effectFs
+    .exists(genieSourcePath)
+    .pipe(Effect.orElseSucceed(() => false))
   if (genieExists === true) {
-    const sourceResult = yield* fs.readFileString(genieSourcePath).pipe(
+    const sourceResult = yield* effectFs.readFileString(genieSourcePath).pipe(
       Effect.either,
       Effect.orElseSucceed(() => ({ _tag: 'Left' as const, left: null })),
     )

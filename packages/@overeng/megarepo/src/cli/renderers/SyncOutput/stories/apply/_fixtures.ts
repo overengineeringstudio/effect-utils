@@ -5,6 +5,7 @@
  */
 
 import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import { COMMITS, MEMBERS } from '../../../_story-constants.ts'
 
 // =============================================================================
 // Apply Results
@@ -12,36 +13,59 @@ import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
 
 /** All members applied from lockfile (typical CI scenario) */
 export const applyResults: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
-  { name: 'effect-utils', status: 'applied', commit: 'f0e1d2c3b4' },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'applied', commit: '9f8e7d6c5b' },
-  { name: 'schickling.dev', status: 'applied', commit: 'deadbeef42' },
+  { name: MEMBERS.coreLib, status: 'applied', commit: COMMITS.coreLib.current },
+  { name: MEMBERS.devTools, status: 'applied', commit: COMMITS.devTools.current },
+  { name: MEMBERS.appPlatform, status: 'applied', commit: COMMITS.appPlatform.current },
+  { name: MEMBERS.dotfiles, status: 'applied', commit: COMMITS.dotfiles.current },
+  { name: MEMBERS.homepage, status: 'applied', commit: COMMITS.homepage.current },
 ]
 
 /** Some members already at correct commit */
 export const applyPartial: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
-  { name: 'effect-utils', status: 'already_synced' },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'already_synced' },
+  { name: MEMBERS.coreLib, status: 'applied', commit: COMMITS.coreLib.current },
+  { name: MEMBERS.devTools, status: 'already_synced' },
+  { name: MEMBERS.appPlatform, status: 'applied', commit: COMMITS.appPlatform.current },
+  { name: MEMBERS.dotfiles, status: 'already_synced' },
 ]
 
 /** Apply failure (lockfile out of date, missing commits) */
 export const applyWithErrors: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
+  { name: MEMBERS.coreLib, status: 'applied', commit: COMMITS.coreLib.current },
   {
-    name: 'effect-utils',
+    name: MEMBERS.devTools,
     status: 'error',
-    message: 'commit f0e1d2c not found — run mr fetch',
+    message: `commit ${COMMITS.devTools.current.slice(0, 7)} not found — run mr fetch`,
   },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
-  { name: 'dotfiles', status: 'error', message: 'repository not found' },
+  { name: MEMBERS.appPlatform, status: 'applied', commit: COMMITS.appPlatform.current },
+  { name: MEMBERS.dotfiles, status: 'error', message: 'repository not found' },
 ]
 
 /** Apply with lock sync results (lock files updated alongside apply) */
 export const applyWithLockSync: MemberSyncResult[] = [
-  { name: 'effect', status: 'applied', commit: 'a1b2c3d4e5' },
-  { name: 'effect-utils', status: 'applied', commit: 'f0e1d2c3b4' },
-  { name: 'livestore', status: 'applied', commit: '1a2b3c4d5e' },
+  { name: MEMBERS.coreLib, status: 'applied', commit: COMMITS.coreLib.current },
+  { name: MEMBERS.devTools, status: 'applied', commit: COMMITS.devTools.current },
+  { name: MEMBERS.appPlatform, status: 'applied', commit: COMMITS.appPlatform.current },
+]
+
+/** Apply with a pinned member (core-lib) — used with applyForceFlag */
+export const applyWithPinned: MemberSyncResult[] = [
+  {
+    name: MEMBERS.coreLib,
+    status: 'applied',
+    commit: COMMITS.coreLib.current,
+    previousCommit: COMMITS.coreLib.previous,
+  },
+  {
+    name: MEMBERS.devTools,
+    status: 'applied',
+    commit: COMMITS.devTools.current,
+    previousCommit: COMMITS.devTools.previous,
+  },
+  { name: MEMBERS.appPlatform, status: 'already_synced' },
+  {
+    name: MEMBERS.dotfiles,
+    status: 'applied',
+    commit: COMMITS.dotfiles.current,
+    previousCommit: COMMITS.dotfiles.previous,
+  },
 ]

@@ -18,7 +18,6 @@ import {
   getMemberPath,
   isRemoteSource,
   MegarepoConfig,
-  MEMBER_ROOT_DIR,
   parseSourceString,
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
@@ -26,7 +25,13 @@ import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
 import { checkLockStaleness, LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { extractRefFromSymlinkPath } from '../../lib/ref.ts'
 import { type Store, StoreLayer } from '../../lib/store.ts'
-import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
+import {
+  Cwd,
+  detectCurrentMemberPath,
+  findMegarepoRoot,
+  outputOption,
+  outputModeLayer,
+} from '../context.ts'
 import { NotInMegarepoError } from '../errors.ts'
 import { StatusApp, StatusView } from '../renderers/StatusOutput/mod.ts'
 import type {
@@ -366,32 +371,14 @@ export const statusCommand = Cli.Command.make(
         }
       }
 
-      // Compute current member path (for highlighting current location)
-      const cwdNormalized = cwd.replace(/\/$/, '')
-      const rootNormalized = root.value.replace(/\/$/, '')
-
-      // First try path-based detection (handles repos/<member>/repos/<member>/... paths)
-      let currentMemberPath: string[] | undefined = undefined
-      if (cwdNormalized !== rootNormalized && cwdNormalized.startsWith(rootNormalized) === true) {
-        const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
-        const parts = relativePath.split('/')
-        const memberPath: string[] = []
-        for (let i = 0; i < parts.length; i++) {
-          if (parts[i] === MEMBER_ROOT_DIR && i + 1 < parts.length) {
-            memberPath.push(parts[i + 1]!)
-            i++ // Skip the member name we just added
-          }
-        }
-        if (memberPath.length > 0) {
-          currentMemberPath = memberPath
-        }
-      }
+      // Compute current member path (for scope dimming)
+      let currentMemberPath = detectCurrentMemberPath({ cwd, megarepoRoot: root.value, all })
 
       // If path-based detection didn't work, try symlink resolution
       if (currentMemberPath === undefined) {
         const cwdRealPath = yield* fs.realPath(cwd).pipe(
           Effect.map((p) => p.replace(/\/$/, '')),
-          Effect.catchAll(() => Effect.succeed(cwdNormalized)),
+          Effect.catchAll(() => Effect.succeed(cwd.replace(/\/$/, ''))),
         )
 
         const findCurrentMemberPath = ({
@@ -445,12 +432,6 @@ export const statusCommand = Cli.Command.make(
           megarepoRoot: root.value,
           pathSoFar: [],
         })
-      }
-
-      // When --all is false, truncate to top-level member only.
-      // This ensures currentMemberPath always matches the flat member list.
-      if (all === false && currentMemberPath !== undefined && currentMemberPath.length > 1) {
-        currentMemberPath = [currentMemberPath[0]!]
       }
 
       // Compute workspace vs lock reconciliation needs.

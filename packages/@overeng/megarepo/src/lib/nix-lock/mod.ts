@@ -27,7 +27,13 @@ import {
   upsertLockedMember,
   writeLockFile,
 } from '../lock.ts'
-import { parseNixFlakeUrl, getRef, getRev, updateNixFlakeUrl } from './flake-url.ts'
+import {
+  parseNixFlakeUrl,
+  getRef,
+  getRev,
+  updateNixFlakeUrl,
+  convertToGitHubScheme,
+} from './flake-url.ts'
 import {
   extractFlakeNixInputs,
   extractDevenvYamlInputs,
@@ -35,7 +41,12 @@ import {
   matchUrlToMember,
 } from './input-discovery.ts'
 import { matchLockedInputToMember, needsRevUpdate, urlsMatch } from './matcher.ts'
-import { FlakeLock, updateLockedInputRev, type NixFlakeMetadata } from './schema.ts'
+import {
+  FlakeLock,
+  updateLockedInputRev,
+  convertLockedInputToGitHub,
+  type NixFlakeMetadata,
+} from './schema.ts'
 import {
   rewriteFlakeNixUrls,
   rewriteDevenvYamlUrls,
@@ -62,6 +73,10 @@ export type NixLockSyncUpdate =
       readonly memberName: string
       readonly oldRef: string
       readonly newRef: string
+    }
+  | {
+      readonly _tag: 'SchemeUpdate'
+      readonly inputName: string
     }
 
 /** Result of syncing a single Nix lock file */
@@ -419,15 +434,55 @@ const syncSingleLockFile = ({
         newLocked = updateLockedInputRev({ locked: info.locked, newRev: info.newRev })
       }
 
+      // Convert git+ssh/git+https GitHub URLs to github: scheme
+      const convertedLocked = convertLockedInputToGitHub(newLocked)
+      if (convertedLocked !== undefined) newLocked = convertedLocked
+
+      // Also convert the original section if present
+      let updatedNode = info.node
+      const original = info.node['original'] as Record<string, unknown> | undefined
+      if (original !== undefined) {
+        const convertedOriginal = convertLockedInputToGitHub(original)
+        if (convertedOriginal !== undefined) {
+          updatedNode = { ...info.node, original: convertedOriginal }
+        }
+      }
+
       // Update node in-place, preserving key order
       rawJson.nodes[info.nodeName] = updateNodePreservingOrder({
-        node: info.node,
+        node: updatedNode,
         newLocked,
       })
     }
 
+    // Fourth pass: normalize all remaining git GitHub nodes to github: scheme
+    // (nodes not already updated in the third pass)
+    const updatedNodeNames = new Set(nodesToUpdate.map((n) => n.nodeName))
+    let schemeNormalized = false
+
+    for (const [nodeName, node] of Object.entries(rawJson.nodes)) {
+      if (updatedNodeNames.has(nodeName) === true) continue
+
+      const locked = node['locked'] as Record<string, unknown> | undefined
+      if (locked === undefined) continue
+
+      const convertedLocked = convertLockedInputToGitHub(locked)
+      const original = node['original'] as Record<string, unknown> | undefined
+      const convertedOriginal =
+        original !== undefined ? convertLockedInputToGitHub(original) : undefined
+
+      if (convertedLocked !== undefined || convertedOriginal !== undefined) {
+        const updatedNode = { ...node }
+        if (convertedLocked !== undefined) updatedNode['locked'] = convertedLocked
+        if (convertedOriginal !== undefined) updatedNode['original'] = convertedOriginal
+        rawJson.nodes[nodeName] = updatedNode
+        schemeNormalized = true
+        updatedInputs.push({ _tag: 'SchemeUpdate', inputName: nodeName })
+      }
+    }
+
     // Write updated lock file if any changes were made
-    if (updatedInputs.length > 0) {
+    if (updatedInputs.length > 0 || schemeNormalized === true) {
       // JSON.stringify is safe here - it doesn't throw on valid objects
       // @effect-diagnostics-next-line preferSchemaOverJson:off
       const updatedContent = JSON.stringify(rawJson, null, 2)
@@ -579,23 +634,31 @@ export const syncSourceFileRevs = ({
 
       const currentRev = getRev(parsed)
       if (currentRev === undefined) continue
-      if (currentRev === member.commit) continue
 
-      const newUrl = updateNixFlakeUrl({ url: input.url, updates: { rev: member.commit } })
+      if (currentRev !== member.commit) {
+        let newUrl = updateNixFlakeUrl({ url: input.url, updates: { rev: member.commit } })
+        newUrl = convertToGitHubScheme(newUrl)
 
-      updatedInputs.push({
-        _tag: 'RevUpdate',
-        inputName: input.inputName,
-        memberName,
-        oldRev: currentRev,
-        newRev: member.commit,
-      })
+        updatedInputs.push({
+          _tag: 'RevUpdate',
+          inputName: input.inputName,
+          memberName,
+          oldRev: currentRev,
+          newRev: member.commit,
+        })
 
-      // Replace the URL in the file content
-      updatedContent = updatedContent.replaceAll(input.url, newUrl)
+        updatedContent = updatedContent.replaceAll(input.url, newUrl)
+      } else {
+        // Rev is up to date — still normalize scheme to github: if needed
+        const converted = convertToGitHubScheme(input.url)
+        if (converted !== input.url) {
+          updatedContent = updatedContent.replaceAll(input.url, converted)
+          updatedInputs.push({ _tag: 'SchemeUpdate', inputName: input.inputName })
+        }
+      }
     }
 
-    if (updatedInputs.length > 0) {
+    if (updatedContent !== content) {
       yield* fs.writeFileString(filePath, updatedContent)
     }
 
@@ -878,18 +941,38 @@ const syncMemberRefs = ({
           })
         }
 
-        if (updates.size === 0) return
+        // Apply ref updates via rewriter (if any)
+        let finalContent = content
+        if (updates.size > 0) {
+          const rewriter = fileType === 'flake.nix' ? rewriteFlakeNixUrls : rewriteDevenvYamlUrls
+          const result = rewriter({ content, updates })
+          finalContent = result.content
+        }
 
-        const rewriter = fileType === 'flake.nix' ? rewriteFlakeNixUrls : rewriteDevenvYamlUrls
-        const result = rewriter({ content, updates })
+        // Normalize all megarepo-matched URLs to github: scheme
+        for (const input of inputs) {
+          const currentUrl =
+            updates.has(input.inputName) === true
+              ? updateNixFlakeUrl({
+                  url: input.url,
+                  updates: { ref: updates.get(input.inputName)!.newRef },
+                })
+              : input.url
+          const converted = convertToGitHubScheme(currentUrl)
+          if (converted !== currentUrl) {
+            finalContent = finalContent.replaceAll(currentUrl, converted)
+          }
+        }
 
-        if (result.updatedInputs.length > 0) {
-          yield* fs.writeFileString(filePath, result.content)
-          results.push({
-            path: filePath,
-            type: fileType,
-            updatedInputs: updatedInputDetails,
-          })
+        if (finalContent !== content) {
+          yield* fs.writeFileString(filePath, finalContent)
+          if (updatedInputDetails.length > 0) {
+            results.push({
+              path: filePath,
+              type: fileType,
+              updatedInputs: updatedInputDetails,
+            })
+          }
         }
       })
 
@@ -948,17 +1031,63 @@ const syncMemberRefs = ({
           })
         }
 
-        if (refUpdates.size === 0) return
+        // Apply ref updates (if any)
+        let currentContent = content
+        if (refUpdates.size > 0) {
+          const result = rewriteLockFileRefs({ content, refUpdates })
+          if (result.updatedNodes.length > 0) {
+            currentContent = result.content
+          }
+        }
 
-        const result = rewriteLockFileRefs({ content, refUpdates })
+        // Normalize all git GitHub nodes to github: scheme
+        let lockJson: { nodes?: Record<string, Record<string, unknown>> }
+        try {
+          lockJson = JSON.parse(currentContent) as typeof lockJson
+        } catch {
+          if (currentContent !== content) {
+            yield* fs.writeFileString(filePath, currentContent)
+            results.push({ path: filePath, type: fileType, updatedInputs: updatedInputDetails })
+          }
+          return
+        }
 
-        if (result.updatedNodes.length > 0) {
-          yield* fs.writeFileString(filePath, result.content)
-          results.push({
-            path: filePath,
-            type: fileType,
-            updatedInputs: updatedInputDetails,
-          })
+        let schemeConverted = false
+        if (lockJson.nodes !== undefined) {
+          for (const node of Object.values(lockJson.nodes)) {
+            const locked = node['locked'] as Record<string, unknown> | undefined
+            if (locked !== undefined) {
+              const converted = convertLockedInputToGitHub(locked)
+              if (converted !== undefined) {
+                node['locked'] = converted
+                schemeConverted = true
+              }
+            }
+
+            const original = node['original'] as Record<string, unknown> | undefined
+            if (original !== undefined) {
+              const converted = convertLockedInputToGitHub(original)
+              if (converted !== undefined) {
+                node['original'] = converted
+                schemeConverted = true
+              }
+            }
+          }
+        }
+
+        if (schemeConverted === true) {
+          currentContent = JSON.stringify(lockJson, null, 2) + '\n'
+        }
+
+        if (currentContent !== content) {
+          yield* fs.writeFileString(filePath, currentContent)
+          if (updatedInputDetails.length > 0) {
+            results.push({
+              path: filePath,
+              type: fileType,
+              updatedInputs: updatedInputDetails,
+            })
+          }
         }
       })
 
@@ -1215,6 +1344,7 @@ export {
   FlakeLock,
   FlakeLockNode,
   updateLockedInputRev,
+  convertLockedInputToGitHub,
   parseLockedInput,
   type NixFlakeMetadata,
 } from './schema.ts'
@@ -1234,6 +1364,8 @@ export {
   getRef,
   getRev,
   getDir,
+  toGitHubScheme,
+  convertToGitHubScheme,
 } from './flake-url.ts'
 export {
   type DiscoveredInput,

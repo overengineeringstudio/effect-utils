@@ -296,7 +296,7 @@ in
       optionalTasks = [
         "pnpm:install"
         "genie:run"
-        "megarepo:sync"
+        "mr:sync"
         "ts:emit"
       ];
       completionsCliNames = [
@@ -336,7 +336,7 @@ in
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
-  tasks."megarepo:sync".after = [ "pnpm:install" ];
+  tasks."mr:sync".after = [ "pnpm:install" ];
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];

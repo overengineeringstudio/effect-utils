@@ -3,11 +3,11 @@
 # Uses the `mr` CLI for megarepo operations.
 #
 # Tasks:
-# - megarepo:sync - Fetch latest refs and apply to workspace (mr fetch --apply)
-# - megarepo:lock - Record the current workspace into megarepo.lock (mr lock)
-# - megarepo:fetch-apply - Fetch latest refs and apply (mr fetch --apply)
-# - megarepo:apply - Apply megarepo.lock exactly (mr apply)
-# - megarepo:check - Verify megarepo setup is complete
+# - mr:sync - Fetch latest refs and apply to workspace (mr fetch --apply)
+# - mr:lock - Record the current workspace into megarepo.lock (mr lock)
+# - mr:fetch-apply - Fetch latest refs and apply (mr fetch --apply)
+# - mr:apply - Apply megarepo.lock exactly (mr apply)
+# - mr:check - Verify megarepo setup is complete
 #
 # Options:
 # - syncAll: Whether to use `--all` (recursive nested sync). Default: true.
@@ -16,7 +16,7 @@
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
-#   tasks."megarepo:sync".after = [ "pnpm:install:megarepo" ];
+#   tasks."mr:sync".after = [ "pnpm:install:megarepo" ];
 {
   syncAll ? true,
 }:
@@ -26,10 +26,10 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
 
   tasks = {
-    "megarepo:sync" = {
+    "mr:sync" = {
       guard = "mr";
       description = "Fetch latest refs and apply to workspace";
-      exec = trace.exec "megarepo:sync" ''
+      exec = trace.exec "mr:sync" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -37,7 +37,7 @@ let
         mr fetch --apply${if syncAll then " --all" else ""}
       '';
       # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
-      status = trace.status "megarepo:sync" "binary" ''
+      status = trace.status "mr:sync" "binary" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -54,10 +54,10 @@ let
       '';
     };
 
-    "megarepo:lock" = {
+    "mr:lock" = {
       guard = "mr";
       description = "Record current workspace state into megarepo.lock";
-      exec = trace.exec "megarepo:lock" ''
+      exec = trace.exec "mr:lock" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -66,9 +66,9 @@ let
       '';
     };
 
-    "megarepo:fetch-apply" = {
+    "mr:fetch-apply" = {
       description = "Fetch latest refs and apply to workspace";
-      exec = trace.exec "megarepo:fetch-apply" ''
+      exec = trace.exec "mr:fetch-apply" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -77,10 +77,10 @@ let
       '';
     };
 
-    "megarepo:apply" = {
+    "mr:apply" = {
       guard = "mr";
       description = "Apply megarepo.lock to workspace";
-      exec = trace.exec "megarepo:apply" ''
+      exec = trace.exec "mr:apply" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -89,12 +89,12 @@ let
       '';
     };
 
-    "megarepo:check" = {
+    "mr:check" = {
       guard = "mr";
       description = "Verify megarepo setup is complete";
-      after = [ "megarepo:sync" ];
+      after = [ "mr:sync" ];
       # Check that repos dir exists and all members have symlinks
-      status = trace.status "megarepo:check" "path" ''
+      status = trace.status "mr:check" "path" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -114,14 +114,14 @@ let
 
         exit 0
       '';
-      exec = trace.exec "megarepo:check" ''
+      exec = trace.exec "mr:check" ''
         if [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
         if [ ! -d ./repos ]; then
           echo "[devenv] Missing repos/ directory." >&2
-          echo "[devenv] Fix: devenv tasks run megarepo:sync" >&2
+          echo "[devenv] Fix: devenv tasks run mr:sync" >&2
           exit 1
         fi
 
@@ -136,7 +136,7 @@ let
 
         if [ -n "$missing" ]; then
           echo "[devenv] Missing member symlinks:$missing" >&2
-          echo "[devenv] Fix: devenv tasks run megarepo:sync" >&2
+          echo "[devenv] Fix: devenv tasks run mr:sync" >&2
           exit 1
         fi
       '';

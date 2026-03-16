@@ -7,6 +7,7 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols } from '@overeng/tui-react'
 
+import { StatusIcon } from '../../components/mod.ts'
 import type { PinState } from './schema.ts'
 
 /** Props for the PinView component that renders pin/unpin command results. */
@@ -36,7 +37,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       if (state.action === 'unpin') {
         return (
           <Box flexDirection="row">
-            <Text color="green">{symbols.status.check}</Text>
+            <StatusIcon status="success" />
             <Text> Unpinned </Text>
             <Text bold>{state.member}</Text>
           </Box>
@@ -44,7 +45,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       }
       return (
         <Box flexDirection="row">
-          <Text color="green">{symbols.status.check}</Text>
+          <StatusIcon status="success" />
           <Text> Pinned </Text>
           <Text bold>{state.member}</Text>
           {state.ref !== undefined && (
@@ -172,7 +173,7 @@ export const PinView = ({ stateAtom }: PinViewProps) => {
       return (
         <Box>
           <Box flexDirection="row">
-            <Text color="red">{symbols.status.cross}</Text>
+            <StatusIcon status="error" />
             <Text> {state.message}</Text>
           </Box>
           {state.error === 'not_synced' && <Text dim>{'  Run: mr apply'}</Text>}

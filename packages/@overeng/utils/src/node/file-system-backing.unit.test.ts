@@ -92,8 +92,8 @@ Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('tryAcquire', () => {
     Vitest.it.effect('acquires permits when available', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -116,8 +116,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('respects permit limit', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -148,8 +148,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('multiple holders can acquire permits up to limit', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -198,8 +198,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('same holder can re-acquire (update permits)', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -229,8 +229,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('different keys are independent', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -258,8 +258,8 @@ Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('release', () => {
     Vitest.it.effect('releases held permits', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -286,8 +286,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('partial release keeps remaining permits', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -330,8 +330,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('releasing more than held returns actual released count', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -350,8 +350,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('releasing from nonexistent holder returns 0', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -369,8 +369,8 @@ Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('refresh', () => {
     Vitest.it.effect('refreshes TTL for held permits', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -394,8 +394,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('returns false when permits expired', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -419,8 +419,8 @@ Vitest.describe('FileSystemBacking', () => {
   Vitest.describe('getCount', () => {
     Vitest.it.effect('returns count of held permits', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })
@@ -438,8 +438,8 @@ Vitest.describe('FileSystemBacking', () => {
 
     Vitest.it.effect('excludes expired permits from count', () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const tempDir = yield* fs.makeTempDirectory()
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
         const lockDir = `${tempDir}/locks`
 
         const backingLayer = FileSystemBacking.layer({ lockDir })

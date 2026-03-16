@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
@@ -37,10 +37,7 @@ export default {
     playbackSpeed: 1,
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
+    height: commonArgTypes.height,
     interactive: {
       description: 'Enable animated timeline playback (no animation for instant results)',
       control: { type: 'boolean' },
@@ -98,10 +95,10 @@ export const ManyRepos: Story = {
         { relativePath: 'github.com/effect-ts/effect' },
         { relativePath: 'github.com/effect-ts/effect-schema' },
         { relativePath: 'github.com/effect-ts/effect-platform' },
-        { relativePath: 'github.com/overengineeringstudio/effect-utils' },
-        { relativePath: 'github.com/overengineeringstudio/tui-react' },
-        { relativePath: 'github.com/schickling/dotfiles' },
-        { relativePath: 'github.com/schickling/config' },
+        { relativePath: 'github.com/acme-org/dev-tools' },
+        { relativePath: 'github.com/acme-org/tui-react' },
+        { relativePath: 'github.com/alice/dotfiles' },
+        { relativePath: 'github.com/alice/infra-config' },
         { relativePath: 'gitlab.com/company/internal-lib' },
       ])}
       height={args.height}

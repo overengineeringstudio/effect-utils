@@ -12,7 +12,7 @@ import { Context, Effect, Layer, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME } from '../lib/config.ts'
+import { CONFIG_FILE_NAME, MEMBER_ROOT_DIR } from '../lib/config.ts'
 import { InvalidCwdError } from './errors.ts'
 
 // =============================================================================
@@ -208,3 +208,51 @@ export const findNearestMegarepoRoot = (startPath: AbsoluteDirPath) =>
     const rootExists = yield* fs.exists(rootConfigPath)
     return rootExists === true ? Option.some(rootDir) : Option.none()
   })
+
+// =============================================================================
+// Current Member Path Detection
+// =============================================================================
+
+/**
+ * Detect which member the user's cwd is inside by parsing the relative path.
+ * Looks for `repos/<member>/repos/<member>/...` segments.
+ *
+ * When `all` is false, truncates to top-level member only (matching the flat member list).
+ */
+export const detectCurrentMemberPath = ({
+  cwd,
+  megarepoRoot,
+  all,
+}: {
+  cwd: AbsoluteDirPath
+  megarepoRoot: AbsoluteDirPath
+  all: boolean
+}): string[] | undefined => {
+  const cwdNormalized = cwd.replace(/\/$/, '')
+  const rootNormalized = megarepoRoot.replace(/\/$/, '')
+
+  if (cwdNormalized === rootNormalized || cwdNormalized.startsWith(rootNormalized) === false) {
+    return undefined
+  }
+
+  const relativePath = cwdNormalized.slice(rootNormalized.length + 1)
+  const parts = relativePath.split('/')
+  const memberPath: string[] = []
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === MEMBER_ROOT_DIR && i + 1 < parts.length) {
+      memberPath.push(parts[i + 1]!)
+      i++
+    }
+  }
+
+  if (memberPath.length === 0) {
+    return undefined
+  }
+
+  // When --all is false, truncate to top-level member only
+  if (all === false && memberPath.length > 1) {
+    return [memberPath[0]!]
+  }
+
+  return memberPath
+}

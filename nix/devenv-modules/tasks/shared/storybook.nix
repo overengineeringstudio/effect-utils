@@ -59,6 +59,7 @@ let
     "${processName pkg}" = {
       ports.http.allocate = pkg.port;
       exec = ''
+        export DT_PASSTHROUGH=1
         _host="''${TS_HOSTNAME:-localhost}"
         echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"
         pnpm exec storybook dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port

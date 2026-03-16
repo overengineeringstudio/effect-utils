@@ -13,6 +13,13 @@ import {
 } from '@overeng/tui-react/storybook'
 
 import type { MemberSyncResult } from '../../../../../lib/sync/schema.ts'
+import {
+  buildSyncCommand,
+  buildSyncOptions,
+  flagArgTypes,
+  MEMBERS,
+  WORKSPACE,
+} from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {
@@ -47,22 +54,10 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: show what would happen without making changes',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all: sync nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
-    verbose: {
-      description: '--verbose: show detailed lock sync information',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force: include pinned members',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    all: flagArgTypes.all,
+    verbose: flagArgTypes.verbose,
+    force: flagArgTypes.force,
   },
 } satisfies Meta
 
@@ -73,13 +68,13 @@ export const WithErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: exampleSyncResultsWithErrors,
         members: exampleSyncResultsWithErrors.map((r) => r.name),
       }),
@@ -97,7 +92,13 @@ export const WithErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -109,20 +110,20 @@ export const AllErrors: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'error' as const, message: 'network timeout' },
-          { name: 'effect-utils', status: 'error' as const, message: 'authentication failed' },
-          { name: 'livestore', status: 'error' as const, message: 'repository not found' },
-          { name: 'private-repo', status: 'error' as const, message: 'permission denied' },
+          { name: MEMBERS.coreLib, status: 'error' as const, message: 'network timeout' },
+          { name: MEMBERS.devTools, status: 'error' as const, message: 'authentication failed' },
+          { name: MEMBERS.appPlatform, status: 'error' as const, message: 'repository not found' },
+          { name: MEMBERS.studioOrg, status: 'error' as const, message: 'permission denied' },
         ],
-        members: ['effect', 'effect-utils', 'livestore', 'private-repo'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -138,7 +139,13 @@ export const AllErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -150,20 +157,24 @@ export const SkippedMembers: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'dirty-repo', status: 'skipped' as const, message: 'dirty worktree' },
-          { name: 'pinned-repo', status: 'skipped' as const, message: 'pinned' },
-          { name: 'private-repo', status: 'skipped' as const, message: 'authentication required' },
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'skipped' as const, message: 'dirty worktree' },
+          { name: MEMBERS.appPlatform, status: 'skipped' as const, message: 'pinned' },
+          {
+            name: MEMBERS.studioOrg,
+            status: 'skipped' as const,
+            message: 'authentication required',
+          },
         ] satisfies MemberSyncResult[],
-        members: ['effect', 'dirty-repo', 'pinned-repo', 'private-repo'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -179,7 +190,13 @@ export const SkippedMembers: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -191,21 +208,35 @@ export const MixedSkipped: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'already_synced' as const },
-          { name: 'dirty-repo', status: 'skipped' as const, message: '5 uncommitted changes' },
-          { name: 'pinned-repo', status: 'skipped' as const, message: 'pinned to v1.0.0' },
-          { name: 'auth-repo', status: 'skipped' as const, message: 'authentication required' },
-          { name: 'missing-ref', status: 'skipped' as const, message: 'ref feature/x not found' },
+          { name: MEMBERS.coreLib, status: 'already_synced' as const },
+          { name: MEMBERS.devTools, status: 'skipped' as const, message: '5 uncommitted changes' },
+          { name: MEMBERS.appPlatform, status: 'skipped' as const, message: 'pinned to v1.0.0' },
+          {
+            name: MEMBERS.dotfiles,
+            status: 'skipped' as const,
+            message: 'authentication required',
+          },
+          {
+            name: MEMBERS.homepage,
+            status: 'skipped' as const,
+            message: 'ref feature/x not found',
+          },
         ] satisfies MemberSyncResult[],
-        members: ['effect', 'dirty-repo', 'pinned-repo', 'auth-repo', 'missing-ref'],
+        members: [
+          MEMBERS.coreLib,
+          MEMBERS.devTools,
+          MEMBERS.appPlatform,
+          MEMBERS.dotfiles,
+          MEMBERS.homepage,
+        ],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -221,7 +252,13 @@ export const MixedSkipped: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -234,17 +271,17 @@ export const RefMismatchDetected: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
           {
-            name: 'effect-utils',
+            name: MEMBERS.devTools,
             status: 'skipped' as const,
             refMismatch: {
               expectedRef: 'main',
@@ -253,7 +290,7 @@ export const RefMismatchDetected: Story = {
             },
           },
           {
-            name: 'livestore',
+            name: MEMBERS.appPlatform,
             status: 'skipped' as const,
             refMismatch: {
               expectedRef: 'main',
@@ -261,9 +298,9 @@ export const RefMismatchDetected: Story = {
               isDetached: true,
             },
           },
-          { name: 'other-repo', status: 'synced' as const, ref: 'develop' },
+          { name: MEMBERS.studioOrg, status: 'synced' as const, ref: 'develop' },
         ] satisfies MemberSyncResult[],
-        members: ['effect', 'effect-utils', 'livestore', 'other-repo'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -279,7 +316,13 @@ export const RefMismatchDetected: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -291,18 +334,18 @@ export const Interrupted: Story = {
   render: (args) => {
     const stateConfig = useMemo(
       () => ({
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         _tag: 'Interrupted' as const,
-        members: ['effect', 'effect-utils', 'livestore', 'dotfiles'],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
         results: [
-          { name: 'effect', status: 'synced' as const, ref: 'main' },
-          { name: 'effect-utils', status: 'cloned' as const, ref: 'main' },
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'cloned' as const, ref: 'main' },
         ] satisfies MemberSyncResult[],
       }),
       [args.dryRun, args.all, args.verbose, args.force],
@@ -319,7 +362,61 @@ export const Interrupted: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
+        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+      />
+    )
+  },
+}
+
+/** Members excluded via --only or --skip flags */
+export const WithSkippedMembers: Story = {
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => ({
+        options: buildSyncOptions({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+          skippedMembers: [MEMBERS.studioOrg, MEMBERS.homepage],
+        }),
+        results: [
+          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
+          { name: MEMBERS.appPlatform, status: 'already_synced' as const },
+          { name: MEMBERS.dotfiles, status: 'synced' as const, ref: 'main' },
+        ] satisfies MemberSyncResult[],
+        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
+      }),
+      [args.dryRun, args.all, args.verbose, args.force],
+    )
+    return (
+      <TuiStoryPreview
+        View={SyncView}
+        app={SyncApp}
+        initialState={createBaseState(
+          args.interactive === true ? { _tag: 'Success' } : stateConfig,
+        )}
+        height={args.height}
+        autoRun={args.interactive}
+        playbackSpeed={args.playbackSpeed}
+        tabs={ALL_OUTPUT_TABS}
+        cwd="~/workspace"
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
       />
     )
@@ -333,23 +430,23 @@ export const FetchErrors: Story = {
       () => ({
         _tag: 'Error' as const,
         results: fetchWithErrors,
-        options: {
-          mode: 'fetch' as const,
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
         syncErrorCount: 2,
         syncErrors: [
           {
-            megarepoRoot: '/Users/dev/workspace',
-            memberName: 'effect-utils',
+            megarepoRoot: WORKSPACE.root,
+            memberName: MEMBERS.devTools,
             message: 'network timeout during fetch',
           },
           {
-            megarepoRoot: '/Users/dev/workspace',
-            memberName: 'private-repo',
+            megarepoRoot: WORKSPACE.root,
+            memberName: MEMBERS.studioOrg,
             message: 'authentication failed',
           },
         ],
@@ -369,7 +466,13 @@ export const FetchErrors: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),

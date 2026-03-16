@@ -45,9 +45,9 @@ export const getExpandedPaths = (
         }
       } else {
         if (key === WILDCARD) {
-          for (const { name, data } of dataIterator(curData)) {
-            if (hasChildNodes(data, dataIterator) === true) {
-              populatePaths(data, `${curPath}.${name}`, depth + 1)
+          for (const { name, data: childData } of dataIterator(curData)) {
+            if (hasChildNodes(childData, dataIterator) === true) {
+              populatePaths(childData, `${curPath}.${name}`, depth + 1)
             }
           }
         } else {

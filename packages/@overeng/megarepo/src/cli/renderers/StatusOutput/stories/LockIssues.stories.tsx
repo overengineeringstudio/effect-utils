@@ -5,8 +5,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
-import { ALL_OUTPUT_TABS, TuiStoryPreview } from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, commonArgTypes, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
+import { applyCwd, cwdArgType, flagArgTypes } from '../../_story-constants.ts'
 import { StatusApp } from '../mod.ts'
 import { StatusView } from '../view.tsx'
 import * as fixtures from './_fixtures.ts'
@@ -14,6 +15,7 @@ import * as fixtures from './_fixtures.ts'
 type StoryArgs = {
   height: number
   all: boolean
+  cwd: string
 }
 
 export default {
@@ -25,16 +27,12 @@ export default {
   args: {
     height: 400,
     all: false,
+    cwd: '(root)',
   },
   argTypes: {
-    height: {
-      description: 'Terminal height in pixels',
-      control: { type: 'range', min: 200, max: 600, step: 50 },
-    },
-    all: {
-      description: '--all flag: show nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
+    height: commonArgTypes.height,
+    all: flagArgTypes.all,
+    cwd: cwdArgType,
   },
 } satisfies Meta
 
@@ -42,60 +40,84 @@ type Story = StoryObj<StoryArgs>
 
 /** Lock file doesn't exist yet */
 export const LockMissing: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createLockMissingState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/workspace"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createLockMissingState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 /** Lock file has missing/extra entries compared to megarepo.json */
 export const LockStale: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createLockStaleState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/workspace"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createLockStaleState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 /** Lock ref is outdated but current state matches source intent */
 export const StaleLockRef: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createStaleLockState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/my-megarepo"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createStaleLockState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }
 
 /** Local commit differs from locked commit (inline indicator) */
 export const CommitDrift: Story = {
-  render: (args) => (
-    <TuiStoryPreview
-      View={StatusView}
-      app={StatusApp}
-      initialState={fixtures.createCommitDriftState({ all: args.all })}
-      height={args.height}
-      tabs={ALL_OUTPUT_TABS}
-      command="mr status"
-      cwd="~/my-megarepo"
-    />
-  ),
+  render: (args) => {
+    const { initialState, cwd } = applyCwd({
+      state: fixtures.createCommitDriftState({ all: args.all }),
+      cwdArg: args.cwd,
+    })
+    return (
+      <TuiStoryPreview
+        View={StatusView}
+        app={StatusApp}
+        initialState={initialState}
+        height={args.height}
+        tabs={ALL_OUTPUT_TABS}
+        command="mr status"
+        cwd={cwd}
+      />
+    )
+  },
 }

@@ -375,7 +375,7 @@ export const checkAll = ({
     const resultByPathRef = yield* Ref.make(new Map<string, FileCheckResult>())
 
     const completeFile = Effect.fn('genie/checkAll/completeFile')(function* ({
-      path,
+      path: filePath,
       result,
     }: {
       path: string
@@ -383,18 +383,18 @@ export const checkAll = ({
     }) {
       yield* emit({
         _tag: 'FileCompleted',
-        path,
+        path: filePath,
         status: result._tag === 'success' ? ('unchanged' as const) : ('error' as const),
         ...(result._tag === 'error' ? { message: result.message } : {}),
       })
       yield* Ref.update(resultByPathRef, (prev) => {
         const next = new Map(prev)
-        next.set(path, result)
+        next.set(filePath, result)
         return next
       })
       yield* Ref.update(completedPathsRef, (prev) => {
         const next = new Set(prev)
-        next.add(path)
+        next.add(filePath)
         return next
       })
     })

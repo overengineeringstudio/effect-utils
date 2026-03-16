@@ -206,6 +206,68 @@ export interface NixFlakeMetadata {
 }
 
 /**
+ * Convert a git-type locked/original input pointing to GitHub into a github-type input.
+ * Returns undefined if not a git-type GitHub URL. Works on both `locked` and `original` sections.
+ */
+export const convertLockedInputToGitHub = (
+  input: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  if (input['type'] !== 'git') return undefined
+
+  const url = input['url']
+  if (typeof url !== 'string') return undefined
+
+  // Strip query string before matching owner/repo
+  const qIdx = url.indexOf('?')
+  const baseUrl = qIdx >= 0 ? url.slice(0, qIdx) : url
+  const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : undefined
+
+  const match = baseUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?(?:\/)?$/)
+  if (match?.[1] === undefined || match[2] === undefined) return undefined
+
+  // Extract query params (e.g. dir) to preserve as separate fields
+  const queryParams = new Map<string, string>()
+  if (queryString !== undefined) {
+    for (const pair of queryString.split('&')) {
+      const eqIdx = pair.indexOf('=')
+      if (eqIdx >= 0) {
+        queryParams.set(pair.slice(0, eqIdx), pair.slice(eqIdx + 1))
+      }
+    }
+  }
+
+  const result: Record<string, unknown> = {}
+  let ownerRepoInserted = false
+
+  for (const key of Object.keys(input)) {
+    if (key === 'type') {
+      result['type'] = 'github'
+    } else if (key === 'url') {
+      result['owner'] = match[1]
+      result['repo'] = match[2]
+      ownerRepoInserted = true
+    } else if (key === 'shallow' || key === 'submodules') {
+      // Drop git-specific fields
+    } else {
+      result[key] = input[key]
+    }
+  }
+
+  if (ownerRepoInserted === false) {
+    result['owner'] = match[1]
+    result['repo'] = match[2]
+  }
+
+  // Preserve query params as separate fields (e.g. dir)
+  for (const [key, value] of queryParams) {
+    if (key === 'ref' || key === 'rev') continue // ref/rev are already separate fields
+    if (!(key in result)) result[key] = value
+  }
+
+  return result
+}
+
+/**
  * Create an updated locked input with new rev, optionally updating metadata (narHash, lastModified).
  *
  * When metadata is provided, narHash and lastModified are updated to the new values.

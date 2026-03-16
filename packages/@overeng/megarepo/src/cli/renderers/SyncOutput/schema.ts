@@ -55,6 +55,14 @@ export const LockRefUpdate = Schema.Struct({
 /** Inferred type for a ref update */
 export type LockRefUpdate = Schema.Schema.Type<typeof LockRefUpdate>
 
+/** Scheme normalization update — git+ssh/git+https converted to github: */
+export const LockSchemeUpdate = Schema.Struct({
+  _tag: Schema.Literal('SchemeUpdate'),
+  inputName: Schema.String,
+})
+/** Inferred type for a scheme update */
+export type LockSchemeUpdate = Schema.Schema.Type<typeof LockSchemeUpdate>
+
 /** Shared lock source update — e.g. devenv version propagated from source member */
 export const LockSharedSourceUpdate = Schema.Struct({
   _tag: Schema.Literal('SharedSourceUpdate'),
@@ -65,8 +73,8 @@ export const LockSharedSourceUpdate = Schema.Struct({
 /** Inferred type for a shared source update */
 export type LockSharedSourceUpdate = Schema.Schema.Type<typeof LockSharedSourceUpdate>
 
-/** Union of rev and ref update types (used in lock file sync results) */
-export const LockFileUpdate = Schema.Union(LockRevUpdate, LockRefUpdate)
+/** Union of rev, ref, and scheme update types (used in lock file sync results) */
+export const LockFileUpdate = Schema.Union(LockRevUpdate, LockRefUpdate, LockSchemeUpdate)
 /** Inferred type for a lock file update (rev or ref) */
 export type LockFileUpdate = Schema.Schema.Type<typeof LockFileUpdate>
 

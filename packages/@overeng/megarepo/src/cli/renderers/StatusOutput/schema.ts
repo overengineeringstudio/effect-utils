@@ -34,7 +34,7 @@ export type GitStatus = Schema.Schema.Type<typeof GitStatus>
  *
  * This happens when:
  * - User was working on a branch (lock tracked it)
- * - User switched back to main (via git checkout or mr pin)
+ * - User switched back to main (via git checkout or mr config pin)
  * - Lock wasn't updated
  *
  * The current state (symlink + git HEAD) matches the source intent,

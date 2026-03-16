@@ -35,6 +35,7 @@ const runtimeDeps = catalog.compose({
       '@xterm/xterm',
       '@xterm/headless',
       '@xterm/addon-fit',
+      '@xterm/addon-webgl',
     ),
   },
   devDependencies: {

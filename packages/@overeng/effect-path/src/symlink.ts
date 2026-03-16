@@ -142,7 +142,7 @@ export const readLink = Effect.fnUntraced(function* (path: AbsolutePath) {
   }
 
   const statResult = yield* fs.stat(path).pipe(
-    Effect.mapError((error) => mapFsError({ path, error })),
+    Effect.mapError((fsError) => mapFsError({ path, error: fsError })),
     Effect.either,
   )
   if (Either.isLeft(statResult) === true) {

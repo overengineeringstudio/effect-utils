@@ -64,7 +64,7 @@ export const Summary = ({ counts, dryRun = false, mode }: SummaryProps) => {
   const parts: Array<{ key: string; element: React.ReactNode }> = []
   const isFetch = mode === 'fetch'
   const updatedLabel = isFetch === true ? 'fetched' : 'updated'
-  const unchangedLabel = isFetch === true ? 'already up to date' : 'unchanged'
+  const unchangedLabel = 'already up to date'
 
   if (dryRun === true) {
     const toUpdateLabel = isFetch === true ? 'to fetch' : 'to update'

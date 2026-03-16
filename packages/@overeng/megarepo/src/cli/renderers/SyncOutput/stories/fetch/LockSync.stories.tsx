@@ -12,18 +12,26 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import {
+  buildSyncCommand,
+  buildSyncOptions,
+  flagArgTypes,
+  MEGAREPO_MEMBERS,
+  WORKSPACE,
+} from '../../../_story-constants.ts'
 import { SyncApp } from '../../mod.ts'
 import { SyncView } from '../../view.tsx'
 import {
   createCommandState,
   createCommandTimeline,
   exampleLockSyncResults,
+  exampleNestedSyncTrees,
   exampleRefSyncResults,
   exampleSharedSourceSync,
   exampleMixedSyncResults,
   exampleMixedSharedSourceSync,
 } from '../_fixtures.ts'
-import { fetchFullNixSync, fetchLockSyncResults, fetchResults } from './_fixtures.ts'
+import { fetchFullNixSync, fetchLockInputSyncResults, fetchResults } from './_fixtures.ts'
 
 type StoryArgs = {
   height: number
@@ -34,6 +42,17 @@ type StoryArgs = {
   verbose: boolean
   force: boolean
 }
+
+/** Builds syncTree and nestedMegarepos fields based on --all flag */
+const nestedFields = (all: boolean) => ({
+  nestedMegarepos: all === true ? [] : [...MEGAREPO_MEMBERS],
+  syncTree: {
+    root: WORKSPACE.root,
+    results: fetchResults,
+    nestedMegarepos: all === true ? [] : [...MEGAREPO_MEMBERS],
+    nestedResults: all === true ? exampleNestedSyncTrees : [],
+  },
+})
 
 export default {
   component: SyncView,
@@ -48,22 +67,10 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run: show what would happen without making changes',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all: sync nested megarepos recursively',
-      control: { type: 'boolean' },
-    },
-    verbose: {
-      description: '--verbose: show detailed lock sync information',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force: include pinned members',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    all: flagArgTypes.all,
+    verbose: flagArgTypes.verbose,
+    force: flagArgTypes.force,
   },
 } satisfies Meta
 
@@ -76,13 +83,14 @@ export const WithLockSync: Story = {
       () => ({
         results: fetchResults,
         lockSyncResults: exampleLockSyncResults,
-        options: {
-          mode: 'fetch' as const,
+        ...nestedFields(args.all),
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -99,7 +107,13 @@ export const WithLockSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -116,14 +130,15 @@ export const WithLockInputSync: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fetchResults,
-        lockSyncResults: fetchLockSyncResults,
-        options: {
-          mode: 'fetch' as const,
+        lockSyncResults: fetchLockInputSyncResults,
+        ...nestedFields(args.all),
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -140,7 +155,13 @@ export const WithLockInputSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -158,13 +179,14 @@ export const WithSourceFileSync: Story = {
       () => ({
         results: fetchResults,
         lockSyncResults: fetchFullNixSync,
-        options: {
-          mode: 'fetch' as const,
+        ...nestedFields(args.all),
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -181,7 +203,13 @@ export const WithSourceFileSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -199,13 +227,14 @@ export const WithRefSync: Story = {
       () => ({
         results: fetchResults,
         lockSyncResults: exampleRefSyncResults,
-        options: {
-          mode: 'fetch' as const,
+        ...nestedFields(args.all),
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -222,7 +251,13 @@ export const WithRefSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -241,13 +276,14 @@ export const WithSharedSourceSync: Story = {
         results: fetchResults,
         lockSyncResults: [],
         sharedSourceUpdates: exampleSharedSourceSync,
-        options: {
-          mode: 'fetch' as const,
+        ...nestedFields(args.all),
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -264,7 +300,13 @@ export const WithSharedSourceSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
@@ -283,13 +325,14 @@ export const WithMixedSync: Story = {
         results: fetchResults,
         lockSyncResults: exampleMixedSyncResults,
         sharedSourceUpdates: exampleMixedSharedSourceSync,
-        options: {
-          mode: 'fetch' as const,
+        ...nestedFields(args.all),
+        options: buildSyncOptions({
+          mode: 'fetch',
           dryRun: args.dryRun,
           all: args.all,
           verbose: args.verbose,
           force: args.force,
-        },
+        }),
       }),
       [args.dryRun, args.all, args.verbose, args.force],
     )
@@ -306,7 +349,13 @@ export const WithMixedSync: Story = {
         playbackSpeed={args.playbackSpeed}
         tabs={ALL_OUTPUT_TABS}
         cwd="~/workspace"
-        command={`mr fetch${args.dryRun === true ? ' --dry-run' : ''}${args.all === true ? ' --all' : ''}${args.verbose === true ? ' --verbose' : ''}${args.force === true ? ' --force' : ''}`}
+        command={buildSyncCommand({
+          mode: 'fetch',
+          dryRun: args.dryRun,
+          all: args.all,
+          verbose: args.verbose,
+          force: args.force,
+        })}
         {...(args.interactive === true
           ? {
               timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),

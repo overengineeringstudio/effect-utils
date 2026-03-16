@@ -37,6 +37,8 @@ test-results
 playwright-report
 .last-run.json
 blob-report
+.playwright-cli
+.playwright-mcp
 
 /tasks
 # Devenv generated / internal

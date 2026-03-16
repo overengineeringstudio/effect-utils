@@ -11,55 +11,21 @@ import React from 'react'
 
 import { Box, Text, useTuiAtomValue, useSymbols, unicodeSymbols } from '@overeng/tui-react'
 
+import { MemberRow, ScopeProvider, WorkspaceRootLabel } from '../../components/mod.ts'
 import type { LsState, MemberInfo } from './schema.ts'
 
 // =============================================================================
-// Tree Symbols
-// =============================================================================
-
-const tree = {
-  middle: unicodeSymbols.tree.branch,
-  last: unicodeSymbols.tree.last,
-}
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/**
- * Get the owner path as a string key for grouping.
- * Root -> '', Nested -> 'foo' or 'foo/bar'
- */
-const getOwnerKey = (member: MemberInfo): string => {
-  if (member.owner._tag === 'Root') {
-    return ''
-  }
-  return member.owner.path.join('/')
-}
-
-/**
- * Group members by their owner for hierarchical display.
- * Returns a map from owner path (as string) to members.
- */
-const groupByOwner = (members: readonly MemberInfo[]): Map<string, MemberInfo[]> => {
-  const groups = new Map<string, MemberInfo[]>()
-  for (const member of members) {
-    const key = getOwnerKey(member)
-    const group = groups.get(key) ?? []
-    group.push(member)
-    groups.set(key, group)
-  }
-  return groups
-}
-
-// =============================================================================
-// Main Component
+// Types
 // =============================================================================
 
 /** Props for the LsView component that renders the member list or error. */
 export interface LsViewProps {
   stateAtom: Atom.Atom<LsState>
 }
+
+// =============================================================================
+// Main Component
+// =============================================================================
 
 /**
  * LsView - View for ls command.
@@ -69,6 +35,8 @@ export interface LsViewProps {
  * - An error message (error)
  *
  * When --all is used, shows hierarchical display grouped by megarepo.
+ * Scope dimming: dims all members except the one the user's cwd is inside.
+ * Works in both flat and --all modes, highlighting the current path through the tree.
  */
 export const LsView = ({ stateAtom }: LsViewProps) => {
   const state = useTuiAtomValue(stateAtom)
@@ -85,7 +53,8 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   }
 
   // Handle success state
-  const { members, all, megarepoName } = state
+  const { members, all, currentMemberPath, root } = state
+  const scopePath = currentMemberPath
 
   if (members.length === 0) {
     return <Text dim>No members in megarepo</Text>
@@ -95,71 +64,128 @@ export const LsView = ({ stateAtom }: LsViewProps) => {
   if (all === false) {
     return (
       <Box flexDirection="column">
+        <WorkspaceRootLabel storePath={root} />
         {members.map((member, i) => {
           const isLast = i === members.length - 1
+          const isInScope = scopePath === undefined || scopePath[0] === member.name
           return (
-            <Box key={member.name} flexDirection="row">
-              <Text dim>{isLast === true ? tree.last : tree.middle}</Text>
-              <Text bold>{member.name}</Text>
-              <Text dim> ({member.source})</Text>
-              {member.isMegarepo !== undefined && (
-                <>
-                  <Text> </Text>
-                  <Text color="cyan">[megarepo]</Text>
-                </>
-              )}
-            </Box>
+            <ScopeProvider key={member.name} inScope={isInScope}>
+              <MemberRow prefix={isLast === true ? tree.last : tree.middle}>
+                <Text bold>{member.name}</Text>
+                <Text dim> ({member.source})</Text>
+                {member.isMegarepo === true && (
+                  <>
+                    <Text> </Text>
+                    <Text color="cyan">[megarepo]</Text>
+                  </>
+                )}
+              </MemberRow>
+            </ScopeProvider>
           )
         })}
       </Box>
     )
   }
 
-  // Hierarchical display for --all mode
-  const groups = groupByOwner(members)
-  const sortedPaths = Array.from(groups.keys()).toSorted()
+  // Hierarchical display for --all mode as a single nested tree
+  const nodes = buildTree(members)
 
   return (
     <Box flexDirection="column">
-      {sortedPaths.map((path, pathIndex) => {
-        const groupMembers = groups.get(path)!
-        const megarepoLabel = path === '' ? megarepoName : path.split('/').pop()!
-        const isNested = path !== ''
-        const isLastGroup = pathIndex === sortedPaths.length - 1
-
-        return (
-          <React.Fragment key={path}>
-            {/* Group header */}
-            <Box flexDirection="row">
-              <Text bold color={isNested === true ? 'cyan' : undefined}>
-                {megarepoLabel}
-              </Text>
-              {isNested && <Text dim> (nested megarepo)</Text>}
-            </Box>
-
-            {/* Members in this group */}
-            {groupMembers.map((member, i) => {
-              const isLast = i === groupMembers.length - 1
-              return (
-                <Box key={member.name} flexDirection="row">
-                  <Text dim>{isLast === true ? tree.last : tree.middle}</Text>
-                  <Text bold>{member.name}</Text>
-                  <Text dim> ({member.source})</Text>
-                  {member.isMegarepo !== undefined && (
-                    <>
-                      <Text> </Text>
-                      <Text color="cyan">[megarepo]</Text>
-                    </>
-                  )}
-                </Box>
-              )
-            })}
-
-            {/* Spacing between groups */}
-            {!isLastGroup && <Text> </Text>}
-          </React.Fragment>
-        )
-      })}
+      <WorkspaceRootLabel storePath={root} />
+      <MemberTree nodes={nodes} prefix="" currentPath={scopePath} />
     </Box>
   )
 }
+
+// =============================================================================
+// Internal - Tree Symbols
+// =============================================================================
+
+const tree = {
+  middle: unicodeSymbols.tree.branch,
+  last: unicodeSymbols.tree.last,
+  vertical: unicodeSymbols.tree.vertical,
+  empty: unicodeSymbols.tree.empty,
+}
+
+// =============================================================================
+// Internal - Tree Building
+// =============================================================================
+
+type TreeNode = {
+  member: MemberInfo
+  children: TreeNode[]
+}
+
+const buildTree = (members: readonly MemberInfo[]): TreeNode[] => {
+  const rootMembers = members.filter((m) => m.owner._tag === 'Root')
+  const nestedByOwner = new Map<string, MemberInfo[]>()
+  for (const m of members) {
+    if (m.owner._tag === 'Nested') {
+      const ownerName = m.owner.path[m.owner.path.length - 1]!
+      const group = nestedByOwner.get(ownerName) ?? []
+      group.push(m)
+      nestedByOwner.set(ownerName, group)
+    }
+  }
+
+  const buildNode = (member: MemberInfo): TreeNode => ({
+    member,
+    children: (nestedByOwner.get(member.name) ?? []).map(buildNode),
+  })
+
+  return rootMembers.map(buildNode)
+}
+
+// =============================================================================
+// Internal - Tree Rendering
+// =============================================================================
+
+const MemberTree = ({
+  nodes,
+  prefix,
+  currentPath,
+}: {
+  nodes: TreeNode[]
+  prefix: string
+  currentPath: readonly string[] | undefined
+}) => (
+  <>
+    {nodes.map((node, i) => {
+      const isLast = i === nodes.length - 1
+      const branchChar = isLast === true ? tree.last : tree.middle
+      const childPrefix = prefix + (isLast === true ? tree.empty : tree.vertical)
+      const isOnCurrentPath = currentPath !== undefined && currentPath[0] === node.member.name
+      return (
+        <React.Fragment key={node.member.name}>
+          <ScopeProvider inScope={currentPath === undefined || isOnCurrentPath}>
+            <MemberRow prefix={`${prefix}${branchChar}`}>
+              <Text bold>{node.member.name}</Text>
+              <Text dim> ({node.member.source})</Text>
+              {node.member.isMegarepo === true && (
+                <>
+                  <Text> </Text>
+                  <Text color="cyan">[megarepo]</Text>
+                </>
+              )}
+            </MemberRow>
+          </ScopeProvider>
+          {node.children.length > 0 && (
+            <MemberTree
+              nodes={node.children}
+              prefix={childPrefix}
+              currentPath={
+                isOnCurrentPath === true
+                  ? currentPath.length > 1
+                    ? currentPath.slice(1)
+                    : undefined
+                  : []
+              }
+            />
+          )}
+        </React.Fragment>
+      )
+    })}
+  </>
+)

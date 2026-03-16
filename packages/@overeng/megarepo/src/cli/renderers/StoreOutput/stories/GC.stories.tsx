@@ -12,6 +12,7 @@ import {
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
+import { flagArgTypes } from '../../_story-constants.ts'
 import { StoreApp, StoreView } from '../mod.ts'
 import * as fixtures from './_fixtures.ts'
 
@@ -42,18 +43,9 @@ export default {
   },
   argTypes: {
     ...commonArgTypes,
-    dryRun: {
-      description: '--dry-run flag: show what would be removed without removing',
-      control: { type: 'boolean' },
-    },
-    force: {
-      description: '--force flag: remove dirty worktrees too',
-      control: { type: 'boolean' },
-    },
-    all: {
-      description: '--all flag: remove all worktrees',
-      control: { type: 'boolean' },
-    },
+    dryRun: flagArgTypes.dryRun,
+    force: flagArgTypes.force,
+    all: flagArgTypes.all,
   },
 } satisfies Meta
 
@@ -250,7 +242,7 @@ export const AllSkipped: Story = {
             status: 'skipped_dirty' as const,
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'main',
             path: '/store/...',
             status: 'skipped_in_use' as const,
@@ -306,7 +298,7 @@ export const AllRemoved: Story = {
             status: 'removed' as const,
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'experiment',
             path: '/store/...',
             status: 'removed' as const,
@@ -358,7 +350,7 @@ export const AllErrors: Story = {
             message: 'Directory not found',
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'main',
             path: '/store/...',
             status: 'error' as const,
@@ -433,13 +425,13 @@ export const ManyInUse: Story = {
             status: 'skipped_in_use' as const,
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'main',
             path: '/store/...',
             status: 'skipped_in_use' as const,
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'dev',
             path: '/store/...',
             status: 'skipped_in_use' as const,
@@ -491,7 +483,7 @@ export const DirtyWithDetails: Story = {
             message: 'has unpushed commits',
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'experimental',
             path: '/store/...',
             status: 'skipped_dirty' as const,
@@ -592,20 +584,20 @@ export const LargeCleanup: Story = {
             status: 'removed' as const,
           },
           {
-            repo: 'github.com/overengineeringstudio/effect-utils',
+            repo: 'github.com/acme-org/dev-tools',
             ref: 'wip',
             path: '/store/...',
             status: 'skipped_dirty' as const,
             message: '3 uncommitted change(s)',
           },
           {
-            repo: 'github.com/livestorejs/livestore',
+            repo: 'github.com/acme-org/app-platform',
             ref: 'main',
             path: '/store/...',
             status: 'skipped_in_use' as const,
           },
           {
-            repo: 'github.com/livestorejs/livestore',
+            repo: 'github.com/acme-org/app-platform',
             ref: 'dev',
             path: '/store/...',
             status: 'skipped_in_use' as const,

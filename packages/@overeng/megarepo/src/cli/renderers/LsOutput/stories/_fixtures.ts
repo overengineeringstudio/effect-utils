@@ -4,6 +4,7 @@
  * @internal
  */
 
+import { WORKSPACE, storePath } from '../../_story-constants.ts'
 import type { LsState as LsStateType, MemberInfo } from '../mod.ts'
 
 // =============================================================================
@@ -12,20 +13,20 @@ import type { LsState as LsStateType, MemberInfo } from '../mod.ts'
 
 export const exampleMembers: MemberInfo[] = [
   {
-    name: 'effect',
-    source: 'effect-ts/effect',
+    name: 'core-lib',
+    source: 'alice/core-lib',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
-    name: 'effect-utils',
-    source: 'overengineeringstudio/effect-utils',
+    name: 'dev-tools',
+    source: 'acme-org/dev-tools',
     owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
-    name: 'livestore',
-    source: 'livestorejs/livestore',
+    name: 'app-platform',
+    source: 'acme-org/app-platform',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
@@ -33,39 +34,39 @@ export const exampleMembers: MemberInfo[] = [
 
 export const nestedMembers: MemberInfo[] = [
   {
-    name: 'effect',
-    source: 'effect-ts/effect',
+    name: 'core-lib',
+    source: 'alice/core-lib',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
   {
-    name: 'effect-utils',
-    source: 'overengineeringstudio/effect-utils',
+    name: 'dev-tools',
+    source: 'acme-org/dev-tools',
     owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'tui-react',
     source: 'local',
-    owner: { _tag: 'Nested', path: ['effect-utils'] },
+    owner: { _tag: 'Nested', path: ['dev-tools'] },
     isMegarepo: false,
   },
   {
     name: 'cli-ui',
     source: 'local',
-    owner: { _tag: 'Nested', path: ['effect-utils'] },
+    owner: { _tag: 'Nested', path: ['dev-tools'] },
     isMegarepo: false,
   },
   {
-    name: 'livestore',
-    source: 'livestorejs/livestore',
+    name: 'app-platform',
+    source: 'acme-org/app-platform',
     owner: { _tag: 'Root' },
     isMegarepo: true,
   },
   {
     name: 'examples',
     source: 'local',
-    owner: { _tag: 'Nested', path: ['livestore'] },
+    owner: { _tag: 'Nested', path: ['app-platform'] },
     isMegarepo: false,
   },
 ]
@@ -106,7 +107,7 @@ export const localPathMembers: MemberInfo[] = [
   },
   {
     name: 'shared-utils',
-    source: '/Users/dev/shared-utils',
+    source: '/Users/dev/.megarepo/github.com/alice/shared-utils/refs/heads/main/',
     owner: { _tag: 'Root' },
     isMegarepo: false,
   },
@@ -116,20 +117,33 @@ export const localPathMembers: MemberInfo[] = [
 // State Factories
 // =============================================================================
 
-type SuccessStateOptions = { all?: boolean }
+type SuccessStateOptions = { all?: boolean; currentMemberPath?: readonly string[] }
 
 export const createDefaultState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: exampleMembers,
   all: options?.all ?? false,
-  megarepoName: 'my-workspace',
+  megarepoName: 'dev-workspace',
+  root: WORKSPACE.root,
+  currentMemberPath: options?.currentMemberPath,
+})
+
+/** Default listing with scope dimming (user inside dev-tools) */
+export const createCurrentLocationState = (options?: SuccessStateOptions): LsStateType => ({
+  _tag: 'Success',
+  members: exampleMembers,
+  all: options?.all ?? false,
+  megarepoName: 'dev-workspace',
+  root: WORKSPACE.root,
+  currentMemberPath: options?.currentMemberPath ?? ['dev-tools'],
 })
 
 export const createWithAllFlagState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: nestedMembers,
   all: options?.all ?? true,
-  megarepoName: 'my-workspace',
+  megarepoName: 'dev-workspace',
+  root: WORKSPACE.root,
 })
 
 export const createDeeplyNestedState = (options?: SuccessStateOptions): LsStateType => ({
@@ -137,6 +151,7 @@ export const createDeeplyNestedState = (options?: SuccessStateOptions): LsStateT
   members: deeplyNestedMembers,
   all: options?.all ?? true,
   megarepoName: 'deep-workspace',
+  root: storePath({ source: 'alice/deep-workspace', ref: 'main' }),
 })
 
 export const createLocalPathsState = (options?: SuccessStateOptions): LsStateType => ({
@@ -144,20 +159,22 @@ export const createLocalPathsState = (options?: SuccessStateOptions): LsStateTyp
   members: localPathMembers,
   all: options?.all ?? false,
   megarepoName: 'local-dev',
+  root: storePath({ source: 'alice/local-dev', ref: 'main' }),
 })
 
 export const createSingleMemberState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: [
     {
-      name: 'effect',
-      source: 'effect-ts/effect',
+      name: 'core-lib',
+      source: 'alice/core-lib',
       owner: { _tag: 'Root' },
       isMegarepo: false,
     },
   ],
   all: options?.all ?? false,
   megarepoName: 'minimal',
+  root: storePath({ source: 'alice/minimal', ref: 'main' }),
 })
 
 export const createEmptyState = (options?: SuccessStateOptions): LsStateType => ({
@@ -165,6 +182,7 @@ export const createEmptyState = (options?: SuccessStateOptions): LsStateType => 
   members: [],
   all: options?.all ?? false,
   megarepoName: 'empty-workspace',
+  root: storePath({ source: 'alice/empty-workspace', ref: 'main' }),
 })
 
 export const createErrorState = (): LsStateType => ({
@@ -183,30 +201,32 @@ export const createManyMembersState = (options?: SuccessStateOptions): LsStateTy
   })),
   all: options?.all ?? false,
   megarepoName: 'large-workspace',
+  root: storePath({ source: 'alice/large-workspace', ref: 'main' }),
 })
 
 export const createAllMegareposState = (options?: SuccessStateOptions): LsStateType => ({
   _tag: 'Success',
   members: [
     {
-      name: 'effect-utils',
-      source: 'overengineeringstudio/effect-utils',
+      name: 'dev-tools',
+      source: 'acme-org/dev-tools',
       owner: { _tag: 'Root' },
       isMegarepo: true,
     },
     {
-      name: 'livestore',
-      source: 'livestorejs/livestore',
+      name: 'app-platform',
+      source: 'acme-org/app-platform',
       owner: { _tag: 'Root' },
       isMegarepo: true,
     },
     {
       name: 'dotfiles',
-      source: 'schickling/dotfiles',
+      source: 'alice/dotfiles',
       owner: { _tag: 'Root' },
       isMegarepo: true,
     },
   ],
   all: options?.all ?? false,
   megarepoName: 'all-megarepos',
+  root: storePath({ source: 'alice/all-megarepos', ref: 'main' }),
 })

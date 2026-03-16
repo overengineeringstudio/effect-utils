@@ -102,6 +102,13 @@ export {
   type TaskStatus,
 } from './components/TaskList.tsx'
 
+export {
+  Tree,
+  type TreeProps,
+  type TreeItemContext,
+  type TreeChildContentContext,
+} from './components/Tree.tsx'
+
 // Internal types (for advanced use)
 export type {
   TuiNode,

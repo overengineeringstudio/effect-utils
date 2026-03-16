@@ -7,6 +7,10 @@
 // Tokens
 export * from './tokens.ts'
 
+// Scope
+export * from './Scope.tsx'
+export * from './MemberRow.tsx'
+
 // Components
 export * from './StatusIcon.tsx'
 export * from './TaskItem.tsx'
