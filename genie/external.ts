@@ -458,6 +458,9 @@ export const createPatchPostinstall = (args: { basePath: string }) => {
 
 /** Base tsconfig compiler options shared across all packages */
 export const baseTsconfigCompilerOptions = {
+  /** Megarepo topology: repos/* are symlinks to the megarepo store. Without this,
+   * tsc follows the symlink to the real store path where no node_modules exists. */
+  preserveSymlinks: true,
   target: 'ES2024',
   lib: ['ES2024'],
   module: 'NodeNext',

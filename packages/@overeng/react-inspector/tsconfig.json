@@ -2,6 +2,7 @@
 // Source: tsconfig.json.genie.ts
 {
   "compilerOptions": {
+    "preserveSymlinks": true,
     "target": "ES2024",
     "lib": ["ES2023", "DOM"],
     "module": "NodeNext",
