@@ -233,6 +233,28 @@ export const updateNixFlakeUrl = ({
 }
 
 // =============================================================================
+// Scheme Converter
+// =============================================================================
+
+/** Convert a git+ssh or git+https GitHub URL to github: scheme. No-op if already github:. */
+export const toGitHubScheme = (parsed: NixFlakeUrl): NixFlakeUrl => {
+  if (parsed._tag === 'github') return parsed
+
+  const ref = parsed.params.get('ref')
+  const newParams = new Map(parsed.params)
+  newParams.delete('ref')
+
+  return { _tag: 'github', owner: parsed.owner, repo: parsed.repo, ref, params: newParams }
+}
+
+/** Convert a git+ssh or git+https GitHub URL string to github: scheme. Returns original if not parseable. */
+export const convertToGitHubScheme = (url: string): string => {
+  const parsed = parseNixFlakeUrl(url)
+  if (parsed === undefined) return url
+  return serializeNixFlakeUrl(toGitHubScheme(parsed))
+}
+
+// =============================================================================
 // Helpers
 // =============================================================================
 

@@ -287,10 +287,11 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
         )
       }
       // Normal result node
+      if (item.result === undefined) return null
       return (
         <SyncResultLine
-          result={item.result!}
-          lockSync={lockSyncByMember.get(item.result!.name)}
+          result={item.result}
+          lockSync={lockSyncByMember.get(item.result.name)}
           mode={options.mode}
           dryRun={dryRun}
           verbose={verbose}
@@ -661,15 +662,6 @@ const LockUpdateLine = ({
           </Text>
           <Text color="cyan">
             {update.inputName} ref {update.oldRef} {symbols.arrow} {update.newRef}
-          </Text>
-        </Box>
-      )
-    case 'SchemeUpdate':
-      return (
-        <Box flexDirection="row">
-          <Text dim>
-            {prefix} {paddedFileLabel}
-            {update.inputName} scheme {update.oldScheme} {symbols.arrow} {update.newScheme}
           </Text>
         </Box>
       )

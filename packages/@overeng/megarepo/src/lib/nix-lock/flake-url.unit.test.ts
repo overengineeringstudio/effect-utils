@@ -4,6 +4,8 @@ import {
   parseNixFlakeUrl,
   serializeNixFlakeUrl,
   updateNixFlakeUrl,
+  toGitHubScheme,
+  convertToGitHubScheme,
   getRef,
   getRev,
   getDir,
@@ -243,5 +245,65 @@ describe('getOwnerRepo', () => {
 
     const ssh = parseNixFlakeUrl('git+ssh://git@github.com/org/repo.git')!
     expect(getOwnerRepo(ssh)).toEqual({ owner: 'org', repo: 'repo' })
+  })
+})
+
+// =============================================================================
+// toGitHubScheme / convertToGitHubScheme
+// =============================================================================
+
+describe('toGitHubScheme', () => {
+  it('should be a no-op for github: URLs', () => {
+    const parsed = parseNixFlakeUrl('github:owner/repo/main')!
+    expect(toGitHubScheme(parsed)).toBe(parsed)
+  })
+
+  it('should convert git+ssh to github:', () => {
+    const parsed = parseNixFlakeUrl('git+ssh://git@github.com/owner/repo.git?ref=main&rev=abc123')!
+    const result = serializeNixFlakeUrl(toGitHubScheme(parsed))
+    expect(result).toBe('github:owner/repo/main?rev=abc123')
+  })
+
+  it('should convert git+https to github:', () => {
+    const parsed = parseNixFlakeUrl('git+https://github.com/owner/repo?ref=feature&rev=def456')!
+    const result = serializeNixFlakeUrl(toGitHubScheme(parsed))
+    expect(result).toBe('github:owner/repo/feature?rev=def456')
+  })
+
+  it('should handle URL with no ref', () => {
+    const parsed = parseNixFlakeUrl('git+ssh://git@github.com/owner/repo.git?rev=abc123')!
+    const result = serializeNixFlakeUrl(toGitHubScheme(parsed))
+    expect(result).toBe('github:owner/repo?rev=abc123')
+  })
+
+  it('should preserve dir param', () => {
+    const parsed = parseNixFlakeUrl('git+ssh://git@github.com/owner/repo?ref=main&dir=nix/flake')!
+    const result = serializeNixFlakeUrl(toGitHubScheme(parsed))
+    expect(result).toBe('github:owner/repo/main?dir=nix/flake')
+  })
+
+  it('should handle ref with slashes', () => {
+    const parsed = parseNixFlakeUrl(
+      'git+ssh://git@github.com/owner/repo?ref=user/2026-03-15-feature',
+    )!
+    const result = serializeNixFlakeUrl(toGitHubScheme(parsed))
+    expect(result).toBe('github:owner/repo/user/2026-03-15-feature')
+  })
+})
+
+describe('convertToGitHubScheme', () => {
+  it('should convert git+ssh URL string', () => {
+    expect(convertToGitHubScheme('git+ssh://git@github.com/owner/repo.git?ref=main&rev=abc')).toBe(
+      'github:owner/repo/main?rev=abc',
+    )
+  })
+
+  it('should return original for non-parseable URLs', () => {
+    expect(convertToGitHubScheme('https://example.com')).toBe('https://example.com')
+  })
+
+  it('should be a no-op for github: URLs', () => {
+    const url = 'github:owner/repo/main'
+    expect(convertToGitHubScheme(url)).toBe(url)
   })
 })
