@@ -286,6 +286,17 @@ export const deployCommentPermissions = {
   'pull-requests': 'write',
 } as const
 
+/** Shared mode detection script for deploy comments. Sets `label` based on event type. */
+export const deployModeScript = [
+  'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+  '  label="prod"',
+  'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+  '  label="PR #${{ github.event.pull_request.number }}"',
+  'else',
+  '  exit 0',
+  'fi',
+].join('\n')
+
 /**
  * Reusable step that writes a deployment summary and upserts a PR comment.
  *
@@ -419,30 +430,6 @@ export const vercelGitAuthorStep = (opts: { name: string; email: string }) => ({
   ].join('\n'),
 })
 
-/** Post deploy URLs for one or more Vercel projects as a PR comment + job summary. */
-export const vercelDeployCommentStep = (projects: readonly { name: string; urlEnvKey: string }[]) =>
-  deployCommentStep({
-    summaryTitle: 'Vercel Deploy',
-    tableHeaders: ['Target', 'URL'],
-    noRowsMessage: 'No Vercel deploy URLs detected.',
-    modeScript: [
-      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-      '  label="prod"',
-      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  label="PR #${{ github.event.pull_request.number }}"',
-      'else',
-      '  exit 0',
-      'fi',
-    ].join('\n'),
-    rowsScript: projects
-      .map(
-        (p) =>
-          `if [ -n "\${${p.urlEnvKey}:-}" ]; then\n  rows="\${rows}| ${p.name} | \${${p.urlEnvKey}} |\\n"\nfi`,
-      )
-      .join('\n'),
-    commentTitle: 'Vercel Preview',
-  })
-
 type VercelProject = { name: string; urlEnvKey: string; projectIdEnv: string }
 
 /**
@@ -516,15 +503,7 @@ export const vercelDeployJobs = (opts: {
         summaryTitle: 'Vercel Deploy',
         tableHeaders: ['Target', 'URL'],
         noRowsMessage: 'No Vercel deploy URLs detected.',
-        modeScript: [
-          'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-          '  label="prod"',
-          'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-          '  label="PR #${{ github.event.pull_request.number }}"',
-          'else',
-          '  exit 0',
-          'fi',
-        ].join('\n'),
+        modeScript: deployModeScript,
         rowsScript: [
           'rows=""',
           ...opts.projects.map((p) =>
@@ -586,15 +565,9 @@ export const netlifyStorybookCommentStep = (site: string) =>
     noRowsMessage: 'No storybooks were deployed.',
     modeScript: [
       `site="${site}"`,
-      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-      '  suffix=""',
-      '  label="prod"',
-      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  suffix="-pr-${{ github.event.pull_request.number }}"',
-      '  label="PR #${{ github.event.pull_request.number }}"',
-      'else',
-      '  exit 0',
-      'fi',
+      deployModeScript,
+      '# Set Netlify branch-deploy suffix based on mode',
+      'if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi',
     ].join('\n'),
     rowsScript: [
       'rows=""',
