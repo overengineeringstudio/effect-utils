@@ -42,23 +42,23 @@
   },
   "dependencies": {
     "@effect/opentelemetry": "0.61.0",
-    "@effect/platform": "0.94.2",
+    "@effect/platform": "0.94.5",
     "@effect/platform-node": "0.104.1",
     "@effect/vitest": "0.27.0",
     "@noble/hashes": "1.7.1",
     "@opentelemetry/api": "1.9.0",
-    "effect": "3.19.15",
+    "effect": "3.19.19",
     "effect-distributed-lock": "0.0.11",
     "ioredis": "5.6.1",
     "vitest": "3.2.4"
   },
   "devDependencies": {
-    "@effect/cluster": "0.56.1",
+    "@effect/cluster": "0.56.4",
     "@effect/experimental": "0.58.0",
     "@effect/opentelemetry": "0.61.0",
-    "@effect/platform": "0.94.2",
+    "@effect/platform": "0.94.5",
     "@effect/platform-node": "0.104.1",
-    "@effect/rpc": "0.73.0",
+    "@effect/rpc": "0.73.2",
     "@effect/vitest": "0.27.0",
     "@effect/workflow": "0.16.0",
     "@opentelemetry/resources": "2.2.0",
@@ -72,22 +72,22 @@
     "@playwright/test": "1.58.2",
     "@storybook/react-vite": "10.2.3",
     "@types/node": "25.3.3",
-    "effect": "3.19.15",
+    "effect": "3.19.19",
     "storybook": "10.2.3",
     "typescript": "5.9.3",
     "vite": "7.3.1",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "@effect/cluster": "^0.56.1",
+    "@effect/cluster": "^0.56.4",
     "@effect/experimental": "^0.58.0",
     "@effect/opentelemetry": "^0.61.0",
-    "@effect/platform": "^0.94.2",
+    "@effect/platform": "^0.94.5",
     "@effect/platform-node": "^0.104.1",
-    "@effect/rpc": "^0.73.0",
+    "@effect/rpc": "^0.73.2",
     "@effect/workflow": "^0.16.0",
     "@playwright/test": "^1.58.2",
-    "effect": "^3.19.15"
+    "effect": "^3.19.19"
   },
   "pnpm": {
     "patchedDependencies": {
