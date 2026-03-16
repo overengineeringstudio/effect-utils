@@ -776,6 +776,11 @@ export const runCommand = ({
                     oldRef: u.oldRef,
                     newRef: u.newRef,
                   }
+                case 'SchemeUpdate':
+                  return {
+                    _tag: 'SchemeUpdate' as const,
+                    inputName: u.inputName,
+                  }
               }
             }),
           })),

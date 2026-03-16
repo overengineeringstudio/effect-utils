@@ -74,6 +74,10 @@ export type NixLockSyncUpdate =
       readonly oldRef: string
       readonly newRef: string
     }
+  | {
+      readonly _tag: 'SchemeUpdate'
+      readonly inputName: string
+    }
 
 /** Result of syncing a single Nix lock file */
 export interface NixLockSyncFileResult {
@@ -473,6 +477,7 @@ const syncSingleLockFile = ({
         if (convertedOriginal !== undefined) updatedNode['original'] = convertedOriginal
         rawJson.nodes[nodeName] = updatedNode
         schemeNormalized = true
+        updatedInputs.push({ _tag: 'SchemeUpdate', inputName: nodeName })
       }
     }
 
@@ -648,6 +653,7 @@ export const syncSourceFileRevs = ({
         const converted = convertToGitHubScheme(input.url)
         if (converted !== input.url) {
           updatedContent = updatedContent.replaceAll(input.url, converted)
+          updatedInputs.push({ _tag: 'SchemeUpdate', inputName: input.inputName })
         }
       }
     }

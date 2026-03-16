@@ -115,7 +115,7 @@ export const WithStatusIcons: Story = {
                   { name: 'shared-types', status: 'pending', branch: 'main' },
                 ],
               },
-              { name: 'livestore', status: 'success', branch: 'main' },
+              { name: 'app-platform', status: 'success', branch: 'main' },
               { name: 'dotfiles', status: 'success', branch: 'main' },
             ]}
             getChildren={(item) => item.children}
@@ -147,7 +147,7 @@ export const WithChildContent: Story = {
           items={[
             { name: 'dotfiles', children: [{ name: 'vim' }, { name: 'zsh' }] },
             { name: 'effect-utils' },
-            { name: 'livestore' },
+            { name: 'app-platform' },
           ]}
           getChildren={(item) => item.children}
           renderItem={({ item, prefix }) => (

@@ -222,7 +222,7 @@ export const convertLockedInputToGitHub = (
   const baseUrl = qIdx >= 0 ? url.slice(0, qIdx) : url
   const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : undefined
 
-  const match = baseUrl.match(/github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?(?:\/)?$/)
+  const match = baseUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?(?:\/)?$/)
   if (match?.[1] === undefined || match[2] === undefined) return undefined
 
   // Extract query params (e.g. dir) to preserve as separate fields

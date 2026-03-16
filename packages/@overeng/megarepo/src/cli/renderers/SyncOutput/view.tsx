@@ -673,6 +673,16 @@ const LockUpdateLine = ({
           </Text>
         </Box>
       )
+    case 'SchemeUpdate':
+      return (
+        <Box flexDirection="row">
+          <Text dim>
+            {prefix}
+            {paddedFileLabel}
+            {update.inputName} {symbols.arrow} github:
+          </Text>
+        </Box>
+      )
   }
 }
 
