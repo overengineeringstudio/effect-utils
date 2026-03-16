@@ -34,8 +34,8 @@
  */
 
 import { Atom, Registry } from '@effect-atom/atom'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
 // oxlint-disable-next-line eslint-plugin-import(no-unassigned-import) -- CSS side-effect import
