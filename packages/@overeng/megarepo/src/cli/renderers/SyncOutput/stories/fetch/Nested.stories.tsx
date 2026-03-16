@@ -24,10 +24,11 @@ import { SyncView } from '../../view.tsx'
 import {
   createCommandState,
   createCommandTimeline,
+  exampleLockSyncResults,
   exampleNestedLockSyncResults,
   exampleNestedSyncTrees,
 } from '../_fixtures.ts'
-import { fetchLockSyncResults, fetchResults } from './_fixtures.ts'
+import { fetchResults } from './_fixtures.ts'
 
 type StoryArgs = {
   height: number
@@ -79,7 +80,7 @@ export const TreeBasic: Story = {
       () => ({
         results: fetchResults,
         ...nestedFields(args.all),
-        lockSyncResults: [...fetchLockSyncResults, ...exampleNestedLockSyncResults],
+        lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
         options: buildSyncOptions({
           mode: 'fetch',
           dryRun: args.dryRun,
@@ -128,7 +129,7 @@ export const TreeVerbose: Story = {
       () => ({
         results: fetchResults,
         ...nestedFields(args.all),
-        lockSyncResults: [...fetchLockSyncResults, ...exampleNestedLockSyncResults],
+        lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
         options: buildSyncOptions({
           mode: 'fetch',
           dryRun: args.dryRun,
@@ -177,7 +178,7 @@ export const TreeDryRun: Story = {
       () => ({
         results: fetchResults,
         ...nestedFields(args.all),
-        lockSyncResults: [...fetchLockSyncResults, ...exampleNestedLockSyncResults],
+        lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
         options: buildSyncOptions({
           mode: 'fetch',
           dryRun: args.dryRun,
@@ -226,7 +227,7 @@ export const MegarepoHint: Story = {
       () => ({
         results: fetchResults,
         ...nestedFields(args.all),
-        lockSyncResults: fetchLockSyncResults,
+        lockSyncResults: exampleLockSyncResults,
         options: buildSyncOptions({
           mode: 'fetch',
           dryRun: args.dryRun,

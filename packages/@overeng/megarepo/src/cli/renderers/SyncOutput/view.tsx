@@ -11,7 +11,7 @@ import type { Atom } from '@effect-atom/atom'
 import React from 'react'
 import { useMemo } from 'react'
 
-import { Box, Text, Static, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
+import { Box, Text, Static, Tree, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
 
 import {
   computeSyncSummary,
@@ -46,6 +46,16 @@ import type {
 /** Props for the SyncView component that renders sync progress and results. */
 export interface SyncViewProps {
   stateAtom: Atom.Atom<SyncState>
+}
+
+/** Node in the sync results tree — either a real result or a virtual placeholder */
+type SyncTreeNode = {
+  result: MemberSyncResult | undefined
+  isMegarepo: boolean
+  showMegarepoTag: boolean
+  children: SyncTreeNode[] | undefined
+  collapsedCount?: number | undefined
+  nestedErrors?: readonly SyncErrorItem[] | undefined
 }
 
 // =============================================================================
@@ -256,6 +266,165 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   const skipped = results.filter((r) => r.status === 'skipped')
   const alreadySynced = results.filter((r) => r.status === 'already_synced')
 
+  // Build tree nodes for Tree component
+  const treeNodes: SyncTreeNode[] = useMemo(() => {
+    const showAll = options.all === true
+    const toNode = (r: MemberSyncResult): SyncTreeNode => {
+      const nestedTree = nestedByParent.get(r.name)
+      const isMegarepo = nestedMegarepos.includes(r.name)
+      const children =
+        showAll === true && nestedTree !== undefined && nestedTree.results.length > 0
+          ? nestedTree.results.map(toNode)
+          : undefined
+      return { result: r, isMegarepo, showMegarepoTag: isMegarepo && !showAll, children }
+    }
+
+    const ordered = [
+      ...cloned,
+      ...synced,
+      ...updated,
+      ...recorded,
+      ...applied,
+      ...removed,
+      ...errors,
+      ...skipped,
+    ].map(toNode)
+
+    // Collapse many already-synced members into a single placeholder when no changes
+    if (alreadySynced.length > 5 && hasChanges === false) {
+      ordered.push({
+        result: undefined,
+        isMegarepo: false,
+        showMegarepoTag: false,
+        children: undefined,
+        collapsedCount: alreadySynced.length,
+      })
+    } else {
+      ordered.push(...alreadySynced.map(toNode))
+    }
+
+    // Add nested errors as a virtual node
+    if (nestedErrors.length > 0) {
+      ordered.push({
+        result: undefined,
+        isMegarepo: false,
+        showMegarepoTag: false,
+        children: undefined,
+        nestedErrors,
+      })
+    }
+
+    return ordered
+  }, [
+    cloned,
+    synced,
+    updated,
+    recorded,
+    applied,
+    removed,
+    errors,
+    skipped,
+    alreadySynced,
+    hasChanges,
+    nestedMegarepos,
+    nestedByParent,
+    nestedErrors,
+    options.all,
+  ])
+
+  const renderTreeItem = useMemo(
+    () => (args: { item: SyncTreeNode; prefix: string }) => {
+      const { item, prefix } = args
+      // Collapsed already-synced placeholder
+      if (item.collapsedCount !== undefined) {
+        return (
+          <Box flexDirection="row">
+            <Text dim>
+              {prefix}
+              {symbols.check} {item.collapsedCount} members{' '}
+              {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
+            </Text>
+          </Box>
+        )
+      }
+      // Nested errors virtual node
+      if (item.nestedErrors !== undefined) {
+        return (
+          <Box flexDirection="column">
+            <Box flexDirection="row">
+              <Text>{prefix}</Text>
+              <Text color="red" bold>
+                {symbols.circle} nested errors
+              </Text>
+            </Box>
+            {item.nestedErrors.map((e) => (
+              <NestedErrorLine key={`${e.megarepoRoot}:${e.memberName}`} error={e} />
+            ))}
+          </Box>
+        )
+      }
+      // Normal result node
+      return (
+        <SyncResultLine
+          result={item.result!}
+          lockSync={lockSyncByMember.get(item.result!.name)}
+          mode={options.mode}
+          dryRun={dryRun}
+          verbose={verbose}
+          prefix={prefix}
+          showMegarepoTag={item.showMegarepoTag}
+        />
+      )
+    },
+    [options.mode, dryRun, verbose, lockSyncByMember],
+  )
+
+  const renderTreeChildContent = useMemo(
+    () => (args: { item: SyncTreeNode; continuationPrefix: string }) => {
+      const { item, continuationPrefix } = args
+      if (item.result === undefined) return null
+      const r = item.result
+      return (
+        <>
+          {/* Skipped: detail lines (message or ref mismatch) */}
+          {r.status === 'skipped' && r.refMismatch !== undefined && (
+            <SkippedRefMismatchDetails result={r} prefix={continuationPrefix} />
+          )}
+          {r.status === 'skipped' && r.refMismatch === undefined && r.message !== undefined && (
+            <Box flexDirection="row">
+              <Text dim>
+                {continuationPrefix}
+                {'    '}
+                {r.message}
+              </Text>
+            </Box>
+          )}
+          {/* Error: message detail */}
+          {r.status === 'error' && r.message !== undefined && (
+            <Box flexDirection="row">
+              <Text dim>
+                {continuationPrefix}
+                {'    '}
+                {r.message}
+              </Text>
+            </Box>
+          )}
+          {/* Verbose lock details */}
+          {verbose === true && (
+            <InlineLockDetails
+              memberName={r.name}
+              lockSyncByMember={lockSyncByMember}
+              prefix={continuationPrefix}
+            />
+          )}
+        </>
+      )
+    },
+    [verbose, lockSyncByMember],
+  )
+
+  const getTreeChildren = useMemo(() => (item: SyncTreeNode) => item.children, [])
+
   return (
     <Box>
       {/* Header */}
@@ -269,160 +438,20 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
         </Text>
       )}
 
-      {/* Empty line after header */}
-      <Text> </Text>
-
-      {/* Results */}
+      {/* Results as a tree rooted at workspace */}
       {dryRun === true && hasChanges === false && summaryCounts.errors === 0 ? (
         <Box flexDirection="row">
+          <Text>{tree.last}</Text>
           <Text color="green">{symbols.check}</Text>
           <Text dim> workspace is up to date</Text>
         </Box>
       ) : (
-        <>
-          {cloned.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {synced.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {updated.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {recorded.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {applied.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {removed.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {errors.map((r) => (
-            <RootResultWithNested
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-              showAll={options.all === true}
-              isMegarepo={nestedMegarepos.includes(r.name)}
-              nestedTree={nestedByParent.get(r.name)}
-              lockSyncByMember={lockSyncByMember}
-            />
-          ))}
-          {nestedErrors.length > 0 && (
-            <Box flexDirection="column">
-              <Text color="red" bold>
-                {symbols.circle} nested errors
-              </Text>
-              {nestedErrors.map((e) => (
-                <NestedErrorLine key={`${e.megarepoRoot}:${e.memberName}`} error={e} />
-              ))}
-            </Box>
-          )}
-          {skipped.map((r) => (
-            <SyncResultLine
-              key={r.name}
-              result={r}
-              lockSync={lockSyncByMember.get(r.name)}
-              mode={options.mode}
-              dryRun={dryRun}
-              verbose={verbose}
-            />
-          ))}
-          {alreadySynced.length > 0 &&
-            (alreadySynced.length <= 5 || hasChanges === true ? (
-              alreadySynced.map((r) => (
-                <RootResultWithNested
-                  key={r.name}
-                  result={r}
-                  lockSync={lockSyncByMember.get(r.name)}
-                  mode={options.mode}
-                  dryRun={dryRun}
-                  verbose={verbose}
-                  showAll={options.all === true}
-                  isMegarepo={nestedMegarepos.includes(r.name)}
-                  nestedTree={nestedByParent.get(r.name)}
-                  lockSyncByMember={lockSyncByMember}
-                />
-              ))
-            ) : (
-              <Box flexDirection="row">
-                <Text dim>
-                  {symbols.check} {alreadySynced.length} members{' '}
-                  {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
-                </Text>
-              </Box>
-            ))}
-        </>
+        <Tree<SyncTreeNode>
+          items={treeNodes}
+          getChildren={getTreeChildren}
+          renderItem={renderTreeItem}
+          renderChildContent={renderTreeChildContent}
+        />
       )}
 
       {/* Separator and summary */}
@@ -758,78 +787,6 @@ const SyncResultLine = ({
   }
 }
 
-/** Wrapper that renders a root result line + inline lock details (verbose) + nested tree children */
-const RootResultWithNested = ({
-  result,
-  lockSync,
-  mode,
-  dryRun,
-  verbose,
-  showAll,
-  isMegarepo,
-  nestedTree,
-  lockSyncByMember,
-}: {
-  result: MemberSyncResult
-  lockSync: MemberLockSyncResult | undefined
-  mode: SyncMode
-  dryRun: boolean
-  verbose: boolean
-  showAll: boolean
-  isMegarepo: boolean
-  nestedTree: MegarepoSyncTree | undefined
-  lockSyncByMember: ReadonlyMap<string, MemberLockSyncResult>
-}) => {
-  const showTag = isMegarepo === true && showAll === false
-  const hasNestedChildren =
-    showAll === true && nestedTree !== undefined && nestedTree.results.length > 0
-
-  return (
-    <>
-      <SyncResultLine
-        result={result}
-        lockSync={lockSync}
-        mode={mode}
-        dryRun={dryRun}
-        verbose={verbose}
-        showMegarepoTag={showTag}
-      />
-      {verbose === true && (
-        <InlineLockDetails memberName={result.name} lockSyncByMember={lockSyncByMember} prefix="" />
-      )}
-      {hasNestedChildren === true && nestedTree !== undefined && (
-        <>
-          {nestedTree.results.map((child, i) => {
-            const isLast = i === nestedTree.results.length - 1
-            const branchChar = isLast === true ? tree.last : tree.middle
-            const continuationPrefix = isLast === true ? tree.empty : tree.vertical
-
-            return (
-              <React.Fragment key={child.name}>
-                <SyncResultLine
-                  result={child}
-                  lockSync={lockSyncByMember.get(child.name)}
-                  mode={mode}
-                  dryRun={dryRun}
-                  verbose={verbose}
-                  prefix={branchChar}
-                />
-                {verbose === true && (
-                  <InlineLockDetails
-                    memberName={child.name}
-                    lockSyncByMember={lockSyncByMember}
-                    prefix={continuationPrefix}
-                  />
-                )}
-              </React.Fragment>
-            )
-          })}
-        </>
-      )}
-    </>
-  )
-}
-
 /** Result line for cloned member */
 const ClonedLine = ({
   result,
@@ -1014,7 +971,7 @@ const RemovedLine = ({
   )
 }
 
-/** Result line for error - uses multi-line format to show full error message */
+/** Result line for error (single line — details rendered via tree child content) */
 const ErrorLine = ({
   result,
   prefix,
@@ -1022,24 +979,6 @@ const ErrorLine = ({
   result: MemberSyncResult
   prefix?: string | undefined
 }) => {
-  if (result.message !== undefined) {
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
-          {prefix !== undefined && <Text>{prefix}</Text>}
-          <StatusIcon status="error" variant="sync" />
-          <Text> </Text>
-          <Text bold>{result.name}</Text>
-          <Text> </Text>
-          <Text color="red">error:</Text>
-        </Box>
-        <Box paddingLeft={4}>
-          <Text dim>{result.message}</Text>
-        </Box>
-      </Box>
-    )
-  }
-
   return (
     <Box flexDirection="row">
       {prefix !== undefined && <Text>{prefix}</Text>}
@@ -1052,7 +991,7 @@ const ErrorLine = ({
   )
 }
 
-/** Result line for skipped member */
+/** Result line for skipped member (single line — details rendered via tree child content) */
 const SkippedLine = ({
   result,
   prefix,
@@ -1061,54 +1000,27 @@ const SkippedLine = ({
   prefix?: string | undefined
 }) => {
   if (result.refMismatch !== undefined) {
-    const { expectedRef, actualRef, isDetached } = result.refMismatch
-    const mismatchDesc =
-      isDetached === true
-        ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
-        : `store path implies '${expectedRef}' but worktree HEAD is '${actualRef}'`
-
     return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
-          {prefix !== undefined && <Text>{prefix}</Text>}
-          <StatusIcon status="skipped" variant="sync" />
-          <Text> </Text>
-          <Text bold>{result.name}</Text>
-          <Text> </Text>
-          <Text color="yellow">ref mismatch</Text>
-        </Box>
-        <Box paddingLeft={4}>
-          <Text dim>{mismatchDesc}</Text>
-        </Box>
-        <Box paddingLeft={4}>
-          <Text dim>
-            hint: use 'mr config pin {result.name} -c {actualRef}' to{' '}
-            {isDetached === true ? 'pin this commit' : 'create proper worktree'},
-          </Text>
-        </Box>
-        <Box paddingLeft={4}>
-          <Text dim>
-            {'      '}or 'git checkout {expectedRef}' to restore expected state
-          </Text>
-        </Box>
+      <Box flexDirection="row">
+        {prefix !== undefined && <Text>{prefix}</Text>}
+        <StatusIcon status="skipped" variant="sync" />
+        <Text> </Text>
+        <Text bold>{result.name}</Text>
+        <Text> </Text>
+        <Text color="yellow">ref mismatch</Text>
       </Box>
     )
   }
 
   if (result.message !== undefined) {
     return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
-          {prefix !== undefined && <Text>{prefix}</Text>}
-          <StatusIcon status="skipped" variant="sync" />
-          <Text> </Text>
-          <Text bold>{result.name}</Text>
-          <Text> </Text>
-          <Text color="yellow">skipped:</Text>
-        </Box>
-        <Box paddingLeft={4}>
-          <Text dim>{result.message}</Text>
-        </Box>
+      <Box flexDirection="row">
+        {prefix !== undefined && <Text>{prefix}</Text>}
+        <StatusIcon status="skipped" variant="sync" />
+        <Text> </Text>
+        <Text bold>{result.name}</Text>
+        <Text> </Text>
+        <Text color="yellow">skipped:</Text>
       </Box>
     )
   }
@@ -1122,6 +1034,46 @@ const SkippedLine = ({
       <Text> </Text>
       <Text color="yellow">skipped</Text>
     </Box>
+  )
+}
+
+/** Detail lines for skipped ref mismatch — rendered below the member line with tree continuation */
+const SkippedRefMismatchDetails = ({
+  result,
+  prefix,
+}: {
+  result: MemberSyncResult
+  prefix: string
+}) => {
+  const { expectedRef, actualRef, isDetached } = result.refMismatch!
+  const mismatchDesc =
+    isDetached === true
+      ? `store path implies '${expectedRef}' but worktree is detached at ${actualRef}`
+      : `store path implies '${expectedRef}' but worktree HEAD is '${actualRef}'`
+
+  return (
+    <>
+      <Box flexDirection="row">
+        <Text dim>
+          {prefix}
+          {'    '}
+          {mismatchDesc}
+        </Text>
+      </Box>
+      <Box flexDirection="row">
+        <Text dim>
+          {prefix}
+          {'    '}hint: use 'mr config pin {result.name} -c {actualRef}' to{' '}
+          {isDetached === true ? 'pin this commit' : 'create proper worktree'},
+        </Text>
+      </Box>
+      <Box flexDirection="row">
+        <Text dim>
+          {prefix}
+          {'          '}or 'git checkout {expectedRef}' to restore expected state
+        </Text>
+      </Box>
+    </>
   )
 }
 

@@ -66,11 +66,23 @@ export const fetchWithErrors: MemberSyncResult[] = [
 // Fetch Lock Sync Results
 // =============================================================================
 
-/** Lock input sync results (flake.lock/devenv.lock updates) */
-export const fetchLockSyncResults: MemberLockSyncResult[] = [
+/** Lock input sync results including source files (flake.nix/devenv.yaml + lock files) */
+export const fetchLockInputSyncResults: MemberLockSyncResult[] = [
   {
     memberName: MEMBERS.coreLib,
     files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: MEMBERS.appPlatform,
+            memberName: MEMBERS.appPlatform,
+            oldRev: COMMITS.appPlatform.previous,
+            newRev: COMMITS.appPlatform.current,
+          },
+        ],
+      },
       {
         type: 'flake.lock',
         updatedInputs: [
@@ -107,6 +119,18 @@ export const fetchLockSyncResults: MemberLockSyncResult[] = [
   {
     memberName: MEMBERS.dotfiles,
     files: [
+      {
+        type: 'flake.nix',
+        updatedInputs: [
+          {
+            _tag: 'RevUpdate',
+            inputName: MEMBERS.coreLib,
+            memberName: MEMBERS.coreLib,
+            oldRev: COMMITS.coreLib.previous,
+            newRev: COMMITS.coreLib.current,
+          },
+        ],
+      },
       {
         type: 'flake.lock',
         updatedInputs: [

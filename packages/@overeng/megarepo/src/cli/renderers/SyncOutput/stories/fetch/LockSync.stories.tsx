@@ -31,7 +31,7 @@ import {
   exampleMixedSyncResults,
   exampleMixedSharedSourceSync,
 } from '../_fixtures.ts'
-import { fetchFullNixSync, fetchLockSyncResults, fetchResults } from './_fixtures.ts'
+import { fetchFullNixSync, fetchLockInputSyncResults, fetchResults } from './_fixtures.ts'
 
 type StoryArgs = {
   height: number
@@ -130,7 +130,7 @@ export const WithLockInputSync: Story = {
     const stateConfig = useMemo(
       () => ({
         results: fetchResults,
-        lockSyncResults: fetchLockSyncResults,
+        lockSyncResults: fetchLockInputSyncResults,
         ...nestedFields(args.all),
         options: buildSyncOptions({
           mode: 'fetch',
