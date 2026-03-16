@@ -90,20 +90,31 @@ let
               ;;
           esac
 
-          # Run everything from the repo root so that rootDirectory (set in Vercel
-          # dashboard) resolves correctly. The Vercel CLI joins rootDirectory with
-          # cwd for both build and deploy — running from root avoids path doubling
-          # (e.g. packages/app/packages/app) while keeping rootDirectory set, which
-          # is required for serverless function trace file resolution in monorepos.
+          # All commands run from the repo root to avoid path doubling.
           #
-          # Vercel dashboard must have rootDirectory set to "${cwd}" for each project.
+          # The Vercel CLI joins rootDirectory with cwd for build and deploy.
+          # Running from the app dir with rootDirectory set causes doubled paths
+          # (e.g. packages/app/packages/app). Running from repo root means the
+          # CLI resolves rootDirectory correctly: {root}/{rootDir} = correct path.
+          #
+          # rootDirectory is NOT set in the Vercel dashboard. Instead we inject it
+          # into the local project.json after pulling. This gives vercel build the
+          # context it needs (where the app lives, for trace file resolution) while
+          # keeping dashboard config clean. For deploy, the CLI fetches rootDirectory
+          # from the API (null), so no path doubling occurs.
 
-          # Pull project settings and env vars to repo root.
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
           ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
 
+          # Inject rootDirectory into pulled project.json so vercel build knows
+          # where the app lives. This is only used locally — dashboard stays clean.
+          if [ "${cwd}" != "." ] && [ -f ".vercel/project.json" ]; then
+            ${pkgs.jq}/bin/jq --arg rd "${cwd}" '.settings.rootDirectory = $rd' .vercel/project.json > .vercel/project.json.tmp \
+              && mv .vercel/project.json.tmp .vercel/project.json
+          fi
+
           # Override installCommand to no-op — dependencies are managed by devenv tasks.
-          # Place vercel.json at the app dir (where the framework build runs).
+          # vercel.json goes at the app dir where the framework build runs.
           vercel_json="${cwd}/vercel.json"
           original_vercel_json=""
           cleanup_vercel_json() {
@@ -117,7 +128,6 @@ let
           deploy_log=""
           cleanup() {
             cleanup_vercel_json
-            # Clean up repo-root .vercel dir created by vercel pull (not tracked in git).
             rm -rf .vercel
             if [ -n "$deploy_log" ]; then
               rm -f "$deploy_log"
