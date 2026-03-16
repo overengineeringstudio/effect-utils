@@ -1,3 +1,4 @@
+import { lstatSync } from 'node:fs'
 import * as nodePath from 'node:path'
 
 import { FileSystem } from '@effect/platform'
@@ -214,6 +215,7 @@ const listClaudeJsonlFiles = Effect.fn('AgentSessionIngest.Claude.listClaudeJson
         const entries = yield* fs.readDirectory(currentDir)
         for (const entry of entries) {
           const path = nodePath.join(currentDir, entry)
+          if (lstatSync(path).isSymbolicLink() === true) continue
           const info = yield* fs.stat(path)
           if (info.type === 'Directory') {
             directories.push(path)
