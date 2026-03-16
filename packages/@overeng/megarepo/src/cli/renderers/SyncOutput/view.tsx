@@ -308,18 +308,21 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       const { item, continuationPrefix } = args
       if (item.result === undefined) return null
       const r = item.result
+      // Align child content with the member name: continuationPrefix aligns with
+      // the tree branch chars, add icon(1) + space(1) to match where the name starts.
+      const contentPrefix = `${continuationPrefix}  `
       return (
         <>
           {/* Ref mismatch: multi-line details (description + hint) */}
           {r.status === 'skipped' && r.refMismatch !== undefined && (
-            <RefMismatchDetails result={r} prefix={continuationPrefix} />
+            <RefMismatchDetails result={r} prefix={contentPrefix} />
           )}
           {/* Verbose lock details */}
           {verbose === true && (
             <InlineLockDetails
               memberName={r.name}
               lockSyncByMember={lockSyncByMember}
-              prefix={continuationPrefix}
+              prefix={contentPrefix}
             />
           )}
         </>
@@ -632,6 +635,9 @@ const InlineLockDetails = ({
   )
 }
 
+/** Width of the file type column (longest type "megarepo.lock" = 13, + 2 padding) */
+const FILE_TYPE_COL_WIDTH = 15
+
 /** Render a single lock file update line with optional file type label */
 const LockUpdateLine = ({
   update,
@@ -642,14 +648,15 @@ const LockUpdateLine = ({
   fileType: string | undefined
   prefix: string
 }) => {
-  const paddedFileLabel = fileType !== undefined ? `${fileType}  ` : '           '
+  const paddedFileLabel = (fileType ?? '').padEnd(FILE_TYPE_COL_WIDTH)
 
   switch (update._tag) {
     case 'RevUpdate':
       return (
         <Box flexDirection="row">
           <Text dim>
-            {prefix} {paddedFileLabel}
+            {prefix}
+            {paddedFileLabel}
             {update.inputName} rev {update.oldRev} {symbols.arrow} {update.newRev}
           </Text>
         </Box>
@@ -658,7 +665,8 @@ const LockUpdateLine = ({
       return (
         <Box flexDirection="row">
           <Text>
-            {prefix} {paddedFileLabel}
+            {prefix}
+            {paddedFileLabel}
           </Text>
           <Text color="cyan">
             {update.inputName} ref {update.oldRef} {symbols.arrow} {update.newRef}
@@ -825,21 +833,19 @@ const RefMismatchDetails = ({ result, prefix }: { result: MemberSyncResult; pref
       <Box flexDirection="row">
         <Text dim>
           {prefix}
-          {'    '}
           {mismatchDesc}
         </Text>
       </Box>
       <Box flexDirection="row">
         <Text dim>
-          {prefix}
-          {'    '}hint: use 'mr config pin {result.name} -c {actualRef}' to{' '}
+          {prefix}hint: use 'mr config pin {result.name} -c {actualRef}' to{' '}
           {isDetached === true ? 'pin this commit' : 'create proper worktree'},
         </Text>
       </Box>
       <Box flexDirection="row">
         <Text dim>
           {prefix}
-          {'          '}or 'git checkout {expectedRef}' to restore expected state
+          {'      '}or 'git checkout {expectedRef}' to restore expected state
         </Text>
       </Box>
     </>
