@@ -892,11 +892,15 @@ export const syncMember = <R = never>({
                 }),
             ),
           )
-          // Re-read HEAD to confirm actual state after merge
+          // Re-read HEAD to confirm actual state after merge.
+          // Only report "updated" when HEAD actually changed — a no-op merge
+          // (e.g. worktree already ahead of locked commit) should not count.
           const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
-          targetCommit = headAfterMerge
-          remotePreviousCommit = currentCommit
-          remoteUpdated = true
+          if (headAfterMerge !== currentCommit) {
+            targetCommit = headAfterMerge
+            remotePreviousCommit = currentCommit
+            remoteUpdated = true
+          }
         }
       }
     }
