@@ -410,7 +410,7 @@ export const makeOpenCodeAdapter = (options: {
           }),
       })
 
-      if (sessionRow === undefined) {
+      if (sessionRow == null) {
         return {
           artifact,
           records: [] as Array<OpenCodeRecord>,
