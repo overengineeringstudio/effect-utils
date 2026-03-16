@@ -393,7 +393,7 @@ export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) =
     `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
     'fi',
     'deploy_exit=${PIPESTATUS[0]}',
-    `url=$(grep -oE 'https://[^[:space:]]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
+    `url=$(grep -oE 'https://[^[:space:]"]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
     `if [ -n "$url" ]; then echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"; fi`,
     'rm -f "$tmp_log"',
     'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',

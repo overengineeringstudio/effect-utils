@@ -38,6 +38,7 @@ let
       orgIdEnv = deployment.orgIdEnv or "VERCEL_ORG_ID";
       projectIdEnv = deployment.projectIdEnv or "VERCEL_PROJECT_ID";
       cwd = deployment.cwd or ".";
+      extraEnv = deployment.env or { };
       buildDeps = if buildTaskPrefix == null then [ ] else [ "${buildTaskPrefix}:${deployment.name}" ];
     in
     {
@@ -50,6 +51,8 @@ let
           # Ensure native Node modules (e.g. sharp) can find libstdc++ on NixOS,
           # where prebuilt binaries lack proper RPATH for Nix store paths.
           export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+          ${lib.concatStringsSep "\n          " (lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") extraEnv)}
 
           if [ -z "''${VERCEL_TOKEN:-}" ]; then
             echo "Error: VERCEL_TOKEN is not set." >&2
