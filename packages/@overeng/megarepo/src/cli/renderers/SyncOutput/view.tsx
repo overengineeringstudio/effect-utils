@@ -8,7 +8,7 @@
  */
 
 import type { Atom } from '@effect-atom/atom'
-import React from 'react'
+import React, { type ReactNode } from 'react'
 import { useMemo } from 'react'
 
 import { Box, Text, Static, Tree, useTuiAtomValue, unicodeSymbols } from '@overeng/tui-react'
@@ -386,28 +386,9 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
       const r = item.result
       return (
         <>
-          {/* Skipped: detail lines (message or ref mismatch) */}
+          {/* Ref mismatch: multi-line details (description + hint) */}
           {r.status === 'skipped' && r.refMismatch !== undefined && (
-            <SkippedRefMismatchDetails result={r} prefix={continuationPrefix} />
-          )}
-          {r.status === 'skipped' && r.refMismatch === undefined && r.message !== undefined && (
-            <Box flexDirection="row">
-              <Text dim>
-                {continuationPrefix}
-                {'    '}
-                {r.message}
-              </Text>
-            </Box>
-          )}
-          {/* Error: message detail */}
-          {r.status === 'error' && r.message !== undefined && (
-            <Box flexDirection="row">
-              <Text dim>
-                {continuationPrefix}
-                {'    '}
-                {r.message}
-              </Text>
-            </Box>
+            <RefMismatchDetails result={r} prefix={continuationPrefix} />
           )}
           {/* Verbose lock details */}
           {verbose === true && (
@@ -680,31 +661,99 @@ const LockUpdateLine = ({
           </Text>
         </Box>
       )
+    case 'SchemeUpdate':
+      return (
+        <Box flexDirection="row">
+          <Text dim>
+            {prefix} {paddedFileLabel}
+            {update.inputName} scheme {update.oldScheme} {symbols.arrow} {update.newScheme}
+          </Text>
+        </Box>
+      )
   }
 }
 
 // =============================================================================
-// Internal Components - Result Line Components (sync-specific formatting)
+// Internal Components - Result Line
 // =============================================================================
 
-/** Format commit transition (e.g., "abc1234 → def5678") */
-const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
-  if (result.previousCommit !== undefined && result.commit !== undefined) {
-    const prev = result.previousCommit.slice(0, 7)
-    const curr = result.commit.slice(0, 7)
-    return (
-      <Text dim>
-        {prev} {symbols.arrow} {curr}
-      </Text>
-    )
-  }
-  if (result.commit !== undefined) {
-    return <Text dim>{result.commit.slice(0, 7)}</Text>
-  }
-  return null
+type ResultDisplay = {
+  verb: string
+  color: 'green' | 'cyan' | 'red' | 'yellow' | 'dim'
+  detail?: ReactNode
 }
 
-/** Dispatcher component routing to the correct line component based on result.status */
+/** Compute the status verb, color, and inline detail fragments for a sync result */
+const getResultDisplay = (
+  result: MemberSyncResult,
+  mode: SyncMode,
+  dryRun: boolean,
+): ResultDisplay => {
+  switch (result.status) {
+    case 'cloned':
+      return {
+        verb: 'cloned',
+        color: 'green',
+        detail: result.ref !== undefined ? <Text dim> ({result.ref})</Text> : undefined,
+      }
+    case 'synced':
+      return {
+        verb: 'synced',
+        color: 'green',
+        detail: result.ref !== undefined ? <Text dim> ({result.ref})</Text> : undefined,
+      }
+    case 'updated':
+      return {
+        verb: mode === 'fetch' ? 'fetched' : 'updated',
+        color: 'green',
+        detail: <CommitTransition result={result} />,
+      }
+    case 'recorded':
+      return {
+        verb: dryRun === true ? 'would record' : 'recorded',
+        color: 'cyan',
+        detail: <RecordedDetail result={result} />,
+      }
+    case 'applied':
+      return {
+        verb: dryRun === true ? 'would check out' : 'checked out',
+        color: 'cyan',
+        detail:
+          result.commit !== undefined ? <Text dim> {result.commit.slice(0, 7)}</Text> : undefined,
+      }
+    case 'removed':
+      return {
+        verb: dryRun === true ? 'would remove' : 'removed',
+        color: 'red',
+        detail:
+          result.message !== undefined ? (
+            <Text dim>
+              {' '}
+              ({symbols.arrow} {result.message})
+            </Text>
+          ) : undefined,
+      }
+    case 'error':
+      return {
+        verb: result.message !== undefined ? `error: ${result.message}` : 'error',
+        color: 'red',
+      }
+    case 'skipped': {
+      if (result.refMismatch !== undefined) return { verb: 'ref mismatch', color: 'yellow' }
+      return {
+        verb: result.message !== undefined ? `skipped: ${result.message}` : 'skipped',
+        color: 'yellow',
+      }
+    }
+    case 'already_synced':
+      return {
+        verb: mode === 'fetch' ? 'already up to date' : 'already synced',
+        color: 'dim',
+      }
+  }
+}
+
+/** Unified result line — renders prefix + icon + name + verb + detail + badges */
 const SyncResultLine = ({
   result,
   lockSync,
@@ -722,329 +771,50 @@ const SyncResultLine = ({
   prefix?: string | undefined
   showMegarepoTag?: boolean | undefined
 }) => {
-  switch (result.status) {
-    case 'cloned':
-      return (
-        <ClonedLine
-          result={result}
-          lockSync={lockSync}
-          prefix={prefix}
-          verbose={verbose}
-          showMegarepoTag={showMegarepoTag}
-        />
-      )
-    case 'synced':
-      return (
-        <SyncedLine
-          result={result}
-          lockSync={lockSync}
-          prefix={prefix}
-          verbose={verbose}
-          showMegarepoTag={showMegarepoTag}
-        />
-      )
-    case 'updated':
-      return (
-        <UpdatedLine
-          result={result}
-          lockSync={lockSync}
-          mode={mode}
-          prefix={prefix}
-          verbose={verbose}
-          showMegarepoTag={showMegarepoTag}
-        />
-      )
-    case 'recorded':
-      return (
-        <RecordedLine
-          result={result}
-          lockSync={lockSync}
-          dryRun={dryRun}
-          prefix={prefix}
-          verbose={verbose}
-          showMegarepoTag={showMegarepoTag}
-        />
-      )
-    case 'applied':
-      return <AppliedLine result={result} dryRun={dryRun} prefix={prefix} />
-    case 'removed':
-      return <RemovedLine result={result} dryRun={dryRun} prefix={prefix} />
-    case 'error':
-      return <ErrorLine result={result} prefix={prefix} />
-    case 'skipped':
-      return <SkippedLine result={result} prefix={prefix} />
-    case 'already_synced':
-      return (
-        <AlreadySyncedLine
-          result={result}
-          lockSync={lockSync}
-          mode={mode}
-          prefix={prefix}
-          verbose={verbose}
-          showMegarepoTag={showMegarepoTag}
-        />
-      )
-  }
-}
-
-/** Result line for cloned member */
-const ClonedLine = ({
-  result,
-  lockSync,
-  prefix,
-  verbose,
-  showMegarepoTag,
-}: {
-  result: MemberSyncResult
-  lockSync: MemberLockSyncResult | undefined
-  prefix?: string | undefined
-  verbose?: boolean | undefined
-  showMegarepoTag?: boolean | undefined
-}) => {
+  const { verb, color, detail } = getResultDisplay(result, mode, dryRun)
+  const showLockBadge = verbose !== true && result.status !== 'error' && result.status !== 'skipped'
   return (
     <Box flexDirection="row">
       {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="cloned" variant="sync" />
+      <StatusIcon status={result.status} variant="sync" />
       <Text> </Text>
       <Text bold>{result.name}</Text>
       <Text> </Text>
-      <Text color="green">cloned</Text>
-      {result.ref && <Text dim> ({result.ref})</Text>}
-      {verbose !== true && <LockSyncBadge lockSync={lockSync} />}
+      {color === 'dim' ? <Text dim>{verb}</Text> : <Text color={color}>{verb}</Text>}
+      {detail}
+      {showLockBadge === true && <LockSyncBadge lockSync={lockSync} />}
       {showMegarepoTag === true && <MegarepoTag />}
     </Box>
   )
 }
 
-/** Result line for synced member */
-const SyncedLine = ({
-  result,
-  lockSync,
-  prefix,
-  verbose,
-  showMegarepoTag,
-}: {
-  result: MemberSyncResult
-  lockSync: MemberLockSyncResult | undefined
-  prefix?: string | undefined
-  verbose?: boolean | undefined
-  showMegarepoTag?: boolean | undefined
-}) => {
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="synced" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="green">synced</Text>
-      {result.ref && <Text dim> ({result.ref})</Text>}
-      {verbose !== true && <LockSyncBadge lockSync={lockSync} />}
-      {showMegarepoTag === true && <MegarepoTag />}
-    </Box>
-  )
-}
-
-/** Result line for updated member (shows "fetched" in fetch mode, "updated" otherwise) */
-const UpdatedLine = ({
-  result,
-  lockSync,
-  mode,
-  prefix,
-  verbose,
-  showMegarepoTag,
-}: {
-  result: MemberSyncResult
-  lockSync: MemberLockSyncResult | undefined
-  mode: SyncMode
-  prefix?: string | undefined
-  verbose?: boolean | undefined
-  showMegarepoTag?: boolean | undefined
-}) => {
-  const verb = mode === 'fetch' ? 'fetched' : 'updated'
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="updated" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="green">{verb}</Text>
-      <Text> </Text>
-      <CommitTransition result={result} />
-      {verbose !== true && <LockSyncBadge lockSync={lockSync} />}
-      {showMegarepoTag === true && <MegarepoTag />}
-    </Box>
-  )
-}
-
-/** Result line for recorded member (lock sync — wrote commit to lockfile) */
-const RecordedLine = ({
-  result,
-  lockSync,
-  dryRun,
-  prefix,
-  verbose,
-  showMegarepoTag,
-}: {
-  result: MemberSyncResult
-  lockSync: MemberLockSyncResult | undefined
-  dryRun: boolean
-  prefix?: string | undefined
-  verbose?: boolean | undefined
-  showMegarepoTag?: boolean | undefined
-}) => {
-  const verb = dryRun === true ? 'would record' : 'recorded'
-  const hasTransition = result.previousCommit !== undefined
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="recorded" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="cyan">{verb}</Text>
-      <Text> </Text>
-      {hasTransition === true ? (
-        <CommitTransition result={result} />
-      ) : result.commit !== undefined ? (
-        <>
-          <Text dim>{result.commit.slice(0, 7)}</Text>
-          <Text dim> (new entry)</Text>
-        </>
-      ) : null}
-      {verbose !== true && <LockSyncBadge lockSync={lockSync} />}
-      {showMegarepoTag === true && <MegarepoTag />}
-    </Box>
-  )
-}
-
-/** Result line for applied member (lock apply — checked out commit from lockfile) */
-const AppliedLine = ({
-  result,
-  dryRun,
-  prefix,
-}: {
-  result: MemberSyncResult
-  dryRun: boolean
-  prefix?: string | undefined
-}) => {
-  const verb = dryRun === true ? 'would check out' : 'checked out'
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="applied" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="cyan">{verb}</Text>
-      {result.commit !== undefined && <Text dim> {result.commit.slice(0, 7)}</Text>}
-    </Box>
-  )
-}
-
-/** Result line for removed member */
-const RemovedLine = ({
-  result,
-  dryRun,
-  prefix,
-}: {
-  result: MemberSyncResult
-  dryRun: boolean
-  prefix?: string | undefined
-}) => {
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="removed" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="red">{dryRun === true ? 'would remove' : 'removed'}</Text>
-      {result.message !== undefined && (
-        <Text dim>
-          {' '}
-          ({symbols.arrow} {result.message})
-        </Text>
-      )}
-    </Box>
-  )
-}
-
-/** Result line for error (single line — details rendered via tree child content) */
-const ErrorLine = ({
-  result,
-  prefix,
-}: {
-  result: MemberSyncResult
-  prefix?: string | undefined
-}) => {
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="error" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="red">error</Text>
-    </Box>
-  )
-}
-
-/** Result line for skipped member (single line — details rendered via tree child content) */
-const SkippedLine = ({
-  result,
-  prefix,
-}: {
-  result: MemberSyncResult
-  prefix?: string | undefined
-}) => {
-  if (result.refMismatch !== undefined) {
+/** Commit transition inline detail (e.g., "abc1234 → def5678") */
+const CommitTransition = ({ result }: { result: MemberSyncResult }) => {
+  if (result.previousCommit !== undefined && result.commit !== undefined) {
     return (
-      <Box flexDirection="row">
-        {prefix !== undefined && <Text>{prefix}</Text>}
-        <StatusIcon status="skipped" variant="sync" />
-        <Text> </Text>
-        <Text bold>{result.name}</Text>
-        <Text> </Text>
-        <Text color="yellow">ref mismatch</Text>
-      </Box>
+      <Text dim>
+        {' '}
+        {result.previousCommit.slice(0, 7)} {symbols.arrow} {result.commit.slice(0, 7)}
+      </Text>
     )
   }
-
-  if (result.message !== undefined) {
-    return (
-      <Box flexDirection="row">
-        {prefix !== undefined && <Text>{prefix}</Text>}
-        <StatusIcon status="skipped" variant="sync" />
-        <Text> </Text>
-        <Text bold>{result.name}</Text>
-        <Text> </Text>
-        <Text color="yellow">skipped:</Text>
-      </Box>
-    )
+  if (result.commit !== undefined) {
+    return <Text dim> {result.commit.slice(0, 7)}</Text>
   }
+  return null
+}
 
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="skipped" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text color="yellow">skipped</Text>
-    </Box>
-  )
+/** Recorded status inline detail — commit transition or new entry */
+const RecordedDetail = ({ result }: { result: MemberSyncResult }) => {
+  if (result.previousCommit !== undefined) return <CommitTransition result={result} />
+  if (result.commit !== undefined) {
+    return <Text dim> {result.commit.slice(0, 7)} (new entry)</Text>
+  }
+  return null
 }
 
 /** Detail lines for skipped ref mismatch — rendered below the member line with tree continuation */
-const SkippedRefMismatchDetails = ({
-  result,
-  prefix,
-}: {
-  result: MemberSyncResult
-  prefix: string
-}) => {
+const RefMismatchDetails = ({ result, prefix }: { result: MemberSyncResult; prefix: string }) => {
   const { expectedRef, actualRef, isDetached } = result.refMismatch!
   const mismatchDesc =
     isDetached === true
@@ -1074,37 +844,6 @@ const SkippedRefMismatchDetails = ({
         </Text>
       </Box>
     </>
-  )
-}
-
-/** Result line for already synced member (shows "already up to date" in fetch mode) */
-const AlreadySyncedLine = ({
-  result,
-  lockSync,
-  mode,
-  prefix,
-  verbose,
-  showMegarepoTag,
-}: {
-  result: MemberSyncResult
-  lockSync: MemberLockSyncResult | undefined
-  mode: SyncMode
-  prefix?: string | undefined
-  verbose?: boolean | undefined
-  showMegarepoTag?: boolean | undefined
-}) => {
-  const label = mode === 'fetch' ? 'already up to date' : 'already synced'
-  return (
-    <Box flexDirection="row">
-      {prefix !== undefined && <Text>{prefix}</Text>}
-      <StatusIcon status="already_synced" variant="sync" />
-      <Text> </Text>
-      <Text bold>{result.name}</Text>
-      <Text> </Text>
-      <Text dim>{label}</Text>
-      {verbose !== true && <LockSyncBadge lockSync={lockSync} />}
-      {showMegarepoTag === true && <MegarepoTag />}
-    </Box>
   )
 }
 
