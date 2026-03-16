@@ -4,6 +4,7 @@
 packages:
   - context/effect/socket
   - context/opentui
+  - packages/@overeng/agent-session-ingest
   - packages/@overeng/effect-ai-claude-cli
   - packages/@overeng/effect-path
   - packages/@overeng/effect-react

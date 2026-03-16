@@ -10,6 +10,9 @@
       "path": "./context/opentui"
     },
     {
+      "path": "./packages/@overeng/agent-session-ingest"
+    },
+    {
       "path": "./packages/@overeng/effect-ai-claude-cli"
     },
     {

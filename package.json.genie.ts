@@ -1,6 +1,7 @@
 import effectSocketPkg from './context/effect/socket/package.json.genie.ts'
 import opentuiPkg from './context/opentui/package.json.genie.ts'
 import { packageJson } from './genie/internal.ts'
+import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
@@ -22,6 +23,7 @@ import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 
 /** All package.json genie definitions that belong to the root pnpm workspace */
 export const rootWorkspacePackages = [
+  agentSessionIngestPkg,
   effectSocketPkg,
   effectAiClaudeCliPkg,
   effectPathPkg,
