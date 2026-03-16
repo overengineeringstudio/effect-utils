@@ -166,85 +166,9 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
   }, [lockSyncResults])
 
   // ===================
-  // Progress View (during sync)
+  // Final View data (hooks must be called unconditionally)
   // ===================
-  if (_tag === 'Syncing') {
-    return (
-      <>
-        {/* Static region: logs */}
-        <Static items={logs}>
-          {(log: SyncLogEntry) => (
-            <LogLineComponent key={log.id} type={log.type} message={log.message} />
-          )}
-        </Static>
 
-        {/* Dynamic region */}
-        <Box paddingTop={logs.length > 0 ? 1 : 0}>
-          <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
-          <Text> </Text>
-
-          {/* Progress items */}
-          {members.map((name) => (
-            <ProgressItem
-              key={name}
-              name={name}
-              isActive={activeMembers.includes(name)}
-              result={resultsByName.get(name)}
-              mode={options.mode}
-            />
-          ))}
-
-          {/* Progress counter */}
-          <Box paddingTop={1}>
-            <Text dim>
-              {results.length}/{members.length}
-              {errorCount > 0 && (
-                <Text color="red">
-                  {' '}
-                  {symbols.dot} {errorCount} error{errorCount > 1 ? 's' : ''}
-                </Text>
-              )}
-            </Text>
-          </Box>
-        </Box>
-      </>
-    )
-  }
-
-  // ===================
-  // Interrupted View
-  // ===================
-  if (_tag === 'Interrupted') {
-    return (
-      <Box>
-        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
-        <Text> </Text>
-        <Text color="yellow" bold>
-          {symbols.circle} Sync interrupted
-        </Text>
-        <Text dim>
-          Synced {results.length} of {members.length} members before interruption
-        </Text>
-      </Box>
-    )
-  }
-
-  // ===================
-  // Pre-flight Failed View
-  // ===================
-  if (_tag === 'PreflightFailed') {
-    return (
-      <Box>
-        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
-        <Text> </Text>
-        <PreflightFailedView issues={state.preflightIssues} mode={options.mode} />
-      </Box>
-    )
-  }
-
-  // ===================
-  // Final View (complete or idle)
-  // ===================
   const hasChanges =
     summaryCounts.cloned > 0 ||
     summaryCounts.synced > 0 ||
@@ -406,6 +330,86 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
 
   const getTreeChildren = useMemo(() => (item: SyncTreeNode) => item.children, [])
 
+  // ===================
+  // Progress View (during sync)
+  // ===================
+  if (_tag === 'Syncing') {
+    return (
+      <>
+        {/* Static region: logs */}
+        <Static items={logs}>
+          {(log: SyncLogEntry) => (
+            <LogLineComponent key={log.id} type={log.type} message={log.message} />
+          )}
+        </Static>
+
+        {/* Dynamic region */}
+        <Box paddingTop={logs.length > 0 ? 1 : 0}>
+          <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+          <Text> </Text>
+
+          {/* Progress items */}
+          {members.map((name) => (
+            <ProgressItem
+              key={name}
+              name={name}
+              isActive={activeMembers.includes(name)}
+              result={resultsByName.get(name)}
+              mode={options.mode}
+            />
+          ))}
+
+          {/* Progress counter */}
+          <Box paddingTop={1}>
+            <Text dim>
+              {results.length}/{members.length}
+              {errorCount > 0 && (
+                <Text color="red">
+                  {' '}
+                  {symbols.dot} {errorCount} error{errorCount > 1 ? 's' : ''}
+                </Text>
+              )}
+            </Text>
+          </Box>
+        </Box>
+      </>
+    )
+  }
+
+  // ===================
+  // Interrupted View
+  // ===================
+  if (_tag === 'Interrupted') {
+    return (
+      <Box>
+        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+        <Text> </Text>
+        <Text color="yellow" bold>
+          {symbols.circle} Sync interrupted
+        </Text>
+        <Text dim>
+          Synced {results.length} of {members.length} members before interruption
+        </Text>
+      </Box>
+    )
+  }
+
+  // ===================
+  // Pre-flight Failed View
+  // ===================
+  if (_tag === 'PreflightFailed') {
+    return (
+      <Box>
+        <WorkspaceRootLabel storePath={workspace.root} modes={modes} />
+        <Text> </Text>
+        <PreflightFailedView issues={state.preflightIssues} mode={options.mode} />
+      </Box>
+    )
+  }
+
+  // ===================
+  // Final View (complete or idle)
+  // ===================
   return (
     <Box>
       {/* Header */}
@@ -684,11 +688,15 @@ type ResultDisplay = {
 }
 
 /** Compute the status verb, color, and inline detail fragments for a sync result */
-const getResultDisplay = (
-  result: MemberSyncResult,
-  mode: SyncMode,
-  dryRun: boolean,
-): ResultDisplay => {
+const getResultDisplay = ({
+  result,
+  mode,
+  dryRun,
+}: {
+  result: MemberSyncResult
+  mode: SyncMode
+  dryRun: boolean
+}): ResultDisplay => {
   switch (result.status) {
     case 'cloned':
       return {
@@ -771,7 +779,7 @@ const SyncResultLine = ({
   prefix?: string | undefined
   showMegarepoTag?: boolean | undefined
 }) => {
-  const { verb, color, detail } = getResultDisplay(result, mode, dryRun)
+  const { verb, color, detail } = getResultDisplay({ result, mode, dryRun })
   const showLockBadge = verbose !== true && result.status !== 'error' && result.status !== 'skipped'
   return (
     <Box flexDirection="row">
