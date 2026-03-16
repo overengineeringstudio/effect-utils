@@ -409,7 +409,7 @@ tracking different ref than source
 
 This happens when the lock was updated to track a branch but megarepo.json wasn't edited to match.
 
-This distinction prevents silent "already synced" messages and provides targeted fix suggestions.
+This distinction prevents silent "already up to date" messages and provides targeted fix suggestions.
 
 **Options:**
 
@@ -1096,7 +1096,7 @@ This occurs when someone uses `git checkout` directly inside a store worktree. T
 4. **Bare repo always exists**: If any worktree exists, `.bare/` exists
 5. **Path reveals mutability**: `refs/heads/*` is mutable, all else immutable
 6. **Lock file is source of truth**: Sync uses lock for commits, config for intent
-7. **No silent drift**: Sync never reports "already synced" when lock and symlink refs differ
+7. **No silent drift**: Sync never reports "already up to date" when lock and symlink refs differ
 8. **Worktree path matches HEAD**: The ref encoded in a worktree's store path should match its git HEAD
 
 ---

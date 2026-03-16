@@ -265,8 +265,7 @@ export const SyncView = ({ stateAtom }: SyncViewProps) => {
           <Box flexDirection="row">
             <Text dim>
               {prefix}
-              {symbols.check} {item.collapsedCount} members{' '}
-              {options.mode === 'fetch' ? 'already up to date' : 'already synced'}
+              {symbols.check} {item.collapsedCount} members already up to date
             </Text>
           </Box>
         )
@@ -755,7 +754,7 @@ const getResultDisplay = ({
     }
     case 'already_synced':
       return {
-        verb: mode === 'fetch' ? 'already up to date' : 'already synced',
+        verb: 'already up to date',
         color: 'dim',
       }
   }

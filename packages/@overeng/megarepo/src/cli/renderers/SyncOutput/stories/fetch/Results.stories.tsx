@@ -108,7 +108,7 @@ export const MixedResults: Story = {
   },
 }
 
-/** All members already synced */
+/** All members already up to date */
 export const AllUpToDate: Story = {
   render: (args) => {
     const stateConfig = useMemo(

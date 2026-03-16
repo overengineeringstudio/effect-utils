@@ -426,7 +426,7 @@ export const syncMember = <R = never>({
             lockUpdated,
           } satisfies MemberSyncResult
         }
-        // Apply mode: symlink correct, no ref mismatch → already synced (will fast-forward later if needed)
+        // Apply mode: symlink correct, no ref mismatch → already up to date (will fast-forward later if needed)
         // Don't early return here — fall through to let the fast-forward logic run
       }
 
