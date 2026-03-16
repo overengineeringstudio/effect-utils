@@ -90,20 +90,20 @@ let
               ;;
           esac
 
-          # Pull settings into app subdirectory for per-deployment isolation.
-          echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
-          (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" --token "$VERCEL_TOKEN")
+          # Run everything from the repo root so that rootDirectory (set in Vercel
+          # dashboard) resolves correctly. The Vercel CLI joins rootDirectory with
+          # cwd for both build and deploy — running from root avoids path doubling
+          # (e.g. packages/app/packages/app) while keeping rootDirectory set, which
+          # is required for serverless function trace file resolution in monorepos.
+          #
+          # Vercel dashboard must have rootDirectory set to "${cwd}" for each project.
 
-          # Safety: clear rootDirectory from pulled settings. With prebuilt deploys
-          # we always run from the app dir, so rootDirectory must be empty to avoid
-          # path doubling. The Vercel dashboard should have rootDirectory cleared for
-          # all prebuilt-deploy projects.
-          if [ -f "${cwd}/.vercel/project.json" ]; then
-            ${pkgs.jq}/bin/jq '.settings.rootDirectory = null' "${cwd}/.vercel/project.json" > "${cwd}/.vercel/project.json.tmp" \
-              && mv "${cwd}/.vercel/project.json.tmp" "${cwd}/.vercel/project.json"
-          fi
+          # Pull project settings and env vars to repo root.
+          echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
+          ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" --token "$VERCEL_TOKEN"
 
           # Override installCommand to no-op — dependencies are managed by devenv tasks.
+          # Place vercel.json at the app dir (where the framework build runs).
           vercel_json="${cwd}/vercel.json"
           original_vercel_json=""
           cleanup_vercel_json() {
@@ -117,6 +117,8 @@ let
           deploy_log=""
           cleanup() {
             cleanup_vercel_json
+            # Clean up repo-root .vercel dir created by vercel pull (not tracked in git).
+            rm -rf .vercel
             if [ -n "$deploy_log" ]; then
               rm -f "$deploy_log"
             fi
@@ -133,15 +135,15 @@ let
 
           echo "Building ${deployment.name} locally with vercel build..."
           if [ -n "$build_flag" ]; then
-            (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel build --yes $build_flag --token "$VERCEL_TOKEN")
+            ${pkgs.bun}/bin/bunx vercel build --yes $build_flag --token "$VERCEL_TOKEN"
           else
-            (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel build --yes --token "$VERCEL_TOKEN")
+            ${pkgs.bun}/bin/bunx vercel build --yes --token "$VERCEL_TOKEN"
           fi
 
           cleanup_vercel_json
 
-          if [ ! -d "${cwd}/.vercel/output" ]; then
-            echo "Error: Missing prebuilt output directory: ${cwd}/.vercel/output" >&2
+          if [ ! -d ".vercel/output" ]; then
+            echo "Error: Missing prebuilt output directory: .vercel/output" >&2
             exit 1
           fi
 
@@ -149,7 +151,7 @@ let
           case "$deploy_type" in
             prod)
               echo "Deploying ${deployment.name} prebuilt output to production..."
-              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --prod --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
+              ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             pr|preview)
@@ -159,7 +161,7 @@ let
               else
                 echo "Deploying ${deployment.name} prebuilt preview..."
               fi
-              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
+              ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             *)
