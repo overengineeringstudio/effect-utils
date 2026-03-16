@@ -39,7 +39,7 @@
 #
 # Provides: check:quick, check:all
 #
-# check:quick - Fast local development (ts:check, megarepo:check, lint, nix-fingerprint)
+# check:quick - Fast local development (ts:check, mr:check, lint, nix-fingerprint)
 # check:all   - Comprehensive pre-push validation (includes nix flake check)
 #
 # Note: Requires ts:check task to exist.
@@ -76,14 +76,14 @@ in
     "check:quick" = {
       description = "Fast checks for development (ts:check${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
       exec = "true";
-      after = [ "ts:check" "megarepo:check" ] ++ lintTask ++ nixQuickTask ++ extraChecks;
+      after = [ "ts:check" "mr:check" ] ++ lintTask ++ nixQuickTask ++ extraChecks;
     };
 
     # All: Comprehensive pre-push validation (includes full nix flake check)
     "check:all" = {
       description = "All checks (ts:check${extraDesc})";
       exec = "true";
-      after = [ "ts:check" "megarepo:check" ] ++ extraChecks ++ lintTask ++ nixFullTask ++ testTasks;
+      after = [ "ts:check" "mr:check" ] ++ extraChecks ++ lintTask ++ nixFullTask ++ testTasks;
     };
   };
 }
