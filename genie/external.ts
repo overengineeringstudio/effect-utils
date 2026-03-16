@@ -175,6 +175,7 @@ export const catalog = defineCatalog({
   '@xterm/xterm': '6.0.0',
   '@xterm/headless': '6.0.0',
   '@xterm/addon-fit': '0.11.0',
+  '@xterm/addon-canvas': '0.7.0',
 
   // Testing
   '@testing-library/react': '16.3.1',
