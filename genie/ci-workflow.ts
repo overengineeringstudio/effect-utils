@@ -280,8 +280,17 @@ export const nixDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?:
   },
 })
 
+/** Job-level permissions required by `deployCommentStep` to post/edit PR comments. */
+export const deployCommentPermissions = {
+  contents: 'read',
+  'pull-requests': 'write',
+} as const
+
 /**
  * Reusable step that writes a deployment summary and upserts a PR comment.
+ *
+ * The consuming job must include `permissions: deployCommentPermissions` (or equivalent)
+ * so that `github.token` can read/write PR comments.
  *
  * The provided scripts run in order and must:
  * - `modeScript`: set `label` (or `exit 0` for unsupported events)
