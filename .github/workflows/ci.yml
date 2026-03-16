@@ -716,14 +716,14 @@ jobs:
         run: |
           site="overeng-utils"
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            suffix=""
             label="prod"
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            suffix="-pr-${{ github.event.pull_request.number }}"
             label="PR #${{ github.event.pull_request.number }}"
           else
             exit 0
           fi
+          # Set Netlify branch-deploy suffix based on mode
+          if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi
 
           rows=""
           for dir in packages/@overeng/*/storybook-static; do

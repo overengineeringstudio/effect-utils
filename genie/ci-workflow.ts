@@ -280,8 +280,28 @@ export const nixDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?:
   },
 })
 
+/** Job-level permissions required by `deployCommentStep` to post/edit PR comments. */
+export const deployCommentPermissions = {
+  contents: 'read',
+  'pull-requests': 'write',
+} as const
+
+/** Shared mode detection script for deploy comments. Sets `label` based on event type. */
+export const deployModeScript = [
+  'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
+  '  label="prod"',
+  'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
+  '  label="PR #${{ github.event.pull_request.number }}"',
+  'else',
+  '  exit 0',
+  'fi',
+].join('\n')
+
 /**
  * Reusable step that writes a deployment summary and upserts a PR comment.
+ *
+ * The consuming job must include `permissions: deployCommentPermissions` (or equivalent)
+ * so that `github.token` can read/write PR comments.
  *
  * The provided scripts run in order and must:
  * - `modeScript`: set `label` (or `exit 0` for unsupported events)
@@ -367,9 +387,11 @@ export const dispatchAlignmentStep = (opts: {
 /**
  * Deploy a single Vercel project via devenv task.
  * Prod on push-to-main/schedule/dispatch, preview on PRs.
- * Captures deploy URL from task output and exports it to GITHUB_ENV.
+ * Captures deploy URL and exports it to both GITHUB_ENV and GITHUB_OUTPUT
+ * (the latter enables cross-job URL collection via `vercelDeployJobs`).
  */
 export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) => ({
+  id: 'deploy',
   name: `Deploy ${project.name} to Vercel`,
   shell: 'bash' as const,
   run: [
@@ -384,8 +406,11 @@ export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) =
     `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
     'fi',
     'deploy_exit=${PIPESTATUS[0]}',
-    `url=$(grep -oE 'https://[^[:space:]]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
-    `if [ -n "$url" ]; then echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"; fi`,
+    `url=$(grep -oE 'https://[^[:space:]"]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
+    'if [ -n "$url" ]; then',
+    `  echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"`,
+    '  echo "deploy_url=$url" >> "$GITHUB_OUTPUT"',
+    'fi',
     'rm -f "$tmp_log"',
     'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',
   ].join('\n'),
@@ -405,29 +430,101 @@ export const vercelGitAuthorStep = (opts: { name: string; email: string }) => ({
   ].join('\n'),
 })
 
-/** Post deploy URLs for one or more Vercel projects as a PR comment + job summary. */
-export const vercelDeployCommentStep = (projects: readonly { name: string; urlEnvKey: string }[]) =>
-  deployCommentStep({
-    summaryTitle: 'Vercel Deploy',
-    tableHeaders: ['Target', 'URL'],
-    noRowsMessage: 'No Vercel deploy URLs detected.',
-    modeScript: [
-      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-      '  label="prod"',
-      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  label="PR #${{ github.event.pull_request.number }}"',
-      'else',
-      '  exit 0',
-      'fi',
-    ].join('\n'),
-    rowsScript: projects
-      .map(
-        (p) =>
-          `if [ -n "\${${p.urlEnvKey}:-}" ]; then\n  rows="\${rows}| ${p.name} | \${${p.urlEnvKey}} |\\n"\nfi`,
-      )
-      .join('\n'),
-    commentTitle: 'Vercel Preview',
-  })
+type VercelProject = { name: string; urlEnvKey: string; projectIdEnv: string }
+
+/**
+ * Generate all Vercel deploy jobs + a combined comment collector job.
+ *
+ * Returns a flat record of GitHub Actions jobs:
+ * - `deploy-<name>` — one per project, runs `vercelDeployStep`, exposes URL as job output
+ * - `post-deploy-comment` — lightweight job that collects URLs from all deploy jobs
+ *   and posts a single combined PR comment via `deployCommentStep`
+ *
+ * This mirrors the Netlify pattern (single combined comment) while preserving
+ * parallel deploys. Both use `deployCommentStep` as the shared rendering layer.
+ */
+export const vercelDeployJobs = (opts: {
+  projects: readonly VercelProject[]
+  /** CI job names that deploy jobs depend on */
+  needs: readonly string[]
+  runner: readonly string[]
+  baseSteps: readonly Record<string, unknown>[]
+  env: Record<string, string>
+  gitAuthor: { name: string; email: string }
+  /** Extra steps to add after deploy (before comment was posted per-job, now separate) */
+  extraSteps?: readonly Record<string, unknown>[]
+  /** Deploy condition override. Default: always after CI passes, or directly on schedule. */
+  deployCondition?: string
+}): Record<string, Record<string, unknown>> => {
+  const deployCondition =
+    opts.deployCondition ??
+    [
+      'always()',
+      `(github.event_name == 'schedule' || (${opts.needs.map((j) => `needs.${j}.result == 'success'`).join(' && ')}))`,
+    ].join(' && ')
+
+  const deployJobNames = opts.projects.map((p) => `deploy-${p.name}`)
+
+  const deployJobs = Object.fromEntries(
+    opts.projects.map((project) => [
+      `deploy-${project.name}`,
+      {
+        needs: [...opts.needs],
+        if: deployCondition,
+        'runs-on': [...opts.runner],
+        defaults: bashShellDefaults,
+        outputs: {
+          deploy_url: '${{ steps.deploy.outputs.deploy_url }}',
+        },
+        env: {
+          ...opts.env,
+          [project.projectIdEnv]:
+            opts.env[project.projectIdEnv] ?? `\${{ secrets.${project.projectIdEnv} }}`,
+        },
+        steps: [
+          ...opts.baseSteps,
+          vercelGitAuthorStep(opts.gitAuthor),
+          vercelDeployStep(project),
+          ...(opts.extraSteps ?? []),
+        ],
+      },
+    ]),
+  )
+
+  /** Collect URLs from parallel deploy jobs and post one combined comment. */
+  const commentJob = {
+    needs: deployJobNames,
+    if: 'always() && !cancelled()',
+    permissions: deployCommentPermissions,
+    'runs-on': 'ubuntu-latest',
+    steps: [
+      installNixStep(),
+      deployCommentStep({
+        summaryTitle: 'Vercel Deploy',
+        tableHeaders: ['Target', 'URL'],
+        noRowsMessage: 'No Vercel deploy URLs detected.',
+        modeScript: deployModeScript,
+        rowsScript: [
+          'rows=""',
+          ...opts.projects.map((p) =>
+            [
+              `url="\${{ needs.deploy-${p.name}.outputs.deploy_url }}"`,
+              `if [ -n "$url" ]; then`,
+              `  rows="\${rows}| ${p.name} | $url |\\n"`,
+              'fi',
+            ].join('\n'),
+          ),
+        ].join('\n'),
+        commentTitle: 'Vercel Preview',
+      }),
+    ],
+  }
+
+  return {
+    ...deployJobs,
+    'post-deploy-comment': commentJob,
+  }
+}
 
 // =============================================================================
 // Netlify Deploy Helpers
@@ -468,15 +565,9 @@ export const netlifyStorybookCommentStep = (site: string) =>
     noRowsMessage: 'No storybooks were deployed.',
     modeScript: [
       `site="${site}"`,
-      'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-      '  suffix=""',
-      '  label="prod"',
-      'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-      '  suffix="-pr-${{ github.event.pull_request.number }}"',
-      '  label="PR #${{ github.event.pull_request.number }}"',
-      'else',
-      '  exit 0',
-      'fi',
+      deployModeScript,
+      '# Set Netlify branch-deploy suffix based on mode',
+      'if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi',
     ].join('\n'),
     rowsScript: [
       'rows=""',
