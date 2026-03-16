@@ -90,12 +90,13 @@ let
               ;;
           esac
 
+          # Pull settings into app subdirectory for per-deployment isolation.
           echo "Pulling Vercel project settings and env for ${deployment.name} ($pull_env)..."
           (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel pull --yes --environment "$pull_env" --token "$VERCEL_TOKEN")
 
-          # Clear rootDirectory from pulled settings to prevent path doubling.
-          # Vercel CLI joins rootDirectory with the working directory for both build
-          # and deploy, causing paths like packages/app/packages/app.
+          # Clear rootDirectory from pulled settings to prevent path doubling
+          # during build. When running vercel build from the app subdirectory,
+          # the CLI would otherwise join rootDirectory with cwd.
           if [ -f "${cwd}/.vercel/project.json" ]; then
             ${pkgs.jq}/bin/jq '.settings.rootDirectory = null' "${cwd}/.vercel/project.json" > "${cwd}/.vercel/project.json.tmp" \
               && mv "${cwd}/.vercel/project.json.tmp" "${cwd}/.vercel/project.json"
@@ -113,18 +114,11 @@ let
           }
 
           deploy_log=""
-          original_root_dir=""
           cleanup() {
             cleanup_vercel_json
-            # Restore rootDirectory in remote project settings if we cleared it.
-            if [ -n "$original_root_dir" ]; then
-              echo "Restoring rootDirectory in Vercel project settings..."
-              ${pkgs.curl}/bin/curl -sf -X PATCH \
-                "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
-                -H "Authorization: Bearer $VERCEL_TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "{\"rootDirectory\":\"$original_root_dir\"}" > /dev/null || true
-            fi
+            # Clean up repo-root .vercel symlink if still present (e.g. on error).
+            rm -f .vercel/output
+            rmdir .vercel 2>/dev/null || true
             if [ -n "$deploy_log" ]; then
               rm -f "$deploy_log"
             fi
@@ -153,29 +147,27 @@ let
             exit 1
           fi
 
-          # Clear rootDirectory from remote project settings before deploying.
-          # vercel deploy --prebuilt fetches rootDirectory from the Vercel API (not
-          # local project.json) and joins it with the working directory, causing
-          # path doubling like packages/app/packages/app. We save the original
-          # value and restore it in the cleanup trap.
-          original_root_dir="$(${pkgs.curl}/bin/curl -sf \
-            "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
-            -H "Authorization: Bearer $VERCEL_TOKEN" \
-            | ${pkgs.jq}/bin/jq -r '.rootDirectory // empty')"
-          if [ -n "$original_root_dir" ]; then
-            echo "Temporarily clearing rootDirectory ($original_root_dir) from Vercel project settings..."
-            ${pkgs.curl}/bin/curl -sf -X PATCH \
-              "https://api.vercel.com/v9/projects/$project_id?teamId=$org_id" \
-              -H "Authorization: Bearer $VERCEL_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"rootDirectory":null}' > /dev/null
-          fi
+          # Deploy from repo root to avoid rootDirectory path doubling.
+          #
+          # Problem: vercel deploy --prebuilt fetches rootDirectory from the Vercel
+          # API and joins it with cwd. When cwd is already the app subdirectory
+          # (e.g. packages/app) and rootDirectory is also set to that path, the CLI
+          # produces doubled paths like packages/app/packages/app. Clearing
+          # rootDirectory from the API causes the opposite issue: serverless
+          # function node_modules paths resolve from "/" instead of the app dir.
+          #
+          # Solution: deploy from the repo root with rootDirectory kept in the API.
+          # The CLI resolves rootDirectory relative to repo root — no doubling.
+          # We symlink .vercel/output from the build dir to repo root so the CLI
+          # can find it.
+          mkdir -p .vercel
+          ln -sfn "$(pwd)/${cwd}/.vercel/output" .vercel/output
 
           deploy_log="$(mktemp)"
           case "$deploy_type" in
             prod)
               echo "Deploying ${deployment.name} prebuilt output to production..."
-              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --prod --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
+              ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --prod --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             pr|preview)
@@ -185,7 +177,7 @@ let
               else
                 echo "Deploying ${deployment.name} prebuilt preview..."
               fi
-              (cd "${cwd}" && ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN") 2>&1 | tee "$deploy_log"
+              ${pkgs.bun}/bin/bunx vercel deploy --prebuilt --yes --token "$VERCEL_TOKEN" 2>&1 | tee "$deploy_log"
               deploy_exit=''${PIPESTATUS[0]}
               ;;
             *)
@@ -193,6 +185,10 @@ let
               exit 1
               ;;
           esac
+
+          # Clean up repo-root symlink
+          rm -f .vercel/output
+          rmdir .vercel 2>/dev/null || true
 
           if [ "$deploy_exit" -ne 0 ]; then
             exit "$deploy_exit"
