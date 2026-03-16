@@ -34,7 +34,7 @@
  */
 
 import { Atom, Registry } from '@effect-atom/atom'
-import { CanvasAddon } from '@xterm/addon-canvas'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { Schema } from 'effect'
@@ -266,7 +266,7 @@ export const TuiStoryPreview = <S, A>({
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(containerRef.current)
-    terminal.loadAddon(new CanvasAddon())
+    terminal.loadAddon(new WebglAddon())
     fitAddon.fit()
 
     terminalRef.current = terminal
@@ -1061,7 +1061,7 @@ const CIPreviewPane: React.FC<{
       const fitAddon = new FitAddon()
       terminal.loadAddon(fitAddon)
       terminal.open(containerRef.current)
-      terminal.loadAddon(new CanvasAddon())
+      terminal.loadAddon(new WebglAddon())
       fitAddon.fit()
 
       terminalRef.current = terminal
@@ -1279,7 +1279,7 @@ const PipePreviewPane: React.FC<{
       const fitAddon = new FitAddon()
       terminal.loadAddon(fitAddon)
       terminal.open(containerRef.current)
-      terminal.loadAddon(new CanvasAddon())
+      terminal.loadAddon(new WebglAddon())
       fitAddon.fit()
 
       terminalRef.current = terminal
@@ -1365,7 +1365,7 @@ const FullscreenPreviewPane: React.FC<{
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(containerRef.current)
-    terminal.loadAddon(new CanvasAddon())
+    terminal.loadAddon(new WebglAddon())
     fitAddon.fit()
 
     terminalRef.current = terminal

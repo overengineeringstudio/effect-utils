@@ -115,10 +115,4 @@ export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
   patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
-  peerDependencyRules: {
-    allowedVersions: {
-      /** @xterm/addon-canvas 0.7.0 declares ^5.0.0 but works fine with 6.0.0 */
-      '@xterm/addon-canvas>@xterm/xterm': '6.0.0',
-    },
-  },
 }
