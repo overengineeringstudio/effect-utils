@@ -349,6 +349,24 @@ const parseOpenCodeRowData = Effect.fn('AgentSessionIngest.OpenCode.parseOpenCod
     ),
 )
 
+/** Deduplicate streaming OpenCode part records, keeping only the last occurrence per part ID. */
+export const collapseStreamingOpenCodeRecords = (
+  records: ReadonlyArray<OpenCodeRecord>,
+): ReadonlyArray<OpenCodeRecord> => {
+  const lastPartIndex = new Map<string, number>()
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]!
+    if (record._tag === 'OpenCodePart') {
+      lastPartIndex.set(record.id, i)
+    }
+  }
+
+  return records.filter((record, index) => {
+    if (record._tag !== 'OpenCodePart') return true
+    return lastPartIndex.get(record.id) === index
+  })
+}
+
 /**
  * Adapter for incremental ingestion of OpenCode session records from the local SQLite store.
  *

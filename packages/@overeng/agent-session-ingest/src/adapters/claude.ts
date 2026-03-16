@@ -41,6 +41,74 @@ const ProgressRecord = Schema.Struct({
   data: HookProgressData,
 }).annotations({ identifier: 'AgentSessionIngest.ClaudeProgressRecord' })
 
+const ClaudeTextBlock = Schema.Struct({
+  type: Schema.Literal('text'),
+  text: Schema.String,
+})
+
+const ClaudeThinkingBlock = Schema.Struct({
+  type: Schema.Literal('thinking'),
+  thinking: Schema.String,
+})
+
+const ClaudeToolUseBlock = Schema.Struct({
+  type: Schema.Literal('tool_use'),
+  id: Schema.String,
+  name: Schema.String,
+  input: Schema.Unknown,
+})
+
+const ClaudeToolResultBlock = Schema.Struct({
+  type: Schema.Literal('tool_result'),
+  tool_use_id: Schema.String,
+  content: Schema.Unknown,
+  is_error: Schema.optional(Schema.Boolean),
+})
+
+const ClaudeServerToolUseBlock = Schema.Struct({
+  type: Schema.Literal('server_tool_use'),
+  id: Schema.String,
+  name: Schema.String,
+  input: Schema.Unknown,
+})
+
+const ClaudeServerToolResultBlock = Schema.Struct({
+  type: Schema.Literal('server_tool_result'),
+  tool_use_id: Schema.String,
+  content: Schema.Unknown,
+})
+
+const ClaudeGenericContentBlock = Schema.Struct({
+  type: Schema.String,
+})
+
+/** Content block types in Claude assistant message responses. */
+export const ClaudeAssistantContentBlock = Schema.Union(
+  ClaudeTextBlock,
+  ClaudeThinkingBlock,
+  ClaudeToolUseBlock,
+  ClaudeToolResultBlock,
+  ClaudeServerToolUseBlock,
+  ClaudeServerToolResultBlock,
+  ClaudeGenericContentBlock,
+).annotations({ identifier: 'AgentSessionIngest.ClaudeAssistantContentBlock' })
+export type ClaudeAssistantContentBlock = typeof ClaudeAssistantContentBlock.Type
+
+/** Content block types in Claude user messages (tool results and text). */
+export const ClaudeUserContentBlock = Schema.Union(
+  Schema.Struct({
+    type: Schema.Literal('tool_result'),
+    tool_use_id: Schema.String,
+    content: Schema.Unknown,
+    is_error: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('text'),
+    text: Schema.String,
+  }),
+  ClaudeGenericContentBlock,
+).annotations({ identifier: 'AgentSessionIngest.ClaudeUserContentBlock' })
+
 const MessageEnvelope = Schema.Struct({
   role: Schema.String,
   content: Schema.Unknown,
@@ -70,7 +138,7 @@ const AssistantMessagePayload = Schema.Struct({
   id: Schema.optional(Schema.String),
   type: Schema.optional(Schema.String),
   role: Schema.Literal('assistant'),
-  content: Schema.Unknown,
+  content: Schema.Array(ClaudeAssistantContentBlock),
   stop_reason: Schema.optional(Schema.NullOr(Schema.String)),
   stop_sequence: Schema.optional(Schema.NullOr(Schema.String)),
   usage: Schema.optional(Schema.Unknown),
