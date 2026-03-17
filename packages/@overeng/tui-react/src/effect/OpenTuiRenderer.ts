@@ -32,24 +32,10 @@
  * @module
  */
 
-// =============================================================================
-// TYPE WORKAROUND: Why we define OpenTUI types locally
-// =============================================================================
-//
-// OpenTUI is an optional Bun-only peer dependency. We use local type definitions
-// + `as unknown as` casts instead of importing types directly because:
-//
-// 1. This package must compile without @opentui/* installed (optional dep)
-// 2. OpenTUI's .d.ts files use extensionless re-exports which don't resolve
-//    with moduleResolution: "NodeNext" - see https://github.com/anomalyco/opentui/issues/504
-//
-// The pattern: opentui.d.ts provides ambient decls, this file defines local
-// interfaces, and dynamic imports cast via `as unknown as LocalType`.
-// =============================================================================
-
+import type { CliRenderer, CliRendererConfig, KeyEvent } from '@opentui/core'
+import type { Root } from '@opentui/react'
 import type { Scope, SubscriptionRef } from 'effect'
 import { Effect, PubSub, Runtime } from 'effect'
-import type React from 'react'
 import type { FC } from 'react'
 
 import type { InputEvent } from './events.ts'
@@ -138,45 +124,16 @@ export interface OpenTuiRenderer {
 }
 
 // =============================================================================
-// OpenTUI Types (local definitions to avoid import issues across workspaces)
-// =============================================================================
-
-/** OpenTUI CLI renderer configuration */
-interface OpenTuiCliRendererConfig {
-  exitOnCtrlC?: boolean
-}
-
-/** OpenTUI CLI renderer instance (opaque) */
-interface OpenTuiCliRenderer {
-  // Opaque - we don't access internals directly
-}
-
-/** OpenTUI key event from keyboard handler */
-interface OpenTuiKeyEvent {
-  name: string
-  ctrl: boolean
-  shift: boolean
-  meta: boolean
-  option: boolean
-}
-
-/** OpenTUI React root for rendering */
-interface OpenTuiRoot {
-  render(element: React.ReactNode): void
-  unmount(): void
-}
-
-// =============================================================================
 // OpenTUI Module Types (for dynamic import return values)
 // =============================================================================
 
 interface OpenTuiCoreModule {
-  createCliRenderer: (options?: OpenTuiCliRendererConfig) => Promise<OpenTuiCliRenderer>
+  createCliRenderer: (options?: CliRendererConfig) => Promise<CliRenderer>
 }
 
 interface OpenTuiReactModule {
-  createRoot: (renderer: OpenTuiCliRenderer) => OpenTuiRoot
-  useKeyboard: (handler: (key: OpenTuiKeyEvent) => void, options?: { release?: boolean }) => void
+  createRoot: (renderer: CliRenderer) => Root
+  useKeyboard: (handler: (key: KeyEvent) => void, options?: { release?: boolean }) => void
   useOnResize: (handler: (width: number, height: number) => void) => void
   useTerminalDimensions: () => { width: number; height: number }
 }
@@ -189,8 +146,7 @@ const importOpenTuiCore = (): Effect.Effect<OpenTuiCoreModule, OpenTuiCoreImport
   Effect.tryPromise({
     try: async () => {
       const mod = await import('@opentui/core')
-      // Use unknown intermediate cast since actual module types may differ across workspaces
-      return mod as unknown as OpenTuiCoreModule
+      return mod as OpenTuiCoreModule
     },
     catch: () =>
       new OpenTuiCoreImportError(
@@ -204,8 +160,7 @@ const importOpenTuiReact = (): Effect.Effect<OpenTuiReactModule, OpenTuiReactImp
   Effect.tryPromise({
     try: async () => {
       const mod = await import('@opentui/react')
-      // Use unknown intermediate cast since actual module types may differ across workspaces
-      return mod as unknown as OpenTuiReactModule
+      return mod as OpenTuiReactModule
     },
     catch: () =>
       new OpenTuiReactImportError(
@@ -220,7 +175,7 @@ const importOpenTuiReact = (): Effect.Effect<OpenTuiReactModule, OpenTuiReactImp
 /**
  * Convert OpenTUI KeyEvent to our KeyEvent schema.
  */
-const bridgeKeyEvent = (openTuiKey: OpenTuiKeyEvent): InputEvent =>
+const bridgeKeyEvent = (openTuiKey: KeyEvent): InputEvent =>
   keyEvent({
     key: openTuiKey.name,
     ctrl: openTuiKey.ctrl,
