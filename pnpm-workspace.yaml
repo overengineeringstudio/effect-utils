@@ -37,6 +37,4 @@ dedupePeerDependents: true
 
 strictPeerDependencies: true
 
-nodeLinker: hoisted
-
 enableGlobalVirtualStore: true

@@ -235,7 +235,6 @@ export const catalog = defineCatalog({
 export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
   strictPeerDependencies: true as const,
-  nodeLinker: 'hoisted' as const,
   enableGlobalVirtualStore: true as const,
   supportedArchitectures: {
     os: ['linux', 'darwin'],
