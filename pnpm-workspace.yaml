@@ -29,9 +29,6 @@ patchedDependencies:
 
 allowUnusedPatches: true
 
-settings:
-  nodeLinker: hoisted
-
 supportedArchitectures:
   os: [linux, darwin]
   cpu: [x64, arm64]
@@ -39,3 +36,7 @@ supportedArchitectures:
 dedupePeerDependents: true
 
 strictPeerDependencies: true
+
+nodeLinker: hoisted
+
+enableGlobalVirtualStore: true

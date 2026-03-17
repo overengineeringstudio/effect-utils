@@ -653,6 +653,15 @@ export interface PnpmWorkspaceData {
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp'
 
   /**
+   * Store dependency contents in a global content-addressed store keyed by
+   * dependency graph hash. Required for identity convergence: equivalent
+   * standalone and composed dependency graphs for the same physical source
+   * tree collapse to one physical instance instead of topology-local duplicates.
+   * @see https://pnpm.io/settings#enable-global-virtual-store
+   */
+  enableGlobalVirtualStore?: boolean
+
+  /**
    * Behavior when workspace package depends on version not matched by local.
    * @see https://pnpm.io/settings#link-workspace-packages
    */
@@ -856,6 +865,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.nodeLinker !== undefined) {
     result.nodeLinker = data.nodeLinker
+  }
+
+  if (data.enableGlobalVirtualStore !== undefined) {
+    result.enableGlobalVirtualStore = data.enableGlobalVirtualStore
   }
 
   if (data.linkWorkspacePackages !== undefined) {

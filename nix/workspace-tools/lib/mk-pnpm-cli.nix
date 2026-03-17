@@ -218,8 +218,16 @@ let
             dropPackageBlock (lib.tail lines)
           else
             lines;
+
+      # GVS requires a global pnpm store and hoisted linker scans workspace dirs;
+      # neither works inside Nix sandboxed closures
+      stripLiveSettings = lines: builtins.filter (l:
+        let trimmed = lib.trim l; in
+        !(lib.hasPrefix "enableGlobalVirtualStore" trimmed)
+        && !(lib.hasPrefix "nodeLinker" trimmed)
+      ) lines;
     in
-    dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml));
+    stripLiveSettings (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
 
   formatWorkspaceYaml =
     packageDirs: suffixLines:
