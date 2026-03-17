@@ -36,7 +36,6 @@ import type { CliRenderer, CliRendererConfig, KeyEvent } from '@opentui/core'
 import type { Root } from '@opentui/react'
 import type { Scope, SubscriptionRef } from 'effect'
 import { Effect, PubSub, Runtime } from 'effect'
-import type React from 'react'
 import type { FC } from 'react'
 
 import type { InputEvent } from './events.ts'
