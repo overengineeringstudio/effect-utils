@@ -58,7 +58,7 @@ export const withLock =
           // NOTE The 'signal' and 'ifAvailable' options cannot be used together.
           const requestOptions = options?.ifAvailable === true ? options : { ...options, signal }
 
-          const result = await navigator.locks.request(lockName, requestOptions, async (lock) => {
+          const result = await navigator.locks.request(lockName, requestOptions, async (lock: Lock | null) => {
             if (lock === null) {
               if (onTaken !== undefined) {
                 const onTakenExit = await Runtime.runPromiseExit(runtime)(onTaken)
@@ -104,7 +104,7 @@ export const waitForDeferredLock = (opts: {
       if (signal.aborted === true) return
 
       navigator.locks
-        .request(lockName, { signal, mode: 'exclusive', ifAvailable: false }, (_lock) => {
+        .request(lockName, { signal, mode: 'exclusive', ifAvailable: false }, (_lock: Lock | null) => {
           // Immediately continue calling Effect since we have the lock
           cb(Effect.void)
 
@@ -134,7 +134,7 @@ export const tryGetDeferredLock = (opts: {
     }
 
     return Effect.async<boolean>((cb, signal) => {
-      navigator.locks.request(lockName, { mode: 'exclusive', ifAvailable: true }, (lock) => {
+      navigator.locks.request(lockName, { mode: 'exclusive', ifAvailable: true }, (lock: Lock | null) => {
         cb(Effect.succeed(lock !== null))
 
         const abortPromise = new Promise<void>((resolve) => {
@@ -160,7 +160,7 @@ export const stealDeferredLock = (opts: {
     }
 
     return Effect.async<boolean>((cb, signal) => {
-      navigator.locks.request(lockName, { mode: 'exclusive', steal: true }, (lock) => {
+      navigator.locks.request(lockName, { mode: 'exclusive', steal: true }, (lock: Lock | null) => {
         cb(Effect.succeed(lock !== null))
 
         const abortPromise = new Promise<void>((resolve) => {
@@ -189,7 +189,7 @@ export const waitForLock = (lockName: string): Effect.Effect<void, WebLockNotSup
     return Effect.async<void>((cb, signal) => {
       if (signal.aborted === true) return
 
-      navigator.locks.request(lockName, { mode: 'shared', signal, ifAvailable: false }, (_lock) => {
+      navigator.locks.request(lockName, { mode: 'shared', signal, ifAvailable: false }, (_lock: Lock | null) => {
         cb(Effect.void)
       })
     })
@@ -214,7 +214,7 @@ export const getLockAndWaitForSteal = (
       if (signal.aborted === true) return
 
       navigator.locks
-        .request(lockName, { mode: 'exclusive', ifAvailable: true }, async (lock) => {
+        .request(lockName, { mode: 'exclusive', ifAvailable: true }, async (lock: Lock | null) => {
           if (lock === null) {
             // Lock wasn't available, resolve immediately
             cb(Effect.void)
