@@ -897,16 +897,50 @@ export const syncMember = <R = never>({
       worktreeRefType === 'branch' &&
       targetCommit !== undefined
     ) {
-      const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
-      const currentCommit = Option.getOrUndefined(currentCommitOpt)
-      if (currentCommit !== undefined && currentCommit !== targetCommit) {
-        yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
-          Effect.catchAll(() => Effect.void),
-        )
-        const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
-        if (headAfterMerge !== currentCommit) {
-          remotePreviousCommit = currentCommit
-          remoteUpdated = true
+      // Check for ref mismatch before merging — if someone ran `git checkout <other-branch>`
+      // in the worktree, we must not ff-merge into the wrong branch.
+      const worktreeBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
+        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
+      )
+      const onExpectedBranch =
+        Option.isSome(worktreeBranch) === true && worktreeBranch.value === targetRef
+
+      if (onExpectedBranch === true) {
+        const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+        const currentCommit = Option.getOrUndefined(currentCommitOpt)
+        if (currentCommit !== undefined && currentCommit !== targetCommit) {
+          yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
+            Effect.mapError(
+              (error) =>
+                new Git.GitCommandError({
+                  args: ['merge', '--ff-only', targetCommit],
+                  exitCode: 1,
+                  stderr:
+                    error instanceof Git.GitCommandError
+                      ? `Cannot fast-forward worktree to ${targetCommit.slice(0, 8)}: ${error.stderr}`
+                      : `Cannot fast-forward worktree to ${targetCommit.slice(0, 8)}`,
+                }),
+            ),
+          )
+          const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
+          if (headAfterMerge !== currentCommit) {
+            remotePreviousCommit = currentCommit
+            remoteUpdated = true
+          }
+        }
+      } else {
+        // Ref mismatch: worktree is on a different branch — report as error
+        const refMismatch = yield* detectRefMismatch({
+          worktreePath,
+          symlinkTarget: worktreePath.replace(/\/$/, ''),
+        })
+        if (refMismatch !== undefined) {
+          return {
+            name,
+            status: 'skipped',
+            message: formatRefMismatchMessage({ refMismatch, memberName: name }),
+            refMismatch,
+          } satisfies MemberSyncResult
         }
       }
     }
