@@ -88,6 +88,12 @@
   },
   "$genie": {
     "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten"
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
   }
 }

@@ -52,66 +52,6 @@ let
   ) (builtins.attrNames workspaceSourceRoots);
   workspaceSourcePrefixesByLengthDesc = lib.reverseList workspaceSourcePrefixesByLengthAsc;
 
-  overlayWorkspaceSourceCmd =
-    prefix:
-    let
-      sourceRoot = workspaceSourceRoots.${prefix};
-      sourceRootArg = lib.escapeShellArg (toString sourceRoot);
-      targetRelPathArg = lib.escapeShellArg prefix;
-    in
-    if prefix == "." || prefix == "" then
-      ''
-        source_root=${sourceRootArg}
-        find "$out" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-        cp -R "$source_root"/. "$out"
-        chmod -R +w "$out"
-      ''
-    else
-      ''
-        source_root=${sourceRootArg}
-        target_rel_path=${targetRelPathArg}
-        rm -rf "$out/$target_rel_path"
-        mkdir -p "$out/$target_rel_path"
-        cp -R "$source_root"/. "$out/$target_rel_path"
-        chmod -R +w "$out/$target_rel_path"
-      '';
-
-  repoLevelPrefixes = builtins.filter
-    (prefix:
-      let parts = lib.splitString "/" prefix;
-      in builtins.length parts == 2 && builtins.head parts == "repos")
-    workspaceSourcePrefixesByLengthAsc;
-
-  crossRepoSymlinkCmds =
-    if builtins.length repoLevelPrefixes < 2 then ""
-    else
-      lib.concatMapStrings (outer:
-        lib.concatMapStrings (inner:
-          if outer == inner then ""
-          else
-            let innerName = lib.removePrefix "repos/" inner;
-            in ''
-              mkdir -p "$out/${outer}/repos"
-              ln -s "../../${innerName}" "$out/${outer}/repos/${innerName}"
-            ''
-        ) repoLevelPrefixes
-      ) repoLevelPrefixes;
-
-  workspaceEvalRootPath =
-    if workspaceSourcePrefixesByLengthAsc == [ ] then
-      workspaceRootPath
-    else
-      pkgs.runCommand "workspace-eval-root" { } (
-        ''
-          set -euo pipefail
-          mkdir -p "$out"
-          cp -R ${lib.escapeShellArg (toString workspaceRootPath)}/. "$out"
-          chmod -R +w "$out"
-        ''
-        + builtins.concatStringsSep "\n" (map overlayWorkspaceSourceCmd workspaceSourcePrefixesByLengthAsc)
-        + crossRepoSymlinkCmds
-      );
-
   hasInstallRoot =
     sourceRoot:
     builtins.pathExists (sourceRoot + "/package.json")
@@ -153,45 +93,15 @@ let
     else
       resolved.sourceRoot + "/${resolved.sourceRelPath}";
 
-  genieRelPath = "packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts";
-  geniePrefix =
-    if builtins.pathExists (workspaceRootPath + "/${genieRelPath}") then
-      ""
-    else
-      let
-        found = lib.findFirst
-          (prefix: builtins.pathExists (absoluteSourcePathFor "${prefix}/${genieRelPath}"))
-          null
-          workspaceSourcePrefixesByLengthAsc;
-      in
-      if found == null then
-        throw "mk-pnpm-cli: Cannot find genie runtime (${genieRelPath}) in workspace root or workspace sources"
-      else
-        "${found}/";
+  # Read workspace closure dirs from the generated package.json ($genie.workspaceClosureDirs).
+  # Pre-computed by genie at generation time, avoiding import-from-derivation (IFD).
+  # Future alternative: NixOS/nix#15380 (builtins.wasm) could compute this natively at eval time.
+  packageJsonPath = absoluteSourcePathFor "${packageDir}/package.json";
+  packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
+  packageVersion = packageJson.version or "0.0.0";
 
   rootPnpmWorkspaceYamlPath = workspaceRootPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
-  packageClosureProjectionFile = pkgs.runCommand "${name}-pnpm-package-closure.json" {
-    nativeBuildInputs = [ pkgs.bun ];
-  } ''
-    set -euo pipefail
-    cd ${lib.escapeShellArg (toString workspaceEvalRootPath)}
-    bun --eval '
-      const pkg = (await import(${builtins.toJSON "./${packageDir}/package.json.genie.ts"})).default
-      const { projectPnpmPackageClosure } = await import(${builtins.toJSON "./${geniePrefix}${genieRelPath}"})
-
-      if (pkg?.meta?.workspace?.memberPath !== ${builtins.toJSON packageDir}) {
-        throw new Error(
-          "package.json.genie.ts default export has unexpected memberPath: "
-          + (pkg?.meta?.workspace?.memberPath ?? "<missing>")
-          + " (expected: " + ${builtins.toJSON packageDir} + ")"
-        )
-      }
-
-      process.stdout.write(JSON.stringify(projectPnpmPackageClosure({ pkg })))
-    ' > "$out"
-  '';
-  packageClosureProjection = builtins.fromJSON (builtins.readFile packageClosureProjectionFile);
 
   workspaceSuffixLines =
     workspaceYaml:
@@ -224,19 +134,23 @@ let
   formatWorkspaceYaml =
     packageDirs: suffixLines:
     let
-      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs);
+      packagesBlock = builtins.concatStringsSep "\n" (
+        [ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs
+      );
       suffix = builtins.concatStringsSep "\n" suffixLines;
     in
-    if suffix == "" then
-      "${packagesBlock}\n"
-    else
-      "${packagesBlock}\n\n${suffix}\n";
+    if suffix == "" then "${packagesBlock}\n" else "${packagesBlock}\n\n${suffix}\n";
 
   workspaceClosureDirs =
-    if packageClosureProjection.packageDir != packageDir then
-      throw "mk-pnpm-cli: projected packageDir does not match requested packageDir"
+    let
+      genieData = packageJson."$genie" or { };
+    in
+    if !(genieData ? workspaceClosureDirs) then
+      throw "mk-pnpm-cli: ${packageDir}/package.json missing $genie.workspaceClosureDirs (run: dt genie:run)"
+    else if !(lib.elem packageDir genieData.workspaceClosureDirs) then
+      throw "mk-pnpm-cli: $genie.workspaceClosureDirs does not contain packageDir (${packageDir})"
     else
-      packageClosureProjection.workspaceClosureDirs;
+      genieData.workspaceClosureDirs;
   workspaceMembers = builtins.filter (dir: dir != packageDir) workspaceClosureDirs;
 
   resolvedWorkspaceMembers = map (
@@ -254,42 +168,38 @@ let
           resolved.sourceRoot + "/${resolved.sourceRelPath}";
     }
   ) workspaceMembers;
-  externalInstallRootItems =
-    builtins.filter (item: item != null) (
-      map
-        (
-          item:
-          let
-            prefixRootHasWorkspace =
-              item.resolved.prefix != null
-              && builtins.pathExists (item.resolved.sourceRoot + "/pnpm-workspace.yaml")
-              && hasInstallRoot item.resolved.sourceRoot;
-            memberHasInstallRoot = hasInstallRoot item.sourcePath;
-          in
-          if item.resolved.prefix == null then
-            null
-          else if prefixRootHasWorkspace then
-            {
-              installDir = item.resolved.prefix;
-              installSourceRoot = item.resolved.sourceRoot;
-              memberDir = item.dir;
-              sourceRelMemberDir = item.resolved.sourceRelPath;
-            }
-          else if memberHasInstallRoot then
-            {
-              installDir = item.dir;
-              installSourceRoot = item.sourcePath;
-              memberDir = item.dir;
-              sourceRelMemberDir = ".";
-            }
-          else
-            null
-        )
-        resolvedWorkspaceMembers
-    );
+  externalInstallRootItems = builtins.filter (item: item != null) (
+    map (
+      item:
+      let
+        prefixRootHasWorkspace =
+          item.resolved.prefix != null
+          && builtins.pathExists (item.resolved.sourceRoot + "/pnpm-workspace.yaml")
+          && hasInstallRoot item.resolved.sourceRoot;
+        memberHasInstallRoot = hasInstallRoot item.sourcePath;
+      in
+      if item.resolved.prefix == null then
+        null
+      else if prefixRootHasWorkspace then
+        {
+          installDir = item.resolved.prefix;
+          installSourceRoot = item.resolved.sourceRoot;
+          memberDir = item.dir;
+          sourceRelMemberDir = item.resolved.sourceRelPath;
+        }
+      else if memberHasInstallRoot then
+        {
+          installDir = item.dir;
+          installSourceRoot = item.sourcePath;
+          memberDir = item.dir;
+          sourceRelMemberDir = ".";
+        }
+      else
+        null
+    ) resolvedWorkspaceMembers
+  );
 
-  externalInstallRoots =
-    lib.sort (left: right: left.installDir < right.installDir) (
+  externalInstallRoots = lib.sort (left: right: left.installDir < right.installDir) (
     map
       (
         installDir:
@@ -306,31 +216,47 @@ let
           sourceRelMemberDirs = lib.unique (map (item: item.sourceRelMemberDir) items);
           filteredPnpmWorkspaceYaml =
             if hasWorkspaceYaml then
-              formatWorkspaceYaml
-                (lib.unique (map (item: item.sourceRelMemberDir) items))
-                (workspaceSuffixLines sourcePnpmWorkspaceYaml)
+              formatWorkspaceYaml (lib.unique (map (item: item.sourceRelMemberDir) items)) (
+                workspaceSuffixLines sourcePnpmWorkspaceYaml
+              )
             else
               formatWorkspaceYaml [ "." ] [ ];
         }
       )
-      (lib.sort (left: right: left < right) (lib.unique (map (item: item.installDir) externalInstallRootItems))));
+      (
+        lib.sort (left: right: left < right) (
+          lib.unique (map (item: item.installDir) externalInstallRootItems)
+        )
+      )
+  );
 
   stagedWorkspaceMembers =
     let
       externallyOwnedDirs = lib.concatMap (root: root.memberDirs) externalInstallRoots;
     in
-    lib.unique ([ packageDir ] ++ builtins.filter (dir: !(lib.elem dir externallyOwnedDirs)) workspaceMembers);
+    lib.unique (
+      [ packageDir ] ++ builtins.filter (dir: !(lib.elem dir externallyOwnedDirs)) workspaceMembers
+    );
   allExternallyOwnedDirs =
     (map (root: root.installDir) externalInstallRoots)
     ++ (lib.concatMap (root: root.memberDirs) externalInstallRoots);
-  aggregateOwnedWorkspaceClosureDirs =
-    builtins.filter (dir: !(lib.elem dir allExternallyOwnedDirs)) workspaceClosureDirs;
+  aggregateOwnedWorkspaceClosureDirs = builtins.filter (
+    dir: !(lib.elem dir allExternallyOwnedDirs)
+  ) workspaceClosureDirs;
 
-  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (workspaceSuffixLines rootPnpmWorkspaceYaml);
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (
+    workspaceSuffixLines rootPnpmWorkspaceYaml
+  );
 
   rootLockfileContent = builtins.readFile (absoluteSourcePathFor "pnpm-lock.yaml");
-  rootWorkspaceFiles = [ "package.json" "pnpm-lock.yaml" ];
-  optionalRootWorkspaceFiles = [ ".npmrc" "tsconfig.base.json" ];
+  rootWorkspaceFiles = [
+    "package.json"
+    "pnpm-lock.yaml"
+  ];
+  optionalRootWorkspaceFiles = [
+    ".npmrc"
+    "tsconfig.base.json"
+  ];
 
   copyFileCmd =
     relPath:
@@ -364,7 +290,9 @@ let
       fi
     '';
 
-  /** Parse patchedDependencies path: entries from a pnpm-lock.yaml string (pure Nix). */
+  /**
+    Parse patchedDependencies path: entries from a pnpm-lock.yaml string (pure Nix).
+  */
   parsePatchPaths =
     lockfileContent:
     let
@@ -415,13 +343,13 @@ let
     } lines;
 
   /**
-   * Copy patch files from a lockfile, resolving source paths through workspaceSources.
-   * Each patch path is resolved at Nix eval time via absoluteSourcePathFor so that
-   * patches under workspaceSources prefixes are found in the correct source root.
-   *
-   * Note: the resolved source root (via builtins.path) snapshots the whole matched
-   * source tree, so this has the same invalidation scope as other copyFileCmd calls.
-   */
+    Copy patch files from a lockfile, resolving source paths through workspaceSources.
+    Each patch path is resolved at Nix eval time via absoluteSourcePathFor so that
+    patches under workspaceSources prefixes are found in the correct source root.
+
+    Note: the resolved source root (via builtins.path) snapshots the whole matched
+    source tree, so this has the same invalidation scope as other copyFileCmd calls.
+  */
   copyResolvedPatchFilesCmd =
     {
       lockfileContent,
@@ -447,10 +375,10 @@ let
     builtins.concatStringsSep "\n" (map copyOnePatch patchPaths);
 
   /**
-   * Copy patch files from an external install root's lockfile.
-   * These are self-contained (source and target share the same root), so shell-time
-   * awk parsing is fine — no workspaceSources resolution needed.
-   */
+    Copy patch files from an external install root's lockfile.
+    These are self-contained (source and target share the same root), so shell-time
+    awk parsing is fine — no workspaceSources resolution needed.
+  */
   copyPatchedDependencyFilesCmd =
     {
       sourceRoot,
@@ -504,44 +432,42 @@ let
       + builtins.concatStringsSep "\n" (map copyFileCmd rootWorkspaceFiles)
       + builtins.concatStringsSep "\n" (map copyOptionalFileCmd optionalRootWorkspaceFiles)
       + ''
-        cat > "$out/pnpm-workspace.yaml" <<'EOF'
-${filteredRootPnpmWorkspaceYaml}
-EOF
+                cat > "$out/pnpm-workspace.yaml" <<'EOF'
+        ${filteredRootPnpmWorkspaceYaml}
+        EOF
       ''
       + builtins.concatStringsSep "\n" (
-        map
-          (
-            root:
-            builtins.concatStringsSep "\n" (
-              (
-                if manifestOnly then
-                  (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
-                  ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
-                  ++ (map (dir: copyFileCmd "${dir}/package.json") (builtins.filter (dir: dir != root.installDir) root.memberDirs))
-                else if lib.elem root.installDir root.memberDirs then
-                  [ (copyDirCmd root.installDir) ]
-                else
-                  (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
-                  ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
-                  ++ (map copyDirCmd (builtins.filter (dir: dir != root.installDir) root.memberDirs))
-              )
-              ++ [
-                ''
-                  mkdir -p "$out/${root.installDir}"
-                  cat > "$out/${root.installDir}/pnpm-workspace.yaml" <<'EOF'
-${root.filteredPnpmWorkspaceYaml}
-EOF
-                ''
-              ]
+        map (
+          root:
+          builtins.concatStringsSep "\n" (
+            (
+              if manifestOnly then
+                (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
+                ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+                ++ (map (dir: copyFileCmd "${dir}/package.json") (
+                  builtins.filter (dir: dir != root.installDir) root.memberDirs
+                ))
+              else if lib.elem root.installDir root.memberDirs then
+                [ (copyDirCmd root.installDir) ]
+              else
+                (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
+                ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
+                ++ (map copyDirCmd (builtins.filter (dir: dir != root.installDir) root.memberDirs))
             )
+            ++ [
+              ''
+                                  mkdir -p "$out/${root.installDir}"
+                                  cat > "$out/${root.installDir}/pnpm-workspace.yaml" <<'EOF'
+                ${root.filteredPnpmWorkspaceYaml}
+                EOF
+              ''
+            ]
           )
-          externalInstallRoots
+        ) externalInstallRoots
       )
       + builtins.concatStringsSep "\n" (
         if manifestOnly then
-          map
-            (dir: copyFileCmd "${dir}/package.json")
-            aggregateOwnedWorkspaceClosureDirs
+          map (dir: copyFileCmd "${dir}/package.json") aggregateOwnedWorkspaceClosureDirs
         else
           map copyDirCmd aggregateOwnedWorkspaceClosureDirs
       )
@@ -550,14 +476,13 @@ EOF
         targetPrefix = "";
       }
       + builtins.concatStringsSep "\n" (
-        map
-          (root:
-            copyPatchedDependencyFilesCmd {
-              sourceRoot = root.installSourceRoot;
-              targetPrefix = root.installDir;
-            }
-          )
-          externalInstallRoots
+        map (
+          root:
+          copyPatchedDependencyFilesCmd {
+            sourceRoot = root.installSourceRoot;
+            targetPrefix = root.installDir;
+          }
+        ) externalInstallRoots
       )
     );
 
@@ -575,26 +500,22 @@ EOF
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
-    lockfilePaths =
-      lib.sort (left: right: left < right) (
-        [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots
-      );
+    lockfilePaths = lib.sort (left: right: left < right) (
+      [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots
+    );
     preInstall = ''
       chmod -R +w .
     '';
   };
 
-  packageJsonPath = absoluteSourcePathFor "${packageDir}/package.json";
-  packageJson = builtins.fromJSON (builtins.readFile packageJsonPath);
-  packageVersion = packageJson.version or "0.0.0";
   entryRelativeToPackage =
     if lib.hasPrefix "${packageDir}/" entry then
       lib.removePrefix "${packageDir}/" entry
     else
       throw "mk-pnpm-cli: entry must be inside packageDir (${packageDir}): ${entry}";
 
-  pnpmInstallFlags = "--offline --frozen-lockfile --ignore-scripts"
-    + lib.optionalString prodInstall " --prod";
+  pnpmInstallFlags =
+    "--offline --frozen-lockfile --ignore-scripts" + lib.optionalString prodInstall " --prod";
   dirtyStr = if dirty then "true" else "false";
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
@@ -647,18 +568,13 @@ pkgs.stdenv.mkDerivation {
     pnpm install ${pnpmInstallFlags}
 
     ${builtins.concatStringsSep "\n" (
-      map
+      map (root: ''
+        echo "Installing external workspace root: ${root.installDir}..."
         (
-          root:
-          ''
-            echo "Installing external workspace root: ${root.installDir}..."
-            (
-              cd ${lib.escapeShellArg root.installDir}
-              pnpm install ${pnpmInstallFlags}
-            )
-          ''
+          cd ${lib.escapeShellArg root.installDir}
+          pnpm install ${pnpmInstallFlags}
         )
-        externalInstallRoots
+      '') externalInstallRoots
     )}
 
     cd ${packageDir}

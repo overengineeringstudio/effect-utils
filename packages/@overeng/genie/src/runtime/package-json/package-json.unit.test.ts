@@ -69,9 +69,29 @@ describe('packageJson', () => {
     const json = result.stringify(mockGenieContext)
     const parsed = JSON.parse(json)
 
-    expect(parsed.$genie).toBe(true)
+    expect(parsed.$genie).toEqual({
+      source: 'package.json.genie.ts',
+      warning: 'DO NOT EDIT - changes will be overwritten',
+    })
     expect(parsed.name).toBe('@test/package')
     expect(parsed.version).toBe('1.0.0')
+  })
+
+  it('includes workspaceClosureDirs in $genie when workspace composition is used', () => {
+    const repo = createTempRepo('packages/app', 'packages/lib')
+    const libComposition = testCatalog.compose({
+      workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/lib' }),
+    })
+    const libPkg = packageJson({ name: '@test/lib', version: '1.0.0' }, libComposition)
+    const appComposition = testCatalog.compose({
+      workspace: workspace({ repoName: repo.repoName, memberPath: 'packages/app' }),
+      dependencies: { workspace: [libPkg] },
+    })
+    const result = packageJson({ name: '@test/app', version: '1.0.0' }, appComposition)
+
+    const parsed = JSON.parse(result.stringify(mockGenieContext))
+
+    expect(parsed.$genie.workspaceClosureDirs).toEqual(['packages/app', 'packages/lib'])
   })
 
   it('sorts dependencies alphabetically', () => {
@@ -542,7 +562,10 @@ describe('packageJson.aggregateFromPackages', () => {
     const json = result.stringify(mockWorkspaceRootContext)
     const parsed = JSON.parse(json)
 
-    expect(parsed.$genie).toBe(true)
+    expect(parsed.$genie).toEqual({
+      source: 'package.json.genie.ts',
+      warning: 'DO NOT EDIT - changes will be overwritten',
+    })
     expect(parsed.name).toBe('my-monorepo')
     expect(parsed.private).toBe(true)
     expect(parsed.packageManager).toBe('pnpm@10.29.2')
