@@ -58,19 +58,23 @@ export const withLock =
           // NOTE The 'signal' and 'ifAvailable' options cannot be used together.
           const requestOptions = options?.ifAvailable === true ? options : { ...options, signal }
 
-          const result = await navigator.locks.request(lockName, requestOptions, async (lock: Lock | null) => {
-            if (lock === null) {
-              if (onTaken !== undefined) {
-                const onTakenExit = await Runtime.runPromiseExit(runtime)(onTaken)
-                if (onTakenExit._tag === 'Failure') {
-                  return onTakenExit as unknown as Exit.Exit<A, E>
+          const result = await navigator.locks.request(
+            lockName,
+            requestOptions,
+            async (lock: Lock | null) => {
+              if (lock === null) {
+                if (onTaken !== undefined) {
+                  const onTakenExit = await Runtime.runPromiseExit(runtime)(onTaken)
+                  if (onTakenExit._tag === 'Failure') {
+                    return onTakenExit as unknown as Exit.Exit<A, E>
+                  }
                 }
+                return undefined
               }
-              return undefined
-            }
 
-            return await Runtime.runPromiseExit(runtime)(eff)
-          })
+              return await Runtime.runPromiseExit(runtime)(eff)
+            },
+          )
 
           return result
         },
@@ -104,13 +108,17 @@ export const waitForDeferredLock = (opts: {
       if (signal.aborted === true) return
 
       navigator.locks
-        .request(lockName, { signal, mode: 'exclusive', ifAvailable: false }, (_lock: Lock | null) => {
-          // Immediately continue calling Effect since we have the lock
-          cb(Effect.void)
+        .request(
+          lockName,
+          { signal, mode: 'exclusive', ifAvailable: false },
+          (_lock: Lock | null) => {
+            // Immediately continue calling Effect since we have the lock
+            cb(Effect.void)
 
-          // Hold lock until deferred is resolved
-          return Deferred.await(deferred).pipe(Effect.runPromise)
-        })
+            // Hold lock until deferred is resolved
+            return Deferred.await(deferred).pipe(Effect.runPromise)
+          },
+        )
         .catch((error: DOMException) => {
           if (error.name === 'AbortError' && error.message === 'signal is aborted without reason') {
             // Signal interruption is handled via Effect, ignore
@@ -134,16 +142,20 @@ export const tryGetDeferredLock = (opts: {
     }
 
     return Effect.async<boolean>((cb, signal) => {
-      navigator.locks.request(lockName, { mode: 'exclusive', ifAvailable: true }, (lock: Lock | null) => {
-        cb(Effect.succeed(lock !== null))
+      navigator.locks.request(
+        lockName,
+        { mode: 'exclusive', ifAvailable: true },
+        (lock: Lock | null) => {
+          cb(Effect.succeed(lock !== null))
 
-        const abortPromise = new Promise<void>((resolve) => {
-          signal.addEventListener('abort', () => resolve())
-        })
+          const abortPromise = new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => resolve())
+          })
 
-        // Hold lock until deferred is resolved or aborted
-        return Promise.race([Deferred.await(deferred).pipe(Effect.runPromise), abortPromise])
-      })
+          // Hold lock until deferred is resolved or aborted
+          return Promise.race([Deferred.await(deferred).pipe(Effect.runPromise), abortPromise])
+        },
+      )
     })
   })
 }
@@ -189,9 +201,13 @@ export const waitForLock = (lockName: string): Effect.Effect<void, WebLockNotSup
     return Effect.async<void>((cb, signal) => {
       if (signal.aborted === true) return
 
-      navigator.locks.request(lockName, { mode: 'shared', signal, ifAvailable: false }, (_lock: Lock | null) => {
-        cb(Effect.void)
-      })
+      navigator.locks.request(
+        lockName,
+        { mode: 'shared', signal, ifAvailable: false },
+        (_lock: Lock | null) => {
+          cb(Effect.void)
+        },
+      )
     })
   })
 
