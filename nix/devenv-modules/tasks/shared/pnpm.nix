@@ -13,10 +13,10 @@
   packages,
   globalCache ? true,
   frozenInCi ? true,
-  installAfter ? [],
-  updateAfter ? [],
-  cleanAfter ? [],
-  resetLockFilesAfter ? [],
+  installAfter ? [ ],
+  updateAfter ? [ ],
+  cleanAfter ? [ ],
+  resetLockFilesAfter ? [ ],
 }:
 {
   lib,

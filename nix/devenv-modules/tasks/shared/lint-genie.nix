@@ -16,9 +16,21 @@ in
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
     };
+    "lint:check:lockfile" = {
+      description = "Verify pnpm-lock.yaml matches package.json specifiers";
+      after = [ "pnpm:install" ];
+      exec = trace.exec "lint:check:lockfile" ''
+        set -euo pipefail
+        export npm_config_manage_package_manager_versions=false
+        pnpm install --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false
+      '';
+    };
     "lint:check" = {
       description = "Run all lint checks";
-      after = [ "lint:check:genie" ];
+      after = [
+        "lint:check:genie"
+        "lint:check:lockfile"
+      ];
     };
     "lint:fix" = {
       description = "Fix all lint issues (no formatter configured)";

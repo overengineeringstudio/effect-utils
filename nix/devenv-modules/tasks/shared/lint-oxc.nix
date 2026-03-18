@@ -97,7 +97,8 @@ let
       description = "Run oxlint linter";
       exec = trace.exec "lint:check:oxlint" (mkOxlintCmd "");
       execIfModified = execIfModifiedPatterns;
-    } // lib.optionalAttrs (tsconfig != null) {
+    }
+    // lib.optionalAttrs (tsconfig != null) {
       after = [ "pnpm:install" ];
     };
     "lint:fix:format" = {
@@ -155,6 +156,15 @@ let
       # Intentionally no execIfModified caching: new unmanaged config files are exactly
       # what this task exists to detect.
     };
+    "lint:check:lockfile" = {
+      description = "Verify pnpm-lock.yaml matches package.json specifiers";
+      after = [ "pnpm:install" ];
+      exec = trace.exec "lint:check:lockfile" ''
+        set -euo pipefail
+        export npm_config_manage_package_manager_versions=false
+        pnpm install --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false
+      '';
+    };
     "lint:check" = {
       description = "Run all lint checks";
       after = [
@@ -162,6 +172,7 @@ let
         "lint:check:oxlint"
         "lint:check:genie"
         "lint:check:genie:coverage"
+        "lint:check:lockfile"
       ];
     };
     "lint:fix" = {
@@ -175,8 +186,7 @@ let
 in
 {
   # Provide tsgolint when type-aware linting is enabled
-  packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ]
-    ++ cliGuard.fromTasks guardedTasks;
+  packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ] ++ cliGuard.fromTasks guardedTasks;
 
   tasks = (cliGuard.stripGuards guardedTasks) // otherTasks;
 }
