@@ -174,7 +174,7 @@ export const syncMember = <R = never>({
   semaphoreMap,
   gitProtocol = 'auto',
   createBranches = false,
-  applyAfterFetch,
+  commitMode,
   onMissingRef,
 }: {
   name: string
@@ -190,8 +190,8 @@ export const syncMember = <R = never>({
   gitProtocol?: GitProtocol
   /** Create branches that don't exist (from default branch) */
   createBranches?: boolean
-  /** When true, fetch just ran — prefer branch worktrees for dev convenience */
-  applyAfterFetch?: boolean
+  /** When true, use commit-based worktrees (refs/commits/<sha>) for deterministic apply */
+  commitMode?: boolean
   /** Callback when a ref doesn't exist. If not provided, defaults to 'error' behavior. */
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, never, R>
 }) =>
@@ -772,66 +772,16 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Content-aware worktree selection in apply mode:
-    // Prefer branch worktree if it exists and its HEAD matches the locked commit (preserves
-    // branch tracking for local dev). Otherwise use a commit worktree (exact locked content).
-    // When applyAfterFetch=true and no branch worktree exists, check the bare repo's branch
-    // tip — if it matches the locked commit, create a branch worktree (dev convenience).
-    // This check handles pinned members correctly: fetch skips them, so their locked commit
-    // may lag the branch tip, and we fall through to a commit worktree.
-    let worktreeRef: string
-    let worktreeRefType: RefType
-    if (isApplyMode === true && targetCommit !== undefined && actualRefType === 'branch') {
-      const branchExists = yield* store.hasWorktree({
-        source,
-        ref: targetRef,
-        refType: 'branch',
-      })
-      const branchAtLockedCommit =
-        branchExists === true
-          ? yield* Git.getCurrentCommit(
-              store.getWorktreePath({ source, ref: targetRef, refType: 'branch' }),
-            ).pipe(
-              Effect.map((head) => head === targetCommit),
-              Effect.catchAll(() => Effect.succeed(false)),
-            )
-          : false
-
-      if (branchAtLockedCommit === true) {
-        worktreeRef = targetRef
-        worktreeRefType = 'branch'
-      } else if (applyAfterFetch === true) {
-        if (branchExists === true) {
-          // Branch worktree exists but at wrong commit — use it anyway and let the
-          // ff-merge block below advance it (fetch guarantees forward-only movement
-          // for unpinned members).
-          worktreeRef = targetRef
-          worktreeRefType = 'branch'
-        } else {
-          // No branch worktree yet — check if the bare repo's branch tip matches the
-          // locked commit. If so, creating a branch worktree will check out the correct
-          // content. Otherwise fall through to commit worktree (handles pinned members
-          // where the locked commit lags the branch tip).
-          const branchTip = yield* Git.resolveRef({
-            repoPath: bareRepoPath,
-            ref: `refs/remotes/origin/${targetRef}`,
-          }).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
-          if (branchTip === targetCommit) {
-            worktreeRef = targetRef
-            worktreeRefType = 'branch'
-          } else {
-            worktreeRef = targetCommit
-            worktreeRefType = 'commit'
-          }
-        }
-      } else {
-        worktreeRef = targetCommit
-        worktreeRefType = 'commit'
-      }
-    } else {
-      worktreeRef = targetRef
-      worktreeRefType = actualRefType
-    }
+    // Worktree mode selection in apply mode:
+    // - commit mode (--worktree-mode=commit, CI default): refs/commits/<sha>/ — deterministic
+    // - tracking mode (default): refs/heads/<branch>/ — dev convenience, with checkout fallback
+    const useCommitWorktree =
+      isApplyMode === true &&
+      commitMode === true &&
+      targetCommit !== undefined &&
+      actualRefType === 'branch'
+    const worktreeRef = useCommitWorktree === true ? targetCommit : targetRef
+    const worktreeRefType: RefType = useCommitWorktree === true ? 'commit' : actualRefType
 
     const worktreePath = store.getWorktreePath({
       source,
@@ -906,20 +856,19 @@ export const syncMember = <R = never>({
       )
     }
 
-    // For applyAfterFetch with branch worktrees, fast-forward to the locked commit.
-    // The fetch just pulled the latest, so the locked commit is always ahead of (or equal to)
-    // the existing branch worktree HEAD.
+    // In tracking mode (branch worktrees), ensure the worktree is at the locked commit.
+    // Try ff-merge first; if the branch has advanced past the locked commit, fall back to
+    // git checkout (detached HEAD with correct content).
     let remoteUpdated = false
     let remotePreviousCommit: string | undefined
     if (
-      applyAfterFetch === true &&
       isApplyMode === true &&
       dryRun === false &&
       worktreeRefType === 'branch' &&
       targetCommit !== undefined
     ) {
       // Check for ref mismatch before merging — if someone ran `git checkout <other-branch>`
-      // in the worktree, we must not ff-merge into the wrong branch.
+      // in the worktree, we must not merge into the wrong branch.
       const worktreeBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
         Effect.catchAll(() => Effect.succeed(Option.none<string>())),
       )
@@ -931,16 +880,9 @@ export const syncMember = <R = never>({
         const currentCommit = Option.getOrUndefined(currentCommitOpt)
         if (currentCommit !== undefined && currentCommit !== targetCommit) {
           yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
-            Effect.mapError(
-              (error) =>
-                new Git.GitCommandError({
-                  args: ['merge', '--ff-only', targetCommit],
-                  exitCode: 1,
-                  stderr:
-                    error instanceof Git.GitCommandError
-                      ? `Cannot fast-forward worktree to ${targetCommit.slice(0, 8)}: ${error.stderr}`
-                      : `Cannot fast-forward worktree to ${targetCommit.slice(0, 8)}`,
-                }),
+            Effect.catchAll(() =>
+              // FF-merge failed (branch ahead of locked commit) — detach HEAD at correct commit
+              Git.checkoutWorktree({ worktreePath, ref: targetCommit }),
             ),
           )
           const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
