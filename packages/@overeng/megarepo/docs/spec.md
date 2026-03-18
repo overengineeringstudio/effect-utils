@@ -465,19 +465,23 @@ mr apply --git-protocol=https
 
 #### `mr apply`
 
-Strict mode for CI that guarantees exact reproducibility:
+Strict mode that guarantees exact reproducibility from the lock file:
 
 - Lock file MUST exist
 - Lock MUST cover all config members (no new members allowed)
 - Uses locked commits exactly
 - Fails if config has members not in lock
 - **Clones and fetches if needed** - lock apply will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
-- **Uses commit-based worktree paths** (e.g., `refs/commits/<sha>/`) to guarantee the exact locked commit is checked out, regardless of what branch refs currently point to
 - **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
-This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, lock apply always materializes the exact commits from the lock file.
+**Content-aware worktree selection:** In apply mode, megarepo uses content-aware worktree selection to guarantee the worktree is at the exact locked commit without mutating existing worktrees:
 
-**CI usage:** In a fresh CI environment, `mr apply` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
+1. If a branch worktree (`refs/heads/<branch>/`) exists and its HEAD matches the locked commit, it is reused — preserving branch tracking for local development
+2. Otherwise, a commit-based worktree (`refs/commits/<sha>/`) is created or reused — guaranteeing the exact locked content
+
+This approach never attempts to move worktrees (no `git merge --ff-only` or `git checkout`). It observes their state and picks the right one. After `mr fetch --apply`, the branch worktree is typically at the locked commit (fetch just updated it), so it gets reused with branch tracking. In CI (fresh store), commit worktrees are created since no branch worktrees exist.
+
+**CI usage:** In a fresh CI environment, `mr apply` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators and Nix lock sync. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
 

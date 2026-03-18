@@ -277,6 +277,7 @@ export const syncMegarepo = <R = never>({
             semaphoreMap,
             gitProtocol,
             createBranches,
+            applyAfterFetch: options.applyAfterFetch,
             ...(onMissingRef !== undefined ? { onMissingRef } : {}),
           })
 

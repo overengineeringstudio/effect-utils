@@ -174,6 +174,7 @@ export const syncMember = <R = never>({
   semaphoreMap,
   gitProtocol = 'auto',
   createBranches = false,
+  applyAfterFetch,
   onMissingRef,
 }: {
   name: string
@@ -189,6 +190,8 @@ export const syncMember = <R = never>({
   gitProtocol?: GitProtocol
   /** Create branches that don't exist (from default branch) */
   createBranches?: boolean
+  /** When true, fetch just ran — prefer branch worktrees for dev convenience */
+  applyAfterFetch?: boolean
   /** Callback when a ref doesn't exist. If not provided, defaults to 'error' behavior. */
   onMissingRef?: (info: MissingRefInfo) => Effect.Effect<MissingRefAction, never, R>
 }) =>
@@ -361,33 +364,31 @@ export const syncMember = <R = never>({
 
     // In lock and apply modes, if member exists, check if symlink points to correct ref
     if (memberExists === true && (isLockMode === true || isApplyMode === true)) {
-      // Compute expected worktree path based on configured ref
-      // Uses heuristic ref classification since we haven't queried the repo yet
-      const expectedWorktreePath = store.getWorktreePath({ source, ref: targetRef })
       const currentLinkNormalized = currentLink?.replace(/\/$/, '')
-      const expectedPathNormalized = expectedWorktreePath.replace(/\/$/, '')
 
-      // Lock sync only records current branch-attached workspace state.
-      if (isLockMode === true && currentLinkNormalized !== expectedPathNormalized) {
-        // Extract the ref from the current symlink path for display
-        const extracted =
-          currentLinkNormalized !== undefined
-            ? extractRefFromSymlinkPath(currentLinkNormalized)
-            : undefined
-        const symlinkRef = extracted?.ref
+      if (isLockMode === true) {
+        // Lock mode: check symlink against the expected branch worktree path
+        const expectedWorktreePath = store.getWorktreePath({ source, ref: targetRef })
+        const expectedPathNormalized = expectedWorktreePath.replace(/\/$/, '')
 
-        return {
-          name,
-          status: 'skipped',
-          message:
-            `workspace is not synced to source ref '${targetRef}'` +
-            ` (symlink points to '${symlinkRef ?? 'unknown'}')\n` +
-            `  hint: run 'mr apply${name.length > 0 ? ` --only ${name}` : ''}' first`,
-        } satisfies MemberSyncResult
-      }
+        // Lock sync only records current branch-attached workspace state.
+        if (currentLinkNormalized !== expectedPathNormalized) {
+          const extracted =
+            currentLinkNormalized !== undefined
+              ? extractRefFromSymlinkPath(currentLinkNormalized)
+              : undefined
+          const symlinkRef = extracted?.ref
 
-      // If symlink points to correct location, read current state.
-      if (currentLinkNormalized === expectedPathNormalized) {
+          return {
+            name,
+            status: 'skipped',
+            message:
+              `workspace is not synced to source ref '${targetRef}'` +
+              ` (symlink points to '${symlinkRef ?? 'unknown'}')\n` +
+              `  hint: run 'mr apply${name.length > 0 ? ` --only ${name}` : ''}' first`,
+          } satisfies MemberSyncResult
+        }
+
         // Read current HEAD from the worktree
         const currentCommitOpt = yield* Git.getCurrentCommit(memberPathNormalized).pipe(
           Effect.option,
@@ -399,7 +400,6 @@ export const syncMember = <R = never>({
         const currentBranch = Option.getOrUndefined(currentBranchOpt)
 
         // Check for ref mismatch (invariant #8 violation)
-        // This happens when user runs `git checkout <other-branch>` directly in the worktree
         const refMismatch = yield* detectRefMismatch({
           worktreePath: memberPathNormalized,
           symlinkTarget: currentLinkNormalized,
@@ -414,23 +414,39 @@ export const syncMember = <R = never>({
           } satisfies MemberSyncResult
         }
 
-        if (isLockMode === true) {
-          const previousCommit = lockedMember?.commit
-          const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
-          return {
-            name,
-            status: lockUpdated === true ? 'recorded' : 'already_synced',
-            commit: currentCommit,
-            previousCommit: lockUpdated === true ? previousCommit : undefined,
-            ref: currentBranch ?? lockedMember?.ref ?? targetRef,
-            lockUpdated,
-          } satisfies MemberSyncResult
-        }
-        // Apply mode: symlink correct, no ref mismatch → already up to date (will fast-forward later if needed)
-        // Don't early return here — fall through to let the fast-forward logic run
+        const previousCommit = lockedMember?.commit
+        const lockUpdated = currentCommit !== undefined && currentCommit !== previousCommit
+        return {
+          name,
+          status: lockUpdated === true ? 'recorded' : 'already_synced',
+          commit: currentCommit,
+          previousCommit: lockUpdated === true ? previousCommit : undefined,
+          ref: currentBranch ?? lockedMember?.ref ?? targetRef,
+          lockUpdated,
+        } satisfies MemberSyncResult
       }
 
-      // Symlink points to wrong location (ref changed in config)
+      // Apply mode: check for ref mismatch on the current symlink target (if it's a branch worktree).
+      // Content-aware selection happens later, but ref mismatch detection should still warn the user.
+      if (currentLinkNormalized !== undefined) {
+        const extracted = extractRefFromSymlinkPath(currentLinkNormalized)
+        if (extracted?.type === 'branch') {
+          const refMismatch = yield* detectRefMismatch({
+            worktreePath: memberPathNormalized,
+            symlinkTarget: currentLinkNormalized,
+          })
+
+          if (refMismatch !== undefined) {
+            return {
+              name,
+              status: 'skipped',
+              message: formatRefMismatchMessage({ refMismatch, memberName: name }),
+              refMismatch,
+            } satisfies MemberSyncResult
+          }
+        }
+      }
+
       // Check if old worktree has uncommitted changes before switching
       if (force === false && dryRun === false) {
         const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
@@ -453,7 +469,7 @@ export const syncMember = <R = never>({
           } satisfies MemberSyncResult
         }
       }
-      // Fall through to update symlink to new ref
+      // Fall through to content-aware worktree selection
     }
 
     // For lock update mode, check if worktree is dirty before making changes
@@ -756,9 +772,46 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Create or update worktree.
-    const worktreeRef: string = targetRef
-    const worktreeRefType = actualRefType
+    // Content-aware worktree selection in apply mode:
+    // 1. If applyAfterFetch, use branch worktrees (dev convenience — fetch just updated the lock
+    //    so the branch worktree will be created at the locked commit, which IS the latest branch tip).
+    // 2. Otherwise, prefer branch worktree if it already exists and its HEAD matches the locked commit.
+    // 3. Fallback: use a commit worktree (guarantees exact locked content).
+    let worktreeRef: string
+    let worktreeRefType: RefType
+    if (isApplyMode === true && targetCommit !== undefined && actualRefType === 'branch') {
+      if (applyAfterFetch === true) {
+        worktreeRef = targetRef
+        worktreeRefType = 'branch'
+      } else {
+        const branchExists = yield* store.hasWorktree({
+          source,
+          ref: targetRef,
+          refType: 'branch',
+        })
+        const branchAtLockedCommit =
+          branchExists === true
+            ? yield* Git.getCurrentCommit(
+                store.getWorktreePath({ source, ref: targetRef, refType: 'branch' }),
+              ).pipe(
+                Effect.map((head) => head === targetCommit),
+                Effect.catchAll(() => Effect.succeed(false)),
+              )
+            : false
+
+        if (branchAtLockedCommit === true) {
+          worktreeRef = targetRef
+          worktreeRefType = 'branch'
+        } else {
+          worktreeRef = targetCommit
+          worktreeRefType = 'commit'
+        }
+      }
+    } else {
+      worktreeRef = targetRef
+      worktreeRefType = actualRefType
+    }
+
     const worktreePath = store.getWorktreePath({
       source,
       ref: worktreeRef,
@@ -779,7 +832,7 @@ export const syncMember = <R = never>({
         }
 
         // Create worktree
-        if (actualRefType === 'commit' || actualRefType === 'tag') {
+        if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
           yield* Git.createWorktreeDetached({
             repoPath: bareRepoPath,
             worktreePath,
@@ -832,75 +885,28 @@ export const syncMember = <R = never>({
       )
     }
 
-    // For newly created branch worktrees in apply mode, ensure the worktree
-    // is at the locked commit (not the branch tip in the bare repo).
+    // For applyAfterFetch with branch worktrees, fast-forward to the locked commit.
+    // The fetch just pulled the latest, so the locked commit is always ahead of (or equal to)
+    // the existing branch worktree HEAD.
+    let remoteUpdated = false
+    let remotePreviousCommit: string | undefined
     if (
-      worktreeExists === false &&
-      dryRun === false &&
+      applyAfterFetch === true &&
       isApplyMode === true &&
-      actualRefType === 'branch' &&
+      dryRun === false &&
+      worktreeRefType === 'branch' &&
       targetCommit !== undefined
     ) {
-      const currentCommit = yield* Git.getCurrentCommit(worktreePath).pipe(
-        Effect.catchAll(() => Effect.succeed(undefined)),
-      )
+      const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
+      const currentCommit = Option.getOrUndefined(currentCommitOpt)
       if (currentCommit !== undefined && currentCommit !== targetCommit) {
         yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
           Effect.catchAll(() => Effect.void),
         )
-      }
-    }
-
-    // Fast-forward existing branch worktrees when updating from remote.
-    let remoteUpdated = false
-    let remotePreviousCommit: string | undefined
-    if (
-      worktreeExists === true &&
-      isApplyMode === true &&
-      dryRun === false &&
-      actualRefType === 'branch'
-    ) {
-      // Verify the worktree is actually on the expected branch before merging.
-      // If the user ran `git checkout <other-branch>` inside the worktree,
-      // we must not merge into the wrong branch.
-      const worktreeBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
-        Effect.catchAll(() => Effect.succeed(Option.none<string>())),
-      )
-      const onExpectedBranch = Option.isSome(worktreeBranch) && worktreeBranch.value === targetRef
-
-      if (onExpectedBranch === true) {
-        const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
-        const currentCommit = Option.getOrUndefined(currentCommitOpt)
-        if (
-          currentCommit !== undefined &&
-          targetCommit !== undefined &&
-          currentCommit !== targetCommit
-        ) {
-          // Capture narrowed value for use in closures
-          const resolvedCommit = targetCommit
-          // Merge by exact commit SHA to avoid hard-coding remote name
-          yield* Git.mergeFFOnly({ worktreePath, ref: resolvedCommit }).pipe(
-            Effect.mapError(
-              (error) =>
-                new Git.GitCommandError({
-                  args: ['merge', '--ff-only', resolvedCommit],
-                  exitCode: 1,
-                  stderr:
-                    error instanceof Git.GitCommandError
-                      ? `Cannot fast-forward worktree to ${resolvedCommit.slice(0, 8)}: ${error.stderr}`
-                      : `Cannot fast-forward worktree to ${resolvedCommit.slice(0, 8)}`,
-                }),
-            ),
-          )
-          // Re-read HEAD to confirm actual state after merge.
-          // Only report "updated" when HEAD actually changed — a no-op merge
-          // (e.g. worktree already ahead of locked commit) should not count.
-          const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
-          if (headAfterMerge !== currentCommit) {
-            targetCommit = headAfterMerge
-            remotePreviousCommit = currentCommit
-            remoteUpdated = true
-          }
+        const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
+        if (headAfterMerge !== currentCommit) {
+          remotePreviousCommit = currentCommit
+          remoteUpdated = true
         }
       }
     }
@@ -917,8 +923,6 @@ export const syncMember = <R = never>({
           commit: targetCommit,
           previousCommit: remotePreviousCommit,
           ref: targetRef,
-          lockUpdated:
-            isLockMode === true ? (remoteUpdated === true ? true : undefined) : undefined,
         } satisfies MemberSyncResult
       }
       if (dryRun === false) {

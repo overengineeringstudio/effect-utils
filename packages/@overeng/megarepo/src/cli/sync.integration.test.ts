@@ -2350,7 +2350,7 @@ describe('mr fetch', () => {
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
 
-          // 7. Verify result
+          // 7. Verify result — applyAfterFetch uses branch worktrees and fast-forwards
           expect(json.results).toHaveLength(1)
           const memberResult = json.results[0]!
           expect(memberResult.status).toBe('updated')

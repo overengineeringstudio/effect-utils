@@ -142,32 +142,47 @@ export const validateStoreMembers = ({
         continue
       }
 
-      const worktreePath = store.getWorktreePath({
+      // Check both the branch worktree (refs/heads/<ref>/) and the commit worktree
+      // (refs/commits/<sha>/). Content-aware selection in apply mode may use either.
+      const branchWorktreePath = store.getWorktreePath({
         source,
         ref: lockedMember.ref,
       })
+      const commitWorktreePath = store.getWorktreePath({
+        source,
+        ref: lockedMember.commit,
+        refType: 'commit',
+      })
 
-      const gitFilePath = `${worktreePath}.git`.replace(/\/\.git$/, '/.git')
-      const gitFileExists = yield* fs
-        .exists(gitFilePath)
+      const branchGitPath = `${branchWorktreePath}.git`.replace(/\/\.git$/, '/.git')
+      const commitGitPath = `${commitWorktreePath}.git`.replace(/\/\.git$/, '/.git')
+      const branchGitExists = yield* fs
+        .exists(branchGitPath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      const commitGitExists = yield* fs
+        .exists(commitGitPath)
         .pipe(Effect.catchAll(() => Effect.succeed(false)))
 
-      if (gitFileExists === false) {
+      if (branchGitExists === false && commitGitExists === false) {
         issues.push({
           severity: 'error',
           type: 'broken_worktree',
           memberName,
-          message: `.git not found in worktree at ${worktreePath}`,
+          message: `.git not found in worktree at ${branchWorktreePath}`,
           fix: `run 'mr apply' to recreate the worktree`,
-          meta: { _tag: 'broken_worktree', worktreePath, source },
+          meta: { _tag: 'broken_worktree', worktreePath: branchWorktreePath, source },
         })
         continue
       }
 
-      // Check ref mismatch (only for branch worktrees — tags/commits are detached by design)
+      // Use whichever worktree exists for subsequent checks
+      const worktreePath = branchGitExists ? branchWorktreePath : commitWorktreePath
+
+      // Check ref mismatch (only for branch worktrees — tags/commits are detached by design).
+      // Skip if we're using a commit worktree (content-aware selection chose it over the branch worktree).
       const expectedRef = lockedMember.ref
 
-      if (classifyRef(expectedRef) === 'branch') {
+      if (classifyRef(expectedRef) === 'branch' && branchGitExists === true) {
         const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
