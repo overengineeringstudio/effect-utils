@@ -78,8 +78,11 @@ let
             dropPackageBlock (lib.tail lines)
           else
             lines;
+
+      # GVS requires a global pnpm store unavailable inside Nix sandboxes
+      stripGvs = lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
     in
-    dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml));
+    stripGvs (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
 
   formatWorkspaceYaml =
     packageDirs: suffixLines:
