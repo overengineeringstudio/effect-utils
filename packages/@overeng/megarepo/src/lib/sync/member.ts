@@ -773,39 +773,60 @@ export const syncMember = <R = never>({
     }
 
     // Content-aware worktree selection in apply mode:
-    // 1. If applyAfterFetch, use branch worktrees (dev convenience — fetch just updated the lock
-    //    so the branch worktree will be created at the locked commit, which IS the latest branch tip).
-    // 2. Otherwise, prefer branch worktree if it already exists and its HEAD matches the locked commit.
-    // 3. Fallback: use a commit worktree (guarantees exact locked content).
+    // Prefer branch worktree if it exists and its HEAD matches the locked commit (preserves
+    // branch tracking for local dev). Otherwise use a commit worktree (exact locked content).
+    // When applyAfterFetch=true and no branch worktree exists, check the bare repo's branch
+    // tip — if it matches the locked commit, create a branch worktree (dev convenience).
+    // This check handles pinned members correctly: fetch skips them, so their locked commit
+    // may lag the branch tip, and we fall through to a commit worktree.
     let worktreeRef: string
     let worktreeRefType: RefType
     if (isApplyMode === true && targetCommit !== undefined && actualRefType === 'branch') {
-      if (applyAfterFetch === true) {
+      const branchExists = yield* store.hasWorktree({
+        source,
+        ref: targetRef,
+        refType: 'branch',
+      })
+      const branchAtLockedCommit =
+        branchExists === true
+          ? yield* Git.getCurrentCommit(
+              store.getWorktreePath({ source, ref: targetRef, refType: 'branch' }),
+            ).pipe(
+              Effect.map((head) => head === targetCommit),
+              Effect.catchAll(() => Effect.succeed(false)),
+            )
+          : false
+
+      if (branchAtLockedCommit === true) {
         worktreeRef = targetRef
         worktreeRefType = 'branch'
-      } else {
-        const branchExists = yield* store.hasWorktree({
-          source,
-          ref: targetRef,
-          refType: 'branch',
-        })
-        const branchAtLockedCommit =
-          branchExists === true
-            ? yield* Git.getCurrentCommit(
-                store.getWorktreePath({ source, ref: targetRef, refType: 'branch' }),
-              ).pipe(
-                Effect.map((head) => head === targetCommit),
-                Effect.catchAll(() => Effect.succeed(false)),
-              )
-            : false
-
-        if (branchAtLockedCommit === true) {
+      } else if (applyAfterFetch === true) {
+        if (branchExists === true) {
+          // Branch worktree exists but at wrong commit — use it anyway and let the
+          // ff-merge block below advance it (fetch guarantees forward-only movement
+          // for unpinned members).
           worktreeRef = targetRef
           worktreeRefType = 'branch'
         } else {
-          worktreeRef = targetCommit
-          worktreeRefType = 'commit'
+          // No branch worktree yet — check if the bare repo's branch tip matches the
+          // locked commit. If so, creating a branch worktree will check out the correct
+          // content. Otherwise fall through to commit worktree (handles pinned members
+          // where the locked commit lags the branch tip).
+          const branchTip = yield* Git.resolveRef({
+            repoPath: bareRepoPath,
+            ref: `refs/remotes/origin/${targetRef}`,
+          }).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+          if (branchTip === targetCommit) {
+            worktreeRef = targetRef
+            worktreeRefType = 'branch'
+          } else {
+            worktreeRef = targetCommit
+            worktreeRefType = 'commit'
+          }
         }
+      } else {
+        worktreeRef = targetCommit
+        worktreeRefType = 'commit'
       }
     } else {
       worktreeRef = targetRef
