@@ -176,7 +176,7 @@ export const validateStoreMembers = ({
       }
 
       // Use whichever worktree exists for subsequent checks
-      const worktreePath = branchGitExists ? branchWorktreePath : commitWorktreePath
+      const worktreePath = branchGitExists === true ? branchWorktreePath : commitWorktreePath
 
       // Check ref mismatch (only for branch worktrees — tags/commits are detached by design).
       // Skip if we're using a commit worktree (content-aware selection chose it over the branch worktree).
