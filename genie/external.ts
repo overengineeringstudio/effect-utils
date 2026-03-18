@@ -225,16 +225,20 @@ export const catalog = defineCatalog({
  *
  * This is the SSOT for pnpm strictness/layout policy. Every megarepo
  * root workspace should spread this so policy stays consistent.
+ *
+ * `enableGlobalVirtualStore` ensures identity convergence: equivalent
+ * dependency graphs across standalone and composed topologies resolve to
+ * the same physical instance via pnpm's global content-addressed store.
+ * This eliminates duplicate-instance problems (TypeScript type identity,
+ * JS runtime singletons) when consuming cross-repo packages via `link:`.
  */
 export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
   strictPeerDependencies: true as const,
+  enableGlobalVirtualStore: true as const,
   supportedArchitectures: {
     os: ['linux', 'darwin'],
     cpu: ['x64', 'arm64'],
-  },
-  settings: {
-    nodeLinker: 'hoisted' as const,
   },
 }
 
