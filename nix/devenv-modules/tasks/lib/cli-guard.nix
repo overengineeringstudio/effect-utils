@@ -34,15 +34,17 @@
 { pkgs }:
 let
   # Build a single guard wrapper script for one CLI
-  mkCliGuard = { cli, tasks }:
+  mkCliGuard =
+    { cli, tasks }:
     let
       taskLines = builtins.concatStringsSep "\n" (
-        map (t:
-          let desc = if t ? description && t.description != null
-            then "# ${t.description}\\n"
-            else "";
-          in ''printf "  ${desc}  devenv tasks run ${t.task} --mode before --no-tui\n\n" >&2'')
-        tasks
+        map (
+          t:
+          let
+            desc = if t ? description && t.description != null then "# ${t.description}\\n" else "";
+          in
+          ''printf "  ${desc}  devenv tasks run ${t.task} --mode before --no-tui\n\n" >&2''
+        ) tasks
       );
     in
     pkgs.writeShellScriptBin cli ''
@@ -83,23 +85,34 @@ let
   # Extract guard packages from a tasks attrset.
   # Tasks with a `guard = "cli-name"` attribute are grouped by CLI name
   # and a guard wrapper is generated for each group.
-  fromTasks = tasks:
+  fromTasks =
+    tasks:
     let
       # Collect { cli, task, description } from tasks that have a guard attr
       guardEntries = builtins.filter (e: e != null) (
-        builtins.attrValues (builtins.mapAttrs (name: def:
-          if def ? guard then {
-            cli = def.guard;
-            task = name;
-            description = def.description or null;
-          } else null
-        ) tasks)
+        builtins.attrValues (
+          builtins.mapAttrs (
+            name: def:
+            if def ? guard then
+              {
+                # Normalize to a bare command name: strip context (so store-path strings
+                # like "${pkgs.typescript}/bin/tsc" can be used as groupBy keys) and extract
+                # the basename (so the wrapper is created as "tsc", not the full path).
+                cli = builtins.unsafeDiscardStringContext (baseNameOf def.guard);
+                task = name;
+                description = def.description or null;
+              }
+            else
+              null
+          ) tasks
+        )
       );
 
       # Group by CLI name
       cliNames = builtins.attrNames (builtins.groupBy (e: e.cli) guardEntries);
 
-      mkGuardForCli = cli:
+      mkGuardForCli =
+        cli:
         let
           entries = builtins.filter (e: e.cli == cli) guardEntries;
         in
@@ -114,6 +127,7 @@ let
   # Use this before passing tasks to devenv (which doesn't know about `guard`).
   stripGuards = builtins.mapAttrs (_: def: builtins.removeAttrs def [ "guard" ]);
 
-in {
+in
+{
   inherit mkCliGuard fromTasks stripGuards;
 }
