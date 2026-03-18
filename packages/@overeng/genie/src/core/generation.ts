@@ -377,32 +377,6 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
   return { genieFilePath, output: exported as GenieOutput<unknown>, ctx }
 })
 
-/**
- * For package.json files, enrich the $genie marker with source file information.
- * This transforms the simple string marker into an object with structured metadata.
- */
-const enrichPackageJsonMarker = ({
-  content,
-  sourceFile,
-}: {
-  content: string
-  sourceFile: string
-}): string => {
-  try {
-    const parsed = JSON.parse(content)
-    if (typeof parsed === 'object' && parsed !== null && '$genie' in parsed) {
-      parsed.$genie = {
-        source: sourceFile,
-        warning: 'DO NOT EDIT - changes will be overwritten',
-      }
-      return JSON.stringify(parsed, null, 2)
-    }
-  } catch {
-    // Not valid JSON or parsing failed, return original
-  }
-  return content
-}
-
 /** Generate expected content for a genie file (shared between generate and dry-run) */
 export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   genieFilePath,
@@ -419,12 +393,7 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   const sourceFile = path.basename(genieFilePath)
   const loaded =
     loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
-  let rawContent = loaded.output.stringify(loaded.ctx)
-
-  // For package.json files, enrich the $genie marker with source info
-  if (path.basename(targetFilePath) === 'package.json') {
-    rawContent = enrichPackageJsonMarker({ content: rawContent, sourceFile })
-  }
+  const rawContent = loaded.output.stringify(loaded.ctx)
 
   const header = getHeaderComment({ targetFilePath, sourceFile })
   const formattedContent = yield* formatWithOxfmt({

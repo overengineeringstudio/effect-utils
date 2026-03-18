@@ -10,6 +10,7 @@
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
 import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
+import { projectPnpmPackageClosure } from '../pnpm-workspace/mod.ts'
 import { relativeRepoPath, rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
 import { PackageJsonCompositionBrand, type PackageJsonComposition } from './catalog.ts'
 import {
@@ -500,13 +501,16 @@ const resolveScripts = ({
  * Build the final package.json object with sorting, resolution, and $genie marker.
  * @param data - Package data
  * @param location - Current package's repo-relative location (for resolving internal deps)
+ * @param genieMarker - Structured $genie metadata object (defaults to `true` for backwards compat)
  */
 const buildPackageJson = <T extends PackageJsonData>({
   data,
   location,
+  genieMarker,
 }: {
   data: T
   location: string
+  genieMarker?: Record<string, unknown>
 }): Record<string, unknown> => {
   const sorted = {
     ...data,
@@ -553,7 +557,7 @@ const buildPackageJson = <T extends PackageJsonData>({
 
   return sortObjectKeys({
     obj: {
-      $genie: true,
+      $genie: genieMarker ?? true,
       ...sorted,
     },
     order: FIELD_ORDER,
@@ -688,9 +692,32 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
 
   return createGenieOutput({
     data: effectiveData,
-    stringify: (ctx: GenieContext) =>
-      JSON.stringify(buildPackageJson({ data: effectiveData, location: ctx.location }), null, 2) +
-      '\n',
+    stringify: (ctx: GenieContext) => {
+      const genieMarker: Record<string, unknown> = {
+        source: 'package.json.genie.ts',
+        warning: 'DO NOT EDIT - changes will be overwritten',
+      }
+
+      /**
+       * Embed the workspace closure so Nix can read it from the generated package.json
+       * at eval time without import-from-derivation (IFD).
+       * Future alternative: NixOS/nix#15380 (builtins.wasm) could compute this natively.
+       */
+      if (effectiveWorkspaceMeta !== undefined) {
+        const closure = projectPnpmPackageClosure({
+          pkg: { data: effectiveData, meta: { workspace: effectiveWorkspaceMeta } },
+        })
+        genieMarker.workspaceClosureDirs = closure.workspaceClosureDirs
+      }
+
+      return (
+        JSON.stringify(
+          buildPackageJson({ data: effectiveData, location: ctx.location, genieMarker }),
+          null,
+          2,
+        ) + '\n'
+      )
+    },
     validate: (ctx: GenieContext) => [
       ...(effectiveData.name !== undefined
         ? validatePackageRecompositionForPackage({ ctx, pkgName: effectiveData.name })
@@ -794,7 +821,18 @@ const aggregatePackageJsonFromPackages = ({
   return createGenieOutput({
     data: aggregate,
     stringify: (ctx: GenieContext) =>
-      JSON.stringify(buildPackageJson({ data: aggregate, location: ctx.location }), null, 2) + '\n',
+      JSON.stringify(
+        buildPackageJson({
+          data: aggregate,
+          location: ctx.location,
+          genieMarker: {
+            source: 'package.json.genie.ts',
+            warning: 'DO NOT EDIT - changes will be overwritten',
+          },
+        }),
+        null,
+        2,
+      ) + '\n',
   })
 }
 
