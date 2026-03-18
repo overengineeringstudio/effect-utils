@@ -2342,10 +2342,10 @@ describe('mr fetch', () => {
           const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
           expect(newCommit).not.toBe(initialCommit)
 
-          // 6. Run mr fetch --apply
+          // 6. Run mr fetch --apply with tracking mode (to test branch worktree ff-merge)
           const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
-            args: ['--output', 'json'],
+            args: ['--output', 'json', '--worktree-mode', 'tracking'],
             env: { MEGAREPO_STORE: storePath },
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
