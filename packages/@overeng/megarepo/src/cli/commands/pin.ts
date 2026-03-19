@@ -6,7 +6,7 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Layer, Option, Schema } from 'effect'
+import { Effect, Layer, Option } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -14,12 +14,12 @@ import { run } from '@overeng/tui-react'
 
 import {
   buildSourceStringWithRef,
-  CONFIG_FILE_NAME,
   getMemberPath,
   getSourceUrl,
-  MegarepoConfig,
   parseSourceString,
   isRemoteSource,
+  readMegarepoConfig,
+  writeMegarepoConfig,
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import {
@@ -90,12 +90,8 @@ export const pinCommand = Cli.Command.make(
           const store = yield* Store
 
           // Load config to verify member exists
-          const configPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          let config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+          const { config: configRead, path: configPath } = yield* readMegarepoConfig(root.value)
+          let config = configRead
 
           if (!(member in config.members)) {
             tui.dispatch({
@@ -228,11 +224,8 @@ export const pinCommand = Cli.Command.make(
               },
             }
 
-            // Write updated config
-            const newConfigContent = yield* Schema.encode(
-              Schema.parseJson(MegarepoConfig, { space: 2 }),
-            )(config)
-            yield* fs.writeFileString(configPath, newConfigContent + '\n')
+            // Write updated config (preserves format)
+            yield* writeMegarepoConfig(configPath, config)
 
             // Re-parse the source with the new ref
             sourceString = newSourceString
@@ -536,14 +529,7 @@ export const unpinCommand = Cli.Command.make(
           const fs = yield* FileSystem.FileSystem
 
           // Load config to verify member exists
-          const configPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            configContent,
-          )
+          const { config } = yield* readMegarepoConfig(root.value)
 
           if (!(member in config.members)) {
             tui.dispatch({

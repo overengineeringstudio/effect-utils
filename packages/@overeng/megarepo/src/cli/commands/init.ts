@@ -5,14 +5,17 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Schema } from 'effect'
+import { Effect } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
+import {
+  CONFIG_FILE_NAME_KDL,
+  findConfigPath,
+  writeMegarepoConfig,
+} from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
 import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'
@@ -21,7 +24,6 @@ import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'
 export const initCommand = Cli.Command.make('init', { output: outputOption }, ({ output }) =>
   Effect.gen(function* () {
     const cwd = yield* Cwd
-    const fs = yield* FileSystem.FileSystem
 
     // Run TuiApp for all output (handles JSON/TTY modes automatically)
     yield* run(
@@ -39,30 +41,24 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
             return
           }
 
-          const configPath = EffectPath.ops.join(
-            cwd,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-
-          // Check if config already exists
-          const exists = yield* fs.exists(configPath)
-          if (exists === true) {
-            // Already initialized
-            tui.dispatch({ _tag: 'SetAlreadyInitialized', path: configPath })
+          // Check if any config already exists (KDL or JSON)
+          const existingPath = yield* findConfigPath(cwd)
+          if (existingPath !== undefined) {
+            tui.dispatch({ _tag: 'SetAlreadyInitialized', path: existingPath })
             return
           }
 
-          // Create initial config
+          // Create initial config as KDL
+          const configPath = EffectPath.ops.join(
+            cwd,
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_KDL),
+          )
+
           const initialConfig = {
-            $schema:
-              'https://raw.githubusercontent.com/overengineeringstudio/megarepo/main/schema/megarepo.schema.json',
             members: {},
           }
 
-          const configContent = yield* Schema.encode(
-            Schema.parseJson(MegarepoConfig, { space: 2 }),
-          )(initialConfig)
-          yield* fs.writeFileString(configPath, configContent + '\n')
+          yield* writeMegarepoConfig(configPath, initialConfig)
 
           // Output success
           tui.dispatch({ _tag: 'SetInitialized', path: configPath })
