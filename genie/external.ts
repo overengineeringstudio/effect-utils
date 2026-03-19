@@ -570,9 +570,6 @@ export const testFilesOxlintOverride = {
     'unicorn/no-array-sort': 'off',
     'unicorn/consistent-function-scoping': 'off',
     'require-yield': 'off',
-    // Test files may have non-standard component patterns (helpers, fixtures)
-    'react/rules-of-hooks': 'off',
-    'react/exhaustive-deps': 'off',
   },
 } as const satisfies OxlintOverride
 

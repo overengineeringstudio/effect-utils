@@ -219,9 +219,6 @@ export const baseOxlintOverrides = [
       'unicorn/no-array-sort': 'off',
       'unicorn/consistent-function-scoping': 'off',
       'require-yield': 'off',
-      // Test files may have non-standard component patterns (helpers, fixtures)
-      'react/rules-of-hooks': 'off',
-      'react/exhaustive-deps': 'off',
     },
   },
   // Declaration files can use inline import() type annotations

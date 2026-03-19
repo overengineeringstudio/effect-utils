@@ -16,7 +16,6 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
 import {
   createTuiApp,
-  useTuiAtomValue,
   createRoot,
   Box,
   Text,
@@ -97,28 +96,6 @@ const AppNoInterrupt = createTuiApp({
   reducer: testReducerNoInterrupt,
 })
 
-// =============================================================================
-// Test View
-// =============================================================================
-
-const _TestViewWithInterrupt = () => {
-  const state = useTuiAtomValue(AppWithInterrupt.stateAtom)
-  return (
-    <Box flexDirection="column">
-      <Text>Value: {state.value}</Text>
-      {state.interrupted && <Text color="yellow">INTERRUPTED</Text>}
-    </Box>
-  )
-}
-
-const _TestViewNoInterrupt = () => {
-  const state = useTuiAtomValue(AppNoInterrupt.stateAtom)
-  return (
-    <Box flexDirection="column">
-      <Text>Value: {state.value}</Text>
-    </Box>
-  )
-}
 
 // =============================================================================
 // Exit Mode Tests (using createRoot directly)
