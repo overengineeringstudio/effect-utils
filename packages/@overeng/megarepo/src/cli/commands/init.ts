@@ -54,7 +54,7 @@ export const initCommand = Cli.Command.make('init', { output: outputOption }, ({
             members: {},
           }
 
-          yield* writeMegarepoConfig(configPath, initialConfig)
+          yield* writeMegarepoConfig({ configPath: configPath, config: initialConfig })
 
           // Output success
           tui.dispatch({ _tag: 'SetInitialized', path: configPath })

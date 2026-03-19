@@ -126,7 +126,7 @@ export const addCommand = Cli.Command.make(
             }
 
             // Write updated config (preserves format)
-            yield* writeMegarepoConfig(configPath, newConfig)
+            yield* writeMegarepoConfig({ configPath: configPath, config: newConfig })
 
             // Sync if requested
             if (sync === true) {

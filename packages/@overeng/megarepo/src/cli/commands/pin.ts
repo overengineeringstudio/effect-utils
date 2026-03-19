@@ -225,7 +225,7 @@ export const pinCommand = Cli.Command.make(
             }
 
             // Write updated config (preserves format)
-            yield* writeMegarepoConfig(configPath, config)
+            yield* writeMegarepoConfig({ configPath: configPath, config: config })
 
             // Re-parse the source with the new ref
             sourceString = newSourceString

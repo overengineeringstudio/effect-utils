@@ -126,7 +126,7 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
       // Write updated config (unless dry-run)
       if (options.dryRun === false) {
         const updatedConfig = { ...nestedConfig, members: updatedMembers }
-        yield* writeMegarepoConfig(configPath, updatedConfig)
+        yield* writeMegarepoConfig({ configPath: configPath, config: updatedConfig })
       }
 
       // Check for genie file

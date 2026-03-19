@@ -242,7 +242,7 @@ export const findConfigPath = (dir: AbsoluteDirPath) =>
     const fs = yield* FileSystem.FileSystem
     for (const fileName of CONFIG_FILE_NAMES) {
       const p = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile(fileName))
-      if (yield* fs.exists(p)) return p
+      if ((yield* fs.exists(p)) === true) return p
     }
     return undefined
   })
@@ -259,10 +259,10 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
       const configPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile(fileName))
 
       const exists = yield* fs.exists(configPath)
-      if (!exists) continue
+      if (exists === false) continue
 
       const content = yield* fs.readFileString(configPath)
-      const format: ConfigFormat = fileName.endsWith('.kdl') ? 'kdl' : 'json'
+      const format: ConfigFormat = fileName.endsWith('.kdl') === true ? 'kdl' : 'json'
 
       const config = yield* Schema.decodeUnknown(
         format === 'kdl' ? MegarepoConfigFromKdl : Schema.parseJson(MegarepoConfig),
@@ -278,10 +278,16 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
  * Write megarepo config to a file.
  * Writes in the format matching the file extension.
  */
-export const writeMegarepoConfig = (configPath: AbsoluteFilePath, config: MegarepoConfig) =>
+export const writeMegarepoConfig = ({
+  configPath,
+  config,
+}: {
+  configPath: AbsoluteFilePath
+  config: MegarepoConfig
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const format: ConfigFormat = configPath.endsWith('.kdl') ? 'kdl' : 'json'
+    const format: ConfigFormat = configPath.endsWith('.kdl') === true ? 'kdl' : 'json'
 
     const content =
       format === 'kdl'
