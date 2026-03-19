@@ -553,10 +553,7 @@ describe('defineCatalog', () => {
           external: catalog.pick('effect'),
         },
       })
-      const lib = packageJson(
-        { name: '@test/utils', version: '1.0.0' },
-        libComposition,
-      )
+      const lib = packageJson({ name: '@test/utils', version: '1.0.0' }, libComposition)
 
       const coreComposition = catalog.compose({
         workspace: workspace({
@@ -567,10 +564,7 @@ describe('defineCatalog', () => {
           external: { '@test/utils': '1.0.0' },
         },
       })
-      const core = packageJson(
-        { name: '@test/core', version: '1.0.0' },
-        coreComposition,
-      )
+      const core = packageJson({ name: '@test/core', version: '1.0.0' }, coreComposition)
 
       /** @test/core declares @test/utils as a peer dep.
        * The consumer lists @test/utils as a workspace dep in dependencies.
