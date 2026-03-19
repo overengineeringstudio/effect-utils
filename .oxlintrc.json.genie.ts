@@ -51,5 +51,12 @@ export default oxlintConfig({
         'import/no-cycle': 'off',
       },
     },
+    // megarepo config-kdl.ts <-> config.ts have a mutual dependency (config defines schema, config-kdl handles KDL parsing/encoding)
+    {
+      files: ['**/megarepo/src/lib/config-kdl.ts', '**/megarepo/src/lib/config.ts'],
+      rules: {
+        'import/no-cycle': 'off',
+      },
+    },
   ],
 } satisfies OxlintConfigArgs)

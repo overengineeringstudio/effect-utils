@@ -182,6 +182,12 @@
         "func-style": "off",
         "import/no-cycle": "off"
       }
+    },
+    {
+      "files": ["**/megarepo/src/lib/config-kdl.ts", "**/megarepo/src/lib/config.ts"],
+      "rules": {
+        "import/no-cycle": "off"
+      }
     }
   ]
 }

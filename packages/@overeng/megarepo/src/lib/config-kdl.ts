@@ -150,7 +150,7 @@ export const encodeMegarepoKdl = (config: MegarepoConfig): string => {
   if (memberEntries.length > 0) {
     lines.push('members {')
     for (const [name, source] of memberEntries) {
-      lines.push(`    ${needsQuoting(name) ? `"${name}"` : name} "${source}"`)
+      lines.push(`  ${needsQuoting(name) ? `"${name}"` : name} "${source}"`)
     }
     lines.push('}')
   }
