@@ -43,19 +43,17 @@ export default oxlintConfig({
     },
     // KDL parser uses control chars in regexes (KDL spec whitespace/newline matching),
     // generator functions (can't be arrow), and has a structural document<->node cycle
+    // KDL packages: ported from @bgotink/kdl — relaxed rules for the port
     {
-      files: ['**/kdl/src/**'],
+      files: ['**/kdl/src/**', '**/kdl-effect/src/**'],
       rules: {
         'no-control-regex': 'off',
         'func-style': 'off',
         'import/no-cycle': 'off',
-      },
-    },
-    // megarepo config-kdl.ts <-> config.ts have a mutual dependency (config defines schema, config-kdl handles KDL parsing/encoding)
-    {
-      files: ['**/megarepo/src/lib/config-kdl.ts', '**/megarepo/src/lib/config.ts'],
-      rules: {
-        'import/no-cycle': 'off',
+        'overeng/jsdoc-require-exports': 'off',
+        'overeng/explicit-boolean-compare': 'off',
+        'overeng/exports-first': 'off',
+        'overeng/named-args': 'off',
       },
     },
   ],
