@@ -140,11 +140,11 @@ export const createSymlink = ({ target, link }: { target: string; link: string }
 // =============================================================================
 
 /** Check if any supported config file exists in a directory */
-const hasConfigFile = (fs: FileSystem.FileSystem, dir: AbsoluteDirPath) =>
+const hasConfigFile = ({ fs, dir }: { fs: FileSystem.FileSystem; dir: AbsoluteDirPath }) =>
   Effect.gen(function* () {
     for (const fileName of CONFIG_FILE_NAMES) {
       const p = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile(fileName))
-      if (yield* fs.exists(p)) return true
+      if ((yield* fs.exists(p)) === true) return true
     }
     return false
   })
@@ -164,15 +164,15 @@ export const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
 
     // Walk up the tree, collecting the outermost megarepo found
     while (current !== undefined && current !== rootDir) {
-      const found = yield* hasConfigFile(fs, current)
-      if (found) {
+      const found = yield* hasConfigFile({ fs, dir: current })
+      if (found === true) {
         outermost = current // Keep going up, this might not be the outermost
       }
       current = EffectPath.ops.parent(current)
     }
 
     // Check root as well
-    if (yield* hasConfigFile(fs, rootDir)) {
+    if ((yield* hasConfigFile({ fs, dir: rootDir })) === true) {
       outermost = rootDir
     }
 
@@ -191,13 +191,15 @@ export const findNearestMegarepoRoot = (startPath: AbsoluteDirPath) =>
     const rootDir = EffectPath.unsafe.absoluteDir('/')
 
     while (current !== undefined && current !== rootDir) {
-      if (yield* hasConfigFile(fs, current)) {
+      if ((yield* hasConfigFile({ fs, dir: current })) === true) {
         return Option.some(current)
       }
       current = EffectPath.ops.parent(current)
     }
 
-    return (yield* hasConfigFile(fs, rootDir)) ? Option.some(rootDir) : Option.none()
+    return (yield* hasConfigFile({ fs, dir: rootDir })) === true
+      ? Option.some(rootDir)
+      : Option.none()
   })
 
 // =============================================================================
