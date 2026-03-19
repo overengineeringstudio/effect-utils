@@ -1,45 +1,119 @@
 import { Schema } from 'effect'
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { parseKdl } from './parse.ts'
 
 describe('parseKdl', () => {
-  it('decodes simple struct', () => {
-    const MySchema = Schema.Struct({
-      name: Schema.String,
-      age: Schema.Number,
+  describe('decode', () => {
+    it('decodes simple struct', () => {
+      const MySchema = Schema.Struct({
+        name: Schema.String,
+        age: Schema.Number,
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('name "Alice"\nage 30')
+      expect(result).toEqual({ name: 'Alice', age: 30 })
     })
 
-    const result = Schema.decodeUnknownSync(parseKdl(MySchema))('name "Alice"\nage 30')
-    expect(result).toEqual({ name: 'Alice', age: 30 })
+    it('decodes nested struct', () => {
+      const MySchema = Schema.Struct({
+        members: Schema.Record({ key: Schema.String, value: Schema.String }),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))(
+        'members {\n  foo "bar"\n  baz "qux"\n}',
+      )
+      expect(result).toEqual({ members: { foo: 'bar', baz: 'qux' } })
+    })
+
+    it('normalizes scalar to array when Schema expects array', () => {
+      const MySchema = Schema.Struct({
+        items: Schema.Array(Schema.String),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('items "hello"')
+      expect(result).toEqual({ items: ['hello'] })
+    })
+
+    it('handles multiple same-name nodes as array', () => {
+      const MySchema = Schema.Struct({
+        items: Schema.Array(Schema.String),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('items "a"\nitems "b"\nitems "c"')
+      expect(result).toEqual({ items: ['a', 'b', 'c'] })
+    })
+
+    it('converts KDL parse errors to ParseError (not thrown)', () => {
+      const MySchema = Schema.Struct({ name: Schema.String })
+
+      expect(() => Schema.decodeUnknownSync(parseKdl(MySchema))('{')).toThrow()
+
+      /* Verify it's a ParseError, not an InvalidKdlError */
+      try {
+        Schema.decodeUnknownSync(parseKdl(MySchema))('{')
+      } catch (e) {
+        expect(e).toBeInstanceOf(Error)
+        expect((e as Error).name).toBe('ParseError')
+      }
+    })
+
+    it('decodes booleans and null', () => {
+      const MySchema = Schema.Struct({
+        enabled: Schema.Boolean,
+        value: Schema.NullOr(Schema.String),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('enabled #true\nvalue #null')
+      expect(result).toEqual({ enabled: true, value: null })
+    })
+
+    it('decodes optional fields', () => {
+      const MySchema = Schema.Struct({
+        name: Schema.String,
+        age: Schema.optional(Schema.Number),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('name "Alice"')
+      expect(result).toEqual({ name: 'Alice' })
+    })
   })
 
-  it('decodes nested struct', () => {
-    const MySchema = Schema.Struct({
-      members: Schema.Record({ key: Schema.String, value: Schema.String }),
+  describe('encode', () => {
+    it('encodes simple struct to KDL', () => {
+      const MySchema = Schema.Struct({
+        name: Schema.String,
+        age: Schema.Number,
+      })
+
+      const kdl = Schema.encodeUnknownSync(parseKdl(MySchema))({ name: 'Alice', age: 30 })
+      expect(typeof kdl).toBe('string')
+
+      /* Round-trip: decode the encoded KDL back */
+      const decoded = Schema.decodeUnknownSync(parseKdl(MySchema))(kdl)
+      expect(decoded).toEqual({ name: 'Alice', age: 30 })
     })
 
-    const result = Schema.decodeUnknownSync(parseKdl(MySchema))(
-      'members {\n  foo "bar"\n  baz "qux"\n}',
-    )
-    expect(result).toEqual({ members: { foo: 'bar', baz: 'qux' } })
-  })
+    it('round-trips nested struct', () => {
+      const MySchema = Schema.Struct({
+        members: Schema.Record({ key: Schema.String, value: Schema.String }),
+      })
 
-  it('normalizes scalar to array when Schema expects array', () => {
-    const MySchema = Schema.Struct({
-      items: Schema.Array(Schema.String),
+      const original = { members: { foo: 'bar', baz: 'qux' } }
+      const kdl = Schema.encodeUnknownSync(parseKdl(MySchema))(original)
+      const decoded = Schema.decodeUnknownSync(parseKdl(MySchema))(kdl)
+      expect(decoded).toEqual(original)
     })
 
-    const result = Schema.decodeUnknownSync(parseKdl(MySchema))('items "hello"')
-    expect(result).toEqual({ items: ['hello'] })
-  })
+    it('round-trips arrays', () => {
+      const MySchema = Schema.Struct({
+        items: Schema.Array(Schema.String),
+      })
 
-  it('handles multiple same-name nodes as array', () => {
-    const MySchema = Schema.Struct({
-      items: Schema.Array(Schema.String),
+      const original = { items: ['a', 'b', 'c'] }
+      const kdl = Schema.encodeUnknownSync(parseKdl(MySchema))(original)
+      const decoded = Schema.decodeUnknownSync(parseKdl(MySchema))(kdl)
+      expect(decoded).toEqual(original)
     })
-
-    const result = Schema.decodeUnknownSync(parseKdl(MySchema))('items "a"\nitems "b"\nitems "c"')
-    expect(result).toEqual({ items: ['a', 'b', 'c'] })
   })
 })

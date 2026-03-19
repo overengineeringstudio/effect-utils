@@ -1,12 +1,17 @@
-import { Document, Node, Entry } from '@overeng/kdl'
+import { Document, Entry, Node } from '@overeng/kdl'
 
 /** Convert a plain object to a KDL Document */
 export const objectToKdlDocument = (obj: Record<string, unknown>): Document => {
   const doc = new Document()
   for (const [key, value] of Object.entries(obj)) {
     if (Array.isArray(value)) {
-      for (const item of value) {
-        doc.nodes.push(valueToNode(key, item))
+      if (value.length === 0) {
+        /* Empty array: emit a bare node so the field survives round-tripping */
+        doc.nodes.push(Node.create(key))
+      } else {
+        for (const item of value) {
+          doc.nodes.push(valueToNode(key, item))
+        }
       }
     } else {
       doc.nodes.push(valueToNode(key, value))
