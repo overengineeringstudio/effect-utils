@@ -271,12 +271,15 @@ export const runPreflightChecks = ({
   lockFile,
   store,
   mode,
+  commitMode,
 }: {
   memberNames: readonly string[]
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
   mode: 'apply' | 'lock'
+  /** When true, branch worktree issues are non-blocking (commit worktrees will be used). */
+  commitMode?: boolean
 }): Effect.Effect<
   void,
   StoreHygieneError | PlatformError.PlatformError,
@@ -294,9 +297,18 @@ export const runPreflightChecks = ({
 
     const warnings = issues.filter((i) => i.severity === 'warning')
 
-    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors
+    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors.
+    // In commit mode, branch worktree issues (ref_mismatch, broken_worktree) are non-blocking
+    // because commit worktrees will be used instead.
     const blockingErrors = issues.filter(
-      (i) => i.severity === 'error' && !(mode === 'apply' && i.type === 'missing_bare'),
+      (i) =>
+        i.severity === 'error' &&
+        !(mode === 'apply' && i.type === 'missing_bare') &&
+        !(
+          mode === 'apply' &&
+          commitMode === true &&
+          (i.type === 'ref_mismatch' || i.type === 'broken_worktree')
+        ),
     )
 
     // Log warnings

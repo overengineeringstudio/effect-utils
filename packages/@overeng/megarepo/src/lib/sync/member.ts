@@ -772,17 +772,29 @@ export const syncMember = <R = never>({
       }
     }
 
-    // Worktree mode selection in apply mode:
-    // - commit mode (--worktree-mode=commit, CI default): refs/commits/<sha>/ — deterministic
-    // - tracking mode (default): refs/heads/<branch>/ — dev convenience, with checkout fallback
-    const useCommitWorktree =
-      isApplyMode === true &&
-      commitMode === true &&
-      targetCommit !== undefined &&
-      actualRefType === 'branch'
-    // targetCommit is guaranteed non-undefined when useCommitWorktree is true (guarded above)
-    const worktreeRef: string = useCommitWorktree === true ? targetCommit! : targetRef
-    const worktreeRefType: RefType = useCommitWorktree === true ? 'commit' : actualRefType
+    // Worktree selection in apply mode:
+    // - commit mode (--worktree-mode=commit, CI default): always refs/commits/<sha>/
+    // - tracking mode (default): refs/heads/<branch>/, but if ff-merge later fails
+    //   (branch ahead of locked commit), we switch to a commit worktree rather than
+    //   detaching HEAD (which would break idempotency via ref_mismatch on next run).
+    type WorktreeSelection =
+      | { readonly _tag: 'branch'; readonly ref: string }
+      | { readonly _tag: 'commit'; readonly commit: string }
+      | { readonly _tag: 'default'; readonly ref: string; readonly refType: RefType }
+    const worktreeSelection: WorktreeSelection =
+      isApplyMode === true && targetCommit !== undefined && actualRefType === 'branch'
+        ? commitMode === true
+          ? { _tag: 'commit', commit: targetCommit }
+          : { _tag: 'branch', ref: targetRef }
+        : { _tag: 'default', ref: targetRef, refType: actualRefType }
+    let worktreeRef: string =
+      worktreeSelection._tag === 'commit' ? worktreeSelection.commit : worktreeSelection.ref
+    let worktreeRefType: RefType =
+      worktreeSelection._tag === 'commit'
+        ? 'commit'
+        : worktreeSelection._tag === 'branch'
+          ? 'branch'
+          : worktreeSelection.refType
 
     const worktreePath = store.getWorktreePath({
       source,
@@ -858,8 +870,8 @@ export const syncMember = <R = never>({
     }
 
     // In tracking mode (branch worktrees), ensure the worktree is at the locked commit.
-    // Try ff-merge first; if the branch has advanced past the locked commit, fall back to
-    // git checkout (detached HEAD with correct content).
+    // Try ff-merge; if it fails (branch ahead of locked commit), switch to a commit worktree
+    // rather than detaching HEAD (which would break idempotency via ref_mismatch on next run).
     let remoteUpdated = false
     let remotePreviousCommit: string | undefined
     if (
@@ -880,32 +892,49 @@ export const syncMember = <R = never>({
         const currentCommitOpt = yield* Git.getCurrentCommit(worktreePath).pipe(Effect.option)
         const currentCommit = Option.getOrUndefined(currentCommitOpt)
         if (currentCommit !== undefined && currentCommit !== targetCommit) {
-          yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
-            Effect.catchAll(() =>
-              // FF-merge failed (branch ahead of locked commit) — detach HEAD at correct commit
-              Git.checkoutWorktree({ worktreePath, ref: targetCommit }),
-            ),
+          const mergeResult = yield* Git.mergeFFOnly({ worktreePath, ref: targetCommit }).pipe(
+            Effect.map(() => 'ok' as const),
+            Effect.catchAll(() => Effect.succeed('failed' as const)),
           )
-          const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
-          if (headAfterMerge !== currentCommit) {
-            remotePreviousCommit = currentCommit
-            remoteUpdated = true
+          if (mergeResult === 'ok') {
+            const headAfterMerge = yield* Git.getCurrentCommit(worktreePath)
+            if (headAfterMerge !== currentCommit) {
+              remotePreviousCommit = currentCommit
+              remoteUpdated = true
+            }
+          } else {
+            // FF-merge failed (branch ahead of locked commit).
+            // Switch to commit worktree to avoid detaching the branch worktree.
+            worktreeRef = targetCommit
+            worktreeRefType = 'commit'
+            const commitWorktreePath = store.getWorktreePath({
+              source,
+              ref: targetCommit,
+              refType: 'commit',
+            })
+            const commitWorktreeExists = yield* store.hasWorktree({
+              source,
+              ref: targetCommit,
+              refType: 'commit',
+            })
+            if (commitWorktreeExists === false) {
+              const worktreeParent = EffectPath.ops.parent(commitWorktreePath)
+              if (worktreeParent !== undefined) {
+                yield* fs.makeDirectory(worktreeParent, { recursive: true })
+              }
+              yield* Git.createWorktreeDetached({
+                repoPath: bareRepoPath,
+                worktreePath: commitWorktreePath,
+                commit: targetCommit,
+              })
+            }
           }
         }
       } else {
-        // Ref mismatch: worktree is on a different branch — report as error
-        const refMismatch = yield* detectRefMismatch({
-          worktreePath,
-          symlinkTarget: worktreePath.replace(/\/$/, ''),
-        })
-        if (refMismatch !== undefined) {
-          return {
-            name,
-            status: 'skipped',
-            message: formatRefMismatchMessage({ refMismatch, memberName: name }),
-            refMismatch,
-          } satisfies MemberSyncResult
-        }
+        // Ref mismatch: worktree is on a different branch.
+        // Switch to commit worktree instead of reporting error (apply should succeed).
+        worktreeRef = targetCommit
+        worktreeRefType = 'commit'
       }
     }
 

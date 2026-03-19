@@ -243,6 +243,7 @@ export const syncMegarepo = <R = never>({
         lockFile,
         store,
         mode: isApplyMode === true ? 'apply' : 'lock',
+        ...(options.commitMode === true ? { commitMode: true } : {}),
       })
     }
 
