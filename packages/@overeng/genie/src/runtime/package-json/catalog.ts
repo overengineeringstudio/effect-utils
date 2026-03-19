@@ -204,9 +204,12 @@ const createPeersFn =
 const collectInheritedPeerInstalls = ({
   packages,
   catalog,
+  workspaceDepNames,
   visited = new Set<string>(),
 }: PeerPackagesArgs<readonly WorkspacePackageLike[]> & {
   catalog: CatalogInput
+  /** Names of packages already listed as explicit workspace deps — skip these from inherited peer resolution */
+  workspaceDepNames: ReadonlySet<string>
   visited?: Set<string>
 }) => {
   const installs = new Map<string, string>()
@@ -218,15 +221,17 @@ const collectInheritedPeerInstalls = ({
 
     const installEntries = Object.entries(
       Object.fromEntries(
-        Object.keys(pkg.data.peerDependencies ?? {}).map((name) => {
-          const version = catalog[name]
-          if (typeof version !== 'string') {
-            throw new Error(
-              `Catalog is missing explicit install version for inherited peer "${name}"`,
-            )
-          }
-          return [name, version] as const
-        }),
+        Object.keys(pkg.data.peerDependencies ?? {})
+          .filter((name) => workspaceDepNames.has(name) === false)
+          .map((name) => {
+            const version = catalog[name]
+            if (typeof version !== 'string') {
+              throw new Error(
+                `Catalog is missing explicit install version for inherited peer "${name}"`,
+              )
+            }
+            return [name, version] as const
+          }),
       ),
     )
 
@@ -237,6 +242,7 @@ const collectInheritedPeerInstalls = ({
     for (const [name, version] of collectInheritedPeerInstalls({
       packages: pkg.meta.workspace.deps,
       catalog,
+      workspaceDepNames,
       visited,
     })) {
       installs.set(name, version)
@@ -249,10 +255,12 @@ const collectInheritedPeerInstalls = ({
 const resolveInheritedPeerInstalls = <T extends CatalogInput>({
   catalog,
   packages,
+  workspaceDepNames,
 }: {
   catalog: T
   packages: readonly WorkspacePackageLike[]
-}) => Object.fromEntries(collectInheritedPeerInstalls({ packages, catalog }))
+  workspaceDepNames: ReadonlySet<string>
+}) => Object.fromEntries(collectInheritedPeerInstalls({ packages, catalog, workspaceDepNames }))
 
 const resolvePeerDependencies = <
   TWorkspace extends readonly WorkspacePackageLike[],
@@ -313,13 +321,6 @@ const createComposeFn =
     const runtimeExternal = dependencies?.external ?? ({} as TDependenciesExternal)
     const supportExternal = devDependencies?.external ?? ({} as TDevDependenciesExternal)
     const peerExternal = peerDependencies?.external ?? ({} as TPeerDependenciesExternal)
-    const inheritedPeerDependencies =
-      mode === 'install'
-        ? resolveInheritedPeerInstalls({
-            catalog,
-            packages: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
-          })
-        : {}
     const workspaceDepVersion = (pkg: WorkspacePackageLike): string =>
       pkg.meta.workspace.repoName === workspace.repoName
         ? 'workspace:*'
@@ -334,6 +335,19 @@ const createComposeFn =
         pkg.data.name === undefined ? [] : [[pkg.data.name, workspaceDepVersion(pkg)] as const],
       ),
     ) as WorkspaceDependencyMap<TDevDependenciesWorkspace>
+    /** Workspace packages already listed as explicit deps — skip their registry versions from inherited peers */
+    const allWorkspaceDepNames = new Set([
+      ...Object.keys(runtimeWorkspaceDependencies),
+      ...Object.keys(supportWorkspaceDependencies),
+    ])
+    const inheritedPeerDependencies =
+      mode === 'install'
+        ? resolveInheritedPeerInstalls({
+            catalog,
+            packages: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
+            workspaceDepNames: allWorkspaceDepNames,
+          })
+        : {}
     const peerDependencyEntries = resolvePeerDependencies({
       packages: peerWorkspace,
       external: peerExternal,
