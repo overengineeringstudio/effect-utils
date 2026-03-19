@@ -26,7 +26,7 @@
  * ```
  */
 
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { parse, type Document, type Node } from '@overeng/kdl'
 import { MegarepoConfig } from './config.ts'
 
@@ -137,3 +137,28 @@ const decodeLockSyncNode = (node: Node): Record<string, unknown> => {
 
   return result
 }
+
+// =============================================================================
+// KDL Encoding
+// =============================================================================
+
+/** Encode a MegarepoConfig to KDL format */
+export const encodeMegarepoKdl = (config: MegarepoConfig): string => {
+  const lines: string[] = []
+
+  const memberEntries = Object.entries(config.members)
+  if (memberEntries.length > 0) {
+    lines.push('members {')
+    for (const [name, source] of memberEntries) {
+      lines.push(`    ${needsQuoting(name) ? `"${name}"` : name} "${source}"`)
+    }
+    lines.push('}')
+  }
+
+  // TODO: generators, lockSync encoding
+
+  return lines.join('\n') + '\n'
+}
+
+const needsQuoting = (s: string): boolean =>
+  /[^a-zA-Z0-9_-]/.test(s) || s.length === 0

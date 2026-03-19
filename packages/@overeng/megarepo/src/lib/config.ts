@@ -13,10 +13,12 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { JSONSchema, Option, Schema } from 'effect'
+import { FileSystem } from '@effect/platform'
+import { Effect, JSONSchema, Option, Schema } from 'effect'
 
-import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
+import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath, type RelativeDirPath } from '@overeng/effect-path'
 
+import { decodeMegarepoKdl, encodeMegarepoKdl } from './config-kdl.ts'
 import { parseSourceRef } from './ref.ts'
 
 // =============================================================================
@@ -181,6 +183,9 @@ export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_KDL, CONFIG_FILE_NAME_JSON] a
 /** @deprecated Use `CONFIG_FILE_NAME_JSON` instead */
 export const CONFIG_FILE_NAME = CONFIG_FILE_NAME_JSON
 
+/** Config format discriminator */
+export type ConfigFormat = 'kdl' | 'json'
+
 /** Default store location */
 export const DEFAULT_STORE_PATH = '~/.megarepo'
 
@@ -210,6 +215,83 @@ export const getMemberPath = ({
   name: string
 }): AbsoluteDirPath =>
   EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${MEMBER_ROOT_DIR}/${name}/`))
+
+// =============================================================================
+// Config Read/Write
+// =============================================================================
+
+/** Error when no megarepo config file is found */
+export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>()(
+  'ConfigNotFoundError',
+  {
+    megarepoRoot: Schema.String,
+    message: Schema.optionalWith(Schema.String, {
+      default: () => 'No megarepo config found (checked megarepo.kdl and megarepo.json)',
+    }),
+  },
+) {}
+
+/** Find the config file path in a directory (prefers .kdl over .json) */
+export const findConfigPath = (dir: AbsoluteDirPath) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const p = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile(fileName))
+      if (yield* fs.exists(p)) return p
+    }
+    return undefined
+  })
+
+/**
+ * Read megarepo config from a workspace root.
+ * Checks for megarepo.kdl first, falls back to megarepo.json.
+ */
+export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const configPath = EffectPath.ops.join(
+        megarepoRoot,
+        EffectPath.unsafe.relativeFile(fileName),
+      )
+
+      const exists = yield* fs.exists(configPath)
+      if (!exists) continue
+
+      const content = yield* fs.readFileString(configPath)
+      const format: ConfigFormat = fileName.endsWith('.kdl') ? 'kdl' : 'json'
+
+      const config =
+        format === 'kdl'
+          ? yield* decodeMegarepoKdl(content)
+          : yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(content)
+
+      return { config, format, path: configPath } as const
+    }
+
+    return yield* new ConfigNotFoundError({ megarepoRoot })
+  })
+
+/**
+ * Write megarepo config to a file.
+ * Writes in the format matching the file extension.
+ */
+export const writeMegarepoConfig = (
+  configPath: AbsoluteFilePath,
+  config: MegarepoConfig,
+) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const format: ConfigFormat = configPath.endsWith('.kdl') ? 'kdl' : 'json'
+
+    const content =
+      format === 'kdl'
+        ? encodeMegarepoKdl(config)
+        : (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n'
+
+    yield* fs.writeFileString(configPath, content)
+  })
 
 // =============================================================================
 // JSON Schema Generation
