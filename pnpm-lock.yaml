@@ -561,6 +561,9 @@ importers:
       '@overeng/kdl':
         specifier: workspace:*
         version: link:../kdl
+      '@overeng/kdl-effect':
+        specifier: workspace:*
+        version: link:../kdl-effect
       '@overeng/tui-react':
         specifier: workspace:*
         version: file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)

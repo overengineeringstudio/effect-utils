@@ -18,6 +18,7 @@ export default tsconfigJson({
     { path: '../tui-react' },
     { path: '../effect-path' },
     { path: '../kdl' },
+    { path: '../kdl-effect' },
     { path: '../utils' },
   ],
 } satisfies TSConfigArgs)

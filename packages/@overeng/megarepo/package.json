@@ -34,6 +34,7 @@
     "@opentui/react": "0.1.88",
     "@overeng/effect-path": "workspace:*",
     "@overeng/kdl": "workspace:*",
+    "@overeng/kdl-effect": "workspace:*",
     "@overeng/tui-react": "workspace:*",
     "@overeng/utils": "workspace:*",
     "@playwright/test": "1.58.2",

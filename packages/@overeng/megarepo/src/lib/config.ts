@@ -23,7 +23,7 @@ import {
   type RelativeDirPath,
 } from '@overeng/effect-path'
 
-import { decodeMegarepoKdl, encodeMegarepoKdl } from './config-kdl.ts'
+import { parseKdl } from '@overeng/kdl-effect'
 import { parseSourceRef } from './ref.ts'
 
 // =============================================================================
@@ -188,6 +188,9 @@ export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_KDL, CONFIG_FILE_NAME_JSON] a
 /** Config format discriminator */
 export type ConfigFormat = 'kdl' | 'json'
 
+/** Schema: KDL string ↔ MegarepoConfig (analogous to Schema.parseJson) */
+const MegarepoConfigFromKdl = parseKdl(MegarepoConfig)
+
 /** Default store location */
 export const DEFAULT_STORE_PATH = '~/.megarepo'
 
@@ -261,10 +264,9 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
       const content = yield* fs.readFileString(configPath)
       const format: ConfigFormat = fileName.endsWith('.kdl') ? 'kdl' : 'json'
 
-      const config =
-        format === 'kdl'
-          ? yield* decodeMegarepoKdl(content)
-          : yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(content)
+      const config = yield* Schema.decodeUnknown(
+        format === 'kdl' ? MegarepoConfigFromKdl : Schema.parseJson(MegarepoConfig),
+      )(content)
 
       return { config, format, path: configPath } as const
     }
@@ -283,7 +285,7 @@ export const writeMegarepoConfig = (configPath: AbsoluteFilePath, config: Megare
 
     const content =
       format === 'kdl'
-        ? encodeMegarepoKdl(config)
+        ? yield* Schema.encode(MegarepoConfigFromKdl)(config)
         : (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n'
 
     yield* fs.writeFileString(configPath, content)
