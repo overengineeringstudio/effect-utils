@@ -5,14 +5,13 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME, MegarepoConfig } from '../../lib/config.ts'
+import { readMegarepoConfig } from '../../lib/config.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../lib/lock.ts'
 import { buildDependencyGraph } from '../../lib/nix-lock/mod.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../context.ts'
@@ -39,17 +38,9 @@ export const depsCommand = Cli.Command.make(
               return
             }
             const root = rootOpt.value
-            const fs = yield* FileSystem.FileSystem
 
             // Load config
-            const configPath = EffectPath.ops.join(
-              root,
-              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-            )
-            const configContent = yield* fs.readFileString(configPath)
-            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-              configContent,
-            )
+            const { config } = yield* readMegarepoConfig(root)
 
             // Load lock file
             const lockPath = EffectPath.ops.join(

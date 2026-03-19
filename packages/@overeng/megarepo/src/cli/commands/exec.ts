@@ -6,13 +6,12 @@
 
 import * as Cli from '@effect/cli'
 import { Command, FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
+import { getMemberPath, readMegarepoConfig } from '../../lib/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer, verboseOption } from '../context.ts'
 import { ExecApp, ExecView } from '../renderers/ExecOutput/mod.ts'
 
@@ -58,14 +57,7 @@ export const execCommand = Cli.Command.make(
 
             // Load config
             const fs = yield* FileSystem.FileSystem
-            const configPath = EffectPath.ops.join(
-              root.value,
-              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-            )
-            const configContent = yield* fs.readFileString(configPath)
-            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-              configContent,
-            )
+            const { config } = yield* readMegarepoConfig(root.value)
 
             // Filter members
             const membersToRun = Option.match(member, {

@@ -9,7 +9,7 @@
 import { Prompt } from '@effect/cli'
 import type { CommandExecutor, Terminal } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, type ParseResult, Schema } from 'effect'
+import { Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -17,12 +17,13 @@ import { run } from '@overeng/tui-react'
 
 import {
   CONFIG_FILE_NAME,
+  ConfigNotFoundError,
   getMemberPath,
   getMembersRoot,
   getSourceUrl,
   isRemoteSource,
-  MegarepoConfig,
   parseSourceString,
+  readMegarepoConfig,
 } from '../../lib/config.ts'
 import { generateAll, getEnabledGenerators } from '../../lib/generators/mod.ts'
 import * as Git from '../../lib/git.ts'
@@ -114,8 +115,10 @@ export const syncMegarepo = <R = never>({
   | LockFileRequiredError
   | StaleLockFileError
   | StoreHygieneError
+  | ConfigNotFoundError
   | PlatformError.PlatformError
-  | ParseResult.ParseError,
+  | ParseResult.ParseError
+  | Error,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R
 > =>
   Effect.gen(function* () {
@@ -146,12 +149,7 @@ export const syncMegarepo = <R = never>({
     visited.add(resolvedRoot)
 
     // Load config
-    const configPath = EffectPath.ops.join(
-      megarepoRoot,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+    const { config } = yield* readMegarepoConfig(megarepoRoot)
 
     if (dryRun === false) {
       const membersRoot = getMembersRoot(megarepoRoot)
@@ -641,12 +639,7 @@ export const runCommand = ({
     }
 
     const workspaceName = yield* Git.deriveMegarepoName(root.value)
-    const configPath = EffectPath.ops.join(
-      root.value,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+    const { config } = yield* readMegarepoConfig(root.value)
     const memberNames = Object.keys(config.members)
 
     const skippedMembers = memberNames.filter((memberName) => {

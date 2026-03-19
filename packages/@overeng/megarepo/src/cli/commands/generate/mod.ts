@@ -5,14 +5,12 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME, MegarepoConfig } from '../../../lib/config.ts'
+import { readMegarepoConfig } from '../../../lib/config.ts'
 import { generateAll } from '../../../lib/generators/mod.ts'
 import { generateSchema } from '../../../lib/generators/schema.ts'
 import { generateVscode } from '../../../lib/generators/vscode.ts'
@@ -51,15 +49,7 @@ const generateVscodeCommand = Cli.Command.make(
             tui.dispatch({ _tag: 'Start', generator: 'vscode' })
 
             // Load config
-            const fs = yield* FileSystem.FileSystem
-            const configPath = EffectPath.ops.join(
-              root.value,
-              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-            )
-            const configContent = yield* fs.readFileString(configPath)
-            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-              configContent,
-            )
+            const { config } = yield* readMegarepoConfig(root.value)
 
             const excludeList = Option.map(exclude, (e) => e.split(',').map((s) => s.trim()))
 
@@ -111,15 +101,7 @@ const generateSchemaCommand = Cli.Command.make(
             tui.dispatch({ _tag: 'Start', generator: 'schema' })
 
             // Load config
-            const fs = yield* FileSystem.FileSystem
-            const configPath = EffectPath.ops.join(
-              root.value,
-              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-            )
-            const configContent = yield* fs.readFileString(configPath)
-            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-              configContent,
-            )
+            const { config } = yield* readMegarepoConfig(root.value)
 
             yield* generateSchema({
               megarepoRoot: root.value,
@@ -159,15 +141,7 @@ const generateAllCommand = Cli.Command.make('all', { output: outputOption }, ({ 
           tui.dispatch({ _tag: 'Start', generator: 'all' })
 
           // Load config
-          const fs = yield* FileSystem.FileSystem
-          const configPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            configContent,
-          )
+          const { config } = yield* readMegarepoConfig(root.value)
 
           const outputs = yield* generateAll({
             megarepoRoot: root.value,

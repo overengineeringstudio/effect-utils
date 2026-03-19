@@ -6,18 +6,17 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  CONFIG_FILE_NAME,
-  MegarepoConfig,
   parseSourceString,
   isRemoteSource,
   getSourceRef,
+  readMegarepoConfig,
 } from '../../../lib/config.ts'
 import * as Git from '../../../lib/git.ts'
 import { type LockFile, LOCK_FILE_NAME, readLockFile } from '../../../lib/lock.ts'
@@ -142,12 +141,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
       const lockFile = Option.getOrUndefined(lockFileOpt)
 
       if (lockFile !== undefined) {
-        const configPath = EffectPath.ops.join(
-          root.value,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-        )
-        const configContent = yield* fs.readFileString(configPath)
-        const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+        const { config } = yield* readMegarepoConfig(root.value)
 
         for (const [name, sourceString] of Object.entries(config.members)) {
           const source = parseSourceString(sourceString)
@@ -418,14 +412,7 @@ const storeGcCommand = Cli.Command.make(
 
         // Build set of worktree paths that are "in use"
         if (lockFile !== undefined) {
-          const configPath = EffectPath.ops.join(
-            root.value,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            configContent,
-          )
+          const { config } = yield* readMegarepoConfig(root.value)
 
           for (const [name, sourceString] of Object.entries(config.members)) {
             const source = parseSourceString(sourceString)
@@ -826,12 +813,7 @@ const storeFixCommand = Cli.Command.make(
         return yield* new StoreCommandError({ message: 'Not in a megarepo' })
       }
 
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+      const { config } = yield* readMegarepoConfig(root.value)
 
       const lockPath = EffectPath.ops.join(
         root.value,
