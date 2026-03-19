@@ -95,6 +95,7 @@ let
       after = [ "mr:sync" ];
       # Check that repos dir exists and all members have symlinks
       status = trace.status "mr:check" "path" ''
+        set -o pipefail
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -105,7 +106,7 @@ let
         fi
 
         # Verify all configured members have symlinks in repos/
-        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name' 2>/dev/null) || exit 1
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name') || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             exit 1
@@ -115,6 +116,7 @@ let
         exit 0
       '';
       exec = trace.exec "mr:check" ''
+        set -o pipefail
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -127,7 +129,7 @@ let
 
         # Check for missing member symlinks
         missing=""
-        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name' 2>/dev/null) || exit 1
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name') || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             missing="$missing $member"

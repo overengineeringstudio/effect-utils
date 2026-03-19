@@ -4,7 +4,7 @@ import type { Document, Node } from '@overeng/kdl'
 
 /** Convert a KDL Document to a plain JS object for Schema decoding */
 export const kdlToObject = (doc: Document): Record<string, unknown> => {
-  const result: Record<string, unknown> = {}
+  const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>
 
   for (const node of doc.nodes) {
     const name = node.getName()
