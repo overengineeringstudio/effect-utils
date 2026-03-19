@@ -1,10 +1,10 @@
-import { InvalidKdlError } from './parser/internal-error.ts'
 import { Document } from './model/document.ts'
 import { Entry } from './model/entry.ts'
 import { Identifier } from './model/identifier.ts'
 import { Node } from './model/node.ts'
 import { Tag } from './model/tag.ts'
 import { Value } from './model/value.ts'
+import { InvalidKdlError } from './parser/internal-error.ts'
 import { stringifyString } from './string-utils.ts'
 
 const reStartsWithInlineWhitespace =
@@ -112,21 +112,14 @@ const formatValue = (value: Value): string => {
     representation = formatNumberWithHint(value.value as number, value.numberFormat)
   }
 
-  if (
-    value.tag?.suffix &&
-    typeof value.value === 'number' &&
-    representation[0] !== '#'
-  ) {
+  if (value.tag?.suffix && typeof value.value === 'number' && representation[0] !== '#') {
     const tagRepresentation = formatTagAsSuffix(representation, value.tag)
     if (tagRepresentation) {
       return representation + tagRepresentation
     }
   }
 
-  return (
-    (value.tag ? formatTag(value.tag) + (value.betweenTagAndValue ?? '') : '') +
-    representation
-  )
+  return (value.tag ? formatTag(value.tag) + (value.betweenTagAndValue ?? '') : '') + representation
 }
 
 const formatIdentifier = (identifier: Pick<Identifier, 'name' | 'representation'>): string => {
@@ -147,9 +140,7 @@ const indent = '    '
 const formatNode = (node: Node, indentation: number): string =>
   `${node.leading ?? indent.repeat(indentation)}${formatTag(node.tag)}${
     node.betweenTagAndName ?? ''
-  }${formatIdentifier(node.name)}${node.entries
-    .map((entry) => formatEntry(entry))
-    .join('')}${
+  }${formatIdentifier(node.name)}${node.entries.map((entry) => formatEntry(entry)).join('')}${
     node.children
       ? `${node.beforeChildren ?? ' '}{${formatDocument(node.children, indentation + 1)}}`
       : ''
@@ -157,9 +148,7 @@ const formatNode = (node: Node, indentation: number): string =>
 
 const formatDocument = (document: Document, indentation: number): string =>
   `${
-    document.nodes[0] != null && document.nodes[0].leading == null && indentation
-      ? '\n'
-      : ''
+    document.nodes[0] != null && document.nodes[0].leading == null && indentation ? '\n' : ''
   }${document.nodes.map((node) => formatNode(node, indentation)).join('')}${
     document.trailing ?? indent.repeat((indentation || 1) - 1)
   }`

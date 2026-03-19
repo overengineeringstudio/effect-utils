@@ -6,7 +6,6 @@
 import type { Document } from '../model/document.ts'
 import type { Entry } from '../model/entry.ts'
 import type { Node } from '../model/node.ts'
-import type { Token } from './token.ts'
 import {
   consume,
   createParserCtx,
@@ -21,6 +20,7 @@ import {
   concatenate,
   type ParserCtx,
 } from './parse.ts'
+import type { Token } from './token.ts'
 
 export interface LineSpaceBom {
   type: 'bom'
@@ -196,9 +196,7 @@ export const parseWhitespaceInDocument = (ctx: ParserCtx): WhitespaceInDocument 
   return result
 }
 
-const parseNodeSpaceSlashDash = (
-  ctx: ParserCtx,
-): [SlashDashInNode, string] | undefined => {
+const parseNodeSpaceSlashDash = (ctx: ParserCtx): [SlashDashInNode, string] | undefined => {
   const slashdash = consume(ctx, 'slashdash')
   if (slashdash == null) {
     return undefined
@@ -255,11 +253,9 @@ export const parseWhitespaceInNode = (ctx: ParserCtx): WhitespaceInNode => {
       if (slashDash[1][0]) {
         result.push(
           ...parseWhitespaceInNode(
-            createParserCtx(
-              slashDash[1][0],
-              tokenizeForWhitespace(slashDash[1][0], ctx),
-              { flags: ctx.flags },
-            ),
+            createParserCtx(slashDash[1][0], tokenizeForWhitespace(slashDash[1][0], ctx), {
+              flags: ctx.flags,
+            }),
           ),
         )
       }
@@ -275,7 +271,9 @@ export const parseWhitespaceInNode = (ctx: ParserCtx): WhitespaceInNode => {
  * This requires the tokenize function to be available. We import it lazily
  * to avoid circular dependency issues.
  */
-let _tokenize: ((text: string, options: { flags: ParserCtx['flags'] }) => Iterable<Token>) | undefined
+let _tokenize:
+  | ((text: string, options: { flags: ParserCtx['flags'] }) => Iterable<Token>)
+  | undefined
 
 export const setTokenizeForWhitespace = (
   fn: (text: string, options: { flags: ParserCtx['flags'] }) => Iterable<Token>,

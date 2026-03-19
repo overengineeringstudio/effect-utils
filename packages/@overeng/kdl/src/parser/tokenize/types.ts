@@ -73,14 +73,12 @@ export const isHexadecimalDigit = (codePoint: number): boolean =>
 export const isHexadecimalDigitOrUnderscore = (codePoint: number): boolean =>
   isHexadecimalDigit(codePoint) || codePoint === 0x5f
 
-export const isDecimalDigit = (codePoint: number): boolean =>
-  codePoint >= 0x30 && codePoint < 0x3a
+export const isDecimalDigit = (codePoint: number): boolean => codePoint >= 0x30 && codePoint < 0x3a
 
 export const isDecimalDigitOrUnderscore = (codePoint: number): boolean =>
   isDecimalDigit(codePoint) || codePoint === 0x5f
 
-export const isOctalDigit = (codePoint: number): boolean =>
-  codePoint >= 0x30 && codePoint < 0x38
+export const isOctalDigit = (codePoint: number): boolean => codePoint >= 0x30 && codePoint < 0x38
 
 export const isOctalDigitOrUnderscore = (codePoint: number): boolean =>
   isOctalDigit(codePoint) || codePoint === 0x5f
@@ -91,5 +89,4 @@ export const isBinaryDigit = (codePoint: number): boolean =>
 export const isBinaryDigitOrUnderscore = (codePoint: number): boolean =>
   isBinaryDigit(codePoint) || codePoint === 0x5f
 
-export const isNumberSign = (codePoint: number): boolean =>
-  codePoint === 0x2d || codePoint === 0x2b
+export const isNumberSign = (codePoint: number): boolean => codePoint === 0x2d || codePoint === 0x2b

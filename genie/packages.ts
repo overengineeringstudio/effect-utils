@@ -14,6 +14,7 @@ export const internalPackages = [
   'effect-schema-form-aria',
   'genie',
   'kdl',
+  'kdl-effect',
   'megarepo',
   'notion-cli',
   'notion-effect-client',

@@ -148,9 +148,7 @@ export class Node {
   }
 
   getPropertyEntryMap(): Map<string, Entry> {
-    return new Map(
-      this.getPropertyEntries().map((entry) => [entry.getName() as string, entry]),
-    )
+    return new Map(this.getPropertyEntries().map((entry) => [entry.getName() as string, entry]))
   }
 
   hasProperty(name: string): boolean {

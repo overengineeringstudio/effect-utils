@@ -10,8 +10,7 @@ function* iterateGraphemes(text: string): Generator<string, void, undefined> {
   }
 }
 
-const iterateCodePoints = (text: string): Iterator<string> =>
-  text[Symbol.iterator]()
+const iterateCodePoints = (text: string): Iterator<string> => text[Symbol.iterator]()
 
 export interface TokenizeContext {
   readonly text: string
@@ -32,7 +31,10 @@ export interface CreateContextOptions {
   readonly graphemeLocations?: boolean
 }
 
-export const createContext = (text: string, options: CreateContextOptions = {}): TokenizeContext => {
+export const createContext = (
+  text: string,
+  options: CreateContextOptions = {},
+): TokenizeContext => {
   const { graphemeLocations = false } = options
   const iterator = graphemeLocations ? iterateGraphemes(text) : iterateCodePoints(text)
   const currentIter = iterator.next()
@@ -68,8 +70,9 @@ export const pop = (ctx: TokenizeContext): number => {
   ctx.column++
 
   const currentIter = (ctx.currentIter = ctx.iterator.next())
-  const current = (ctx.current =
-    currentIter.done ? NaN : (currentIter.value.codePointAt(0) as number))
+  const current = (ctx.current = currentIter.done
+    ? NaN
+    : (currentIter.value.codePointAt(0) as number))
 
   if (isInvalidCharacter(current)) {
     if ((current >= 0xd800 && current <= 0xdfff) || current > 0x10ffff) {
@@ -85,7 +88,10 @@ export const pop = (ctx: TokenizeContext): number => {
   return current
 }
 
-export const consume = (ctx: TokenizeContext, test: (codePoint: number) => boolean): number | undefined => {
+export const consume = (
+  ctx: TokenizeContext,
+  test: (codePoint: number) => boolean,
+): number | undefined => {
   if (test(ctx.current)) {
     const previous = ctx.current
     pop(ctx)
@@ -155,14 +161,19 @@ export const mkToken = (ctx: TokenizeContext, type: TokenType, error?: string): 
   }
 
   if (error) {
-    const mutableErrors: Array<InvalidKdlError> = (token as { errors: Array<InvalidKdlError> | undefined }).errors ??= []
+    const mutableErrors: Array<InvalidKdlError> = ((
+      token as { errors: Array<InvalidKdlError> | undefined }
+    ).errors ??= [])
     mutableErrors.push(new InvalidKdlError(error, { token }))
   }
 
   return token
 }
 
-export const mkError = (ctx: TokenizeContext, message: string | InvalidKdlError): InvalidKdlError => {
+export const mkError = (
+  ctx: TokenizeContext,
+  message: string | InvalidKdlError,
+): InvalidKdlError => {
   if (message instanceof InvalidKdlError) {
     return message
   }

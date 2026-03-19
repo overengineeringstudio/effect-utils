@@ -1,6 +1,8 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
 import { describe, expect, it } from 'vitest'
+
 import { clearFormat } from './clear-format.ts'
 import { format } from './format.ts'
 import { parse } from './parse.ts'
@@ -15,12 +17,7 @@ const inputFiles = fs
   .sort()
 
 /** JS Number precision limitations — values exceed MAX_SAFE_INTEGER or require BigDecimal */
-const knownBrokenTests = new Set([
-  'hex',
-  'hex_int',
-  'sci_notation_large',
-  'sci_notation_small',
-])
+const knownBrokenTests = new Set(['hex', 'hex_int', 'sci_notation_large', 'sci_notation_small'])
 
 describe('KDL upstream test suite', () => {
   for (const file of inputFiles) {

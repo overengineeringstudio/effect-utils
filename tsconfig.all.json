@@ -40,6 +40,9 @@
       "path": "./packages/@overeng/kdl"
     },
     {
+      "path": "./packages/@overeng/kdl-effect"
+    },
+    {
       "path": "./packages/@overeng/megarepo"
     },
     {

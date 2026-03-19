@@ -1,12 +1,19 @@
 import { Effect, Option } from 'effect'
+
 import { KdlParseError } from './error.ts'
-import { InvalidKdlError } from './parser/internal-error.ts'
 import { resolveFlags, type ParserFlags } from './flags.ts'
-import { Document } from './model/document.ts'
+import type { Document } from './model/document.ts'
 import type { Entry } from './model/entry.ts'
 import type { Identifier } from './model/identifier.ts'
 import type { Node } from './model/node.ts'
 import type { Value } from './model/value.ts'
+import { InvalidKdlError } from './parser/internal-error.ts'
+import {
+  parseWhitespaceInDocument,
+  parseWhitespaceInNode,
+  type WhitespaceInDocument,
+  type WhitespaceInNode,
+} from './parser/parse-whitespace.ts'
 import {
   finalize,
   createParserCtx,
@@ -16,25 +23,25 @@ import {
   parseNodeWithSpace,
   parseValue,
 } from './parser/parse.ts'
-import {
-  parseWhitespaceInDocument,
-  parseWhitespaceInNode,
-  type WhitespaceInDocument,
-  type WhitespaceInNode,
-} from './parser/parse-whitespace.ts'
 import { tokenize } from './parser/tokenize/mod.ts'
 
 type ParseTarget = keyof typeof methods
 
-type ParseResult<TTarget extends ParseTarget> =
-  TTarget extends 'document' ? Document
-  : TTarget extends 'node' ? Node
-  : TTarget extends 'entry' ? Entry
-  : TTarget extends 'value' ? Value
-  : TTarget extends 'identifier' ? Identifier
-  : TTarget extends 'whitespace in document' ? WhitespaceInDocument
-  : TTarget extends 'whitespace in node' ? WhitespaceInNode
-  : never
+type ParseResult<TTarget extends ParseTarget> = TTarget extends 'document'
+  ? Document
+  : TTarget extends 'node'
+    ? Node
+    : TTarget extends 'entry'
+      ? Entry
+      : TTarget extends 'value'
+        ? Value
+        : TTarget extends 'identifier'
+          ? Identifier
+          : TTarget extends 'whitespace in document'
+            ? WhitespaceInDocument
+            : TTarget extends 'whitespace in node'
+              ? WhitespaceInNode
+              : never
 
 const methods = {
   value: parseValue,
@@ -55,7 +62,16 @@ export interface ParseOptions<TTarget extends ParseTarget = 'document'> {
 
 /** Parse a KDL string into an AST (throws InvalidKdlError on error) */
 export const parse = <TTarget extends ParseTarget = 'document'>(
-  text: string | ArrayBuffer | Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | DataView,
+  text:
+    | string
+    | ArrayBuffer
+    | Uint8Array
+    | Int8Array
+    | Uint16Array
+    | Int16Array
+    | Uint32Array
+    | Int32Array
+    | DataView,
   options: ParseOptions<TTarget> = {},
 ): ParseResult<TTarget> => {
   const { as: target = 'document' as TTarget, flags, ...parserOptions } = options
@@ -68,7 +84,9 @@ export const parse = <TTarget extends ParseTarget = 'document'>(
   let str: string
   if (typeof text !== 'string') {
     if (typeof TextDecoder !== 'function') {
-      throw new TypeError('Uint8Array input is only supported on platforms that include TextDecoder')
+      throw new TypeError(
+        'Uint8Array input is only supported on platforms that include TextDecoder',
+      )
     }
     const decoder = new TextDecoder('utf-8', { fatal: true })
     str = decoder.decode(text)
@@ -78,7 +96,12 @@ export const parse = <TTarget extends ParseTarget = 'document'>(
 
   const resolvedFlags = resolveFlags(flags)
 
-  const tokens = tokenize(str, parserOptions.graphemeLocations !== undefined ? { graphemeLocations: parserOptions.graphemeLocations } : {})
+  const tokens = tokenize(
+    str,
+    parserOptions.graphemeLocations !== undefined
+      ? { graphemeLocations: parserOptions.graphemeLocations }
+      : {},
+  )
 
   const ctx = createParserCtx(str, tokens, {
     ...parserOptions,
@@ -95,9 +118,7 @@ export const parse = <TTarget extends ParseTarget = 'document'>(
   finalize(ctx)
 
   if (!value) {
-    throw new InvalidKdlError(
-      `Expected ${/^[aeiouy]/.exec(target) ? 'an' : 'a'} ${target}`,
-    )
+    throw new InvalidKdlError(`Expected ${/^[aeiouy]/.exec(target) ? 'an' : 'a'} ${target}`)
   }
 
   return value as ParseResult<TTarget>

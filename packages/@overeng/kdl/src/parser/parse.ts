@@ -1,4 +1,3 @@
-import { InvalidKdlError } from './internal-error.ts'
 import type { ParserFlags } from '../flags.ts'
 import { storeLocation as _storeLocation } from '../locations.ts'
 import { Document } from '../model/document.ts'
@@ -14,6 +13,7 @@ import {
   postProcessRawStringValue,
   postProcessStringValue,
 } from '../string-utils.ts'
+import { InvalidKdlError } from './internal-error.ts'
 import type { Token, TokenType } from './token.ts'
 
 export interface ParserCtx {
@@ -49,7 +49,10 @@ export const consume = (ctx: ParserCtx, tokenType: TokenType): Token | undefined
 }
 
 export const mkError = (ctx: ParserCtx | Token, message: string): InvalidKdlError => {
-  const token = 'current' in ctx ? ((ctx as ParserCtx).current.value ?? (ctx as ParserCtx).lastToken) : (ctx as Token)
+  const token =
+    'current' in ctx
+      ? ((ctx as ParserCtx).current.value ?? (ctx as ParserCtx).lastToken)
+      : (ctx as Token)
   return new InvalidKdlError(message, { token })
 }
 
@@ -110,7 +113,9 @@ export const finalize = (ctx: ParserCtx, fatalError?: unknown): void => {
       }
     } else {
       errors.push(
-        new InvalidKdlError(`An unexpected error occurred, ${String(fatalError)}, this is likely a bug in the KDL parser`),
+        new InvalidKdlError(
+          `An unexpected error occurred, ${String(fatalError)}, this is likely a bug in the KDL parser`,
+        ),
       )
     }
   }
@@ -188,7 +193,10 @@ const parseNonStringValue = (ctx: ParserCtx): Value | undefined => {
 
         if (isKeywordlikeIdent(suffixTag)) {
           ctx.errors.push(
-            mkError(ctx, `Invalid suffix ${suffixTag}, values that look like keywords cannot be used as suffix`),
+            mkError(
+              ctx,
+              `Invalid suffix ${suffixTag}, values that look like keywords cannot be used as suffix`,
+            ),
           )
         }
       }
@@ -245,7 +253,10 @@ const parseNonStringValue = (ctx: ParserCtx): Value | undefined => {
               break
             default:
               ctx.errors.push(
-                mkError(ctx, `Invalid keyword ${token.text}, surround it with quotes to use a string`),
+                mkError(
+                  ctx,
+                  `Invalid keyword ${token.text}, surround it with quotes to use a string`,
+                ),
               )
           }
         }
@@ -257,8 +268,7 @@ const parseNonStringValue = (ctx: ParserCtx): Value | undefined => {
 
   pop(ctx)
 
-  const tagToken =
-    ctx.flags.experimentalSuffixedNumbers && consume(ctx, 'keyword-or-hashed-ident')
+  const tagToken = ctx.flags.experimentalSuffixedNumbers && consume(ctx, 'keyword-or-hashed-ident')
   if (tagToken) {
     if (checkSeparatedSuffix) {
       suffixTagRepresentation = tagToken.text
@@ -272,7 +282,9 @@ const parseNonStringValue = (ctx: ParserCtx): Value | undefined => {
       }
       suffixTag = suffixTagRepresentation.slice(1)
     } else if (suffixTag) {
-      ctx.errors.push(mkError(tagToken, 'Unexpected hashed suffix, a number can only have one suffix'))
+      ctx.errors.push(
+        mkError(tagToken, 'Unexpected hashed suffix, a number can only have one suffix'),
+      )
     } else if (typeof value === 'number') {
       ctx.errors.push(
         mkError(tagToken, 'Unexpected hashed suffix, you cannot place suffixes on number keywords'),
@@ -323,7 +335,11 @@ const _parseString = (ctx: ParserCtx): [string, string, Token] | undefined => {
       break
     case 'quoted-string':
       pop(ctx)
-      result = [postProcessStringValue(ctx.errors, token.text.slice(1, -1), token), token.text, token]
+      result = [
+        postProcessStringValue(ctx.errors, token.text.slice(1, -1), token),
+        token.text,
+        token,
+      ]
       break
     case 'multiline-quoted-string':
       pop(ctx)
@@ -434,7 +450,10 @@ export const parseEscline = (ctx: ParserCtx): string | undefined => {
 
   if (!parseSingleLineComment(ctx) && !consume(ctx, 'newline') && !consume(ctx, 'eof')) {
     ctx.errors.push(
-      mkError(ctx, `Expected newline or single-line comment after backslash but got ${ctx.current.value?.text ?? 'EOF'}`),
+      mkError(
+        ctx,
+        `Expected newline or single-line comment after backslash but got ${ctx.current.value?.text ?? 'EOF'}`,
+      ),
     )
   }
 
@@ -558,7 +577,9 @@ export const parseNodePropOrArg = (ctx: ParserCtx): [Entry, string | undefined] 
       }
 
       if (value.tag) {
-        ctx.errors.push(mkError(ctx.lastToken, 'A number suffix cannot be combined with a regular tag'))
+        ctx.errors.push(
+          mkError(ctx.lastToken, 'A number suffix cannot be combined with a regular tag'),
+        )
       }
 
       value.tag = tag
@@ -595,7 +616,10 @@ export const parseNodePropOrArg = (ctx: ParserCtx): [Entry, string | undefined] 
       let trailing = parseNodeSpace(ctx)
       if (consume(ctx, 'equals')) {
         ctx.errors.push(
-          mkError(ctx.lastToken, 'Unexpected equals sign, did you forget to quote the property name?'),
+          mkError(
+            ctx.lastToken,
+            'Unexpected equals sign, did you forget to quote the property name?',
+          ),
         )
         trailing = concatenate(trailing, parseNodeSpace(ctx)) || ' '
       }
@@ -639,7 +663,9 @@ export const parseNodePropOrArg = (ctx: ParserCtx): [Entry, string | undefined] 
 
   if (tag) {
     if (value.tag) {
-      ctx.errors.push(mkError(ctx.lastToken, 'A number suffix cannot be combined with a regular tag'))
+      ctx.errors.push(
+        mkError(ctx.lastToken, 'A number suffix cannot be combined with a regular tag'),
+      )
     }
 
     value.tag = tag

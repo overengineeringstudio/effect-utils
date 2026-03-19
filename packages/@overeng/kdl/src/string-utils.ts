@@ -1,15 +1,12 @@
 import { InvalidKdlError } from './parser/internal-error.ts'
-import { isIdentifierChar, isInvalidCharacter } from './parser/tokenize/types.ts'
 import type { Location, Token, TokenType } from './parser/token.ts'
+import { isIdentifierChar, isInvalidCharacter } from './parser/tokenize/types.ts'
 
 const escapedCodePointsInStringify = new Map<number, string>([
-  ...Array.from(
-    { length: 0x20 },
-    (_, codePoint): [number, string] => [
-      codePoint,
-      `\\u{${codePoint.toString(16).padStart(2, '0')}}`,
-    ],
-  ),
+  ...Array.from({ length: 0x20 }, (_, codePoint): [number, string] => [
+    codePoint,
+    `\\u{${codePoint.toString(16).padStart(2, '0')}}`,
+  ]),
   [0x7f, '\\u{7f}'],
   [0x200e, '\\u{200e}'],
   [0x200f, '\\u{200f}'],
@@ -243,9 +240,7 @@ export const postProcessMultilineRawStringValue = (
   }
 
   if (!reNewline.test(value[0]!)) {
-    errors.push(
-      new InvalidKdlError('Multi-line strings must start with a newline', { token }),
-    )
+    errors.push(new InvalidKdlError('Multi-line strings must start with a newline', { token }))
     return value
   }
 
@@ -253,7 +248,9 @@ export const postProcessMultilineRawStringValue = (
 
   if (lastLine == null) {
     errors.push(
-      new InvalidKdlError('The final line in a multiline string may only contain whitespace', { token }),
+      new InvalidKdlError('The final line in a multiline string may only contain whitespace', {
+        token,
+      }),
     )
     return value
   }
@@ -261,7 +258,13 @@ export const postProcessMultilineRawStringValue = (
   return value
     .replace(
       reNewlineWithLeadingSpace,
-      (_: string, newline: string, leadingWhitespace: string, firstContentCharacter: string, offset: number) => {
+      (
+        _: string,
+        newline: string,
+        leadingWhitespace: string,
+        firstContentCharacter: string,
+        offset: number,
+      ) => {
         if (!firstContentCharacter) {
           return '\n'
         }
@@ -320,8 +323,13 @@ export const postProcessStringValue = (errors: Error[], value: string, token: To
 
   return value.replace(
     reSingleLineEscape,
-    (escape: string, unicode: string | undefined, invalidUnicode: string | undefined, whitespace: string | undefined, offset: number) =>
-      replaceEscape(errors, value, token, escape, unicode, invalidUnicode, whitespace, offset),
+    (
+      escape: string,
+      unicode: string | undefined,
+      invalidUnicode: string | undefined,
+      whitespace: string | undefined,
+      offset: number,
+    ) => replaceEscape(errors, value, token, escape, unicode, invalidUnicode, whitespace, offset),
   )
 }
 
@@ -341,9 +349,7 @@ export const postProcessMultilineStringValue = (
   }
 
   if (!reNewline.test(value[0]!)) {
-    errors.push(
-      new InvalidKdlError('Multi-line strings must start with a newline', { token }),
-    )
+    errors.push(new InvalidKdlError('Multi-line strings must start with a newline', { token }))
     return value
   }
 
@@ -388,7 +394,16 @@ export const postProcessMultilineStringValue = (
         offset: number,
       ) => {
         if (!newline) {
-          return replaceEscape(errors, value, token, match, unicode, invalidUnicode, whitespace, offset)
+          return replaceEscape(
+            errors,
+            value,
+            token,
+            match,
+            unicode,
+            invalidUnicode,
+            whitespace,
+            offset,
+          )
         }
 
         const firstContentCharacter =

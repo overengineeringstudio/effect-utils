@@ -24,10 +24,6 @@ const locations = new WeakMap<KdlElement, StoredLocation>()
 export const getLocation = (element: KdlElement): StoredLocation | undefined =>
   locations.get(element)
 
-export const storeLocation = (
-  element: KdlElement,
-  { start }: Token,
-  { end }: Token,
-): void => {
+export const storeLocation = (element: KdlElement, { start }: Token, { end }: Token): void => {
   locations.set(element, { start, end })
 }

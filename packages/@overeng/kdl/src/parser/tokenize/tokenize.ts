@@ -31,7 +31,8 @@ import {
   isUnicodeSpace,
 } from './types.ts'
 
-const createSingleCharacterToken = (type: TokenType) =>
+const createSingleCharacterToken =
+  (type: TokenType) =>
   (ctx: TokenizeContext): Token => {
     pop(ctx)
     return mkToken(ctx, type)
@@ -139,10 +140,7 @@ const handleHashCharacter = (ctx: TokenizeContext): Token => {
         }
 
         let numberOfClosingHashes = 0
-        while (
-          numberOfClosingHashes < numberOfOpeningHashes &&
-          consumeCodePoint(ctx, 0x23)
-        ) {
+        while (numberOfClosingHashes < numberOfOpeningHashes && consumeCodePoint(ctx, 0x23)) {
           numberOfClosingHashes++
         }
 
@@ -258,12 +256,13 @@ const handleSignCharacterAfterPop = (ctx: TokenizeContext): Token => {
   }
 }
 
-const createBaseNumberHandler = (
-  type: string,
-  tokenType: TokenType,
-  isDigit: (codePoint: number) => boolean,
-  isDigitOrUnderscore: (codePoint: number) => boolean,
-) =>
+const createBaseNumberHandler =
+  (
+    type: string,
+    tokenType: TokenType,
+    isDigit: (codePoint: number) => boolean,
+    isDigitOrUnderscore: (codePoint: number) => boolean,
+  ) =>
   (ctx: TokenizeContext): Token => {
     const prefixCodePoint = pop(ctx)
 
@@ -286,7 +285,8 @@ const createBaseNumberHandler = (
     return mkToken(ctx, 'identifier-string', `Invalid ${type} number`)
   }
 
-const baseNumberHandlers: Array<((ctx: TokenizeContext) => Token) | undefined> = Array(256).fill(undefined)
+const baseNumberHandlers: Array<((ctx: TokenizeContext) => Token) | undefined> =
+  Array(256).fill(undefined)
 baseNumberHandlers[0x62 /* b */] = createBaseNumberHandler(
   'binary',
   'number-binary',
@@ -324,10 +324,7 @@ const handleNumberCharacter = (ctx: TokenizeContext): Token => {
           "Invalid decimal number, the part after the decimal point mustn't start on an underscore",
         )
       } else {
-        pushError(
-          ctx,
-          'Invalid decimal number, a decimal point must be followed by a digit',
-        )
+        pushError(ctx, 'Invalid decimal number, a decimal point must be followed by a digit')
       }
     }
 
@@ -456,8 +453,7 @@ characterHandlers[0x7d] = createSingleCharacterToken('close-brace') // }
 characterHandlers[0x85] = handleNewlineCharacter // Next Line
 characterHandlers[0xa0] = handleWhitespaceCharacter // No-Break Space
 
-export interface TokenizeOptions extends CreateContextOptions {
-}
+export interface TokenizeOptions extends CreateContextOptions {}
 
 export function* tokenize(text: string, options: TokenizeOptions = {}): Generator<Token, void> {
   const ctx = createContext(text, options)

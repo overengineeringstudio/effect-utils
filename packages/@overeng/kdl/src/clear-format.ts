@@ -1,10 +1,10 @@
-import { InvalidKdlError } from './parser/internal-error.ts'
 import { Document } from './model/document.ts'
 import { Entry } from './model/entry.ts'
 import { Identifier } from './model/identifier.ts'
 import { Node } from './model/node.ts'
 import { Tag } from './model/tag.ts'
 import { Value } from './model/value.ts'
+import { InvalidKdlError } from './parser/internal-error.ts'
 
 const clearFormatValue = (value: Value): void => {
   value.representation = undefined
@@ -64,7 +64,7 @@ const clearFormatNode = (node: Node): void => {
   node.entries = [
     ...args,
     ...Array.from(properties.keys())
-      .sort()
+      .toSorted()
       .map((key) => properties.get(key)!),
   ]
 

@@ -26,9 +26,7 @@ export class Document {
   }
 
   clone(options?: { shallow?: boolean }): Document {
-    const clone = new Document(
-      options?.shallow ? [] : this.nodes.map((node) => node.clone()),
-    )
+    const clone = new Document(options?.shallow ? [] : this.nodes.map((node) => node.clone()))
     clone.trailing = this.trailing
     return clone
   }
