@@ -105,13 +105,7 @@ let
         fi
 
         # Verify all configured members have symlinks in repos/
-        if [ -f ./megarepo.json ]; then
-          members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
-        elif [ -f ./megarepo.kdl ]; then
-          members=$(${pkgs.gnused}/bin/sed -n '/^members {/,/^}/{/^[[:space:]]*[^ {}]/{ s/^[[:space:]]*"\([^"]*\)".*/\1/; t print; s/^[[:space:]]*\([^ ]*\).*/\1/; :print p; }}' ./megarepo.kdl 2>/dev/null) || exit 1
-        else
-          exit 1
-        fi
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name' 2>/dev/null) || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             exit 1
@@ -133,13 +127,7 @@ let
 
         # Check for missing member symlinks
         missing=""
-        if [ -f ./megarepo.json ]; then
-          members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
-        elif [ -f ./megarepo.kdl ]; then
-          members=$(${pkgs.gnused}/bin/sed -n '/^members {/,/^}/{/^[[:space:]]*[^ {}]/{ s/^[[:space:]]*"\([^"]*\)".*/\1/; t print; s/^[[:space:]]*\([^ ]*\).*/\1/; :print p; }}' ./megarepo.kdl 2>/dev/null) || exit 1
-        else
-          exit 1
-        fi
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name' 2>/dev/null) || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             missing="$missing $member"
