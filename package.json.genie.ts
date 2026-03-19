@@ -10,6 +10,7 @@ import effectRpcTanstackPkg from './packages/@overeng/effect-rpc-tanstack/packag
 import effectSchemaFormAriaPkg from './packages/@overeng/effect-schema-form-aria/package.json.genie.ts'
 import effectSchemaFormPkg from './packages/@overeng/effect-schema-form/package.json.genie.ts'
 import geniePkg from './packages/@overeng/genie/package.json.genie.ts'
+import kdlPkg from './packages/@overeng/kdl/package.json.genie.ts'
 import megarepoPkg from './packages/@overeng/megarepo/package.json.genie.ts'
 import notionCliPkg from './packages/@overeng/notion-cli/package.json.genie.ts'
 import notionEffectClientPkg from './packages/@overeng/notion-effect-client/package.json.genie.ts'
@@ -33,6 +34,7 @@ export const rootWorkspacePackages = [
   effectSchemaFormAriaPkg,
   effectSchemaFormPkg,
   geniePkg,
+  kdlPkg,
   megarepoPkg,
   notionCliPkg,
   notionEffectClientPkg,

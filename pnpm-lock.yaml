@@ -468,6 +468,27 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/@overeng/kdl:
+    devDependencies:
+      '@effect/vitest':
+        specifier: 0.27.0
+        version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+      '@overeng/utils-dev':
+        specifier: workspace:*
+        version: link:../utils-dev
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      effect:
+        specifier: 3.19.19
+        version: 3.19.19
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/@overeng/megarepo:
     dependencies:
       '@effect-atom/atom':
@@ -512,6 +533,9 @@ importers:
       '@overeng/effect-path':
         specifier: workspace:*
         version: link:../effect-path
+      '@overeng/kdl':
+        specifier: workspace:*
+        version: link:../kdl
       '@overeng/tui-react':
         specifier: workspace:*
         version: file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)

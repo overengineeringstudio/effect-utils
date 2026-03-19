@@ -13,6 +13,7 @@ export const internalPackages = [
   'effect-schema-form',
   'effect-schema-form-aria',
   'genie',
+  'kdl',
   'megarepo',
   'notion-cli',
   'notion-effect-client',

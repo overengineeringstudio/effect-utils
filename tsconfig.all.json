@@ -37,6 +37,9 @@
       "path": "./packages/@overeng/genie"
     },
     {
+      "path": "./packages/@overeng/kdl"
+    },
+    {
       "path": "./packages/@overeng/megarepo"
     },
     {

@@ -13,9 +13,6 @@
   },
   "$genie": {
     "source": "package.json.genie.ts",
-    "warning": "DO NOT EDIT - changes will be overwritten",
-    "workspaceClosureDirs": [
-      "context/effect/socket"
-    ]
+    "warning": "DO NOT EDIT - changes will be overwritten"
   }
 }
