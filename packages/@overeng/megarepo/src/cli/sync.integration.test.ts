@@ -2801,10 +2801,10 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* addCommit({ repoPath: storeWorktreePath, message: 'Add feature' })
 
-        // Run mr fetch --apply with custom store path - should detect and warn about the ref mismatch
+        // Run mr fetch --apply with tracking mode — should detect and warn about the ref mismatch
         const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
-          args: ['--output', 'json'],
+          args: ['--output', 'json', '--worktree-mode', 'tracking'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -2920,10 +2920,10 @@ describe('sync worktree ref mismatch detection', () => {
         const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
         expect(currentBranch).toBe('') // Empty means detached HEAD
 
-        // Run mr fetch --apply - should detect and warn about the detached HEAD mismatch
+        // Run mr fetch --apply with tracking mode — should detect and warn about the detached HEAD mismatch
         const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
-          args: ['--output', 'json'],
+          args: ['--output', 'json', '--worktree-mode', 'tracking'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },

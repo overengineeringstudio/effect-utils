@@ -427,8 +427,9 @@ export const syncMember = <R = never>({
       }
 
       // Apply mode: check for ref mismatch on the current symlink target (if it's a branch worktree).
-      // Content-aware selection happens later, but ref mismatch detection should still warn the user.
-      if (currentLinkNormalized !== undefined) {
+      // In commit mode, skip this — commit worktrees bypass branch state entirely.
+      // In tracking mode, warn the user but the ff-merge block below will handle the fallback.
+      if (commitMode !== true && currentLinkNormalized !== undefined) {
         const extracted = extractRefFromSymlinkPath(currentLinkNormalized)
         if (extracted?.type === 'branch') {
           const refMismatch = yield* detectRefMismatch({
@@ -938,12 +939,19 @@ export const syncMember = <R = never>({
       }
     }
 
+    // Recompute worktree path from the final ref/type (may have changed due to commit fallback)
+    const finalWorktreePath = store.getWorktreePath({
+      source,
+      ref: worktreeRef,
+      refType: worktreeRefType,
+    })
+
     // Create symlink from workspace to worktree
     const existingLink = yield* fs
       .readLink(memberPathNormalized)
       .pipe(Effect.catchAll(() => Effect.succeed(null)))
     if (existingLink !== null) {
-      if (existingLink.replace(/\/$/, '') === worktreePath.replace(/\/$/, '')) {
+      if (existingLink.replace(/\/$/, '') === finalWorktreePath.replace(/\/$/, '')) {
         return {
           name,
           status: remoteUpdated === true ? 'updated' : 'already_synced',
@@ -970,7 +978,7 @@ export const syncMember = <R = never>({
 
     if (dryRun === false) {
       yield* createSymlink({
-        target: worktreePath,
+        target: finalWorktreePath,
         link: memberPathNormalized,
       })
     }

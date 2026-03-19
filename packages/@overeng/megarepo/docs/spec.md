@@ -474,14 +474,17 @@ Strict mode that guarantees exact reproducibility from the lock file:
 - **Clones and fetches if needed** - lock apply will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
 - **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
-**Content-aware worktree selection:** In apply mode, megarepo uses content-aware worktree selection to guarantee the worktree is at the exact locked commit without mutating existing worktrees:
+**Worktree modes** (`--worktree-mode`):
 
-1. If a branch worktree (`refs/heads/<branch>/`) exists and its HEAD matches the locked commit, it is reused — preserving branch tracking for local development
-2. Otherwise, a commit-based worktree (`refs/commits/<sha>/`) is created or reused — guaranteeing the exact locked content
+| Mode       | Worktree path          | Behavior                                                                                                      |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `commit`   | `refs/commits/<sha>/`  | Deterministic, isolated — exact locked commit guaranteed                                                      |
+| `tracking` | `refs/heads/<branch>/` | Branch worktrees for dev convenience; falls back to commit worktree if branch has advanced past locked commit |
+| `auto`     | (depends)              | `commit` when `CI=true`, `tracking` otherwise                                                                 |
 
-This approach never attempts to move worktrees (no `git merge --ff-only` or `git checkout`). It observes their state and picks the right one. After `mr fetch --apply`, the branch worktree is typically at the locked commit (fetch just updated it), so it gets reused with branch tracking. In CI (fresh store), commit worktrees are created since no branch worktrees exist.
+In `tracking` mode, if the branch worktree is behind the locked commit, it is fast-forwarded. If the branch has advanced past the locked commit (fast-forward not possible), `mr apply` falls back to a commit worktree to ensure correct content without detaching the branch worktree.
 
-**CI usage:** In a fresh CI environment, `mr apply` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators and Nix lock sync. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
+**CI usage:** In CI environments (`CI=true`), `mr apply` defaults to `commit` mode, creating `refs/commits/<sha>/` worktrees for deterministic builds. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
 
