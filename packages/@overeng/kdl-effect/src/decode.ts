@@ -1,3 +1,4 @@
+import type { SchemaAST } from 'effect'
 import type { Document, Node } from '@overeng/kdl'
 
 /** Convert a KDL Document to a plain JS object for Schema decoding */
@@ -72,4 +73,70 @@ const nodeToValue = (node: Node): unknown => {
     obj['_args'] = args
   }
   return obj
+}
+
+/**
+ * Normalize a plain object for Schema decoding.
+ * Walks the Schema AST to find array fields, and wraps scalar values
+ * into single-element arrays where the Schema expects an array.
+ */
+export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown => {
+  switch (ast._tag) {
+    case 'TupleType': {
+      if (Array.isArray(obj)) return obj
+      // Schema expects an array but we got a scalar — wrap it
+      return [obj]
+    }
+
+    case 'TypeLiteral': {
+      if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return obj
+      const record = obj as Record<string, unknown>
+      const result: Record<string, unknown> = { ...record }
+      for (const prop of ast.propertySignatures) {
+        const key = prop.name
+        if (typeof key === 'string' && key in result) {
+          result[key] = normalizeForSchema(result[key], prop.type)
+        }
+      }
+      return result
+    }
+
+    case 'Transformation': {
+      return normalizeForSchema(obj, ast.from)
+    }
+
+    case 'Union': {
+      // Try to find a matching member. For normalization purposes,
+      // we pick the first member that is a TypeLiteral or TupleType
+      // and apply normalization based on it.
+      for (const member of ast.types) {
+        if (member._tag === 'TupleType' || member._tag === 'TypeLiteral' || member._tag === 'Transformation') {
+          return normalizeForSchema(obj, member)
+        }
+      }
+      return obj
+    }
+
+    case 'Suspend': {
+      return normalizeForSchema(obj, ast.f())
+    }
+
+    case 'Refinement': {
+      return normalizeForSchema(obj, ast.from)
+    }
+
+    case 'Declaration': {
+      // Declarations like Schema.Array use typeParameters
+      if (ast.typeParameters.length > 0) {
+        // Check if this is array-like by seeing if the input should be an array
+        if (!Array.isArray(obj)) {
+          return [obj]
+        }
+      }
+      return obj
+    }
+
+    default:
+      return obj
+  }
 }
