@@ -55,584 +55,608 @@ type Story = StoryObj<StoryArgs>
 // Stories
 // =============================================================================
 
+const MixedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.exampleGcResults,
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const Mixed: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.exampleGcResults,
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: MixedRender,
+}
+
+const OnlyCurrentMegarepoRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.exampleGcResults,
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      warning: { type: 'only_current_megarepo' as const },
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const OnlyCurrentMegarepo: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.exampleGcResults,
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        warning: { type: 'only_current_megarepo' as const },
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: OnlyCurrentMegarepoRender,
+}
+
+const NotInMegarepoRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'main',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+      ],
+      dryRun: true,
+      force: args.force,
+      all: args.all,
+      warning: { type: 'not_in_megarepo' as const },
+      showForceHint: !args.force,
+    }),
+    [args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const NotInMegarepo: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'main',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-        ],
-        dryRun: true,
-        force: args.force,
-        all: args.all,
-        warning: { type: 'not_in_megarepo' as const },
-        showForceHint: !args.force,
-      }),
-      [args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: NotInMegarepoRender,
+}
+
+const CustomWarningRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.exampleGcResults,
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      warning: { type: 'custom' as const, message: 'Custom warning message for edge case' },
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const CustomWarning: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.exampleGcResults,
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        warning: { type: 'custom' as const, message: 'Custom warning message for edge case' },
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: CustomWarningRender,
+}
+
+const EmptyRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [] as fixtures.StoreGcResult[],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const Empty: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [] as fixtures.StoreGcResult[],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(stateConfig)}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: EmptyRender,
+}
+
+const AllSkippedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'main',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'dev',
+          path: '/store/...',
+          status: 'skipped_dirty' as const,
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'main',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+      ],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const AllSkipped: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'main',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'dev',
-            path: '/store/...',
-            status: 'skipped_dirty' as const,
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'main',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-        ],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: AllSkippedRender,
+}
+
+const AllRemovedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old-1',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old-2',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old-3',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'experiment',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+      ],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const AllRemoved: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-1',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-2',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-3',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'experiment',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-        ],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: AllRemovedRender,
+}
+
+const AllErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'main',
+          path: '/store/...',
+          status: 'error' as const,
+          message: 'Permission denied',
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'dev',
+          path: '/store/...',
+          status: 'error' as const,
+          message: 'Directory not found',
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'main',
+          path: '/store/...',
+          status: 'error' as const,
+          message: 'Lock file in use',
+        },
+      ],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const AllErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'main',
-            path: '/store/...',
-            status: 'error' as const,
-            message: 'Permission denied',
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'dev',
-            path: '/store/...',
-            status: 'error' as const,
-            message: 'Directory not found',
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'main',
-            path: '/store/...',
-            status: 'error' as const,
-            message: 'Lock file in use',
-          },
-        ],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: AllErrorsRender,
+}
+
+const ManyInUseRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'main',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'dev',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/a',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/b',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/c',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/d',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'main',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'dev',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+      ],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const ManyInUse: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'main',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'dev',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/a',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/b',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/c',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/d',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'main',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'dev',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-        ],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: ManyInUseRender,
+}
+
+const DirtyWithDetailsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feature-branch',
+          path: '/store/...',
+          status: 'skipped_dirty' as const,
+          message: '5 uncommitted change(s)',
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'wip-branch',
+          path: '/store/...',
+          status: 'skipped_dirty' as const,
+          message: 'has unpushed commits',
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'experimental',
+          path: '/store/...',
+          status: 'skipped_dirty' as const,
+          message: '12 uncommitted change(s)',
+        },
+      ],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const DirtyWithDetails: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feature-branch',
-            path: '/store/...',
-            status: 'skipped_dirty' as const,
-            message: '5 uncommitted change(s)',
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'wip-branch',
-            path: '/store/...',
-            status: 'skipped_dirty' as const,
-            message: 'has unpushed commits',
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'experimental',
-            path: '/store/...',
-            status: 'skipped_dirty' as const,
-            message: '12 uncommitted change(s)',
-          },
-        ],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: DirtyWithDetailsRender,
+}
+
+const DryRunForceModeRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'dirty-branch',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'clean-branch',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+      ],
+      dryRun: true,
+      force: args.force,
+      all: args.all,
+      showForceHint: false,
+    }),
+    [args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc --dry-run"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const DryRunForceMode: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'dirty-branch',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'clean-branch',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-        ],
-        dryRun: true,
-        force: args.force,
-        all: args.all,
-        showForceHint: false,
-      }),
-      [args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc --dry-run"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: DryRunForceModeRender,
+}
+
+const LargeCleanupRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old-1',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old-2',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/effect-ts/effect',
+          ref: 'feat/old-3',
+          path: '/store/...',
+          status: 'removed' as const,
+        },
+        {
+          repo: 'github.com/acme-org/dev-tools',
+          ref: 'wip',
+          path: '/store/...',
+          status: 'skipped_dirty' as const,
+          message: '3 uncommitted change(s)',
+        },
+        {
+          repo: 'github.com/acme-org/app-platform',
+          ref: 'main',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/acme-org/app-platform',
+          ref: 'dev',
+          path: '/store/...',
+          status: 'skipped_in_use' as const,
+        },
+        {
+          repo: 'github.com/private/repo',
+          ref: 'main',
+          path: '/store/...',
+          status: 'error' as const,
+          message: 'Permission denied',
+        },
+      ],
+      dryRun: args.dryRun,
+      force: args.force,
+      all: args.all,
+      warning: { type: 'only_current_megarepo' as const },
+      showForceHint: !args.force,
+    }),
+    [args.dryRun, args.force, args.all],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr store gc"
+      View={StoreView}
+      app={StoreApp}
+      initialState={fixtures.createGcState(
+        args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
+      )}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const LargeCleanup: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-1',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-2',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/effect-ts/effect',
-            ref: 'feat/old-3',
-            path: '/store/...',
-            status: 'removed' as const,
-          },
-          {
-            repo: 'github.com/acme-org/dev-tools',
-            ref: 'wip',
-            path: '/store/...',
-            status: 'skipped_dirty' as const,
-            message: '3 uncommitted change(s)',
-          },
-          {
-            repo: 'github.com/acme-org/app-platform',
-            ref: 'main',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/acme-org/app-platform',
-            ref: 'dev',
-            path: '/store/...',
-            status: 'skipped_in_use' as const,
-          },
-          {
-            repo: 'github.com/private/repo',
-            ref: 'main',
-            path: '/store/...',
-            status: 'error' as const,
-            message: 'Permission denied',
-          },
-        ],
-        dryRun: args.dryRun,
-        force: args.force,
-        all: args.all,
-        warning: { type: 'only_current_megarepo' as const },
-        showForceHint: !args.force,
-      }),
-      [args.dryRun, args.force, args.all],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr store gc"
-        View={StoreView}
-        app={StoreApp}
-        initialState={fixtures.createGcState(
-          args.interactive === true ? { ...stateConfig, results: [] } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createGcTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: LargeCleanupRender,
 }

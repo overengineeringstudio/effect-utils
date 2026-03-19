@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "plugins": ["import", "typescript", "unicorn", "oxc"],
+  "plugins": ["import", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": ["./packages/@overeng/oxc-config/src/mod.ts"],
   "ignorePatterns": [
     "**/node_modules/**",
@@ -76,7 +76,10 @@
     "typescript/restrict-template-expressions": "off",
     "typescript/no-duplicate-type-constituents": "off",
     "typescript/no-unsafe-unary-minus": "off",
-    "typescript/no-unnecessary-template-expression": "off"
+    "typescript/no-unnecessary-template-expression": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn"
   },
   "overrides": [
     {

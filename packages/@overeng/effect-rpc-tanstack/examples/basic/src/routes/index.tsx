@@ -10,23 +10,25 @@ import {
 import type { User } from '../rpc/api.ts'
 import { userClient } from '../rpc/client.ts'
 
+const UsersListPage = () => {
+  const encoded = Route.useLoaderData() as ExitEncoded
+  const result = makeEffectLoaderResult<readonly User[], RpcClientError.RpcClientError>(encoded)
+
+  return result.match({
+    onSuccess: (initialUsers) => <UserList initialUsers={initialUsers} />,
+    onFailure: (error) => (
+      <div>
+        <h2>Error loading users</h2>
+        <p style={{ color: 'red' }}>{String(error)}</p>
+      </div>
+    ),
+  })
+}
+
 /** Home page route showing user list */
 export const Route = createEffectRoute('/')<void, readonly User[], RpcClientError.RpcClientError>({
   loader: () => userClient.listUsers(),
-  component: () => {
-    const encoded = Route.useLoaderData() as ExitEncoded
-    const result = makeEffectLoaderResult<readonly User[], RpcClientError.RpcClientError>(encoded)
-
-    return result.match({
-      onSuccess: (initialUsers) => <UserList initialUsers={initialUsers} />,
-      onFailure: (error) => (
-        <div>
-          <h2>Error loading users</h2>
-          <p style={{ color: 'red' }}>{String(error)}</p>
-        </div>
-      ),
-    })
-  },
+  component: UsersListPage,
 })
 
 const UserList = ({ initialUsers }: { initialUsers: readonly User[] }): React.ReactElement => {

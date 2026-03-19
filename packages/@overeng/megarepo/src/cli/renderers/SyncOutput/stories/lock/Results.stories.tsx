@@ -70,200 +70,208 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** All members recorded into megarepo.lock successfully */
-export const AllRecorded: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.lockAllRecorded,
-        options: buildSyncOptions({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        ...nestedFields({ all: args.all, results: fixtures.lockAllRecorded }),
+const AllRecordedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.lockAllRecorded,
+      options: buildSyncOptions({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.verbose, args.all, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={sharedFixtures.createCommandState({
-          mode: 'lock',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: sharedFixtures.createCommandTimeline({
-                mode: 'lock',
-                finalState: stateConfig,
-              }),
-            }
-          : {})}
-      />
-    )
-  },
+      ...nestedFields({ all: args.all, results: fixtures.lockAllRecorded }),
+    }),
+    [args.dryRun, args.verbose, args.all, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={sharedFixtures.createCommandState({
+        mode: 'lock',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: sharedFixtures.createCommandTimeline({
+              mode: 'lock',
+              finalState: stateConfig,
+            }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const AllRecorded: Story = {
+  render: AllRecordedRender,
 }
 
 /** Members recorded with commit changes */
-export const WithUpdates: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.lockWithUpdates,
-        options: buildSyncOptions({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        ...nestedFields({ all: args.all, results: fixtures.lockWithUpdates }),
+const WithUpdatesRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.lockWithUpdates,
+      options: buildSyncOptions({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.verbose, args.all, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={sharedFixtures.createCommandState({
-          mode: 'lock',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: sharedFixtures.createCommandTimeline({
-                mode: 'lock',
-                finalState: stateConfig,
-              }),
-            }
-          : {})}
-      />
-    )
-  },
+      ...nestedFields({ all: args.all, results: fixtures.lockWithUpdates }),
+    }),
+    [args.dryRun, args.verbose, args.all, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={sharedFixtures.createCommandState({
+        mode: 'lock',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: sharedFixtures.createCommandTimeline({
+              mode: 'lock',
+              finalState: stateConfig,
+            }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithUpdates: Story = {
+  render: WithUpdatesRender,
 }
 
 /** Some members skipped (dirty worktree, pinned) */
-export const WithSkipped: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(() => {
-      const results = sharedFixtures.applyForceFlag({
-        results: fixtures.lockWithSkipped,
+const WithSkippedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(() => {
+    const results = sharedFixtures.applyForceFlag({
+      results: fixtures.lockWithSkipped,
+      force: args.force,
+    })
+    return {
+      results,
+      options: buildSyncOptions({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
         force: args.force,
-      })
-      return {
-        results,
-        options: buildSyncOptions({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        ...nestedFields({ all: args.all, results }),
-      }
-    }, [args.dryRun, args.verbose, args.all, args.force])
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={sharedFixtures.createCommandState({
-          mode: 'lock',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: sharedFixtures.createCommandTimeline({
-                mode: 'lock',
-                finalState: stateConfig,
-              }),
-            }
-          : {})}
-      />
-    )
-  },
+      }),
+      ...nestedFields({ all: args.all, results }),
+    }
+  }, [args.dryRun, args.verbose, args.all, args.force])
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={sharedFixtures.createCommandState({
+        mode: 'lock',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: sharedFixtures.createCommandTimeline({
+              mode: 'lock',
+              finalState: stateConfig,
+            }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithSkipped: Story = {
+  render: WithSkippedRender,
 }
 
 /** Pinned members — toggle force flag to see pinned vs skipped */
+const WithPinnedMembersRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(() => {
+    const results = sharedFixtures.applyForceFlag({
+      results: fixtures.lockWithPinned,
+      force: args.force,
+    })
+    return {
+      results,
+      options: buildSyncOptions({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      }),
+      ...nestedFields({ all: args.all, results }),
+    }
+  }, [args.dryRun, args.verbose, args.all, args.force])
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={sharedFixtures.createCommandState({
+        mode: 'lock',
+        overrides: stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'lock',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+    />
+  )
+}
+
 export const WithPinnedMembers: Story = {
   args: { force: false },
-  render: (args) => {
-    const stateConfig = useMemo(() => {
-      const results = sharedFixtures.applyForceFlag({
-        results: fixtures.lockWithPinned,
-        force: args.force,
-      })
-      return {
-        results,
-        options: buildSyncOptions({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        ...nestedFields({ all: args.all, results }),
-      }
-    }, [args.dryRun, args.verbose, args.all, args.force])
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={sharedFixtures.createCommandState({
-          mode: 'lock',
-          overrides: stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'lock',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-      />
-    )
-  },
+  render: WithPinnedMembersRender,
 }

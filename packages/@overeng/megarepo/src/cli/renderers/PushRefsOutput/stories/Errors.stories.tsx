@@ -43,22 +43,24 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** Error: Not running in a megarepo workspace */
+const ErrorNotInMegarepoRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createErrorNotInMegarepo(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PushRefsView}
+      app={PushRefsApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const ErrorNotInMegarepo: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createErrorNotInMegarepo(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PushRefsView}
-        app={PushRefsApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: ErrorNotInMegarepoRender,
 }

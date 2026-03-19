@@ -43,92 +43,100 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** All nested megarepo refs already aligned */
+const AlreadyAlignedRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createAligned(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PushRefsView}
+      app={PushRefsApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const AlreadyAligned: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createAligned(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PushRefsView}
-        app={PushRefsApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: AlreadyAlignedRender,
 }
 
 /** Single ref update in one nested megarepo */
+const SingleUpdateRender = (args: StoryArgs) => {
+  const finalState = useMemo(
+    () => (args.dryRun === true ? fixtures.createDryRunSingle() : fixtures.createSingleUpdate()),
+    [args.dryRun],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PushRefsView}
+      app={PushRefsApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const SingleUpdate: Story = {
-  render: (args) => {
-    const finalState = useMemo(
-      () => (args.dryRun === true ? fixtures.createDryRunSingle() : fixtures.createSingleUpdate()),
-      [args.dryRun],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PushRefsView}
-        app={PushRefsApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: SingleUpdateRender,
 }
 
 /** Multiple ref updates across several nested megarepos */
+const MultipleUpdatesRender = (args: StoryArgs) => {
+  const finalState = useMemo(
+    () =>
+      args.dryRun === true ? fixtures.createDryRunMultiple() : fixtures.createMultipleUpdates(),
+    [args.dryRun],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PushRefsView}
+      app={PushRefsApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const MultipleUpdates: Story = {
-  render: (args) => {
-    const finalState = useMemo(
-      () =>
-        args.dryRun === true ? fixtures.createDryRunMultiple() : fixtures.createMultipleUpdates(),
-      [args.dryRun],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PushRefsView}
-        app={PushRefsApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: MultipleUpdatesRender,
 }
 
 /** Update with genie file warning */
+const WithGenieWarningRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createWithGenieWarning(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PushRefsView}
+      app={PushRefsApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const WithGenieWarning: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createWithGenieWarning(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config push-refs${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PushRefsView}
-        app={PushRefsApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: WithGenieWarningRender,
 }

@@ -80,36 +80,64 @@ const sequentialMembers = [
   },
 ]
 
+const RunningVerboseParallelRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'npm version',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: parallelMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec npm version"
+      View={ExecView}
+      app={ExecApp}
+      initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const RunningVerboseParallel: Story = {
   args: {
     verbose: true,
     mode: 'parallel',
   },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'npm version',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: parallelMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec npm version"
-        View={ExecView}
-        app={ExecApp}
-        initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: RunningVerboseParallelRender,
+}
+
+const RunningVerboseSequentialRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'git status',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: sequentialMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec git status"
+      View={ExecView}
+      app={ExecApp}
+      initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
 }
 
 export const RunningVerboseSequential: Story = {
@@ -117,29 +145,5 @@ export const RunningVerboseSequential: Story = {
     verbose: true,
     mode: 'sequential',
   },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'git status',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: sequentialMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec git status"
-        View={ExecView}
-        app={ExecApp}
-        initialState={fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: RunningVerboseSequentialRender,
 }

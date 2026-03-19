@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
 
+import type { TextFieldProps } from '../components/TextField.tsx'
 import { TextField } from '../components/TextField.tsx'
 
 export default {
@@ -17,6 +18,11 @@ export default {
 
 type Story = StoryObj<typeof TextField>
 
+const DefaultRender = (args: TextFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <TextField {...args} value={value} onChange={setValue} />
+}
+
 /** Default text input */
 export const Default: Story = {
   args: {
@@ -25,10 +31,12 @@ export const Default: Story = {
     value: '',
     placeholder: 'Enter your name',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <TextField {...args} value={value} onChange={setValue} />
-  },
+  render: DefaultRender,
+}
+
+const WithValueRender = (args: TextFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <TextField {...args} value={value} onChange={setValue} />
 }
 
 /** Text field with a pre-filled value */
@@ -38,10 +46,12 @@ export const WithValue: Story = {
     label: 'Name',
     value: 'John Doe',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <TextField {...args} value={value} onChange={setValue} />
-  },
+  render: WithValueRender,
+}
+
+const WithHintRender = (args: TextFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <TextField {...args} value={value} onChange={setValue} />
 }
 
 /** Text field with hint/description text */
@@ -54,10 +64,12 @@ export const WithHint: Story = {
     type: 'email',
     placeholder: 'you@example.com',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <TextField {...args} value={value} onChange={setValue} />
-  },
+  render: WithHintRender,
+}
+
+const PasswordRender = (args: TextFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <TextField {...args} value={value} onChange={setValue} />
 }
 
 /** Password input type */
@@ -70,10 +82,12 @@ export const Password: Story = {
     placeholder: '••••••••',
     hint: 'Must be at least 8 characters',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <TextField {...args} value={value} onChange={setValue} />
-  },
+  render: PasswordRender,
+}
+
+const URLRender = (args: TextFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <TextField {...args} value={value} onChange={setValue} />
 }
 
 /** URL input type */
@@ -85,10 +99,12 @@ export const URL: Story = {
     type: 'url',
     placeholder: 'https://example.com',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <TextField {...args} value={value} onChange={setValue} />
-  },
+  render: URLRender,
+}
+
+const DisabledRender = (args: TextFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <TextField {...args} value={value} onChange={setValue} />
 }
 
 /** Disabled state */
@@ -99,8 +115,5 @@ export const Disabled: Story = {
     value: 'Cannot edit this value',
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <TextField {...args} value={value} onChange={setValue} />
-  },
+  render: DisabledRender,
 }

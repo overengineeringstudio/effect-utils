@@ -117,17 +117,20 @@ export const EffectProvider = <TEnv, TErr>({
     setRetryCount((c) => c + 1)
   }, [])
 
+  const contextValue = React.useMemo<EffectContextValue | null>(
+    () =>
+      state._tag === 'ready'
+        ? { runtime: state.runtime as Runtime.Runtime<unknown>, onError }
+        : null,
+    [state, onError],
+  )
+
   if (state._tag === 'loading') {
     return <Loading />
   }
 
   if (state._tag === 'error') {
     return <ErrorComponent cause={state.cause} onRetry={handleRetry} />
-  }
-
-  const contextValue: EffectContextValue = {
-    runtime: state.runtime as Runtime.Runtime<unknown>,
-    onError,
   }
 
   return <EffectContext.Provider value={contextValue}>{children}</EffectContext.Provider>

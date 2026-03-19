@@ -143,194 +143,204 @@ const verboseMembers = [
 ]
 
 /** All commands completed successfully */
+const CompleteSuccessRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'npm version',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: successMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec npm version"
+      View={ExecView}
+      app={ExecApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
+          : withOverrides({
+              state: fixtures.completeSuccessState,
+              verbose: args.verbose,
+              mode: args.mode,
+              member: args.member,
+            })
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const CompleteSuccess: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'npm version',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: successMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec npm version"
-        View={ExecView}
-        app={ExecApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-            : withOverrides({
-                state: fixtures.completeSuccessState,
-                verbose: args.verbose,
-                mode: args.mode,
-                member: args.member,
-              })
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: CompleteSuccessRender,
 }
 
 /** Mixed results - some success, some errors */
+const CompleteMixedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'npm version',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: mixedMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec npm version"
+      View={ExecView}
+      app={ExecApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
+          : withOverrides({
+              state: fixtures.completeMixedState,
+              verbose: args.verbose,
+              mode: args.mode,
+              member: args.member,
+            })
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const CompleteMixed: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'npm version',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: mixedMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec npm version"
-        View={ExecView}
-        app={ExecApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-            : withOverrides({
-                state: fixtures.completeMixedState,
-                verbose: args.verbose,
-                mode: args.mode,
-                member: args.member,
-              })
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: CompleteMixedRender,
 }
 
 /** Some members skipped */
+const CompleteWithSkippedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'npm install',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: skippedMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec npm install"
+      View={ExecView}
+      app={ExecApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
+          : withOverrides({
+              state: fixtures.completeWithSkippedState,
+              verbose: args.verbose,
+              mode: args.mode,
+              member: args.member,
+            })
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const CompleteWithSkipped: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'npm install',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: skippedMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec npm install"
-        View={ExecView}
-        app={ExecApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-            : withOverrides({
-                state: fixtures.completeWithSkippedState,
-                verbose: args.verbose,
-                mode: args.mode,
-                member: args.member,
-              })
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: CompleteWithSkippedRender,
 }
 
 /** All commands failed */
+const CompleteAllErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'foo',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: allErrorMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec foo"
+      View={ExecView}
+      app={ExecApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
+          : withOverrides({
+              state: fixtures.completeAllErrorsState,
+              verbose: args.verbose,
+              mode: args.mode,
+              member: args.member,
+            })
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const CompleteAllErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'foo',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: allErrorMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec foo"
-        View={ExecView}
-        app={ExecApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-            : withOverrides({
-                state: fixtures.completeAllErrorsState,
-                verbose: args.verbose,
-                mode: args.mode,
-                member: args.member,
-              })
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: CompleteAllErrorsRender,
 }
 
 /** Verbose output showing all details */
+const CompleteVerboseRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      command: 'npm version',
+      mode: args.mode,
+      verbose: args.verbose,
+      members: filterMembers({ members: verboseMembers, memberFilter: args.member }),
+    }),
+    [args.mode, args.verbose, args.member],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command="mr exec npm version"
+      View={ExecView}
+      app={ExecApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
+          : withOverrides({
+              state: fixtures.completeVerboseState,
+              verbose: args.verbose,
+              mode: args.mode,
+              member: args.member,
+            })
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const CompleteVerbose: Story = {
   args: {
     verbose: true,
   },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        command: 'npm version',
-        mode: args.mode,
-        verbose: args.verbose,
-        members: filterMembers({ members: verboseMembers, memberFilter: args.member }),
-      }),
-      [args.mode, args.verbose, args.member],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command="mr exec npm version"
-        View={ExecView}
-        app={ExecApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createRunningState({ verbose: args.verbose, mode: args.mode })
-            : withOverrides({
-                state: fixtures.completeVerboseState,
-                verbose: args.verbose,
-                mode: args.mode,
-                member: args.member,
-              })
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: CompleteVerboseRender,
 }

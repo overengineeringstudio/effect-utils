@@ -36,7 +36,7 @@ export const baseOxlintIgnorePatterns = [
 ] as const
 
 /** Standard plugins enabled across all repos */
-export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const
+export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc', 'react'] as const
 
 /** Standard category severity levels */
 export const baseOxlintCategories = {
@@ -132,6 +132,19 @@ export const baseOxlintRules = {
 
   // TODO: Re-enable - detects unnecessary template expressions (1 occurrence)
   'typescript/no-unnecessary-template-expression': 'off',
+
+  // =============================================================================
+  // React rules
+  // =============================================================================
+
+  // Not needed with react-jsx transform (React 17+)
+  'react/react-in-jsx-scope': 'off',
+
+  // Enforce rules of hooks — promote from pedantic (off) to error
+  'react/rules-of-hooks': 'error',
+
+  // Warn on missing/extra hook dependencies
+  'react/exhaustive-deps': 'warn',
 } as const satisfies OxlintConfigArgs['rules']
 
 /** Rules to disable for generated files */

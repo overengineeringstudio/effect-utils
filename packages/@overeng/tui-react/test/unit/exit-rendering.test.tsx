@@ -14,14 +14,7 @@ import { Effect, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import {
-  createTuiApp,
-  useTuiAtomValue,
-  createRoot,
-  Box,
-  Text,
-  testModeLayer,
-} from '../../src/mod.tsx'
+import { createTuiApp, createRoot, Box, Text, testModeLayer } from '../../src/mod.tsx'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
 import { createVirtualTerminal } from '../helpers/virtual-terminal.ts'
 
@@ -96,29 +89,6 @@ const AppNoInterrupt = createTuiApp({
   initial: { value: 'initial', interrupted: false },
   reducer: testReducerNoInterrupt,
 })
-
-// =============================================================================
-// Test View
-// =============================================================================
-
-const _TestViewWithInterrupt = () => {
-  const state = useTuiAtomValue(AppWithInterrupt.stateAtom)
-  return (
-    <Box flexDirection="column">
-      <Text>Value: {state.value}</Text>
-      {state.interrupted && <Text color="yellow">INTERRUPTED</Text>}
-    </Box>
-  )
-}
-
-const _TestViewNoInterrupt = () => {
-  const state = useTuiAtomValue(AppNoInterrupt.stateAtom)
-  return (
-    <Box flexDirection="column">
-      <Text>Value: {state.value}</Text>
-    </Box>
-  )
-}
 
 // =============================================================================
 // Exit Mode Tests (using createRoot directly)

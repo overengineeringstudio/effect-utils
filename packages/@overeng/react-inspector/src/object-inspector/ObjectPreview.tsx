@@ -36,6 +36,7 @@ export const ObjectPreview: FC<any> = ({ data }) => {
     const maxProperties = styles.arrayMaxProperties
     const previewArray = object
       .slice(0, maxProperties)
+      // eslint-disable-next-line react/no-array-index-key -- array elements are positional
       .map((element, index) => <ObjectValue key={index} object={element} />)
     if (object.length > maxProperties) {
       previewArray.push(<span key="ellipsis">…</span>)

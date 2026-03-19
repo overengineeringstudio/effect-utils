@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
 
+import type { LiteralFieldProps } from '../components/LiteralField.tsx'
 import { LiteralField } from '../components/LiteralField.tsx'
 
 export default {
@@ -11,6 +12,11 @@ export default {
 
 type Story = StoryObj<typeof LiteralField>
 
+const SegmentedThreeOptionsRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
+}
+
 /** Segmented control with 3 options */
 export const SegmentedThreeOptions: Story = {
   args: {
@@ -19,10 +25,12 @@ export const SegmentedThreeOptions: Story = {
     value: 'medium',
     literals: ['low', 'medium', 'high'],
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: SegmentedThreeOptionsRender,
+}
+
+const SegmentedFiveOptionsRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Segmented control with 5 options (max before dropdown) */
@@ -34,10 +42,12 @@ export const SegmentedFiveOptions: Story = {
     literals: ['xs', 'small', 'medium', 'large', 'xl'],
     hint: 'Maximum 5 options renders as segmented control',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: SegmentedFiveOptionsRender,
+}
+
+const DropdownRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Dropdown with more than 5 options */
@@ -49,10 +59,12 @@ export const Dropdown: Story = {
     literals: ['us', 'uk', 'de', 'fr', 'es', 'it', 'nl', 'be'],
     hint: 'More than 5 options renders as dropdown',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: DropdownRender,
+}
+
+const OptionalSegmentedRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Optional segmented control with "—" option */
@@ -65,10 +77,12 @@ export const OptionalSegmented: Story = {
     isOptional: true,
     hint: 'Optional field shows "—" option',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: OptionalSegmentedRender,
+}
+
+const OptionalDropdownRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Optional dropdown with "Select" option */
@@ -81,10 +95,12 @@ export const OptionalDropdown: Story = {
     isOptional: true,
     hint: 'Optional dropdown shows "— Select —" option',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: OptionalDropdownRender,
+}
+
+const NoLabelRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Without label */
@@ -94,10 +110,12 @@ export const NoLabel: Story = {
     value: 'active',
     literals: ['active', 'inactive'],
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: NoLabelRender,
+}
+
+const DisabledRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Disabled state */
@@ -109,10 +127,12 @@ export const Disabled: Story = {
     literals: ['admin', 'user', 'guest'],
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: DisabledRender,
+}
+
+const DisabledDropdownRender = (args: LiteralFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <LiteralField {...args} value={value} onChange={setValue} />
 }
 
 /** Disabled dropdown */
@@ -124,8 +144,5 @@ export const DisabledDropdown: Story = {
     literals: ['north-america', 'south-america', 'europe', 'asia', 'africa', 'oceania'],
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <LiteralField {...args} value={value} onChange={setValue} />
-  },
+  render: DisabledDropdownRender,
 }

@@ -43,150 +43,164 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** Pin member to a specific ref (tag/branch) */
+const PinWithRefRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createPinSuccessWithRef(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const PinWithRef: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createPinSuccessWithRef(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: PinWithRefRender,
 }
 
 /** Pin member to current commit */
+const PinCurrentCommitRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createPinSuccessWithCommit(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const PinCurrentCommit: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createPinSuccessWithCommit(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: PinCurrentCommitRender,
 }
 
 /** Unpin member */
+const UnpinRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createUnpinSuccess(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const Unpin: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createUnpinSuccess(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: UnpinRender,
 }
 
 /** Member already pinned */
+const AlreadyPinnedRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createAlreadyPinned(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const AlreadyPinned: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createAlreadyPinned(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: AlreadyPinnedRender,
 }
 
 /** Member already unpinned */
+const AlreadyUnpinnedRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createAlreadyUnpinned(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const AlreadyUnpinned: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createAlreadyUnpinned(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: AlreadyUnpinnedRender,
 }
 
 /** Dry run with full details - ref change, symlink change, worktree creation */
+const DryRunFullRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createDryRunFull(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const DryRunFull: Story = {
   args: { dryRun: true },
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createDryRunFull(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: DryRunFullRender,
 }
 
 /** Dry run with minimal changes - just pinned flag */
+const DryRunSimpleRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createDryRunSimple(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const DryRunSimple: Story = {
   args: { dryRun: true },
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createDryRunSimple(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: DryRunSimpleRender,
 }

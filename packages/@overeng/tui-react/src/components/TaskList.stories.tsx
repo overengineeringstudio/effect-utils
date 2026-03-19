@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 
 import { createStaticApp } from '../storybook/static-app.ts'
 import { TuiStoryPreview } from '../storybook/TuiStoryPreview.tsx'
@@ -133,8 +133,10 @@ export const LongList: Story = {
 
 type LogEntry = { id: string; message: string; type: 'info' | 'warn' | 'error' }
 
+const syncSimulationRepos = ['effect', 'effect-utils', 'livestore', 'mr-all-blue', 'dotfiles']
+
 const SyncSimulationDemo = () => {
-  const repos = ['effect', 'effect-utils', 'livestore', 'mr-all-blue', 'dotfiles']
+  const repos = syncSimulationRepos
   const [items, setItems] = useState<TaskItem[]>(() =>
     repos.map((label, i) => ({ id: String(i), label, status: 'pending' as TaskStatus })),
   )
@@ -143,16 +145,16 @@ const SyncSimulationDemo = () => {
   const [elapsed, setElapsed] = useState(0)
   const startTime = Date.now()
 
-  const appendLog = (entry: Omit<LogEntry, 'id'>) => {
+  const appendLog = useCallback((entry: Omit<LogEntry, 'id'>) => {
     setLogs((prev) => [...prev, { ...entry, id: `log-${Date.now()}` }])
-  }
+  }, [])
 
   // Simulate processing
   useEffect(() => {
     if (phase !== 'running') return
 
     const processItem = (index: number) => {
-      if (index >= items.length) {
+      if (index >= repos.length) {
         setPhase('done')
         return
       }
@@ -194,7 +196,7 @@ const SyncSimulationDemo = () => {
     }
 
     processItem(0)
-  }, [phase])
+  }, [phase, repos, appendLog])
 
   useEffect(() => {
     if (phase !== 'running') return

@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext } from 'react'
+import { createContext, type ReactNode, useContext, useMemo } from 'react'
 
 import type { FieldRenderers } from './types.ts'
 
@@ -30,9 +30,10 @@ export interface SchemaFormProviderProps {
  * </SchemaFormProvider>
  * ```
  */
-export const SchemaFormProvider = ({ renderers, children }: SchemaFormProviderProps): ReactNode => (
-  <SchemaFormContext.Provider value={{ renderers }}>{children}</SchemaFormContext.Provider>
-)
+export const SchemaFormProvider = ({ renderers, children }: SchemaFormProviderProps): ReactNode => {
+  const value = useMemo(() => ({ renderers }), [renderers])
+  return <SchemaFormContext.Provider value={value}>{children}</SchemaFormContext.Provider>
+}
 
 /**
  * Hook to access the current SchemaForm context.

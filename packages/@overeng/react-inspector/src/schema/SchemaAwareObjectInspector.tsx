@@ -41,7 +41,7 @@ export const withSchemaSupport = <TInspector extends FC<any>>(
       schemas?: S.Schema.AnyNoContext[]
     }
   > = ({ schema, schemas, nodeRenderer, ...props }) => {
-    const schemaNodeRenderer = useMemo(() => createSchemaAwareNodeRenderer(deps), [deps])
+    const schemaNodeRenderer = useMemo(() => createSchemaAwareNodeRenderer(deps), [])
 
     const Inspector = ObjectInspector as FC<any>
 
