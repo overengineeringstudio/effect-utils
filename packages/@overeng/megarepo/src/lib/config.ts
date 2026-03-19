@@ -180,9 +180,6 @@ export const CONFIG_FILE_NAME_KDL = 'megarepo.kdl'
 /** Supported config file names, ordered by preference (KDL preferred) */
 export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_KDL, CONFIG_FILE_NAME_JSON] as const
 
-/** @deprecated Use `CONFIG_FILE_NAME_JSON` instead */
-export const CONFIG_FILE_NAME = CONFIG_FILE_NAME_JSON
-
 /** Config format discriminator */
 export type ConfigFormat = 'kdl' | 'json'
 

@@ -14,8 +14,8 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  CONFIG_FILE_NAME,
   ConfigNotFoundError,
+  findConfigPath,
   getMemberPath,
   isRemoteSource,
   parseSourceString,
@@ -117,13 +117,9 @@ const scanMembersRecursive = ({
       }
 
       // Check if this member is itself a megarepo
-      const nestedConfigPath = EffectPath.ops.join(
-        memberPath,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
       const isMegarepo =
         memberExists === true
-          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          ? (yield* findConfigPath(memberPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))) !== undefined
           : false
 
       // Recursively scan nested members if this is a megarepo and --all is used

@@ -14,7 +14,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME, MegarepoConfig, validateMemberName } from '../lib/config.ts'
+import { CONFIG_FILE_NAME_JSON, MegarepoConfig, validateMemberName } from '../lib/config.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
 import { initGitRepo, readConfig } from '../test-utils/setup.ts'
 import { mrCommand } from './mod.ts'
@@ -39,7 +39,7 @@ const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
     while (current !== undefined && current !== rootDir) {
       const configPath = EffectPath.ops.join(
         current,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
       )
       const exists = yield* fs.exists(configPath)
       if (exists === true) {
@@ -71,7 +71,7 @@ describe('mr init', () => {
         // Verify no megarepo.json exists yet
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         expect(yield* fs.exists(configPath)).toBe(false)
 
@@ -117,7 +117,7 @@ describe('mr init', () => {
         }
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const configContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
           existingConfig,
@@ -158,7 +158,7 @@ describe('mr root', () => {
         // Create megarepo.json
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         yield* fs.writeFileString(configPath, '{"members":{}}')
 
@@ -187,7 +187,7 @@ describe('mr root', () => {
         // Create megarepo.json at root
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         yield* fs.writeFileString(configPath, '{"members":{}}')
 
@@ -219,14 +219,14 @@ describe('mr root', () => {
         // Create megarepo.json in outer
         const outerConfigPath = EffectPath.ops.join(
           outerDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         yield* fs.writeFileString(outerConfigPath, '{"members":{"inner":"inner"}}')
 
         // Create megarepo.json in inner (nested megarepo)
         const innerConfigPath = EffectPath.ops.join(
           innerDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         yield* fs.writeFileString(innerConfigPath, '{"members":{}}')
 
@@ -280,7 +280,7 @@ describe('mr add', () => {
 
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const initialConfig: typeof MegarepoConfig.Type = { members: {} }
         const initialContent = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
@@ -326,7 +326,7 @@ describe('mr add', () => {
 
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         yield* fs.writeFileString(configPath, '{"members":{}}')
 
@@ -374,7 +374,7 @@ describe('mr add', () => {
 
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const initialConfig: typeof MegarepoConfig.Type = {
           members: { effect: 'effect-ts/effect' },
@@ -416,7 +416,7 @@ describe('megarepo.json parsing', () => {
         // Create config with various member formats
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const config: typeof MegarepoConfig.Type = {
           members: {
@@ -455,7 +455,7 @@ describe('megarepo.json parsing', () => {
 
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         const config: typeof MegarepoConfig.Type = {
           members: { lib: 'owner/lib' },
@@ -528,7 +528,7 @@ describe('--cwd option', () => {
 
         const configPath = EffectPath.ops.join(
           workDir,
-          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
         )
         yield* fs.writeFileString(configPath, '{"members":{}}')
 

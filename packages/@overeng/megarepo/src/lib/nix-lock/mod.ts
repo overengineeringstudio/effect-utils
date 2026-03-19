@@ -18,7 +18,7 @@ import { Effect, Option, Schema, type ParseResult } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME, getMemberPath, type MegarepoConfig } from '../config.ts'
+import { findConfigPath, getMemberPath, type MegarepoConfig } from '../config.ts'
 import {
   LOCK_FILE_NAME,
   readLockFile,
@@ -1127,7 +1127,7 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
       (name) => !excludeMembers.has(name),
     )
 
-    // Auto-detect nested megarepos by scanning for megarepo.json if not explicitly provided
+    // Auto-detect nested megarepos by scanning for megarepo config if not explicitly provided
     const recursiveMegarepoMembers =
       options.recursiveMegarepoMembers ??
       (scope === 'recursive'
@@ -1139,14 +1139,10 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
                     megarepoRoot: options.megarepoRoot,
                     name,
                   })
-                  const configPath = EffectPath.ops.join(
-                    memberPath,
-                    EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+                  const nestedConfig = yield* findConfigPath(memberPath).pipe(
+                    Effect.catchAll(() => Effect.succeed(undefined)),
                   )
-                  const exists = yield* fs
-                    .exists(configPath)
-                    .pipe(Effect.catchAll(() => Effect.succeed(false)))
-                  return exists === true ? name : undefined
+                  return nestedConfig !== undefined ? name : undefined
                 }),
               ),
               { concurrency: 'unbounded' },

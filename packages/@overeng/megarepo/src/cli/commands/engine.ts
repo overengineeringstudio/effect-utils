@@ -16,8 +16,8 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  CONFIG_FILE_NAME,
   ConfigNotFoundError,
+  findConfigPath,
   getMemberPath,
   getMembersRoot,
   getSourceUrl,
@@ -359,14 +359,10 @@ export const syncMegarepo = <R = never>({
             return null
           }
           const memberPath = getMemberPath({ megarepoRoot, name: result.name })
-          const nestedConfigPath = EffectPath.ops.join(
-            memberPath,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+          const nestedConfig = yield* findConfigPath(memberPath).pipe(
+            Effect.catchAll(() => Effect.succeed(undefined)),
           )
-          const hasNestedConfig = yield* fs
-            .exists(nestedConfigPath)
-            .pipe(Effect.catchAll(() => Effect.succeed(false)))
-          return hasNestedConfig === true ? result.name : null
+          return nestedConfig !== undefined ? result.name : null
         }),
       ),
       { concurrency: 'unbounded' },

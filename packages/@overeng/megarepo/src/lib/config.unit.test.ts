@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildSourceStringWithRef,
-  CONFIG_FILE_NAME,
+  CONFIG_FILE_NAME_JSON,
   DEFAULT_STORE_PATH,
   ENV_VARS,
   generateJsonSchema,
@@ -21,7 +21,7 @@ import {
 describe('config', () => {
   describe('constants', () => {
     it('should have correct config file name', () => {
-      expect(CONFIG_FILE_NAME).toBe('megarepo.json')
+      expect(CONFIG_FILE_NAME_JSON).toBe('megarepo.json')
     })
 
     it('should have correct default store path', () => {

@@ -144,21 +144,115 @@ const decodeLockSyncNode = (node: Node): Record<string, unknown> => {
 
 /** Encode a MegarepoConfig to KDL format */
 export const encodeMegarepoKdl = (config: MegarepoConfig): string => {
-  const lines: string[] = []
+  const sections: string[] = []
 
   const memberEntries = Object.entries(config.members)
   if (memberEntries.length > 0) {
+    const lines: string[] = []
     lines.push('members {')
     for (const [name, source] of memberEntries) {
-      lines.push(`  ${needsQuoting(name) ? `"${name}"` : name} "${source}"`)
+      lines.push(`  ${kdlIdent(name)} "${source}"`)
     }
     lines.push('}')
+    sections.push(lines.join('\n'))
   }
 
-  // TODO: generators, lockSync encoding
+  if (config.generators !== undefined) {
+    sections.push(encodeGenerators(config.generators))
+  }
 
-  return lines.join('\n') + '\n'
+  if (config.lockSync !== undefined) {
+    sections.push(encodeLockSync(config.lockSync))
+  }
+
+  return sections.join('\n\n') + '\n'
 }
 
-const needsQuoting = (s: string): boolean =>
-  /[^a-zA-Z0-9_-]/.test(s) || s.length === 0
+const encodeGenerators = (generators: NonNullable<MegarepoConfig['generators']>): string => {
+  const lines: string[] = []
+  lines.push('generators {')
+
+  if (generators.vscode !== undefined) {
+    const v = generators.vscode
+    const props: string[] = []
+    if (v.enabled !== undefined) props.push(`enabled=${kdlBool(v.enabled)}`)
+
+    const children: string[] = []
+    if (v.color !== undefined) children.push(`    color "${v.color}"`)
+    if (v.colorEnvVar !== undefined) children.push(`    colorEnvVar "${v.colorEnvVar}"`)
+    if (v.exclude !== undefined && v.exclude.length > 0) {
+      children.push(`    exclude ${v.exclude.map((e) => `"${e}"`).join(' ')}`)
+    }
+    if (v.settings !== undefined) {
+      const settingsEntries = Object.entries(v.settings)
+      if (settingsEntries.length > 0) {
+        children.push('    settings {')
+        for (const [key, value] of settingsEntries) {
+          children.push(`      ${kdlIdent(key)} ${kdlValue(value)}`)
+        }
+        children.push('    }')
+      }
+    }
+
+    if (children.length > 0) {
+      lines.push(`  vscode ${props.join(' ')}${props.length > 0 ? ' ' : ''}{`)
+      lines.push(...children)
+      lines.push('  }')
+    } else if (props.length > 0) {
+      lines.push(`  vscode ${props.join(' ')}`)
+    }
+  }
+
+  lines.push('}')
+  return lines.join('\n')
+}
+
+const encodeLockSync = (lockSync: NonNullable<MegarepoConfig['lockSync']>): string => {
+  const lines: string[] = []
+  const props: string[] = []
+  if (lockSync.enabled !== undefined) props.push(`enabled=${kdlBool(lockSync.enabled)}`)
+
+  const children: string[] = []
+  if (lockSync.exclude !== undefined && lockSync.exclude.length > 0) {
+    for (const member of lockSync.exclude) {
+      children.push(`  exclude "${member}"`)
+    }
+  }
+  if (lockSync.sharedLockSources !== undefined) {
+    const entries = Object.entries(lockSync.sharedLockSources)
+    if (entries.length > 0) {
+      children.push('  sharedLockSources {')
+      for (const [label, { source, path }] of entries) {
+        children.push(`    ${kdlIdent(label)} source="${source}" path="${path}"`)
+      }
+      children.push('  }')
+    }
+  }
+
+  if (children.length > 0) {
+    lines.push(`lockSync ${props.join(' ')}${props.length > 0 ? ' ' : ''}{`)
+    lines.push(...children)
+    lines.push('}')
+  } else if (props.length > 0) {
+    lines.push(`lockSync ${props.join(' ')}`)
+  } else {
+    lines.push('lockSync')
+  }
+
+  return lines.join('\n')
+}
+
+/** Format a value as a KDL boolean */
+const kdlBool = (v: boolean): string => (v ? '#true' : '#false')
+
+/** Format an unknown value as a KDL value literal */
+const kdlValue = (v: unknown): string => {
+  if (typeof v === 'boolean') return kdlBool(v)
+  if (typeof v === 'number') return String(v)
+  if (typeof v === 'string') return `"${v}"`
+  return `"${String(v)}"`
+}
+
+/** Quote a string as a KDL identifier if it contains special characters */
+const kdlIdent = (s: string): string =>
+  /[^a-zA-Z0-9_-]/.test(s) || s.length === 0 ? `"${s}"` : s
