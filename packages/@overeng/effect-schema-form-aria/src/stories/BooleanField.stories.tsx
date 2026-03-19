@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
 
+import type { BooleanFieldProps } from '../components/BooleanField.tsx'
 import { BooleanField } from '../components/BooleanField.tsx'
 
 export default {
@@ -11,6 +12,11 @@ export default {
 
 type Story = StoryObj<typeof BooleanField>
 
+const DefaultRender = (args: BooleanFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <BooleanField {...args} value={value} onChange={setValue} />
+}
+
 /** Unchecked checkbox */
 export const Default: Story = {
   args: {
@@ -18,10 +24,12 @@ export const Default: Story = {
     label: 'Subscribe to newsletter',
     value: false,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <BooleanField {...args} value={value} onChange={setValue} />
-  },
+  render: DefaultRender,
+}
+
+const CheckedRender = (args: BooleanFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <BooleanField {...args} value={value} onChange={setValue} />
 }
 
 /** Checked checkbox */
@@ -31,10 +39,12 @@ export const Checked: Story = {
     label: 'I agree to the terms and conditions',
     value: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <BooleanField {...args} value={value} onChange={setValue} />
-  },
+  render: CheckedRender,
+}
+
+const WithHintRender = (args: BooleanFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <BooleanField {...args} value={value} onChange={setValue} />
 }
 
 /** Checkbox with hint text */
@@ -45,10 +55,12 @@ export const WithHint: Story = {
     value: false,
     hint: 'You will receive email updates about your account activity',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <BooleanField {...args} value={value} onChange={setValue} />
-  },
+  render: WithHintRender,
+}
+
+const DisabledUncheckedRender = (args: BooleanFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <BooleanField {...args} value={value} onChange={setValue} />
 }
 
 /** Disabled unchecked state */
@@ -59,10 +71,12 @@ export const DisabledUnchecked: Story = {
     value: false,
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <BooleanField {...args} value={value} onChange={setValue} />
-  },
+  render: DisabledUncheckedRender,
+}
+
+const DisabledCheckedRender = (args: BooleanFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <BooleanField {...args} value={value} onChange={setValue} />
 }
 
 /** Disabled checked state */
@@ -73,8 +87,5 @@ export const DisabledChecked: Story = {
     value: true,
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <BooleanField {...args} value={value} onChange={setValue} />
-  },
+  render: DisabledCheckedRender,
 }

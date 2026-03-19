@@ -74,196 +74,204 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** --all tree rendering with nested members */
-export const TreeBasic: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        ...nestedFields(args.all),
-        lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const TreeBasicRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      ...nestedFields(args.all),
+      lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const TreeBasic: Story = {
+  render: TreeBasicRender,
 }
 
 /** --all --verbose: inline lock details within tree */
+const TreeVerboseRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      ...nestedFields(args.all),
+      lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      }),
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
 export const TreeVerbose: Story = {
   args: { verbose: true },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        ...nestedFields(args.all),
-        lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-      }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+  render: TreeVerboseRender,
 }
 
 /** --all --dry-run: tree rendering with dry-run markers */
+const TreeDryRunRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      ...nestedFields(args.all),
+      lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      }),
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
 export const TreeDryRun: Story = {
   args: { dryRun: true },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        ...nestedFields(args.all),
-        lockSyncResults: [...exampleLockSyncResults, ...exampleNestedLockSyncResults],
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-      }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+  render: TreeDryRunRender,
 }
 
 /** --all off: shows [megarepo] badge and hint */
+const MegarepoHintRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      ...nestedFields(args.all),
+      lockSyncResults: exampleLockSyncResults,
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      }),
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
 export const MegarepoHint: Story = {
   args: { all: false },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        ...nestedFields(args.all),
-        lockSyncResults: exampleLockSyncResults,
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-      }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+  render: MegarepoHintRender,
 }

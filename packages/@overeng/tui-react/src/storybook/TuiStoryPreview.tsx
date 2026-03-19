@@ -311,7 +311,7 @@ export const TuiStoryPreview = <S, A>({
         <View stateAtom={stateAtom} />
       </TuiRegistryContext.Provider>,
     )
-  }, [effectiveState, activeTab, isTerminalReady, registry, stateAtom])
+  }, [effectiveState, activeTab, isTerminalReady, registry, stateAtom, View])
 
   // Encode state as JSON (uses finalState for json mode since it's a final mode)
   const jsonOutput = useMemo(() => {
@@ -1096,7 +1096,7 @@ const CIPreviewPane: React.FC<{
       })
 
     return () => {}
-  }, [state, stateAtom, registry])
+  }, [state, stateAtom, registry, View])
 
   useEffect(() => {
     return () => {
@@ -1178,7 +1178,7 @@ const LogPreviewPane: React.FC<{
       .catch((err: Error) => {
         setOutput(`Error: ${err.message}`)
       })
-  }, [state, stateAtom, registry, columns])
+  }, [state, stateAtom, registry, columns, View])
 
   return (
     <pre
@@ -1230,7 +1230,7 @@ const CIPlainPreviewPane: React.FC<{
       .catch((err: Error) => {
         setOutput(`Error: ${err.message}`)
       })
-  }, [state, stateAtom, registry, columns])
+  }, [state, stateAtom, registry, columns, View])
 
   return (
     <pre
@@ -1314,7 +1314,7 @@ const PipePreviewPane: React.FC<{
       })
 
     return () => {}
-  }, [state, stateAtom, registry])
+  }, [state, stateAtom, registry, View])
 
   useEffect(() => {
     return () => {
@@ -1412,7 +1412,7 @@ const FullscreenPreviewPane: React.FC<{
         <View stateAtom={stateAtom} />
       </TuiRegistryContext.Provider>,
     )
-  }, [state, isReady, stateAtom, registry])
+  }, [state, isReady, stateAtom, registry, View])
 
   // Keyboard handling
   const handleKeyDown = useCallback(

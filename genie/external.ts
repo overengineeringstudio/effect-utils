@@ -538,6 +538,7 @@ export const storybookOxlintOverride = {
     'overeng/storybook/hierarchy-separator': 'warn',
     'overeng/storybook/no-redundant-story-name': 'warn',
     'overeng/storybook/prefer-pascal-case': 'warn',
+    'react/exhaustive-deps': 'off',
   },
 } as const satisfies OxlintOverride
 
@@ -569,6 +570,9 @@ export const testFilesOxlintOverride = {
     'unicorn/no-array-sort': 'off',
     'unicorn/consistent-function-scoping': 'off',
     'require-yield': 'off',
+    // Test files may have non-standard component patterns (helpers, fixtures)
+    'react/rules-of-hooks': 'off',
+    'react/exhaustive-deps': 'off',
   },
 } as const satisfies OxlintOverride
 

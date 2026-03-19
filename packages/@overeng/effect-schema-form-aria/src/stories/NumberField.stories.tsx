@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
 
+import type { NumberFieldProps } from '../components/NumberField.tsx'
 import { NumberField } from '../components/NumberField.tsx'
 
 export default {
@@ -11,6 +12,11 @@ export default {
 
 type Story = StoryObj<typeof NumberField>
 
+const DefaultRender = (args: NumberFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <NumberField {...args} value={value} onChange={setValue} />
+}
+
 /** Required number field with standard input */
 export const Default: Story = {
   args: {
@@ -18,10 +24,12 @@ export const Default: Story = {
     label: 'Age',
     value: 25,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <NumberField {...args} value={value} onChange={setValue} />
-  },
+  render: DefaultRender,
+}
+
+const WithHintRender = (args: NumberFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <NumberField {...args} value={value} onChange={setValue} />
 }
 
 /** Number field with hint text */
@@ -32,10 +40,12 @@ export const WithHint: Story = {
     value: 1,
     hint: 'Enter the number of items (1-100)',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <NumberField {...args} value={value} onChange={setValue} />
-  },
+  render: WithHintRender,
+}
+
+const OptionalDisabledRender = (args: NumberFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <NumberField {...args} value={value} onChange={setValue} />
 }
 
 /** Optional field with toggle - starts disabled (undefined) */
@@ -47,10 +57,12 @@ export const OptionalDisabled: Story = {
     isOptional: true,
     hint: 'Leave unchecked for no limit',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <NumberField {...args} value={value} onChange={setValue} />
-  },
+  render: OptionalDisabledRender,
+}
+
+const OptionalEnabledRender = (args: NumberFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <NumberField {...args} value={value} onChange={setValue} />
 }
 
 /** Optional field with toggle - starts enabled with a value */
@@ -62,10 +74,12 @@ export const OptionalEnabled: Story = {
     isOptional: true,
     hint: 'Click checkbox to toggle',
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <NumberField {...args} value={value} onChange={setValue} />
-  },
+  render: OptionalEnabledRender,
+}
+
+const DisabledRender = (args: NumberFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <NumberField {...args} value={value} onChange={setValue} />
 }
 
 /** Disabled state */
@@ -76,10 +90,12 @@ export const Disabled: Story = {
     value: 42,
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <NumberField {...args} value={value} onChange={setValue} />
-  },
+  render: DisabledRender,
+}
+
+const OptionalAndDisabledRender = (args: NumberFieldProps) => {
+  const [value, setValue] = useState(args.value)
+  return <NumberField {...args} value={value} onChange={setValue} />
 }
 
 /** Optional field that is also disabled */
@@ -91,8 +107,5 @@ export const OptionalAndDisabled: Story = {
     isOptional: true,
     isDisabled: true,
   },
-  render: (args) => {
-    const [value, setValue] = useState(args.value)
-    return <NumberField {...args} value={value} onChange={setValue} />
-  },
+  render: OptionalAndDisabledRender,
 }

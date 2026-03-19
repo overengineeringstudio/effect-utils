@@ -64,35 +64,39 @@ export const ErrorNotInMegarepo: Story = {
 }
 
 /** Error: invalid repository reference */
+const ErrorInvalidRepoRender = (args: StoryArgs) => {
+  const state = useMemo(() => fixtures.createErrorInvalidRepoState(args.repo), [args.repo])
+  return (
+    <TuiStoryPreview
+      command="mr add"
+      View={AddView}
+      app={AddApp}
+      initialState={state}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  )
+}
+
 export const ErrorInvalidRepo: Story = {
-  render: (args) => {
-    const state = useMemo(() => fixtures.createErrorInvalidRepoState(args.repo), [args.repo])
-    return (
-      <TuiStoryPreview
-        command="mr add"
-        View={AddView}
-        app={AddApp}
-        initialState={state}
-        height={args.height}
-        tabs={ALL_OUTPUT_TABS}
-      />
-    )
-  },
+  render: ErrorInvalidRepoRender,
 }
 
 /** Error: member already exists */
+const ErrorAlreadyExistsRender = (args: StoryArgs) => {
+  const state = useMemo(() => fixtures.createErrorAlreadyExistsState(args.name), [args.name])
+  return (
+    <TuiStoryPreview
+      command="mr add"
+      View={AddView}
+      app={AddApp}
+      initialState={state}
+      height={args.height}
+      tabs={ALL_OUTPUT_TABS}
+    />
+  )
+}
+
 export const ErrorAlreadyExists: Story = {
-  render: (args) => {
-    const state = useMemo(() => fixtures.createErrorAlreadyExistsState(args.name), [args.name])
-    return (
-      <TuiStoryPreview
-        command="mr add"
-        View={AddView}
-        app={AddApp}
-        initialState={state}
-        height={args.height}
-        tabs={ALL_OUTPUT_TABS}
-      />
-    )
-  },
+  render: ErrorAlreadyExistsRender,
 }

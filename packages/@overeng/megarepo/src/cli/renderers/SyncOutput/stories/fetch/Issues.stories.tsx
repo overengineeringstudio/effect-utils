@@ -64,421 +64,423 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** Some members failed with errors */
-export const WithErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        results: exampleSyncResultsWithErrors,
-        members: exampleSyncResultsWithErrors.map((r) => r.name),
+const WithErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+      results: exampleSyncResultsWithErrors,
+      members: exampleSyncResultsWithErrors.map((r) => r.name),
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const WithErrors: Story = {
+  render: WithErrorsRender,
 }
 
 /** All members failed */
-export const AllErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        results: [
-          { name: MEMBERS.coreLib, status: 'error' as const, message: 'network timeout' },
-          { name: MEMBERS.devTools, status: 'error' as const, message: 'authentication failed' },
-          { name: MEMBERS.appPlatform, status: 'error' as const, message: 'repository not found' },
-          { name: MEMBERS.studioOrg, status: 'error' as const, message: 'permission denied' },
-        ],
-        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
+const AllErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+      results: [
+        { name: MEMBERS.coreLib, status: 'error' as const, message: 'network timeout' },
+        { name: MEMBERS.devTools, status: 'error' as const, message: 'authentication failed' },
+        { name: MEMBERS.appPlatform, status: 'error' as const, message: 'repository not found' },
+        { name: MEMBERS.studioOrg, status: 'error' as const, message: 'permission denied' },
+      ],
+      members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const AllErrors: Story = {
+  render: AllErrorsRender,
 }
 
 /** Members skipped for various reasons */
-export const SkippedMembers: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        results: [
-          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
-          { name: MEMBERS.devTools, status: 'skipped' as const, message: 'dirty worktree' },
-          { name: MEMBERS.appPlatform, status: 'skipped' as const, message: 'pinned' },
-          {
-            name: MEMBERS.studioOrg,
-            status: 'skipped' as const,
-            message: 'authentication required',
-          },
-        ] satisfies MemberSyncResult[],
-        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
+const SkippedMembersRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+      results: [
+        { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+        { name: MEMBERS.devTools, status: 'skipped' as const, message: 'dirty worktree' },
+        { name: MEMBERS.appPlatform, status: 'skipped' as const, message: 'pinned' },
+        {
+          name: MEMBERS.studioOrg,
+          status: 'skipped' as const,
+          message: 'authentication required',
+        },
+      ] satisfies MemberSyncResult[],
+      members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const SkippedMembers: Story = {
+  render: SkippedMembersRender,
 }
 
 /** Mixed skipped reasons */
-export const MixedSkipped: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        results: [
-          { name: MEMBERS.coreLib, status: 'already_synced' as const },
-          { name: MEMBERS.devTools, status: 'skipped' as const, message: '5 uncommitted changes' },
-          { name: MEMBERS.appPlatform, status: 'skipped' as const, message: 'pinned to v1.0.0' },
-          {
-            name: MEMBERS.dotfiles,
-            status: 'skipped' as const,
-            message: 'authentication required',
-          },
-          {
-            name: MEMBERS.homepage,
-            status: 'skipped' as const,
-            message: 'ref feature/x not found',
-          },
-        ] satisfies MemberSyncResult[],
-        members: [
-          MEMBERS.coreLib,
-          MEMBERS.devTools,
-          MEMBERS.appPlatform,
-          MEMBERS.dotfiles,
-          MEMBERS.homepage,
-        ],
+const MixedSkippedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+      results: [
+        { name: MEMBERS.coreLib, status: 'already_synced' as const },
+        { name: MEMBERS.devTools, status: 'skipped' as const, message: '5 uncommitted changes' },
+        { name: MEMBERS.appPlatform, status: 'skipped' as const, message: 'pinned to v1.0.0' },
+        {
+          name: MEMBERS.dotfiles,
+          status: 'skipped' as const,
+          message: 'authentication required',
+        },
+        {
+          name: MEMBERS.homepage,
+          status: 'skipped' as const,
+          message: 'ref feature/x not found',
+        },
+      ] satisfies MemberSyncResult[],
+      members: [
+        MEMBERS.coreLib,
+        MEMBERS.devTools,
+        MEMBERS.appPlatform,
+        MEMBERS.dotfiles,
+        MEMBERS.homepage,
+      ],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const MixedSkipped: Story = {
+  render: MixedSkippedRender,
 }
 
 /** Ref mismatch detection */
+const RefMismatchDetectedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      }),
+      results: [
+        { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+        {
+          name: MEMBERS.devTools,
+          status: 'skipped' as const,
+          refMismatch: {
+            expectedRef: 'main',
+            actualRef: 'feature-branch',
+            isDetached: false,
+          },
+        },
+        {
+          name: MEMBERS.appPlatform,
+          status: 'skipped' as const,
+          refMismatch: {
+            expectedRef: 'main',
+            actualRef: 'abc1234',
+            isDetached: true,
+          },
+        },
+        { name: MEMBERS.studioOrg, status: 'synced' as const, ref: 'develop' },
+      ] satisfies MemberSyncResult[],
+      members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
 export const RefMismatchDetected: Story = {
   args: { height: 500 },
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        results: [
-          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
-          {
-            name: MEMBERS.devTools,
-            status: 'skipped' as const,
-            refMismatch: {
-              expectedRef: 'main',
-              actualRef: 'feature-branch',
-              isDetached: false,
-            },
-          },
-          {
-            name: MEMBERS.appPlatform,
-            status: 'skipped' as const,
-            refMismatch: {
-              expectedRef: 'main',
-              actualRef: 'abc1234',
-              isDetached: true,
-            },
-          },
-          { name: MEMBERS.studioOrg, status: 'synced' as const, ref: 'develop' },
-        ] satisfies MemberSyncResult[],
-        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.studioOrg],
-      }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+  render: RefMismatchDetectedRender,
 }
 
 /** Sync interrupted */
-export const Interrupted: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        _tag: 'Interrupted' as const,
-        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
-        results: [
-          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
-          { name: MEMBERS.devTools, status: 'cloned' as const, ref: 'main' },
-        ] satisfies MemberSyncResult[],
+const InterruptedRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+      _tag: 'Interrupted' as const,
+      members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
+      results: [
+        { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+        { name: MEMBERS.devTools, status: 'cloned' as const, ref: 'main' },
+      ] satisfies MemberSyncResult[],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const Interrupted: Story = {
+  render: InterruptedRender,
 }
 
 /** Members excluded via --only or --skip flags */
-export const WithSkippedMembers: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-          skippedMembers: [MEMBERS.studioOrg, MEMBERS.homepage],
-        }),
-        results: [
-          { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
-          { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
-          { name: MEMBERS.appPlatform, status: 'already_synced' as const },
-          { name: MEMBERS.dotfiles, status: 'synced' as const, ref: 'main' },
-        ] satisfies MemberSyncResult[],
-        members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
+const WithSkippedMembersRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+        skippedMembers: [MEMBERS.studioOrg, MEMBERS.homepage],
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createBaseState(
-          args.interactive === true ? { _tag: 'Success' } : stateConfig,
-        )}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
-      />
-    )
-  },
+      results: [
+        { name: MEMBERS.coreLib, status: 'synced' as const, ref: 'main' },
+        { name: MEMBERS.devTools, status: 'synced' as const, ref: 'main' },
+        { name: MEMBERS.appPlatform, status: 'already_synced' as const },
+        { name: MEMBERS.dotfiles, status: 'synced' as const, ref: 'main' },
+      ] satisfies MemberSyncResult[],
+      members: [MEMBERS.coreLib, MEMBERS.devTools, MEMBERS.appPlatform, MEMBERS.dotfiles],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createBaseState(args.interactive === true ? { _tag: 'Success' } : stateConfig)}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true ? { timeline: createTimeline(stateConfig) } : {})}
+    />
+  )
+}
+
+export const WithSkippedMembers: Story = {
+  render: WithSkippedMembersRender,
 }
 
 /** Fetch errors with detailed sync error messages */
-export const FetchErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        _tag: 'Error' as const,
-        results: fetchWithErrors,
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
-        syncErrorCount: 2,
-        syncErrors: [
-          {
-            megarepoRoot: WORKSPACE.root,
-            memberName: MEMBERS.devTools,
-            message: 'network timeout during fetch',
-          },
-          {
-            megarepoRoot: WORKSPACE.root,
-            memberName: MEMBERS.studioOrg,
-            message: 'authentication failed',
-          },
-        ],
+const FetchErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      _tag: 'Error' as const,
+      results: fetchWithErrors,
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+      syncErrorCount: 2,
+      syncErrors: [
+        {
+          megarepoRoot: WORKSPACE.root,
+          memberName: MEMBERS.devTools,
+          message: 'network timeout during fetch',
+        },
+        {
+          megarepoRoot: WORKSPACE.root,
+          memberName: MEMBERS.studioOrg,
+          message: 'authentication failed',
+        },
+      ],
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const FetchErrors: Story = {
+  render: FetchErrorsRender,
 }

@@ -77,291 +77,303 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** Fetch with lock sync results (flake.lock/devenv.lock) */
-export const WithLockSync: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        lockSyncResults: exampleLockSyncResults,
-        ...nestedFields(args.all),
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const WithLockSyncRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      lockSyncResults: exampleLockSyncResults,
+      ...nestedFields(args.all),
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithLockSync: Story = {
+  render: WithLockSyncRender,
 }
 
 /** Fetch with lock input sync results (including flake.nix/devenv.yaml source file updates) */
-export const WithLockInputSync: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        lockSyncResults: fetchLockInputSyncResults,
-        ...nestedFields(args.all),
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const WithLockInputSyncRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      lockSyncResults: fetchLockInputSyncResults,
+      ...nestedFields(args.all),
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithLockInputSync: Story = {
+  render: WithLockInputSyncRender,
 }
 
 /** Fetch with full nix lock sync including source file (flake.nix, devenv.yaml) updates */
-export const WithSourceFileSync: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        lockSyncResults: fetchFullNixSync,
-        ...nestedFields(args.all),
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const WithSourceFileSyncRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      lockSyncResults: fetchFullNixSync,
+      ...nestedFields(args.all),
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithSourceFileSync: Story = {
+  render: WithSourceFileSyncRender,
 }
 
 /** Fetch with ref propagation (branch changes across members) */
-export const WithRefSync: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        lockSyncResults: exampleRefSyncResults,
-        ...nestedFields(args.all),
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const WithRefSyncRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      lockSyncResults: exampleRefSyncResults,
+      ...nestedFields(args.all),
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithRefSync: Story = {
+  render: WithRefSyncRender,
 }
 
 /** Fetch with shared lock source propagation (e.g. devenv version) */
-export const WithSharedSourceSync: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        lockSyncResults: [],
-        sharedSourceUpdates: exampleSharedSourceSync,
-        ...nestedFields(args.all),
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const WithSharedSourceSyncRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      lockSyncResults: [],
+      sharedSourceUpdates: exampleSharedSourceSync,
+      ...nestedFields(args.all),
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithSharedSourceSync: Story = {
+  render: WithSharedSourceSyncRender,
 }
 
 /** Fetch with all three update types: rev sync, ref sync, and shared source sync */
-export const WithMixedSync: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fetchResults,
-        lockSyncResults: exampleMixedSyncResults,
-        sharedSourceUpdates: exampleMixedSharedSourceSync,
-        ...nestedFields(args.all),
-        options: buildSyncOptions({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        }),
+const WithMixedSyncRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fetchResults,
+      lockSyncResults: exampleMixedSyncResults,
+      sharedSourceUpdates: exampleMixedSharedSourceSync,
+      ...nestedFields(args.all),
+      options: buildSyncOptions({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
       }),
-      [args.dryRun, args.all, args.verbose, args.force],
-    )
-    return (
-      <TuiStoryPreview
-        View={SyncView}
-        app={SyncApp}
-        initialState={createCommandState({
-          mode: 'fetch',
-          overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
-        })}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        cwd="~/workspace"
-        command={buildSyncCommand({
-          mode: 'fetch',
-          dryRun: args.dryRun,
-          all: args.all,
-          verbose: args.verbose,
-          force: args.force,
-        })}
-        {...(args.interactive === true
-          ? {
-              timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
-            }
-          : {})}
-      />
-    )
-  },
+    }),
+    [args.dryRun, args.all, args.verbose, args.force],
+  )
+  return (
+    <TuiStoryPreview
+      View={SyncView}
+      app={SyncApp}
+      initialState={createCommandState({
+        mode: 'fetch',
+        overrides: args.interactive === true ? { _tag: 'Success', results: [] } : stateConfig,
+      })}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      cwd="~/workspace"
+      command={buildSyncCommand({
+        mode: 'fetch',
+        dryRun: args.dryRun,
+        all: args.all,
+        verbose: args.verbose,
+        force: args.force,
+      })}
+      {...(args.interactive === true
+        ? {
+            timeline: createCommandTimeline({ mode: 'fetch', finalState: stateConfig }),
+          }
+        : {})}
+    />
+  )
+}
+
+export const WithMixedSync: Story = {
+  render: WithMixedSyncRender,
 }

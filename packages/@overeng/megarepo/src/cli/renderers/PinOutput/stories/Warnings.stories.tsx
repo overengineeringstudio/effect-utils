@@ -43,43 +43,47 @@ export default {
 type Story = StoryObj<StoryArgs>
 
 /** Warning: Worktree for pinned ref not available */
+const WarningWorktreeNotAvailableRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createWarningWorktreeNotAvailable(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const WarningWorktreeNotAvailable: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createWarningWorktreeNotAvailable(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: WarningWorktreeNotAvailableRender,
 }
 
 /** Warning: Member was removed from config */
+const WarningMemberRemovedFromConfigRender = (args: StoryArgs) => {
+  const finalState = useMemo(() => fixtures.createWarningMemberRemovedFromConfig(), [])
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={PinView}
+      app={PinApp}
+      initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
+    />
+  )
+}
+
 export const WarningMemberRemovedFromConfig: Story = {
-  render: (args) => {
-    const finalState = useMemo(() => fixtures.createWarningMemberRemovedFromConfig(), [])
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr config pin${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={PinView}
-        app={PinApp}
-        initialState={args.interactive === true ? { _tag: 'Idle' } : finalState}
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true ? { timeline: fixtures.createTimeline(finalState) } : {})}
-      />
-    )
-  },
+  render: WarningMemberRemovedFromConfigRender,
 }

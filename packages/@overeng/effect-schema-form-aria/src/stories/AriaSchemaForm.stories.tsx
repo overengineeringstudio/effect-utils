@@ -29,29 +29,33 @@ const UserSchema = Schema.Struct({
 
 type User = typeof UserSchema.Type
 
+const BasicFormRender = () => {
+  const [value, setValue] = useState<User>({
+    name: '',
+    email: '',
+    role: 'user',
+  })
+  return <AriaSchemaForm schema={UserSchema} value={value} onChange={setValue} />
+}
+
 /** Basic form with string, optional number, and literal fields */
 export const BasicForm: StoryObj<typeof AriaSchemaForm<User>> = {
-  render: () => {
-    const [value, setValue] = useState<User>({
-      name: '',
-      email: '',
-      role: 'user',
-    })
-    return <AriaSchemaForm schema={UserSchema} value={value} onChange={setValue} />
-  },
+  render: BasicFormRender,
+}
+
+const WithValuesRender = () => {
+  const [value, setValue] = useState<User>({
+    name: 'John Doe',
+    email: 'john@example.com',
+    age: 30,
+    role: 'admin',
+  })
+  return <AriaSchemaForm schema={UserSchema} value={value} onChange={setValue} />
 }
 
 /** Form with pre-filled values */
 export const WithValues: StoryObj<typeof AriaSchemaForm<User>> = {
-  render: () => {
-    const [value, setValue] = useState<User>({
-      name: 'John Doe',
-      email: 'john@example.com',
-      age: 30,
-      role: 'admin',
-    })
-    return <AriaSchemaForm schema={UserSchema} value={value} onChange={setValue} />
-  },
+  render: WithValuesRender,
 }
 
 // ============================================================================
@@ -70,34 +74,38 @@ const LinkedInSchema = Schema.TaggedStruct('linkedin-contacts', {
 
 type LinkedIn = typeof LinkedInSchema.Type
 
+const TaggedStructRender = () => {
+  const [value, setValue] = useState<LinkedIn>({
+    _tag: 'linkedin-contacts',
+    syncFrequency: 'daily',
+  })
+  return <AriaSchemaForm schema={LinkedInSchema} value={value} onChange={setValue} />
+}
+
 /** Tagged struct renders with a group header */
 export const TaggedStruct: StoryObj<typeof AriaSchemaForm<LinkedIn>> = {
-  render: () => {
-    const [value, setValue] = useState<LinkedIn>({
-      _tag: 'linkedin-contacts',
-      syncFrequency: 'daily',
-    })
-    return <AriaSchemaForm schema={LinkedInSchema} value={value} onChange={setValue} />
-  },
+  render: TaggedStructRender,
+}
+
+const TaggedStructNoHeaderRender = () => {
+  const [value, setValue] = useState<LinkedIn>({
+    _tag: 'linkedin-contacts',
+    syncFrequency: 'weekly',
+    includeConnections: true,
+  })
+  return (
+    <AriaSchemaForm
+      schema={LinkedInSchema}
+      value={value}
+      onChange={setValue}
+      showTagHeader={false}
+    />
+  )
 }
 
 /** Tagged struct without the header */
 export const TaggedStructNoHeader: StoryObj<typeof AriaSchemaForm<LinkedIn>> = {
-  render: () => {
-    const [value, setValue] = useState<LinkedIn>({
-      _tag: 'linkedin-contacts',
-      syncFrequency: 'weekly',
-      includeConnections: true,
-    })
-    return (
-      <AriaSchemaForm
-        schema={LinkedInSchema}
-        value={value}
-        onChange={setValue}
-        showTagHeader={false}
-      />
-    )
-  },
+  render: TaggedStructNoHeaderRender,
 }
 
 // ============================================================================
@@ -108,14 +116,16 @@ const SimpleActionSchema = Schema.TaggedStruct('simple-action', {})
 
 type SimpleAction = typeof SimpleActionSchema.Type
 
+const EmptyTaggedStructRender = () => {
+  const [value, setValue] = useState<SimpleAction>({
+    _tag: 'simple-action',
+  })
+  return <AriaSchemaForm schema={SimpleActionSchema} value={value} onChange={setValue} />
+}
+
 /** Tagged struct with no fields shows empty state */
 export const EmptyTaggedStruct: StoryObj<typeof AriaSchemaForm<SimpleAction>> = {
-  render: () => {
-    const [value, setValue] = useState<SimpleAction>({
-      _tag: 'simple-action',
-    })
-    return <AriaSchemaForm schema={SimpleActionSchema} value={value} onChange={setValue} />
-  },
+  render: EmptyTaggedStructRender,
 }
 
 // ============================================================================
@@ -135,16 +145,18 @@ const SettingsSchema = Schema.Struct({
 
 type Settings = typeof SettingsSchema.Type
 
+const SettingsFormRender = () => {
+  const [value, setValue] = useState<Settings>({
+    darkMode: false,
+    notifications: true,
+    language: 'en',
+  })
+  return <AriaSchemaForm schema={SettingsSchema} value={value} onChange={setValue} />
+}
+
 /** Form with boolean fields */
 export const SettingsForm: StoryObj<typeof AriaSchemaForm<Settings>> = {
-  render: () => {
-    const [value, setValue] = useState<Settings>({
-      darkMode: false,
-      notifications: true,
-      language: 'en',
-    })
-    return <AriaSchemaForm schema={SettingsSchema} value={value} onChange={setValue} />
-  },
+  render: SettingsFormRender,
 }
 
 // ============================================================================
@@ -160,14 +172,16 @@ const CountrySchema = Schema.Struct({
 
 type Country = typeof CountrySchema.Type
 
+const DropdownFieldRender = () => {
+  const [value, setValue] = useState<Country>({
+    country: 'us',
+  })
+  return <AriaSchemaForm schema={CountrySchema} value={value} onChange={setValue} />
+}
+
 /** Literal with >5 options renders as dropdown */
 export const DropdownField: StoryObj<typeof AriaSchemaForm<Country>> = {
-  render: () => {
-    const [value, setValue] = useState<Country>({
-      country: 'us',
-    })
-    return <AriaSchemaForm schema={CountrySchema} value={value} onChange={setValue} />
-  },
+  render: DropdownFieldRender,
 }
 
 // ============================================================================
@@ -204,17 +218,19 @@ const ComplexSchema = Schema.Struct({
 
 type Complex = typeof ComplexSchema.Type
 
+const ComplexFormRender = () => {
+  const [value, setValue] = useState<Complex>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    subscribe: false,
+    plan: 'free',
+    region: 'us-east',
+  })
+  return <AriaSchemaForm schema={ComplexSchema} value={value} onChange={setValue} />
+}
+
 /** Complex form with all field types */
 export const ComplexForm: StoryObj<typeof AriaSchemaForm<Complex>> = {
-  render: () => {
-    const [value, setValue] = useState<Complex>({
-      firstName: '',
-      lastName: '',
-      email: '',
-      subscribe: false,
-      plan: 'free',
-      region: 'us-east',
-    })
-    return <AriaSchemaForm schema={ComplexSchema} value={value} onChange={setValue} />
-  },
+  render: ComplexFormRender,
 }

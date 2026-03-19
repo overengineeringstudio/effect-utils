@@ -55,113 +55,119 @@ type Story = StoryObj<StoryArgs>
 // Stories
 // =============================================================================
 
+const SuccessRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        { path: 'github.com/effect-ts/effect', status: 'fetched' as const },
+        { path: 'github.com/acme-org/dev-tools', status: 'fetched' as const },
+        { path: 'github.com/alice/dotfiles', status: 'fetched' as const },
+      ],
+      elapsedMs: 1850,
+    }),
+    [],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={StoreView}
+      app={StoreApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
+          : fixtures.createFetchState(stateConfig)
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true
+        ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+        : {})}
+    />
+  )
+}
+
 export const Success: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          { path: 'github.com/effect-ts/effect', status: 'fetched' as const },
-          { path: 'github.com/acme-org/dev-tools', status: 'fetched' as const },
-          { path: 'github.com/alice/dotfiles', status: 'fetched' as const },
-        ],
-        elapsedMs: 1850,
-      }),
-      [args.dryRun],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={StoreView}
-        app={StoreApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
-            : fixtures.createFetchState(stateConfig)
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true
-          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
-          : {})}
-      />
-    )
-  },
+  render: SuccessRender,
+}
+
+const WithErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: fixtures.exampleFetchResults,
+      elapsedMs: 3200,
+    }),
+    [],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={StoreView}
+      app={StoreApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
+          : fixtures.createFetchState(stateConfig)
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true
+        ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+        : {})}
+    />
+  )
 }
 
 export const WithErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: fixtures.exampleFetchResults,
-        elapsedMs: 3200,
-      }),
-      [args.dryRun],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={StoreView}
-        app={StoreApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
-            : fixtures.createFetchState(stateConfig)
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true
-          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
-          : {})}
-      />
-    )
-  },
+  render: WithErrorsRender,
+}
+
+const AllErrorsRender = (args: StoryArgs) => {
+  const stateConfig = useMemo(
+    () => ({
+      results: [
+        {
+          path: 'github.com/effect-ts/effect',
+          status: 'error' as const,
+          message: 'network timeout',
+        },
+        {
+          path: 'github.com/private/repo',
+          status: 'error' as const,
+          message: 'authentication failed',
+        },
+      ],
+      elapsedMs: 30500,
+    }),
+    [],
+  )
+  return (
+    <TuiStoryPreview
+      cwd="~/workspace"
+      command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
+      View={StoreView}
+      app={StoreApp}
+      initialState={
+        args.interactive === true
+          ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
+          : fixtures.createFetchState(stateConfig)
+      }
+      height={args.height}
+      autoRun={args.interactive}
+      playbackSpeed={args.playbackSpeed}
+      tabs={ALL_OUTPUT_TABS}
+      {...(args.interactive === true
+        ? { timeline: fixtures.createFetchTimeline(stateConfig) }
+        : {})}
+    />
+  )
 }
 
 export const AllErrors: Story = {
-  render: (args) => {
-    const stateConfig = useMemo(
-      () => ({
-        results: [
-          {
-            path: 'github.com/effect-ts/effect',
-            status: 'error' as const,
-            message: 'network timeout',
-          },
-          {
-            path: 'github.com/private/repo',
-            status: 'error' as const,
-            message: 'authentication failed',
-          },
-        ],
-        elapsedMs: 30500,
-      }),
-      [args.dryRun],
-    )
-    return (
-      <TuiStoryPreview
-        cwd="~/workspace"
-        command={`mr store fetch${args.dryRun === true ? ' --dry-run' : ''}`}
-        View={StoreView}
-        app={StoreApp}
-        initialState={
-          args.interactive === true
-            ? fixtures.createFetchState({ results: [], elapsedMs: 0 })
-            : fixtures.createFetchState(stateConfig)
-        }
-        height={args.height}
-        autoRun={args.interactive}
-        playbackSpeed={args.playbackSpeed}
-        tabs={ALL_OUTPUT_TABS}
-        {...(args.interactive === true
-          ? { timeline: fixtures.createFetchTimeline(stateConfig) }
-          : {})}
-      />
-    )
-  },
+  render: AllErrorsRender,
 }

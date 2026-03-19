@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "plugins": ["import", "typescript", "unicorn", "oxc"],
+  "plugins": ["import", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": ["./packages/@overeng/oxc-config/src/mod.ts"],
   "ignorePatterns": [
     "**/node_modules/**",
@@ -76,7 +76,11 @@
     "typescript/restrict-template-expressions": "off",
     "typescript/no-duplicate-type-constituents": "off",
     "typescript/no-unsafe-unary-minus": "off",
-    "typescript/no-unnecessary-template-expression": "off"
+    "typescript/no-unnecessary-template-expression": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/no-array-index-key": "off"
   },
   "overrides": [
     {
@@ -96,7 +100,8 @@
         "overeng/storybook/csf-component": "warn",
         "overeng/storybook/hierarchy-separator": "warn",
         "overeng/storybook/no-redundant-story-name": "warn",
-        "overeng/storybook/prefer-pascal-case": "warn"
+        "overeng/storybook/prefer-pascal-case": "warn",
+        "react/exhaustive-deps": "off"
       }
     },
     {
@@ -126,7 +131,9 @@
         "overeng/named-args": "off",
         "unicorn/no-array-sort": "off",
         "unicorn/consistent-function-scoping": "off",
-        "require-yield": "off"
+        "require-yield": "off",
+        "react/rules-of-hooks": "off",
+        "react/exhaustive-deps": "off"
       }
     },
     {
@@ -172,7 +179,9 @@
         "unicorn/consistent-function-scoping": "off",
         "import/no-named-as-default": "off",
         "overeng/exports-first": "off",
-        "overeng/jsdoc-require-exports": "off"
+        "overeng/jsdoc-require-exports": "off",
+        "react/exhaustive-deps": "off",
+        "react/rules-of-hooks": "off"
       }
     }
   ]

@@ -36,7 +36,7 @@ export const baseOxlintIgnorePatterns = [
 ] as const
 
 /** Standard plugins enabled across all repos */
-export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc'] as const
+export const baseOxlintPlugins = ['import', 'typescript', 'unicorn', 'oxc', 'react'] as const
 
 /** Standard category severity levels */
 export const baseOxlintCategories = {
@@ -132,6 +132,22 @@ export const baseOxlintRules = {
 
   // TODO: Re-enable - detects unnecessary template expressions (1 occurrence)
   'typescript/no-unnecessary-template-expression': 'off',
+
+  // =============================================================================
+  // React rules
+  // =============================================================================
+
+  // Not needed with react-jsx transform (React 17+)
+  'react/react-in-jsx-scope': 'off',
+
+  // Enforce rules of hooks — promote from pedantic (off) to error
+  'react/rules-of-hooks': 'error',
+
+  // Warn on missing/extra hook dependencies
+  'react/exhaustive-deps': 'warn',
+
+  // Too noisy for TUI/CLI codebases where list items are stable/append-only
+  'react/no-array-index-key': 'off',
 } as const satisfies OxlintConfigArgs['rules']
 
 /** Rules to disable for generated files */
@@ -170,6 +186,7 @@ export const baseOxlintOverrides = [
       'overeng/storybook/hierarchy-separator': 'warn',
       'overeng/storybook/no-redundant-story-name': 'warn',
       'overeng/storybook/prefer-pascal-case': 'warn',
+      'react/exhaustive-deps': 'off',
     },
   },
   // Storybook story fixtures (stories/_fixtures.ts, stories/_*.ts)
@@ -202,6 +219,9 @@ export const baseOxlintOverrides = [
       'unicorn/no-array-sort': 'off',
       'unicorn/consistent-function-scoping': 'off',
       'require-yield': 'off',
+      // Test files may have non-standard component patterns (helpers, fixtures)
+      'react/rules-of-hooks': 'off',
+      'react/exhaustive-deps': 'off',
     },
   },
   // Declaration files can use inline import() type annotations

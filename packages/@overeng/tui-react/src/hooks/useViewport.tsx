@@ -5,7 +5,7 @@
  * adapt their rendering to available space.
  */
 
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
 
 // =============================================================================
 // Types
@@ -84,7 +84,8 @@ export const ViewportProvider = ({
 
   // Pass viewport prop directly through context. The createRoot doRender()
   // re-renders the tree with updated viewport, so no local state is needed.
-  return <ViewportContext.Provider value={{ viewport }}>{children}</ViewportContext.Provider>
+  const value = useMemo(() => ({ viewport }), [viewport])
+  return <ViewportContext.Provider value={value}>{children}</ViewportContext.Provider>
 }
 
 // =============================================================================

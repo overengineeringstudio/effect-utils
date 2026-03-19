@@ -71,6 +71,7 @@ let
   # NOTE: Using pnpm temporarily due to bun bugs. Plan to switch back once fixed.
   # See: context/workarounds/bun-issues.md
   allPackages = [
+    "packages/@overeng/agent-session-ingest"
     "packages/@overeng/utils"
     "packages/@overeng/utils-dev"
     "packages/@overeng/effect-ai-claude-cli"

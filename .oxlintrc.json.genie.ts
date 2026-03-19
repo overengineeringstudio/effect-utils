@@ -39,6 +39,8 @@ export default oxlintConfig({
         'import/no-named-as-default': 'off',
         'overeng/exports-first': 'off',
         'overeng/jsdoc-require-exports': 'off',
+        'react/exhaustive-deps': 'off',
+        'react/rules-of-hooks': 'off',
       },
     },
   ],
