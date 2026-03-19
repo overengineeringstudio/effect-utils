@@ -426,28 +426,6 @@ export const syncMember = <R = never>({
         } satisfies MemberSyncResult
       }
 
-      // Apply mode: check for ref mismatch on the current symlink target (if it's a branch worktree).
-      // In commit mode, skip this — commit worktrees bypass branch state entirely.
-      // In tracking mode, warn the user but the ff-merge block below will handle the fallback.
-      if (commitMode !== true && currentLinkNormalized !== undefined) {
-        const extracted = extractRefFromSymlinkPath(currentLinkNormalized)
-        if (extracted?.type === 'branch') {
-          const refMismatch = yield* detectRefMismatch({
-            worktreePath: memberPathNormalized,
-            symlinkTarget: currentLinkNormalized,
-          })
-
-          if (refMismatch !== undefined) {
-            return {
-              name,
-              status: 'skipped',
-              message: formatRefMismatchMessage({ refMismatch, memberName: name }),
-              refMismatch,
-            } satisfies MemberSyncResult
-          }
-        }
-      }
-
       // Check if old worktree has uncommitted changes before switching
       if (force === false && dryRun === false) {
         const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(

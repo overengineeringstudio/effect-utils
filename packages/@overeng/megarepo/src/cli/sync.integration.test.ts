@@ -2816,24 +2816,9 @@ describe('sync worktree ref mismatch detection', () => {
         const memberResult = json.results[0]
         expect(memberResult?.name).toBe('test-repo')
 
-        // After the fix for issue #88:
-        // - status should be 'skipped' to indicate a problem was detected
-        // - message should explain the ref mismatch
-        // - refMismatch field should contain structured data
-        expect(memberResult?.status).toBe('skipped')
-        expect(memberResult?.message).toContain('ref mismatch')
-        expect(memberResult?.message).toContain('main')
-
-        // Check that the refMismatch structured data is present
-        const refMismatch = (
-          memberResult as {
-            refMismatch?: { expectedRef: string; actualRef: string; isDetached: boolean }
-          }
-        )?.refMismatch
-        expect(refMismatch).toBeDefined()
-        expect(refMismatch?.expectedRef).toBe('main')
-        expect(refMismatch?.actualRef).toBeTruthy()
-        expect(refMismatch?.actualRef).not.toBe('main')
+        // With worktree mode support: apply proceeds with a commit worktree
+        // instead of blocking on ref mismatch. The member gets synced correctly.
+        expect(['applied', 'cloned']).toContain(memberResult?.status)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -2935,22 +2920,9 @@ describe('sync worktree ref mismatch detection', () => {
         const memberResult = json.results[0]
         expect(memberResult?.name).toBe('test-repo')
 
-        // Should be skipped with ref mismatch
-        expect(memberResult?.status).toBe('skipped')
-        expect(memberResult?.message).toContain('ref mismatch')
-        expect(memberResult?.message).toContain('main')
-        expect(memberResult?.message).toContain('detached')
-
-        // Check that the refMismatch structured data shows detached state
-        const refMismatch = (
-          memberResult as {
-            refMismatch?: { expectedRef: string; actualRef: string; isDetached: boolean }
-          }
-        )?.refMismatch
-        expect(refMismatch).toBeDefined()
-        expect(refMismatch?.expectedRef).toBe('main')
-        expect(refMismatch?.isDetached).toBe(true)
-        expect(refMismatch?.actualRef).toBeTruthy()
+        // With worktree mode support: apply proceeds with a commit worktree
+        // instead of blocking on detached HEAD mismatch. The member gets synced correctly.
+        expect(['applied', 'cloned', 'already_synced']).toContain(memberResult?.status)
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
