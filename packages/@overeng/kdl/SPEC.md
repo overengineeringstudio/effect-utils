@@ -35,32 +35,34 @@ Official test suite: [`kdl-org/kdl/tests/test_cases/`](https://github.com/kdl-or
 ### 1. 1:1 Structural Mapping
 
 Mirror `@bgotink/kdl` module-by-module, function-by-function where feasible. This makes it easy to:
+
 - Pull upstream bug fixes and new features
 - Cross-reference behavior questions against the reference
 - Maintain parity with minimal cognitive overhead
 
 **Module mapping:**
 
-| `@bgotink/kdl` | `@overeng/kdl` | Notes |
-|---|---|---|
-| `src/parser/tokenize/types.js` | `src/parser/tokenize/types.ts` | Token enum + char classifiers |
-| `src/parser/tokenize/context.js` | `src/parser/tokenize/context.ts` | Tokenizer state machine |
-| `src/parser/tokenize/tokenize.js` | `src/parser/tokenize/tokenize.ts` | Main tokenizer |
-| `src/parser/parse.js` | `src/parser/parse.ts` | Recursive descent parser |
-| `src/parser/parse-whitespace.js` | `src/parser/parse-whitespace.ts` | Whitespace-preserving variant |
-| `src/model/document.js` | `src/model/document.ts` | KdlDocument |
-| `src/model/node.js` | `src/model/node.ts` | KdlNode |
-| `src/model/entry.js` | `src/model/entry.ts` | KdlEntry |
-| `src/model/value.js` | `src/model/value.ts` | KdlValue |
-| `src/model/identifier.js` | `src/model/identifier.ts` | KdlIdentifier |
-| `src/model/tag.js` | `src/model/tag.ts` | KdlTag |
-| `src/format.js` | `src/format.ts` | AST → string |
-| `src/clear-format.js` | `src/clear-format.ts` | Strip formatting |
-| `src/string-utils.js` | `src/string-utils.ts` | Escape/unescape |
-| `src/error.js` | `src/error.ts` | Error types |
-| `src/parse.js` | `src/parse.ts` | Public entry point |
+| `@bgotink/kdl`                    | `@overeng/kdl`                    | Notes                         |
+| --------------------------------- | --------------------------------- | ----------------------------- |
+| `src/parser/tokenize/types.js`    | `src/parser/tokenize/types.ts`    | Token enum + char classifiers |
+| `src/parser/tokenize/context.js`  | `src/parser/tokenize/context.ts`  | Tokenizer state machine       |
+| `src/parser/tokenize/tokenize.js` | `src/parser/tokenize/tokenize.ts` | Main tokenizer                |
+| `src/parser/parse.js`             | `src/parser/parse.ts`             | Recursive descent parser      |
+| `src/parser/parse-whitespace.js`  | `src/parser/parse-whitespace.ts`  | Whitespace-preserving variant |
+| `src/model/document.js`           | `src/model/document.ts`           | KdlDocument                   |
+| `src/model/node.js`               | `src/model/node.ts`               | KdlNode                       |
+| `src/model/entry.js`              | `src/model/entry.ts`              | KdlEntry                      |
+| `src/model/value.js`              | `src/model/value.ts`              | KdlValue                      |
+| `src/model/identifier.js`         | `src/model/identifier.ts`         | KdlIdentifier                 |
+| `src/model/tag.js`                | `src/model/tag.ts`                | KdlTag                        |
+| `src/format.js`                   | `src/format.ts`                   | AST → string                  |
+| `src/clear-format.js`             | `src/clear-format.ts`             | Strip formatting              |
+| `src/string-utils.js`             | `src/string-utils.ts`             | Escape/unescape               |
+| `src/error.js`                    | `src/error.ts`                    | Error types                   |
+| `src/parse.js`                    | `src/parse.ts`                    | Public entry point            |
 
 **Excluded from port:**
+
 - `src/parser/tokenize/tokenize-v1.js` — v1 only
 - `src/parser/parse-v1.js` — v1 only
 - `src/parser/tokenize/tokenize-query.js` — query language
@@ -81,14 +83,12 @@ While maintaining 1:1 structure, apply these TS-specific changes:
 ### 3. Effect Integration
 
 **Errors:**
+
 ```ts
-export class KdlParseError extends Schema.TaggedError<KdlParseError>()(
-  'KdlParseError',
-  {
-    message: Schema.String,
-    locations: Schema.Array(KdlLocation),
-  },
-) {}
+export class KdlParseError extends Schema.TaggedError<KdlParseError>()('KdlParseError', {
+  message: Schema.String,
+  locations: Schema.Array(KdlLocation),
+}) {}
 ```
 
 **AST types**: Use plain mutable objects internally (matching reference), but provide `Schema.TaggedStruct` definitions for the public API boundary where decode/encode is needed.
@@ -98,6 +98,7 @@ export class KdlParseError extends Schema.TaggedError<KdlParseError>()(
 ### 4. Test Strategy
 
 **Official test suite (primary):**
+
 - Git submodule or vendored copy of `kdl-org/kdl/tests/test_cases/`
 - For each input `.kdl` file:
   - If filename contains `_fail`: assert parsing fails
@@ -105,6 +106,7 @@ export class KdlParseError extends Schema.TaggedError<KdlParseError>()(
 - All 336 cases must pass
 
 **Unit tests (from reference impl):**
+
 - Port relevant tests from `@bgotink/kdl/test/` covering:
   - String escape/unescape edge cases
   - Tokenizer behavior
@@ -112,6 +114,7 @@ export class KdlParseError extends Schema.TaggedError<KdlParseError>()(
   - Format round-tripping
 
 **Our own tests:**
+
 - Effect integration tests
 - Public API ergonomics tests
 
@@ -143,6 +146,7 @@ contents {
 ### Nodes
 
 Every node has:
+
 - **Name**: A string (bare identifier, quoted, or raw)
 - **Type annotation** (optional): `(type)name`
 - **Arguments**: Ordered positional values
@@ -151,16 +155,16 @@ Every node has:
 
 ### Values
 
-| Type | Syntax | Examples |
-|------|--------|---------|
-| String | bare identifier, `"quoted"`, `#"raw"#`, `"""multiline"""` | `hello`, `"hello world"`, `#"no \"escapes\""#` |
-| Number (decimal) | digits with optional `.` and `e` exponent | `42`, `3.14`, `1e10`, `1_000` |
-| Number (hex) | `0x` prefix | `0xff`, `0xDEAD_BEEF` |
-| Number (octal) | `0o` prefix | `0o755` |
-| Number (binary) | `0b` prefix | `0b1010` |
-| Boolean | keyword | `#true`, `#false` |
-| Null | keyword | `#null` |
-| Special numbers | keyword | `#inf`, `#-inf`, `#nan` |
+| Type             | Syntax                                                    | Examples                                       |
+| ---------------- | --------------------------------------------------------- | ---------------------------------------------- |
+| String           | bare identifier, `"quoted"`, `#"raw"#`, `"""multiline"""` | `hello`, `"hello world"`, `#"no \"escapes\""#` |
+| Number (decimal) | digits with optional `.` and `e` exponent                 | `42`, `3.14`, `1e10`, `1_000`                  |
+| Number (hex)     | `0x` prefix                                               | `0xff`, `0xDEAD_BEEF`                          |
+| Number (octal)   | `0o` prefix                                               | `0o755`                                        |
+| Number (binary)  | `0b` prefix                                               | `0b1010`                                       |
+| Boolean          | keyword                                                   | `#true`, `#false`                              |
+| Null             | keyword                                                   | `#null`                                        |
+| Special numbers  | keyword                                                   | `#inf`, `#-inf`, `#nan`                        |
 
 ### Strings
 

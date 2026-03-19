@@ -16,7 +16,12 @@
 import { FileSystem } from '@effect/platform'
 import { Effect, JSONSchema, Option, Schema } from 'effect'
 
-import { EffectPath, type AbsoluteDirPath, type AbsoluteFilePath, type RelativeDirPath } from '@overeng/effect-path'
+import {
+  EffectPath,
+  type AbsoluteDirPath,
+  type AbsoluteFilePath,
+  type RelativeDirPath,
+} from '@overeng/effect-path'
 
 import { decodeMegarepoKdl, encodeMegarepoKdl } from './config-kdl.ts'
 import { parseSourceRef } from './ref.ts'
@@ -248,10 +253,7 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
     const fs = yield* FileSystem.FileSystem
 
     for (const fileName of CONFIG_FILE_NAMES) {
-      const configPath = EffectPath.ops.join(
-        megarepoRoot,
-        EffectPath.unsafe.relativeFile(fileName),
-      )
+      const configPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile(fileName))
 
       const exists = yield* fs.exists(configPath)
       if (!exists) continue
@@ -274,10 +276,7 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
  * Write megarepo config to a file.
  * Writes in the format matching the file extension.
  */
-export const writeMegarepoConfig = (
-  configPath: AbsoluteFilePath,
-  config: MegarepoConfig,
-) =>
+export const writeMegarepoConfig = (configPath: AbsoluteFilePath, config: MegarepoConfig) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const format: ConfigFormat = configPath.endsWith('.kdl') ? 'kdl' : 'json'

@@ -11,11 +11,7 @@ import React from 'react'
 import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import {
-  CONFIG_FILE_NAME_KDL,
-  findConfigPath,
-  writeMegarepoConfig,
-} from '../../lib/config.ts'
+import { CONFIG_FILE_NAME_KDL, findConfigPath, writeMegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { Cwd, outputOption, outputModeLayer } from '../context.ts'
 import { InitApp, InitView } from '../renderers/InitOutput/mod.ts'

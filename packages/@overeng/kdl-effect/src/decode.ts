@@ -1,4 +1,5 @@
 import type { SchemaAST } from 'effect'
+
 import type { Document, Node } from '@overeng/kdl'
 
 /** Convert a KDL Document to a plain JS object for Schema decoding */
@@ -110,7 +111,11 @@ export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown =>
       // we pick the first member that is a TypeLiteral or TupleType
       // and apply normalization based on it.
       for (const member of ast.types) {
-        if (member._tag === 'TupleType' || member._tag === 'TypeLiteral' || member._tag === 'Transformation') {
+        if (
+          member._tag === 'TupleType' ||
+          member._tag === 'TypeLiteral' ||
+          member._tag === 'Transformation'
+        ) {
           return normalizeForSchema(obj, member)
         }
       }

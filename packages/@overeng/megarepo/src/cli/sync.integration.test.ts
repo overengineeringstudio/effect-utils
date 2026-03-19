@@ -1695,7 +1695,10 @@ describe('mr lock', () => {
             Schema.parseJson(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+            EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
+            ),
             configContent + '\n',
           )
           yield* addCommit({
@@ -2549,7 +2552,10 @@ describe('sync member filtering', () => {
             Schema.parseJson(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+            EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
+            ),
             configContent + '\n',
           )
           yield* addCommit({
@@ -2617,7 +2623,10 @@ describe('sync member filtering', () => {
             Schema.parseJson(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+            EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
+            ),
             configContent + '\n',
           )
           yield* addCommit({
@@ -2668,7 +2677,10 @@ describe('sync member filtering', () => {
             Schema.parseJson(MegarepoConfig, { space: 2 }),
           )(config)
           yield* fs.writeFileString(
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON)),
+            EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
+            ),
             configContent + '\n',
           )
           yield* addCommit({

@@ -12,7 +12,12 @@ import React from 'react'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { ConfigNotFoundError, findConfigPath, getMemberPath, readMegarepoConfig } from '../../lib/config.ts'
+import {
+  ConfigNotFoundError,
+  findConfigPath,
+  getMemberPath,
+  readMegarepoConfig,
+} from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import {
   Cwd,
@@ -74,7 +79,9 @@ const scanMembersRecursive = ({
       // Check if this member is itself a megarepo
       const isMegarepo =
         memberExists === true
-          ? (yield* findConfigPath(memberPath).pipe(Effect.catchAll(() => Effect.succeed(undefined)))) !== undefined
+          ? (yield* findConfigPath(memberPath).pipe(
+              Effect.catchAll(() => Effect.succeed(undefined)),
+            )) !== undefined
           : false
 
       members.push({

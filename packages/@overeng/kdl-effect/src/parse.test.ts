@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
 import { Schema } from 'effect'
+import { describe, it, expect } from 'vitest'
+
 import { parseKdl } from './parse.ts'
 
 describe('parseKdl', () => {
@@ -38,9 +39,7 @@ describe('parseKdl', () => {
       items: Schema.Array(Schema.String),
     })
 
-    const result = Schema.decodeUnknownSync(parseKdl(MySchema))(
-      'items "a"\nitems "b"\nitems "c"',
-    )
+    const result = Schema.decodeUnknownSync(parseKdl(MySchema))('items "a"\nitems "b"\nitems "c"')
     expect(result).toEqual({ items: ['a', 'b', 'c'] })
   })
 })

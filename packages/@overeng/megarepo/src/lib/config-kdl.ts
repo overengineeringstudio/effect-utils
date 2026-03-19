@@ -27,7 +27,9 @@
  */
 
 import { Effect, Schema } from 'effect'
-import { parse, type Document, type Node } from '@overeng/kdl'
+
+import { parse, stringifyString, type Document, type Node } from '@overeng/kdl'
+
 import { MegarepoConfig } from './config.ts'
 
 /** Parse a megarepo.kdl string into a MegarepoConfig */
@@ -88,7 +90,9 @@ const decodeGeneratorsNode = (node: Node): Record<string, unknown> => {
 
       const excludeNode = vscodeNode.children.findNodeByName('exclude')
       if (excludeNode) {
-        vscode['exclude'] = excludeNode.getArguments().filter((a): a is string => typeof a === 'string')
+        vscode['exclude'] = excludeNode
+          .getArguments()
+          .filter((a): a is string => typeof a === 'string')
       }
 
       const settingsNode = vscodeNode.children.findNodeByName('settings')
@@ -245,14 +249,14 @@ const encodeLockSync = (lockSync: NonNullable<MegarepoConfig['lockSync']>): stri
 /** Format a value as a KDL boolean */
 const kdlBool = (v: boolean): string => (v ? '#true' : '#false')
 
-/** Format an unknown value as a KDL value literal */
+/** Format an unknown value as a KDL value literal (properly escaped) */
 const kdlValue = (v: unknown): string => {
   if (typeof v === 'boolean') return kdlBool(v)
   if (typeof v === 'number') return String(v)
-  if (typeof v === 'string') return `"${v}"`
-  return `"${String(v)}"`
+  if (v === null) return '#null'
+  if (typeof v === 'string') return stringifyString(v)
+  return stringifyString(String(v))
 }
 
-/** Quote a string as a KDL identifier if it contains special characters */
-const kdlIdent = (s: string): string =>
-  /[^a-zA-Z0-9_-]/.test(s) || s.length === 0 ? `"${s}"` : s
+/** Format a string as a KDL identifier (quotes if needed for KDL grammar) */
+const kdlIdent = (s: string): string => stringifyString(s)
