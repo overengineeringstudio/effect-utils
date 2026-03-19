@@ -105,6 +105,17 @@ describe('parseKdl', () => {
       expect(decoded).toEqual(original)
     })
 
+    it('round-trips null values', () => {
+      const MySchema = Schema.Struct({
+        value: Schema.NullOr(Schema.String),
+      })
+
+      const original = { value: null }
+      const kdl = Schema.encodeUnknownSync(parseKdl(MySchema))(original)
+      const decoded = Schema.decodeUnknownSync(parseKdl(MySchema))(kdl)
+      expect(decoded).toEqual(original)
+    })
+
     it('round-trips arrays', () => {
       const MySchema = Schema.Struct({
         items: Schema.Array(Schema.String),

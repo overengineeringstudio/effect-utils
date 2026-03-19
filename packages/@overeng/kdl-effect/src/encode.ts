@@ -23,7 +23,11 @@ export const objectToKdlDocument = (obj: Record<string, unknown>): Document => {
 const valueToNode = (name: string, value: unknown): Node => {
   const node = Node.create(name)
 
-  if (value === null || value === undefined) return node
+  if (value === undefined) return node
+  if (value === null) {
+    node.entries.push(Entry.createArgument(null))
+    return node
+  }
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     node.entries.push(Entry.createArgument(value))
     return node
