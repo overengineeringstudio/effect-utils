@@ -538,7 +538,6 @@ export const storybookOxlintOverride = {
     'overeng/storybook/hierarchy-separator': 'warn',
     'overeng/storybook/no-redundant-story-name': 'warn',
     'overeng/storybook/prefer-pascal-case': 'warn',
-    'react/exhaustive-deps': 'off',
   },
 } as const satisfies OxlintOverride
 

@@ -182,17 +182,17 @@ export const AllUnchanged: Story = {
 }
 
 /** Dry run mode - shows what would be changed */
+const dryRunFiles = [
+  { path: '/workspace/packages/foo/package.json', relativePath: 'packages/foo/package.json' },
+  { path: '/workspace/packages/foo/tsconfig.json', relativePath: 'packages/foo/tsconfig.json' },
+  { path: '/workspace/packages/bar/package.json', relativePath: 'packages/bar/package.json' },
+]
+
 export const DryRun: Story = {
   args: {
     mode: 'dry-run',
   },
   render: (args) => {
-    const dryRunFiles = [
-      { path: '/workspace/packages/foo/package.json', relativePath: 'packages/foo/package.json' },
-      { path: '/workspace/packages/foo/tsconfig.json', relativePath: 'packages/foo/tsconfig.json' },
-      { path: '/workspace/packages/bar/package.json', relativePath: 'packages/bar/package.json' },
-    ]
-
     const stateConfig = useMemo(
       () =>
         fixtures.createState({

@@ -186,7 +186,6 @@ export const baseOxlintOverrides = [
       'overeng/storybook/hierarchy-separator': 'warn',
       'overeng/storybook/no-redundant-story-name': 'warn',
       'overeng/storybook/prefer-pascal-case': 'warn',
-      'react/exhaustive-deps': 'off',
     },
   },
   // Storybook story fixtures (stories/_fixtures.ts, stories/_*.ts)
