@@ -84,19 +84,31 @@ const nodeToValue = (node: Node): unknown => {
 export const normalizeForSchema = (obj: unknown, ast: SchemaAST.AST): unknown => {
   switch (ast._tag) {
     case 'TupleType': {
-      if (Array.isArray(obj)) return obj
-      // Schema expects an array but we got a scalar — wrap it
-      return [obj]
+      const arr = Array.isArray(obj) ? obj : [obj]
+      // Recurse into elements to normalize nested schemas
+      const elementType = ast.rest[0]?.type
+      if (elementType !== undefined) {
+        return arr.map((item) => normalizeForSchema(item, elementType))
+      }
+      return arr
     }
 
     case 'TypeLiteral': {
       if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return obj
       const record = obj as Record<string, unknown>
       const result: Record<string, unknown> = { ...record }
+      // Normalize known property signatures
       for (const prop of ast.propertySignatures) {
         const key = prop.name
         if (typeof key === 'string' && key in result) {
           result[key] = normalizeForSchema(result[key], prop.type)
+        }
+      }
+      // Normalize index signature (Record) values
+      for (const idx of ast.indexSignatures) {
+        for (const key of Object.keys(result)) {
+          if (ast.propertySignatures.some((p) => p.name === key)) continue
+          result[key] = normalizeForSchema(result[key], idx.type)
         }
       }
       return result

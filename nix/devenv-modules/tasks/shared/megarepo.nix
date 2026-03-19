@@ -108,7 +108,7 @@ let
         if [ -f ./megarepo.json ]; then
           members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
         elif [ -f ./megarepo.kdl ]; then
-          members=$(${pkgs.gnused}/bin/sed -n '/^members {/,/^}/{ /^  /s/^  \([^ "]*\).*/\1/p }' ./megarepo.kdl 2>/dev/null) || exit 1
+          members=$(${pkgs.gnused}/bin/sed -n '/^members {/,/^}/{/^  [^ ]/{ s/^  "\([^"]*\)".*/\1/; t print; s/^  \([^ ]*\).*/\1/; :print p; }}' ./megarepo.kdl 2>/dev/null) || exit 1
         else
           exit 1
         fi
@@ -136,7 +136,7 @@ let
         if [ -f ./megarepo.json ]; then
           members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
         elif [ -f ./megarepo.kdl ]; then
-          members=$(${pkgs.gnused}/bin/sed -n '/^members {/,/^}/{ /^  /s/^  \([^ "]*\).*/\1/p }' ./megarepo.kdl 2>/dev/null) || exit 1
+          members=$(${pkgs.gnused}/bin/sed -n '/^members {/,/^}/{/^  [^ ]/{ s/^  "\([^"]*\)".*/\1/; t print; s/^  \([^ ]*\).*/\1/; :print p; }}' ./megarepo.kdl 2>/dev/null) || exit 1
         else
           exit 1
         fi

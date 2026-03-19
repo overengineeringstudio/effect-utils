@@ -148,5 +148,23 @@ describe('parseKdl', () => {
       const result = Schema.decodeUnknownSync(parseKdl(MySchema))('vscode enabled=#true {}')
       expect(result).toEqual({ vscode: { enabled: true } })
     })
+
+    it('normalizes nested arrays inside array elements', () => {
+      const MySchema = Schema.Struct({
+        items: Schema.Array(Schema.Struct({ tags: Schema.Array(Schema.String) })),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('items {\n  tags "a"\n}')
+      expect(result).toEqual({ items: [{ tags: ['a'] }] })
+    })
+
+    it('normalizes record values with array schemas', () => {
+      const MySchema = Schema.Struct({
+        groups: Schema.Record({ key: Schema.String, value: Schema.Array(Schema.String) }),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('groups {\n  admin "alice"\n}')
+      expect(result).toEqual({ groups: { admin: ['alice'] } })
+    })
   })
 })
