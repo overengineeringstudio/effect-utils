@@ -5,8 +5,8 @@ import {
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
-import kdlPkg from '../kdl/package.json.genie.ts'
 import kdlEffectPkg from '../kdl-effect/package.json.genie.ts'
+import kdlPkg from '../kdl/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'

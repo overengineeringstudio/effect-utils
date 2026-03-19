@@ -16,7 +16,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  ConfigNotFoundError,
+  type ConfigNotFoundError,
   findConfigPath,
   getMemberPath,
   getMembersRoot,
@@ -618,7 +618,6 @@ export const runCommand = ({
       (resolvedWorktreeMode === 'auto' && process.env.CI === 'true')
 
     const cwd = yield* Cwd
-    const fs = yield* FileSystem.FileSystem
     const root = yield* findMegarepoRoot(cwd)
 
     if (Option.isSome(only) === true && Option.isSome(skip) === true) {

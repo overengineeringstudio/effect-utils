@@ -794,7 +794,6 @@ const storeFixCommand = Cli.Command.make(
     Effect.gen(function* () {
       const cwd = yield* Cwd
       const store = yield* Store
-      const fs = yield* FileSystem.FileSystem
 
       const root = yield* findMegarepoRoot(cwd)
       if (Option.isNone(root) === true) {
