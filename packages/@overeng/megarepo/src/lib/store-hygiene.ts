@@ -142,32 +142,47 @@ export const validateStoreMembers = ({
         continue
       }
 
-      const worktreePath = store.getWorktreePath({
+      // Check both the branch worktree (refs/heads/<ref>/) and the commit worktree
+      // (refs/commits/<sha>/). Content-aware selection in apply mode may use either.
+      const branchWorktreePath = store.getWorktreePath({
         source,
         ref: lockedMember.ref,
       })
+      const commitWorktreePath = store.getWorktreePath({
+        source,
+        ref: lockedMember.commit,
+        refType: 'commit',
+      })
 
-      const gitFilePath = `${worktreePath}.git`.replace(/\/\.git$/, '/.git')
-      const gitFileExists = yield* fs
-        .exists(gitFilePath)
+      const branchGitPath = `${branchWorktreePath}.git`.replace(/\/\.git$/, '/.git')
+      const commitGitPath = `${commitWorktreePath}.git`.replace(/\/\.git$/, '/.git')
+      const branchGitExists = yield* fs
+        .exists(branchGitPath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)))
+      const commitGitExists = yield* fs
+        .exists(commitGitPath)
         .pipe(Effect.catchAll(() => Effect.succeed(false)))
 
-      if (gitFileExists === false) {
+      if (branchGitExists === false && commitGitExists === false) {
         issues.push({
           severity: 'error',
           type: 'broken_worktree',
           memberName,
-          message: `.git not found in worktree at ${worktreePath}`,
+          message: `.git not found in worktree at ${branchWorktreePath}`,
           fix: `run 'mr apply' to recreate the worktree`,
-          meta: { _tag: 'broken_worktree', worktreePath, source },
+          meta: { _tag: 'broken_worktree', worktreePath: branchWorktreePath, source },
         })
         continue
       }
 
-      // Check ref mismatch (only for branch worktrees — tags/commits are detached by design)
+      // Use whichever worktree exists for subsequent checks
+      const worktreePath = branchGitExists === true ? branchWorktreePath : commitWorktreePath
+
+      // Check ref mismatch (only for branch worktrees — tags/commits are detached by design).
+      // Skip if we're using a commit worktree (content-aware selection chose it over the branch worktree).
       const expectedRef = lockedMember.ref
 
-      if (classifyRef(expectedRef) === 'branch') {
+      if (classifyRef(expectedRef) === 'branch' && branchGitExists === true) {
         const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
           Effect.catchAll(() => Effect.succeed(Option.none<string>())),
         )
@@ -256,12 +271,15 @@ export const runPreflightChecks = ({
   lockFile,
   store,
   mode,
+  commitMode,
 }: {
   memberNames: readonly string[]
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
   mode: 'apply' | 'lock'
+  /** When true, branch worktree issues are non-blocking (commit worktrees will be used). */
+  commitMode?: boolean
 }): Effect.Effect<
   void,
   StoreHygieneError | PlatformError.PlatformError,
@@ -279,9 +297,18 @@ export const runPreflightChecks = ({
 
     const warnings = issues.filter((i) => i.severity === 'warning')
 
-    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors
+    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors.
+    // In commit mode, branch worktree issues (ref_mismatch, broken_worktree) are non-blocking
+    // because commit worktrees will be used instead.
     const blockingErrors = issues.filter(
-      (i) => i.severity === 'error' && !(mode === 'apply' && i.type === 'missing_bare'),
+      (i) =>
+        i.severity === 'error' &&
+        !(mode === 'apply' && i.type === 'missing_bare') &&
+        !(
+          mode === 'apply' &&
+          commitMode === true &&
+          (i.type === 'ref_mismatch' || i.type === 'broken_worktree')
+        ),
     )
 
     // Log warnings

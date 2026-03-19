@@ -99,6 +99,8 @@ export const syncMegarepo = <R = never>({
     createBranches: boolean
     /** When true (fetch --apply), skip staleness check and run fetch before apply for nested --all recursion. */
     applyAfterFetch?: boolean
+    /** When true, use commit-based worktrees (refs/commits/<sha>) for deterministic apply. */
+    commitMode?: boolean
   }
   depth?: number
   visited?: Set<string>
@@ -241,6 +243,7 @@ export const syncMegarepo = <R = never>({
         lockFile,
         store,
         mode: isApplyMode === true ? 'apply' : 'lock',
+        ...(options.commitMode === true ? { commitMode: true } : {}),
       })
     }
 
@@ -277,6 +280,7 @@ export const syncMegarepo = <R = never>({
             semaphoreMap,
             gitProtocol,
             createBranches,
+            ...(options.commitMode === true ? { commitMode: true } : {}),
             ...(onMissingRef !== undefined ? { onMissingRef } : {}),
           })
 
@@ -593,6 +597,7 @@ export const runCommand = ({
   createBranches,
   verbose,
   applyAfterFetch = false,
+  worktreeMode,
 }: {
   mode: SyncMode
   output: OutputModeValue
@@ -606,9 +611,17 @@ export const runCommand = ({
   verbose: boolean
   /** When true, runs fetch first (silently), then apply with output rendering. Used by `mr fetch --apply`. */
   applyAfterFetch?: boolean
+  /** Worktree strategy for apply mode: 'commit', 'tracking', or 'auto' (default). */
+  worktreeMode?: 'commit' | 'tracking' | 'auto'
 }) =>
   Effect.gen(function* () {
     const json = output === 'json' || output === 'ndjson'
+
+    // Resolve worktree mode: 'auto' → commit in CI, tracking otherwise
+    const resolvedWorktreeMode = worktreeMode ?? 'auto'
+    const commitMode =
+      resolvedWorktreeMode === 'commit' ||
+      (resolvedWorktreeMode === 'auto' && process.env.CI === 'true')
 
     const cwd = yield* Cwd
     const fs = yield* FileSystem.FileSystem
@@ -696,6 +709,7 @@ export const runCommand = ({
           gitProtocol,
           createBranches,
           ...(applyAfterFetch === true ? { applyAfterFetch: true } : {}),
+          ...(commitMode === true ? { commitMode: true } : {}),
         },
         ...(progressHandle !== undefined ? { progressHandle } : {}),
         ...(onMissingRef !== undefined ? { onMissingRef } : {}),

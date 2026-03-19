@@ -465,19 +465,26 @@ mr apply --git-protocol=https
 
 #### `mr apply`
 
-Strict mode for CI that guarantees exact reproducibility:
+Strict mode that guarantees exact reproducibility from the lock file:
 
 - Lock file MUST exist
 - Lock MUST cover all config members (no new members allowed)
 - Uses locked commits exactly
 - Fails if config has members not in lock
 - **Clones and fetches if needed** - lock apply will clone bare repos and fetch updates to materialize the locked state; it only prevents _updating_ the lock file
-- **Uses commit-based worktree paths** (e.g., `refs/commits/<sha>/`) to guarantee the exact locked commit is checked out, regardless of what branch refs currently point to
 - **Never modifies lock file** - the lock is read-only, all state comes from the committed lock
 
-This commit-based path approach ensures that even if the store's bare repo has been updated by another operation, lock apply always materializes the exact commits from the lock file.
+**Worktree modes** (`--worktree-mode`):
 
-**CI usage:** In a fresh CI environment, `mr apply` will clone repos and fetch as needed to materialize the exact commits specified in the lock file, then run generators. This provides reproducible builds without requiring a pre-populated store. The lock file is never modified.
+| Mode       | Worktree path          | Behavior                                                                                                      |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `commit`   | `refs/commits/<sha>/`  | Deterministic, isolated — exact locked commit guaranteed                                                      |
+| `tracking` | `refs/heads/<branch>/` | Branch worktrees for dev convenience; falls back to commit worktree if branch has advanced past locked commit |
+| `auto`     | (depends)              | `commit` when `CI=true`, `tracking` otherwise                                                                 |
+
+In `tracking` mode, if the branch worktree is behind the locked commit, it is fast-forwarded. If the branch has advanced past the locked commit (fast-forward not possible), `mr apply` falls back to a commit worktree to ensure correct content without detaching the branch worktree.
+
+**CI usage:** In CI environments (`CI=true`), `mr apply` defaults to `commit` mode, creating `refs/commits/<sha>/` worktrees for deterministic builds. The lock file is never modified.
 
 #### `mr pin <member> [-c <ref>]`
 

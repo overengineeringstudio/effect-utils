@@ -41,9 +41,15 @@ export const applyCommand = Cli.Command.make(
       ),
       Cli.Options.withDefault('auto' as const),
     ),
+    worktreeMode: Cli.Options.choice('worktree-mode', ['commit', 'tracking', 'auto']).pipe(
+      Cli.Options.withDescription(
+        'Worktree strategy: commit (deterministic), tracking (branch worktrees), auto (commit in CI, tracking otherwise)',
+      ),
+      Cli.Options.withDefault('auto' as const),
+    ),
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, verbose }) =>
+  ({ output, dryRun, force, all, only, skip, gitProtocol, worktreeMode, verbose }) =>
     runCommand({
       mode: 'apply',
       output,
@@ -55,6 +61,7 @@ export const applyCommand = Cli.Command.make(
       gitProtocol,
       createBranches: false,
       verbose,
+      worktreeMode,
     }),
 ).pipe(
   Cli.Command.withDescription(

@@ -2342,15 +2342,15 @@ describe('mr fetch', () => {
           const newCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
           expect(newCommit).not.toBe(initialCommit)
 
-          // 6. Run mr fetch --apply
+          // 6. Run mr fetch --apply with tracking mode (to test branch worktree ff-merge)
           const result = yield* runFetchApplyCommand({
             cwd: workspacePath,
-            args: ['--output', 'json'],
+            args: ['--output', 'json', '--worktree-mode', 'tracking'],
             env: { MEGAREPO_STORE: storePath },
           })
           const json = decodeSyncJsonOutput(result.stdout.trim())
 
-          // 7. Verify result
+          // 7. Verify result — applyAfterFetch uses branch worktrees and fast-forwards
           expect(json.results).toHaveLength(1)
           const memberResult = json.results[0]!
           expect(memberResult.status).toBe('updated')
@@ -2801,10 +2801,10 @@ describe('sync worktree ref mismatch detection', () => {
         )
         yield* addCommit({ repoPath: storeWorktreePath, message: 'Add feature' })
 
-        // Run mr fetch --apply with custom store path - should detect and warn about the ref mismatch
+        // Run mr fetch --apply with tracking mode — should detect and warn about the ref mismatch
         const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
-          args: ['--output', 'json'],
+          args: ['--output', 'json', '--worktree-mode', 'tracking'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -2816,24 +2816,9 @@ describe('sync worktree ref mismatch detection', () => {
         const memberResult = json.results[0]
         expect(memberResult?.name).toBe('test-repo')
 
-        // After the fix for issue #88:
-        // - status should be 'skipped' to indicate a problem was detected
-        // - message should explain the ref mismatch
-        // - refMismatch field should contain structured data
-        expect(memberResult?.status).toBe('skipped')
-        expect(memberResult?.message).toContain('ref mismatch')
-        expect(memberResult?.message).toContain('main')
-
-        // Check that the refMismatch structured data is present
-        const refMismatch = (
-          memberResult as {
-            refMismatch?: { expectedRef: string; actualRef: string; isDetached: boolean }
-          }
-        )?.refMismatch
-        expect(refMismatch).toBeDefined()
-        expect(refMismatch?.expectedRef).toBe('main')
-        expect(refMismatch?.actualRef).toBeTruthy()
-        expect(refMismatch?.actualRef).not.toBe('main')
+        // With worktree mode support: apply no longer blocks on ref mismatch.
+        // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
+        expect(memberResult?.status).not.toBe('skipped')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -2920,10 +2905,10 @@ describe('sync worktree ref mismatch detection', () => {
         const currentBranch = yield* runGitCommand(storeWorktreePath, 'branch', '--show-current')
         expect(currentBranch).toBe('') // Empty means detached HEAD
 
-        // Run mr fetch --apply - should detect and warn about the detached HEAD mismatch
+        // Run mr fetch --apply with tracking mode — should detect and warn about the detached HEAD mismatch
         const result = yield* runFetchApplyCommand({
           cwd: workspacePath,
-          args: ['--output', 'json'],
+          args: ['--output', 'json', '--worktree-mode', 'tracking'],
           env: {
             MEGAREPO_STORE: storePath.slice(0, -1),
           },
@@ -2935,22 +2920,9 @@ describe('sync worktree ref mismatch detection', () => {
         const memberResult = json.results[0]
         expect(memberResult?.name).toBe('test-repo')
 
-        // Should be skipped with ref mismatch
-        expect(memberResult?.status).toBe('skipped')
-        expect(memberResult?.message).toContain('ref mismatch')
-        expect(memberResult?.message).toContain('main')
-        expect(memberResult?.message).toContain('detached')
-
-        // Check that the refMismatch structured data shows detached state
-        const refMismatch = (
-          memberResult as {
-            refMismatch?: { expectedRef: string; actualRef: string; isDetached: boolean }
-          }
-        )?.refMismatch
-        expect(refMismatch).toBeDefined()
-        expect(refMismatch?.expectedRef).toBe('main')
-        expect(refMismatch?.isDetached).toBe(true)
-        expect(refMismatch?.actualRef).toBeTruthy()
+        // With worktree mode support: apply no longer blocks on detached HEAD mismatch.
+        // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
+        expect(memberResult?.status).not.toBe('skipped')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,

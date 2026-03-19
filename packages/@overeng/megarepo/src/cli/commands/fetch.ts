@@ -39,6 +39,12 @@ const sharedOptions = {
     ),
     Cli.Options.withDefault('auto' as const),
   ),
+  worktreeMode: Cli.Options.choice('worktree-mode', ['commit', 'tracking', 'auto']).pipe(
+    Cli.Options.withDescription(
+      'Worktree strategy: commit (deterministic), tracking (branch worktrees), auto (commit in CI, tracking otherwise)',
+    ),
+    Cli.Options.withDefault('auto' as const),
+  ),
   verbose: verboseOption,
 } as const
 
@@ -68,6 +74,7 @@ export const fetchCommand = Cli.Command.make(
     gitProtocol,
     apply: applyAfter,
     createBranches,
+    worktreeMode,
     verbose,
   }) =>
     runCommand({
@@ -82,6 +89,7 @@ export const fetchCommand = Cli.Command.make(
       createBranches,
       verbose,
       applyAfterFetch: applyAfter,
+      worktreeMode,
     }),
 ).pipe(
   Cli.Command.withDescription(
