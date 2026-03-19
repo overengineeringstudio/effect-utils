@@ -761,10 +761,12 @@ export const syncMember = <R = never>({
       | { readonly _tag: 'commit'; readonly commit: string }
       | { readonly _tag: 'default'; readonly ref: string; readonly refType: RefType }
     const worktreeSelection: WorktreeSelection =
-      isApplyMode === true && targetCommit !== undefined && actualRefType === 'branch'
-        ? commitMode === true
+      isApplyMode === true && targetCommit !== undefined
+        ? commitMode === true && (actualRefType === 'branch' || actualRefType === 'tag')
           ? { _tag: 'commit', commit: targetCommit }
-          : { _tag: 'branch', ref: targetRef }
+          : actualRefType === 'branch'
+            ? { _tag: 'branch', ref: targetRef }
+            : { _tag: 'default', ref: targetRef, refType: actualRefType }
         : { _tag: 'default', ref: targetRef, refType: actualRefType }
     let worktreeRef: string =
       worktreeSelection._tag === 'commit' ? worktreeSelection.commit : worktreeSelection.ref

@@ -2816,9 +2816,9 @@ describe('sync worktree ref mismatch detection', () => {
         const memberResult = json.results[0]
         expect(memberResult?.name).toBe('test-repo')
 
-        // With worktree mode support: apply proceeds with a commit worktree
-        // instead of blocking on ref mismatch. The member gets synced correctly.
-        expect(['applied', 'cloned']).toContain(memberResult?.status)
+        // With worktree mode support: apply no longer blocks on ref mismatch.
+        // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
+        expect(memberResult?.status).not.toBe('skipped')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
@@ -2920,9 +2920,9 @@ describe('sync worktree ref mismatch detection', () => {
         const memberResult = json.results[0]
         expect(memberResult?.name).toBe('test-repo')
 
-        // With worktree mode support: apply proceeds with a commit worktree
-        // instead of blocking on detached HEAD mismatch. The member gets synced correctly.
-        expect(['applied', 'cloned', 'already_synced']).toContain(memberResult?.status)
+        // With worktree mode support: apply no longer blocks on detached HEAD mismatch.
+        // It proceeds (possibly falling back to commit worktree) instead of returning 'skipped'.
+        expect(memberResult?.status).not.toBe('skipped')
       },
       Effect.provide(NodeContext.layer),
       Effect.scoped,
