@@ -870,6 +870,55 @@ export const syncMember = <R = never>({
       )
     }
 
+    /** Fallback: switch to a commit worktree, creating it if needed (with race handling). */
+    const ensureCommitWorktree = () =>
+      Effect.gen(function* () {
+        worktreeRef = targetCommit!
+        worktreeRefType = 'commit'
+        const commitWorktreePath = store.getWorktreePath({
+          source,
+          ref: targetCommit!,
+          refType: 'commit',
+        })
+        const exists = yield* store.hasWorktree({
+          source,
+          ref: targetCommit!,
+          refType: 'commit',
+        })
+        if (exists === false) {
+          const parent = EffectPath.ops.parent(commitWorktreePath)
+          if (parent !== undefined) {
+            yield* fs.makeDirectory(parent, { recursive: true })
+          }
+          yield* Git.createWorktreeDetached({
+            repoPath: bareRepoPath,
+            worktreePath: commitWorktreePath,
+            commit: targetCommit!,
+          }).pipe(
+            // Handle race: concurrent sync may have created it between our check and creation
+            Effect.catchIf(
+              (error) =>
+                error instanceof Git.GitCommandError &&
+                error.stderr.includes('already exists and is not an empty directory'),
+              () =>
+                store.hasWorktree({ source, ref: targetCommit!, refType: 'commit' }).pipe(
+                  Effect.flatMap((nowExists) =>
+                    nowExists === true
+                      ? Effect.void
+                      : Effect.fail(
+                          new Git.GitCommandError({
+                            args: ['worktree', 'add'],
+                            exitCode: 1,
+                            stderr: 'Target directory already exists but is not a valid worktree',
+                          }),
+                        ),
+                  ),
+                ),
+            ),
+          )
+        }
+      })
+
     // In tracking mode (branch worktrees), ensure the worktree is at the locked commit.
     // Try ff-merge; if it fails (branch ahead of locked commit), switch to a commit worktree
     // rather than detaching HEAD (which would break idempotency via ref_mismatch on next run).
@@ -906,36 +955,13 @@ export const syncMember = <R = never>({
           } else {
             // FF-merge failed (branch ahead of locked commit).
             // Switch to commit worktree to avoid detaching the branch worktree.
-            worktreeRef = targetCommit
-            worktreeRefType = 'commit'
-            const commitWorktreePath = store.getWorktreePath({
-              source,
-              ref: targetCommit,
-              refType: 'commit',
-            })
-            const commitWorktreeExists = yield* store.hasWorktree({
-              source,
-              ref: targetCommit,
-              refType: 'commit',
-            })
-            if (commitWorktreeExists === false) {
-              const worktreeParent = EffectPath.ops.parent(commitWorktreePath)
-              if (worktreeParent !== undefined) {
-                yield* fs.makeDirectory(worktreeParent, { recursive: true })
-              }
-              yield* Git.createWorktreeDetached({
-                repoPath: bareRepoPath,
-                worktreePath: commitWorktreePath,
-                commit: targetCommit,
-              })
-            }
+            yield* ensureCommitWorktree()
           }
         }
       } else {
         // Ref mismatch: worktree is on a different branch.
         // Switch to commit worktree instead of reporting error (apply should succeed).
-        worktreeRef = targetCommit
-        worktreeRefType = 'commit'
+        yield* ensureCommitWorktree()
       }
     }
 
