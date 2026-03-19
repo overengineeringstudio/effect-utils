@@ -117,10 +117,12 @@ const CanvasRenderer = ({
         if (currentText !== '') {
           segments.push(
             currentColor !== null ? (
+              // eslint-disable-next-line react/no-array-index-key -- text segments are positional
               <Text key={`${rowIdx}-${segments.length}`} color={currentColor}>
                 {currentText}
               </Text>
             ) : (
+              // eslint-disable-next-line react/no-array-index-key -- text segments are positional
               <Text key={`${rowIdx}-${segments.length}`}>{currentText}</Text>
             ),
           )
@@ -134,16 +136,19 @@ const CanvasRenderer = ({
     if (currentText !== '') {
       segments.push(
         currentColor !== null ? (
+          // eslint-disable-next-line react/no-array-index-key -- text segments are positional
           <Text key={`${rowIdx}-${segments.length}`} color={currentColor}>
             {currentText}
           </Text>
         ) : (
+          // eslint-disable-next-line react/no-array-index-key -- text segments are positional
           <Text key={`${rowIdx}-${segments.length}`}>{currentText}</Text>
         ),
       )
     }
 
     return (
+      // eslint-disable-next-line react/no-array-index-key -- text segments are positional
       <Box key={rowIdx} flexDirection="row">
         {segments}
       </Box>

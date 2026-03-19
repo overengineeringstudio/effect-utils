@@ -145,9 +145,6 @@ export const baseOxlintRules = {
 
   // Warn on missing/extra hook dependencies
   'react/exhaustive-deps': 'warn',
-
-  // Too noisy for TUI/CLI codebases where list items are stable/append-only
-  'react/no-array-index-key': 'off',
 } as const satisfies OxlintConfigArgs['rules']
 
 /** Rules to disable for generated files */

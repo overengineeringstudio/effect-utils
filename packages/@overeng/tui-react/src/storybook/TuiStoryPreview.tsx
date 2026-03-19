@@ -827,6 +827,7 @@ const PlaybackControls = <A,>({
 
           return (
             <div
+              // eslint-disable-next-line react/no-array-index-key -- terminal rows are positional
               key={i}
               style={{
                 position: 'absolute',
@@ -1013,6 +1014,7 @@ const NdjsonPreviewPane: React.FC<{ lines: NdjsonLine[] }> = ({ lines }) => (
   >
     {lines.map((line, i) => (
       <div
+        // eslint-disable-next-line react/no-array-index-key -- terminal rows are positional
         key={i}
         style={{
           borderBottom: '1px solid #333',

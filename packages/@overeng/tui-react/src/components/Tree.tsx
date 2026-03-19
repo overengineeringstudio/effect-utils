@@ -101,6 +101,7 @@ const TreeLevel = <TItem,>(props: TreeLevelProps<TItem>): ReactNode => {
         const hasChildren = children !== undefined && children.length > 0
 
         return (
+          // eslint-disable-next-line react/no-array-index-key -- tree children are positional
           <React.Fragment key={index}>
             {renderItem({
               item,

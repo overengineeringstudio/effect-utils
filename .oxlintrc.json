@@ -79,8 +79,7 @@
     "typescript/no-unnecessary-template-expression": "off",
     "react/react-in-jsx-scope": "off",
     "react/rules-of-hooks": "error",
-    "react/exhaustive-deps": "warn",
-    "react/no-array-index-key": "off"
+    "react/exhaustive-deps": "warn"
   },
   "overrides": [
     {

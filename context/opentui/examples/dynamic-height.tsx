@@ -50,6 +50,7 @@ const DynamicList = ({ maxItems }: { maxItems: number }) => {
   return (
     <box flexDirection="column" borderStyle="single" height={maxItems + 2}>
       {visibleItems.map((item, idx) => (
+        // eslint-disable-next-line react/no-array-index-key -- items are positional
         <text key={idx} fg={idx % 2 === 0 ? 'white' : 'gray'}>
           {item}
         </text>

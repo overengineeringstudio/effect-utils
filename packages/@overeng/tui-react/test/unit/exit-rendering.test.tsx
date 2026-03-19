@@ -14,13 +14,7 @@ import { Effect, Schema } from 'effect'
 import React from 'react'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 
-import {
-  createTuiApp,
-  createRoot,
-  Box,
-  Text,
-  testModeLayer,
-} from '../../src/mod.tsx'
+import { createTuiApp, createRoot, Box, Text, testModeLayer } from '../../src/mod.tsx'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
 import { createVirtualTerminal } from '../helpers/virtual-terminal.ts'
 
@@ -95,7 +89,6 @@ const AppNoInterrupt = createTuiApp({
   initial: { value: 'initial', interrupted: false },
   reducer: testReducerNoInterrupt,
 })
-
 
 // =============================================================================
 // Exit Mode Tests (using createRoot directly)

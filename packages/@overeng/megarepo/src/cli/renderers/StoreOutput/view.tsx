@@ -334,10 +334,10 @@ const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus })
         <Text dim>/refs/{worktree.refType}/</Text>
         <Text bold>{worktree.ref}</Text>
       </Box>
-      {worktree.issues.map((issue, i) => {
+      {worktree.issues.map((issue) => {
         const hint = getIssueHint({ issue, worktree })
         return (
-          <Box key={`${issue.type}-${i}`} flexDirection="column">
+          <Box key={`${issue.type}-${issue.message}`} flexDirection="column">
             <Box flexDirection="row">
               <Text>{'    '}</Text>
               <Text color={getColor(issue.severity)}>{issue.type}</Text>
@@ -384,35 +384,40 @@ const StoreStatusSummary = ({
     )
   }
 
-  const parts: React.ReactNode[] = []
+  const parts: Array<{ key: string; node: React.ReactNode }> = []
   if (errorCount > 0) {
-    parts.push(
-      <Text key="errors" color="red">
-        {errorCount} error{errorCount !== 1 ? 's' : ''}
-      </Text>,
-    )
+    parts.push({
+      key: 'errors',
+      node: (
+        <Text color="red">
+          {errorCount} error{errorCount !== 1 ? 's' : ''}
+        </Text>
+      ),
+    })
   }
   if (warningCount > 0) {
-    parts.push(
-      <Text key="warnings" color="yellow">
-        {warningCount} warning{warningCount !== 1 ? 's' : ''}
-      </Text>,
-    )
+    parts.push({
+      key: 'warnings',
+      node: (
+        <Text color="yellow">
+          {warningCount} warning{warningCount !== 1 ? 's' : ''}
+        </Text>
+      ),
+    })
   }
   if (infoCount > 0) {
-    parts.push(
-      <Text key="info" dim>
-        {infoCount} info
-      </Text>,
-    )
+    parts.push({
+      key: 'info',
+      node: <Text dim>{infoCount} info</Text>,
+    })
   }
 
   return (
     <Box flexDirection="row">
       {parts.map((part, i) => (
-        <React.Fragment key={`part-${i}-${totalIssues}`}>
+        <React.Fragment key={part.key}>
           {i > 0 && <Text dim> {SYMBOLS.dot} </Text>}
-          {part}
+          {part.node}
         </React.Fragment>
       ))}
     </Box>
@@ -776,8 +781,8 @@ const StoreFixView = ({
       {dryRun && <Text dim>mode: dry run</Text>}
       <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
-      {results.map((result, i) => (
-        <Box key={`${result.memberName}-${result.issueType}-${i}`} flexDirection="row">
+      {results.map((result) => (
+        <Box key={`${result.memberName}-${result.issueType}-${result.message}`} flexDirection="row">
           {result.status === 'fixed' ? (
             <Text color="green">{SYMBOLS.check}</Text>
           ) : result.status === 'error' ? (

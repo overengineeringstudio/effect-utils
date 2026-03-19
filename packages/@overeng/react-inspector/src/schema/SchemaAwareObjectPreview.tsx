@@ -68,6 +68,7 @@ export const SchemaAwareObjectPreview: FC<SchemaAwareObjectPreviewProps> = ({
     const elementCtx = schemaCtx.getElementContext()
 
     const previewArray = object.slice(0, maxProperties).map((element, index) => (
+      // eslint-disable-next-line react/no-array-index-key -- array elements are positional
       <SchemaProvider key={index} schema={elementCtx.schema} schemas={[]}>
         <SchemaAwareObjectValue object={element} ObjectValue={ObjectValue} />
       </SchemaProvider>

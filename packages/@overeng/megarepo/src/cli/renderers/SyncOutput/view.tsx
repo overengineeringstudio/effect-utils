@@ -511,8 +511,8 @@ const PreflightFailedView = ({
         {symbols.cross} Store hygiene check failed
       </Text>
       <Text> </Text>
-      {errors.map((issue, i) => (
-        <Box key={`err-${issue.memberName}-${issue.type}-${i}`} flexDirection="column">
+      {errors.map((issue) => (
+        <Box key={`err-${issue.memberName}-${issue.type}-${issue.message}`} flexDirection="column">
           <Box flexDirection="row">
             <Text color="red">{symbols.cross}</Text>
             <Text> </Text>
@@ -529,8 +529,8 @@ const PreflightFailedView = ({
           )}
         </Box>
       ))}
-      {warnings.map((issue, i) => (
-        <Box key={`warn-${issue.memberName}-${issue.type}-${i}`} flexDirection="column">
+      {warnings.map((issue) => (
+        <Box key={`warn-${issue.memberName}-${issue.type}-${issue.message}`} flexDirection="column">
           <Box flexDirection="row">
             <Text color="yellow">{symbols.circle}</Text>
             <Text> </Text>
@@ -623,7 +623,7 @@ const InlineLockDetails = ({
         <Box key={file.type} flexDirection="column">
           {file.updatedInputs.map((input, idx) => (
             <LockUpdateLine
-              key={`${input._tag}-${idx}`}
+              key={`${input._tag}-${input.inputName}-${'memberName' in input ? input.memberName : ''}`}
               update={input}
               fileType={idx === 0 ? file.type : undefined}
               prefix={prefix}

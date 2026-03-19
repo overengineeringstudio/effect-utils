@@ -28,6 +28,7 @@ const HistoryView = ({ history }: { history: readonly string[] }) => {
     <Box marginTop={1} flexDirection="column">
       <Text dim>History:</Text>
       {history.map((entry, i) => (
+        // eslint-disable-next-line react/no-array-index-key -- append-only history log
         <Text key={i} dim>
           {'  '}
           {entry}
