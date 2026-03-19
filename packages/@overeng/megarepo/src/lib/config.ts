@@ -169,8 +169,17 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
 // Constants
 // =============================================================================
 
-/** Config file name */
-export const CONFIG_FILE_NAME = 'megarepo.json'
+/** Config file name (JSON format) */
+export const CONFIG_FILE_NAME_JSON = 'megarepo.json'
+
+/** Config file name (KDL format) */
+export const CONFIG_FILE_NAME_KDL = 'megarepo.kdl'
+
+/** Supported config file names, ordered by preference (KDL preferred) */
+export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_KDL, CONFIG_FILE_NAME_JSON] as const
+
+/** @deprecated Use `CONFIG_FILE_NAME_JSON` instead */
+export const CONFIG_FILE_NAME = CONFIG_FILE_NAME_JSON
 
 /** Default store location */
 export const DEFAULT_STORE_PATH = '~/.megarepo'
