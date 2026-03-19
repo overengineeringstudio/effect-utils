@@ -478,6 +478,116 @@ describe('defineCatalog', () => {
       ).toThrow('Catalog is missing explicit install version for inherited peer "missing"')
     })
 
+    it('prefers workspace:* over registry version for workspace packages in install mode', () => {
+      const utilsComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
+        peerDependencies: {
+          external: catalog.pick('effect'),
+        },
+      })
+      const utils = packageJson(
+        {
+          name: '@test/utils',
+          version: '1.0.0',
+        },
+        utilsComposition,
+      )
+
+      const coreComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/core',
+        }),
+        peerDependencies: {
+          external: catalog.pick('effect', '@effect/platform'),
+        },
+      })
+      const core = packageJson(
+        {
+          name: '@test/core',
+          version: '1.0.0',
+        },
+        coreComposition,
+      )
+
+      /** @test/core has peer deps on effect and @effect/platform.
+       * When @test/utils is also a devDependency workspace package with peer dep on effect,
+       * the inherited peer "effect" should NOT appear as a registry version in dependencies
+       * — only the workspace:* entry should remain. */
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [core],
+          external: catalog.pick('react'),
+        },
+        devDependencies: {
+          workspace: [utils],
+        },
+        mode: 'install',
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@effect/platform': '0.94.1',
+        '@test/core': 'workspace:*',
+        effect: '3.19.14',
+        react: '19.2.3',
+      })
+      expect(composed.devDependencies).toEqual({
+        '@test/utils': 'workspace:*',
+      })
+    })
+
+    it('skips inherited peer when same package is a workspace dep in dependencies', () => {
+      const libComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/utils',
+        }),
+        peerDependencies: {
+          external: catalog.pick('effect'),
+        },
+      })
+      const lib = packageJson({ name: '@test/utils', version: '1.0.0' }, libComposition)
+
+      const coreComposition = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/core',
+        }),
+        peerDependencies: {
+          external: { '@test/utils': '1.0.0' },
+        },
+      })
+      const core = packageJson({ name: '@test/core', version: '1.0.0' }, coreComposition)
+
+      /** @test/core declares @test/utils as a peer dep.
+       * The consumer lists @test/utils as a workspace dep in dependencies.
+       * In install mode, the inherited peer should NOT generate a registry entry
+       * for @test/utils — the workspace:* entry in dependencies takes precedence. */
+      const composed = catalog.compose({
+        workspace: workspace({
+          repoName: repo.repoName,
+          memberPath: 'packages/app',
+        }),
+        dependencies: {
+          workspace: [core, lib],
+        },
+        mode: 'install',
+      })
+
+      expect(composed.dependencies).toEqual({
+        '@test/core': 'workspace:*',
+        '@test/utils': 'workspace:*',
+        effect: '3.19.14',
+      })
+    })
+
     it('returns empty workspace metadata when no workspace packages are provided', () => {
       const composed = catalog.compose({
         workspace: workspace({
