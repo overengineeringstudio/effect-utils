@@ -780,7 +780,8 @@ export const syncMember = <R = never>({
       commitMode === true &&
       targetCommit !== undefined &&
       actualRefType === 'branch'
-    const worktreeRef = useCommitWorktree === true ? targetCommit : targetRef
+    // targetCommit is guaranteed non-undefined when useCommitWorktree is true (guarded above)
+    const worktreeRef: string = useCommitWorktree === true ? targetCommit! : targetRef
     const worktreeRefType: RefType = useCommitWorktree === true ? 'commit' : actualRefType
 
     const worktreePath = store.getWorktreePath({
