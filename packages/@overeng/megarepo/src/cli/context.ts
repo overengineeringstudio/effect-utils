@@ -12,7 +12,7 @@ import { Context, Effect, Layer, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { CONFIG_FILE_NAME, MEMBER_ROOT_DIR } from '../lib/config.ts'
+import { CONFIG_FILE_NAMES, MEMBER_ROOT_DIR } from '../lib/config.ts'
 import { InvalidCwdError } from './errors.ts'
 
 // =============================================================================
@@ -139,6 +139,16 @@ export const createSymlink = ({ target, link }: { target: string; link: string }
 // Megarepo Root Discovery
 // =============================================================================
 
+/** Check if any supported config file exists in a directory */
+const hasConfigFile = ({ fs, dir }: { fs: FileSystem.FileSystem; dir: AbsoluteDirPath }) =>
+  Effect.gen(function* () {
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const p = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile(fileName))
+      if ((yield* fs.exists(p)) === true) return true
+    }
+    return false
+  })
+
 /**
  * Find megarepo root by searching up from current directory.
  * Returns the OUTERMOST megarepo found (closest to filesystem root).
@@ -154,24 +164,15 @@ export const findMegarepoRoot = (startPath: AbsoluteDirPath) =>
 
     // Walk up the tree, collecting the outermost megarepo found
     while (current !== undefined && current !== rootDir) {
-      const configPath = EffectPath.ops.join(
-        current,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const exists = yield* fs.exists(configPath)
-      if (exists === true) {
+      const found = yield* hasConfigFile({ fs, dir: current })
+      if (found === true) {
         outermost = current // Keep going up, this might not be the outermost
       }
       current = EffectPath.ops.parent(current)
     }
 
     // Check root as well
-    const rootConfigPath = EffectPath.ops.join(
-      rootDir,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const rootExists = yield* fs.exists(rootConfigPath)
-    if (rootExists === true) {
+    if ((yield* hasConfigFile({ fs, dir: rootDir })) === true) {
       outermost = rootDir
     }
 
@@ -190,23 +191,15 @@ export const findNearestMegarepoRoot = (startPath: AbsoluteDirPath) =>
     const rootDir = EffectPath.unsafe.absoluteDir('/')
 
     while (current !== undefined && current !== rootDir) {
-      const configPath = EffectPath.ops.join(
-        current,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const exists = yield* fs.exists(configPath)
-      if (exists === true) {
+      if ((yield* hasConfigFile({ fs, dir: current })) === true) {
         return Option.some(current)
       }
       current = EffectPath.ops.parent(current)
     }
 
-    const rootConfigPath = EffectPath.ops.join(
-      rootDir,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-    )
-    const rootExists = yield* fs.exists(rootConfigPath)
-    return rootExists === true ? Option.some(rootDir) : Option.none()
+    return (yield* hasConfigFile({ fs, dir: rootDir })) === true
+      ? Option.some(rootDir)
+      : Option.none()
   })
 
 // =============================================================================

@@ -7,18 +7,19 @@
 import * as Cli from '@effect/cli'
 import type { CommandExecutor } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, type ParseResult, Schema } from 'effect'
+import { Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  CONFIG_FILE_NAME,
+  ConfigNotFoundError,
+  findConfigPath,
   getMemberPath,
   isRemoteSource,
-  MegarepoConfig,
   parseSourceString,
+  readMegarepoConfig,
 } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { detectRefMismatch, type RefMismatch } from '../../lib/issues.ts'
@@ -58,7 +59,7 @@ const scanMembersRecursive = ({
   visited?: Set<string>
 }): Effect.Effect<
   MemberStatus[],
-  PlatformError.PlatformError | ParseResult.ParseError,
+  PlatformError.PlatformError | ParseResult.ParseError | Error,
   FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store
 > =>
   Effect.gen(function* () {
@@ -72,17 +73,16 @@ const scanMembersRecursive = ({
     visited.add(normalizedRoot)
 
     // Load config
-    const configPath = EffectPath.ops.join(
-      megarepoRoot,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
+      Effect.catchIf(
+        (e): e is ConfigNotFoundError => e instanceof ConfigNotFoundError,
+        () => Effect.succeed(undefined),
+      ),
     )
-    const configExists = yield* fs.exists(configPath)
-    if (configExists === false) {
+    if (configResult === undefined) {
       return []
     }
-
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+    const { config } = configResult
 
     // Load lock file (optional)
     const lockPath = EffectPath.ops.join(
@@ -117,13 +117,11 @@ const scanMembersRecursive = ({
       }
 
       // Check if this member is itself a megarepo
-      const nestedConfigPath = EffectPath.ops.join(
-        memberPath,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
       const isMegarepo =
         memberExists === true
-          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          ? (yield* findConfigPath(memberPath).pipe(
+              Effect.catchAll(() => Effect.succeed(undefined)),
+            )) !== undefined
           : false
 
       // Recursively scan nested members if this is a megarepo and --all is used
@@ -306,12 +304,7 @@ export const statusCommand = Cli.Command.make(
       const workspaceName = yield* Git.deriveMegarepoName(root.value)
 
       // Load config
-      const configPath = EffectPath.ops.join(
-        root.value,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
-      const configContent = yield* fs.readFileString(configPath)
-      const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+      const { config } = yield* readMegarepoConfig(root.value)
 
       // Scan members (recursively if --all)
       const members = yield* scanMembersRecursive({

@@ -30,7 +30,7 @@ let
       guard = "mr";
       description = "Fetch latest refs and apply to workspace";
       exec = trace.exec "mr:sync" ''
-        if [ ! -f ./megarepo.json ]; then
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -38,7 +38,7 @@ let
       '';
       # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
       status = trace.status "mr:sync" "binary" ''
-        if [ ! -f ./megarepo.json ]; then
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -58,7 +58,7 @@ let
       guard = "mr";
       description = "Record current workspace state into megarepo.lock";
       exec = trace.exec "mr:lock" ''
-        if [ ! -f ./megarepo.json ]; then
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -69,7 +69,7 @@ let
     "mr:fetch-apply" = {
       description = "Fetch latest refs and apply to workspace";
       exec = trace.exec "mr:fetch-apply" ''
-        if [ ! -f ./megarepo.json ]; then
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -81,7 +81,7 @@ let
       guard = "mr";
       description = "Apply megarepo.lock to workspace";
       exec = trace.exec "mr:apply" ''
-        if [ ! -f ./megarepo.json ]; then
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -95,7 +95,8 @@ let
       after = [ "mr:sync" ];
       # Check that repos dir exists and all members have symlinks
       status = trace.status "mr:check" "path" ''
-        if [ ! -f ./megarepo.json ]; then
+        set -o pipefail
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -105,7 +106,7 @@ let
         fi
 
         # Verify all configured members have symlinks in repos/
-        members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name') || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             exit 1
@@ -115,7 +116,8 @@ let
         exit 0
       '';
       exec = trace.exec "mr:check" ''
-        if [ ! -f ./megarepo.json ]; then
+        set -o pipefail
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
@@ -127,7 +129,7 @@ let
 
         # Check for missing member symlinks
         missing=""
-        members=$(${pkgs.jq}/bin/jq -r '.members | keys[]' ./megarepo.json 2>/dev/null) || exit 1
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name') || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             missing="$missing $member"

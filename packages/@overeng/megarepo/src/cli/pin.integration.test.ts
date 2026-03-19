@@ -15,7 +15,7 @@ import { EffectPath } from '@overeng/effect-path'
 
 import {
   buildSourceStringWithRef,
-  CONFIG_FILE_NAME,
+  CONFIG_FILE_NAME_JSON,
   MegarepoConfig,
   parseSourceString,
 } from '../lib/config.ts'
@@ -99,7 +99,7 @@ describe('mr config pin', () => {
           // Write updated config
           const configPath = EffectPath.ops.join(
             workspacePath,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
           const newConfigContent = yield* Schema.encode(
             Schema.parseJson(MegarepoConfig, { space: 2 }),
@@ -125,7 +125,7 @@ describe('mr config pin', () => {
           // First update to feature-branch
           const configPath = EffectPath.ops.join(
             workspacePath,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
           )
 
           const config1: typeof MegarepoConfig.Type = {

@@ -177,6 +177,18 @@
         "overeng/exports-first": "off",
         "overeng/jsdoc-require-exports": "off"
       }
+    },
+    {
+      "files": ["**/kdl/src/**", "**/kdl-effect/src/**"],
+      "rules": {
+        "no-control-regex": "off",
+        "func-style": "off",
+        "import/no-cycle": "off",
+        "overeng/jsdoc-require-exports": "off",
+        "overeng/explicit-boolean-compare": "off",
+        "overeng/exports-first": "off",
+        "overeng/named-args": "off"
+      }
     }
   ]
 }

@@ -82,6 +82,8 @@ let
     "packages/@overeng/effect-schema-form"
     "packages/@overeng/effect-schema-form-aria"
     "packages/@overeng/genie"
+    "packages/@overeng/kdl"
+    "packages/@overeng/kdl-effect"
     "packages/@overeng/megarepo"
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
@@ -112,6 +114,14 @@ let
     {
       path = "packages/@overeng/genie";
       name = "genie";
+    }
+    {
+      path = "packages/@overeng/kdl";
+      name = "kdl";
+    }
+    {
+      path = "packages/@overeng/kdl-effect";
+      name = "kdl-effect";
     }
     {
       path = "packages/@overeng/megarepo";

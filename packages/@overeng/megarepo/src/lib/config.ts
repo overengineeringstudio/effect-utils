@@ -1,7 +1,7 @@
 /**
  * Megarepo configuration schema and types
  *
- * A megarepo uses a single `megarepo.json` config file that declares:
+ * A megarepo uses a `megarepo.kdl` (or `megarepo.json`) config file that declares:
  * - Members: repos to include (via unified source string format)
  * - Generators: optional config file generators (vscode)
  * - Lock sync: automatic syncing of flake.lock/devenv.lock files
@@ -13,9 +13,16 @@
  * - Local path: "./path", "../path", "/absolute/path"
  */
 
-import { JSONSchema, Option, Schema } from 'effect'
+import { FileSystem } from '@effect/platform'
+import { Effect, JSONSchema, Option, Schema } from 'effect'
 
-import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
+import {
+  EffectPath,
+  type AbsoluteDirPath,
+  type AbsoluteFilePath,
+  type RelativeDirPath,
+} from '@overeng/effect-path'
+import { parseKdl } from '@overeng/kdl-effect'
 
 import { parseSourceRef } from './ref.ts'
 
@@ -169,8 +176,20 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
 // Constants
 // =============================================================================
 
-/** Config file name */
-export const CONFIG_FILE_NAME = 'megarepo.json'
+/** Config file name (JSON format) */
+export const CONFIG_FILE_NAME_JSON = 'megarepo.json'
+
+/** Config file name (KDL format) */
+export const CONFIG_FILE_NAME_KDL = 'megarepo.kdl'
+
+/** Supported config file names, ordered by preference (KDL preferred) */
+export const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME_KDL, CONFIG_FILE_NAME_JSON] as const
+
+/** Config format discriminator */
+export type ConfigFormat = 'kdl' | 'json'
+
+/** Schema: KDL string ↔ MegarepoConfig (analogous to Schema.parseJson) */
+const MegarepoConfigFromKdl = parseKdl(MegarepoConfig)
 
 /** Default store location */
 export const DEFAULT_STORE_PATH = '~/.megarepo'
@@ -201,6 +220,82 @@ export const getMemberPath = ({
   name: string
 }): AbsoluteDirPath =>
   EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeDir(`${MEMBER_ROOT_DIR}/${name}/`))
+
+// =============================================================================
+// Config Read/Write
+// =============================================================================
+
+/** Error when no megarepo config file is found */
+export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>()(
+  'ConfigNotFoundError',
+  {
+    megarepoRoot: Schema.String,
+    message: Schema.optionalWith(Schema.String, {
+      default: () => 'No megarepo config found (checked megarepo.kdl and megarepo.json)',
+    }),
+  },
+) {}
+
+/** Find the config file path in a directory (prefers .kdl over .json) */
+export const findConfigPath = (dir: AbsoluteDirPath) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const p = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile(fileName))
+      if ((yield* fs.exists(p)) === true) return p
+    }
+    return undefined
+  })
+
+/**
+ * Read megarepo config from a workspace root.
+ * Checks for megarepo.kdl first, falls back to megarepo.json.
+ */
+export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+
+    for (const fileName of CONFIG_FILE_NAMES) {
+      const configPath = EffectPath.ops.join(megarepoRoot, EffectPath.unsafe.relativeFile(fileName))
+
+      const exists = yield* fs.exists(configPath)
+      if (exists === false) continue
+
+      const content = yield* fs.readFileString(configPath)
+      const format: ConfigFormat = fileName.endsWith('.kdl') === true ? 'kdl' : 'json'
+
+      const config = yield* Schema.decodeUnknown(
+        format === 'kdl' ? MegarepoConfigFromKdl : Schema.parseJson(MegarepoConfig),
+      )(content)
+
+      return { config, format, path: configPath } as const
+    }
+
+    return yield* new ConfigNotFoundError({ megarepoRoot })
+  })
+
+/**
+ * Write megarepo config to a file.
+ * Writes in the format matching the file extension.
+ */
+export const writeMegarepoConfig = ({
+  configPath,
+  config,
+}: {
+  configPath: AbsoluteFilePath
+  config: MegarepoConfig
+}) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const format: ConfigFormat = configPath.endsWith('.kdl') === true ? 'kdl' : 'json'
+
+    const content =
+      format === 'kdl'
+        ? yield* Schema.encode(MegarepoConfigFromKdl)(config)
+        : (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(config)) + '\n'
+
+    yield* fs.writeFileString(configPath, content)
+  })
 
 // =============================================================================
 // JSON Schema Generation

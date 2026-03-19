@@ -263,7 +263,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
 
 /**
  * Find the nearest repo root for a genie file.
- * Prefers a local megarepo.json marker, falls back to .git.
+ * Prefers a local megarepo config (megarepo.kdl or megarepo.json), falls back to .git.
  */
 const repoRootCache = new Map<string, string>()
 
@@ -285,7 +285,10 @@ const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
   let last = ''
 
   while (current !== last) {
-    if ((yield* fs.exists(path.join(current, 'megarepo.json'))) === true) {
+    if (
+      (yield* fs.exists(path.join(current, 'megarepo.kdl'))) === true ||
+      (yield* fs.exists(path.join(current, 'megarepo.json'))) === true
+    ) {
       repoRootCache.set(cacheKey, current)
       return current
     }

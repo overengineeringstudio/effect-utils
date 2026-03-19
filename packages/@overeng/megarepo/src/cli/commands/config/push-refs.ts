@@ -8,18 +8,19 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import type { AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
 import {
-  CONFIG_FILE_NAME,
+  findConfigPath,
   getBaseSourceString,
   getMemberPath,
-  MegarepoConfig,
   parseSourceString,
+  readMegarepoConfig,
+  writeMegarepoConfig,
 } from '../../../lib/config.ts'
 import { Cwd, findMegarepoRoot, outputOption, outputModeLayer } from '../../context.ts'
 import { NotInMegarepoError } from '../../errors.ts'
@@ -70,19 +71,10 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
     only: Option.Option<string>
   }) =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const configPath = EffectPath.ops.join(
-        options.nestedRoot,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
+      const configPath = yield* findConfigPath(options.nestedRoot)
+      if (configPath === undefined) return undefined
 
-      const configExists = yield* fs.exists(configPath)
-      if (configExists === false) return undefined
-
-      const configContent = yield* fs.readFileString(configPath)
-      const nestedConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-        configContent,
-      )
+      const { config: nestedConfig } = yield* readMegarepoConfig(options.nestedRoot)
 
       // Build parent URL → source string lookup
       const parentUrlMap = new Map<string, string>()
@@ -134,18 +126,12 @@ const pushRefsToNested = Effect.fn('megarepo/config/push-refs/nested')(
       // Write updated config (unless dry-run)
       if (options.dryRun === false) {
         const updatedConfig = { ...nestedConfig, members: updatedMembers }
-        const encoded = yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(
-          updatedConfig,
-        )
-        yield* fs.writeFileString(configPath, encoded + '\n')
+        yield* writeMegarepoConfig({ configPath: configPath, config: updatedConfig })
       }
 
       // Check for genie file
-      const geniePath = EffectPath.ops.join(
-        options.nestedRoot,
-        EffectPath.unsafe.relativeFile(`${CONFIG_FILE_NAME}.genie.ts`),
-      )
-      const hasGenie = yield* fs.exists(geniePath)
+      const fs = yield* FileSystem.FileSystem
+      const hasGenie = yield* fs.exists(`${configPath}.genie.ts`)
 
       return { name: options.nestedName, updates, hasGenie } satisfies NestedResult
     }),
@@ -193,17 +179,9 @@ export const pushRefsCommand = Cli.Command.make(
           tui.dispatch({ _tag: 'SetScanning' })
 
           const megarepoRoot = root.value
-          const fs = yield* FileSystem.FileSystem
 
           // Load parent config
-          const configPath = EffectPath.ops.join(
-            megarepoRoot,
-            EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-          )
-          const configContent = yield* fs.readFileString(configPath)
-          const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-            configContent,
-          )
+          const { config } = yield* readMegarepoConfig(megarepoRoot)
 
           // Find nested megarepos and push refs
           const processLevel = (options: {
@@ -218,12 +196,8 @@ export const pushRefsCommand = Cli.Command.make(
                   megarepoRoot: options.levelRoot,
                   name: memberName,
                 })
-                const nestedConfigPath = EffectPath.ops.join(
-                  memberPath,
-                  EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-                )
-                const hasNestedConfig = yield* fs.exists(nestedConfigPath)
-                if (hasNestedConfig === false) continue
+                const nestedConfigPath = yield* findConfigPath(memberPath)
+                if (nestedConfigPath === undefined) continue
 
                 const result = yield* pushRefsToNested({
                   nestedName: memberName,
@@ -239,10 +213,7 @@ export const pushRefsCommand = Cli.Command.make(
 
                 // Recurse into nested megarepos if --all
                 if (all === true) {
-                  const nestedContent = yield* fs.readFileString(nestedConfigPath)
-                  const nestedConfig = yield* Schema.decodeUnknown(
-                    Schema.parseJson(MegarepoConfig),
-                  )(nestedContent)
+                  const { config: nestedConfig } = yield* readMegarepoConfig(memberPath)
                   const nestedResults = yield* processLevel({
                     levelRoot: memberPath,
                     levelMembers: nestedConfig.members,

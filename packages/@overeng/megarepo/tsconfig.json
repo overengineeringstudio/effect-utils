@@ -56,6 +56,12 @@
       "path": "../effect-path"
     },
     {
+      "path": "../kdl"
+    },
+    {
+      "path": "../kdl-effect"
+    },
+    {
       "path": "../utils"
     }
   ]

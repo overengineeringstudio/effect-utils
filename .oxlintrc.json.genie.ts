@@ -41,5 +41,20 @@ export default oxlintConfig({
         'overeng/jsdoc-require-exports': 'off',
       },
     },
+    // KDL parser uses control chars in regexes (KDL spec whitespace/newline matching),
+    // generator functions (can't be arrow), and has a structural document<->node cycle
+    // KDL packages: ported from @bgotink/kdl — relaxed rules for the port
+    {
+      files: ['**/kdl/src/**', '**/kdl-effect/src/**'],
+      rules: {
+        'no-control-regex': 'off',
+        'func-style': 'off',
+        'import/no-cycle': 'off',
+        'overeng/jsdoc-require-exports': 'off',
+        'overeng/explicit-boolean-compare': 'off',
+        'overeng/exports-first': 'off',
+        'overeng/named-args': 'off',
+      },
+    },
   ],
 } satisfies OxlintConfigArgs)

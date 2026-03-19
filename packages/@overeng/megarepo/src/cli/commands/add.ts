@@ -5,14 +5,12 @@
  */
 
 import * as Cli from '@effect/cli'
-import { FileSystem } from '@effect/platform'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option } from 'effect'
 import React from 'react'
 
-import { EffectPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME, MegarepoConfig, parseSourceString } from '../../lib/config.ts'
+import { parseSourceString, readMegarepoConfig, writeMegarepoConfig } from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import { StoreLayer } from '../../lib/store.ts'
 import { syncMember } from '../../lib/sync/mod.ts'
@@ -106,15 +104,7 @@ export const addCommand = Cli.Command.make(
             const memberName = Option.getOrElse(name, () => parsed.suggestedName)
 
             // Load current config
-            const fs = yield* FileSystem.FileSystem
-            const configPath = EffectPath.ops.join(
-              root.value,
-              EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-            )
-            const configContent = yield* fs.readFileString(configPath)
-            const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-              configContent,
-            )
+            const { config, path: configPath } = yield* readMegarepoConfig(root.value)
 
             // Check if member already exists
             if (memberName in config.members) {
@@ -135,11 +125,8 @@ export const addCommand = Cli.Command.make(
               },
             }
 
-            // Write updated config
-            const newConfigContent = yield* Schema.encode(
-              Schema.parseJson(MegarepoConfig, { space: 2 }),
-            )(newConfig)
-            yield* fs.writeFileString(configPath, newConfigContent + '\n')
+            // Write updated config (preserves format)
+            yield* writeMegarepoConfig({ configPath: configPath, config: newConfig })
 
             // Sync if requested
             if (sync === true) {

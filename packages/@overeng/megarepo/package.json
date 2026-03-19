@@ -33,6 +33,8 @@
     "@opentui/core": "0.1.88",
     "@opentui/react": "0.1.88",
     "@overeng/effect-path": "workspace:*",
+    "@overeng/kdl": "workspace:*",
+    "@overeng/kdl-effect": "workspace:*",
     "@overeng/tui-react": "workspace:*",
     "@overeng/utils": "workspace:*",
     "@playwright/test": "1.58.2",
@@ -101,6 +103,8 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/effect-path",
+      "packages/@overeng/kdl",
+      "packages/@overeng/kdl-effect",
       "packages/@overeng/megarepo",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",

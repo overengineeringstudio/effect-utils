@@ -6,13 +6,18 @@
 
 import * as Cli from '@effect/cli'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, type ParseResult, Schema } from 'effect'
+import { Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { run } from '@overeng/tui-react'
 
-import { CONFIG_FILE_NAME, getMemberPath, MegarepoConfig } from '../../lib/config.ts'
+import {
+  ConfigNotFoundError,
+  findConfigPath,
+  getMemberPath,
+  readMegarepoConfig,
+} from '../../lib/config.ts'
 import * as Git from '../../lib/git.ts'
 import {
   Cwd,
@@ -40,7 +45,7 @@ const scanMembersRecursive = ({
   all: boolean
 }): Effect.Effect<
   MemberInfo[],
-  PlatformError.PlatformError | ParseResult.ParseError,
+  PlatformError.PlatformError | ParseResult.ParseError | Error,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
@@ -54,17 +59,16 @@ const scanMembersRecursive = ({
     visited.add(normalizedRoot)
 
     // Load config
-    const configPath = EffectPath.ops.join(
-      megarepoRoot,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
+    const configResult = yield* readMegarepoConfig(megarepoRoot).pipe(
+      Effect.catchIf(
+        (e): e is ConfigNotFoundError => e instanceof ConfigNotFoundError,
+        () => Effect.succeed(undefined),
+      ),
     )
-    const configExists = yield* fs.exists(configPath)
-    if (configExists === false) {
+    if (configResult === undefined) {
       return []
     }
-
-    const configContent = yield* fs.readFileString(configPath)
-    const config = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(configContent)
+    const { config } = configResult
 
     const members: MemberInfo[] = []
 
@@ -73,13 +77,11 @@ const scanMembersRecursive = ({
       const memberExists = yield* fs.exists(memberPath)
 
       // Check if this member is itself a megarepo
-      const nestedConfigPath = EffectPath.ops.join(
-        memberPath,
-        EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME),
-      )
       const isMegarepo =
         memberExists === true
-          ? yield* fs.exists(nestedConfigPath).pipe(Effect.catchAll(() => Effect.succeed(false)))
+          ? (yield* findConfigPath(memberPath).pipe(
+              Effect.catchAll(() => Effect.succeed(undefined)),
+            )) !== undefined
           : false
 
       members.push({
