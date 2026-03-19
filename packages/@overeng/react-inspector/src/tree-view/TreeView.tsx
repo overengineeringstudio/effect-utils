@@ -76,7 +76,7 @@ export const TreeView = memo(
         setExpandedPaths((prevExpandedPaths) =>
           getExpandedPaths(data, dataIterator, expandPaths, expandLevel, prevExpandedPaths),
         ),
-      [data, dataIterator, expandPaths, expandLevel],
+      [data, dataIterator, expandPaths, expandLevel, setExpandedPaths],
     )
 
     return (
