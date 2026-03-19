@@ -28,20 +28,20 @@ export const kdlToObject = (doc: Document): Record<string, unknown> => {
 const nodeToValue = (node: Node): unknown => {
   const args = node.getArguments()
   const props = node.getProperties()
-  const hasChildren = node.hasChildren()
+  const hasChildBlock = node.children !== null
 
   // Simple value node: `key "value"` or `key 42`
-  if (args.length === 1 && props.size === 0 && !hasChildren) {
+  if (args.length === 1 && props.size === 0 && !hasChildBlock) {
     return args[0]
   }
 
   // Properties-only node: `key prop1="val1" prop2="val2"`
-  if (args.length === 0 && props.size > 0 && !hasChildren) {
+  if (args.length === 0 && props.size > 0 && !hasChildBlock) {
     return Object.fromEntries(props)
   }
 
-  // Complex node with children: `key { ... }`
-  if (hasChildren) {
+  // Node with children block (including empty `{}`): `key { ... }`
+  if (hasChildBlock) {
     const childObj = kdlToObject(node.children!)
 
     if (props.size > 0) {

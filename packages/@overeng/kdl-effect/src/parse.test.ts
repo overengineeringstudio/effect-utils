@@ -127,4 +127,26 @@ describe('parseKdl', () => {
       expect(decoded).toEqual(original)
     })
   })
+
+  describe('edge cases', () => {
+    it('decodes empty children block as empty object', () => {
+      const MySchema = Schema.Struct({
+        settings: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('settings {}')
+      expect(result).toEqual({ settings: {} })
+    })
+
+    it('decodes node with properties and empty children', () => {
+      const MySchema = Schema.Struct({
+        vscode: Schema.Struct({
+          enabled: Schema.Boolean,
+        }),
+      })
+
+      const result = Schema.decodeUnknownSync(parseKdl(MySchema))('vscode enabled=#true {}')
+      expect(result).toEqual({ vscode: { enabled: true } })
+    })
+  })
 })
