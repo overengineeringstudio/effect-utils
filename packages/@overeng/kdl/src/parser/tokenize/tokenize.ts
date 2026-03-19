@@ -11,12 +11,10 @@ import {
   pop,
   pushError,
   zeroOrMore,
-  zeroOrMoreCodePoint,
   type CreateContextOptions,
   type TokenizeContext,
 } from './context.ts'
 import {
-  isAlpha,
   isBinaryDigit,
   isBinaryDigitOrUnderscore,
   isDecimalDigit,
@@ -71,7 +69,7 @@ const handleQuoteCharacter = (ctx: TokenizeContext): Token => {
         }
       } else {
         consumeCodePoint(ctx, 0x5c)
-        consumeNewline(ctx) || pop(ctx)
+        if (!consumeNewline(ctx)) pop(ctx)
       }
     }
   } else {
@@ -80,7 +78,7 @@ const handleQuoteCharacter = (ctx: TokenizeContext): Token => {
         finished = true
       } else {
         consumeCodePoint(ctx, 0x5c)
-        consumeNewline(ctx) || pop(ctx)
+        if (!consumeNewline(ctx)) pop(ctx)
       }
     }
   }
@@ -148,7 +146,7 @@ const handleHashCharacter = (ctx: TokenizeContext): Token => {
           return mkToken(ctx, multiline ? 'multiline-raw-string' : 'raw-string')
         }
       } else {
-        consumeNewline(ctx) || pop(ctx)
+        if (!consumeNewline(ctx)) pop(ctx)
       }
     }
   } else {
@@ -220,7 +218,7 @@ const handleSlashCharacter = (ctx: TokenizeContext): Token => {
           level++
         }
       } else {
-        consumeNewline(ctx) || pop(ctx)
+        if (!consumeNewline(ctx)) pop(ctx)
       }
     }
 

@@ -1,4 +1,4 @@
-import { Node } from './node.ts'
+import type { Node } from './node.ts'
 import { reverseIterate } from './utils.ts'
 import type { Value } from './value.ts'
 
