@@ -1,7 +1,7 @@
 /**
  * Megarepo configuration schema and types
  *
- * A megarepo uses a single `megarepo.json` config file that declares:
+ * A megarepo uses a `megarepo.kdl` (or `megarepo.json`) config file that declares:
  * - Members: repos to include (via unified source string format)
  * - Generators: optional config file generators (vscode)
  * - Lock sync: automatic syncing of flake.lock/devenv.lock files

@@ -1,4 +1,4 @@
-import { Effect, ParseResult, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import { parse, format } from '@overeng/kdl'
 
