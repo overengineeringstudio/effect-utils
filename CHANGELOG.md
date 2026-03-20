@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
   - Parses and applies multiple reported hash updates in one pass instead of only the first mismatch
   - Adds regression coverage for mixed main-hash and local-dependency hash updates
+- **nix/workspace-tools/mk-pnpm-deps**: Populate vendored pnpm stores from staged install roots instead of iterating the full lockfile package set
+  - Reuses pnpm's own workspace install closure to fetch only packages needed by the staged workspace roots
+  - Cuts over-fetch in the `@overeng/oxc-config` plugin deps build from the whole repo lockfile package set to the actual staged closure
+  - Aligns `mk-pnpm-cli` prefetch roots with the same external install roots used later during the actual build phase
 - **nix/workspace-tools/mk-pnpm-deps**: Make pnpm deps hashes platform-agnostic by fetching the lockfile package set directly into the store
   - Replaces host-sensitive `pnpm install`-based FOD generation with lockfile-driven `pnpm store add`
   - Keeps store normalization deterministic by zeroing `checkedAt`, sorting file maps, and pruning orphan CAS files

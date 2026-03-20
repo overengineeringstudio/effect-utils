@@ -31,6 +31,8 @@ in
   #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
   #   preInstall:     Extra shell commands to run before lockfile parsing
+  #   installRoots:   Workspace roots to run `pnpm install` in before archiving
+  #                   the store. Relative to sourceRoot. Defaults to [ "." ].
   #   lockfilePaths:
   #                   Lockfiles that define the allowed package set for store normalization.
   #                   Each path is relative to sourceRoot.
@@ -41,6 +43,7 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
+      installRoots ? [ "." ],
       lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
@@ -118,71 +121,23 @@ in
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
-        node -e '
-          const fs = require("fs");
-
-          const splitNameVersion = (spec) => {
-            const atIndex = spec.startsWith("@")
-              ? spec.indexOf("@", 1)
-              : spec.indexOf("@");
-            return atIndex === -1
-              ? undefined
-              : [spec.slice(0, atIndex), spec.slice(atIndex + 1)];
-          };
-
-          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
-          const specs = new Set();
-
-          for (const lockfilePath of lockfilePaths) {
-            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
-              console.error("store-fetch: FATAL — staged lockfile not found at " + lockfilePath);
-              process.exit(1);
-            }
-
-            const lines = fs.readFileSync(lockfilePath, "utf8").split("\n");
-            let inPackages = false;
-            for (const line of lines) {
-              if (/^packages:\s*$/.test(line)) {
-                inPackages = true;
-                continue;
-              }
-              if (inPackages) {
-                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
-                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
-                const m = /^\s{2}("|\x27)?(.+?)\1:\s*$/.exec(line);
-                if (!m) continue;
-                const key = m[2];
-                const spec = key.split("(")[0];
-                const nameVersion = splitNameVersion(spec);
-                if (!nameVersion) continue;
-                const [pkgName, version] = nameVersion;
-                if (
-                  !pkgName
-                  || !version
-                  || version.startsWith("file:")
-                  || version.startsWith("link:")
-                  || version.startsWith("workspace:")
-                  || version.startsWith("patch:")
-                  || version.startsWith("git+")
-                  || version.startsWith("http:")
-                  || version.startsWith("https:")
-                  || version.startsWith("npm:")
-                ) continue;
-                specs.add(pkgName + "@" + version);
-              }
-            }
-          }
-
-          const sortedSpecs = Array.from(specs).sort();
-          if (sortedSpecs.length === 0) {
-            console.error("store-fetch: FATAL — no external package specs parsed from staged lockfiles");
-            process.exit(1);
-          }
-          fs.writeFileSync(".pnpm-store-specs.txt", sortedSpecs.join("\n") + "\n");
-          console.log("store-fetch: parsed " + sortedSpecs.length + " unique external package specs");
-        '
-
-        xargs -r -a .pnpm-store-specs.txt -n 50 pnpm store add
+        ${builtins.concatStringsSep "\n" (
+          map
+            (
+              installRoot:
+              let
+                installRootArg = lib.escapeShellArg installRoot;
+              in
+              ''
+                echo "store-fetch: installing dependencies for ${installRoot}"
+                (
+                  cd ${installRootArg}
+                  pnpm install --frozen-lockfile --ignore-scripts
+                )
+              ''
+            )
+            installRoots
+        )}
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889
