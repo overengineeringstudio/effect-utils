@@ -9,6 +9,31 @@ extract_actual_hash() {
   echo "$1" | grep -oE 'actual:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true
 }
 
+extract_hash_mismatches() {
+  printf '%s\n' "$1" | perl -ne '
+    if (/hash mismatch in fixed-output derivation '\''([^'\'']+)'\''/) {
+      $drv = $1;
+      next;
+    }
+    if (defined $drv && /got:\s+(sha256-[A-Za-z0-9+\/=]+)/) {
+      print "$drv\t$1\n";
+      undef $drv;
+    }
+  '
+}
+
+local_dep_dir_from_drv_path() {
+  local drvPath="$1"
+  local encodedDir
+
+  encodedDir=$(printf '%s\n' "$drvPath" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | sed 's/-pnpm-deps$//' || true)
+  if [ -z "$encodedDir" ]; then
+    return 0
+  fi
+
+  printf '%s\n' "$encodedDir" | sed 's/--/\/@/g; s/-/\//g'
+}
+
 assert_eq() {
   local expected="$1"
   local actual="$2"
@@ -55,6 +80,33 @@ assert_eq "" "$(extract_actual_hash "$missing_output")" "missing_actual"
 assert_eq "" "$(extract_got_hash "$missing_output")" "missing_got"
 
 echo "Hash extraction tests passed"
+
+multi_mismatch_output=$(cat <<'EOF'
+error: hash mismatch in fixed-output derivation '/nix/store/aaa-genie-unwrapped-packages--overeng-utils-pnpm-deps-abc.drv':
+  specified: sha256-OLDUTILS=
+  got:    sha256-NEWUTILS=
+error: hash mismatch in fixed-output derivation '/nix/store/bbb-genie-unwrapped-pnpm-deps-def.drv':
+  specified: sha256-OLDMAIN=
+  got:    sha256-NEWMAIN=
+error: hash mismatch in fixed-output derivation '/nix/store/ccc-genie-unwrapped-packages--overeng-megarepo-pnpm-deps-ghi.drv':
+  specified: sha256-OLDMEGAREPO=
+  got:    sha256-NEWMEGAREPO=
+EOF
+)
+
+expected_multi_mismatches=$(cat <<'EOF'
+/nix/store/aaa-genie-unwrapped-packages--overeng-utils-pnpm-deps-abc.drv	sha256-NEWUTILS=
+/nix/store/bbb-genie-unwrapped-pnpm-deps-def.drv	sha256-NEWMAIN=
+/nix/store/ccc-genie-unwrapped-packages--overeng-megarepo-pnpm-deps-ghi.drv	sha256-NEWMEGAREPO=
+EOF
+)
+
+assert_eq "$expected_multi_mismatches" "$(extract_hash_mismatches "$multi_mismatch_output")" "extract_hash_mismatches"
+assert_eq "packages/@overeng/utils" "$(local_dep_dir_from_drv_path "/nix/store/aaa-genie-unwrapped-packages--overeng-utils-pnpm-deps-abc.drv")" "local_dep_dir_utils"
+assert_eq "packages/@overeng/megarepo" "$(local_dep_dir_from_drv_path "/nix/store/ccc-genie-unwrapped-packages--overeng-megarepo-pnpm-deps-ghi.drv")" "local_dep_dir_megarepo"
+assert_eq "" "$(local_dep_dir_from_drv_path "/nix/store/bbb-genie-unwrapped-pnpm-deps-def.drv")" "local_dep_dir_main"
+
+echo "Multi-mismatch parsing tests passed"
 
 # ============================================================================
 # Tests for update_hash_in_file helper (platform-specific hash support)
@@ -302,6 +354,66 @@ if grep -q 'lockfileHash = "sha256-LOCKFILE12345678901234567890123456789012="' "
   echo "  ✓ Other hashes preserved"
 else
   echo "  ✗ Other hashes were incorrectly modified"
+  cat "$tmpfile"
+  rm "$tmpfile"
+  exit 1
+fi
+rm "$tmpfile"
+
+echo ""
+echo "Testing multi-mismatch updates..."
+tmpfile=$(mktemp)
+cat > "$tmpfile" << 'EOF'
+{ pkgs }:
+{
+  pnpmDepsHash = "sha256-OLDMAIN1234567890123456789012345678901234=";
+  localDeps = [
+    { dir = "packages/@overeng/utils"; hash = "sha256-OLDUTILS12345678901234567890123456789012="; }
+    { dir = "packages/@overeng/megarepo"; hash = "sha256-OLDMEGAREPO1234567890123456789012345678="; }
+  ];
+}
+EOF
+
+seen_targets=$(mktemp)
+while IFS=$'\t' read -r mismatch_drv mismatch_hash; do
+  [ -n "$mismatch_drv" ] || continue
+  [ -n "$mismatch_hash" ] || continue
+
+  local_dep_dir=$(local_dep_dir_from_drv_path "$mismatch_drv")
+  if [ -n "$local_dep_dir" ]; then
+    target="local:$local_dep_dir"
+    if grep -Fxq "$target" "$seen_targets"; then
+      continue
+    fi
+    echo "$target" >> "$seen_targets"
+
+    export LOCAL_DEP_DIR="$local_dep_dir"
+    export NEW_HASH="$mismatch_hash"
+    perl -0777 -i -pe '
+      my $dir = $ENV{"LOCAL_DEP_DIR"};
+      my $hash = $ENV{"NEW_HASH"};
+      s/(\{\s*dir\s*=\s*"\Q$dir\E"\s*;\s*hash\s*=\s*)"sha256-[^"]+"/$1"$hash"/g;
+    ' "$tmpfile"
+    continue
+  fi
+
+  target="main"
+  if grep -Fxq "$target" "$seen_targets"; then
+    continue
+  fi
+  echo "$target" >> "$seen_targets"
+  update_hash_in_file "pnpmDepsHash" "$mismatch_hash" "$tmpfile"
+done <<EOF
+$(extract_hash_mismatches "$multi_mismatch_output")
+EOF
+rm "$seen_targets"
+
+if grep -q 'pnpmDepsHash = "sha256-NEWMAIN="' "$tmpfile" && \
+   grep -q '{ dir = "packages/@overeng/utils"; hash = "sha256-NEWUTILS="; }' "$tmpfile" && \
+   grep -q '{ dir = "packages/@overeng/megarepo"; hash = "sha256-NEWMEGAREPO="; }' "$tmpfile"; then
+  echo "  ✓ Multi-mismatch update loop updates main and local deps"
+else
+  echo "  ✗ Multi-mismatch update loop failed"
   cat "$tmpfile"
   rm "$tmpfile"
   exit 1
