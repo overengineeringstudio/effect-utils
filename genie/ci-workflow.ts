@@ -23,6 +23,10 @@
  * ```
  */
 
+import {
+  githubWorkflow,
+  type GitHubWorkflowArgs,
+} from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type RunnerProfile } from './ci.ts'
 
 export { RUNNER_PROFILES, type RunnerProfile }
@@ -57,6 +61,32 @@ export const standardCIEnv = {
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
 } as const
+
+/**
+ * Cancel superseded CI workflow runs for the same PR or branch.
+ *
+ * The group key intentionally does not include the job name so a new push
+ * cancels the entire older workflow run rather than letting stale sibling jobs
+ * continue consuming runner capacity.
+ */
+export const ciWorkflowConcurrency = {
+  group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+  'cancel-in-progress': true,
+} as const
+
+/**
+ * Standard wrapper for composed CI workflows.
+ *
+ * This keeps cancellation policy centralized in `effect-utils` instead of
+ * making each consumer remember to wire `concurrency` by hand. Repos can still
+ * override the policy by passing an explicit `concurrency` field.
+ */
+export const ciWorkflow = (args: GitHubWorkflowArgs) =>
+  (({ concurrency, ...rest }) =>
+    githubWorkflow({
+      concurrency: concurrency ?? ciWorkflowConcurrency,
+      ...rest,
+    }))(args)
 
 type NixConfigOptions = {
   unrestrictedEval?: boolean
