@@ -924,7 +924,7 @@ const syncSharedInputSource = ({
       EffectPath.unsafe.relativeFile(DEVENV_LOCK),
     )
 
-    if (!(yield* fs.exists(sourceLockPath))) {
+    if ((yield* fs.exists(sourceLockPath)) === false) {
       return { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] }
     }
 
@@ -937,7 +937,7 @@ const syncSharedInputSource = ({
     }
 
     const sourceNodes = sourceJson['nodes'] as Record<string, Record<string, unknown>> | undefined
-    if (!sourceNodes) {
+    if (sourceNodes === undefined) {
       return { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] }
     }
 
@@ -954,13 +954,13 @@ const syncSharedInputSource = ({
 
     for (const memberName of memberNames) {
       if (memberName === sourceMemberName) continue
-      if (excludeMembers.has(memberName)) continue
+      if (excludeMembers.has(memberName) === true) continue
 
       const lockPath = EffectPath.ops.join(
         getMemberPath({ megarepoRoot, name: memberName }),
         EffectPath.unsafe.relativeFile(DEVENV_LOCK),
       )
-      if (!(yield* fs.exists(lockPath))) continue
+      if ((yield* fs.exists(lockPath)) === false) continue
 
       const content = yield* fs.readFileString(lockPath)
       let parsed: Record<string, unknown>
@@ -971,7 +971,7 @@ const syncSharedInputSource = ({
       }
 
       const targetNodes = parsed['nodes'] as Record<string, Record<string, unknown>> | undefined
-      if (!targetNodes) continue
+      if (targetNodes === undefined) continue
 
       const updatedInputs: string[] = []
       for (const [name, targetNode] of Object.entries(targetNodes)) {
@@ -979,9 +979,9 @@ const syncSharedInputSource = ({
         if (targetNode['original'] === undefined || targetNode['locked'] === undefined) continue
 
         const sourceEntry = sourceMap.get(name)
-        if (!sourceEntry) continue
-        if (!deepEqual({ a: sourceEntry.original, b: targetNode['original'] })) continue
-        if (deepEqual({ a: sourceEntry.locked, b: targetNode['locked'] })) continue
+        if (sourceEntry === undefined) continue
+        if (deepEqual({ a: sourceEntry.original, b: targetNode['original'] }) === false) continue
+        if (deepEqual({ a: sourceEntry.locked, b: targetNode['locked'] }) === true) continue
 
         targetNode['locked'] = sourceEntry.locked
         updatedInputs.push(name)

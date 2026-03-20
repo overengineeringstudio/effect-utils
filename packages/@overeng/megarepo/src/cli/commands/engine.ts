@@ -798,17 +798,18 @@ export const runCommand = ({
             targetCount: r.updatedMembers.length,
           })) ?? []
 
-      const sharedSourceUpdatesFromInputSource: ReadonlyArray<LockSharedSourceUpdate> = syncResult
-        .lockSyncResults?.sharedInputSourceResult?.updatedMembers.length
-        ? [
-            {
-              _tag: 'SharedSourceUpdate' as const,
-              sourceName: 'shared-inputs',
-              sourceMemberName: syncResult.lockSyncResults.sharedInputSourceResult.sourceMember,
-              targetCount: syncResult.lockSyncResults.sharedInputSourceResult.updatedMembers.length,
-            },
-          ]
-        : []
+      const inputSourceResult = syncResult.lockSyncResults?.sharedInputSourceResult
+      const sharedSourceUpdatesFromInputSource: ReadonlyArray<LockSharedSourceUpdate> =
+        inputSourceResult !== undefined && inputSourceResult.updatedMembers.length > 0
+          ? [
+              {
+                _tag: 'SharedSourceUpdate' as const,
+                sourceName: 'shared-inputs',
+                sourceMemberName: inputSourceResult.sourceMember,
+                targetCount: inputSourceResult.updatedMembers.length,
+              },
+            ]
+          : []
 
       const sharedSourceUpdates: ReadonlyArray<LockSharedSourceUpdate> = [
         ...sharedSourceUpdatesFromLockSources,
