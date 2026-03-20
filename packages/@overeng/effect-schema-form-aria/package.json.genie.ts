@@ -9,7 +9,7 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['react-aria-components', 'react-dom'] as const
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/effect-schema-form-aria'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-schema-form-aria' }),
   dependencies: {
     workspace: [schemaFormPkg],
   },

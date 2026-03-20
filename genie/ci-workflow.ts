@@ -84,7 +84,13 @@ export const nixExtraConf = (opts: NixConfigOptions = {}) =>
     ...(opts.extraLines ?? []),
   ].join('\n')
 
-const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => {
+const withAppendedNixConfig = ({
+  command,
+  opts = {},
+}: {
+  command: string
+  opts?: NixConfigOptions
+}) => {
   const extraConf = nixExtraConf(opts)
   if (extraConf === '') {
     return command
@@ -95,10 +101,10 @@ const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => 
 }
 
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
-  withAppendedNixConfig(
-    `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+  withAppendedNixConfig({
+    command: `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
     opts,
-  )
+  })
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
@@ -109,8 +115,13 @@ export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
  * Adds a run ID label so runners spawned for one workflow run
  * don't steal jobs from other runs.
  */
-export const namespaceRunner = (profile: RunnerProfile | (string & {}), runId: string) =>
-  [profile, `namespace-features:github.run-id=${runId}`] as const
+export const namespaceRunner = ({
+  profile,
+  runId,
+}: {
+  profile: RunnerProfile | (string & {})
+  runId: string
+}) => [profile, `namespace-features:github.run-id=${runId}`] as const
 
 // =============================================================================
 // Step Atoms

@@ -75,10 +75,13 @@ export const catalog = defineCatalog({
 const WORKSPACE_REPO_NAME = 'effect-utils'
 
 /** Creates a workspace member descriptor for a package path within the effect-utils repo */
-export const workspaceMember = (
-  memberPath: string,
-  pnpmPackageClosure: PnpmPackageClosureConfig = {},
-) =>
+export const workspaceMember = ({
+  memberPath,
+  pnpmPackageClosure = {},
+}: {
+  memberPath: string
+  pnpmPackageClosure?: PnpmPackageClosureConfig
+}) =>
   ({
     repoName: WORKSPACE_REPO_NAME,
     memberPath,

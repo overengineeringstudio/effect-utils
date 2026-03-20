@@ -10,7 +10,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 const peerDepNames = ['@effect/platform', 'effect'] as const
 
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/agent-session-ingest'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/agent-session-ingest' }),
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {

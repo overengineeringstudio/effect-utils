@@ -11,7 +11,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 const peerDepNames = ['effect'] as const
 
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/kdl-effect'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/kdl-effect' }),
   dependencies: {
     workspace: [kdlPkg],
   },

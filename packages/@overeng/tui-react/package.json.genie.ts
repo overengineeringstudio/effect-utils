@@ -25,7 +25,7 @@ const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/tui-react'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/tui-react' }),
   dependencies: {
     workspace: [tuiCorePkg],
     external: catalog.pick(

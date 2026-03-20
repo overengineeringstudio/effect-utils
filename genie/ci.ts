@@ -10,10 +10,14 @@ export const RUNNER_PROFILES = [
   'namespace-profile-linux-x86-64',
   'namespace-profile-macos-arm64',
 ] as const
+
+/** Union of supported GitHub Actions runner profile labels. */
 export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /** CI job names (keys in the workflow jobs object) */
 export const CI_JOB_NAMES = ['typecheck', 'lint', 'test', 'nix-check'] as const
+
+/** Union of canonical CI job keys used across workflow generation and repo settings. */
 export type CIJobName = (typeof CI_JOB_NAMES)[number]
 
 /**

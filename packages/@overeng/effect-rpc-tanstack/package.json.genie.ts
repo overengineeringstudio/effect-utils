@@ -18,8 +18,11 @@ const peerDepNames = [
   'react-dom',
 ] as const
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/effect-rpc-tanstack', {
-    extraMemberPaths: ['packages/@overeng/effect-rpc-tanstack/examples/basic'],
+  workspace: workspaceMember({
+    memberPath: 'packages/@overeng/effect-rpc-tanstack',
+    pnpmPackageClosure: {
+      extraMemberPaths: ['packages/@overeng/effect-rpc-tanstack/examples/basic'],
+    },
   }),
   devDependencies: {
     workspace: [utilsPkg],

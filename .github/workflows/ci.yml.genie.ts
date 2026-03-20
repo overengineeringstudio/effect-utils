@@ -104,7 +104,10 @@ const nixDiagnosticsSummaryStep = {
 } as const
 
 const job = (step: { name: string; run: string }) => ({
-  'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
+  'runs-on': namespaceRunner({
+    profile: 'namespace-profile-linux-x86-64',
+    runId: '${{ github.run_id }}',
+  }),
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -123,7 +126,10 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
       runner: [...RUNNER_PROFILES],
     },
   },
-  'runs-on': namespaceRunner('${{ matrix.runner }}' as RunnerProfile, '${{ github.run_id }}'),
+  'runs-on': namespaceRunner({
+    profile: '${{ matrix.runner }}' as RunnerProfile,
+    runId: '${{ github.run_id }}',
+  }),
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -162,7 +168,10 @@ const NETLIFY_SITE = 'overeng-utils'
 // Deploy job — NOT a required status check (separate from CIJobName)
 const deployJobs: Record<string, any> = {
   'deploy-storybooks': {
-    'runs-on': namespaceRunner('namespace-profile-linux-x86-64', '${{ github.run_id }}'),
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
     // No `needs` — run in parallel with other jobs for faster feedback
     permissions: {
       contents: 'read',

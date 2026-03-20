@@ -7,7 +7,7 @@ import {
 } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/tui-core'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/tui-core' }),
   devDependencies: {
     external: {
       ...catalog.pick('@types/node', 'typescript', 'vitest'),
