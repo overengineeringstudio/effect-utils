@@ -119,7 +119,7 @@ export const syncMegarepo = <R = never>({
   | PlatformError.PlatformError
   | ParseResult.ParseError
   | Error,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | StoreLock | R
 > =>
   Effect.gen(function* () {
     const { mode, dryRun, force, all, only, skip, gitProtocol, createBranches } = options
