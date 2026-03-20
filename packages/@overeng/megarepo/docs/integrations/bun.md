@@ -63,7 +63,7 @@ mr exec "bun run lint:fix"
 my-megarepo/
 ├── package.json           # Root workspace config
 ├── bun.lock              # Root lockfile
-├── megarepo.json
+├── megarepo.kdl
 ├── megarepo.lock
 └── repos/
     ├── effect -> ~/.megarepo/.../

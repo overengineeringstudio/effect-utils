@@ -6,7 +6,7 @@ All commands support `--output json` or `--output ndjson`.
 
 ### `mr fetch --apply`
 
-Fetch configured refs, reconcile the workspace to `megarepo.json`, and write the new lock.
+Fetch configured refs, reconcile the workspace to `megarepo.kdl`, and write the new lock.
 
 ```bash
 mr fetch --apply [--force] [--all] [--only <members>] [--skip <members>] [--create-branches] [--dry-run]
@@ -14,7 +14,7 @@ mr fetch --apply [--force] [--all] [--only <members>] [--skip <members>] [--crea
 
 Behavior:
 
-1. Resolve members from `megarepo.json`
+1. Resolve members from `megarepo.kdl`
 2. Fetch from remotes and update worktrees to latest commits
 3. Materialize or reuse canonical source-ref worktrees in the store
 4. Repair duplicate encoded/unencoded branch worktrees with `--force`
@@ -32,7 +32,7 @@ Record the current synced workspace state into `megarepo.lock`.
 mr lock [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 ```
 
-This expects the workspace to already be reconciled to `megarepo.json`. If a member symlink points at the wrong ref, it is skipped with a hint to run `mr fetch --apply`.
+This expects the workspace to already be reconciled to `megarepo.kdl`. If a member symlink points at the wrong ref, it is skipped with a hint to run `mr fetch --apply`.
 
 ### `mr apply`
 

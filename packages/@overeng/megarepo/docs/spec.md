@@ -6,14 +6,16 @@ Megarepo (`mr`) is a tool for composing multiple git repositories into a unified
 
 The system uses two files:
 
-- **`megarepo.json`** - Declares **intent**: what repos and refs you want
+- **`megarepo.kdl`** - Declares **intent**: what repos and refs you want (KDL v2 format, hand-written)
 - **`megarepo.lock`** - Records **resolved state**: exact commits checked out
+
+> **Note:** `megarepo.json` is still supported as a fallback for backward compatibility, but `megarepo.kdl` is the preferred format.
 
 ## Core Concepts
 
 ### Megarepo
 
-A git repository containing a `megarepo.json` file. The megarepo:
+A git repository containing a `megarepo.kdl` (or `megarepo.json`) file. The megarepo:
 
 - Is the root of the composed environment
 - Declares which repos are members
@@ -22,7 +24,7 @@ A git repository containing a `megarepo.json` file. The megarepo:
 
 ### Member
 
-A repository declared in `megarepo.json`. Members are:
+A repository declared in `megarepo.kdl`. Members are:
 
 - Symlinked from the global store into `repos/` (for remote sources)
 - Materialized directly (for local path sources)
@@ -126,7 +128,7 @@ Note: `DEVENV_ROOT` is provided by devenv automatically and serves as the megare
 
 ### Root discovery behavior
 
-Commands auto-detect megarepo roots by searching up from `$PWD` for `megarepo.json`.
+Commands auto-detect megarepo roots by searching up from `$PWD` for `megarepo.kdl` (or `megarepo.json`).
 When using devenv, `DEVENV_ROOT` provides the megarepo root path.
 
 **Nested megarepos:** When megarepo A contains megarepo B as a member:
@@ -134,30 +136,25 @@ When using devenv, `DEVENV_ROOT` provides the megarepo root path.
 - If working inside nested B, `mr` commands operate on B
 - If B is checked out standalone, commands operate on B
 
-**Symlinked members:** When entering a symlinked member, commands search upward for `megarepo.json`.
+**Symlinked members:** When entering a symlinked member, commands search upward for `megarepo.kdl` (or `megarepo.json`).
 
 ---
 
-## Config File (`megarepo.json`)
+## Config File (`megarepo.kdl`)
 
-The config declares intent using a unified string format:
+The config declares intent using KDL v2 format. The file is hand-written (not generated).
 
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/.../megarepo.schema.json",
-  "members": {
-    "effect": "effect-ts/effect", // GitHub shorthand, default branch
-    "effect-v3": "effect-ts/effect#v3.0.0", // specific tag
-    "effect-next": "effect-ts/effect#next", // specific branch
-    "gitlab-lib": "https://gitlab.com/org/repo", // non-GitHub URL
-    "local-lib": "./packages/local" // local path
-  },
-  "generators": {
-    "vscode": {
-      "enabled": true
-    }
-  }
+```kdl
+members {
+  effect "effect-ts/effect"                  // GitHub shorthand, default branch
+  effect-v3 "effect-ts/effect#v3.0.0"       // specific tag
+  effect-next "effect-ts/effect#next"        // specific branch
+  gitlab-lib "https://gitlab.com/org/repo"   // non-GitHub URL
+  local-lib "./packages/local"               // local path
 }
+```
+
+> **Backward compatibility:** `megarepo.json` is still supported as a fallback. The tool reads `megarepo.kdl` first, then falls back to `megarepo.json` if not found.
 ```
 
 ### Source String Parsing
@@ -201,9 +198,10 @@ If the ref type cannot be determined from the repository:
 
 ### Config Schema
 
+The KDL config maps to the following structure:
+
 ```typescript
 interface MegarepoConfig {
-  $schema?: string
   members: Record<string, string> // member name -> source string
   generators?: GeneratorsConfig
 }
@@ -342,7 +340,7 @@ set `dim` for scope purposes — they set `inScope` on the context and
 
 #### `mr fetch --apply`
 
-Workspace sync from `megarepo.json`. This ensures members exist and that `repos/*` points at the canonical ref worktrees declared in config.
+Workspace sync from `megarepo.kdl`. This ensures members exist and that `repos/*` points at the canonical ref worktrees declared in config.
 
 ```bash
 mr fetch --apply [--force] [--all] [--only <members...>] [--skip <members...>] [--git-protocol <ssh|https|auto>] [--create-branches]
@@ -400,14 +398,14 @@ This happens when you were working on a branch, switched back, but the lock wasn
 tracking different ref than source
     livestore
       current: feat/refactor (lock + symlink)
-      source: dev (from megarepo.json)
-      fix: add #feat/refactor to megarepo.json
+      source: dev (from megarepo.kdl)
+      fix: add #feat/refactor to megarepo.kdl
              → keeps tracking feat/refactor
            or: mr fetch --apply --only livestore
              → switches to dev, updates lock
 ```
 
-This happens when the lock was updated to track a branch but megarepo.json wasn't edited to match.
+This happens when the lock was updated to track a branch but `megarepo.kdl` wasn't edited to match.
 
 This distinction prevents silent "already up to date" messages and provides targeted fix suggestions.
 
@@ -499,7 +497,7 @@ mr pin effect -c abc123def    # pin to specific commit
 
 **Behavior:**
 
-1. Updates `megarepo.json` to use the specified ref (if `-c` provided)
+1. Updates `megarepo.kdl` to use the specified ref (if `-c` provided)
 2. Creates a new worktree for that ref (if it doesn't exist)
 3. Updates the symlink in `repos/` to point to the new worktree
 4. Sets `pinned: true` in lock file
@@ -539,7 +537,7 @@ Initialize a new megarepo in current directory.
 
 ```bash
 mr init
-# Creates megarepo.json with empty members
+# Creates megarepo.kdl with empty members
 # Fails if not a git repo
 ```
 
@@ -558,7 +556,7 @@ mr status
 **Lock mismatch detection:** Warns about two distinct scenarios:
 
 - **Stale lock:** Lock is outdated but current state matches source intent. Fix: `mr fetch --apply`
-- **Symlink drift:** Symlink/lock track different ref than source. Fix: edit megarepo.json or `mr fetch --apply`
+- **Symlink drift:** Symlink/lock track different ref than source. Fix: edit `megarepo.kdl` or `mr fetch --apply`
 
 #### `mr env`
 
@@ -788,7 +786,7 @@ There are two ways to create a new branch that doesn't exist yet:
 **Using `--create-branches` flag:**
 
 ```bash
-# In megarepo.json: "dotfiles": "schickling/dotfiles#new-feature"
+# In megarepo.kdl: dotfiles "schickling/dotfiles#new-feature"
 mr fetch --apply --create-branches        # creates missing branches from default branch
 ```
 
@@ -797,7 +795,7 @@ mr fetch --apply --create-branches        # creates missing branches from defaul
 If you specify a branch that doesn't exist and you're running in an interactive terminal, `mr fetch --apply` will prompt:
 
 ```bash
-# In megarepo.json: "dotfiles": "schickling/dotfiles#new-feature"
+# In megarepo.kdl: dotfiles "schickling/dotfiles#new-feature"
 mr fetch --apply
 
 # Output:
@@ -821,7 +819,7 @@ After `mr fetch --apply`, a megarepo looks like:
 ```
 my-megarepo/                    # Git repo (the megarepo itself)
 ├── .git/
-├── megarepo.json
+├── megarepo.kdl
 ├── megarepo.lock               # Committed for CI reproducibility
 ├── devenv.nix                  # Devenv configuration
 ├── .envrc                      # Simple: use devenv
@@ -835,9 +833,9 @@ my-megarepo/                    # Git repo (the megarepo itself)
 
 ### Nested Megarepos
 
-Members can themselves be megarepos with their own `megarepo.json`. When a member depends on another repo:
+Members can themselves be megarepos with their own `megarepo.kdl`. When a member depends on another repo:
 
-1. **The member declares its own dependencies** in its `megarepo.json`
+1. **The member declares its own dependencies** in its `megarepo.kdl`
 2. **Running `mr fetch --apply` in the member** creates symlinks within that member
 3. **Shared dependencies** point to the same store worktree
 
@@ -935,21 +933,15 @@ During `mr lock`, `mr fetch --apply`, and `mr apply`, once `megarepo.lock` is th
 
 Lock sync is **auto-detected** by default (enabled if `devenv.lock` or `flake.lock` exists in the megarepo root). To opt out:
 
-```json
-{
-  "lockSync": {
-    "enabled": false
-  }
-}
+```kdl
+lockSync enabled=false
 ```
 
 To exclude specific members from lock sync:
 
-```json
-{
-  "lockSync": {
-    "exclude": ["member-to-skip"]
-  }
+```kdl
+lockSync {
+  exclude "member-to-skip"
 }
 ```
 
@@ -1064,18 +1056,18 @@ Check that the path is correct relative to the megarepo root.
 
 ```
 Skipped: effect (symlink drift: lock says 'refactor/feature' but source resolves to 'dev')
-  hint: run 'mr fetch --apply' to update to lock ref, or update megarepo.json to include #refactor/feature
+  hint: run 'mr fetch --apply' to update to lock ref, or update megarepo.kdl to include #refactor/feature
 ```
 
 This occurs when:
 
 - The lock file specifies one ref (e.g., from a previous sync or teammate's commit)
-- But the source string in `megarepo.json` resolves to a different ref
+- But the source string in `megarepo.kdl` resolves to a different ref
 
 **Resolution options:**
 
 - Run `mr fetch --apply` to fetch and update to the lock file's ref
-- Update `megarepo.json` to explicitly specify the ref: `"effect": "effect-ts/effect#refactor/feature"`
+- Update `megarepo.kdl` to explicitly specify the ref: `effect "effect-ts/effect#refactor/feature"`
 - If the lock is outdated, update it by checking out the desired ref and running `mr fetch --apply`
 
 ### Store worktree ref mismatch

@@ -38,7 +38,7 @@ Materialize the workspace:
 mr fetch --apply
 ```
 
-That creates `repos/*` symlinks pointing at canonical store worktrees and updates `megarepo.lock`.
+That creates `repos/*` symlinks pointing at canonical store worktrees and updates `megarepo.lock`. The `mr init` command creates a `megarepo.kdl` file by default.
 
 ## Record the Lock
 
@@ -46,7 +46,7 @@ To explicitly write the lock without fetching (e.g. after local changes):
 
 ```bash
 mr lock
-git add megarepo.json megarepo.lock
+git add megarepo.kdl megarepo.lock
 git commit -m "Initialize megarepo"
 ```
 

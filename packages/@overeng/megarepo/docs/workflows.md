@@ -4,7 +4,7 @@ Common megarepo workflows.
 
 ## Daily Development
 
-Start by fetching and reconciling the local workspace to `megarepo.json`:
+Start by fetching and reconciling the local workspace to `megarepo.kdl`:
 
 ```bash
 mr fetch --apply
