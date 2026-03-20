@@ -1207,7 +1207,7 @@ describe('shared input source sync logic', () => {
 
     for (const memberName of Object.keys(memberLocks)) {
       if (memberName === sourceMemberName) continue
-      if (excludeMembers.has(memberName)) continue
+      if (excludeMembers.has(memberName) === true) continue
 
       const content = memberLocks[memberName]
       if (content === undefined) continue
@@ -1234,9 +1234,9 @@ describe('shared input source sync logic', () => {
         if (targetNode['original'] === undefined || targetNode['locked'] === undefined) continue
 
         const sourceEntry = sourceMap.get(inputName)
-        if (!sourceEntry) continue
-        if (!deepEqual(sourceEntry.original, targetNode['original'])) continue
-        if (deepEqual(sourceEntry.locked, targetNode['locked'])) continue
+        if (sourceEntry === undefined) continue
+        if (deepEqual(sourceEntry.original, targetNode['original']) === false) continue
+        if (deepEqual(sourceEntry.locked, targetNode['locked']) === true) continue
 
         targetNode['locked'] = sourceEntry.locked
         updatedInputs.push(inputName)
