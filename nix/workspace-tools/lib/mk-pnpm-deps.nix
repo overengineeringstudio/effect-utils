@@ -31,11 +31,10 @@ in
   #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
   #   preInstall:     Extra shell commands to run before lockfile parsing
-  #   installRoots:   Workspace roots to run `pnpm install` in before archiving
-  #                   the store. Relative to sourceRoot. Defaults to [ "." ].
   #   lockfilePaths:
-  #                   Lockfiles that define the allowed package set for store normalization.
-  #                   Each path is relative to sourceRoot.
+  #                   Lockfiles whose importer closures define the allowed package set
+  #                   for store population and normalization. Each path is relative
+  #                   to sourceRoot.
   mkDeps =
     {
       name,
@@ -43,7 +42,6 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
-      installRoots ? [ "." ],
       lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
@@ -82,6 +80,7 @@ in
       nativeBuildInputs = [
         pkgs.pnpm
         pkgs.nodejs
+        pkgs.ruby
         pkgs.cacert
         pkgs.zstd
         pkgs.findutils
@@ -121,23 +120,147 @@ in
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
-        ${builtins.concatStringsSep "\n" (
-          map
-            (
-              installRoot:
-              let
-                installRootArg = lib.escapeShellArg installRoot;
-              in
-              ''
-                echo "store-fetch: installing dependencies for ${installRoot}"
-                (
-                  cd ${installRootArg}
-                  pnpm install --frozen-lockfile --ignore-scripts
-                )
-              ''
-            )
-            installRoots
-        )}
+        ruby <<'RUBY'
+          require "json"
+          require "pathname"
+          require "set"
+          require "yaml"
+
+          lockfile_paths = JSON.parse(ENV.fetch("LOCKFILE_PATHS_JSON", "[]"))
+
+          if !lockfile_paths.is_a?(Array) || lockfile_paths.empty?
+            warn "store-fetch: FATAL - no staged lockfiles were provided"
+            exit 1
+          end
+
+          dependency_sections = %w[dependencies devDependencies optionalDependencies]
+
+          split_pkg_and_version = lambda do |spec|
+            at_index =
+              if spec.start_with?("@")
+                spec.index("@", 1)
+              else
+                spec.index("@")
+              end
+            next nil if at_index.nil?
+
+            [spec[0...at_index], spec[(at_index + 1)..]]
+          end
+
+          dependency_version = lambda do |entry|
+            case entry
+            when String
+              entry
+            when Hash
+              entry["version"]
+            else
+              nil
+            end
+          end
+
+          workspace_importers_for = lambda do |lockfile_path|
+            lockfile_root = Pathname.new(lockfile_path).dirname
+            workspace_yaml_path = lockfile_root.join("pnpm-workspace.yaml")
+            importers = ["."]
+
+            next importers unless workspace_yaml_path.exist?
+
+            lines = workspace_yaml_path.read.split("\n")
+            in_packages = false
+
+            lines.each do |line|
+              trimmed = line.strip
+
+              if !in_packages
+                in_packages = true if trimmed == "packages:"
+                next
+              end
+
+              break if !line.start_with?(" ") && !trimmed.empty?
+              next if trimmed.empty?
+              next unless trimmed.start_with?("- ")
+
+              importer = trimmed.delete_prefix("- ").strip
+              importers << importer unless importer.empty?
+            end
+
+            importers.uniq
+          end
+
+          external_specs = Set.new
+
+          lockfile_paths.each do |lockfile_path|
+            unless File.exist?(lockfile_path)
+              warn "store-fetch: FATAL - staged lockfile not found at #{lockfile_path}"
+              exit 1
+            end
+
+            lockfile = YAML.safe_load_file(lockfile_path, permitted_classes: [], aliases: false) || {}
+            importers = lockfile.fetch("importers", {})
+            snapshots = lockfile.fetch("snapshots", {})
+            queue = []
+            visited_snapshots = Set.new
+
+            workspace_importers_for.call(lockfile_path).each do |importer_id|
+              importer = importers[importer_id]
+              next unless importer.is_a?(Hash)
+
+              dependency_sections.each do |section|
+                entries = importer[section]
+                next unless entries.is_a?(Hash)
+
+                entries.each do |pkg_name, entry|
+                  version = dependency_version.call(entry)
+                  next if version.nil? || version.empty?
+                  next if version.start_with?("file:", "link:", "workspace:")
+
+                  queue << "#{pkg_name}@#{version}"
+                end
+              end
+            end
+
+            until queue.empty?
+              snapshot_key = queue.pop
+              next if visited_snapshots.include?(snapshot_key)
+
+              visited_snapshots << snapshot_key
+
+              pkg_and_version = snapshot_key.split("(", 2).first
+              parsed = split_pkg_and_version.call(pkg_and_version)
+              if parsed
+                pkg_name, version = parsed
+                external_specs << "#{pkg_name}@#{version}" unless version.start_with?("file:", "link:", "workspace:")
+              end
+
+              snapshot = snapshots[snapshot_key]
+              next unless snapshot.is_a?(Hash)
+
+              dependency_sections.each do |section|
+                entries = snapshot[section]
+                next unless entries.is_a?(Hash)
+
+                entries.each do |pkg_name, version|
+                  next unless version.is_a?(String) && !version.empty?
+                  next if version.start_with?("file:", "link:", "workspace:")
+
+                  queue << "#{pkg_name}@#{version}"
+                end
+              end
+            end
+          end
+
+          sorted_specs = external_specs.to_a.sort
+
+          if sorted_specs.empty?
+            warn "store-fetch: FATAL - no external package specs parsed from staged importer closures"
+            exit 1
+          end
+
+          File.write(".pnpm-store-specs.txt", sorted_specs.join("\n") + "\n")
+          puts "store-fetch: parsed #{sorted_specs.length} unique external package specs"
+        RUBY
+
+        xargs -r -a .pnpm-store-specs.txt -n 50 pnpm store add
 
         # Normalize pnpm store for cross-platform/cross-run determinism.
         # See: https://github.com/NixOS/nixpkgs/issues/422889

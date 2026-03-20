@@ -24,7 +24,7 @@ let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-2Vcb8I9OdIAvB6+6cieXLC61AdSRmOQg+P8Y+xSajz0=";
+  pnpmDepsHash = "sha256-c8dmzeZKcGZ07WtBbXogeBrv0Pm65L9idmJJocqStGg=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
