@@ -16,7 +16,6 @@ import {
   normalizeGitUrl,
   urlsMatch,
 } from './matcher.ts'
-import { getByDotPath, setByDotPath } from './mod.ts'
 import {
   FlakeLock,
   GitHubLockedInput,
@@ -1112,346 +1111,464 @@ describe('source file rev sync', () => {
 })
 
 // =============================================================================
-// Shared Lock Source Helpers Tests
+// Shared Input Source Sync Tests (original-matching)
 // =============================================================================
 
-describe('shared lock source helpers', () => {
-  describe('getByDotPath', () => {
-    it('should resolve a simple path', () => {
-      const obj = { a: { b: { c: 42 } } }
-      expect(getByDotPath({ obj, dotPath: '.a.b.c' })).toBe(42)
-    })
-
-    it('should resolve a path without leading dot', () => {
-      const obj = { a: { b: 'hello' } }
-      expect(getByDotPath({ obj, dotPath: 'a.b' })).toBe('hello')
-    })
-
-    it('should return the nested object at a partial path', () => {
-      const obj = { nodes: { devenv: { locked: { rev: 'abc', type: 'github' } } } }
-      expect(getByDotPath({ obj, dotPath: '.nodes.devenv.locked' })).toEqual({
-        rev: 'abc',
-        type: 'github',
-      })
-    })
-
-    it('should return undefined for missing path', () => {
-      const obj = { a: { b: 1 } }
-      expect(getByDotPath({ obj, dotPath: '.a.c.d' })).toBeUndefined()
-    })
-
-    it('should return undefined for null/undefined input', () => {
-      expect(getByDotPath({ obj: undefined, dotPath: '.a' })).toBeUndefined()
-      expect(getByDotPath({ obj: null, dotPath: '.a' })).toBeUndefined()
-    })
-
-    it('should return the root object for empty path', () => {
-      const obj = { a: 1 }
-      expect(getByDotPath({ obj, dotPath: '' })).toEqual({ a: 1 })
-    })
-  })
-
-  describe('setByDotPath', () => {
-    it('should set a value at a simple path', () => {
-      const obj = { a: { b: { c: 1 } } }
-      const result = setByDotPath({ obj, dotPath: '.a.b.c', value: 42 })
-      expect(getByDotPath({ obj: result, dotPath: '.a.b.c' })).toBe(42)
-    })
-
-    it('should create intermediate objects', () => {
-      const obj = {}
-      const result = setByDotPath({ obj, dotPath: '.a.b.c', value: 'hello' })
-      expect(getByDotPath({ obj: result, dotPath: '.a.b.c' })).toBe('hello')
-    })
-
-    it('should not mutate the original object', () => {
-      const obj = { a: { b: { c: 1 } } }
-      const result = setByDotPath({ obj, dotPath: '.a.b.c', value: 42 })
-      expect(obj.a.b.c).toBe(1)
-      expect(getByDotPath({ obj: result, dotPath: '.a.b.c' })).toBe(42)
-    })
-
-    it('should set a complex value (object)', () => {
-      const obj = { nodes: { devenv: { locked: { rev: 'old', type: 'github' } } } }
-      const newLocked = { rev: 'new', type: 'github', lastModified: 123 }
-      const result = setByDotPath({ obj, dotPath: '.nodes.devenv.locked', value: newLocked })
-      expect(getByDotPath({ obj: result, dotPath: '.nodes.devenv.locked' })).toEqual(newLocked)
-    })
-
-    it('should preserve sibling keys', () => {
-      const obj = { nodes: { devenv: { locked: { rev: 'old' }, original: { type: 'github' } } } }
-      const result = setByDotPath({ obj, dotPath: '.nodes.devenv.locked', value: { rev: 'new' } })
-      expect(getByDotPath({ obj: result, dotPath: '.nodes.devenv.original' })).toEqual({
-        type: 'github',
-      })
-    })
-  })
-})
-
-// =============================================================================
-// Shared Lock Source Sync (integration-style pure tests)
-// =============================================================================
-
-describe('shared lock source sync logic', () => {
+describe('shared input source sync logic', () => {
   /**
-   * Simulates the shared lock source sync for a set of devenv.lock contents.
-   * Pure function that mirrors the core logic without filesystem effects.
+   * Deep structural equality check (mirrors the implementation).
    */
-  const simulateSharedLockSourceSync = ({
-    sharedLockSources,
+  const deepEqual = (a: unknown, b: unknown): boolean => {
+    if (a === b) return true
+    if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
+    const aObj = a as Record<string, unknown>
+    const bObj = b as Record<string, unknown>
+    const aKeys = Object.keys(aObj)
+    if (aKeys.length !== Object.keys(bObj).length) return false
+    return aKeys.every((k) => deepEqual(aObj[k], bObj[k]))
+  }
+
+  /**
+   * Simulates the shared input source sync for a set of devenv.lock contents.
+   * Pure function that mirrors the core logic without filesystem effects.
+   * Only propagates top-level declared inputs (from root.inputs).
+   */
+  type SimResult =
+    | { _tag: 'error'; message: string }
+    | {
+        sourceMember: string
+        propagatableInputs: number
+        updatedMembers: Array<{ name: string; updatedInputs: string[] }>
+      }
+
+  type SuccessResult = Exclude<SimResult, { _tag: 'error' }>
+
+  const assertSuccess = (result: SimResult): SuccessResult => {
+    if ('_tag' in result) {
+      throw new Error(`Expected success but got error: ${JSON.stringify(result)}`)
+    }
+    return result
+  }
+
+  const simulateSharedInputSourceSync = ({
+    sourceMemberName,
     memberLocks,
     excludeMembers = new Set<string>(),
   }: {
-    sharedLockSources: Record<string, { source: string; path: string }>
+    sourceMemberName: string
     memberLocks: Record<string, string>
     excludeMembers?: ReadonlySet<string>
   }): {
     updatedLocks: Record<string, string>
-    results: Array<{
-      label: string
-      sourceMember: string
-      path: string
-      updatedMembers: string[]
-      skippedMembers: string[]
-    }>
+    result: SimResult
   } => {
     const updatedLocks: Record<string, string> = { ...memberLocks }
-    const results: Array<{
-      label: string
-      sourceMember: string
-      path: string
-      updatedMembers: string[]
-      skippedMembers: string[]
-    }> = []
 
-    for (const [label, config] of Object.entries(sharedLockSources)) {
-      const sourceContent = memberLocks[config.source]
-      if (sourceContent === undefined) {
-        results.push({
-          label,
-          sourceMember: config.source,
-          path: config.path,
-          updatedMembers: [],
-          skippedMembers: [],
-        })
-        continue
+    const sourceContent = memberLocks[sourceMemberName]
+    if (sourceContent === undefined) {
+      return {
+        updatedLocks,
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' has no devenv.lock`,
+        },
       }
-
-      let sourceJson: unknown
-      try {
-        sourceJson = JSON.parse(sourceContent)
-      } catch {
-        results.push({
-          label,
-          sourceMember: config.source,
-          path: config.path,
-          updatedMembers: [],
-          skippedMembers: [],
-        })
-        continue
-      }
-
-      const sourceValue = getByDotPath({ obj: sourceJson, dotPath: config.path })
-      if (sourceValue === undefined) {
-        results.push({
-          label,
-          sourceMember: config.source,
-          path: config.path,
-          updatedMembers: [],
-          skippedMembers: [],
-        })
-        continue
-      }
-
-      const updatedMembers: string[] = []
-      const skippedMembers: string[] = []
-
-      for (const memberName of Object.keys(memberLocks)) {
-        if (memberName === config.source) continue
-        if (excludeMembers.has(memberName) === true) {
-          skippedMembers.push(memberName)
-          continue
-        }
-
-        let targetJson: unknown
-        try {
-          targetJson = JSON.parse(updatedLocks[memberName]!)
-        } catch {
-          skippedMembers.push(memberName)
-          continue
-        }
-
-        const currentValue = getByDotPath({ obj: targetJson, dotPath: config.path })
-        if (JSON.stringify(currentValue) === JSON.stringify(sourceValue)) continue
-
-        const updatedJson = setByDotPath({
-          obj: targetJson,
-          dotPath: config.path,
-          value: sourceValue,
-        })
-        updatedLocks[memberName] = JSON.stringify(updatedJson, null, 2) + '\n'
-        updatedMembers.push(memberName)
-      }
-
-      results.push({
-        label,
-        sourceMember: config.source,
-        path: config.path,
-        updatedMembers,
-        skippedMembers,
-      })
     }
 
-    return { updatedLocks, results }
+    let sourceJson: Record<string, unknown>
+    try {
+      sourceJson = JSON.parse(sourceContent) as Record<string, unknown>
+    } catch {
+      return {
+        updatedLocks,
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' has invalid devenv.lock (not valid JSON)`,
+        },
+      }
+    }
+
+    const sourceNodes = sourceJson['nodes'] as Record<string, Record<string, unknown>> | undefined
+    if (sourceNodes === undefined) {
+      return {
+        updatedLocks,
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' devenv.lock has no nodes`,
+        },
+      }
+    }
+
+    const rootNode = sourceNodes['root']
+    if (rootNode === undefined) {
+      return {
+        updatedLocks,
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' devenv.lock has no root node`,
+        },
+      }
+    }
+
+    const rootInputs = rootNode['inputs'] as Record<string, string> | undefined
+    if (rootInputs === undefined) {
+      return {
+        updatedLocks,
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' devenv.lock root node has no inputs`,
+        },
+      }
+    }
+
+    /** Only consider top-level declared inputs */
+    const sourceMap = new Map<string, { locked: unknown; original: unknown }>()
+    for (const [inputName, nodeName] of Object.entries(rootInputs)) {
+      const node = sourceNodes[nodeName]
+      if (node === undefined) continue
+      if (node['original'] !== undefined && node['locked'] !== undefined) {
+        sourceMap.set(inputName, { locked: node['locked'], original: node['original'] })
+      }
+    }
+
+    const updatedMembers: Array<{ name: string; updatedInputs: string[] }> = []
+
+    for (const memberName of Object.keys(memberLocks)) {
+      if (memberName === sourceMemberName) continue
+      if (excludeMembers.has(memberName) === true) continue
+
+      const content = memberLocks[memberName]
+      if (content === undefined) continue
+
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(content) as Record<string, unknown>
+      } catch {
+        continue
+      }
+
+      const targetNodes = parsed['nodes'] as Record<string, Record<string, unknown>> | undefined
+      if (targetNodes === undefined) continue
+
+      const targetRoot = targetNodes['root']
+      if (targetRoot === undefined) continue
+      const targetRootInputs = targetRoot['inputs'] as Record<string, string> | undefined
+      if (targetRootInputs === undefined) continue
+
+      const updatedInputs: string[] = []
+      for (const [inputName, targetNodeName] of Object.entries(targetRootInputs)) {
+        const targetNode = targetNodes[targetNodeName]
+        if (targetNode === undefined) continue
+        if (targetNode['original'] === undefined || targetNode['locked'] === undefined) continue
+
+        const sourceEntry = sourceMap.get(inputName)
+        if (sourceEntry === undefined) continue
+        if (deepEqual(sourceEntry.original, targetNode['original']) === false) continue
+        if (deepEqual(sourceEntry.locked, targetNode['locked']) === true) continue
+
+        targetNode['locked'] = sourceEntry.locked
+        updatedInputs.push(inputName)
+      }
+
+      if (updatedInputs.length > 0) {
+        updatedLocks[memberName] = JSON.stringify(parsed, null, 2) + '\n'
+        updatedMembers.push({ name: memberName, updatedInputs })
+      }
+    }
+
+    return {
+      updatedLocks,
+      result: {
+        sourceMember: sourceMemberName,
+        propagatableInputs: sourceMap.size,
+        updatedMembers,
+      },
+    }
   }
 
-  it('should copy lock entry from source to target member', () => {
-    const sourceLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'source-rev', type: 'github', lastModified: 999 } } },
-      root: 'root',
-      version: 7,
+  const makeDevenvLock = (
+    nodes: Record<string, { original?: unknown; locked?: unknown; [k: string]: unknown }>,
+  ): string =>
+    JSON.stringify(
+      {
+        nodes: {
+          root: { inputs: Object.fromEntries(Object.keys(nodes).map((k) => [k, k])) },
+          ...nodes,
+        },
+        root: 'root',
+        version: 7,
+      },
+      null,
+      2,
+    )
+
+  it('should propagate locked sections for matching originals', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev-111' },
+      },
     })
-    const targetLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'old-rev', type: 'github', lastModified: 111 } } },
-      root: 'root',
-      version: 7,
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-rev-999' },
+      },
     })
 
-    const { updatedLocks, results } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'repo-a', path: '.nodes.devenv.locked' },
-      },
+    const { result: rawResult, updatedLocks } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
     })
+    const result = assertSuccess(rawResult)
 
-    expect(results[0]!.updatedMembers).toEqual(['repo-b'])
+    expect(result.propagatableInputs).toBe(1)
+    expect(result.updatedMembers).toHaveLength(1)
+    expect(result.updatedMembers[0]!.name).toBe('repo-b')
+    expect(result.updatedMembers[0]!.updatedInputs).toEqual(['nixpkgs'])
     const updatedTarget = JSON.parse(updatedLocks['repo-b']!)
-    expect(updatedTarget.nodes.devenv.locked).toEqual({
-      rev: 'source-rev',
-      type: 'github',
-      lastModified: 999,
-    })
+    expect(updatedTarget.nodes.nixpkgs.locked.rev).toBe('source-rev-111')
   })
 
-  it('should skip the source member itself', () => {
-    const lock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'rev1' } } },
-      root: 'root',
-      version: 7,
-    })
-
-    const { results } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'repo-a', path: '.nodes.devenv.locked' },
+  it('should skip nodes with different originals', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
       },
-      memberLocks: { 'repo-a': lock },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-24.05' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'target-rev' },
+      },
     })
 
-    expect(results[0]!.updatedMembers).toEqual([])
+    const { result: rawResult } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
+    })
+    const result = assertSuccess(rawResult)
+
+    expect(result.updatedMembers).toHaveLength(0)
   })
 
-  it('should skip excluded members', () => {
-    const sourceLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'new' } } },
-      root: 'root',
-      version: 7,
-    })
-    const targetLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'old' } } },
-      root: 'root',
-      version: 7,
+  it('should skip nodes that are already in sync', () => {
+    const lock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'same-rev' },
+      },
     })
 
-    const { results } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'repo-a', path: '.nodes.devenv.locked' },
+    const { result: rawResult } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': lock, 'repo-b': lock },
+    })
+    const result = assertSuccess(rawResult)
+
+    expect(result.updatedMembers).toHaveLength(0)
+  })
+
+  it('should respect excludeMembers', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
       },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-rev' },
+      },
+    })
+
+    const { result: rawResult } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
       excludeMembers: new Set(['repo-b']),
     })
+    const result = assertSuccess(rawResult)
 
-    expect(results[0]!.updatedMembers).toEqual([])
-    expect(results[0]!.skippedMembers).toEqual(['repo-b'])
+    expect(result.updatedMembers).toHaveLength(0)
   })
 
-  it('should handle missing source member gracefully', () => {
-    const targetLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'old' } } },
-      root: 'root',
-      version: 7,
+  it('should propagate multiple inputs to multiple members', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'new-nixpkgs-rev' },
+      },
+      devenv: {
+        original: { type: 'github', owner: 'cachix', repo: 'devenv' },
+        locked: { type: 'github', owner: 'cachix', repo: 'devenv', rev: 'new-devenv-rev' },
+      },
+    })
+    const targetLockB = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-nixpkgs' },
+      },
+      devenv: {
+        original: { type: 'github', owner: 'cachix', repo: 'devenv' },
+        locked: { type: 'github', owner: 'cachix', repo: 'devenv', rev: 'old-devenv' },
+      },
+    })
+    const targetLockC = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-nixpkgs-c' },
+      },
     })
 
-    const { results } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'nonexistent', path: '.nodes.devenv.locked' },
+    const { result: rawResult, updatedLocks } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLockB, 'repo-c': targetLockC },
+    })
+    const result = assertSuccess(rawResult)
+
+    expect(result.propagatableInputs).toBe(2)
+    expect(result.updatedMembers).toHaveLength(2)
+    expect(result.updatedMembers[0]!.updatedInputs).toEqual(['nixpkgs', 'devenv'])
+    expect(result.updatedMembers[1]!.updatedInputs).toEqual(['nixpkgs'])
+    expect(JSON.parse(updatedLocks['repo-b']!).nodes.nixpkgs.locked.rev).toBe('new-nixpkgs-rev')
+    expect(JSON.parse(updatedLocks['repo-b']!).nodes.devenv.locked.rev).toBe('new-devenv-rev')
+    expect(JSON.parse(updatedLocks['repo-c']!).nodes.nixpkgs.locked.rev).toBe('new-nixpkgs-rev')
+  })
+
+  it('should skip transitive (non-root) nodes even if original matches', () => {
+    /** Source has nixpkgs as root input and nixpkgs_2 as a transitive dependency */
+    const sourceLock = JSON.stringify(
+      {
+        nodes: {
+          root: { inputs: { nixpkgs: 'nixpkgs' } },
+          nixpkgs: {
+            original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+            locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
+          },
+          nixpkgs_2: {
+            original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-24.05' },
+            locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'transitive-rev' },
+          },
+        },
+        root: 'root',
+        version: 7,
       },
+      null,
+      2,
+    )
+    /** Target has nixpkgs as root input and also nixpkgs_2 as a root input */
+    const targetLock = JSON.stringify(
+      {
+        nodes: {
+          root: { inputs: { nixpkgs: 'nixpkgs', nixpkgs_2: 'nixpkgs_2' } },
+          nixpkgs: {
+            original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+            locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-rev' },
+          },
+          nixpkgs_2: {
+            original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-24.05' },
+            locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-transitive' },
+          },
+        },
+        root: 'root',
+        version: 7,
+      },
+      null,
+      2,
+    )
+
+    const { result: rawResult, updatedLocks } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
+    })
+    const result = assertSuccess(rawResult)
+
+    /** Only nixpkgs (root input in source) should be propagated, not nixpkgs_2 (transitive in source) */
+    expect(result.propagatableInputs).toBe(1)
+    expect(result.updatedMembers).toHaveLength(1)
+    expect(result.updatedMembers[0]!.updatedInputs).toEqual(['nixpkgs'])
+    const updatedTarget = JSON.parse(updatedLocks['repo-b']!)
+    expect(updatedTarget.nodes.nixpkgs.locked.rev).toBe('source-rev')
+    /** nixpkgs_2 should remain unchanged since it's not a root input in the source */
+    expect(updatedTarget.nodes.nixpkgs_2.locked.rev).toBe('old-transitive')
+  })
+
+  it('should error when source member has no devenv.lock', () => {
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs' },
+        locked: { rev: 'old' },
+      },
+    })
+
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'nonexistent',
       memberLocks: { 'repo-b': targetLock },
     })
 
-    expect(results[0]!.updatedMembers).toEqual([])
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no devenv.lock') })
   })
 
-  it('should handle missing path in source gracefully', () => {
-    const sourceLock = JSON.stringify({
-      nodes: { other: { locked: { rev: 'abc' } } },
-      root: 'root',
-      version: 7,
-    })
-    const targetLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'old' } } },
-      root: 'root',
-      version: 7,
+  it('should error when source devenv.lock is invalid JSON', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': 'not valid json {{{', 'repo-b': makeDevenvLock({}) },
     })
 
-    const { results } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'repo-a', path: '.nodes.devenv.locked' },
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('not valid JSON') })
+  })
+
+  it('should error when source devenv.lock has no nodes', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': JSON.stringify({ root: 'root', version: 7 }) },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no nodes') })
+  })
+
+  it('should error when source devenv.lock has no root node', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: {
+        'repo-a': JSON.stringify({ nodes: { nixpkgs: {} }, root: 'root', version: 7 }),
       },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no root node') })
+  })
+
+  it('should error when source devenv.lock root has no inputs', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': JSON.stringify({ nodes: { root: {} }, root: 'root', version: 7 }) },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no inputs') })
+  })
+
+  it('should skip nodes without both original and locked', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
+      },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+      },
+    })
+
+    const { result: rawResult } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
     })
+    const result = assertSuccess(rawResult)
 
-    expect(results[0]!.updatedMembers).toEqual([])
-  })
-
-  it('should skip members where value already matches', () => {
-    const lock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'same-rev', type: 'github' } } },
-      root: 'root',
-      version: 7,
-    })
-
-    const { results } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'repo-a', path: '.nodes.devenv.locked' },
-      },
-      memberLocks: { 'repo-a': lock, 'repo-b': lock },
-    })
-
-    expect(results[0]!.updatedMembers).toEqual([])
-  })
-
-  it('should copy to multiple target members', () => {
-    const sourceLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'new-rev' } } },
-      root: 'root',
-      version: 7,
-    })
-    const targetLock = JSON.stringify({
-      nodes: { devenv: { locked: { rev: 'old-rev' } } },
-      root: 'root',
-      version: 7,
-    })
-
-    const { results, updatedLocks } = simulateSharedLockSourceSync({
-      sharedLockSources: {
-        devenv: { source: 'repo-a', path: '.nodes.devenv.locked' },
-      },
-      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock, 'repo-c': targetLock },
-    })
-
-    expect(results[0]!.updatedMembers).toEqual(['repo-b', 'repo-c'])
-    expect(JSON.parse(updatedLocks['repo-b']!).nodes.devenv.locked.rev).toBe('new-rev')
-    expect(JSON.parse(updatedLocks['repo-c']!).nodes.devenv.locked.rev).toBe('new-rev')
+    expect(result.updatedMembers).toHaveLength(0)
   })
 })
 

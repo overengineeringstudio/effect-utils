@@ -97,8 +97,8 @@ export interface NixLockSyncResult {
   }>
   /** Total number of inputs updated across all files */
   readonly totalUpdates: number
-  /** Results from shared lock source propagation */
-  readonly sharedLockSourceResults: ReadonlyArray<SharedLockSourceResult>
+  /** Results from shared input source propagation (original-matching) */
+  readonly sharedInputSourceResult?: SharedInputSourceResult
 }
 
 /** Options for syncing Nix lock files */
@@ -677,196 +677,210 @@ export const syncSourceFileRevs = ({
 // Shared Lock Source Sync
 // =============================================================================
 
-/** Result of syncing a single shared lock source entry */
-export interface SharedLockSourceResult {
-  readonly label: string
+/** Result of syncing shared inputs via original-matching */
+export interface SharedInputSourceResult {
   readonly sourceMember: string
-  readonly path: string
-  readonly updatedMembers: ReadonlyArray<string>
-  readonly skippedMembers: ReadonlyArray<string>
+  readonly propagatableInputs: number
+  readonly updatedMembers: ReadonlyArray<{
+    readonly name: string
+    readonly updatedInputs: ReadonlyArray<string>
+  }>
 }
 
+// =============================================================================
+// Shared Input Source Sync (original-matching)
+// =============================================================================
+
 /**
- * Resolve a dot-notation path (e.g. ".nodes.devenv.locked") to a value in an object.
- * Returns undefined if the path doesn't exist.
+ * Deep structural equality check for JSON values.
+ * Used to compare `original` fields in devenv.lock nodes.
  */
-export const getByDotPath = ({ obj, dotPath }: { obj: unknown; dotPath: string }): unknown => {
-  const segments = dotPath.split('.').filter((s) => s.length > 0)
-
-  let current: unknown = obj
-  for (const segment of segments) {
-    if (current === null || current === undefined || typeof current !== 'object') {
-      return undefined
-    }
-    current = (current as Record<string, unknown>)[segment]
-  }
-  return current
+const deepEqual = ({ a, b }: { a: unknown; b: unknown }): boolean => {
+  if (a === b) return true
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
+  const aObj = a as Record<string, unknown>
+  const bObj = b as Record<string, unknown>
+  const aKeys = Object.keys(aObj)
+  if (aKeys.length !== Object.keys(bObj).length) return false
+  return aKeys.every((k) => deepEqual({ a: aObj[k], b: bObj[k] }))
 }
 
-/**
- * Set a value at a dot-notation path in an object.
- * Creates intermediate objects as needed.
- * Returns a new object (shallow clones along the path).
- */
-export const setByDotPath = ({
-  obj,
-  dotPath,
-  value,
-}: {
-  obj: unknown
-  dotPath: string
-  value: unknown
-}): unknown => {
-  const segments = dotPath.split('.').filter((s) => s.length > 0)
-
-  if (segments.length === 0) return value
-
-  const root =
-    typeof obj === 'object' && obj !== null ? { ...(obj as Record<string, unknown>) } : {}
-  let current: Record<string, unknown> = root
-
-  for (let i = 0; i < segments.length - 1; i++) {
-    const segment = segments[i]!
-    const existing = current[segment]
-    if (typeof existing === 'object' && existing !== null) {
-      current[segment] = { ...(existing as Record<string, unknown>) }
-    } else {
-      current[segment] = {}
-    }
-    current = current[segment] as Record<string, unknown>
-  }
-
-  current[segments[segments.length - 1]!] = value
-  return root
-}
+/** Error for shared input source configuration issues */
+export class SharedInputSourceError extends Schema.TaggedError<SharedInputSourceError>()(
+  'SharedInputSourceError',
+  {
+    message: Schema.String,
+    sourceMemberName: Schema.String,
+  },
+) {}
 
 /**
- * Sync shared lock sources: copy lock entries from a source member to all other members.
+ * Propagate top-level declared devenv.lock inputs from a source member to all others.
  *
- * For each entry in sharedLockSources config:
- * 1. Read the source member's devenv.lock (or flake.lock)
- * 2. Extract the value at the given JSON path
- * 3. For all other members that have a devenv.lock: set the value at the same path
+ * Only considers inputs declared in `nodes[root].inputs` (not transitive dependencies).
+ * For each such input that has both `original` and `locked` fields, finds matching
+ * nodes in other members (same input name, structurally equal `original`) and copies
+ * the `locked` section.
  */
-const syncSharedLockSources = ({
+/** Validated source inputs map — result of preflight validation, input to apply phase */
+interface ValidatedSharedInputSource {
+  readonly sourceMemberName: string
+  readonly sourceMap: ReadonlyMap<string, { locked: unknown; original: unknown }>
+}
+
+/**
+ * Preflight: validate the shared input source configuration and build the source map.
+ * Runs before any lock-file writes so a bad config never causes partial mutations.
+ */
+const validateSharedInputSource = ({
   megarepoRoot,
-  sharedLockSources,
-  memberNames,
-  excludeMembers,
+  sourceMemberName,
 }: {
   megarepoRoot: AbsoluteDirPath
-  sharedLockSources: Record<string, { source: string; path: string }>
-  memberNames: ReadonlyArray<string>
-  excludeMembers: ReadonlySet<string>
+  sourceMemberName: string
 }): Effect.Effect<
-  ReadonlyArray<SharedLockSourceResult>,
-  PlatformError.PlatformError,
+  ValidatedSharedInputSource,
+  PlatformError.PlatformError | SharedInputSourceError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const results: SharedLockSourceResult[] = []
 
-    for (const [label, config] of Object.entries(sharedLockSources)) {
-      const sourceMemberPath = getMemberPath({ megarepoRoot, name: config.source })
-      const sourceDevenvLockPath = EffectPath.ops.join(
-        sourceMemberPath,
-        EffectPath.unsafe.relativeFile(DEVENV_LOCK),
-      )
+    const sourceLockPath = EffectPath.ops.join(
+      getMemberPath({ megarepoRoot, name: sourceMemberName }),
+      EffectPath.unsafe.relativeFile(DEVENV_LOCK),
+    )
 
-      const sourceExists = yield* fs.exists(sourceDevenvLockPath)
-      if (sourceExists === false) {
-        results.push({
-          label,
-          sourceMember: config.source,
-          path: config.path,
-          updatedMembers: [],
-          skippedMembers: [],
-        })
-        continue
-      }
-
-      const sourceContent = yield* fs.readFileString(sourceDevenvLockPath)
-      let sourceJson: unknown
-      try {
-        sourceJson = JSON.parse(sourceContent)
-      } catch {
-        results.push({
-          label,
-          sourceMember: config.source,
-          path: config.path,
-          updatedMembers: [],
-          skippedMembers: [],
-        })
-        continue
-      }
-
-      const sourceValue = getByDotPath({ obj: sourceJson, dotPath: config.path })
-      if (sourceValue === undefined) {
-        results.push({
-          label,
-          sourceMember: config.source,
-          path: config.path,
-          updatedMembers: [],
-          skippedMembers: [],
-        })
-        continue
-      }
-
-      const updatedMembers: string[] = []
-      const skippedMembers: string[] = []
-
-      for (const memberName of memberNames) {
-        if (memberName === config.source) continue
-        if (excludeMembers.has(memberName) === true) {
-          skippedMembers.push(memberName)
-          continue
-        }
-
-        const memberPath = getMemberPath({ megarepoRoot, name: memberName })
-        const devenvLockPath = EffectPath.ops.join(
-          memberPath,
-          EffectPath.unsafe.relativeFile(DEVENV_LOCK),
-        )
-
-        const hasDevenvLock = yield* fs.exists(devenvLockPath)
-        if (hasDevenvLock === false) continue
-
-        const content = yield* fs.readFileString(devenvLockPath)
-        let targetJson: unknown
-        try {
-          targetJson = JSON.parse(content)
-        } catch {
-          skippedMembers.push(memberName)
-          continue
-        }
-
-        const currentValue = getByDotPath({ obj: targetJson, dotPath: config.path })
-        // Skip if the value is already identical
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
-        if (JSON.stringify(currentValue) === JSON.stringify(sourceValue)) continue
-
-        const updatedJson = setByDotPath({
-          obj: targetJson,
-          dotPath: config.path,
-          value: sourceValue,
-        })
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
-        yield* fs.writeFileString(devenvLockPath, JSON.stringify(updatedJson, null, 2) + '\n')
-        updatedMembers.push(memberName)
-      }
-
-      results.push({
-        label,
-        sourceMember: config.source,
-        path: config.path,
-        updatedMembers,
-        skippedMembers,
+    if ((yield* fs.exists(sourceLockPath)) === false) {
+      return yield* new SharedInputSourceError({
+        message: `Source member '${sourceMemberName}' has no devenv.lock`,
+        sourceMemberName,
       })
     }
 
-    return results
-  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-lock-sources'))
+    const sourceContent = yield* fs.readFileString(sourceLockPath)
+    let sourceJson: Record<string, unknown>
+    try {
+      sourceJson = JSON.parse(sourceContent) as Record<string, unknown>
+    } catch {
+      return yield* new SharedInputSourceError({
+        message: `Source member '${sourceMemberName}' has invalid devenv.lock (not valid JSON)`,
+        sourceMemberName,
+      })
+    }
+
+    const sourceNodes = sourceJson['nodes'] as Record<string, Record<string, unknown>> | undefined
+    if (sourceNodes === undefined) {
+      return yield* new SharedInputSourceError({
+        message: `Source member '${sourceMemberName}' devenv.lock has no nodes`,
+        sourceMemberName,
+      })
+    }
+
+    const rootNode = sourceNodes['root']
+    if (rootNode === undefined) {
+      return yield* new SharedInputSourceError({
+        message: `Source member '${sourceMemberName}' devenv.lock has no root node`,
+        sourceMemberName,
+      })
+    }
+
+    const rootInputs = rootNode['inputs'] as Record<string, string> | undefined
+    if (rootInputs === undefined) {
+      return yield* new SharedInputSourceError({
+        message: `Source member '${sourceMemberName}' devenv.lock root node has no inputs`,
+        sourceMemberName,
+      })
+    }
+
+    /** Build map of propagatable source nodes — only top-level declared inputs */
+    const sourceMap = new Map<string, { locked: unknown; original: unknown }>()
+    for (const [inputName, nodeName] of Object.entries(rootInputs)) {
+      const node = sourceNodes[nodeName]
+      if (node === undefined) continue
+      if (node['original'] !== undefined && node['locked'] !== undefined) {
+        sourceMap.set(inputName, { locked: node['locked'], original: node['original'] })
+      }
+    }
+
+    return { sourceMemberName, sourceMap }
+  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source/validate'))
+
+/**
+ * Apply phase: propagate validated source inputs to all matching members.
+ * Only called after validation succeeds and member-sync writes are complete.
+ */
+const applySharedInputSource = ({
+  megarepoRoot,
+  validated,
+  memberNames,
+  excludeMembers,
+}: {
+  megarepoRoot: AbsoluteDirPath
+  validated: ValidatedSharedInputSource
+  memberNames: ReadonlyArray<string>
+  excludeMembers: ReadonlySet<string>
+}): Effect.Effect<SharedInputSourceResult, PlatformError.PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { sourceMemberName, sourceMap } = validated
+    const updatedMembers: Array<{ name: string; updatedInputs: string[] }> = []
+
+    for (const memberName of memberNames) {
+      if (memberName === sourceMemberName) continue
+      if (excludeMembers.has(memberName) === true) continue
+
+      const lockPath = EffectPath.ops.join(
+        getMemberPath({ megarepoRoot, name: memberName }),
+        EffectPath.unsafe.relativeFile(DEVENV_LOCK),
+      )
+      if ((yield* fs.exists(lockPath)) === false) continue
+
+      const content = yield* fs.readFileString(lockPath)
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(content) as Record<string, unknown>
+      } catch {
+        continue
+      }
+
+      const targetNodes = parsed['nodes'] as Record<string, Record<string, unknown>> | undefined
+      if (targetNodes === undefined) continue
+
+      /** Only match against the target's top-level declared inputs */
+      const targetRoot = targetNodes['root']
+      if (targetRoot === undefined) continue
+      const targetRootInputs = targetRoot['inputs'] as Record<string, string> | undefined
+      if (targetRootInputs === undefined) continue
+
+      const updatedInputs: string[] = []
+      for (const [inputName, targetNodeName] of Object.entries(targetRootInputs)) {
+        const targetNode = targetNodes[targetNodeName]
+        if (targetNode === undefined) continue
+        if (targetNode['original'] === undefined || targetNode['locked'] === undefined) continue
+
+        const sourceEntry = sourceMap.get(inputName)
+        if (sourceEntry === undefined) continue
+        if (deepEqual({ a: sourceEntry.original, b: targetNode['original'] }) === false) continue
+        if (deepEqual({ a: sourceEntry.locked, b: targetNode['locked'] }) === true) continue
+
+        targetNode['locked'] = sourceEntry.locked
+        updatedInputs.push(inputName)
+      }
+
+      if (updatedInputs.length > 0) {
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        yield* fs.writeFileString(lockPath, JSON.stringify(parsed, null, 2) + '\n')
+        updatedMembers.push({ name: memberName, updatedInputs })
+      }
+    }
+
+    return {
+      sourceMember: sourceMemberName,
+      propagatableInputs: sourceMap.size,
+      updatedMembers,
+    }
+  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source/apply'))
 
 // =============================================================================
 // Ref Sync
@@ -1151,6 +1165,16 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           )
         : new Set<string>())
 
+    // Preflight: validate shared input source before any writes
+    const sharedInputSource = options.config.lockSync?.sharedInputSource
+    const validatedSharedInputSource =
+      sharedInputSource !== undefined
+        ? yield* validateSharedInputSource({
+            megarepoRoot: options.megarepoRoot,
+            sourceMemberName: sharedInputSource,
+          })
+        : undefined
+
     // Process all members in parallel
     const allMemberResults = yield* Effect.all(
       memberNames.map((memberName) =>
@@ -1312,22 +1336,21 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
       0,
     )
 
-    // Sync shared lock sources (e.g. devenv version propagation)
-    const sharedLockSources = options.config.lockSync?.sharedLockSources
-    const sharedLockSourceResults =
-      sharedLockSources !== undefined && Object.keys(sharedLockSources).length > 0
-        ? yield* syncSharedLockSources({
+    // Apply shared input source propagation (validation already passed above)
+    const sharedInputSourceResult =
+      validatedSharedInputSource !== undefined
+        ? yield* applySharedInputSource({
             megarepoRoot: options.megarepoRoot,
-            sharedLockSources,
+            validated: validatedSharedInputSource,
             memberNames,
             excludeMembers,
           })
-        : []
+        : undefined
 
     return {
       memberResults,
       totalUpdates,
-      sharedLockSourceResults,
+      ...(sharedInputSourceResult !== undefined ? { sharedInputSourceResult } : {}),
     } satisfies NixLockSyncResult
   }),
 )

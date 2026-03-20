@@ -788,15 +788,18 @@ export const runCommand = ({
           })),
         })) ?? []
 
+      const inputSourceResult = syncResult.lockSyncResults?.sharedInputSourceResult
       const sharedSourceUpdates: ReadonlyArray<LockSharedSourceUpdate> =
-        syncResult.lockSyncResults?.sharedLockSourceResults
-          .filter((r) => r.updatedMembers.length > 0)
-          .map((r) => ({
-            _tag: 'SharedSourceUpdate' as const,
-            sourceName: r.label,
-            sourceMemberName: r.sourceMember,
-            targetCount: r.updatedMembers.length,
-          })) ?? []
+        inputSourceResult !== undefined && inputSourceResult.updatedMembers.length > 0
+          ? [
+              {
+                _tag: 'SharedSourceUpdate' as const,
+                sourceName: 'shared-inputs',
+                sourceMemberName: inputSourceResult.sourceMember,
+                targetCount: inputSourceResult.updatedMembers.length,
+              },
+            ]
+          : []
 
       const syncErrors = collectSyncErrors(syncResult)
       const syncErrorItems = syncErrors.map((e) => ({
