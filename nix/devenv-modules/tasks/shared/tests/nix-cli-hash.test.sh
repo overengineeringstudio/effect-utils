@@ -108,6 +108,30 @@ assert_eq "" "$(local_dep_dir_from_drv_path "/nix/store/bbb-genie-unwrapped-pnpm
 
 echo "Multi-mismatch parsing tests passed"
 
+mixed_failure_output=$(cat <<'EOF'
+error: hash mismatch in fixed-output derivation '/nix/store/x2.drv':
+         specified: sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+            got:    sha256-ce9j/VcjC18vmZgcaMAqZg/qH/WibuYfiyiOYHNI5pk=
+error: hash mismatch in fixed-output derivation '/nix/store/x3.drv':
+         specified: sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+            got:    sha256-DbCEqRfR8yZl2skxnBthgysFiZPiP6U5JQ9/Bp7IQI4=
+error: build of '/nix/store/x4.drv^out' failed
+EOF
+)
+
+expected_mixed_failure_mismatches=$(cat <<'EOF'
+/nix/store/x2.drv	sha256-ce9j/VcjC18vmZgcaMAqZg/qH/WibuYfiyiOYHNI5pk=
+/nix/store/x3.drv	sha256-DbCEqRfR8yZl2skxnBthgysFiZPiP6U5JQ9/Bp7IQI4=
+EOF
+)
+
+assert_eq \
+  "$expected_mixed_failure_mismatches" \
+  "$(extract_hash_mismatches "$mixed_failure_output")" \
+  "extract_hash_mismatches_mixed_failure"
+
+echo "Mixed failure parsing tests passed"
+
 # ============================================================================
 # Tests for update_hash_in_file helper (platform-specific hash support)
 # ============================================================================
