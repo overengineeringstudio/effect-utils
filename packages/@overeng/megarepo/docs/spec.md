@@ -155,7 +155,8 @@ members {
 ```
 
 > **Backward compatibility:** `megarepo.json` is still supported as a fallback. The tool reads `megarepo.kdl` first, then falls back to `megarepo.json` if not found.
-```
+
+````
 
 ### Source String Parsing
 
@@ -219,7 +220,7 @@ interface GeneratorsConfig {
     exclude?: string[] // members to exclude from workspace
   }
 }
-```
+````
 
 ---
 
