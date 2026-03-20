@@ -149,6 +149,11 @@ in
           (
             cd "$install_root"
             pnpm install --frozen-lockfile --ignore-scripts
+            # pnpm still prunes linux-musl optional deps on Linux during the
+            # first install even when supportedArchitectures spans linux/darwin
+            # and x64/arm64. A second musl-targeted pass materializes the full
+            # cross-platform closure that matches macOS.
+            pnpm install --frozen-lockfile --ignore-scripts --force --libc=musl
           )
         done < .pnpm-install-roots.txt
 
