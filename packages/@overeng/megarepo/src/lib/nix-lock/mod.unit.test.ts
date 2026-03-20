@@ -1114,6 +1114,14 @@ describe('source file rev sync', () => {
 // Shared Input Source Sync Tests (original-matching)
 // =============================================================================
 
+/** Assert the result is a success (not an error) and return it narrowed */
+const assertSuccess = <T extends { _tag?: string }>(result: T): Exclude<T, { _tag: 'error' }> => {
+  if ('_tag' in result && result._tag === 'error') {
+    throw new Error(`Expected success but got error: ${JSON.stringify(result)}`)
+  }
+  return result as Exclude<T, { _tag: 'error' }>
+}
+
 describe('shared input source sync logic', () => {
   /**
    * Deep structural equality check (mirrors the implementation).
@@ -1307,10 +1315,11 @@ describe('shared input source sync logic', () => {
       },
     })
 
-    const { result, updatedLocks } = simulateSharedInputSourceSync({
+    const { result: rawResult, updatedLocks } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
     })
+    const result = assertSuccess(rawResult)
 
     expect(result.propagatableInputs).toBe(1)
     expect(result.updatedMembers).toHaveLength(1)
@@ -1334,10 +1343,11 @@ describe('shared input source sync logic', () => {
       },
     })
 
-    const { result } = simulateSharedInputSourceSync({
+    const { result: rawResult } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
     })
+    const result = assertSuccess(rawResult)
 
     expect(result.updatedMembers).toHaveLength(0)
   })
@@ -1350,10 +1360,11 @@ describe('shared input source sync logic', () => {
       },
     })
 
-    const { result } = simulateSharedInputSourceSync({
+    const { result: rawResult } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': lock, 'repo-b': lock },
     })
+    const result = assertSuccess(rawResult)
 
     expect(result.updatedMembers).toHaveLength(0)
   })
@@ -1372,11 +1383,12 @@ describe('shared input source sync logic', () => {
       },
     })
 
-    const { result } = simulateSharedInputSourceSync({
+    const { result: rawResult } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
       excludeMembers: new Set(['repo-b']),
     })
+    const result = assertSuccess(rawResult)
 
     expect(result.updatedMembers).toHaveLength(0)
   })
@@ -1409,10 +1421,11 @@ describe('shared input source sync logic', () => {
       },
     })
 
-    const { result, updatedLocks } = simulateSharedInputSourceSync({
+    const { result: rawResult, updatedLocks } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLockB, 'repo-c': targetLockC },
     })
+    const result = assertSuccess(rawResult)
 
     expect(result.propagatableInputs).toBe(2)
     expect(result.updatedMembers).toHaveLength(2)
@@ -1465,10 +1478,11 @@ describe('shared input source sync logic', () => {
       2,
     )
 
-    const { result, updatedLocks } = simulateSharedInputSourceSync({
+    const { result: rawResult, updatedLocks } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
     })
+    const result = assertSuccess(rawResult)
 
     /** Only nixpkgs (root input in source) should be propagated, not nixpkgs_2 (transitive in source) */
     expect(result.propagatableInputs).toBe(1)
@@ -1547,10 +1561,11 @@ describe('shared input source sync logic', () => {
       },
     })
 
-    const { result } = simulateSharedInputSourceSync({
+    const { result: rawResult } = simulateSharedInputSourceSync({
       sourceMemberName: 'repo-a',
       memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
     })
+    const result = assertSuccess(rawResult)
 
     expect(result.updatedMembers).toHaveLength(0)
   })
