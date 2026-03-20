@@ -888,14 +888,14 @@ const syncSharedLockSources = ({
  * Deep structural equality check for JSON values.
  * Used to compare `original` fields in devenv.lock nodes.
  */
-const deepEqual = (a: unknown, b: unknown): boolean => {
+const deepEqual = ({ a, b }: { a: unknown; b: unknown }): boolean => {
   if (a === b) return true
   if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
   const aObj = a as Record<string, unknown>
   const bObj = b as Record<string, unknown>
   const aKeys = Object.keys(aObj)
   if (aKeys.length !== Object.keys(bObj).length) return false
-  return aKeys.every((k) => deepEqual(aObj[k], bObj[k]))
+  return aKeys.every((k) => deepEqual({ a: aObj[k], b: bObj[k] }))
 }
 
 /**
@@ -980,8 +980,8 @@ const syncSharedInputSource = ({
 
         const sourceEntry = sourceMap.get(name)
         if (!sourceEntry) continue
-        if (!deepEqual(sourceEntry.original, targetNode['original'])) continue
-        if (deepEqual(sourceEntry.locked, targetNode['locked'])) continue
+        if (!deepEqual({ a: sourceEntry.original, b: targetNode['original'] })) continue
+        if (deepEqual({ a: sourceEntry.locked, b: targetNode['locked'] })) continue
 
         targetNode['locked'] = sourceEntry.locked
         updatedInputs.push(name)
