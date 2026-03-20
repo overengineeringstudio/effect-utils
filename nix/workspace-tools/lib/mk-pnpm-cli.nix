@@ -517,8 +517,6 @@ let
     else
       throw "mk-pnpm-cli: entry must be inside packageDir (${packageDir}): ${entry}";
 
-  pnpmInstallFlags =
-    "--offline --frozen-lockfile --ignore-scripts" + lib.optionalString prodInstall " --prod";
   dirtyStr = if dirty then "true" else "false";
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
@@ -528,10 +526,8 @@ pkgs.stdenv.mkDerivation {
   inherit name pnpmDeps;
 
   nativeBuildInputs = [
-    pkgs.pnpm
-    pkgs.nodejs
     pkgs.bun
-    pkgs.cacert
+    pkgs.nodejs
     pkgs.zstd
   ]
   ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
@@ -560,25 +556,16 @@ pkgs.stdenv.mkDerivation {
         ""
     }
 
-    ${pnpmDepsHelper.mkRestoreScript { deps = pnpmDeps; }}
-
     echo "Copying filtered aggregate workspace..."
     cp -r ${workspaceClosureSrc} workspace
     chmod -R +w workspace
+    ${pnpmDepsHelper.mkRestoreScript {
+      deps = pnpmDeps;
+      target = "workspace";
+    }}
+    chmod -R +w workspace
+
     cd workspace
-
-    echo "Installing aggregate workspace..."
-    pnpm install ${pnpmInstallFlags}
-
-    ${builtins.concatStringsSep "\n" (
-      map (root: ''
-        echo "Installing external workspace root: ${root.installDir}..."
-        (
-          cd ${lib.escapeShellArg root.installDir}
-          pnpm install ${pnpmInstallFlags}
-        )
-      '') externalInstallRoots
-    )}
 
     cd ${packageDir}
 

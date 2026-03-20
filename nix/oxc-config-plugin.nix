@@ -24,7 +24,7 @@ let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-c8dmzeZKcGZ07WtBbXogeBrv0Pm65L9idmJJocqStGg=";
+  pnpmDepsHash = "sha256-hOHoaUDKuAGNCxtbBwNJ0D2fG+MGPTCpQXlUJkoIuBg=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -197,9 +197,8 @@ pkgs.stdenv.mkDerivation {
   version = "0.1.0";
 
   nativeBuildInputs = [
-    pkgs.pnpm
-    pkgs.nodejs
     bun
+    pkgs.nodejs
     pkgs.zstd
   ];
 
@@ -210,16 +209,17 @@ pkgs.stdenv.mkDerivation {
     set -euo pipefail
     runHook preBuild
 
-    ${pnpmDepsHelper.mkRestoreScript { deps = pnpmDeps; }}
-
     cp -r ${buildSrc} workspace
+    chmod -R +w workspace
+    ${pnpmDepsHelper.mkRestoreScript {
+      deps = pnpmDeps;
+      target = "workspace";
+    }}
     chmod -R +w workspace
     cat > workspace/pnpm-workspace.yaml <<'EOF'
 ${filteredRootPnpmWorkspaceYaml}
 EOF
     cd workspace
-
-    CI=true pnpm install --offline --frozen-lockfile --ignore-scripts
 
     cd ${packageDir}
 

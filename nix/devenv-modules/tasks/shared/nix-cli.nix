@@ -261,12 +261,12 @@ let
       fi
 
       if [ -z "$hashMismatches" ]; then
-        # No hash mismatch found - check for pnpm offline install failure
+        # No hash mismatch found - check for stale pnpm dependency preparation.
         # This happens when pnpm-lock.yaml changed but the old hash still "works"
-        # (fetchPnpmDeps succeeds but creates incomplete store)
+        # long enough for pnpm to fail while materializing the prepared tree.
         if echo "$output" | grep -qiE "ERR_PNPM_NO_OFFLINE_TARBALL|ERR_PNPM_TARBALL_INTEGRITY|lockfile:.*manifest:"; then
-          echo "Detected stale pnpmDepsHash (pnpm offline install failed)"
-          echo "Resetting $mainHashKey to trigger complete re-fetch..."
+          echo "Detected stale pnpmDepsHash (prepared pnpm install tree is stale)"
+          echo "Resetting $mainHashKey to trigger complete re-materialization..."
 
           # Set fake hash to force Nix to re-fetch and report correct hash
           update_hash_in_file "$mainHashKey" "$FAKE_HASH" "$hashSource" "$name"
@@ -450,10 +450,10 @@ EOF
     fi
 
     if echo "$output" | grep -qi 'ERR_PNPM_NO_OFFLINE_TARBALL'; then
-      echo "✗ $name: Nix pnpm store is missing tarballs (offline install failed)"
+      echo "✗ $name: prepared pnpm install tree is stale or incomplete"
       echo ""
       echo "To fix:"
-      echo "  1. Run: dt nix:hash:$name  # Refresh pnpmDepsHash and vendored store"
+      echo "  1. Run: dt nix:hash:$name  # Refresh pnpmDepsHash and prepared install tree"
       echo "  2. If lockfiles changed: dt pnpm:update"
       echo ""
       exit 1

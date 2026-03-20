@@ -10,17 +10,10 @@ All notable changes to this project will be documented in this file.
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
   - Parses and applies multiple reported hash updates in one pass instead of only the first mismatch
   - Adds regression coverage for mixed main-hash and local-dependency hash updates
-- **nix/workspace-tools/mk-pnpm-deps**: Narrow vendored pnpm stores to the staged importer closure instead of iterating the full lockfile package set
-  - Traverses the staged lockfile importer graph to fetch only the external packages reachable from the selected workspace roots
-  - Keeps the prefetch path lockfile-driven, avoiding the cross-platform hash drift from the install-driven experiment
-  - Cuts over-fetch in the `@overeng/oxc-config` plugin deps build from the whole repo lockfile package set to the actual staged closure
-- **nix/workspace-tools/mk-pnpm-deps**: Make pnpm deps hashes platform-agnostic by fetching the lockfile package set directly into the store
-  - Replaces host-sensitive `pnpm install`-based FOD generation with lockfile-driven `pnpm store add`
-  - Keeps store normalization deterministic by zeroing `checkedAt`, sorting file maps, and pruning orphan CAS files
-  - Produces the same normalized store hash across `x86_64-linux` and `aarch64-linux` for the validated package set
-- **nix/workspace-tools/mk-pnpm-deps**: Stabilize pnpm deps FOD input ordering and store normalization
-  - Sorts staged external install roots and lockfile inputs before dependency fetch
-  - Fails fast if store normalization encounters multiple `v*` roots or leftover symlinks
+- **nix/workspace-tools/mk-pnpm-deps / mk-pnpm-cli / oxc-config-plugin**: Switch Nix-contained pnpm builds to precomputed relocatable install trees
+  - Prepares the staged workspace install tree once inside the fixed-output derivation instead of restoring a vendored pnpm store and rerunning `pnpm install` in downstream builds
+  - Normalizes pnpm's absolute-path and timestamp metadata so the prepared tree stays deterministic across repeated builds
+  - Restores the prepared tree into the real workspace and relocates pnpm path placeholders before Bun-based build steps run
 - **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
   - Allows ranged `peerDependencies`
   - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`
