@@ -119,26 +119,11 @@ export class LockSyncConfig extends Schema.Class<LockSyncConfig>('LockSyncConfig
    */
   exclude: Schema.optional(Schema.Array(Schema.String)),
   /**
-   * Copy lock entries from a source member to all others.
-   * Useful for propagating shared dependency versions (e.g. devenv) across members.
-   *
-   * Key: arbitrary label for the shared source
-   * Value: { source: member name to copy from, path: dot-notation JSON path (e.g. ".nodes.devenv.locked") }
-   */
-  sharedLockSources: Schema.optional(
-    Schema.Record({
-      key: Schema.String,
-      value: Schema.Struct({
-        source: Schema.String,
-        path: Schema.String,
-      }),
-    }),
-  ),
-  /**
    * Propagate all matching devenv.lock inputs from a source member to all others.
-   * Matches inputs by node name and structurally equal `original` field, then
-   * copies the `locked` section. This keeps third-party inputs (nixpkgs, devenv,
-   * git-hooks, etc.) in sync across members without manual enumeration.
+   * Only considers top-level declared inputs (from root.inputs). Matches by input
+   * name and structurally equal `original` field, then copies the `locked` section.
+   * This keeps shared inputs (nixpkgs, devenv, git-hooks, etc.) in sync across
+   * members without manual enumeration.
    */
   sharedInputSource: Schema.optional(Schema.String),
 }) {}
