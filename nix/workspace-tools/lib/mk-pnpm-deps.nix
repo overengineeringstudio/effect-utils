@@ -165,13 +165,19 @@ in
         const path = require("path");
 
         const workspaceRoot = process.cwd();
+        const workspaceRealRoot = fs.realpathSync(workspaceRoot);
         const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
         const storePath = process.env.STORE_PATH + "/v10";
+        const storeRealPath = fs.realpathSync(storePath);
         const storePlaceholder = process.env.PREPARED_STORE_PLACEHOLDER;
 
         const replaceInString = (value) =>
           typeof value === "string"
-            ? value.split(workspaceRoot).join(workspacePlaceholder).split(storePath).join(storePlaceholder)
+            ? value
+                .split(workspaceRoot).join(workspacePlaceholder)
+                .split(workspaceRealRoot).join(workspacePlaceholder)
+                .split(storePath).join(storePlaceholder)
+                .split(storeRealPath).join(storePlaceholder)
             : value;
 
         const rewriteJsonFile = (filePath, transform) => {
