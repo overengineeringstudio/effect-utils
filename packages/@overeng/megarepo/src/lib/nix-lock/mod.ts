@@ -722,18 +722,24 @@ export class SharedInputSourceError extends Schema.TaggedError<SharedInputSource
  * nodes in other members (same input name, structurally equal `original`) and copies
  * the `locked` section.
  */
-const syncSharedInputSource = ({
+/** Validated source inputs map — result of preflight validation, input to apply phase */
+interface ValidatedSharedInputSource {
+  readonly sourceMemberName: string
+  readonly sourceMap: ReadonlyMap<string, { locked: unknown; original: unknown }>
+}
+
+/**
+ * Preflight: validate the shared input source configuration and build the source map.
+ * Runs before any lock-file writes so a bad config never causes partial mutations.
+ */
+const validateSharedInputSource = ({
   megarepoRoot,
   sourceMemberName,
-  memberNames,
-  excludeMembers,
 }: {
   megarepoRoot: AbsoluteDirPath
   sourceMemberName: string
-  memberNames: ReadonlyArray<string>
-  excludeMembers: ReadonlySet<string>
 }): Effect.Effect<
-  SharedInputSourceResult,
+  ValidatedSharedInputSource,
   PlatformError.PlatformError | SharedInputSourceError,
   FileSystem.FileSystem
 > =>
@@ -781,7 +787,10 @@ const syncSharedInputSource = ({
 
     const rootInputs = rootNode['inputs'] as Record<string, string> | undefined
     if (rootInputs === undefined) {
-      return { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] }
+      return yield* new SharedInputSourceError({
+        message: `Source member '${sourceMemberName}' devenv.lock root node has no inputs`,
+        sourceMemberName,
+      })
     }
 
     /** Build map of propagatable source nodes — only top-level declared inputs */
@@ -794,6 +803,27 @@ const syncSharedInputSource = ({
       }
     }
 
+    return { sourceMemberName, sourceMap }
+  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source/validate'))
+
+/**
+ * Apply phase: propagate validated source inputs to all matching members.
+ * Only called after validation succeeds and member-sync writes are complete.
+ */
+const applySharedInputSource = ({
+  megarepoRoot,
+  validated,
+  memberNames,
+  excludeMembers,
+}: {
+  megarepoRoot: AbsoluteDirPath
+  validated: ValidatedSharedInputSource
+  memberNames: ReadonlyArray<string>
+  excludeMembers: ReadonlySet<string>
+}): Effect.Effect<SharedInputSourceResult, PlatformError.PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const { sourceMemberName, sourceMap } = validated
     const updatedMembers: Array<{ name: string; updatedInputs: string[] }> = []
 
     for (const memberName of memberNames) {
@@ -850,7 +880,7 @@ const syncSharedInputSource = ({
       propagatableInputs: sourceMap.size,
       updatedMembers,
     }
-  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source'))
+  }).pipe(Effect.withSpan('megarepo/nix-lock/shared-input-source/apply'))
 
 // =============================================================================
 // Ref Sync
@@ -1135,6 +1165,16 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
           )
         : new Set<string>())
 
+    // Preflight: validate shared input source before any writes
+    const sharedInputSource = options.config.lockSync?.sharedInputSource
+    const validatedSharedInputSource =
+      sharedInputSource !== undefined
+        ? yield* validateSharedInputSource({
+            megarepoRoot: options.megarepoRoot,
+            sourceMemberName: sharedInputSource,
+          })
+        : undefined
+
     // Process all members in parallel
     const allMemberResults = yield* Effect.all(
       memberNames.map((memberName) =>
@@ -1296,13 +1336,12 @@ export const syncNixLocks = Effect.fn('megarepo/nix-lock/sync')((options: NixLoc
       0,
     )
 
-    // Sync shared input source (original-matching propagation)
-    const sharedInputSource = options.config.lockSync?.sharedInputSource
+    // Apply shared input source propagation (validation already passed above)
     const sharedInputSourceResult =
-      sharedInputSource !== undefined
-        ? yield* syncSharedInputSource({
+      validatedSharedInputSource !== undefined
+        ? yield* applySharedInputSource({
             megarepoRoot: options.megarepoRoot,
-            sourceMemberName: sharedInputSource,
+            validated: validatedSharedInputSource,
             memberNames,
             excludeMembers,
           })

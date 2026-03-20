@@ -1133,6 +1133,14 @@ describe('shared input source sync logic', () => {
    * Pure function that mirrors the core logic without filesystem effects.
    * Only propagates top-level declared inputs (from root.inputs).
    */
+  type SimResult =
+    | { _tag: 'error'; message: string }
+    | {
+        sourceMember: string
+        propagatableInputs: number
+        updatedMembers: Array<{ name: string; updatedInputs: string[] }>
+      }
+
   const simulateSharedInputSourceSync = ({
     sourceMemberName,
     memberLocks,
@@ -1143,11 +1151,7 @@ describe('shared input source sync logic', () => {
     excludeMembers?: ReadonlySet<string>
   }): {
     updatedLocks: Record<string, string>
-    result: {
-      sourceMember: string
-      propagatableInputs: number
-      updatedMembers: Array<{ name: string; updatedInputs: string[] }>
-    }
+    result: SimResult
   } => {
     const updatedLocks: Record<string, string> = { ...memberLocks }
 
@@ -1155,7 +1159,10 @@ describe('shared input source sync logic', () => {
     if (sourceContent === undefined) {
       return {
         updatedLocks,
-        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' has no devenv.lock`,
+        },
       }
     }
 
@@ -1165,7 +1172,10 @@ describe('shared input source sync logic', () => {
     } catch {
       return {
         updatedLocks,
-        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' has invalid devenv.lock (not valid JSON)`,
+        },
       }
     }
 
@@ -1173,7 +1183,10 @@ describe('shared input source sync logic', () => {
     if (sourceNodes === undefined) {
       return {
         updatedLocks,
-        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' devenv.lock has no nodes`,
+        },
       }
     }
 
@@ -1181,7 +1194,10 @@ describe('shared input source sync logic', () => {
     if (rootNode === undefined) {
       return {
         updatedLocks,
-        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' devenv.lock has no root node`,
+        },
       }
     }
 
@@ -1189,7 +1205,10 @@ describe('shared input source sync logic', () => {
     if (rootInputs === undefined) {
       return {
         updatedLocks,
-        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+        result: {
+          _tag: 'error',
+          message: `Source member '${sourceMemberName}' devenv.lock root node has no inputs`,
+        },
       }
     }
 
@@ -1459,6 +1478,60 @@ describe('shared input source sync logic', () => {
     expect(updatedTarget.nodes.nixpkgs.locked.rev).toBe('source-rev')
     /** nixpkgs_2 should remain unchanged since it's not a root input in the source */
     expect(updatedTarget.nodes.nixpkgs_2.locked.rev).toBe('old-transitive')
+  })
+
+  it('should error when source member has no devenv.lock', () => {
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs' },
+        locked: { rev: 'old' },
+      },
+    })
+
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'nonexistent',
+      memberLocks: { 'repo-b': targetLock },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no devenv.lock') })
+  })
+
+  it('should error when source devenv.lock is invalid JSON', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': 'not valid json {{{', 'repo-b': makeDevenvLock({}) },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('not valid JSON') })
+  })
+
+  it('should error when source devenv.lock has no nodes', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': JSON.stringify({ root: 'root', version: 7 }) },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no nodes') })
+  })
+
+  it('should error when source devenv.lock has no root node', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: {
+        'repo-a': JSON.stringify({ nodes: { nixpkgs: {} }, root: 'root', version: 7 }),
+      },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no root node') })
+  })
+
+  it('should error when source devenv.lock root has no inputs', () => {
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': JSON.stringify({ nodes: { root: {} }, root: 'root', version: 7 }) },
+    })
+
+    expect(result).toEqual({ _tag: 'error', message: expect.stringContaining('no inputs') })
   })
 
   it('should skip nodes without both original and locked', () => {
