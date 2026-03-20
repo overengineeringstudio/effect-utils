@@ -13,7 +13,7 @@ const withStoreLock = <A, E>(effect: Effect.Effect<A, E, StoreLock>): Effect.Eff
     const tmpDir = yield* Effect.sync(() => require('node:os').tmpdir())
     const basePath = EffectPath.unsafe.absoluteDir(`${tmpDir}/store-lock-test-${Date.now()}/`)
     return yield* effect.pipe(Effect.provide(makeStoreLockLayer(basePath)))
-  }).pipe(Effect.provide(NodeContext.layer))
+  }).pipe(Effect.scoped, Effect.provide(NodeContext.layer))
 
 describe('StoreLock', () => {
   it.effect('serializes concurrent access to the same key', () =>

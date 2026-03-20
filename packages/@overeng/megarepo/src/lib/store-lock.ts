@@ -9,11 +9,10 @@
  * $MEGAREPO_STORE/.locks/. TTL-based permits auto-expire if a process crashes.
  */
 
-import type { FileSystem, Path } from '@effect/platform'
 import { Context, Duration, Effect, Layer, Ref } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
-import { DistributedSemaphore, DistributedSemaphoreBacking } from '@overeng/utils'
+import { DistributedSemaphore, type DistributedSemaphoreBacking } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 /** Default TTL for store locks (auto-expires if process crashes) */
@@ -36,10 +35,10 @@ export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, Stor
 
 /**
  * Keyed distributed semaphore registry — lazily creates one DistributedSemaphore per key.
- * Each semaphore is backed by file-system locks for cross-process coordination.
+ * Takes an eagerly-built backing context so withLock has no extra deps.
  */
 const makeKeyedDistributedRegistry = (
-  lockLayer: Layer.Layer<DistributedSemaphoreBacking, never, FileSystem.FileSystem | Path.Path>,
+  backingContext: Context.Context<DistributedSemaphoreBacking>,
 ) =>
   Effect.gen(function* () {
     type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
@@ -59,13 +58,13 @@ const makeKeyedDistributedRegistry = (
             semaphore = yield* DistributedSemaphore.make(key, {
               limit: 1,
               ttl: LOCK_TTL,
-            }).pipe(Effect.provide(lockLayer))
+            }).pipe(Effect.provide(backingContext))
             yield* Ref.update(mapRef, (map) => new Map(map).set(key, semaphore!))
           }
 
           return yield* semaphore
             .withPermits(1)(effect)
-            .pipe(Effect.provide(lockLayer), Effect.orDie)
+            .pipe(Effect.provide(backingContext), Effect.orDie)
         })
 
     return { withLock } as const
@@ -81,9 +80,10 @@ export const makeStoreLockLayer = (basePath: AbsoluteDirPath): Layer.Layer<Store
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`
       const lockLayer = FileSystemBacking.layer({ lockDir })
+      const backingContext = yield* Layer.build(lockLayer)
 
-      const repoLocks = yield* makeKeyedDistributedRegistry(lockLayer)
-      const worktreeLocks = yield* makeKeyedDistributedRegistry(lockLayer)
+      const repoLocks = yield* makeKeyedDistributedRegistry(backingContext)
+      const worktreeLocks = yield* makeKeyedDistributedRegistry(backingContext)
 
       return {
         withRepoLock: repoLocks.withLock,
