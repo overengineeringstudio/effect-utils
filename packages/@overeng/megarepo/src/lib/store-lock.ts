@@ -10,10 +10,9 @@
  */
 
 import { Context, Duration, Effect, Layer, Ref } from 'effect'
-import type { DistributedSemaphore as DistributedSemaphoreType } from 'effect-distributed-lock'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
-import { DistributedSemaphore } from '@overeng/utils'
+import { DistributedSemaphore, DistributedSemaphoreBacking } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 /** Default TTL for store locks (auto-expires if process crashes) */
@@ -38,9 +37,10 @@ export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, Stor
  * Keyed distributed semaphore registry — lazily creates one DistributedSemaphore per key.
  * Each semaphore is backed by file-system locks for cross-process coordination.
  */
-const makeKeyedDistributedRegistry = (lockLayer: Layer.Layer<never>) =>
+const makeKeyedDistributedRegistry = (lockLayer: Layer.Layer<DistributedSemaphoreBacking>) =>
   Effect.gen(function* () {
-    const mapRef = yield* Ref.make(new Map<string, DistributedSemaphoreType>())
+    type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
+    const mapRef = yield* Ref.make(new Map<string, Semaphore>())
 
     const withLock =
       (key: string) =>

@@ -1,5 +1,5 @@
-import { it } from '@effect/vitest'
 import { NodeContext } from '@effect/platform-node'
+import { it } from '@effect/vitest'
 import { Effect, Ref } from 'effect'
 import { describe, expect } from 'vitest'
 
@@ -8,9 +8,7 @@ import { EffectPath } from '@overeng/effect-path'
 import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
 
 /** Provide StoreLock backed by a temp directory */
-const withStoreLock = <A, E>(
-  effect: Effect.Effect<A, E, StoreLock>,
-): Effect.Effect<A, E, never> =>
+const withStoreLock = <A, E>(effect: Effect.Effect<A, E, StoreLock>): Effect.Effect<A, E, never> =>
   Effect.gen(function* () {
     const tmpDir = yield* Effect.sync(() => require('node:os').tmpdir())
     const basePath = EffectPath.unsafe.absoluteDir(`${tmpDir}/store-lock-test-${Date.now()}/`)
