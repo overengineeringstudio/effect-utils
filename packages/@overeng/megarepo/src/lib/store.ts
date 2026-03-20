@@ -23,6 +23,8 @@
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
 
+import { StoreLock } from './store-lock.ts'
+
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
@@ -370,28 +372,34 @@ const expandStorePath = (path: string): AbsoluteDirPath => {
 }
 
 /**
- * Create a Store layer with explicit configuration
+ * Create a Store layer with explicit configuration (includes StoreLock)
  */
 export const makeStoreLayer = (config: StoreConfig) =>
+  Layer.merge(
+    Layer.effect(
+      Store,
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        return make({ config, fs })
+      }),
+    ),
+    StoreLock.Default,
+  )
+
+/**
+ * Create a Store layer from environment (MEGAREPO_STORE) or default (includes StoreLock)
+ */
+export const StoreLayer = Layer.merge(
   Layer.effect(
     Store,
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      return make({ config, fs })
+      const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
+        Option.getOrElse(() => DEFAULT_STORE_PATH),
+      )
+      const basePath = expandStorePath(storePathRaw)
+      return make({ config: { basePath }, fs })
     }),
-  )
-
-/**
- * Create a Store layer from environment (MEGAREPO_STORE) or default
- */
-export const StoreLayer = Layer.effect(
-  Store,
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
-      Option.getOrElse(() => DEFAULT_STORE_PATH),
-    )
-    const basePath = expandStorePath(storePathRaw)
-    return make({ config: { basePath }, fs })
-  }),
+  ),
+  StoreLock.Default,
 )

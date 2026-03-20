@@ -9,7 +9,7 @@
 import { Prompt } from '@effect/cli'
 import type { CommandExecutor, Terminal } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Layer, Option, type ParseResult } from 'effect'
+import { Effect, Option, type ParseResult } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -852,4 +852,4 @@ export const runCommand = ({
     ).pipe(Effect.provide(outputModeLayer(output)))
 
     return syncResult
-  }).pipe(Effect.scoped, Effect.provide(Layer.merge(StoreLayer, StoreLock.Default)))
+  }).pipe(Effect.scoped, Effect.provide(StoreLayer))
