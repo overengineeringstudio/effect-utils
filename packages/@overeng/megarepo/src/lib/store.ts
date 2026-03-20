@@ -27,6 +27,7 @@ import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng
 
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
 import { classifyRef, refTypeToPathSegment, type RefType } from './ref.ts'
+import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
 
 // =============================================================================
 // Store Service
@@ -370,19 +371,24 @@ const expandStorePath = (path: string): AbsoluteDirPath => {
 }
 
 /**
- * Create a Store layer with explicit configuration
+ * Create a Store + StoreLock layer with explicit configuration.
+ * StoreLock uses file-system backing at {basePath}.locks/.
  */
 export const makeStoreLayer = (config: StoreConfig) =>
-  Layer.effect(
-    Store,
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      return make({ config, fs })
-    }),
+  Layer.merge(
+    Layer.effect(
+      Store,
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        return make({ config, fs })
+      }),
+    ),
+    makeStoreLockLayer(config.basePath),
   )
 
 /**
- * Create a Store layer from environment (MEGAREPO_STORE) or default
+ * Store + StoreLock layer from environment (MEGAREPO_STORE) or default path.
+ * Reads the env var lazily at provision time so tests can override it.
  */
 export const StoreLayer = Layer.effect(
   Store,
@@ -394,4 +400,17 @@ export const StoreLayer = Layer.effect(
     const basePath = expandStorePath(storePathRaw)
     return make({ config: { basePath }, fs })
   }),
-)
+).pipe((storeOnly) => {
+  /* Derive basePath at provision time for the lock layer.
+   * We read the env var again (same as storeOnly) so both use the same path. */
+  const lockLayer = Layer.effect(
+    StoreLock,
+    Effect.gen(function* () {
+      const store = yield* Store
+      return yield* Layer.build(makeStoreLockLayer(store.basePath)).pipe(
+        Effect.map((ctx) => ctx.pipe(Context.get(StoreLock))),
+      )
+    }),
+  )
+  return Layer.provideMerge(lockLayer, storeOnly)
+})

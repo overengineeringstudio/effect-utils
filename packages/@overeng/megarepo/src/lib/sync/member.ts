@@ -7,7 +7,7 @@
 import path from 'node:path'
 
 import { FileSystem } from '@effect/platform'
-import { Effect, Option, Ref } from 'effect'
+import { Effect, Option } from 'effect'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -22,6 +22,7 @@ import * as Git from '../git.ts'
 import { detectRefMismatch, formatRefMismatchMessage } from '../issues.ts'
 import type { LockFile } from '../lock.ts'
 import { classifyRef, extractRefFromSymlinkPath, isCommitSha, type RefType } from '../ref.ts'
+import { StoreLock } from '../store-lock.ts'
 import { Store } from '../store.ts'
 import type { MemberSyncResult, SyncMode } from './types.ts'
 
@@ -39,49 +40,6 @@ export interface MissingRefInfo {
   readonly defaultBranch: string
   readonly cloneUrl: string
 }
-
-/**
- * Internal semaphore type from Effect
- */
-type Semaphore = Effect.Semaphore
-
-/**
- * Map of repo URL -> semaphore for serializing bare repo creation.
- * This prevents race conditions when multiple members use the same underlying repo.
- *
- * We use a Ref to ensure atomic get-or-create operations, preventing race conditions
- * when multiple fibers concurrently request a semaphore for the same URL.
- */
-export type RepoSemaphoreMap = Ref.Ref<Map<string, Semaphore>>
-
-/**
- * Create a new repo semaphore map.
- */
-export const makeRepoSemaphoreMap = (): Effect.Effect<RepoSemaphoreMap> =>
-  Ref.make(new Map<string, Semaphore>())
-
-/**
- * Get or create a semaphore for a given repo URL.
- * Uses Ref.modify for atomic check-and-set to prevent race conditions.
- */
-export const getRepoSemaphore = ({
-  semaphoreMapRef,
-  url,
-}: {
-  semaphoreMapRef: RepoSemaphoreMap
-  url: string
-}): Effect.Effect<Semaphore> =>
-  Ref.modify(semaphoreMapRef, (map) => {
-    const existing = map.get(url)
-    if (existing !== undefined) {
-      return [existing, map]
-    }
-    // Create new semaphore and add to map
-    const sem = Effect.unsafeMakeSemaphore(1)
-    const newMap = new Map(map)
-    newMap.set(url, sem)
-    return [sem, newMap]
-  })
 
 /**
  * Get the git clone URL for a member source (SSH format)
@@ -171,7 +129,6 @@ export const syncMember = <R = never>({
   mode,
   dryRun,
   force,
-  semaphoreMap,
   gitProtocol = 'auto',
   createBranches = false,
   commitMode,
@@ -184,8 +141,6 @@ export const syncMember = <R = never>({
   mode: SyncMode
   dryRun: boolean
   force: boolean
-  /** Optional semaphore map for serializing bare repo creation per repo URL */
-  semaphoreMap?: RepoSemaphoreMap
   /** Git protocol to use for cloning: 'ssh', 'https', or 'auto' (default) */
   gitProtocol?: GitProtocol
   /** Create branches that don't exist (from default branch) */
@@ -198,6 +153,7 @@ export const syncMember = <R = never>({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* Store
+    const storeLock = yield* StoreLock
     const isFetchMode = mode === 'fetch'
     const isApplyMode = mode === 'apply'
     const isLockMode = mode === 'lock'
@@ -489,25 +445,21 @@ export const syncMember = <R = never>({
     const wasCloned: boolean = yield* Effect.gen(function* () {
       if (bareExists === false) {
         if (dryRun === false) {
-          const createBareRepo = Effect.gen(function* () {
-            // Check again inside semaphore (double-check locking pattern)
-            const stillNotExists = (yield* store.hasBareRepo(source)) === false
-            if (stillNotExists === true) {
-              const repoBasePath = store.getRepoBasePath(source)
-              yield* fs.makeDirectory(repoBasePath, { recursive: true })
-              yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
-              yield* Effect.annotateCurrentSpan('action', 'clone')
-              return true
-            }
-            yield* Effect.annotateCurrentSpan('action', 'already-cloned-by-sibling')
-            return false
-          })
-
-          if (semaphoreMap !== undefined) {
-            const sem = yield* getRepoSemaphore({ semaphoreMapRef: semaphoreMap, url: cloneUrl })
-            return yield* sem.withPermits(1)(createBareRepo)
-          }
-          return yield* createBareRepo
+          return yield* storeLock.withRepoLock(cloneUrl)(
+            Effect.gen(function* () {
+              // Double-check inside lock (another fiber may have cloned concurrently)
+              const stillNotExists = (yield* store.hasBareRepo(source)) === false
+              if (stillNotExists === true) {
+                const repoBasePath = store.getRepoBasePath(source)
+                yield* fs.makeDirectory(repoBasePath, { recursive: true })
+                yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
+                yield* Effect.annotateCurrentSpan('action', 'clone')
+                return true
+              }
+              yield* Effect.annotateCurrentSpan('action', 'already-cloned-by-sibling')
+              return false
+            }),
+          )
         }
         yield* Effect.annotateCurrentSpan('action', 'skip-dry-run')
       } else if (isFetchMode === true && dryRun === false) {
@@ -789,68 +741,55 @@ export const syncMember = <R = never>({
     })
 
     if (worktreeExists === false && dryRun === false) {
-      yield* Effect.gen(function* () {
-        // Ensure worktree parent directory exists
-        const worktreeParent = EffectPath.ops.parent(worktreePath)
-        if (worktreeParent !== undefined) {
-          yield* fs.makeDirectory(worktreeParent, { recursive: true })
-        }
+      yield* storeLock
+        .withWorktreeLock(worktreePath)(
+          Effect.gen(function* () {
+            // Double-check inside lock (another process/fiber may have created it)
+            const stillNotExists =
+              (yield* store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType })) ===
+              false
+            if (stillNotExists === false) return
 
-        // Create worktree
-        if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
-          yield* Git.createWorktreeDetached({
-            repoPath: bareRepoPath,
-            worktreePath,
-            commit: targetCommit ?? worktreeRef,
-          })
-        } else {
-          yield* Git.createWorktree({
-            repoPath: bareRepoPath,
-            worktreePath,
-            branch: targetRef,
-            createBranch: false,
-          }).pipe(
-            Effect.catchAll(() =>
-              Git.createWorktree({
+            // Ensure worktree parent directory exists
+            const worktreeParent = EffectPath.ops.parent(worktreePath)
+            if (worktreeParent !== undefined) {
+              yield* fs.makeDirectory(worktreeParent, { recursive: true })
+            }
+
+            // Create worktree
+            if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
+              yield* Git.createWorktreeDetached({
                 repoPath: bareRepoPath,
                 worktreePath,
-                branch: `origin/${targetRef}`,
+                commit: targetCommit ?? worktreeRef,
+              })
+            } else {
+              yield* Git.createWorktree({
+                repoPath: bareRepoPath,
+                worktreePath,
+                branch: targetRef,
                 createBranch: false,
-              }),
-            ),
-          )
-        }
-      }).pipe(
-        // Handle race condition: when multiple nested megarepos reference
-        // the same member, concurrent syncs may both pass the hasWorktree
-        // check but the second git worktree add fails. Re-check existence
-        // and succeed if the worktree was created by the concurrent sync.
-        Effect.catchIf(
-          (error) =>
-            error instanceof Git.GitCommandError &&
-            error.stderr.includes('already exists and is not an empty directory'),
-          () =>
-            store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType }).pipe(
-              Effect.flatMap((exists) =>
-                exists === true
-                  ? Effect.void
-                  : Effect.fail(
-                      new Git.GitCommandError({
-                        args: ['worktree', 'add'],
-                        exitCode: 1,
-                        stderr: 'Target directory already exists but is not a valid worktree',
-                      }),
-                    ),
-              ),
-            ),
-        ),
-        Effect.withSpan('megarepo/sync/member/create-worktree', {
-          attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
-        }),
-      )
+              }).pipe(
+                Effect.catchAll(() =>
+                  Git.createWorktree({
+                    repoPath: bareRepoPath,
+                    worktreePath,
+                    branch: `origin/${targetRef}`,
+                    createBranch: false,
+                  }),
+                ),
+              )
+            }
+          }),
+        )
+        .pipe(
+          Effect.withSpan('megarepo/sync/member/create-worktree', {
+            attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
+          }),
+        )
     }
 
-    /** Fallback: switch to a commit worktree, creating it if needed (with race handling). */
+    /** Fallback: switch to a commit worktree, creating it if needed. */
     const ensureCommitWorktree = () =>
       Effect.gen(function* () {
         worktreeRef = targetCommit!
@@ -860,43 +799,26 @@ export const syncMember = <R = never>({
           ref: targetCommit!,
           refType: 'commit',
         })
-        const exists = yield* store.hasWorktree({
-          source,
-          ref: targetCommit!,
-          refType: 'commit',
-        })
-        if (exists === false) {
-          const parent = EffectPath.ops.parent(commitWorktreePath)
-          if (parent !== undefined) {
-            yield* fs.makeDirectory(parent, { recursive: true })
-          }
-          yield* Git.createWorktreeDetached({
-            repoPath: bareRepoPath,
-            worktreePath: commitWorktreePath,
-            commit: targetCommit!,
-          }).pipe(
-            // Handle race: concurrent sync may have created it between our check and creation
-            Effect.catchIf(
-              (error) =>
-                error instanceof Git.GitCommandError &&
-                error.stderr.includes('already exists and is not an empty directory'),
-              () =>
-                store.hasWorktree({ source, ref: targetCommit!, refType: 'commit' }).pipe(
-                  Effect.flatMap((nowExists) =>
-                    nowExists === true
-                      ? Effect.void
-                      : Effect.fail(
-                          new Git.GitCommandError({
-                            args: ['worktree', 'add'],
-                            exitCode: 1,
-                            stderr: 'Target directory already exists but is not a valid worktree',
-                          }),
-                        ),
-                  ),
-                ),
-            ),
-          )
-        }
+        yield* storeLock.withWorktreeLock(commitWorktreePath)(
+          Effect.gen(function* () {
+            const exists = yield* store.hasWorktree({
+              source,
+              ref: targetCommit!,
+              refType: 'commit',
+            })
+            if (exists === true) return
+
+            const parent = EffectPath.ops.parent(commitWorktreePath)
+            if (parent !== undefined) {
+              yield* fs.makeDirectory(parent, { recursive: true })
+            }
+            yield* Git.createWorktreeDetached({
+              repoPath: bareRepoPath,
+              worktreePath: commitWorktreePath,
+              commit: targetCommit!,
+            })
+          }),
+        )
       })
 
     // In tracking mode (branch worktrees), ensure the worktree is at the locked commit.

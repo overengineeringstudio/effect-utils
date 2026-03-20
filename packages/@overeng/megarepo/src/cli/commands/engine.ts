@@ -38,10 +38,10 @@ import {
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
+import type { StoreLock } from '../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import {
   type GitProtocol,
-  makeRepoSemaphoreMap,
   type MissingRefAction,
   type MissingRefInfo,
   collectSyncErrors,
@@ -119,7 +119,7 @@ export const syncMegarepo = <R = never>({
   | PlatformError.PlatformError
   | ParseResult.ParseError
   | Error,
-  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | R
+  FileSystem.FileSystem | CommandExecutor.CommandExecutor | Store | StoreLock | R
 > =>
   Effect.gen(function* () {
     const { mode, dryRun, force, all, only, skip, gitProtocol, createBranches } = options
@@ -249,11 +249,6 @@ export const syncMegarepo = <R = never>({
     const allMembers = Object.entries(config.members)
     const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
 
-    // Create a semaphore map for serializing bare repo creation per repo URL.
-    // This prevents race conditions when multiple members reference the same repo
-    // (e.g., jq-latest and jq-v16 both from jqlang/jq).
-    const semaphoreMap = yield* makeRepoSemaphoreMap()
-
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
     const concurrency = progressHandle !== undefined ? 4 : 'unbounded'
@@ -275,7 +270,6 @@ export const syncMegarepo = <R = never>({
             mode,
             dryRun,
             force,
-            semaphoreMap,
             gitProtocol,
             createBranches,
             ...(options.commitMode === true ? { commitMode: true } : {}),
