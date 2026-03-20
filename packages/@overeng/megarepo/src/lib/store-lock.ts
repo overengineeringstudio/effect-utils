@@ -9,6 +9,8 @@
  * $MEGAREPO_STORE/.locks/. TTL-based permits auto-expire if a process crashes.
  */
 
+import { createHash } from 'node:crypto'
+
 import { Context, Duration, Effect, Layer, Ref } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
@@ -17,6 +19,9 @@ import { FileSystemBacking } from '@overeng/utils/node'
 
 /** Default TTL for store locks (auto-expires if process crashes) */
 const LOCK_TTL = Duration.minutes(5)
+
+/** Hash a key to a fixed-length string safe for filesystem NAME_MAX limits */
+const hashKey = (key: string): string => createHash('sha256').update(key).digest('hex').slice(0, 32)
 
 /** StoreLock service interface */
 export interface StoreLockService {
@@ -36,6 +41,7 @@ export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, Stor
 /**
  * Keyed distributed semaphore registry — lazily creates one DistributedSemaphore per key.
  * Takes an eagerly-built backing context so withLock has no extra deps.
+ * Keys are hashed to avoid filesystem NAME_MAX limits.
  */
 const makeKeyedDistributedRegistry = (
   backingContext: Context.Context<DistributedSemaphoreBacking>,
@@ -48,18 +54,20 @@ const makeKeyedDistributedRegistry = (
       (key: string) =>
       <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
         Effect.gen(function* () {
+          const hashedKey = hashKey(key)
+
           let semaphore = yield* Ref.modify(mapRef, (map) => {
-            const existing = map.get(key)
+            const existing = map.get(hashedKey)
             if (existing !== undefined) return [existing, map] as const
             return [undefined, map] as const
           })
 
           if (semaphore === undefined) {
-            semaphore = yield* DistributedSemaphore.make(key, {
+            semaphore = yield* DistributedSemaphore.make(hashedKey, {
               limit: 1,
               ttl: LOCK_TTL,
             }).pipe(Effect.provide(backingContext))
-            yield* Ref.update(mapRef, (map) => new Map(map).set(key, semaphore!))
+            yield* Ref.update(mapRef, (map) => new Map(map).set(hashedKey, semaphore!))
           }
 
           return yield* semaphore
