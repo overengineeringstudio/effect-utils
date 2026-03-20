@@ -9,6 +9,7 @@ import {
   installNixStep,
   runDevenvTasksBefore,
   standardCIEnv,
+  ciWorkflow,
   namespaceRunner,
   nixDiagnosticsArtifactStep,
   netlifyDeployStep,
@@ -16,10 +17,7 @@ import {
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
-import {
-  githubWorkflow,
-  type GitHubWorkflowArgs,
-} from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 
 const baseSteps = [
   checkoutStep(),
@@ -191,7 +189,7 @@ const notifyAlignmentJob = {
   steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
 }
 
-export default githubWorkflow({
+export default ciWorkflow({
   name: 'CI',
   on: {
     push: { branches: ['main'] },
