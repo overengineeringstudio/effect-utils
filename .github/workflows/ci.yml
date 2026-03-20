@@ -96,6 +96,22 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Evict cached pnpm deps for oxlint-npm
+        shell: bash
+        run: |
+          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
+          if [ -n "$topDrv" ]; then
+            while IFS= read -r drv; do
+              [ -n "$drv" ] || continue
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if [ -e "$outPath" ]; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete "$outPath" 2>/dev/null || true
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+          fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -240,19 +256,6 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
-      - name: Force diagnostics failure (debug)
-        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
-        shell: bash
-        run: |
-          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
-          mkdir -p "$diag_dir"
-          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
-          Failed to convert config.cachix to JSON
-          ... while evaluating the option `cachix.package`
-          error: path '/nix/store/synthetic-invalid-path' is not valid
-          EOF
-          echo "::warning::Intentional failure for diagnostics validation (#272)"
-          exit 1
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
@@ -269,6 +272,19 @@ jobs:
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
             done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
           fi
+      - name: Force diagnostics failure (debug)
+        if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
       - name: Format + lint
         run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
       - name: Nix diagnostics summary
@@ -403,6 +419,22 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Evict cached pnpm deps for oxlint-npm
+        shell: bash
+        run: |
+          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
+          if [ -n "$topDrv" ]; then
+            while IFS= read -r drv; do
+              [ -n "$drv" ] || continue
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if [ -e "$outPath" ]; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete "$outPath" 2>/dev/null || true
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+          fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -550,6 +582,22 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Evict cached pnpm deps for oxlint-npm
+        shell: bash
+        run: |
+          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
+          if [ -n "$topDrv" ]; then
+            while IFS= read -r drv; do
+              [ -n "$drv" ] || continue
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if [ -e "$outPath" ]; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete "$outPath" 2>/dev/null || true
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+          fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -698,6 +746,22 @@ jobs:
           echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
           "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
         shell: bash
+      - name: Evict cached pnpm deps for oxlint-npm
+        shell: bash
+        run: |
+          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
+          if [ -n "$topDrv" ]; then
+            while IFS= read -r drv; do
+              [ -n "$drv" ] || continue
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if [ -e "$outPath" ]; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete "$outPath" 2>/dev/null || true
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+          fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash

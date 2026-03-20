@@ -6,13 +6,10 @@
   ...
 }:
 let
+  repoFlake = builtins.getFlake (toString ./.);
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
-  oxlintNpm = import ./nix/oxlint-npm.nix {
-    inherit pkgs;
-    bun = pkgs.bun;
-    src = ./.;
-  };
+  oxlintNpm = repoFlake.packages.${pkgs.system}.oxlint-npm;
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
   };
