@@ -72,7 +72,12 @@ const makeKeyedDistributedRegistry = (
 
           return yield* semaphore
             .withPermits(1)(effect)
-            .pipe(Effect.provide(backingContext), Effect.orDie)
+            .pipe(
+              Effect.provide(backingContext),
+              Effect.catchAllCause((cause) =>
+                Effect.fail(new Error(`Store lock failed: ${cause}`)),
+              ),
+            ) as Effect.Effect<A, E, R>
         })
 
     return { withLock } as const
