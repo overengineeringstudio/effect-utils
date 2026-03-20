@@ -38,7 +38,7 @@ import {
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
-import { StoreLock } from '../../lib/store-lock.ts'
+import type { StoreLock } from '../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import {
   type GitProtocol,

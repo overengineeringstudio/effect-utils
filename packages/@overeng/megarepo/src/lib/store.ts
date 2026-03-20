@@ -23,12 +23,11 @@
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
 import { Context, Effect, Layer, Option } from 'effect'
 
-import { StoreLock } from './store-lock.ts'
-
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
 import { classifyRef, refTypeToPathSegment, type RefType } from './ref.ts'
+import { StoreLock } from './store-lock.ts'
 
 // =============================================================================
 // Store Service
