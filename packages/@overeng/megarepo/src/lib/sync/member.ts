@@ -744,7 +744,7 @@ export const syncMember = <R = never>({
       yield* storeLock
         .withWorktreeLock(worktreePath)(
           Effect.gen(function* () {
-            // Double-check inside lock (another fiber may have created it concurrently)
+            // Double-check inside lock (another process/fiber may have created it)
             const stillNotExists =
               (yield* store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType })) ===
               false
@@ -783,27 +783,6 @@ export const syncMember = <R = never>({
           }),
         )
         .pipe(
-          // Defense-in-depth: a separate mr process may have created the worktree
-          // between our lock acquisition and git worktree add (cross-process race).
-          Effect.catchIf(
-            (error) =>
-              error instanceof Git.GitCommandError &&
-              error.stderr.includes('already exists and is not an empty directory'),
-            () =>
-              store.hasWorktree({ source, ref: worktreeRef, refType: worktreeRefType }).pipe(
-                Effect.flatMap((exists) =>
-                  exists === true
-                    ? Effect.void
-                    : Effect.fail(
-                        new Git.GitCommandError({
-                          args: ['worktree', 'add'],
-                          exitCode: 1,
-                          stderr: 'Target directory already exists but is not a valid worktree',
-                        }),
-                      ),
-                ),
-              ),
-          ),
           Effect.withSpan('megarepo/sync/member/create-worktree', {
             attributes: { 'span.label': worktreeRef, ref: worktreeRef, refType: worktreeRefType },
           }),
@@ -820,49 +799,26 @@ export const syncMember = <R = never>({
           ref: targetCommit!,
           refType: 'commit',
         })
-        yield* storeLock
-          .withWorktreeLock(commitWorktreePath)(
-            Effect.gen(function* () {
-              const exists = yield* store.hasWorktree({
-                source,
-                ref: targetCommit!,
-                refType: 'commit',
-              })
-              if (exists === true) return
+        yield* storeLock.withWorktreeLock(commitWorktreePath)(
+          Effect.gen(function* () {
+            const exists = yield* store.hasWorktree({
+              source,
+              ref: targetCommit!,
+              refType: 'commit',
+            })
+            if (exists === true) return
 
-              const parent = EffectPath.ops.parent(commitWorktreePath)
-              if (parent !== undefined) {
-                yield* fs.makeDirectory(parent, { recursive: true })
-              }
-              yield* Git.createWorktreeDetached({
-                repoPath: bareRepoPath,
-                worktreePath: commitWorktreePath,
-                commit: targetCommit!,
-              })
-            }),
-          )
-          .pipe(
-            // Defense-in-depth: cross-process race on commit worktree creation
-            Effect.catchIf(
-              (error) =>
-                error instanceof Git.GitCommandError &&
-                error.stderr.includes('already exists and is not an empty directory'),
-              () =>
-                store.hasWorktree({ source, ref: targetCommit!, refType: 'commit' }).pipe(
-                  Effect.flatMap((nowExists) =>
-                    nowExists === true
-                      ? Effect.void
-                      : Effect.fail(
-                          new Git.GitCommandError({
-                            args: ['worktree', 'add'],
-                            exitCode: 1,
-                            stderr: 'Target directory already exists but is not a valid worktree',
-                          }),
-                        ),
-                  ),
-                ),
-            ),
-          )
+            const parent = EffectPath.ops.parent(commitWorktreePath)
+            if (parent !== undefined) {
+              yield* fs.makeDirectory(parent, { recursive: true })
+            }
+            yield* Git.createWorktreeDetached({
+              repoPath: bareRepoPath,
+              worktreePath: commitWorktreePath,
+              commit: targetCommit!,
+            })
+          }),
+        )
       })
 
     // In tracking mode (branch worktrees), ensure the worktree is at the locked commit.

@@ -27,7 +27,7 @@ import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng
 
 import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from './config.ts'
 import { classifyRef, refTypeToPathSegment, type RefType } from './ref.ts'
-import { StoreLock } from './store-lock.ts'
+import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
 
 // =============================================================================
 // Store Service
@@ -371,7 +371,8 @@ const expandStorePath = (path: string): AbsoluteDirPath => {
 }
 
 /**
- * Create a Store layer with explicit configuration (includes StoreLock)
+ * Create a Store + StoreLock layer with explicit configuration.
+ * StoreLock uses file-system backing at {basePath}.locks/.
  */
 export const makeStoreLayer = (config: StoreConfig) =>
   Layer.merge(
@@ -382,23 +383,34 @@ export const makeStoreLayer = (config: StoreConfig) =>
         return make({ config, fs })
       }),
     ),
-    StoreLock.Default,
+    makeStoreLockLayer(config.basePath),
   )
 
 /**
- * Create a Store layer from environment (MEGAREPO_STORE) or default (includes StoreLock)
+ * Store + StoreLock layer from environment (MEGAREPO_STORE) or default path.
+ * Reads the env var lazily at provision time so tests can override it.
  */
-export const StoreLayer = Layer.merge(
-  Layer.effect(
-    Store,
+export const StoreLayer = Layer.effect(
+  Store,
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
+      Option.getOrElse(() => DEFAULT_STORE_PATH),
+    )
+    const basePath = expandStorePath(storePathRaw)
+    return make({ config: { basePath }, fs })
+  }),
+).pipe((storeOnly) => {
+  /* Derive basePath at provision time for the lock layer.
+   * We read the env var again (same as storeOnly) so both use the same path. */
+  const lockLayer = Layer.effect(
+    StoreLock,
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const storePathRaw = Option.fromNullable(process.env[ENV_VARS.STORE]).pipe(
-        Option.getOrElse(() => DEFAULT_STORE_PATH),
+      const store = yield* Store
+      return yield* Layer.build(makeStoreLockLayer(store.basePath)).pipe(
+        Effect.map((ctx) => ctx.pipe(Context.get(StoreLock))),
       )
-      const basePath = expandStorePath(storePathRaw)
-      return make({ config: { basePath }, fs })
     }),
-  ),
-  StoreLock.Default,
-)
+  )
+  return Layer.provideMerge(lockLayer, storeOnly)
+})
