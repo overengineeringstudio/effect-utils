@@ -75,7 +75,7 @@ const makeKeyedDistributedRegistry = (
  * Lock files stored in {basePath}.locks/ directory.
  */
 export const makeStoreLockLayer = (basePath: AbsoluteDirPath): Layer.Layer<StoreLock> =>
-  Layer.effect(
+  Layer.scoped(
     StoreLock,
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`
