@@ -7,9 +7,14 @@
 }:
 let
   repoFlake = builtins.getFlake (toString ./.);
+  flakePkgs = import repoFlake.inputs.nixpkgs { inherit (pkgs) system; };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
-  oxlintNpm = repoFlake.packages.${pkgs.system}.oxlint-npm;
+  oxlintNpm = import ./nix/oxlint-npm.nix {
+    pkgs = flakePkgs;
+    bun = flakePkgs.bun;
+    src = repoFlake;
+  };
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
   };
