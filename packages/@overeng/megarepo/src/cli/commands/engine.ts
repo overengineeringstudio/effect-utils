@@ -788,7 +788,7 @@ export const runCommand = ({
           })),
         })) ?? []
 
-      const sharedSourceUpdates: ReadonlyArray<LockSharedSourceUpdate> =
+      const sharedSourceUpdatesFromLockSources: ReadonlyArray<LockSharedSourceUpdate> =
         syncResult.lockSyncResults?.sharedLockSourceResults
           .filter((r) => r.updatedMembers.length > 0)
           .map((r) => ({
@@ -797,6 +797,23 @@ export const runCommand = ({
             sourceMemberName: r.sourceMember,
             targetCount: r.updatedMembers.length,
           })) ?? []
+
+      const sharedSourceUpdatesFromInputSource: ReadonlyArray<LockSharedSourceUpdate> = syncResult
+        .lockSyncResults?.sharedInputSourceResult?.updatedMembers.length
+        ? [
+            {
+              _tag: 'SharedSourceUpdate' as const,
+              sourceName: 'shared-inputs',
+              sourceMemberName: syncResult.lockSyncResults.sharedInputSourceResult.sourceMember,
+              targetCount: syncResult.lockSyncResults.sharedInputSourceResult.updatedMembers.length,
+            },
+          ]
+        : []
+
+      const sharedSourceUpdates: ReadonlyArray<LockSharedSourceUpdate> = [
+        ...sharedSourceUpdatesFromLockSources,
+        ...sharedSourceUpdatesFromInputSource,
+      ]
 
       const syncErrors = collectSyncErrors(syncResult)
       const syncErrorItems = syncErrors.map((e) => ({

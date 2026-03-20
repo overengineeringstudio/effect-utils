@@ -134,6 +134,13 @@ export class LockSyncConfig extends Schema.Class<LockSyncConfig>('LockSyncConfig
       }),
     }),
   ),
+  /**
+   * Propagate all matching devenv.lock inputs from a source member to all others.
+   * Matches inputs by node name and structurally equal `original` field, then
+   * copies the `locked` section. This keeps third-party inputs (nixpkgs, devenv,
+   * git-hooks, etc.) in sync across members without manual enumeration.
+   */
+  sharedInputSource: Schema.optional(Schema.String),
 }) {}
 
 /** All generator configurations */

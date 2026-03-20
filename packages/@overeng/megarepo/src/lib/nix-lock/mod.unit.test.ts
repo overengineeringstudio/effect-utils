@@ -1456,6 +1456,297 @@ describe('shared lock source sync logic', () => {
 })
 
 // =============================================================================
+// Shared Input Source Sync Tests (original-matching)
+// =============================================================================
+
+describe('shared input source sync logic', () => {
+  /**
+   * Deep structural equality check (mirrors the implementation).
+   */
+  const deepEqual = (a: unknown, b: unknown): boolean => {
+    if (a === b) return true
+    if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
+    const aObj = a as Record<string, unknown>
+    const bObj = b as Record<string, unknown>
+    const aKeys = Object.keys(aObj)
+    if (aKeys.length !== Object.keys(bObj).length) return false
+    return aKeys.every((k) => deepEqual(aObj[k], bObj[k]))
+  }
+
+  /**
+   * Simulates the shared input source sync for a set of devenv.lock contents.
+   * Pure function that mirrors the core logic without filesystem effects.
+   */
+  const simulateSharedInputSourceSync = ({
+    sourceMemberName,
+    memberLocks,
+    excludeMembers = new Set<string>(),
+  }: {
+    sourceMemberName: string
+    memberLocks: Record<string, string>
+    excludeMembers?: ReadonlySet<string>
+  }): {
+    updatedLocks: Record<string, string>
+    result: {
+      sourceMember: string
+      propagatableInputs: number
+      updatedMembers: Array<{ name: string; updatedInputs: string[] }>
+    }
+  } => {
+    const updatedLocks: Record<string, string> = { ...memberLocks }
+
+    const sourceContent = memberLocks[sourceMemberName]
+    if (sourceContent === undefined) {
+      return {
+        updatedLocks,
+        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+      }
+    }
+
+    let sourceJson: Record<string, unknown>
+    try {
+      sourceJson = JSON.parse(sourceContent) as Record<string, unknown>
+    } catch {
+      return {
+        updatedLocks,
+        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+      }
+    }
+
+    const sourceNodes = sourceJson['nodes'] as Record<string, Record<string, unknown>> | undefined
+    if (!sourceNodes) {
+      return {
+        updatedLocks,
+        result: { sourceMember: sourceMemberName, propagatableInputs: 0, updatedMembers: [] },
+      }
+    }
+
+    const sourceMap = new Map<string, { locked: unknown; original: unknown }>()
+    for (const [name, node] of Object.entries(sourceNodes)) {
+      if (name === 'root') continue
+      if (node['original'] !== undefined && node['locked'] !== undefined) {
+        sourceMap.set(name, { locked: node['locked'], original: node['original'] })
+      }
+    }
+
+    const updatedMembers: Array<{ name: string; updatedInputs: string[] }> = []
+
+    for (const memberName of Object.keys(memberLocks)) {
+      if (memberName === sourceMemberName) continue
+      if (excludeMembers.has(memberName)) continue
+
+      const content = memberLocks[memberName]
+      if (content === undefined) continue
+
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(content) as Record<string, unknown>
+      } catch {
+        continue
+      }
+
+      const targetNodes = parsed['nodes'] as Record<string, Record<string, unknown>> | undefined
+      if (!targetNodes) continue
+
+      const updatedInputs: string[] = []
+      for (const [name, targetNode] of Object.entries(targetNodes)) {
+        if (name === 'root') continue
+        if (targetNode['original'] === undefined || targetNode['locked'] === undefined) continue
+
+        const sourceEntry = sourceMap.get(name)
+        if (!sourceEntry) continue
+        if (!deepEqual(sourceEntry.original, targetNode['original'])) continue
+        if (deepEqual(sourceEntry.locked, targetNode['locked'])) continue
+
+        targetNode['locked'] = sourceEntry.locked
+        updatedInputs.push(name)
+      }
+
+      if (updatedInputs.length > 0) {
+        updatedLocks[memberName] = JSON.stringify(parsed, null, 2) + '\n'
+        updatedMembers.push({ name: memberName, updatedInputs })
+      }
+    }
+
+    return {
+      updatedLocks,
+      result: {
+        sourceMember: sourceMemberName,
+        propagatableInputs: sourceMap.size,
+        updatedMembers,
+      },
+    }
+  }
+
+  const makeDevenvLock = (
+    nodes: Record<string, { original?: unknown; locked?: unknown; [k: string]: unknown }>,
+  ): string =>
+    JSON.stringify(
+      {
+        nodes: {
+          root: { inputs: Object.fromEntries(Object.keys(nodes).map((k) => [k, k])) },
+          ...nodes,
+        },
+        root: 'root',
+        version: 7,
+      },
+      null,
+      2,
+    )
+
+  it('should propagate locked sections for matching originals', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev-111' },
+      },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-rev-999' },
+      },
+    })
+
+    const { result, updatedLocks } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
+    })
+
+    expect(result.propagatableInputs).toBe(1)
+    expect(result.updatedMembers).toHaveLength(1)
+    expect(result.updatedMembers[0]!.name).toBe('repo-b')
+    expect(result.updatedMembers[0]!.updatedInputs).toEqual(['nixpkgs'])
+    const updatedTarget = JSON.parse(updatedLocks['repo-b']!)
+    expect(updatedTarget.nodes.nixpkgs.locked.rev).toBe('source-rev-111')
+  })
+
+  it('should skip nodes with different originals', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
+      },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-24.05' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'target-rev' },
+      },
+    })
+
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
+    })
+
+    expect(result.updatedMembers).toHaveLength(0)
+  })
+
+  it('should skip nodes that are already in sync', () => {
+    const lock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'same-rev' },
+      },
+    })
+
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': lock, 'repo-b': lock },
+    })
+
+    expect(result.updatedMembers).toHaveLength(0)
+  })
+
+  it('should respect excludeMembers', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
+      },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-rev' },
+      },
+    })
+
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
+      excludeMembers: new Set(['repo-b']),
+    })
+
+    expect(result.updatedMembers).toHaveLength(0)
+  })
+
+  it('should propagate multiple inputs to multiple members', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'new-nixpkgs-rev' },
+      },
+      devenv: {
+        original: { type: 'github', owner: 'cachix', repo: 'devenv' },
+        locked: { type: 'github', owner: 'cachix', repo: 'devenv', rev: 'new-devenv-rev' },
+      },
+    })
+    const targetLockB = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-nixpkgs' },
+      },
+      devenv: {
+        original: { type: 'github', owner: 'cachix', repo: 'devenv' },
+        locked: { type: 'github', owner: 'cachix', repo: 'devenv', rev: 'old-devenv' },
+      },
+    })
+    const targetLockC = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'old-nixpkgs-c' },
+      },
+    })
+
+    const { result, updatedLocks } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLockB, 'repo-c': targetLockC },
+    })
+
+    expect(result.propagatableInputs).toBe(2)
+    expect(result.updatedMembers).toHaveLength(2)
+    expect(result.updatedMembers[0]!.updatedInputs).toEqual(['nixpkgs', 'devenv'])
+    expect(result.updatedMembers[1]!.updatedInputs).toEqual(['nixpkgs'])
+    expect(JSON.parse(updatedLocks['repo-b']!).nodes.nixpkgs.locked.rev).toBe('new-nixpkgs-rev')
+    expect(JSON.parse(updatedLocks['repo-b']!).nodes.devenv.locked.rev).toBe('new-devenv-rev')
+    expect(JSON.parse(updatedLocks['repo-c']!).nodes.nixpkgs.locked.rev).toBe('new-nixpkgs-rev')
+  })
+
+  it('should skip nodes without both original and locked', () => {
+    const sourceLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+        locked: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', rev: 'source-rev' },
+      },
+    })
+    const targetLock = makeDevenvLock({
+      nixpkgs: {
+        original: { type: 'github', owner: 'NixOS', repo: 'nixpkgs', ref: 'nixos-unstable' },
+      },
+    })
+
+    const { result } = simulateSharedInputSourceSync({
+      sourceMemberName: 'repo-a',
+      memberLocks: { 'repo-a': sourceLock, 'repo-b': targetLock },
+    })
+
+    expect(result.updatedMembers).toHaveLength(0)
+  })
+})
+
+// =============================================================================
 // Ref Sync Tests
 // =============================================================================
 
