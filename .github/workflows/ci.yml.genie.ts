@@ -5,6 +5,7 @@ import {
   cachixStep,
   checkoutStep,
   dispatchAlignmentStep,
+  evictCachedPnpmDepsStep,
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
@@ -103,7 +104,13 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
-const job = (step: { name: string; run: string }) => ({
+const job = ({
+  step,
+  extraSteps = [],
+}: {
+  step: { name: string; run: string }
+  extraSteps?: readonly Record<string, unknown>[]
+}) => ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -112,6 +119,7 @@ const job = (step: { name: string; run: string }) => ({
   env: standardCIEnv,
   steps: [
     ...baseSteps,
+    ...extraSteps,
     step,
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
@@ -144,12 +152,22 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 // Jobs keyed by CIJobName for type safety with required status checks
 const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
-    name: 'Type check',
-    run: runDevenvTasksBefore('ts:check'),
+    step: {
+      name: 'Type check',
+      run: runDevenvTasksBefore('ts:check'),
+    },
   }),
   lint: job({
-    name: 'Format + lint',
-    run: runDevenvTasksBefore('lint:check'),
+    step: {
+      name: 'Format + lint',
+      run: runDevenvTasksBefore('lint:check'),
+    },
+    extraSteps: [
+      evictCachedPnpmDepsStep({
+        flakeRef: '.#oxlint-npm',
+        name: 'Evict cached pnpm deps for oxlint-npm',
+      }),
+    ],
   }),
   test: multiPlatformJob({
     name: 'Unit tests',

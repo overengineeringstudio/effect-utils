@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.
   - Prepares the staged workspace install tree once inside the fixed-output derivation instead of restoring a vendored pnpm store and rerunning `pnpm install` in downstream builds
   - Normalizes pnpm's absolute-path and timestamp metadata so the prepared tree stays deterministic across repeated builds
   - Restores the prepared tree into the real workspace and relocates pnpm path placeholders before Bun-based build steps run
+- **CI workflow / genie/ci-workflow**: Evict cached pnpm-deps outputs before lint resolves `oxlint-npm`
+  - Avoids stale fixed-output pnpm cache entries masking the validated prepared-install-tree hash on CI runners
+  - Keeps the cache bust scoped to the lint job instead of broadening all workflow steps
 - **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
   - Allows ranged `peerDependencies`
   - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`
