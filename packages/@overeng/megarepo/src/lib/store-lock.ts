@@ -9,6 +9,7 @@
  * $MEGAREPO_STORE/.locks/. TTL-based permits auto-expire if a process crashes.
  */
 
+import type { FileSystem, Path } from '@effect/platform'
 import { Context, Duration, Effect, Layer, Ref } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
@@ -37,7 +38,9 @@ export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, Stor
  * Keyed distributed semaphore registry — lazily creates one DistributedSemaphore per key.
  * Each semaphore is backed by file-system locks for cross-process coordination.
  */
-const makeKeyedDistributedRegistry = (lockLayer: Layer.Layer<DistributedSemaphoreBacking>) =>
+const makeKeyedDistributedRegistry = (
+  lockLayer: Layer.Layer<DistributedSemaphoreBacking, never, FileSystem.FileSystem | Path.Path>,
+) =>
   Effect.gen(function* () {
     type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
     const mapRef = yield* Ref.make(new Map<string, Semaphore>())
@@ -60,7 +63,9 @@ const makeKeyedDistributedRegistry = (lockLayer: Layer.Layer<DistributedSemaphor
             yield* Ref.update(mapRef, (map) => new Map(map).set(key, semaphore!))
           }
 
-          return yield* semaphore.withPermits(1)(effect).pipe(Effect.provide(lockLayer))
+          return yield* semaphore
+            .withPermits(1)(effect)
+            .pipe(Effect.provide(lockLayer), Effect.orDie)
         })
 
     return { withLock } as const
