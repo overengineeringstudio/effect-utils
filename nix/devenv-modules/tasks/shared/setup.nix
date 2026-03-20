@@ -39,6 +39,7 @@
   ...
 }:
 let
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
   userRequiredTasks = requiredTasks;
   userOptionalTasks = optionalTasks;
@@ -146,7 +147,7 @@ let
   allSetupTasks = setupTasks;
 in
 {
-  tasks =
+  tasks = cliGuard.stripGuards (
     lib.optionalAttrs completionsEnabled {
       "${completionsTaskName}" = {
         description = "Install shell completions for CLI tools";
@@ -231,5 +232,6 @@ in
           done
         '';
       };
-    };
+    }
+  );
 }

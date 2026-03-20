@@ -16,8 +16,10 @@
 # TODO: Remove once devenv supports defaultMode for tasks (https://github.com/cachix/devenv/issues/2417)
 { pkgs, ... }:
 {
-  # cli-guard passthrough: DT_PASSTHROUGH=1 lets task exec scripts call
-  # guarded CLIs. enterShell unsets it so interactive shell usage hits guards.
+  # cli-guard passthrough (belt-and-suspenders): guarded tasks now inject
+  # DT_PASSTHROUGH=1 into their exec scripts directly, but we also set it
+  # via env for any non-guarded scripts that may call guarded CLIs.
+  # enterShell unsets it so interactive shell usage hits guards.
   env.DT_PASSTHROUGH = "1";
 
   # Wrapper that runs tasks with --mode before so dependencies run automatically.

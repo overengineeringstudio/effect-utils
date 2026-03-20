@@ -188,5 +188,5 @@ in
   # Provide tsgolint when type-aware linting is enabled
   packages = lib.optionals (tsconfig != null) [ pkgs.tsgolint ] ++ cliGuard.fromTasks guardedTasks;
 
-  tasks = (cliGuard.stripGuards guardedTasks) // otherTasks;
+  tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 }

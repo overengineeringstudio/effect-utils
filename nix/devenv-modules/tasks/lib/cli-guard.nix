@@ -6,20 +6,23 @@
 # dt wrapper, and CI).
 #
 # How passthrough works:
-#   - devenv sets env.DT_PASSTHROUGH=1 (active during task execution)
+#   - stripGuards sets per-task env.DT_PASSTHROUGH=1 on all tasks
 #   - enterShell unsets it (so interactive shell usage hits guards)
 #   - dt wrapper re-sets it before calling devenv tasks run
 #   - CI helper (runDevenvTasksBefore) sets it
 #
-# Usage in task modules (Option A — derive guards from task defs):
+# Usage in task modules:
 #
 #   let cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
 #   in {
-#     packages = cliGuard.fromTasks tasks;
-#     tasks = cliGuard.stripGuards tasks;
+#     packages = cliGuard.fromTasks guardedTasks;
+#     tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 #   }
 #
-#   where tasks have a `guard = "cli-name"` attribute on guarded entries.
+#   guardedTasks have a `guard = "cli-name"` attribute on entries that
+#   should appear in the guard's help message. otherTasks may also call
+#   guarded CLIs. stripGuards removes guard attrs and sets DT_PASSTHROUGH=1
+#   on all tasks so they can call guarded CLIs during task execution.
 #
 # Low-level API (for cases where tasks aren't a plain attrset):
 #
@@ -123,9 +126,14 @@ let
     in
     map mkGuardForCli cliNames;
 
-  # Strip the `guard` attribute from all tasks in an attrset.
-  # Use this before passing tasks to devenv (which doesn't know about `guard`).
-  stripGuards = builtins.mapAttrs (_: def: builtins.removeAttrs def [ "guard" ]);
+  # Strip the `guard` attribute and set DT_PASSTHROUGH=1 via per-task env.
+  # devenv's module-level `env` attributes are not propagated to task
+  # subprocesses, but per-task `env` is. Pass all tasks (guarded + other)
+  # so every task can call guarded CLIs during task execution.
+  stripGuards = builtins.mapAttrs (_: def:
+    let stripped = builtins.removeAttrs def [ "guard" ];
+    in stripped // { env = (stripped.env or { }) // { DT_PASSTHROUGH = "1"; }; }
+  );
 
 in
 {

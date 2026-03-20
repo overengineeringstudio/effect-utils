@@ -27,12 +27,13 @@
     "pnpm:install"
   ],
 }:
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
 in
 {
-  tasks = {
+  tasks = cliGuard.stripGuards {
     # TODO(effect-utils#377): this should become part of the normal tsgo-backed
     # `ts:check` flow once we stop using `tsc --build` for the main workspace
     # type check.

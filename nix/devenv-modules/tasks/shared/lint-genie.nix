@@ -6,12 +6,13 @@
 #   ];
 #
 # Provides: lint:check, lint:check:genie, lint:fix
-{ lib, ... }:
+{ lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
 in
 {
-  tasks = {
+  tasks = cliGuard.stripGuards {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       exec = trace.exec "lint:check:genie" "genie --check";
