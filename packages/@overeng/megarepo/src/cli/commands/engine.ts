@@ -9,7 +9,7 @@
 import { Prompt } from '@effect/cli'
 import type { CommandExecutor, Terminal } from '@effect/platform'
 import { FileSystem, type Error as PlatformError } from '@effect/platform'
-import { Effect, Option, type ParseResult } from 'effect'
+import { Effect, Layer, Option, type ParseResult } from 'effect'
 import React from 'react'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
@@ -38,10 +38,10 @@ import {
 } from '../../lib/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../lib/nix-lock/mod.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../lib/store-hygiene.ts'
+import { StoreLock } from '../../lib/store-lock.ts'
 import { Store, StoreLayer } from '../../lib/store.ts'
 import {
   type GitProtocol,
-  makeRepoSemaphoreMap,
   type MissingRefAction,
   type MissingRefInfo,
   collectSyncErrors,
@@ -249,11 +249,6 @@ export const syncMegarepo = <R = never>({
     const allMembers = Object.entries(config.members)
     const members = allMembers.filter(([name]) => !skippedMemberNames.has(name))
 
-    // Create a semaphore map for serializing bare repo creation per repo URL.
-    // This prevents race conditions when multiple members reference the same repo
-    // (e.g., jq-latest and jq-v16 both from jqlang/jq).
-    const semaphoreMap = yield* makeRepoSemaphoreMap()
-
     // Sync all members with limited concurrency for visible progress
     // Use unbounded for non-TTY (faster) or limited (4) for TTY (visible progress)
     const concurrency = progressHandle !== undefined ? 4 : 'unbounded'
@@ -275,7 +270,6 @@ export const syncMegarepo = <R = never>({
             mode,
             dryRun,
             force,
-            semaphoreMap,
             gitProtocol,
             createBranches,
             ...(options.commitMode === true ? { commitMode: true } : {}),
@@ -858,4 +852,4 @@ export const runCommand = ({
     ).pipe(Effect.provide(outputModeLayer(output)))
 
     return syncResult
-  }).pipe(Effect.scoped, Effect.provide(StoreLayer))
+  }).pipe(Effect.scoped, Effect.provide(Layer.merge(StoreLayer, StoreLock.Default)))

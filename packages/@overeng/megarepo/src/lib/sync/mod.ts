@@ -7,14 +7,11 @@
 export {
   getCloneUrl,
   getCloneUrlHttps,
-  getRepoSemaphore,
   type GitProtocol,
-  makeRepoSemaphoreMap,
   type MissingRefAction,
   type MissingRefInfo,
   resolveCloneUrl,
   syncMember,
-  type RepoSemaphoreMap,
 } from './member.ts'
 export {
   countSyncResults,
