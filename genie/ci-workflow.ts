@@ -362,6 +362,10 @@ export const deployCommentStep = (opts: {
  * Step that dispatches `upstream-changed` repository_dispatch to a target repo.
  * Add this to upstream CI workflows so merges to main trigger downstream alignment.
  *
+ * Uses `gh` directly (pre-installed on GitHub-hosted runners) instead of `nix run nixpkgs#gh`
+ * because notify-alignment jobs run on `ubuntu-latest` to avoid wasting self-hosted runner
+ * resources on a single API call.
+ *
  * Requires `MEGAREPO_ALIGNMENT_TOKEN` secret (fine-grained PAT with Contents + Pull Requests write).
  */
 export const dispatchAlignmentStep = (opts: {
@@ -373,10 +377,7 @@ export const dispatchAlignmentStep = (opts: {
   ({
     name: 'Dispatch alignment to coordinator',
     env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: [
-      `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
-      `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
-    ].join(' && '),
+    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | gh api repos/${opts.targetRepo}/dispatches --input -`,
     shell: 'bash',
   })
 
