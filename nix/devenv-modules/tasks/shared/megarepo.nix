@@ -106,7 +106,7 @@ let
         fi
 
         # Verify all configured members have symlinks in repos/
-        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name') || exit 1
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .value.members[].name') || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             exit 1
@@ -129,7 +129,7 @@ let
 
         # Check for missing member symlinks
         missing=""
-        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .members[].name') || exit 1
+        members=$(mr ls --output json | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .value.members[].name') || exit 1
         for member in $members; do
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             missing="$missing $member"
