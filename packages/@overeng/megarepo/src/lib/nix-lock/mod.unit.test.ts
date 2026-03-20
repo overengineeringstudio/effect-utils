@@ -1114,14 +1114,6 @@ describe('source file rev sync', () => {
 // Shared Input Source Sync Tests (original-matching)
 // =============================================================================
 
-/** Assert the result is a success (not an error) and return it narrowed */
-const assertSuccess = <T extends { _tag?: string }>(result: T): Exclude<T, { _tag: 'error' }> => {
-  if ('_tag' in result && result._tag === 'error') {
-    throw new Error(`Expected success but got error: ${JSON.stringify(result)}`)
-  }
-  return result as Exclude<T, { _tag: 'error' }>
-}
-
 describe('shared input source sync logic', () => {
   /**
    * Deep structural equality check (mirrors the implementation).
@@ -1148,6 +1140,15 @@ describe('shared input source sync logic', () => {
         propagatableInputs: number
         updatedMembers: Array<{ name: string; updatedInputs: string[] }>
       }
+
+  type SuccessResult = Exclude<SimResult, { _tag: 'error' }>
+
+  const assertSuccess = (result: SimResult): SuccessResult => {
+    if ('_tag' in result) {
+      throw new Error(`Expected success but got error: ${JSON.stringify(result)}`)
+    }
+    return result
+  }
 
   const simulateSharedInputSourceSync = ({
     sourceMemberName,
