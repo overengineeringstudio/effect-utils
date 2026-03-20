@@ -165,6 +165,31 @@ let
       echo "$1" | grep -oE 'actual:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true
     }
 
+    extract_hash_mismatches() {
+      printf '%s\n' "$1" | ${pkgs.perl}/bin/perl -ne '
+        if (/hash mismatch in fixed-output derivation \x27([^\x27]+)\x27/) {
+          $drv = $1;
+          next;
+        }
+        if (defined $drv && /got:\s+(sha256-[A-Za-z0-9+\/=]+)/) {
+          print "$drv\t$1\n";
+          undef $drv;
+        }
+      '
+    }
+
+    local_dep_dir_from_drv_path() {
+      local drvPath="$1"
+      local encodedDir
+
+      encodedDir=$(printf '%s\n' "$drvPath" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | ${pkgs.gnused}/bin/sed 's/-pnpm-deps$//' || true)
+      if [ -z "$encodedDir" ]; then
+        return 0
+      fi
+
+      printf '%s\n' "$encodedDir" | ${pkgs.gnused}/bin/sed 's/--/\/@/g; s/-/\//g'
+    }
+
     echo "Checking $name ($flakeRef)..."
 
     update_fingerprint_hashes
@@ -209,7 +234,7 @@ let
       echo "=== Iteration $iteration ==="
       
       set +e
-      output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1)
+      output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --keep-going --option substituters "https://cache.nixos.org" 2>&1)
       status=$?
       set -e
 
@@ -225,7 +250,7 @@ let
         exit 0
       fi
 
-      newHash=$(extract_got_hash "$output")
+      hashMismatches=$(extract_hash_mismatches "$output")
       actualHash=$(extract_actual_hash "$output")
 
       if [ -n "$actualHash" ] && [ -n "$(read_hash_from_file "lockfileHash" "$hashSource" "$name")" ]; then
@@ -235,7 +260,7 @@ let
         continue
       fi
 
-      if [ -z "$newHash" ]; then
+      if [ -z "$hashMismatches" ]; then
         # No hash mismatch found - check for pnpm offline install failure
         # This happens when pnpm-lock.yaml changed but the old hash still "works"
         # (fetchPnpmDeps succeeds but creates incomplete store)
@@ -255,45 +280,49 @@ let
         echo "$output"
         exit 1
       fi
-      
-      # Try to identify which hash needs updating from the error
-      # fetchPnpmDeps errors include the pname which contains the dir path
-      # e.g., "genie-unwrapped-packages--overeng-utils-pnpm-deps" for localDeps dir "packages/@overeng/utils"
-      localDepDir=""
-      
-      # Look for packages-*-pnpm-deps pattern in the error (indicates localDeps hash)
-      if echo "$output" | grep -qE "packages-[a-zA-Z0-9_-]+-pnpm-deps"; then
-        # Extract the encoded dir (e.g., "packages--overeng-utils")
-        encodedDir=$(echo "$output" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | ${pkgs.gnused}/bin/sed 's/-pnpm-deps$//' || true)
-        if [ -n "$encodedDir" ]; then
-          # Convert back to original path format
-          # packages--overeng-utils -> packages/@overeng/utils
-          localDepDir=$(echo "$encodedDir" | ${pkgs.gnused}/bin/sed 's/--/\/@/g; s/-/\//g')
-          echo "Detected stale hash for localDep: $localDepDir"
+
+      seenTargets=$(mktemp)
+      while IFS=$'\t' read -r mismatchDrv mismatchHash; do
+        if [ -z "$mismatchDrv" ] || [ -z "$mismatchHash" ]; then
+          continue
         fi
-      fi
-      
-      if [ -n "$localDepDir" ]; then
-        # Update localDeps hash for this specific dir
-        echo "Updating localDeps hash for $localDepDir to $newHash..."
-        
-        # Use perl to update the specific localDeps entry
-        export LOCAL_DEP_DIR="$localDepDir"
-        export NEW_HASH="$newHash"
-        ${pkgs.perl}/bin/perl -0777 -i -pe '
-          my $dir = $ENV{"LOCAL_DEP_DIR"};
-          my $hash = $ENV{"NEW_HASH"};
-          s/(\{\s*dir\s*=\s*"\Q$dir\E"\s*;\s*hash\s*=\s*)"sha256-[^"]+"/$1"$hash"/g;
-        ' "$hashSource"
-        
-        updated_any=true
-      else
-        # Assume it is the main hash (pnpmDepsHash/bunDepsHash)
-        echo "Updating $mainHashKey to $newHash..."
-        update_hash_in_file "$mainHashKey" "$newHash" "$hashSource" "$name"
+
+        localDepDir=$(local_dep_dir_from_drv_path "$mismatchDrv")
+        if [ -n "$localDepDir" ]; then
+          target="local:$localDepDir"
+          if grep -Fxq "$target" "$seenTargets"; then
+            continue
+          fi
+          echo "$target" >> "$seenTargets"
+
+          echo "Updating localDeps hash for $localDepDir to $mismatchHash..."
+
+          export LOCAL_DEP_DIR="$localDepDir"
+          export NEW_HASH="$mismatchHash"
+          ${pkgs.perl}/bin/perl -0777 -i -pe '
+            my $dir = $ENV{"LOCAL_DEP_DIR"};
+            my $hash = $ENV{"NEW_HASH"};
+            s/(\{\s*dir\s*=\s*"\Q$dir\E"\s*;\s*hash\s*=\s*)"sha256-[^"]+"/$1"$hash"/g;
+          ' "$hashSource"
+
+          updated_any=true
+          continue
+        fi
+
+        target="main"
+        if grep -Fxq "$target" "$seenTargets"; then
+          continue
+        fi
+        echo "$target" >> "$seenTargets"
+
+        echo "Updating $mainHashKey to $mismatchHash..."
+        update_hash_in_file "$mainHashKey" "$mismatchHash" "$hashSource" "$name"
         restoreMainHashOnExit=false
         updated_any=true
-      fi
+      done <<EOF
+$hashMismatches
+EOF
+      rm -f "$seenTargets"
     done
     
     echo "✗ $name: exceeded max iterations ($MAX_ITERATIONS), something is wrong"

@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/tasks/shared/nix-cli**: Update multiple stale Nix FOD hashes per `dt nix:hash:*` iteration
+  - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
+  - Parses and applies multiple reported hash updates in one pass instead of only the first mismatch
+  - Adds regression coverage for mixed main-hash and local-dependency hash updates
 - **nix/workspace-tools/mk-pnpm-deps**: Make pnpm deps hashes platform-agnostic by fetching the lockfile package set directly into the store
   - Replaces host-sensitive `pnpm install`-based FOD generation with lockfile-driven `pnpm store add`
   - Keeps store normalization deterministic by zeroing `checkedAt`, sorting file maps, and pruning orphan CAS files
