@@ -81,6 +81,7 @@ in
       nativeBuildInputs = [
         pkgs.pnpm
         pkgs.nodejs
+        pkgs.python3
         pkgs.cacert
         pkgs.zstd
       ];
@@ -304,24 +305,35 @@ in
             .replace(/"storeDir": "[^"]+"/g, '"storeDir": "' + storePlaceholder + '"')
         );
 
-        const rewriteBinScripts = (dirPath) => {
+        const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+          const realDirPath = fs.realpathSync(dirPath);
+          if (visitedRealPaths.has(realDirPath)) {
+            return;
+          }
+          visitedRealPaths.add(realDirPath);
+
           for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
             const entryPath = path.join(dirPath, entry.name);
+            const isDirectory =
+              entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
 
-            if (entry.isDirectory()) {
-              if (entry.name === ".bin") {
-                for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
-                  if (!binEntry.isFile()) {
-                    continue;
-                  }
-                  rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
-                    script.split(workspaceRoot).join(workspacePlaceholder)
-                  );
-                }
-              } else {
-                rewriteBinScripts(entryPath);
-              }
+            if (!isDirectory) {
+              continue;
             }
+
+            if (entry.name === ".bin") {
+              for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+                if (!binEntry.isFile()) {
+                  continue;
+                }
+                rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
+                  script.split(workspaceRoot).join(workspacePlaceholder)
+                );
+              }
+              continue;
+            }
+
+            rewriteBinScripts(entryPath, visitedRealPaths);
           }
         };
 
@@ -336,9 +348,67 @@ NODE
         find . -type f ! -perm /111 -exec chmod 444 {} +
 
         mkdir -p $out
-        LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-          --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
-          | zstd -T1 -q -o $out/prepared-workspace.tar.zst
+        export PREPARED_WORKSPACE_ARCHIVE=$(mktemp "$NIX_BUILD_TOP/prepared-workspace.XXXXXX.tar")
+        python <<'PY'
+import os
+import stat
+import tarfile
+
+workspace_root = os.getcwd()
+archive_path = os.environ["PREPARED_WORKSPACE_ARCHIVE"]
+
+def build_tarinfo(path: str, arcname: str) -> tarfile.TarInfo:
+    st = os.lstat(path)
+    info = tarfile.TarInfo(arcname)
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    info.mtime = 0
+
+    if stat.S_ISDIR(st.st_mode):
+        info.type = tarfile.DIRTYPE
+        info.mode = 0o755
+    elif stat.S_ISLNK(st.st_mode):
+        info.type = tarfile.SYMTYPE
+        info.mode = 0o777
+        info.linkname = os.readlink(path)
+    elif stat.S_ISREG(st.st_mode):
+        info.type = tarfile.REGTYPE
+        info.mode = 0o555 if st.st_mode & 0o111 else 0o444
+        info.size = st.st_size
+    else:
+        raise RuntimeError(f"Unsupported file type in prepared workspace: {path}")
+
+    return info
+
+def add_path(archive: tarfile.TarFile, path: str, arcname: str) -> None:
+    info = build_tarinfo(path, arcname)
+    if info.isreg():
+        with open(path, "rb") as handle:
+            archive.addfile(info, handle)
+    else:
+        archive.addfile(info)
+
+with tarfile.open(archive_path, mode="w", format=tarfile.GNU_FORMAT) as archive:
+    add_path(archive, workspace_root, ".")
+
+    for current_root, dirnames, filenames in os.walk(workspace_root):
+        dirnames.sort()
+        filenames.sort()
+
+        for dirname in dirnames:
+            path = os.path.join(current_root, dirname)
+            relpath = os.path.relpath(path, workspace_root)
+            add_path(archive, path, f"./{relpath}")
+
+        for filename in filenames:
+            path = os.path.join(current_root, filename)
+            relpath = os.path.relpath(path, workspace_root)
+            add_path(archive, path, f"./{relpath}")
+PY
+        zstd -T1 -q "$PREPARED_WORKSPACE_ARCHIVE" -o $out/prepared-workspace.tar.zst
+        rm -f "$PREPARED_WORKSPACE_ARCHIVE"
 
         runHook postInstall
       '';
@@ -392,21 +462,32 @@ NODE
         }
       };
 
-      const rewriteBinScripts = (dirPath) => {
+      const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+        const realDirPath = fs.realpathSync(dirPath);
+        if (visitedRealPaths.has(realDirPath)) {
+          return;
+        }
+        visitedRealPaths.add(realDirPath);
+
         for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
           const entryPath = path.join(dirPath, entry.name);
+          const isDirectory =
+            entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
 
-          if (entry.isDirectory()) {
-            if (entry.name === ".bin") {
-              for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
-                if (binEntry.isFile()) {
-                  rewriteTextFile(path.join(entryPath, binEntry.name));
-                }
-              }
-            } else {
-              rewriteBinScripts(entryPath);
-            }
+          if (!isDirectory) {
+            continue;
           }
+
+          if (entry.name === ".bin") {
+            for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+              if (binEntry.isFile()) {
+                rewriteTextFile(path.join(entryPath, binEntry.name));
+              }
+            }
+            continue;
+          }
+
+          rewriteBinScripts(entryPath, visitedRealPaths);
         }
       };
 

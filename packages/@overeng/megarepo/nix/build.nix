@@ -16,7 +16,7 @@ let
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
-    pnpmDepsHash = "sha256-V/5Dd2nVUaasA7Gxci2S/de+5SCoJkpTA6pYb8OFEkM=";
+    pnpmDepsHash = "sha256-3my462h9xc+V3AALlS0w9j7qgdeHW253nKA/w/OL6Qc=";
     smokeTestArgs = [ "--help" ];
     inherit lockfileHash gitRev commitTs dirty;
   };
