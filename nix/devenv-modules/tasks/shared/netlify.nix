@@ -32,6 +32,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
   hasPackages = packages != [];
 
@@ -113,8 +114,8 @@ let
 
 in {
   tasks = lib.mkMerge (
-    (if hasPackages then map mkDeployTask packages else [])
-    ++ [{
+    (if hasPackages then map (pkg: cliGuard.stripGuards (mkDeployTask pkg)) packages else [])
+    ++ [(cliGuard.stripGuards {
       "netlify:deploy" = {
         description = "Deploy all storybooks to Netlify";
         exec = null;
@@ -122,6 +123,6 @@ in {
           then map (pkg: "netlify:deploy:${pkg.name}") packages
           else [];
       };
-    }]
+    })]
   );
 }

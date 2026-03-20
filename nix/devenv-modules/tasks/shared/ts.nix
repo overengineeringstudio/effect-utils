@@ -208,5 +208,5 @@ in
     pkgs.bc
   ] ++ cliGuard.fromTasks guardedTasks;
 
-  tasks = (cliGuard.stripGuards guardedTasks) // otherTasks;
+  tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 }

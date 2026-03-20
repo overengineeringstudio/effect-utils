@@ -28,9 +28,10 @@
   packages ? [ ],
   installTask ? "pnpm:install",
 }:
-{ lib, config, ... }:
+{ lib, config, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [ ];
 
   mkBuildTask = pkg: {
@@ -71,15 +72,15 @@ let
 in
 {
   tasks = lib.mkMerge (
-    (if hasPackages then map mkBuildTask packages else [ ])
+    (if hasPackages then map (pkg: cliGuard.stripGuards (mkBuildTask pkg)) packages else [ ])
     ++ [
-      {
+      (cliGuard.stripGuards {
         "storybook:build" = {
           description = "Build all storybooks";
           exec = null;
           after = if hasPackages then map (pkg: "storybook:build:${pkg.name}") packages else [ ];
         };
-      }
+      })
     ]
   );
 
