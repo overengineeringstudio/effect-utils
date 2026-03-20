@@ -36,6 +36,7 @@ const makeKeyedSemaphoreRegistry = () =>
     return { withLock } as const
   })
 
+/** Keyed semaphore service for serializing concurrent access to shared store resources */
 export class StoreLock extends Effect.Service<StoreLock>()('megarepo/StoreLock', {
   effect: Effect.gen(function* () {
     const repoLocks = yield* makeKeyedSemaphoreRegistry()
