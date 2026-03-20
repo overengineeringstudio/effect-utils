@@ -1,11 +1,11 @@
 # megarepo
 
-Megarepo (`mr`) composes multiple git repositories into a shared development workspace. It materializes member repos from `megarepo.json` into `repos/`, and records exact commits in `megarepo.lock` when you explicitly manage the lock.
+Megarepo (`mr`) composes multiple git repositories into a shared development workspace. It materializes member repos from `megarepo.kdl` into `repos/`, and records exact commits in `megarepo.lock` when you explicitly manage the lock.
 
 ## Why megarepo?
 
 - Shared worktrees in `~/.megarepo` avoid duplicate clones across workspaces
-- `megarepo.json` declares branch or tag intent
+- `megarepo.kdl` declares branch or tag intent (KDL v2 format, hand-written)
 - `megarepo.lock` records exact commits for CI and reproducible setups
 - Workspace sync and lock management are separate operations
 
@@ -59,7 +59,7 @@ After `mr fetch --apply` and `mr lock`:
 
 ```text
 my-megarepo/
-├── megarepo.json
+├── megarepo.kdl
 ├── megarepo.lock
 └── repos/
     ├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/

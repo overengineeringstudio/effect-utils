@@ -1,5 +1,7 @@
 # megarepo-config
 
+> **Deprecated:** Megarepo config is now hand-written in KDL v2 format (`megarepo.kdl`). The `megarepoJson()` genie generator is no longer needed. See the [megarepo docs](../../../../megarepo/docs/spec.md) for the current config format. The API below is kept for backward compatibility only.
+
 Generate `megarepo.json` files with type-safe configuration for megarepo workspaces.
 
 ## Usage
