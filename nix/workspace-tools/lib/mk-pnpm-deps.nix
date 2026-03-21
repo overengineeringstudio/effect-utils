@@ -33,7 +33,6 @@ let
   lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
-  preparedStorePlaceholder = "/__pnpm_prepared_store__/v10";
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -174,8 +173,6 @@ in
         done < .pnpm-install-roots.txt
 
         export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
-        export PREPARED_STORE_PLACEHOLDER='${preparedStorePlaceholder}'
-
         node <<'NODE'
         const fs = require("fs");
         const path = require("path");
@@ -183,27 +180,6 @@ in
         const workspaceRoot = process.cwd();
         const workspaceRealRoot = fs.realpathSync(workspaceRoot);
         const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
-        const storePath = process.env.STORE_PATH + "/v10";
-        const storeRealPath = fs.realpathSync(storePath);
-        const storePlaceholder = process.env.PREPARED_STORE_PLACEHOLDER;
-
-        const replaceInString = (value) =>
-          typeof value === "string"
-            ? value
-                .split(workspaceRoot).join(workspacePlaceholder)
-                .split(workspaceRealRoot).join(workspacePlaceholder)
-                .split(storePath).join(storePlaceholder)
-                .split(storeRealPath).join(storePlaceholder)
-            : value;
-
-        const rewriteJsonFile = (filePath, transform) => {
-          if (!fs.existsSync(filePath)) {
-            return;
-          }
-
-          const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-          fs.writeFileSync(filePath, JSON.stringify(transform(parsed), undefined, 2) + "\n");
-        };
 
         const rewriteTextFile = (filePath, transform) => {
           if (!fs.existsSync(filePath)) {
@@ -214,21 +190,9 @@ in
           fs.writeFileSync(filePath, next);
         };
 
-        const rewriteWorkspacePaths = (value) => {
-          if (Array.isArray(value)) {
-            return value.map(rewriteWorkspacePaths);
-          }
-          if (value && typeof value === "object") {
-            return Object.fromEntries(
-              Object.entries(value).map(([key, nestedValue]) => [
-                replaceInString(key),
-                rewriteWorkspacePaths(nestedValue),
-              ])
-            );
-          }
-          return replaceInString(value);
-        };
-
+        // pnpm virtual packages for workspace `file:` deps should point back to
+        // the staged workspace members, not copied package snapshots, or the
+        // prepared tree will bake in install-root-specific absolute paths.
         const workspacePackages = new Map();
 
         const collectWorkspacePackages = (dirPath) => {
@@ -319,19 +283,6 @@ in
         collectWorkspacePackages(workspaceRoot);
         relinkLocalVirtualPackages(workspaceRoot);
 
-        rewriteJsonFile(path.join(workspaceRoot, "node_modules/.pnpm-workspace-state-v1.json"), (state) => ({
-          ...rewriteWorkspacePaths(state),
-          lastValidatedTimestamp: 0,
-        }));
-
-        rewriteTextFile(path.join(workspaceRoot, "node_modules/.modules.yaml"), (modulesYaml) =>
-          modulesYaml
-            .replace(/^prunedAt: .*$/m, "prunedAt: Thu, 01 Jan 1970 00:00:00 GMT")
-            .replace(/^storeDir: .*$/m, "storeDir: " + storePlaceholder)
-            .replace(/"prunedAt": "[^"]+"/g, '"prunedAt": "Thu, 01 Jan 1970 00:00:00 GMT"')
-            .replace(/"storeDir": "[^"]+"/g, '"storeDir": "' + storePlaceholder + '"')
-        );
-
         const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
           const realDirPath = fs.realpathSync(dirPath);
           if (visitedRealPaths.has(realDirPath)) {
@@ -366,6 +317,11 @@ in
 
         rewriteBinScripts(workspaceRoot);
 NODE
+
+        # These pnpm bookkeeping files are only needed for future pnpm
+        # operations. Downstream builders restore a prepared tree and go
+        # straight to bun, so keeping them only widens the determinism surface.
+        rm -f node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json
 
         rm -rf "$STORE_PATH"
         rm -f .pnpm-install-roots.txt
@@ -465,9 +421,6 @@ PY
       export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
       export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
 
-      if [ -f "$PREPARED_WORKSPACE_TARGET/node_modules/.pnpm-workspace-state-v1.json" ]; then
-        chmod u+w "$PREPARED_WORKSPACE_TARGET/node_modules/.pnpm-workspace-state-v1.json"
-      fi
       find "$PREPARED_WORKSPACE_TARGET" -path '*/.bin/*' -type f -exec chmod u+w {} +
 
       node <<'NODE'
@@ -518,7 +471,6 @@ PY
         }
       };
 
-      rewriteTextFile(path.join(workspaceTarget, "node_modules/.pnpm-workspace-state-v1.json"));
       rewriteBinScripts(workspaceTarget);
 NODE
     '';
