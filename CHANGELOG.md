@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   - `hasWorktree` now checks for `.git` file existence instead of just directory existence, so broken partial worktrees are properly detected and recreated
   - Lock-protected worktree creation cleans up broken directory remnants and prunes stale git worktree bookkeeping before recreating
   - Fix semaphore creation race in `StoreLock` using `SynchronizedRef` for atomic get-or-create
+  - Make `broken_worktree` non-blocking in apply mode pre-flight checks (apply self-heals broken worktrees)
 
 - **devenv/tasks/shared/nix-cli**: Update multiple stale Nix FOD hashes per `dt nix:hash:*` iteration
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
