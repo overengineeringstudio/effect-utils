@@ -82,4 +82,32 @@ describe('StoreLock', () => {
       }),
     ),
   )
+
+  it.effect('worktree lock serializes concurrent creation for same path (issue #423)', () =>
+    withStoreLock(
+      Effect.gen(function* () {
+        const { withWorktreeLock } = yield* StoreLock
+        const creationOrder: number[] = []
+
+        /** Simulates two nested megarepos trying to create the same worktree */
+        yield* Effect.all(
+          Array.from(
+            { length: 5 },
+            (_, i) => () =>
+              withWorktreeLock('/store/github.com/org/shared-member/refs/heads/main/')(
+                Effect.gen(function* () {
+                  yield* Effect.yieldNow()
+                  creationOrder.push(i)
+                }),
+              ),
+          ).map((f) => f()),
+          { concurrency: 'unbounded' },
+        )
+
+        // All 5 ran exactly once, serialized (no duplicates, no drops)
+        expect(creationOrder).toHaveLength(5)
+        expect(new Set(creationOrder).size).toBe(5)
+      }),
+    ),
+  )
 })

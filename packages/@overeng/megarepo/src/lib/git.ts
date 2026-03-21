@@ -265,6 +265,13 @@ export const removeWorktree = (args: { repoPath: string; worktreePath: string; f
     yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
   })
 
+/** Prune stale worktree bookkeeping entries from a bare repo */
+export const pruneWorktrees = (repoPath: string) =>
+  runGitCommand({ args: ['worktree', 'prune'], cwd: repoPath }).pipe(
+    Effect.asVoid,
+    Effect.withSpan('git/worktree-prune', { attributes: { 'span.label': repoPath, repoPath } }),
+  )
+
 /**
  * Move a git worktree to a new path.
  */

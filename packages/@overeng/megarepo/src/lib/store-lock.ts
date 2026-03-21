@@ -5,13 +5,17 @@
  * store resources — both within a single process (concurrent fibers) and
  * across separate mr processes.
  *
- * Uses effect-distributed-lock with a file-system backing stored in
+ * Uses DistributedSemaphore with a file-system backing stored in
  * $MEGAREPO_STORE/.locks/. TTL-based permits auto-expire if a process crashes.
+ *
+ * Per-key semaphores are cached in-memory via SynchronizedRef for performance
+ * (avoids repeated file-system holderId allocation). The file-system backing
+ * handles cross-process and cross-fiber serialization.
  */
 
 import { createHash } from 'node:crypto'
 
-import { Context, Duration, Effect, Layer, Ref } from 'effect'
+import { Context, Duration, Effect, Layer, SynchronizedRef } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 import { DistributedSemaphore, type DistributedSemaphoreBacking } from '@overeng/utils'
@@ -38,37 +42,37 @@ export interface StoreLockService {
 /** Distributed semaphore service for serializing concurrent access to shared store resources */
 export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, StoreLockService>() {}
 
-/**
- * Keyed distributed semaphore registry — lazily creates one DistributedSemaphore per key.
- * Takes an eagerly-built backing context so withLock has no extra deps.
- * Keys are hashed to avoid filesystem NAME_MAX limits.
- */
-const makeKeyedDistributedRegistry = (
-  backingContext: Context.Context<DistributedSemaphoreBacking>,
-) =>
-  Effect.gen(function* () {
-    type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
-    const mapRef = yield* Ref.make(new Map<string, Semaphore>())
+type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
 
-    const withLock =
-      (key: string) =>
+/**
+ * Create a keyed lock function backed by distributed semaphores.
+ * Keys are hashed to avoid filesystem NAME_MAX limits.
+ * A namespace prefix separates independent lock registries (e.g. repo vs worktree).
+ * Semaphores are cached per-key via SynchronizedRef (atomic get-or-create).
+ */
+const makeKeyedLock = ({
+  backingContext,
+  namespace,
+}: {
+  backingContext: Context.Context<DistributedSemaphoreBacking>
+  namespace: string
+}) =>
+  Effect.gen(function* () {
+    const cache = yield* SynchronizedRef.make(new Map<string, Semaphore>())
+
+    return (key: string) =>
       <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
         Effect.gen(function* () {
-          const hashedKey = hashKey(key)
+          const hashedKey = `${namespace}/${hashKey(key)}`
 
-          let semaphore = yield* Ref.modify(mapRef, (map) => {
+          const semaphore = yield* SynchronizedRef.modifyEffect(cache, (map) => {
             const existing = map.get(hashedKey)
-            if (existing !== undefined) return [existing, map] as const
-            return [undefined, map] as const
+            if (existing !== undefined) return Effect.succeed([existing, map] as const)
+            return DistributedSemaphore.make(hashedKey, { limit: 1, ttl: LOCK_TTL }).pipe(
+              Effect.provide(backingContext),
+              Effect.map((sem) => [sem, new Map(map).set(hashedKey, sem)] as const),
+            )
           })
-
-          if (semaphore === undefined) {
-            semaphore = yield* DistributedSemaphore.make(hashedKey, {
-              limit: 1,
-              ttl: LOCK_TTL,
-            }).pipe(Effect.provide(backingContext))
-            yield* Ref.update(mapRef, (map) => new Map(map).set(hashedKey, semaphore!))
-          }
 
           return yield* semaphore
             .withPermits(1)(effect)
@@ -79,8 +83,6 @@ const makeKeyedDistributedRegistry = (
               ),
             ) as Effect.Effect<A, E, R>
         })
-
-    return { withLock } as const
   })
 
 /**
@@ -95,12 +97,9 @@ export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
       const lockLayer = FileSystemBacking.layer({ lockDir })
       const backingContext = yield* Layer.build(lockLayer)
 
-      const repoLocks = yield* makeKeyedDistributedRegistry(backingContext)
-      const worktreeLocks = yield* makeKeyedDistributedRegistry(backingContext)
-
       return {
-        withRepoLock: repoLocks.withLock,
-        withWorktreeLock: worktreeLocks.withLock,
+        withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
+        withWorktreeLock: yield* makeKeyedLock({ backingContext, namespace: 'worktree' }),
       } as const
     }),
   )
