@@ -8,6 +8,7 @@ FIXTURES="$TESTS_DIR/fixtures"
 SYSTEM="${NIX_SYSTEM:-}"
 SKIP_GENIE=0
 SKIP_MEGAREPO=0
+SKIP_OXLINT=0
 SKIP_DOWNSTREAM=0
 WORKSPACE=""
 KEEP=0
@@ -22,6 +23,7 @@ Options:
   --keep              Keep the temp workspace after the run
   --skip-genie        Skip building the genie CLI
   --skip-megarepo     Skip building the megarepo CLI
+  --skip-oxlint       Skip the downstream oxlint-npm regression build
   --skip-downstream   Skip downstream flake-input regression coverage
   --help              Show this help
 USAGE
@@ -55,6 +57,10 @@ while [ $# -gt 0 ]; do
       ;;
     --skip-megarepo)
       SKIP_MEGAREPO=1
+      shift
+      ;;
+    --skip-oxlint)
+      SKIP_OXLINT=1
       shift
       ;;
     --skip-downstream)
@@ -184,6 +190,9 @@ if [ "$SKIP_DOWNSTREAM" -eq 0 ]; then
   prepare_downstream_workspace
   run_downstream_regression "genie"
   run_downstream_regression "megarepo"
+  if [ "$SKIP_OXLINT" -eq 0 ]; then
+    run_downstream_regression "oxlint-npm"
+  fi
 fi
 
 echo "mk-pnpm-cli smoke tests passed"

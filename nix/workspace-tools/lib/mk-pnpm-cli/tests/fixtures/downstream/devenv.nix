@@ -7,5 +7,6 @@ in
   packages = [
     effectUtilsPackages.megarepo
     effectUtilsPackages.genie
+    effectUtilsPackages.oxlint-npm
   ];
 }

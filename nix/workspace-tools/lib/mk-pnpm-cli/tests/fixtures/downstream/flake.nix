@@ -22,6 +22,7 @@
         packages = {
           genie = effectUtilsPackages.genie;
           megarepo = effectUtilsPackages.megarepo;
+          oxlint-npm = effectUtilsPackages.oxlint-npm;
           default = effectUtilsPackages.megarepo;
         };
       }
