@@ -430,9 +430,7 @@ export const deployCommentStep = (opts: {
  * Step that dispatches `upstream-changed` repository_dispatch to a target repo.
  * Add this to upstream CI workflows so merges to main trigger downstream alignment.
  *
- * Uses `gh` directly (pre-installed on GitHub-hosted runners) instead of `nix run nixpkgs#gh`
- * because notify-alignment jobs run on `ubuntu-latest` to avoid wasting self-hosted runner
- * resources on a single API call.
+ * Uses `nix run nixpkgs#gh` since self-hosted runners have Nix installed.
  *
  * Requires `MEGAREPO_ALIGNMENT_TOKEN` secret (fine-grained PAT with Contents + Pull Requests write).
  */
@@ -445,8 +443,28 @@ export const dispatchAlignmentStep = (opts: {
   ({
     name: 'Dispatch alignment to coordinator',
     env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | gh api repos/${opts.targetRepo}/dispatches --input -`,
+    run: [
+      `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
+      `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
+    ].join(' && '),
     shell: 'bash',
+  })
+
+/**
+ * Complete notify-alignment job definition.
+ * Runs on self-hosted runner after CI passes, dispatches `upstream-changed` to the coordinator.
+ */
+export const notifyAlignmentJob = (opts: {
+  targetRepo: string
+  needs: readonly string[]
+  /** Branches that trigger notification (default: main only) */
+  branches?: readonly string[]
+}) =>
+  ({
+    'runs-on': linuxX64Runner,
+    needs: [...opts.needs],
+    if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
+    steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],
   })
 
 // =============================================================================
@@ -565,9 +583,8 @@ export const vercelDeployJobs = (opts: {
     needs: deployJobNames,
     if: 'always() && !cancelled()',
     permissions: deployCommentPermissions,
-    'runs-on': 'ubuntu-latest',
+    'runs-on': linuxX64Runner,
     steps: [
-      installNixStep(),
       deployCommentStep({
         summaryTitle: 'Vercel Deploy',
         tableHeaders: ['Target', 'URL'],
