@@ -1,5 +1,21 @@
 # Shared pnpm dependency preparation and restore helpers.
 #
+# This intentionally diverges from nixpkgs' pnpm helper shape.
+#
+# | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
+# |---------------------|----------------------------------------------------|----------------------------------------------|
+# | Cached artifact     | Normalized pnpm store tarball                      | Prepared install tree tarball                |
+# | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
+# | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
+# | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
+# | Cache reuse         | Better across packages sharing one store           | Worse, because prepared trees are more specific |
+# | Determinism surface | Mostly pnpm store contents                         | Store contents plus pnpm metadata and shims  |
+# | Complexity          | Lower, upstream-maintained                         | Higher, repo-specific normalization logic    |
+#
+# We choose the second column because this repo's staged megarepo workspace is
+# heavily filtered and install-root-specific, and repeating `pnpm install` in
+# every CLI build was the main wall-time and disk-pressure bottleneck.
+#
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
