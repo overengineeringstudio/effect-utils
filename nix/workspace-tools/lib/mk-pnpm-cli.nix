@@ -571,6 +571,14 @@ pkgs.stdenv.mkDerivation {
 
     cd workspace
 
+    # Some downstream packages run `pnpm exec ...` in postBuild hooks for asset
+    # pipelines. Keep those hooks sandbox-safe and deterministic by giving pnpm a
+    # writable HOME and disabling its package-manager self-bootstrap behavior.
+    export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
+    export PNPM_HOME="$HOME/.local/share/pnpm"
+    mkdir -p "$PNPM_HOME"
+    printf '\nmanage-package-manager-versions=false\n' >> .npmrc
+
     cd ${packageDir}
 
     if [ -f "${entryRelativeToPackage}" ]; then
