@@ -302,6 +302,79 @@ describe('store-hygiene', () => {
         }),
       ))
 
+    it('succeeds in apply mode with broken_worktree (apply will recreate)', () =>
+      runWithContext(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const basePath = `/tmp/test-store-broken-wt-${Date.now()}/`
+          const store = makeTestStore(EffectPath.unsafe.absoluteDir(basePath))
+          const config = makeTestConfig({ myrepo: 'owner/myrepo#main' })
+          const lockFile = makeTestLockFile({
+            myrepo: { ref: 'main', commit: 'a'.repeat(40) },
+          })
+
+          // Create bare repo so we get past missing_bare check
+          const bareRepoPath = `${basePath}github.com/owner/myrepo/.bare/`
+          yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+
+          // Create worktree directory WITHOUT .git file (broken state)
+          const worktreePath = `${basePath}github.com/owner/myrepo/refs/heads/main/`
+          yield* fs.makeDirectory(worktreePath, { recursive: true })
+
+          // Should NOT block — apply will recreate the broken worktree
+          yield* runPreflightChecks({
+            memberNames: ['myrepo'],
+            config,
+            lockFile,
+            store,
+            mode: 'apply',
+          })
+
+          // Cleanup
+          yield* fs.remove(basePath, { recursive: true })
+        }),
+      ))
+
+    it('fails in lock mode with broken_worktree (lock cannot fix it)', () =>
+      runWithContext(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const basePath = `/tmp/test-store-broken-wt-lock-${Date.now()}/`
+          const store = makeTestStore(EffectPath.unsafe.absoluteDir(basePath))
+          const config = makeTestConfig({ myrepo: 'owner/myrepo#main' })
+          const lockFile = makeTestLockFile({
+            myrepo: { ref: 'main', commit: 'a'.repeat(40) },
+          })
+
+          // Create bare repo so we get past missing_bare check
+          const bareRepoPath = `${basePath}github.com/owner/myrepo/.bare/`
+          yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+
+          // Create worktree directory WITHOUT .git file (broken state)
+          const worktreePath = `${basePath}github.com/owner/myrepo/refs/heads/main/`
+          yield* fs.makeDirectory(worktreePath, { recursive: true })
+
+          // SHOULD block in lock mode
+          const result = yield* Effect.flip(
+            runPreflightChecks({
+              memberNames: ['myrepo'],
+              config,
+              lockFile,
+              store,
+              mode: 'lock',
+            }),
+          )
+
+          expect(result).toBeInstanceOf(StoreHygieneError)
+          if (result instanceof StoreHygieneError) {
+            expect(result.issues.some((i) => i.type === 'broken_worktree')).toBe(true)
+          }
+
+          // Cleanup
+          yield* fs.remove(basePath, { recursive: true })
+        }),
+      ))
+
     it('includes actionable error messages', () =>
       runWithContext(
         Effect.gen(function* () {

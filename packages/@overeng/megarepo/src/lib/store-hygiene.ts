@@ -260,7 +260,7 @@ export const validateStoreMembers = ({
  * Run pre-flight hygiene checks before write operations.
  *
  * The `mode` determines which issues are blocking:
- * - `apply`: `missing_bare` is expected (apply will clone it), only `ref_mismatch` and `broken_worktree` block
+ * - `apply`: `missing_bare` and `broken_worktree` are non-blocking (apply will clone/recreate)
  * - `lock`: all error-severity issues block (bare must already exist to read worktree state)
  *
  * Warning-severity issues are always logged but never block.
@@ -297,18 +297,14 @@ export const runPreflightChecks = ({
 
     const warnings = issues.filter((i) => i.severity === 'warning')
 
-    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors.
-    // In commit mode, branch worktree issues (ref_mismatch, broken_worktree) are non-blocking
-    // because commit worktrees will be used instead.
+    // In apply mode, missing_bare and broken_worktree are expected — apply will clone/recreate.
+    // In commit mode, ref_mismatch is also non-blocking (commit worktrees will be used instead).
+    const selfHealableInApply = new Set(['missing_bare', 'broken_worktree'])
     const blockingErrors = issues.filter(
       (i) =>
         i.severity === 'error' &&
-        !(mode === 'apply' && i.type === 'missing_bare') &&
-        !(
-          mode === 'apply' &&
-          commitMode === true &&
-          (i.type === 'ref_mismatch' || i.type === 'broken_worktree')
-        ),
+        !(mode === 'apply' && selfHealableInApply.has(i.type)) &&
+        !(mode === 'apply' && commitMode === true && i.type === 'ref_mismatch'),
     )
 
     // Log warnings
@@ -316,11 +312,11 @@ export const runPreflightChecks = ({
       yield* Effect.logWarning(`[${warning.memberName}] ${warning.message}`)
     }
 
-    // Log non-blocking missing_bare as info in apply mode
+    // Log non-blocking issues as info in apply mode
     if (mode === 'apply') {
-      const missingBareIssues = issues.filter((i) => i.type === 'missing_bare')
-      for (const issue of missingBareIssues) {
-        yield* Effect.logInfo(`[${issue.memberName}] ${issue.message} (will be cloned)`)
+      for (const issue of issues.filter((i) => selfHealableInApply.has(i.type))) {
+        const action = issue.type === 'missing_bare' ? 'will be cloned' : 'will be recreated'
+        yield* Effect.logInfo(`[${issue.memberName}] ${issue.message} (${action})`)
       }
     }
 
