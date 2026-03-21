@@ -41,8 +41,8 @@ export const linuxX64Runner = ['sh-linux-x64', 'nix'] as const
 /** Self-hosted NixOS runner labels (aarch64-linux, e.g. dev4) */
 export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 
-/** @deprecated Use linuxX64Runner */
-export const selfHostedRunner = linuxX64Runner
+/** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
+export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
 
 /** Standard shell defaults for CI run steps */
 export const bashShellDefaults = {
