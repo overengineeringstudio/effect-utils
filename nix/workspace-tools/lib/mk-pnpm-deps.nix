@@ -16,6 +16,10 @@
 # heavily filtered and install-root-specific, and repeating `pnpm install` in
 # every CLI build was the main wall-time and disk-pressure bottleneck.
 #
+# The prepared tree output is also sensitive to the pnpm/node toolchain. Callers
+# can pass a dedicated depsPkgs set so the FOD stays stable even when consumer
+# repos make effect-utils follow a different general nixpkgs input.
+#
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
@@ -27,7 +31,10 @@
 # By centralizing this logic we keep pnpm out of downstream build phases and
 # avoid duplicating staged-workspace install preparation across builders.
 
-{ pkgs }:
+{
+  pkgs,
+  depsPkgs ? pkgs,
+}:
 
 let
   lib = pkgs.lib;
@@ -87,18 +94,18 @@ in
         builtins.unsafeDiscardStringContext (baseNameOf (toString src))
       );
     in
-    pkgs.stdenvNoCC.mkDerivation {
+    depsPkgs.stdenvNoCC.mkDerivation {
       pname = "${name}-pnpm-deps-${srcFingerprint}-v3";
       version = "0.0.0";
 
       inherit src sourceRoot;
 
       nativeBuildInputs = [
-        pkgs.pnpm
-        pkgs.nodejs
-        pkgs.python3
-        pkgs.cacert
-        pkgs.zstd
+        depsPkgs.pnpm
+        depsPkgs.nodejs
+        depsPkgs.python3
+        depsPkgs.cacert
+        depsPkgs.zstd
       ];
 
       dontUnpack = true;
@@ -180,6 +187,9 @@ in
         const workspaceRoot = process.cwd();
         const workspaceRealRoot = fs.realpathSync(workspaceRoot);
         const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+        const workspaceRoots = [...new Set([workspaceRoot, workspaceRealRoot])].sort(
+          (left, right) => right.length - left.length
+        );
 
         const rewriteTextFile = (filePath, transform) => {
           if (!fs.existsSync(filePath)) {
@@ -304,9 +314,16 @@ in
                 if (!binEntry.isFile()) {
                   continue;
                 }
-                rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
-                  script.split(workspaceRoot).join(workspacePlaceholder)
-                );
+                rewriteTextFile(path.join(entryPath, binEntry.name), (script) => {
+                  // Downstream repos consume effect-utils through a flake source
+                  // snapshot, so pnpm can embed either the staged cwd or its
+                  // resolved realpath depending on the evaluation context.
+                  let next = script;
+                  for (const rootPath of workspaceRoots) {
+                    next = next.split(rootPath).join(workspacePlaceholder);
+                  }
+                  return next;
+                });
               }
               continue;
             }
@@ -321,7 +338,9 @@ NODE
         # These pnpm bookkeeping files are only needed for future pnpm
         # operations. Downstream builders restore a prepared tree and go
         # straight to bun, so keeping them only widens the determinism surface.
-        rm -f node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json
+        # Remove them recursively because multi-root installs materialize their
+        # own nested node_modules trees under each staged install root.
+        find . \( -path '*/node_modules/.modules.yaml' -o -path '*/node_modules/.pnpm-workspace-state-v1.json' \) -type f -delete
 
         rm -rf "$STORE_PATH"
         rm -f .pnpm-install-roots.txt

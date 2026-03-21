@@ -1,4 +1,7 @@
-{ pkgs }:
+{
+  pkgs,
+  depsPkgs ? pkgs,
+}:
 
 {
   name,
@@ -19,7 +22,9 @@
 
 let
   lib = pkgs.lib;
-  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs; };
+  pnpmDepsHelper = import ./mk-pnpm-deps.nix {
+    inherit pkgs depsPkgs;
+  };
 
   workspaceRootPath =
     if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then

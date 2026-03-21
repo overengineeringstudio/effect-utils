@@ -16,13 +16,16 @@
 # =============================================================================
 {
   pkgs,
+  depsPkgs ? pkgs,
   bun,
   src,
 }:
 
 let
   lib = pkgs.lib;
-  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; };
+  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix {
+    inherit pkgs depsPkgs;
+  };
   packageDir = "packages/@overeng/oxc-config";
   pnpmDepsHash = "sha256-l9KsnDhm0qeYYODsvv6PbpZqZMgPi/CKpHiveM6j3iM=";
 
