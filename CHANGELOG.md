@@ -20,6 +20,9 @@ All notable changes to this project will be documented in this file.
 - **nix/workspace-tools/mk-pnpm-deps**: Normalize prepared pnpm trees across in-workspace and flake-input builds
   - Rewrites both the staged workspace cwd and its resolved realpath out of pnpm-generated shim scripts so downstream flake consumers see the same prepared-tree content as in-workspace builds
   - Removes nested pnpm bookkeeping files across every staged install root instead of only the aggregate root
+- **flake / nix/workspace-tools/mk-pnpm-deps / mk-pnpm-cli**: Pin the pnpm prepared-tree generator toolchain independently from consumer nixpkgs
+  - Routes prepared install-tree generation through an effect-utils-owned `nixpkgs-pnpm` input so downstream repos can keep `effect-utils.inputs.nixpkgs.follows = "nixpkgs"` without perturbing `pnpmDepsHash`
+  - Adds downstream flake-input regression coverage for standalone and `repos/effect-utils`-prefixed consumers, including `devenv shell`
 - **CI workflow / genie/ci-workflow**: Evict cached pnpm-deps outputs before CI jobs resolve `oxlint-npm`
   - Avoids stale fixed-output pnpm cache entries masking the validated prepared-install-tree hash on CI runners
   - Applies the cache bust to each job that resolves the shared Nix toolchain so `nix-check` and the faster task jobs agree on the same fresh deps output

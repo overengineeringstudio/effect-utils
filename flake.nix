@@ -7,6 +7,7 @@
   # This keeps the build logic reusable without requiring devenv in the parent.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-pnpm.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     tsgo.url = "github:Effect-TS/tsgo";
   };
@@ -15,6 +16,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-pnpm,
       flake-utils,
       tsgo,
       ...
@@ -30,11 +32,15 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        # Prepared pnpm trees are content-addressed against the generator
+        # toolchain, so keep pnpm/node on an effect-utils-owned pin rather than
+        # inheriting the consumer repo's ambient nixpkgs revision.
+        depsPkgs = import nixpkgs-pnpm { inherit system; };
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
         oxlintNpm = import ./nix/oxlint-npm.nix {
-          inherit pkgs;
+          inherit pkgs depsPkgs;
           bun = pkgs.bun;
           src = self;
         };
@@ -42,6 +48,7 @@
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
             inherit
               pkgs
+              depsPkgs
               gitRev
               commitTs
               dirty
@@ -51,6 +58,7 @@
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
             inherit
               pkgs
+              depsPkgs
               gitRev
               commitTs
               dirty
@@ -60,12 +68,12 @@
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
-            inherit pkgs gitRev commitTs;
+            inherit pkgs depsPkgs gitRev commitTs;
             src = self;
             dirty = true;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-            inherit pkgs gitRev commitTs;
+            inherit pkgs depsPkgs gitRev commitTs;
             src = self;
             dirty = true;
           };

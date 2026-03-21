@@ -16,6 +16,10 @@
 # heavily filtered and install-root-specific, and repeating `pnpm install` in
 # every CLI build was the main wall-time and disk-pressure bottleneck.
 #
+# The prepared tree output is also sensitive to the pnpm/node toolchain. Callers
+# can pass a dedicated depsPkgs set so the FOD stays stable even when consumer
+# repos make effect-utils follow a different general nixpkgs input.
+#
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
@@ -27,7 +31,10 @@
 # By centralizing this logic we keep pnpm out of downstream build phases and
 # avoid duplicating staged-workspace install preparation across builders.
 
-{ pkgs }:
+{
+  pkgs,
+  depsPkgs ? pkgs,
+}:
 
 let
   lib = pkgs.lib;
@@ -87,18 +94,18 @@ in
         builtins.unsafeDiscardStringContext (baseNameOf (toString src))
       );
     in
-    pkgs.stdenvNoCC.mkDerivation {
+    depsPkgs.stdenvNoCC.mkDerivation {
       pname = "${name}-pnpm-deps-${srcFingerprint}-v3";
       version = "0.0.0";
 
       inherit src sourceRoot;
 
       nativeBuildInputs = [
-        pkgs.pnpm
-        pkgs.nodejs
-        pkgs.python3
-        pkgs.cacert
-        pkgs.zstd
+        depsPkgs.pnpm
+        depsPkgs.nodejs
+        depsPkgs.python3
+        depsPkgs.cacert
+        depsPkgs.zstd
       ];
 
       dontUnpack = true;

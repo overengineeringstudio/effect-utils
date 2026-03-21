@@ -47,6 +47,7 @@
 # =============================================================================
 {
   pkgs,
+  depsPkgs ? pkgs,
   bun,
   src ? null,
 }:
@@ -96,7 +97,13 @@ let
 
   # Optional: build the @overeng/oxc-config plugin bundle when src is provided
   hasPlugin = src != null;
-  pluginBundle = if hasPlugin then import ./oxc-config-plugin.nix { inherit pkgs bun src; } else null;
+  pluginBundle =
+    if hasPlugin then
+      import ./oxc-config-plugin.nix {
+        inherit pkgs depsPkgs bun src;
+      }
+    else
+      null;
 
 in
 pkgs.stdenv.mkDerivation {
