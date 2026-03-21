@@ -226,13 +226,12 @@ export const syncMegarepo = <R = never>({
       }
     }
 
-    // Run pre-flight hygiene checks for write commands (lock, apply) — not fetch (read-only).
-    // Skip when applyAfterFetch is set (fetch just ran; store state may have just changed).
-    if (
-      (isLockMode === true || isApplyMode === true) &&
-      options.applyAfterFetch !== true &&
-      lockFile !== undefined
-    ) {
+    // Run pre-flight hygiene checks for lock mode only.
+    // Apply mode skips pre-flight because syncMember self-heals all store issues
+    // (missing bare repos, broken worktrees, ref mismatches via commit worktree fallback).
+    // This also eliminates races in --all mode where concurrent nested syncs modify
+    // shared store state while sibling pre-flight checks observe it.
+    if (isLockMode === true && lockFile !== undefined) {
       const store = yield* Store
       const membersToCheck = allMemberNames.filter((name) => !skippedMemberNames.has(name))
       yield* runPreflightChecks({
@@ -240,8 +239,6 @@ export const syncMegarepo = <R = never>({
         config,
         lockFile,
         store,
-        mode: isApplyMode === true ? 'apply' : 'lock',
-        ...(options.commitMode === true ? { commitMode: true } : {}),
       })
     }
 

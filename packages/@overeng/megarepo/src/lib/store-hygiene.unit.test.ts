@@ -259,11 +259,10 @@ describe('store-hygiene', () => {
           config: makeTestConfig({ local: './path' }),
           lockFile: makeTestLockFile({}),
           store: makeTestStore(EffectPath.unsafe.absoluteDir('/tmp/test-store/')),
-          mode: 'lock',
         }),
       ))
 
-    it('fails with StoreHygieneError on error-severity issues in lock mode', () =>
+    it('fails with StoreHygieneError on error-severity issues', () =>
       runWithContext(
         Effect.gen(function* () {
           const result = yield* Effect.flip(
@@ -276,7 +275,6 @@ describe('store-hygiene', () => {
               store: makeTestStore(
                 EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
               ),
-              mode: 'lock',
             }),
           )
 
@@ -289,16 +287,33 @@ describe('store-hygiene', () => {
         }),
       ))
 
-    it('succeeds in apply mode with missing_bare (apply will clone)', () =>
+    it('blocks on broken_worktree (directory exists but .git missing)', () =>
       runWithContext(
-        runPreflightChecks({
-          memberNames: ['myrepo'],
-          config: makeTestConfig({ myrepo: 'owner/myrepo#main' }),
-          lockFile: makeTestLockFile({
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const basePath = `/tmp/test-store-broken-wt-${Date.now()}/`
+          const store = makeTestStore(EffectPath.unsafe.absoluteDir(basePath))
+          const config = makeTestConfig({ myrepo: 'owner/myrepo#main' })
+          const lockFile = makeTestLockFile({
             myrepo: { ref: 'main', commit: 'a'.repeat(40) },
-          }),
-          store: makeTestStore(EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/')),
-          mode: 'apply',
+          })
+
+          const bareRepoPath = `${basePath}github.com/owner/myrepo/.bare/`
+          yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+
+          const worktreePath = `${basePath}github.com/owner/myrepo/refs/heads/main/`
+          yield* fs.makeDirectory(worktreePath, { recursive: true })
+
+          const result = yield* Effect.flip(
+            runPreflightChecks({ memberNames: ['myrepo'], config, lockFile, store }),
+          )
+
+          expect(result).toBeInstanceOf(StoreHygieneError)
+          if (result instanceof StoreHygieneError) {
+            expect(result.issues.some((i) => i.type === 'broken_worktree')).toBe(true)
+          }
+
+          yield* fs.remove(basePath, { recursive: true })
         }),
       ))
 
@@ -315,7 +330,6 @@ describe('store-hygiene', () => {
               store: makeTestStore(
                 EffectPath.unsafe.absoluteDir('/tmp/nonexistent-test-store-xyz/'),
               ),
-              mode: 'lock',
             }),
           )
 
