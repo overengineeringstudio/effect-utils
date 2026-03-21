@@ -180,6 +180,9 @@ in
         const workspaceRoot = process.cwd();
         const workspaceRealRoot = fs.realpathSync(workspaceRoot);
         const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+        const workspaceRoots = [...new Set([workspaceRoot, workspaceRealRoot])].sort(
+          (left, right) => right.length - left.length
+        );
 
         const rewriteTextFile = (filePath, transform) => {
           if (!fs.existsSync(filePath)) {
@@ -304,9 +307,16 @@ in
                 if (!binEntry.isFile()) {
                   continue;
                 }
-                rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
-                  script.split(workspaceRoot).join(workspacePlaceholder)
-                );
+                rewriteTextFile(path.join(entryPath, binEntry.name), (script) => {
+                  // Downstream repos consume effect-utils through a flake source
+                  // snapshot, so pnpm can embed either the staged cwd or its
+                  // resolved realpath depending on the evaluation context.
+                  let next = script;
+                  for (const rootPath of workspaceRoots) {
+                    next = next.split(rootPath).join(workspacePlaceholder);
+                  }
+                  return next;
+                });
               }
               continue;
             }
@@ -321,7 +331,9 @@ NODE
         # These pnpm bookkeeping files are only needed for future pnpm
         # operations. Downstream builders restore a prepared tree and go
         # straight to bun, so keeping them only widens the determinism surface.
-        rm -f node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json
+        # Remove them recursively because multi-root installs materialize their
+        # own nested node_modules trees under each staged install root.
+        find . \( -path '*/node_modules/.modules.yaml' -o -path '*/node_modules/.pnpm-workspace-state-v1.json' \) -type f -delete
 
         rm -rf "$STORE_PATH"
         rm -f .pnpm-install-roots.txt

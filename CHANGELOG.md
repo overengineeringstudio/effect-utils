@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - **nix/workspace-tools/mk-pnpm-deps**: Drop pnpm bookkeeping metadata from prepared install trees
   - Removes `.modules.yaml` and `.pnpm-workspace-state-v1.json` from the archived prepared tree because downstream Nix builders restore the tree and go straight to Bun instead of rerunning pnpm
   - Eliminates the remaining runner-specific pnpm metadata nondeterminism that was still flipping prepared-tree hashes across CI environments
+- **nix/workspace-tools/mk-pnpm-deps**: Normalize prepared pnpm trees across in-workspace and flake-input builds
+  - Rewrites both the staged workspace cwd and its resolved realpath out of pnpm-generated shim scripts so downstream flake consumers see the same prepared-tree content as in-workspace builds
+  - Removes nested pnpm bookkeeping files across every staged install root instead of only the aggregate root
 - **CI workflow / genie/ci-workflow**: Evict cached pnpm-deps outputs before CI jobs resolve `oxlint-npm`
   - Avoids stale fixed-output pnpm cache entries masking the validated prepared-install-tree hash on CI runners
   - Applies the cache bust to each job that resolves the shared Nix toolchain so `nix-check` and the faster task jobs agree on the same fresh deps output
