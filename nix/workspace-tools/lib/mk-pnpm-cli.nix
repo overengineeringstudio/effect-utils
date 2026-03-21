@@ -528,6 +528,10 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = [
     pkgs.bun
     pkgs.nodejs
+    # Downstream packages still use `pnpm exec ...` in postBuild hooks for
+    # asset builds. Prepared-tree restore removes install-time pnpm work, but
+    # the builder should still provide the package manager for those hooks.
+    pkgs.pnpm
     pkgs.zstd
   ]
   ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
