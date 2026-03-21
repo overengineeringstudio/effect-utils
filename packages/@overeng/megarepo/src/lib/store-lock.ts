@@ -15,7 +15,8 @@
 
 import { createHash } from 'node:crypto'
 
-import { FileSystem, Path } from '@effect/platform'
+import { NodeFileSystem } from '@effect/platform-node'
+import * as NodePath from '@effect/platform-node/NodePath'
 import { Context, Duration, Effect, Layer, SynchronizedRef } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
@@ -46,11 +47,16 @@ export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, Stor
 type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
 
 /**
- * Context needed by both DistributedSemaphore and FileSystemBacking at runtime.
- * FileSystemBacking's operations (tryAcquire, release, etc.) internally yield
- * FileSystem + Path, so these must be available when withPermits runs.
+ * Self-contained layer providing DistributedSemaphoreBacking + FileSystem + Path.
+ * FileSystemBacking operations internally yield FileSystem + Path at runtime,
+ * so both must be available when withPermits runs backing operations.
  */
-type BackingContext = DistributedSemaphoreBacking | FileSystem.FileSystem | Path.Path
+const makeBackingLayer = (lockDir: string) =>
+  Layer.mergeAll(
+    FileSystemBacking.layer({ lockDir }),
+    NodeFileSystem.layer,
+    NodePath.layer,
+  ).pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)))
 
 /**
  * Create a keyed lock function backed by distributed semaphores.
@@ -59,10 +65,10 @@ type BackingContext = DistributedSemaphoreBacking | FileSystem.FileSystem | Path
  * Semaphores are cached per-key via SynchronizedRef (atomic get-or-create).
  */
 const makeKeyedLock = ({
-  backingContext,
+  backingLayer,
   namespace,
 }: {
-  backingContext: Context.Context<BackingContext>
+  backingLayer: Layer.Layer<DistributedSemaphoreBacking>
   namespace: string
 }) =>
   Effect.gen(function* () {
@@ -77,19 +83,14 @@ const makeKeyedLock = ({
             const existing = map.get(hashedKey)
             if (existing !== undefined) return Effect.succeed([existing, map] as const)
             return DistributedSemaphore.make(hashedKey, { limit: 1, ttl: LOCK_TTL }).pipe(
-              Effect.provide(backingContext),
+              Effect.provide(backingLayer),
               Effect.map((sem) => [sem, new Map(map).set(hashedKey, sem)] as const),
             )
           })
 
-          return yield* semaphore
-            .withPermits(1)(effect)
-            .pipe(
-              Effect.provide(backingContext),
-              Effect.catchAllCause((cause) =>
-                Effect.fail(new Error(`Store lock failed: ${cause}`)),
-              ),
-            ) as Effect.Effect<A, E, R>
+          return yield* semaphore.withPermits(1)(effect).pipe(
+            Effect.provide(backingLayer),
+          ) as Effect.Effect<A, E, R>
         })
   })
 
@@ -102,22 +103,11 @@ export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
     StoreLock,
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`
-      const lockLayer = FileSystemBacking.layer({ lockDir })
-      const semaphoreBackingContext = yield* Layer.build(lockLayer)
-
-      // FileSystemBacking operations (tryAcquire, release, etc.) internally
-      // yield FileSystem + Path — merge these into the context so withPermits
-      // has everything needed at runtime.
-      const fs = yield* FileSystem.FileSystem
-      const path = yield* Path.Path
-      const backingContext = semaphoreBackingContext.pipe(
-        Context.add(FileSystem.FileSystem, fs),
-        Context.add(Path.Path, path),
-      )
+      const backingLayer = makeBackingLayer(lockDir)
 
       return {
-        withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
-        withWorktreeLock: yield* makeKeyedLock({ backingContext, namespace: 'worktree' }),
+        withRepoLock: yield* makeKeyedLock({ backingLayer, namespace: 'repo' }),
+        withWorktreeLock: yield* makeKeyedLock({ backingLayer, namespace: 'worktree' }),
       } as const
     }),
   )

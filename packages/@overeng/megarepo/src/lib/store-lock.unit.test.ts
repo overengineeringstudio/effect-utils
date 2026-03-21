@@ -1,3 +1,4 @@
+import { FileSystem } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { it } from '@effect/vitest'
 import { Effect, Ref } from 'effect'
@@ -7,13 +8,18 @@ import { EffectPath } from '@overeng/effect-path'
 
 import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
 
-/** Provide StoreLock backed by a temp directory */
-const withStoreLock = <A, E>(effect: Effect.Effect<A, E, StoreLock>): Effect.Effect<A, E, never> =>
+/** Provide StoreLock backed by a temp directory, returns basePath for inspection */
+const withStoreLockAndPath = <A, E>(
+  effect: (basePath: string) => Effect.Effect<A, E, StoreLock | FileSystem.FileSystem>,
+): Effect.Effect<A, E, never> =>
   Effect.gen(function* () {
     const tmpDir = yield* Effect.sync(() => require('node:os').tmpdir())
     const basePath = EffectPath.unsafe.absoluteDir(`${tmpDir}/store-lock-test-${Date.now()}/`)
-    return yield* effect.pipe(Effect.provide(makeStoreLockLayer(basePath)))
+    return yield* effect(basePath).pipe(Effect.provide(makeStoreLockLayer(basePath)))
   }).pipe(Effect.scoped, Effect.provide(NodeContext.layer))
+
+const withStoreLock = <A, E>(effect: Effect.Effect<A, E, StoreLock>): Effect.Effect<A, E, never> =>
+  withStoreLockAndPath(() => effect)
 
 describe('StoreLock', () => {
   it.effect('serializes concurrent access to the same key', () =>
@@ -79,6 +85,22 @@ describe('StoreLock', () => {
 
         // Both complete (repo and worktree are separate registries)
         expect(results.sort()).toEqual(['repo', 'worktree'])
+      }),
+    ),
+  )
+
+  it.effect('creates lock files on disk (FileSystemBacking works)', () =>
+    withStoreLockAndPath((basePath) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { withRepoLock } = yield* StoreLock
+
+        yield* withRepoLock('test-url')(Effect.gen(function* () {
+          // While holding the lock, verify files exist on disk
+          const lockDir = `${basePath}.locks`
+          const lockDirExists = yield* fs.exists(lockDir)
+          expect(lockDirExists).toBe(true)
+        }))
       }),
     ),
   )
