@@ -40,9 +40,6 @@ export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 /** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
 export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
 
-/** @deprecated Use linuxX64Runner */
-export const selfHostedRunner = linuxX64Runner
-
 /** Standard shell defaults for CI run steps */
 export const bashShellDefaults = {
   run: { shell: 'bash' },
