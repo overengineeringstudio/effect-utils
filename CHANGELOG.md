@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
   - `hasWorktree` now checks for `.git` file existence instead of just directory existence, so broken partial worktrees are properly detected and recreated
   - Lock-protected worktree creation cleans up broken directory remnants and prunes stale git worktree bookkeeping before recreating
   - Fix semaphore creation race in `StoreLock` using `SynchronizedRef` for atomic get-or-create
+- **@overeng/megarepo**: Skip pre-flight hygiene checks in apply mode (#423)
+  - Apply mode self-heals all store issues (missing bare repos, broken worktrees, ref mismatches)
+  - Eliminates races in `--all` mode where concurrent nested syncs modify shared store state while sibling pre-flight checks observe it
+  - Simplifies `runPreflightChecks` to lock-mode-only (removes `mode`/`commitMode` parameters and exception lists)
 
 - **devenv/tasks/shared/nix-cli**: Update multiple stale Nix FOD hashes per `dt nix:hash:*` iteration
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build

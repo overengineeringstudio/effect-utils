@@ -257,29 +257,26 @@ export const validateStoreMembers = ({
 // =============================================================================
 
 /**
- * Run pre-flight hygiene checks before write operations.
+ * Run pre-flight hygiene checks before lock operations.
  *
- * The `mode` determines which issues are blocking:
- * - `apply`: `missing_bare` is expected (apply will clone it), only `ref_mismatch` and `broken_worktree` block
- * - `lock`: all error-severity issues block (bare must already exist to read worktree state)
+ * Lock mode needs consistent store state to read worktree HEADs accurately.
+ * All error-severity issues block. Warning-severity issues are logged but never block.
  *
- * Warning-severity issues are always logged but never block.
+ * Apply mode does NOT run pre-flight — syncMember self-heals all store issues
+ * (clones missing bare repos, recreates broken worktrees, falls back to commit
+ * worktrees on ref mismatch). Skipping also avoids races in --all mode where
+ * concurrent nested syncs modify shared store state.
  */
 export const runPreflightChecks = ({
   memberNames,
   config,
   lockFile,
   store,
-  mode,
-  commitMode,
 }: {
   memberNames: readonly string[]
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
-  mode: 'apply' | 'lock'
-  /** When true, branch worktree issues are non-blocking (commit worktrees will be used). */
-  commitMode?: boolean
 }): Effect.Effect<
   void,
   StoreHygieneError | PlatformError.PlatformError,
@@ -296,32 +293,10 @@ export const runPreflightChecks = ({
     if (issues.length === 0) return
 
     const warnings = issues.filter((i) => i.severity === 'warning')
+    const blockingErrors = issues.filter((i) => i.severity === 'error')
 
-    // In apply mode, missing_bare is expected (apply will clone) — only block on other errors.
-    // In commit mode, branch worktree issues (ref_mismatch, broken_worktree) are non-blocking
-    // because commit worktrees will be used instead.
-    const blockingErrors = issues.filter(
-      (i) =>
-        i.severity === 'error' &&
-        !(mode === 'apply' && i.type === 'missing_bare') &&
-        !(
-          mode === 'apply' &&
-          commitMode === true &&
-          (i.type === 'ref_mismatch' || i.type === 'broken_worktree')
-        ),
-    )
-
-    // Log warnings
     for (const warning of warnings) {
       yield* Effect.logWarning(`[${warning.memberName}] ${warning.message}`)
-    }
-
-    // Log non-blocking missing_bare as info in apply mode
-    if (mode === 'apply') {
-      const missingBareIssues = issues.filter((i) => i.type === 'missing_bare')
-      for (const issue of missingBareIssues) {
-        yield* Effect.logInfo(`[${issue.memberName}] ${issue.message} (will be cloned)`)
-      }
     }
 
     if (blockingErrors.length > 0) {

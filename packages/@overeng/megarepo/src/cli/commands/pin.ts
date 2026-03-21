@@ -142,7 +142,6 @@ export const pinCommand = Cli.Command.make(
             config,
             lockFile,
             store,
-            mode: 'lock',
           })
 
           const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
