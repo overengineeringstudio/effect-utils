@@ -13,7 +13,7 @@ permissions:
 jobs:
   request-review:
     if: github.event.pull_request.user.login == 'schickling-assistant' && github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    runs-on: [sh-linux-x64, nix]
     steps:
       - name: Request review from schickling
         env:
