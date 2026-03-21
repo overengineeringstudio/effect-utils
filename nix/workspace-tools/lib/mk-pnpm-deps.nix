@@ -192,13 +192,24 @@ in
           fs.writeFileSync(filePath, next);
         };
 
+        /**
+         * Deterministic directory traversal is critical here because we mutate
+         * the prepared tree in-place before archiving it. If pnpm layout
+         * rewrites happen in filesystem iteration order, the fixed-output hash
+         * can drift across machines even when the final archive writer is sorted.
+         */
+        const sortedDirEntries = (dirPath) =>
+          fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) =>
+            left.name.localeCompare(right.name)
+          );
+
         // pnpm virtual packages for workspace `file:` deps should point back to
         // the staged workspace members, not copied package snapshots, or the
         // prepared tree will bake in install-root-specific absolute paths.
         const workspacePackages = new Map();
 
         const collectWorkspacePackages = (dirPath) => {
-          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+          for (const entry of sortedDirEntries(dirPath)) {
             if (!entry.isDirectory()) {
               continue;
             }
@@ -226,14 +237,14 @@ in
           }
 
           const packageDirs = [];
-          for (const entry of fs.readdirSync(nodeModulesPath, { withFileTypes: true })) {
+          for (const entry of sortedDirEntries(nodeModulesPath)) {
             if (!entry.isDirectory()) {
               continue;
             }
 
             if (entry.name.startsWith("@")) {
               const scopeDir = path.join(nodeModulesPath, entry.name);
-              for (const scopedEntry of fs.readdirSync(scopeDir, { withFileTypes: true })) {
+              for (const scopedEntry of sortedDirEntries(scopeDir)) {
                 if (scopedEntry.isDirectory()) {
                   packageDirs.push(path.join(scopeDir, scopedEntry.name));
                 }
@@ -247,14 +258,14 @@ in
         };
 
         const relinkLocalVirtualPackages = (dirPath) => {
-          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+          for (const entry of sortedDirEntries(dirPath)) {
             if (!entry.isDirectory()) {
               continue;
             }
 
             const entryPath = path.join(dirPath, entry.name);
             if (entry.name === ".pnpm") {
-              for (const virtualEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+              for (const virtualEntry of sortedDirEntries(entryPath)) {
                 if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
                   continue;
                 }
@@ -292,7 +303,7 @@ in
           }
           visitedRealPaths.add(realDirPath);
 
-          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+          for (const entry of sortedDirEntries(dirPath)) {
             const entryPath = path.join(dirPath, entry.name);
             const isDirectory =
               entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
@@ -302,7 +313,7 @@ in
             }
 
             if (entry.name === ".bin") {
-              for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+              for (const binEntry of sortedDirEntries(entryPath)) {
                 if (!binEntry.isFile()) {
                   continue;
                 }
