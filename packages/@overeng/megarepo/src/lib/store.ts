@@ -405,16 +405,11 @@ export const StoreLayer = Layer.effect(
     return make({ config: { basePath }, fs })
   }),
 ).pipe((storeOnly) => {
-  /* Derive basePath at provision time for the lock layer.
-   * We read the env var again (same as storeOnly) so both use the same path. */
-  const lockLayer = Layer.effect(
-    StoreLock,
-    Effect.gen(function* () {
-      const store = yield* Store
-      return yield* Layer.build(makeStoreLockLayer(store.basePath)).pipe(
-        Effect.map((ctx) => ctx.pipe(Context.get(StoreLock))),
-      )
-    }),
+  /* Derive the StoreLock layer from the Store's basePath.
+   * Uses Layer.unwrapScoped so the FileSystemBacking scope (created inside
+   * makeStoreLockLayer) lives as long as the StoreLock service. */
+  const lockLayer = Layer.unwrapScoped(
+    Effect.map(Store, (store) => makeStoreLockLayer(store.basePath)),
   )
   return Layer.provideMerge(lockLayer, storeOnly)
 })

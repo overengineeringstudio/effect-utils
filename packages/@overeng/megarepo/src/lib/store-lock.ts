@@ -15,6 +15,7 @@
 
 import { createHash } from 'node:crypto'
 
+import { FileSystem, Path } from '@effect/platform'
 import { Context, Duration, Effect, Layer, SynchronizedRef } from 'effect'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
@@ -45,6 +46,13 @@ export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, Stor
 type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
 
 /**
+ * Context needed by both DistributedSemaphore and FileSystemBacking at runtime.
+ * FileSystemBacking's operations (tryAcquire, release, etc.) internally yield
+ * FileSystem + Path, so these must be available when withPermits runs.
+ */
+type BackingContext = DistributedSemaphoreBacking | FileSystem.FileSystem | Path.Path
+
+/**
  * Create a keyed lock function backed by distributed semaphores.
  * Keys are hashed to avoid filesystem NAME_MAX limits.
  * A namespace prefix separates independent lock registries (e.g. repo vs worktree).
@@ -54,7 +62,7 @@ const makeKeyedLock = ({
   backingContext,
   namespace,
 }: {
-  backingContext: Context.Context<DistributedSemaphoreBacking>
+  backingContext: Context.Context<BackingContext>
   namespace: string
 }) =>
   Effect.gen(function* () {
@@ -95,7 +103,17 @@ export const makeStoreLockLayer = (basePath: AbsoluteDirPath) =>
     Effect.gen(function* () {
       const lockDir = `${basePath}.locks`
       const lockLayer = FileSystemBacking.layer({ lockDir })
-      const backingContext = yield* Layer.build(lockLayer)
+      const semaphoreBackingContext = yield* Layer.build(lockLayer)
+
+      // FileSystemBacking operations (tryAcquire, release, etc.) internally
+      // yield FileSystem + Path — merge these into the context so withPermits
+      // has everything needed at runtime.
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const backingContext = semaphoreBackingContext.pipe(
+        Context.add(FileSystem.FileSystem, fs),
+        Context.add(Path.Path, path),
+      )
 
       return {
         withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
