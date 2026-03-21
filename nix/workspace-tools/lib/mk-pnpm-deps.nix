@@ -15,6 +15,8 @@
 # We choose the second column because this repo's staged megarepo workspace is
 # heavily filtered and install-root-specific, and repeating `pnpm install` in
 # every CLI build was the main wall-time and disk-pressure bottleneck.
+# Downstream repos should therefore follow `effect-utils/nixpkgs` when they
+# consume these prepared trees so the full builder graph stays canonical.
 #
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #

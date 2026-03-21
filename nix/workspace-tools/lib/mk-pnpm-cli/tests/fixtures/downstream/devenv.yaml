@@ -1,0 +1,5 @@
+inputs:
+  effect-utils:
+    url: path:../effect-utils
+  nixpkgs:
+    follows: effect-utils/nixpkgs
