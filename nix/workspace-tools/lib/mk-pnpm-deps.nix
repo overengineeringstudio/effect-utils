@@ -334,7 +334,11 @@ NODE
         # These pnpm bookkeeping files are only needed for future pnpm
         # operations. Downstream builders restore a prepared tree and go
         # straight to bun, so keeping them only widens the determinism surface.
-        rm -f node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json
+        # Remove them for the root install plus any nested composed repos.
+        find . -type f \( \
+          -path '*/node_modules/.modules.yaml' -o \
+          -path '*/node_modules/.pnpm-workspace-state-v1.json' \
+        \) -delete
 
         rm -rf "$STORE_PATH"
         rm -f .pnpm-install-roots.txt
