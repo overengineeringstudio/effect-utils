@@ -17,7 +17,7 @@ import {
 } from '../../../genie/internal.ts'
 
 const deps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/oxc-config'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/oxc-config' }),
   dependencies: {
     external: {
       ...catalog.pick('eslint-plugin-storybook'),

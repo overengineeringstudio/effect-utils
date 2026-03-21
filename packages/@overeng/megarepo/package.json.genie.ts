@@ -21,7 +21,7 @@ const peerDepNames = [
 ] as const
 
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/megarepo'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/megarepo' }),
   dependencies: {
     workspace: [effectPathPkg, kdlPkg, kdlEffectPkg, tuiReactPkg, utilsPkg],
     external: catalog.pick('react'),

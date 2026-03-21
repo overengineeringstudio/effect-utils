@@ -10,7 +10,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const supportDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/genie'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/genie' }),
   devDependencies: {
     workspace: [tuiCorePkg, tuiReactPkg, utilsDevPkg, utilsPkg],
     external: {

@@ -10,13 +10,16 @@ All notable changes to this project will be documented in this file.
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
   - Parses and applies multiple reported hash updates in one pass instead of only the first mismatch
   - Adds regression coverage for mixed main-hash and local-dependency hash updates
-- **nix/workspace-tools/mk-pnpm-deps**: Make pnpm deps hashes platform-agnostic by fetching the lockfile package set directly into the store
-  - Replaces host-sensitive `pnpm install`-based FOD generation with lockfile-driven `pnpm store add`
-  - Keeps store normalization deterministic by zeroing `checkedAt`, sorting file maps, and pruning orphan CAS files
-  - Produces the same normalized store hash across `x86_64-linux` and `aarch64-linux` for the validated package set
-- **nix/workspace-tools/mk-pnpm-deps**: Stabilize pnpm deps FOD input ordering and store normalization
-  - Sorts staged external install roots and lockfile inputs before dependency fetch
-  - Fails fast if store normalization encounters multiple `v*` roots or leftover symlinks
+- **nix/workspace-tools/mk-pnpm-deps / mk-pnpm-cli / oxc-config-plugin**: Switch Nix-contained pnpm builds to precomputed relocatable install trees
+  - Prepares the staged workspace install tree once inside the fixed-output derivation instead of restoring a vendored pnpm store and rerunning `pnpm install` in downstream builds
+  - Normalizes pnpm's absolute-path and timestamp metadata so the prepared tree stays deterministic across repeated builds
+  - Restores the prepared tree into the real workspace and relocates pnpm path placeholders before Bun-based build steps run
+- **nix/workspace-tools/mk-pnpm-deps**: Drop pnpm bookkeeping metadata from prepared install trees
+  - Removes `.modules.yaml` and `.pnpm-workspace-state-v1.json` from the archived prepared tree because downstream Nix builders restore the tree and go straight to Bun instead of rerunning pnpm
+  - Eliminates the remaining runner-specific pnpm metadata nondeterminism that was still flipping prepared-tree hashes across CI environments
+- **CI workflow / genie/ci-workflow**: Evict cached pnpm-deps outputs before CI jobs resolve `oxlint-npm`
+  - Avoids stale fixed-output pnpm cache entries masking the validated prepared-install-tree hash on CI runners
+  - Applies the cache bust to each job that resolves the shared Nix toolchain so `nix-check` and the faster task jobs agree on the same fresh deps output
 - **@overeng/genie**: Fail `genie --check` when inherited peer deps use ranged local install versions
   - Allows ranged `peerDependencies`
   - Requires explicit local install versions in `dependencies` / `devDependencies` / `optionalDependencies`

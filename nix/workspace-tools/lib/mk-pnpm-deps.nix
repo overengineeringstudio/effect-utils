@@ -1,39 +1,56 @@
-# Shared pnpm dependency fetching and restore helpers.
+# Shared pnpm dependency preparation and restore helpers.
+#
+# This intentionally diverges from nixpkgs' pnpm helper shape.
+#
+# | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
+# |---------------------|----------------------------------------------------|----------------------------------------------|
+# | Cached artifact     | Normalized pnpm store tarball                      | Prepared install tree tarball                |
+# | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
+# | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
+# | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
+# | Cache reuse         | Better across packages sharing one store           | Worse, because prepared trees are more specific |
+# | Determinism surface | Mostly pnpm store contents                         | Store contents plus pnpm metadata and shims  |
+# | Complexity          | Lower, upstream-maintained                         | Higher, repo-specific normalization logic    |
+#
+# We choose the second column because this repo's staged megarepo workspace is
+# heavily filtered and install-root-specific, and repeating `pnpm install` in
+# every CLI build was the main wall-time and disk-pressure bottleneck.
 #
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
-# 1. mkDeps: Creates a fixed-output derivation (FOD) that fetches pnpm dependencies
-#    from staged lockfiles by adding their external package set to the pnpm
-#    store and archiving the normalized result into a reproducible tarball.
+# 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
+#    manifest-only workspace and archives the resulting prepared install tree.
 #
 # 2. mkRestoreScript: Generates a shell script snippet that extracts the
-#    archived pnpm store and configures pnpm for offline installs during the
-#    build phase.
+#    prepared workspace tree over a full source workspace during the build.
 #
-# By centralizing this logic we avoid duplicating the ~50 lines of pnpm store
-# setup, timestamp normalization, and tarball creation across multiple builders.
+# By centralizing this logic we keep pnpm out of downstream build phases and
+# avoid duplicating staged-workspace install preparation across builders.
 
 { pkgs }:
 
 let
   lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
+  preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
 in
 {
-  # Create a fixed-output derivation that fetches pnpm dependencies.
+  # Create a fixed-output derivation that prepares a workspace install tree.
   #
   # Arguments:
   #   name:           Derivation name prefix (e.g., "genie" or "oxc-config")
   #   src:            Filtered source containing the staged workspace root
   #                   package.json, pnpm-lock.yaml, pnpm-workspace.yaml, and
-  #                   relevant workspace member manifests / patches.
+  #                   relevant workspace member manifests / patches. The staged
+  #                   tree should contain only files needed for deterministic
+  #                   installs so source-only edits do not invalidate the FOD.
   #   sourceRoot:     Path within the staged workspace root to cd into before
   #                   install. Use "." for the staged workspace root itself.
   #   pnpmDepsHash:   Expected hash of the FOD output
   #   preInstall:     Extra shell commands to run before lockfile parsing
   #   lockfilePaths:
-  #                   Lockfiles that define the allowed package set for store normalization.
-  #                   Each path is relative to sourceRoot.
+  #                   Lockfiles whose directories should be installed within the
+  #                   staged tree. Each path is relative to sourceRoot.
   mkDeps =
     {
       name,
@@ -79,9 +96,9 @@ in
       nativeBuildInputs = [
         pkgs.pnpm
         pkgs.nodejs
+        pkgs.python3
         pkgs.cacert
         pkgs.zstd
-        pkgs.findutils
       ];
 
       dontUnpack = true;
@@ -104,8 +121,8 @@ in
 
         ${preInstall}
 
-        export HOME=$PWD
-        export STORE_PATH=$PWD/.pnpm-store
+        export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
+        export STORE_PATH=$(mktemp -d "$NIX_BUILD_TOP/pnpm-store.XXXXXX")
         export CI=true
         export NPM_CONFIG_PRODUCTION=false
         export npm_config_production=false
@@ -114,267 +131,267 @@ in
         export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
         pnpm config set store-dir "$STORE_PATH"
+        pnpm config set package-import-method clone-or-copy
         pnpm config set manage-package-manager-versions false
         pnpm config set side-effects-cache false
         ${pnpmPlatform.setupScript}
 
         node -e '
-          const fs = require("fs");
-
-          const splitNameVersion = (spec) => {
-            const atIndex = spec.startsWith("@")
-              ? spec.indexOf("@", 1)
-              : spec.indexOf("@");
-            return atIndex === -1
-              ? undefined
-              : [spec.slice(0, atIndex), spec.slice(atIndex + 1)];
-          };
-
+          const path = require("path");
           const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
-          const specs = new Set();
-
-          for (const lockfilePath of lockfilePaths) {
-            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
-              console.error("store-fetch: FATAL — staged lockfile not found at " + lockfilePath);
-              process.exit(1);
-            }
-
-            const lines = fs.readFileSync(lockfilePath, "utf8").split("\n");
-            let inPackages = false;
-            for (const line of lines) {
-              if (/^packages:\s*$/.test(line)) {
-                inPackages = true;
-                continue;
-              }
-              if (inPackages) {
-                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
-                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
-                const m = /^\s{2}("|\x27)?(.+?)\1:\s*$/.exec(line);
-                if (!m) continue;
-                const key = m[2];
-                const spec = key.split("(")[0];
-                const nameVersion = splitNameVersion(spec);
-                if (!nameVersion) continue;
-                const [pkgName, version] = nameVersion;
-                if (
-                  !pkgName
-                  || !version
-                  || version.startsWith("file:")
-                  || version.startsWith("link:")
-                  || version.startsWith("workspace:")
-                  || version.startsWith("patch:")
-                  || version.startsWith("git+")
-                  || version.startsWith("http:")
-                  || version.startsWith("https:")
-                  || version.startsWith("npm:")
-                ) continue;
-                specs.add(pkgName + "@" + version);
-              }
-            }
-          }
-
-          const sortedSpecs = Array.from(specs).sort();
-          if (sortedSpecs.length === 0) {
-            console.error("store-fetch: FATAL — no external package specs parsed from staged lockfiles");
-            process.exit(1);
-          }
-          fs.writeFileSync(".pnpm-store-specs.txt", sortedSpecs.join("\n") + "\n");
-          console.log("store-fetch: parsed " + sortedSpecs.length + " unique external package specs");
-        '
-
-        xargs -r -a .pnpm-store-specs.txt -n 50 pnpm store add
-
-        # Normalize pnpm store for cross-platform/cross-run determinism.
-        # See: https://github.com/NixOS/nixpkgs/issues/422889
-        #
-        # Pipeline overview:
-        #   Phase 0: Prune phantom index files not in the staged lockfile
-        #   Phase 1: Build CAS file existence set (source of truth for exec status)
-        #   Phase 2: Canonicalize index JSON (deterministic mode from CAS filename)
-        #   Phase 3: Remove orphan CAS files (not referenced by any index)
-        #
-        # Phase 0 context: the staged package lockfile is the only dependency
-        # source of truth for this fetch input. Pruning any extra index files
-        # ensures the archived store cannot drift beyond that lockfile.
-
-        node -e '
-          const fs = require("fs");
-          const p = require("path");
-          const sp = process.env.STORE_PATH;
-          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
-
-          function walk(dir, out) {
-            for (const e of fs.readdirSync(dir, {withFileTypes:true})) {
-              const fp = p.join(dir, e.name);
-              if (e.isDirectory()) walk(fp, out); else out.push(fp);
-            }
-            return out;
-          }
-
-          const vdirs = fs.readdirSync(sp).filter(d => /^v\d+$/.test(d)).sort();
-          if (!vdirs.length) { console.log("store-norm: no v* dir found"); process.exit(0); }
-          if (vdirs.length !== 1) {
-            console.error("store-norm: FATAL — expected exactly one v* dir, found: " + vdirs.join(", "));
-            process.exit(1);
-          }
-          const vdir = p.join(sp, vdirs[0]);
-
           if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
-            console.error("store-norm: FATAL — no staged lockfiles were provided");
+            console.error("workspace-prep: FATAL - no staged lockfiles were provided");
             process.exit(1);
           }
 
-          /* Phase 0: Prune phantom index files not in the staged lockfile. */
-          const Q = String.fromCharCode(39); /* single quote */
-          const pkgLineRe = new RegExp("^\\s+(" + Q + "?)(.+?)\\1:\\s*$");
-          const allowedPkgVersions = new Set();
+          const installRoots = [...new Set(lockfilePaths.map((lockfilePath) => {
+            const dir = path.dirname(lockfilePath);
+            return dir === "" ? "." : dir;
+          }))].sort();
 
-          for (const lockfilePath of lockfilePaths) {
-            if (!lockfilePath || !fs.existsSync(lockfilePath)) {
-              console.error("store-norm: FATAL — staged lockfile not found at " + lockfilePath);
-              process.exit(1);
+          process.stdout.write(installRoots.join("\n") + "\n");
+        ' > .pnpm-install-roots.txt
+
+        while IFS= read -r install_root; do
+          [ -n "$install_root" ] || continue
+
+          if [ ! -f "$install_root/package.json" ] || [ ! -f "$install_root/pnpm-lock.yaml" ]; then
+            echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
+            exit 1
+          fi
+
+          echo "workspace-prep: installing $install_root"
+          (
+            cd "$install_root"
+            pnpm install --frozen-lockfile --ignore-scripts
+            # pnpm still prunes linux-musl optional deps on Linux during the
+            # first install even when supportedArchitectures spans linux/darwin
+            # and x64/arm64. A second musl-targeted pass materializes the full
+            # cross-platform closure that matches macOS.
+            pnpm install --frozen-lockfile --ignore-scripts --force --libc=musl
+          )
+        done < .pnpm-install-roots.txt
+
+        export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
+        node <<'NODE'
+        const fs = require("fs");
+        const path = require("path");
+
+        const workspaceRoot = process.cwd();
+        const workspaceRealRoot = fs.realpathSync(workspaceRoot);
+        const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+
+        const rewriteTextFile = (filePath, transform) => {
+          if (!fs.existsSync(filePath)) {
+            return;
+          }
+
+          const next = transform(fs.readFileSync(filePath, "utf8"));
+          fs.writeFileSync(filePath, next);
+        };
+
+        // pnpm virtual packages for workspace `file:` deps should point back to
+        // the staged workspace members, not copied package snapshots, or the
+        // prepared tree will bake in install-root-specific absolute paths.
+        const workspacePackages = new Map();
+
+        const collectWorkspacePackages = (dirPath) => {
+          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+            if (!entry.isDirectory()) {
+              continue;
             }
 
-            const lockfile = fs.readFileSync(lockfilePath, "utf8");
-            const lines = lockfile.split("\n");
-            let inPackages = false;
-            for (const line of lines) {
-              if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
-              if (inPackages) {
-                if (line.length > 0 && line[0] !== " " && line[0] !== "\n") break;
-                if (!line.startsWith("  ") || line.startsWith("    ")) continue;
-                const m = pkgLineRe.exec(line);
-                if (m && m[2].includes("@")) allowedPkgVersions.add(m[2]);
+            if (entry.name === "node_modules" || entry.name === ".git") {
+              continue;
+            }
+
+            const entryPath = path.join(dirPath, entry.name);
+            const packageJsonPath = path.join(entryPath, "package.json");
+            if (fs.existsSync(packageJsonPath)) {
+              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+              if (typeof packageJson.name === "string" && !workspacePackages.has(packageJson.name)) {
+                workspacePackages.set(packageJson.name, entryPath);
               }
             }
-          }
-          console.log("store-norm: parsed staged lockfiles, found " + allowedPkgVersions.size + " unique packages");
 
-          if (allowedPkgVersions.size === 0) {
-            console.error("store-norm: FATAL — no packages parsed from staged pnpm-lock.yaml");
-            process.exit(1);
+            collectWorkspacePackages(entryPath);
+          }
+        };
+
+        const packageDirsInNodeModules = (nodeModulesPath) => {
+          if (!fs.existsSync(nodeModulesPath)) {
+            return [];
           }
 
-          const indexDir = p.join(vdir, "index");
-          const allIndex = walk(indexDir, []).filter(f => f.endsWith(".json"));
-          let pruned = 0;
-          for (const ip of allIndex) {
-            /* Extract pkg@version from filename: {hash}-{pkg}@{ver}.json
-               Scoped packages use + instead of / in filenames. */
-            const basename = p.basename(ip, ".json");
-            const dashIdx = basename.indexOf("-");
-            if (dashIdx === -1) continue;
-            const pkgAtVersion = basename.slice(dashIdx + 1).replace(/\+/g, "/");
-            if (!allowedPkgVersions.has(pkgAtVersion)) {
-              fs.unlinkSync(ip);
-              pruned++;
+          const packageDirs = [];
+          for (const entry of fs.readdirSync(nodeModulesPath, { withFileTypes: true })) {
+            if (!entry.isDirectory()) {
+              continue;
             }
-          }
-          const remaining = allIndex.length - pruned;
-          if (pruned) console.log("store-norm: pruned " + pruned + " phantom index files");
-          console.log("store-norm: " + remaining + " index files remain (from " + allowedPkgVersions.size + " lockfile packages)");
 
-          /* Phase 1: Build CAS file existence set (source of truth for exec status) */
-          const filesDir = p.join(vdir, "files");
-          const casFiles = new Set();
-          if (fs.existsSync(filesDir)) {
-            for (const f of walk(filesDir, [])) casFiles.add(f);
-          }
-
-          /* Phase 2: Normalize index JSON using CAS file names for exec detection.
-             Key insight: the CAS file name (-exec suffix or not) is set during
-             initial fetch from the tarball and is deterministic. But the index
-             JSON mode field can change non-deterministically due to cross-partition
-             hardlink behavior (pnpm flips exec bits on bin entries via hardlinks;
-             on same-partition this propagates to the CAS file mode, on cross-
-             partition it does not). So we derive exec status from the CAS file
-             name (deterministic source of truth), not the index mode. */
-          const referenced = new Set();
-          const indexDir2 = p.join(vdir, "index");
-          const indexFiles = walk(indexDir2, []).filter(f => f.endsWith(".json")).sort();
-          for (const ip of indexFiles) {
-            const d = JSON.parse(fs.readFileSync(ip, "utf8"));
-            if (d.files) {
-              const sorted = {};
-              for (const k of Object.keys(d.files).sort()) {
-                const f = d.files[k];
-                const m = f.integrity.match(/^[^-]+-(.+)$/);
-                let isExec = false;
-                if (m) {
-                  const hex = Buffer.from(m[1], "base64").toString("hex");
-                  const base = p.join(vdir, "files", hex.slice(0,2), hex.slice(2));
-                  const exec = base + "-exec";
-                  /* Derive exec from CAS file name, not index mode */
-                  if (casFiles.has(exec)) {
-                    isExec = true;
-                    referenced.add(exec);
-                  } else if (casFiles.has(base)) {
-                    referenced.add(base);
-                  }
+            if (entry.name.startsWith("@")) {
+              const scopeDir = path.join(nodeModulesPath, entry.name);
+              for (const scopedEntry of fs.readdirSync(scopeDir, { withFileTypes: true })) {
+                if (scopedEntry.isDirectory()) {
+                  packageDirs.push(path.join(scopeDir, scopedEntry.name));
                 }
-                sorted[k] = { checkedAt: 0, integrity: f.integrity, mode: isExec ? 493 : 420, size: f.size };
               }
-              d.files = sorted;
+            } else {
+              packageDirs.push(path.join(nodeModulesPath, entry.name));
             }
-            delete d.sideEffects;
-            delete d.requiresBuild;
-            const out = {};
-            for (const k of Object.keys(d).sort()) out[k] = d[k];
-            fs.writeFileSync(ip, JSON.stringify(out));
           }
 
-          /* Phase 3: Remove orphan CAS files (not referenced by any index) */
-          if (fs.existsSync(filesDir)) {
-            let orphans = 0;
-            for (const f of walk(filesDir, [])) {
-              if (!referenced.has(f)) { fs.unlinkSync(f); orphans++; }
+          return packageDirs;
+        };
+
+        const relinkLocalVirtualPackages = (dirPath) => {
+          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+            if (!entry.isDirectory()) {
+              continue;
             }
-            if (orphans) console.log("store-norm: removed " + orphans + " orphan CAS files");
+
+            const entryPath = path.join(dirPath, entry.name);
+            if (entry.name === ".pnpm") {
+              for (const virtualEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+                if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
+                  continue;
+                }
+
+                const virtualNodeModulesPath = path.join(entryPath, virtualEntry.name, "node_modules");
+                for (const packageDir of packageDirsInNodeModules(virtualNodeModulesPath)) {
+                  const packageJsonPath = path.join(packageDir, "package.json");
+                  if (!fs.existsSync(packageJsonPath)) {
+                    continue;
+                  }
+
+                  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+                  const workspacePackageDir = workspacePackages.get(packageJson.name);
+                  if (!workspacePackageDir) {
+                    continue;
+                  }
+
+                  fs.rmSync(packageDir, { recursive: true, force: true });
+                  fs.symlinkSync(path.relative(path.dirname(packageDir), workspacePackageDir), packageDir, "dir");
+                }
+              }
+            } else {
+              relinkLocalVirtualPackages(entryPath);
+            }
           }
-        '
+        };
 
-        # 2. Remove empty directories left after orphan cleanup.
-        find "$STORE_PATH" -type d -empty -delete 2>/dev/null || true
+        collectWorkspacePackages(workspaceRoot);
+        relinkLocalVirtualPackages(workspaceRoot);
 
-        # 3. Remove everything except files/ and index/ — defensive cleanup.
-        #    projects/ contains path-dependent symlinks, tmp/ has random names,
-        #    and any other dirs pnpm may create are not needed for offline installs.
-        for vdir in "$STORE_PATH"/v*/; do
-          for entry in "$vdir"*/; do
-            case "$(basename "$entry")" in
-              files|index) ;;
-              *) rm -rf "$entry" ;;
-            esac
-          done
-        done
+        const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+          const realDirPath = fs.realpathSync(dirPath);
+          if (visitedRealPaths.has(realDirPath)) {
+            return;
+          }
+          visitedRealPaths.add(realDirPath);
 
-        # 4. Normalize file permissions — umask can differ across CI runners/sandbox
-        #    environments, and tar captures permissions. Following nixpkgs PR #422975.
-        find "$STORE_PATH" -type d -exec chmod 755 {} +
-        find "$STORE_PATH" -type f -name "*-exec" -exec chmod 555 {} +
-        find "$STORE_PATH" -type f ! -name "*-exec" -exec chmod 444 {} +
+          for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+            const entryPath = path.join(dirPath, entry.name);
+            const isDirectory =
+              entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
 
-        # 5. Print diagnostic hashes (helps debug cross-runner non-determinism).
-        echo "store-diag: top-dirs=$(ls -1 "$STORE_PATH"/v*/ | tr '\n' ',')"
-        echo "store-diag: index-hash=$(find "$STORE_PATH"/v*/index -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
-        echo "store-diag: files-hash=$(find "$STORE_PATH"/v*/files -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
-        echo "store-diag: files-count=$(find "$STORE_PATH"/v*/files -type f | wc -l)"
-        echo "store-diag: index-count=$(find "$STORE_PATH"/v*/index -type f | wc -l)"
-        echo "store-diag: symlink-count=$(find "$STORE_PATH" -type l | wc -l)"
-        echo "store-diag: exec-files-count=$(find "$STORE_PATH"/v*/files -name '*-exec' | wc -l)"
-        echo "store-diag: total-size=$(du -sb "$STORE_PATH" | cut -f1)"
+            if (!isDirectory) {
+              continue;
+            }
 
-        if find "$STORE_PATH" -type l | grep -q .; then
-          echo "store-norm: FATAL — symlinks remain after normalization"
-          find "$STORE_PATH" -type l
-          exit 1
-        fi
+            if (entry.name === ".bin") {
+              for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+                if (!binEntry.isFile()) {
+                  continue;
+                }
+                rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
+                  script.split(workspaceRoot).join(workspacePlaceholder)
+                );
+              }
+              continue;
+            }
+
+            rewriteBinScripts(entryPath, visitedRealPaths);
+          }
+        };
+
+        rewriteBinScripts(workspaceRoot);
+NODE
+
+        # These pnpm bookkeeping files are only needed for future pnpm
+        # operations. Downstream builders restore a prepared tree and go
+        # straight to bun, so keeping them only widens the determinism surface.
+        rm -f node_modules/.modules.yaml node_modules/.pnpm-workspace-state-v1.json
+
+        rm -rf "$STORE_PATH"
+        rm -f .pnpm-install-roots.txt
+
+        find . -type d -exec chmod 755 {} +
+        find . -type f -perm /111 -exec chmod 555 {} +
+        find . -type f ! -perm /111 -exec chmod 444 {} +
 
         mkdir -p $out
-        cd $STORE_PATH
-        LC_ALL=C TZ=UTC tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
-          --format=gnu --no-acls --no-selinux --no-xattrs -cf - . \
-          | zstd -T1 -q -o $out/pnpm-store.tar.zst
+        export PREPARED_WORKSPACE_ARCHIVE=$(mktemp "$NIX_BUILD_TOP/prepared-workspace.XXXXXX.tar")
+        python <<'PY'
+import os
+import stat
+import tarfile
+
+workspace_root = os.getcwd()
+archive_path = os.environ["PREPARED_WORKSPACE_ARCHIVE"]
+
+def build_tarinfo(path: str, arcname: str) -> tarfile.TarInfo:
+    st = os.lstat(path)
+    info = tarfile.TarInfo(arcname)
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    info.mtime = 0
+
+    if stat.S_ISDIR(st.st_mode):
+        info.type = tarfile.DIRTYPE
+        info.mode = 0o755
+    elif stat.S_ISLNK(st.st_mode):
+        info.type = tarfile.SYMTYPE
+        info.mode = 0o777
+        info.linkname = os.readlink(path)
+    elif stat.S_ISREG(st.st_mode):
+        info.type = tarfile.REGTYPE
+        info.mode = 0o555 if st.st_mode & 0o111 else 0o444
+        info.size = st.st_size
+    else:
+        raise RuntimeError(f"Unsupported file type in prepared workspace: {path}")
+
+    return info
+
+def add_path(archive: tarfile.TarFile, path: str, arcname: str) -> None:
+    info = build_tarinfo(path, arcname)
+    if info.isreg():
+        with open(path, "rb") as handle:
+            archive.addfile(info, handle)
+    else:
+        archive.addfile(info)
+
+with tarfile.open(archive_path, mode="w", format=tarfile.GNU_FORMAT) as archive:
+    add_path(archive, workspace_root, ".")
+
+    for current_root, dirnames, filenames in os.walk(workspace_root):
+        dirnames.sort()
+        filenames.sort()
+
+        for dirname in dirnames:
+            path = os.path.join(current_root, dirname)
+            relpath = os.path.relpath(path, workspace_root)
+            add_path(archive, path, f"./{relpath}")
+
+        for filename in filenames:
+            path = os.path.join(current_root, filename)
+            relpath = os.path.relpath(path, workspace_root)
+            add_path(archive, path, f"./{relpath}")
+PY
+        zstd -T1 -q "$PREPARED_WORKSPACE_ARCHIVE" -o $out/prepared-workspace.tar.zst
+        rm -f "$PREPARED_WORKSPACE_ARCHIVE"
 
         runHook postInstall
       '';
@@ -383,32 +400,78 @@ in
       outputHash = pnpmDepsHash;
     };
 
-  # Generate a shell script snippet that restores the pnpm store from a deps
-  # derivation and configures pnpm for offline installs.
+  # Generate a shell script snippet that restores a prepared workspace tree.
   #
-  # The calling derivation's buildPhase should include this snippet before
-  # running `pnpm install --offline`.
+  # The calling derivation's buildPhase should include this snippet after
+  # materializing the full source workspace so the prepared node_modules tree
+  # overlays the real source files.
   #
   # Arguments:
   #   deps: The derivation returned by mkDeps
+  #   target: Directory to extract the prepared workspace into
   mkRestoreScript =
-    { deps }:
+    {
+      deps,
+      target ? ".",
+    }:
     ''
-      export HOME=$PWD
-      export STORE_PATH=$(mktemp -d)
-      export NPM_CONFIG_PRODUCTION=false
-      export npm_config_production=false
-      export npm_config_manage_package_manager_versions=false
-      export NODE_ENV=development
+      mkdir -p ${lib.escapeShellArg target}
+      zstd -d -c ${deps}/prepared-workspace.tar.zst | tar -xf - -C ${lib.escapeShellArg target}
 
-      # Extract pnpm store
-      zstd -d -c ${deps}/pnpm-store.tar.zst | tar -xf - -C $STORE_PATH
-      chmod -R +w $STORE_PATH
+      export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
+      export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
 
-      # Configure pnpm for offline install
-      pnpm config set store-dir "$STORE_PATH"
-      pnpm config set package-import-method clone-or-copy
-      pnpm config set manage-package-manager-versions false
-      ${pnpmPlatform.setupScript}
+      find "$PREPARED_WORKSPACE_TARGET" -path '*/.bin/*' -type f -exec chmod u+w {} +
+
+      node <<'NODE'
+      const fs = require("fs");
+      const path = require("path");
+
+      const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+      const workspaceTarget = process.env.PREPARED_WORKSPACE_TARGET;
+
+      const rewriteTextFile = (filePath) => {
+        if (!fs.existsSync(filePath)) {
+          return;
+        }
+
+        const current = fs.readFileSync(filePath, "utf8");
+        const next = current.split(workspacePlaceholder).join(workspaceTarget);
+        if (next !== current) {
+          fs.writeFileSync(filePath, next);
+        }
+      };
+
+      const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+        const realDirPath = fs.realpathSync(dirPath);
+        if (visitedRealPaths.has(realDirPath)) {
+          return;
+        }
+        visitedRealPaths.add(realDirPath);
+
+        for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+          const entryPath = path.join(dirPath, entry.name);
+          const isDirectory =
+            entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
+
+          if (!isDirectory) {
+            continue;
+          }
+
+          if (entry.name === ".bin") {
+            for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+              if (binEntry.isFile()) {
+                rewriteTextFile(path.join(entryPath, binEntry.name));
+              }
+            }
+            continue;
+          }
+
+          rewriteBinScripts(entryPath, visitedRealPaths);
+        }
+      };
+
+      rewriteBinScripts(workspaceTarget);
+NODE
     '';
 }

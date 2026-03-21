@@ -8,7 +8,7 @@ pure and designed to work in both megarepo workspaces and standalone repos.
 - `lib/`
   - `mk-bun-cli.nix` — Bun binary builder (deterministic, local file deps).
   - `mk-pnpm-cli.nix` — pnpm + bun compile builder for workspace CLIs.
-  - `mk-pnpm-deps.nix` — FOD helper for fetching pnpm deps with store normalization (phantom package pruning, CAS/index canonicalization).
+  - `mk-pnpm-deps.nix` — FOD helper for preparing relocatable pnpm install trees that downstream builds restore without rerunning `pnpm install`.
   - `pnpm-platform.nix` — pnpm `supportedArchitectures` setup for cross-platform hashes.
   - `cli-build-stamp.nix` — build stamp helper for CLIs.
   - `update-bun-hashes.nix` — helper to refresh bunDeps hashes.

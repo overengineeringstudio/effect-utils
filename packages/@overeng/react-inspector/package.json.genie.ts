@@ -8,7 +8,7 @@ import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react'] as const
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/react-inspector'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/react-inspector' }),
   dependencies: {
     external: {
       ...catalog.pick('is-dom'),

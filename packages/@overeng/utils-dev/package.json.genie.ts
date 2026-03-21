@@ -16,7 +16,7 @@ const peerDepNames = [
 ] as const
 
 const deps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/utils-dev'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/utils-dev' }),
   devDependencies: {
     external: {
       ...catalog.pick(...peerDepNames, '@types/node', 'typescript'),

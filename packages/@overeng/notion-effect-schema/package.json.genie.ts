@@ -9,7 +9,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 const peerDepNames = ['effect'] as const
 const workspaceDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/notion-effect-schema'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-schema' }),
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {

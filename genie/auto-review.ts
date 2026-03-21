@@ -2,6 +2,7 @@
 
 import { githubWorkflow } from '../packages/@overeng/genie/src/runtime/mod.ts'
 
+/** Generate the shared auto-review workflow used by assistant-authored PRs. */
 export const autoReviewWorkflow = ({
   author = 'schickling-assistant',
   reviewer = 'schickling',

@@ -6,7 +6,7 @@ import {
 } from '../../genie/internal.ts'
 
 const composition = catalog.compose({
-  workspace: workspaceMember('context/opentui'),
+  workspace: workspaceMember({ memberPath: 'context/opentui' }),
   dependencies: {
     external: catalog.pick(
       '@effect-atom/atom',

@@ -15,7 +15,7 @@ import utilsPkg from '../utils/package.json.genie.ts'
 /** Effect packages not already in @overeng/utils or @overeng/tui-react */
 const ownPeerDepNames = ['@effect/cli', '@effect/sql', '@effect/typeclass'] as const
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/notion-cli'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-cli' }),
   dependencies: {
     workspace: [
       effectPathPkg,

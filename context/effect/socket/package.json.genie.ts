@@ -6,7 +6,7 @@ import {
 } from '../../../genie/internal.ts'
 
 const composition = catalog.compose({
-  workspace: workspaceMember('context/effect/socket'),
+  workspace: workspaceMember({ memberPath: 'context/effect/socket' }),
   dependencies: {
     external: catalog.pick('@effect/platform', '@effect/platform-node', '@effect/rpc', 'effect'),
   },

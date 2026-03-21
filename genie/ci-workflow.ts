@@ -114,7 +114,13 @@ export const nixExtraConf = (opts: NixConfigOptions = {}) =>
     ...(opts.extraLines ?? []),
   ].join('\n')
 
-const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => {
+const withAppendedNixConfig = ({
+  command,
+  opts = {},
+}: {
+  command: string
+  opts?: NixConfigOptions
+}) => {
   const extraConf = nixExtraConf(opts)
   if (extraConf === '') {
     return command
@@ -125,22 +131,54 @@ const withAppendedNixConfig = (command: string, opts: NixConfigOptions = {}) => 
 }
 
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
-  withAppendedNixConfig(
-    `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+  withAppendedNixConfig({
+    command: `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
     opts,
-  )
+  })
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
   runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)
+
+/** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
+export const evictCachedPnpmDepsStep = ({
+  flakeRef,
+  name = 'Evict cached pnpm deps',
+}: {
+  flakeRef: string
+  name?: string
+}) => ({
+  name,
+  shell: 'bash',
+  run: [
+    `topDrv=$(nix path-info --derivation ${shellSingleQuote(flakeRef)} 2>/dev/null || true)`,
+    'if [ -n "$topDrv" ]; then',
+    '  while IFS= read -r drv; do',
+    '    [ -n "$drv" ] || continue',
+    '    while IFS= read -r outPath; do',
+    '      [ -n "$outPath" ] || continue',
+    '      if [ -e "$outPath" ]; then',
+    '        echo "evicting cached: $(basename "$outPath")"',
+    '        nix store delete "$outPath" 2>/dev/null || true',
+    '      fi',
+    '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\\.drv$" || true)',
+    'fi',
+  ].join('\n'),
+})
 
 /**
  * Namespace runner with run ID-based affinity to prevent queue jumping.
  * Adds a run ID label so runners spawned for one workflow run
  * don't steal jobs from other runs.
  */
-export const namespaceRunner = (profile: RunnerProfile | (string & {}), runId: string) =>
-  [profile, `namespace-features:github.run-id=${runId}`] as const
+export const namespaceRunner = ({
+  profile,
+  runId,
+}: {
+  profile: RunnerProfile | (string & {})
+  runId: string
+}) => [profile, `namespace-features:github.run-id=${runId}`] as const
 
 // =============================================================================
 // Step Atoms

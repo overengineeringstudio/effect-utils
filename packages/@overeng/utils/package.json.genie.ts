@@ -23,7 +23,7 @@ const peerDepNames = [
 ] as const
 
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/utils'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/utils' }),
   dependencies: {
     external: catalog.pick(
       '@noble/hashes',

@@ -9,7 +9,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const runtimeDeps = catalog.compose({
-  workspace: workspaceMember('packages/@overeng/notion-effect-client'),
+  workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-effect-client' }),
   dependencies: {
     workspace: [notionEffectSchemaPkg],
   },
