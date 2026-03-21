@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/megarepo**: Harden store against broken worktree remnants (#423)
+  - `hasWorktree` now checks for `.git` file existence instead of just directory existence, so broken partial worktrees are properly detected and recreated
+  - Lock-protected worktree creation cleans up broken directory remnants and prunes stale git worktree bookkeeping before recreating
+  - Fix semaphore creation race in `StoreLock` using `SynchronizedRef` for atomic get-or-create
+
 - **devenv/tasks/shared/nix-cli**: Update multiple stale Nix FOD hashes per `dt nix:hash:*` iteration
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
   - Parses and applies multiple reported hash updates in one pass instead of only the first mismatch

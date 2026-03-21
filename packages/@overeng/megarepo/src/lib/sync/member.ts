@@ -750,6 +750,13 @@ export const syncMember = <R = never>({
               false
             if (stillNotExists === false) return
 
+            // Clean up broken worktree remnants (directory exists but .git is missing)
+            const dirExists = yield* fs.exists(worktreePath)
+            if (dirExists === true) {
+              yield* fs.remove(worktreePath, { recursive: true })
+              yield* Git.pruneWorktrees(bareRepoPath)
+            }
+
             // Ensure worktree parent directory exists
             const worktreeParent = EffectPath.ops.parent(worktreePath)
             if (worktreeParent !== undefined) {
@@ -807,6 +814,13 @@ export const syncMember = <R = never>({
               refType: 'commit',
             })
             if (exists === true) return
+
+            // Clean up broken worktree remnants
+            const dirExists = yield* fs.exists(commitWorktreePath)
+            if (dirExists === true) {
+              yield* fs.remove(commitWorktreePath, { recursive: true })
+              yield* Git.pruneWorktrees(bareRepoPath)
+            }
 
             const parent = EffectPath.ops.parent(commitWorktreePath)
             if (parent !== undefined) {

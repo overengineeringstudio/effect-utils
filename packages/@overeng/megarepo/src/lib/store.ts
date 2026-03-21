@@ -221,7 +221,11 @@ const make = ({
 
     hasBareRepo: (source) => fs.exists(getBareRepoPath(source)),
 
-    hasWorktree: (args) => fs.exists(getWorktreePath(args)),
+    hasWorktree: (args) => {
+      const worktreePath = getWorktreePath(args)
+      const gitFilePath = `${worktreePath}.git`.replace(/\/\.git$/, '/.git')
+      return fs.exists(gitFilePath)
+    },
 
     // Legacy compatibility
     hasRepo: (source) => fs.exists(getBareRepoPath(source)),
