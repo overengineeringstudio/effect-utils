@@ -18,6 +18,7 @@ let
   oxlintWithPlugins = import ./nix/oxlint-with-plugins.nix {
     inherit pkgs oxlintNpm;
   };
+  pty = import ./nix/pty.nix { pkgs = flakePkgs; };
 
   # Shared task modules (from shared/ directory)
   taskModules = {
@@ -341,6 +342,7 @@ in
       entry = "packages/@overeng/megarepo/bin/mr.ts";
     })
     cliBuildStamp.package
+    pty
   ];
 
   # Source-mode CLIs need pnpm install before running.
