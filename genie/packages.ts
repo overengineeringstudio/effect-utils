@@ -21,6 +21,7 @@ export const internalPackages = [
   'notion-effect-schema',
   'tui-core',
   'tui-react',
+  'tui-stories',
   'utils',
   'utils-dev',
 ] as const

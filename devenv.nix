@@ -94,6 +94,7 @@ let
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
+    "packages/@overeng/tui-stories"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -153,6 +154,10 @@ let
     {
       path = "packages/@overeng/tui-react";
       name = "tui-react";
+    }
+    {
+      path = "packages/@overeng/tui-stories";
+      name = "tui-stories";
     }
     {
       path = "packages/@overeng/utils";
@@ -341,6 +346,10 @@ in
       entry = "packages/@overeng/megarepo/bin/mr.ts";
     })
     cliBuildStamp.package
+    (mkSourceCli {
+      name = "tui-stories";
+      entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
+    })
   ];
 
   # Source-mode CLIs need pnpm install before running.

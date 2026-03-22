@@ -20,6 +20,7 @@ import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
 import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
 import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
+import tuiStoriesPkg from './packages/@overeng/tui-stories/package.json.genie.ts'
 import utilsDevPkg from './packages/@overeng/utils-dev/package.json.genie.ts'
 import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 
@@ -46,6 +47,7 @@ export const rootWorkspacePackages = [
   reactInspectorPkg,
   tuiCorePkg,
   tuiReactPkg,
+  tuiStoriesPkg,
   utilsPkg,
   utilsDevPkg,
 ] as const
