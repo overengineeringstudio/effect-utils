@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
+  - Fails `genie` when workflow jobs serialize non-string, empty, or stale placeholder runner labels like `null` / `...=undefined`
+  - Prevents CI helper API drift from silently generating invalid workflow files that only fail later in GitHub Actions
 - **@overeng/megarepo**: Harden store against broken worktree remnants (#423)
   - `hasWorktree` now checks for `.git` file existence instead of just directory existence, so broken partial worktrees are properly detected and recreated
   - Lock-protected worktree creation cleans up broken directory remnants and prunes stale git worktree bookkeeping before recreating

@@ -1,5 +1,7 @@
+import { createGenieOutput } from '../core.ts'
 import type { GenieOutput, Strict } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
+import type { GenieValidationIssue } from '../validation/mod.ts'
 
 /**
  * Type-safe GitHub Actions workflow generator
@@ -256,6 +258,85 @@ export type GitHubWorkflowArgs = {
   'run-name'?: string
 }
 
+const invalidRunnerLabelPattern = /(^|[=:])(undefined|null)$/
+
+const validateRunsOn = ({
+  jobName,
+  runsOn,
+  location,
+}: {
+  jobName: string
+  runsOn: unknown
+  location: string
+}): GenieValidationIssue[] => {
+  const labels = Array.isArray(runsOn) === true ? runsOn : [runsOn]
+  const issues: GenieValidationIssue[] = []
+
+  if (labels.length === 0) {
+    issues.push({
+      severity: 'error',
+      packageName: location,
+      dependency: `jobs.${jobName}.runs-on`,
+      message: `jobs.${jobName}.runs-on must include at least one runner label.`,
+      rule: 'github-workflow-runs-on-empty',
+    })
+    return issues
+  }
+
+  for (const [index, label] of labels.entries()) {
+    const dependency = `jobs.${jobName}.runs-on[${index}]`
+    if (typeof label !== 'string') {
+      issues.push({
+        severity: 'error',
+        packageName: location,
+        dependency,
+        message: `jobs.${jobName}.runs-on must serialize to string labels, got ${String(label)}.`,
+        rule: 'github-workflow-runs-on-non-string',
+      })
+      continue
+    }
+
+    if (label.trim() === '') {
+      issues.push({
+        severity: 'error',
+        packageName: location,
+        dependency,
+        message: `jobs.${jobName}.runs-on labels must not be empty.`,
+        rule: 'github-workflow-runs-on-empty-label',
+      })
+      continue
+    }
+
+    if (invalidRunnerLabelPattern.test(label) === true) {
+      issues.push({
+        severity: 'error',
+        packageName: location,
+        dependency,
+        message: `jobs.${jobName}.runs-on contains a stale placeholder label (${label}). This usually means a CI helper API drifted and serialized undefined/null into the workflow.`,
+        rule: 'github-workflow-runs-on-placeholder',
+      })
+    }
+  }
+
+  return issues
+}
+
+const validateWorkflow = ({
+  args,
+  location,
+}: {
+  args: GitHubWorkflowArgs
+  location: string
+}): GenieValidationIssue[] => {
+  const issues: GenieValidationIssue[] = []
+
+  for (const [jobName, job] of Object.entries(args.jobs)) {
+    issues.push(...validateRunsOn({ jobName, runsOn: job['runs-on'], location }))
+  }
+
+  return issues
+}
+
 /**
  * Creates a GitHub Actions workflow YAML configuration.
  *
@@ -284,7 +365,9 @@ export type GitHubWorkflowArgs = {
  */
 export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
   args: Strict<T, GitHubWorkflowArgs>,
-): GenieOutput<T> => ({
-  data: args,
-  stringify: (_ctx) => yaml.stringify(args),
-})
+): GenieOutput<T> =>
+  createGenieOutput({
+    data: args,
+    stringify: (_ctx) => yaml.stringify(args),
+    validate: (ctx) => validateWorkflow({ args, location: ctx.location }),
+  })
