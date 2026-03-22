@@ -246,8 +246,8 @@ export const convertLockedInputToGitHub = (
       result['owner'] = match[1]
       result['repo'] = match[2]
       ownerRepoInserted = true
-    } else if (key === 'shallow' || key === 'submodules') {
-      // Drop git-specific fields
+    } else if (key === 'shallow' || key === 'submodules' || key === 'revCount') {
+      // Drop git-specific fields not supported by github scheme
     } else {
       result[key] = input[key]
     }

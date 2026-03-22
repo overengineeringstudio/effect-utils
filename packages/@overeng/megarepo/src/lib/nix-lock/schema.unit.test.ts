@@ -86,6 +86,28 @@ describe('convertLockedInputToGitHub', () => {
     ).toBeUndefined()
   })
 
+  it('should strip revCount when converting git to github', () => {
+    const result = convertLockedInputToGitHub({
+      type: 'git',
+      url: 'https://github.com/livestorejs/livestore',
+      rev: 'abc123',
+      ref: 'dev',
+      revCount: 3081,
+    })
+    expect(result).toBeDefined()
+    expect(result!['type']).toBe('github')
+    expect(result).not.toHaveProperty('revCount')
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "owner": "livestorejs",
+        "ref": "dev",
+        "repo": "livestore",
+        "rev": "abc123",
+        "type": "github",
+      }
+    `)
+  })
+
   it('should preserve dir param from URL query string', () => {
     const result = convertLockedInputToGitHub({
       type: 'git',
