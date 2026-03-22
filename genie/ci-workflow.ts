@@ -202,6 +202,12 @@ export const installNixStep = (opts?: { extraConf?: string }) => ({
   uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
   with: {
     'extra-conf': [
+      /**
+       * TODO: Remove explicit experimental-features override once upstream ca-derivations issues are resolved
+       * @see https://github.com/NixOS/nix/issues/12361
+       * @see https://github.com/cachix/devenv/issues/2364
+       */
+      'experimental-features = nix-command flakes',
       'extra-substituters = https://devenv.cachix.org',
       'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
       'access-tokens = github.com=${{ github.token }}',
