@@ -269,7 +269,7 @@ const validateRunsOn = ({
   runsOn: unknown
   location: string
 }): GenieValidationIssue[] => {
-  const labels = Array.isArray(runsOn) ? runsOn : [runsOn]
+  const labels = Array.isArray(runsOn) === true ? runsOn : [runsOn]
   const issues: GenieValidationIssue[] = []
 
   if (labels.length === 0) {
