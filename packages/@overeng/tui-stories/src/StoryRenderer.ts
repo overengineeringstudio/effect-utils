@@ -115,11 +115,11 @@ export const renderStory = (options: RenderStoryOptions): Effect.Effect<string> 
     const renderConfig: RenderConfig = plain === true ? logRenderConfig : ciRenderConfig
 
     const viewElement = React.createElement(captured.View, { stateAtom })
-    // oxlint-disable-next-line eslint-plugin-react(no-children-prop) -- .ts file, no JSX available
-    const configElement = React.createElement(RenderConfigProvider, {
-      config: renderConfig,
-      children: viewElement,
-    })
+    const configElement = React.createElement(
+      RenderConfigProvider,
+      { config: renderConfig } as React.ComponentProps<typeof RenderConfigProvider>,
+      viewElement,
+    )
     const element = React.createElement(
       TuiRegistryContext.Provider,
       { value: registry },
