@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
 - **flake / nix/workspace-tools**: Document and regression-test strict downstream reuse of effect-utils' canonical nixpkgs input
   - Adds downstream flake-input and `devenv` fixture coverage for standalone and `repos/effect-utils`-prefixed consumers
   - Makes the intended contract explicit: downstream repos should follow `effect-utils/nixpkgs` instead of overriding effect-utils to their ambient nixpkgs
+- **@overeng/megarepo**: Skip pre-flight hygiene checks in apply mode (#423)
+  - Apply mode self-heals all store issues (missing bare repos, broken worktrees, ref mismatches)
+  - Eliminates races in `--all` mode where concurrent nested syncs modify shared store state while sibling pre-flight checks observe it
+  - Simplifies `runPreflightChecks` to lock-mode-only (removes `mode`/`commitMode` parameters and exception lists)
 
 - **devenv/tasks/shared/nix-cli**: Update multiple stale Nix FOD hashes per `dt nix:hash:*` iteration
   - Adds `nix build --keep-going` to surface all fixed-output hash mismatches from one build
