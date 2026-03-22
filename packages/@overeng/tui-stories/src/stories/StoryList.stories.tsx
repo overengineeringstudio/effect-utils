@@ -6,11 +6,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import React from 'react'
 
 import { Box, Text } from '@overeng/tui-react'
-import {
-  ALL_OUTPUT_TABS,
-  createStaticApp,
-  TuiStoryPreview,
-} from '@overeng/tui-react/storybook'
+import { ALL_OUTPUT_TABS, createStaticApp, TuiStoryPreview } from '@overeng/tui-react/storybook'
 
 const StaticApp = createStaticApp()
 
