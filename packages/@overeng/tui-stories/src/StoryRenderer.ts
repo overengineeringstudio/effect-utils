@@ -50,10 +50,27 @@ export type TimelineMode = 'initial' | 'final' | { readonly at: number }
  * - json: final state encoded via stateSchema
  * - ndjson: each timeline step encoded as a JSON line
  */
-export type OutputMode = 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'pipe' | 'log' | 'json' | 'ndjson'
+export type OutputMode =
+  | 'tty'
+  | 'alt-screen'
+  | 'ci'
+  | 'ci-plain'
+  | 'pipe'
+  | 'log'
+  | 'json'
+  | 'ndjson'
 
 /** All valid output mode values */
-export const OUTPUT_MODES = ['tty', 'alt-screen', 'ci', 'ci-plain', 'pipe', 'log', 'json', 'ndjson'] as const
+export const OUTPUT_MODES = [
+  'tty',
+  'alt-screen',
+  'ci',
+  'ci-plain',
+  'pipe',
+  'log',
+  'json',
+  'ndjson',
+] as const
 
 /** Options for rendering a story */
 export interface RenderStoryOptions {
@@ -68,12 +85,12 @@ export interface RenderStoryOptions {
 // =============================================================================
 
 const renderConfigForMode: Record<Exclude<OutputMode, 'json' | 'ndjson'>, RenderConfig> = {
-  'tty': ttyRenderConfig,
+  tty: ttyRenderConfig,
   'alt-screen': altScreenRenderConfig,
-  'ci': ciRenderConfig,
+  ci: ciRenderConfig,
   'ci-plain': ciPlainRenderConfig,
-  'pipe': pipeRenderConfig,
-  'log': logRenderConfig,
+  pipe: pipeRenderConfig,
+  log: logRenderConfig,
 }
 
 // =============================================================================

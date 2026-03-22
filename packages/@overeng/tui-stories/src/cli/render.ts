@@ -28,9 +28,7 @@ const widthOption = Options.integer('width').pipe(
 
 const outputOption = Options.choice('output', [...OUTPUT_MODES]).pipe(
   Options.withAlias('o'),
-  Options.withDescription(
-    'Output mode: tty, alt-screen, ci, ci-plain, pipe, log, json, ndjson',
-  ),
+  Options.withDescription('Output mode: tty, alt-screen, ci, ci-plain, pipe, log, json, ndjson'),
   Options.withDefault('ci' as OutputMode),
 )
 

@@ -40,15 +40,15 @@ const totalCount = exampleModules.reduce((sum, m) => sum + m.stories.length, 0)
 
 const ListView = () => (
   <Box flexDirection="column">
-    {exampleModules.map((mod, i) => (
-      <Box key={i} flexDirection="column">
+    {exampleModules.map((mod) => (
+      <Box key={mod.title} flexDirection="column">
         <Text>{'\n'}</Text>
         <Text bold>{mod.title}</Text>
-        {mod.stories.map((story, j) => (
-          <Text key={j}>
+        {mod.stories.map((story) => (
+          <Text key={story.name}>
             {'  '}
             {story.name}
-            {story.hasTimeline ? <Text color="cyan">{' [timeline]'}</Text> : null}
+            {story.hasTimeline === true ? <Text color="cyan">{' [timeline]'}</Text> : null}
             {story.argCount > 0 ? <Text dim>{` (${story.argCount} args)`}</Text> : null}
           </Text>
         ))}
@@ -61,10 +61,11 @@ const ListView = () => (
 
 export default {
   title: 'tui-stories/List',
+  component: ListView,
   parameters: { layout: 'padded' },
-} satisfies Meta
+} satisfies Meta<typeof ListView>
 
-type Story = StoryObj
+type Story = StoryObj<typeof ListView>
 
 export const Default: Story = {
   render: () => (
