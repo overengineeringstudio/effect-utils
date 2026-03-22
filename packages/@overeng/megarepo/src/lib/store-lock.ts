@@ -1,16 +1,18 @@
 /**
  * Store Lock
  *
- * Distributed semaphore service for serializing concurrent access to shared
- * store resources — both within a single process (concurrent fibers) and
- * across separate mr processes.
+ * Serializes concurrent access to shared store resources — both within a
+ * single process (concurrent fibers) and across separate mr processes.
  *
- * Uses DistributedSemaphore with a file-system backing stored in
- * $MEGAREPO_STORE/.locks/. TTL-based permits auto-expire if a process crashes.
+ * Two-layer locking:
+ * - In-process: Effect.Semaphore per key — guarantees fiber serialization
+ * - Cross-process: DistributedSemaphore with file-system backing at
+ *   $MEGAREPO_STORE/.locks/ — best-effort cross-process coordination
  *
- * Per-key semaphores are cached in-memory via SynchronizedRef for performance
- * (avoids repeated file-system holderId allocation). The file-system backing
- * handles cross-process and cross-fiber serialization.
+ * The in-process gate is the primary correctness mechanism. The distributed
+ * lock's FileSystemBacking has a TOCTOU race in tryAcquire (read-then-write
+ * are not atomic), but the in-process gate ensures only one fiber enters
+ * tryAcquire at a time, making the race harmless.
  */
 
 import { createHash } from 'node:crypto'
@@ -42,13 +44,20 @@ export interface StoreLockService {
 /** Distributed semaphore service for serializing concurrent access to shared store resources */
 export class StoreLock extends Context.Tag('megarepo/StoreLock')<StoreLock, StoreLockService>() {}
 
-type Semaphore = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
+type DistributedSem = Effect.Effect.Success<ReturnType<typeof DistributedSemaphore.make>>
+
+interface CacheEntry {
+  /** In-process fiber gate — primary correctness mechanism */
+  readonly gate: Effect.Semaphore
+  /** Cross-process distributed lock — best-effort coordination */
+  readonly distributed: DistributedSem
+}
 
 /**
- * Create a keyed lock function backed by distributed semaphores.
+ * Create a keyed lock function with two-layer serialization.
  * Keys are hashed to avoid filesystem NAME_MAX limits.
  * A namespace prefix separates independent lock registries (e.g. repo vs worktree).
- * Semaphores are cached per-key via SynchronizedRef (atomic get-or-create).
+ * Entries are cached per-key via SynchronizedRef (atomic get-or-create).
  */
 const makeKeyedLock = ({
   backingContext,
@@ -58,30 +67,31 @@ const makeKeyedLock = ({
   namespace: string
 }) =>
   Effect.gen(function* () {
-    const cache = yield* SynchronizedRef.make(new Map<string, Semaphore>())
+    const cache = yield* SynchronizedRef.make(new Map<string, CacheEntry>())
 
     return (key: string) =>
       <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
         Effect.gen(function* () {
           const hashedKey = `${namespace}/${hashKey(key)}`
 
-          const semaphore = yield* SynchronizedRef.modifyEffect(cache, (map) => {
+          const entry = yield* SynchronizedRef.modifyEffect(cache, (map) => {
             const existing = map.get(hashedKey)
             if (existing !== undefined) return Effect.succeed([existing, map] as const)
-            return DistributedSemaphore.make(hashedKey, { limit: 1, ttl: LOCK_TTL }).pipe(
-              Effect.provide(backingContext),
-              Effect.map((sem) => [sem, new Map(map).set(hashedKey, sem)] as const),
-            )
+            return Effect.gen(function* () {
+              const gate = yield* Effect.makeSemaphore(1)
+              const distributed = yield* DistributedSemaphore.make(hashedKey, {
+                limit: 1,
+                ttl: LOCK_TTL,
+              }).pipe(Effect.provide(backingContext))
+              const newEntry: CacheEntry = { gate, distributed }
+              return [newEntry, new Map(map).set(hashedKey, newEntry)] as const
+            })
           })
 
-          return yield* semaphore
-            .withPermits(1)(effect)
-            .pipe(
-              Effect.provide(backingContext),
-              Effect.catchAllCause((cause) =>
-                Effect.fail(new Error(`Store lock failed: ${cause}`)),
-              ),
-            ) as Effect.Effect<A, E, R>
+          // In-process gate prevents TOCTOU race in the distributed backing's tryAcquire
+          return yield* entry.gate.withPermits(1)(
+            entry.distributed.withPermits(1)(effect).pipe(Effect.provide(backingContext)),
+          ) as Effect.Effect<A, E, R>
         })
   })
 
