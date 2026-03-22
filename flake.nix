@@ -5,6 +5,10 @@
   # consume effect-utils as a flake input still need a flake entry point so they
   # can import Nix helpers (for example lib.mkCliPackages) with a stable API.
   # This keeps the build logic reusable without requiring devenv in the parent.
+  #
+  # Prepared pnpm trees are content-addressed against the effect-utils build
+  # graph, so downstream repos should make their root nixpkgs follow
+  # `effect-utils/nixpkgs` instead of overriding the input the other way around.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";

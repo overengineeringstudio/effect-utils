@@ -34,3 +34,8 @@ mkBunCli = import "${effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" {
   inherit pkgs;
 };
 ```
+
+When a downstream repo consumes `effect-utils` packages or pnpm-based builders,
+its root `nixpkgs` and `flake-utils` should follow `effect-utils/nixpkgs` and
+`effect-utils/flake-utils`. That keeps prepared pnpm trees content-addressed
+against one canonical build graph across standalone and composed views.

@@ -528,6 +528,10 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = [
     pkgs.bun
     pkgs.nodejs
+    # Downstream packages still use `pnpm exec ...` in postBuild hooks for
+    # asset builds. Prepared-tree restore removes install-time pnpm work, but
+    # the builder should still provide the package manager for those hooks.
+    pkgs.pnpm
     pkgs.zstd
   ]
   ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
@@ -566,6 +570,14 @@ pkgs.stdenv.mkDerivation {
     chmod -R +w workspace
 
     cd workspace
+
+    # Some downstream packages run `pnpm exec ...` in postBuild hooks for asset
+    # pipelines. Keep those hooks sandbox-safe and deterministic by giving pnpm a
+    # writable HOME and disabling its package-manager self-bootstrap behavior.
+    export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
+    export PNPM_HOME="$HOME/.local/share/pnpm"
+    mkdir -p "$PNPM_HOME"
+    printf '\nmanage-package-manager-versions=false\n' >> .npmrc
 
     cd ${packageDir}
 
