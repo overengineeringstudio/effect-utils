@@ -248,6 +248,8 @@ export const convertLockedInputToGitHub = (
       ownerRepoInserted = true
     } else if (key === 'shallow' || key === 'submodules' || key === 'revCount') {
       // Drop git-specific fields not supported by github scheme
+    } else if (key === 'ref' && input['rev'] !== undefined) {
+      // Drop ref when rev is present — github locked inputs reject both simultaneously
     } else {
       result[key] = input[key]
     }

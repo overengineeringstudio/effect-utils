@@ -17,7 +17,6 @@ describe('convertLockedInputToGitHub', () => {
         "lastModified": 1234567890,
         "narHash": "sha256-xxx",
         "owner": "owner",
-        "ref": "main",
         "repo": "repo",
         "rev": "abc123",
         "type": "github",
@@ -86,7 +85,7 @@ describe('convertLockedInputToGitHub', () => {
     ).toBeUndefined()
   })
 
-  it('should strip revCount when converting git to github', () => {
+  it('should strip revCount and ref (when rev is present) when converting git to github', () => {
     const result = convertLockedInputToGitHub({
       type: 'git',
       url: 'https://github.com/livestorejs/livestore',
@@ -97,15 +96,26 @@ describe('convertLockedInputToGitHub', () => {
     expect(result).toBeDefined()
     expect(result!['type']).toBe('github')
     expect(result).not.toHaveProperty('revCount')
+    expect(result).not.toHaveProperty('ref')
     expect(result).toMatchInlineSnapshot(`
       {
         "owner": "livestorejs",
-        "ref": "dev",
         "repo": "livestore",
         "rev": "abc123",
         "type": "github",
       }
     `)
+  })
+
+  it('should preserve ref in original sections (no rev)', () => {
+    const result = convertLockedInputToGitHub({
+      type: 'git',
+      url: 'https://github.com/livestorejs/livestore',
+      ref: 'dev',
+    })
+    expect(result).toBeDefined()
+    expect(result).toHaveProperty('ref', 'dev')
+    expect(result!['type']).toBe('github')
   })
 
   it('should preserve dir param from URL query string', () => {
