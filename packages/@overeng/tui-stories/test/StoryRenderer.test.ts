@@ -24,7 +24,7 @@ const captureOrSkip = (query: string, overrides?: Record<string, unknown>) =>
   })
 
 describe('StoryRenderer', () => {
-  it.effect('renders a story to plain text', () =>
+  it.effect('renders log mode (no colors, no ANSI)', () =>
     Effect.gen(function* () {
       const captured = yield* captureOrSkip('CLI/Status/Basic')
       if (captured === undefined) return
@@ -33,7 +33,7 @@ describe('StoryRenderer', () => {
         captured,
         width: 80,
         timelineMode: 'initial',
-        plain: true,
+        output: 'log',
       })
 
       expect(output).toContain('core-lib')
@@ -42,7 +42,7 @@ describe('StoryRenderer', () => {
     }),
   )
 
-  it.effect('renders a story with ANSI colors', () =>
+  it.effect('renders ci mode (with ANSI colors)', () =>
     Effect.gen(function* () {
       const captured = yield* captureOrSkip('CLI/Status/Basic')
       if (captured === undefined) return
@@ -51,11 +51,88 @@ describe('StoryRenderer', () => {
         captured,
         width: 80,
         timelineMode: 'initial',
-        plain: false,
+        output: 'ci',
       })
 
       expect(output).toContain('core-lib')
       expect(output).toContain('\x1b[')
+    }),
+  )
+
+  it.effect('renders ci-plain mode (no colors)', () =>
+    Effect.gen(function* () {
+      const captured = yield* captureOrSkip('CLI/Status/Basic')
+      if (captured === undefined) return
+
+      const output = yield* renderStory({
+        captured,
+        width: 80,
+        timelineMode: 'initial',
+        output: 'ci-plain',
+      })
+
+      expect(output).toContain('core-lib')
+      expect(output).not.toContain('\x1b[')
+    }),
+  )
+
+  it.effect('renders pipe mode (colors, like ci)', () =>
+    Effect.gen(function* () {
+      const captured = yield* captureOrSkip('CLI/Status/Basic')
+      if (captured === undefined) return
+
+      const output = yield* renderStory({
+        captured,
+        width: 80,
+        timelineMode: 'initial',
+        output: 'pipe',
+      })
+
+      expect(output).toContain('core-lib')
+      expect(output).toContain('\x1b[')
+    }),
+  )
+
+  it.effect('renders json mode (state as JSON)', () =>
+    Effect.gen(function* () {
+      const captured = yield* captureOrSkip('CLI/Status/Basic')
+      if (captured === undefined) return
+
+      const output = yield* renderStory({
+        captured,
+        width: 80,
+        timelineMode: 'initial',
+        output: 'json',
+      })
+
+      const parsed = JSON.parse(output)
+      expect(parsed).toBeDefined()
+      expect(typeof parsed).toBe('object')
+    }),
+  )
+
+  it.effect('renders ndjson mode (timeline as JSON lines)', () =>
+    Effect.gen(function* () {
+      const captured = yield* captureOrSkip('CLI/Add/Results/AddDefault', {
+        interactive: true,
+      })
+      if (captured === undefined) return
+
+      const output = yield* renderStory({
+        captured,
+        width: 80,
+        timelineMode: 'initial',
+        output: 'ndjson',
+      })
+
+      const lines = output.split('\n').filter((l) => l.length > 0)
+      expect(lines.length).toBeGreaterThan(1)
+
+      for (const line of lines) {
+        const parsed = JSON.parse(line)
+        expect(parsed).toHaveProperty('at')
+        expect(parsed).toHaveProperty('state')
+      }
     }),
   )
 
@@ -70,14 +147,14 @@ describe('StoryRenderer', () => {
         captured,
         width: 80,
         timelineMode: 'initial',
-        plain: true,
+        output: 'log',
       })
 
       const final = yield* renderStory({
         captured,
         width: 80,
         timelineMode: 'final',
-        plain: true,
+        output: 'log',
       })
 
       expect(final).not.toBe(initial)
@@ -93,14 +170,14 @@ describe('StoryRenderer', () => {
         captured,
         width: 40,
         timelineMode: 'initial',
-        plain: true,
+        output: 'log',
       })
 
       const wide = yield* renderStory({
         captured,
         width: 120,
         timelineMode: 'initial',
-        plain: true,
+        output: 'log',
       })
 
       expect(narrow).toContain('core-lib')

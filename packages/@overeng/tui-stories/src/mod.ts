@@ -13,4 +13,10 @@ export { discoverStories, StoryDiscovery, StoryDiscoveryError } from './StoryDis
 
 export { captureStoryProps, StoryCaptureError, type CapturedStoryProps } from './StoryCapture.ts'
 
-export { renderStory, type RenderStoryOptions, type TimelineMode } from './StoryRenderer.ts'
+export {
+  renderStory,
+  OUTPUT_MODES,
+  type RenderStoryOptions,
+  type TimelineMode,
+  type OutputMode,
+} from './StoryRenderer.ts'

@@ -4,7 +4,7 @@ import { Console, Effect } from 'effect'
 import { captureStoryProps, StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
 import { findStory, parseArgOverrides } from '../StoryModule.ts'
-import { renderStory, type TimelineMode } from '../StoryRenderer.ts'
+import { renderStory, OUTPUT_MODES, type OutputMode, type TimelineMode } from '../StoryRenderer.ts'
 
 const storyIdArg = Args.text({ name: 'story-id' }).pipe(
   Args.withDescription('Story title or ID to render (supports prefix/substring match)'),
@@ -26,9 +26,12 @@ const widthOption = Options.integer('width').pipe(
   Options.withDefault(80),
 )
 
-const plainOption = Options.boolean('plain').pipe(
-  Options.withDescription('Strip ANSI codes from output'),
-  Options.withDefault(false),
+const outputOption = Options.choice('output', [...OUTPUT_MODES]).pipe(
+  Options.withAlias('o'),
+  Options.withDescription(
+    'Output mode: tty, alt-screen, ci, ci-plain, pipe, log, json, ndjson',
+  ),
+  Options.withDefault('ci' as OutputMode),
 )
 
 const finalOption = Options.boolean('final').pipe(
@@ -55,16 +58,15 @@ export const renderCommand = Command.make(
     storyName: storyNameOption,
     path: pathOption,
     width: widthOption,
-    plain: plainOption,
+    output: outputOption,
     final: finalOption,
     at: atOption,
     argOverrides: argOption,
   },
-  ({ storyId, storyName, path, width, plain, final: isFinal, at, argOverrides }) =>
+  ({ storyId, storyName, path, width, output, final: isFinal, at, argOverrides }) =>
     Effect.gen(function* () {
       const modules = yield* discoverStories({ packageDirs: [path] })
 
-      // If --story is given, build the full ID
       const query = storyName._tag === 'Some' ? `${storyId}/${storyName.value}` : storyId
 
       const story = findStory({ modules, query })
@@ -90,13 +92,13 @@ export const renderCommand = Command.make(
       const timelineMode: TimelineMode =
         at._tag === 'Some' ? { at: at.value } : isFinal === true ? 'final' : 'initial'
 
-      const output = yield* renderStory({
+      const result = yield* renderStory({
         captured,
         width,
         timelineMode,
-        plain,
+        output,
       })
 
-      yield* Console.log(output)
+      yield* Console.log(result)
     }),
 ).pipe(Command.withDescription('Render a story to terminal output'))
