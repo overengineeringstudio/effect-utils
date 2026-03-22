@@ -5,7 +5,7 @@
  */
 
 import { Command } from '@effect/platform'
-import { Chunk, Effect, Option, Stream } from 'effect'
+import { Chunk, Duration, Effect, Option, Schedule, Stream } from 'effect'
 
 // =============================================================================
 // Git URL Parsing
@@ -131,6 +131,62 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
     return stdout.trim()
   }).pipe(Effect.scoped)
 
+// =============================================================================
+// Transient Error Retry
+// =============================================================================
+
+/** Classify whether a git error is likely transient (network issue) and worth retrying */
+export const isTransientGitError = (error: GitCommandError): boolean => {
+  const stderr = error.stderr.toLowerCase()
+  return (
+    stderr.includes('http 5') ||
+    stderr.includes('rpc failed') ||
+    stderr.includes('could not resolve host') ||
+    stderr.includes('network is unreachable') ||
+    stderr.includes('connection refused') ||
+    stderr.includes('connection reset') ||
+    stderr.includes('timed out') ||
+    stderr.includes('unexpected disconnect') ||
+    stderr.includes('the remote end hung up') ||
+    stderr.includes('ssl') ||
+    stderr.includes('gnutls') ||
+    stderr.includes('curl')
+  )
+}
+
+const GIT_MAX_RETRIES = 3
+
+const transientGitRetrySchedule = Schedule.exponential('2 seconds').pipe(
+  Schedule.intersect(Schedule.recurs(GIT_MAX_RETRIES)),
+)
+
+/**
+ * Run a git command with automatic retry on transient network errors.
+ * Uses exponential backoff (2s, 4s, 8s) for up to 3 retries.
+ */
+const runGitCommandWithRetry = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: string }) =>
+  Effect.gen(function* () {
+    const meta = yield* Schedule.CurrentIterationMetadata
+    if (meta.recurrence > 0) {
+      const prevError = meta.input as GitCommandError
+      yield* Effect.logWarning('Retrying git command after transient error').pipe(
+        Effect.annotateLogs({
+          command: `git ${args.join(' ')}`,
+          attempt: meta.recurrence,
+          maxRetries: GIT_MAX_RETRIES,
+          elapsed: Duration.format(meta.elapsed),
+          error: prevError.stderr.trim().split('\n')[0] ?? '',
+        }),
+      )
+    }
+    return yield* runGitCommand(cwd !== undefined ? { args, cwd } : { args })
+  }).pipe(
+    Effect.retry({
+      schedule: transientGitRetrySchedule,
+      while: (error) => error instanceof GitCommandError && isTransientGitError(error),
+    }),
+  )
+
 /**
  * Clone a git repository
  */
@@ -141,7 +197,7 @@ export const clone = (args: { url: string; targetPath: string; bare?: boolean })
       cmdArgs.push('--bare')
     }
     cmdArgs.push(args.url, args.targetPath)
-    yield* runGitCommand({ args: cmdArgs })
+    yield* runGitCommandWithRetry({ args: cmdArgs })
   }).pipe(
     Effect.withSpan('git/clone', {
       attributes: { 'span.label': args.url, url: args.url, bare: args.bare ?? false },
@@ -158,7 +214,7 @@ export const fetch = (args: { repoPath: string; remote?: string; prune?: boolean
       cmdArgs.push('--prune')
     }
     cmdArgs.push(args.remote ?? 'origin')
-    yield* runGitCommand({ args: cmdArgs, cwd: args.repoPath })
+    yield* runGitCommandWithRetry({ args: cmdArgs, cwd: args.repoPath })
   }).pipe(
     Effect.withSpan('git/fetch', {
       attributes: { 'span.label': args.repoPath, repoPath: args.repoPath },
@@ -355,7 +411,7 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
 export const fetchBare = (args: { repoPath: string; remote?: string }) =>
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
-    yield* runGitCommand({
+    yield* runGitCommandWithRetry({
       args: ['fetch', '--tags', '--prune', remote],
       cwd: args.repoPath,
     })
@@ -375,13 +431,13 @@ export const getDefaultBranch = (args: { url: string } | { repoPath: string; rem
 
     if ('url' in args) {
       // Query remote directly by URL
-      output = yield* runGitCommand({
+      output = yield* runGitCommandWithRetry({
         args: ['ls-remote', '--symref', args.url, 'HEAD'],
       })
     } else {
       // Query remote by name from existing repo
       const remote = args.remote ?? 'origin'
-      output = yield* runGitCommand({
+      output = yield* runGitCommandWithRetry({
         args: ['ls-remote', '--symref', remote, 'HEAD'],
         cwd: args.repoPath,
       })
@@ -467,7 +523,7 @@ export const pushBranch = (args: {
     }
     cmdArgs.push(remote, args.branch)
 
-    yield* runGitCommand({
+    yield* runGitCommandWithRetry({
       args: cmdArgs,
       cwd: args.repoPath,
     })
@@ -576,7 +632,7 @@ export const updateWorktree = (args: { worktreePath: string; remote?: string }) 
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
     // Fetch and merge/rebase
-    yield* runGitCommand({
+    yield* runGitCommandWithRetry({
       args: ['pull', '--ff-only', remote],
       cwd: args.worktreePath,
     })
@@ -645,7 +701,7 @@ export interface RemoteRefInfo {
 export const queryRemoteRefType = (args: { url: string; ref: string }) =>
   Effect.gen(function* () {
     // Query both tags and heads from remote
-    const output = yield* runGitCommand({
+    const output = yield* runGitCommandWithRetry({
       args: ['ls-remote', '--refs', args.url],
     }).pipe(Effect.catchAll(() => Effect.succeed('')))
 
