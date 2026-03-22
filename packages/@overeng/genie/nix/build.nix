@@ -8,7 +8,7 @@
 
 let
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
-  lockfileHash = "sha256-sQ/zgRUQOKuUUpPdzlt609oRWQtzPzhibIPyUTDIW48=";
+  lockfileHash = "sha256-O+BOib1AC451VWjH6bjhXIYZ8Dsidtg0/jh1tqU9X0E=";
   packageJsonDepsHash = "sha256-YWB19I7bkalSkvuA1tR9753CiQGIb41ObaHLdXJlP9o=";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";

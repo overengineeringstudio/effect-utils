@@ -12,6 +12,10 @@
       ".": "./dist/mod.js"
     }
   },
+  "scripts": {
+    "storybook": "storybook dev -p 6013",
+    "storybook:build": "storybook build"
+  },
   "dependencies": {
     "@effect-atom/atom": "0.5.3",
     "@effect-atom/atom-react": "0.5.0",
@@ -42,7 +46,10 @@
     "@effect/cli": "0.73.2",
     "@effect/vitest": "0.27.0",
     "@overeng/utils-dev": "workspace:*",
+    "@storybook/react": "10.2.3",
+    "@storybook/react-vite": "10.2.3",
     "@types/react": "19.2.7",
+    "storybook": "10.2.3",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },

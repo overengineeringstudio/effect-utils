@@ -19,7 +19,16 @@ const runtimeDeps = catalog.compose({
   devDependencies: {
     workspace: [utilsDevPkg],
     external: {
-      ...catalog.pick(...ownPeerDepNames, '@effect/vitest', '@types/react', 'typescript', 'vitest'),
+      ...catalog.pick(
+        ...ownPeerDepNames,
+        '@effect/vitest',
+        '@storybook/react',
+        '@storybook/react-vite',
+        '@types/react',
+        'storybook',
+        'typescript',
+        'vitest',
+      ),
     },
   },
   peerDependencies: {
@@ -33,6 +42,10 @@ export default packageJson(
   {
     name: '@overeng/tui-stories',
     ...privatePackageDefaults,
+    scripts: {
+      storybook: 'storybook dev -p 6013',
+      'storybook:build': 'storybook build',
+    },
     exports: {
       '.': './src/mod.ts',
     },

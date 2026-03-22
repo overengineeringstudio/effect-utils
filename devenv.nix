@@ -202,6 +202,11 @@ let
       name = "notion-cli";
       port = 6012;
     }
+    {
+      path = "packages/@overeng/tui-stories";
+      name = "tui-stories";
+      port = 6013;
+    }
   ];
 in
 {
