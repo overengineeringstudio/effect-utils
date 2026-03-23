@@ -4,7 +4,7 @@ import {
   bashShellDefaults,
   cachixStep,
   checkoutStep,
-  dispatchAlignmentStep,
+  notifyAlignmentJob,
   evictCachedPnpmDepsStep,
   preparePinnedDevenvStep,
   installNixStep,
@@ -196,13 +196,6 @@ const deployJobs: Record<string, any> = {
   },
 } as const
 
-const notifyAlignmentJob = {
-  'runs-on': 'ubuntu-latest' as const,
-  needs: Object.keys(jobs),
-  if: "github.ref == 'refs/heads/main' && github.event_name == 'push'",
-  steps: [dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' })],
-}
-
 export default ciWorkflow({
   name: 'CI',
   on: {
@@ -220,5 +213,12 @@ export default ciWorkflow({
       },
     },
   },
-  jobs: { ...jobs, ...deployJobs, 'notify-alignment': notifyAlignmentJob },
+  jobs: {
+    ...jobs,
+    ...deployJobs,
+    'notify-alignment': notifyAlignmentJob({
+      targetRepo: 'schickling/megarepo-all',
+      needs: Object.keys(jobs),
+    }),
+  },
 } satisfies GitHubWorkflowArgs)

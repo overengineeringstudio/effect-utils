@@ -86,7 +86,11 @@ jobs:
             nix --version || true
           } > "$DIAG_ROOT/environment.txt" 2>&1
 
-          DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
+          if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+            echo "::error::resolve_devenv failed. Last 30 lines of log:"
+            tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+            exit 1
+          fi
           DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
@@ -94,7 +98,11 @@ jobs:
             echo "::warning::devenv store path invalid, repairing targeted path..."
             nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
+            if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+              echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+              tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+              exit 1
+            fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
 
@@ -247,7 +255,11 @@ jobs:
             nix --version || true
           } > "$DIAG_ROOT/environment.txt" 2>&1
 
-          DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
+          if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+            echo "::error::resolve_devenv failed. Last 30 lines of log:"
+            tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+            exit 1
+          fi
           DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
@@ -255,7 +267,11 @@ jobs:
             echo "::warning::devenv store path invalid, repairing targeted path..."
             nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
+            if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+              echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+              tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+              exit 1
+            fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
 
@@ -411,7 +427,11 @@ jobs:
             nix --version || true
           } > "$DIAG_ROOT/environment.txt" 2>&1
 
-          DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
+          if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+            echo "::error::resolve_devenv failed. Last 30 lines of log:"
+            tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+            exit 1
+          fi
           DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
@@ -419,7 +439,11 @@ jobs:
             echo "::warning::devenv store path invalid, repairing targeted path..."
             nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
+            if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+              echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+              tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+              exit 1
+            fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
 
@@ -575,7 +599,11 @@ jobs:
             nix --version || true
           } > "$DIAG_ROOT/environment.txt" 2>&1
 
-          DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
+          if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+            echo "::error::resolve_devenv failed. Last 30 lines of log:"
+            tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+            exit 1
+          fi
           DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
@@ -583,7 +611,11 @@ jobs:
             echo "::warning::devenv store path invalid, repairing targeted path..."
             nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
+            if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+              echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+              tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+              exit 1
+            fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
 
@@ -740,7 +772,11 @@ jobs:
             nix --version || true
           } > "$DIAG_ROOT/environment.txt" 2>&1
 
-          DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
+          if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+            echo "::error::resolve_devenv failed. Last 30 lines of log:"
+            tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+            exit 1
+          fi
           DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
           # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
@@ -748,7 +784,11 @@ jobs:
             echo "::warning::devenv store path invalid, repairing targeted path..."
             nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
             rm -rf ~/.cache/nix/eval-cache-*
-            DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
+            if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+              echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+              tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+              exit 1
+            fi
             DEVENV_BIN="$DEVENV_OUT/bin/devenv"
           fi
 
@@ -901,9 +941,9 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   notify-alignment:
-    runs-on: ubuntu-latest
+    runs-on: [sh-linux-x64, nix]
     needs: [typecheck, lint, test, nix-check]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main') && github.event_name == 'push'
     steps:
       - name: Dispatch alignment to coordinator
         env:
