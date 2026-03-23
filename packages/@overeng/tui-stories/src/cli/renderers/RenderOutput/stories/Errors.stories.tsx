@@ -26,7 +26,7 @@ export default {
   parameters: { layout: 'fullscreen' },
   args: defaultStoryArgs,
   argTypes: commonArgTypes,
-} satisfies Meta
+} as Meta
 
 type Story = StoryObj<StoryArgs>
 

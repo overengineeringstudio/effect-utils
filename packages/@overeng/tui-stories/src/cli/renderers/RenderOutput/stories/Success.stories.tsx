@@ -44,7 +44,7 @@ export default {
       control: { type: 'boolean' },
     },
   },
-} satisfies Meta
+} as Meta
 
 type Story = StoryObj<StoryArgs>
 
