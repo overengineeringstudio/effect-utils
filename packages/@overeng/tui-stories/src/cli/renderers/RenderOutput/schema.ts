@@ -2,19 +2,22 @@
 
 import { Schema } from 'effect'
 
-/** Render output state — shows the rendered story content with context */
+/**
+ * Render output state — shows the rendered story content with context.
+ *
+ * Note: the command's own output mode (--output) is handled by outputModeLayer,
+ * not tracked in this state. This state models the *content* being rendered.
+ */
 export const RenderState = Schema.Union(
   Schema.Struct({
     _tag: Schema.Literal('Rendering'),
     storyId: Schema.String,
-    output: Schema.Literal('ci', 'ci-plain', 'tty', 'alt-screen', 'pipe', 'log', 'json', 'ndjson'),
     width: Schema.Number,
     timelineMode: Schema.String,
   }),
   Schema.Struct({
     _tag: Schema.Literal('Complete'),
     storyId: Schema.String,
-    output: Schema.Literal('ci', 'ci-plain', 'tty', 'alt-screen', 'pipe', 'log', 'json', 'ndjson'),
     width: Schema.Number,
     timelineMode: Schema.String,
     renderedLines: Schema.Array(Schema.String),

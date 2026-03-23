@@ -2,15 +2,13 @@ import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { RenderStateType, RenderActionType } from '../schema.ts'
 
-/** CLI flag–derived config passed into fixture factories */
+/** CLI flag–derived config for story content rendering (width, timeline) */
 export type RenderFlagConfig = {
-  output: RenderStateType & { _tag: 'Complete' } extends { output: infer O } ? O : never
   width: number
   timelineMode: string
 }
 
 const defaultFlagConfig: RenderFlagConfig = {
-  output: 'ci',
   width: 80,
   timelineMode: 'initial',
 }
@@ -21,7 +19,6 @@ export const createRenderState = (
 ): RenderStateType => ({
   _tag: 'Complete',
   storyId: 'CLI/Status/Basic/Default',
-  output: 'ci',
   width: 80,
   timelineMode: 'initial',
   renderedLines: [],
@@ -69,28 +66,29 @@ const storeStatusLines = [
   '1 error · 0 warnings',
 ]
 
+/** Creates a status render fixture */
 export const createStatusRender = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
   const c = { ...defaultFlagConfig, ...config }
   return createRenderState({
     storyId: 'CLI/Status/Basic/Default',
     renderedLines: statusOutputLines,
-    output: c.output,
     width: c.width,
     timelineMode: c.timelineMode,
   })
 }
 
+/** Creates an exec render fixture */
 export const createExecRender = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
   const c = { ...defaultFlagConfig, timelineMode: 'final', ...config }
   return createRenderState({
     storyId: 'CLI/Exec/Running/RunningVerboseParallel',
     renderedLines: execOutputLines,
-    output: c.output,
     width: c.width,
     timelineMode: c.timelineMode,
   })
 }
 
+/** Creates a store status render fixture */
 export const createStoreStatusRender = (
   config: Partial<RenderFlagConfig> = {},
 ): RenderStateType => {
@@ -98,29 +96,30 @@ export const createStoreStatusRender = (
   return createRenderState({
     storyId: 'CLI/Store/Status/MixedIssues',
     renderedLines: storeStatusLines,
-    output: c.output,
     width: c.width,
     timelineMode: c.timelineMode,
   })
 }
 
+/** Creates a rendering-in-progress fixture */
 export const createRenderingState = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
   const c = { ...defaultFlagConfig, timelineMode: 'final', ...config }
   return {
     _tag: 'Rendering',
     storyId: 'CLI/Sync/Fetch/FetchResults',
-    output: c.output,
     width: c.width,
     timelineMode: c.timelineMode,
   }
 }
 
+/** Creates an error fixture */
 export const createErrorState = (): RenderStateType => ({
   _tag: 'Error',
   storyId: 'CLI/NonExistent/Missing',
   message: 'Story not found: "CLI/NonExistent/Missing"',
 })
 
+/** Creates a timeline from rendering to complete */
 export const createTimeline = (
   config: Partial<RenderFlagConfig> = {},
 ): TimelineEvent<RenderActionType>[] => {
@@ -133,7 +132,6 @@ export const createTimeline = (
         state: {
           _tag: 'Rendering',
           storyId: 'CLI/Status/Basic/Default',
-          output: c.output,
           width: c.width,
           timelineMode: c.timelineMode,
         },
@@ -146,7 +144,6 @@ export const createTimeline = (
         state: createRenderState({
           storyId: 'CLI/Status/Basic/Default',
           renderedLines: statusOutputLines,
-          output: c.output,
           width: c.width,
           timelineMode: c.timelineMode,
         }),

@@ -8,7 +8,7 @@ import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 import { captureStoryProps, StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
 import { findStory, parseArgOverrides } from '../StoryModule.ts'
-import { renderStory, type TimelineMode, type OutputMode } from '../StoryRenderer.ts'
+import { renderStory, type TimelineMode } from '../StoryRenderer.ts'
 import { RenderApp, RenderView } from './renderers/RenderOutput/mod.ts'
 
 const storyIdArg = Args.text({ name: 'story-id' }).pipe(
@@ -90,14 +90,11 @@ export const renderCommand = Command.make(
       const timelineModeStr =
         at._tag === 'Some' ? `at:${at.value}` : isFinal === true ? 'final' : 'initial'
 
-      /** Map CLI output mode to story renderer output mode ('auto' defaults to 'ci') */
-      const storyOutput: OutputMode = output === 'auto' ? 'ci' : (output as OutputMode)
-
       const result = yield* renderStory({
         captured,
         width,
         timelineMode,
-        output: storyOutput,
+        output: 'ci',
       })
 
       const renderedLines = result.split('\n')
@@ -111,7 +108,6 @@ export const renderCommand = Command.make(
               state: {
                 _tag: 'Complete',
                 storyId: story.id,
-                output: storyOutput,
                 width,
                 timelineMode: timelineModeStr,
                 renderedLines,

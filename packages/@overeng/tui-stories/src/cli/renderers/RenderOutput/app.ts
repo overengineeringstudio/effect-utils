@@ -6,7 +6,6 @@ import { RenderState, RenderAction, renderReducer, type RenderStateType } from '
 export const createInitialRenderState = (): RenderStateType => ({
   _tag: 'Rendering',
   storyId: '',
-  output: 'ci',
   width: 80,
   timelineMode: 'initial',
 })

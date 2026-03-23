@@ -20,21 +20,9 @@ type StoryArgs = {
   height: number
   interactive: boolean
   playbackSpeed: number
-  output: RenderFlagConfig['output']
   width: number
   final: boolean
 }
-
-const outputOptions = [
-  'ci',
-  'ci-plain',
-  'tty',
-  'alt-screen',
-  'pipe',
-  'log',
-  'json',
-  'ndjson',
-] as const
 
 export default {
   component: RenderView,
@@ -42,17 +30,11 @@ export default {
   parameters: { layout: 'fullscreen' },
   args: {
     ...defaultStoryArgs,
-    output: 'ci',
     width: 80,
     final: false,
   },
   argTypes: {
     ...commonArgTypes,
-    output: {
-      description: 'Output format (--output flag)',
-      control: { type: 'select' },
-      options: outputOptions,
-    },
     width: {
       description: 'Terminal width in columns (--width flag)',
       control: { type: 'range', min: 40, max: 200, step: 10 },
@@ -70,16 +52,15 @@ type Story = StoryObj<StoryArgs>
 const useFlagConfig = (args: StoryArgs): Partial<RenderFlagConfig> =>
   useMemo(
     () => ({
-      output: args.output,
       width: args.width,
       timelineMode: args.final === true ? 'final' : 'initial',
     }),
-    [args.output, args.width, args.final],
+    [args.width, args.final],
   )
 
 /** Builds the command string shown in the story preview */
 const buildCommand = ({ args, storyId }: { args: StoryArgs; storyId: string }): string =>
-  `tui-stories render ${storyId} --path packages/@overeng/megarepo --output ${args.output} --width ${args.width}${args.final === true ? ' --final' : ''}`
+  `tui-stories render ${storyId} --path packages/@overeng/megarepo --width ${args.width}${args.final === true ? ' --final' : ''}`
 
 /** Rendered mr status output */
 const StatusOutputRender = (args: StoryArgs) => {

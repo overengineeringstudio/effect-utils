@@ -22,9 +22,7 @@ export const RenderView = ({ stateAtom }: RenderViewProps) => {
             <Spinner type="dots" />
             <Text dim>{` Rendering ${state.storyId}...`}</Text>
           </Text>
-          <Text
-            dim
-          >{`  output: ${state.output} · width: ${state.width} · timeline: ${state.timelineMode}`}</Text>
+          <Text dim>{`  width: ${state.width} · timeline: ${state.timelineMode}`}</Text>
         </Box>
       )
 
