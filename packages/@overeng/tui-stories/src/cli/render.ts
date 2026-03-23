@@ -2,8 +2,8 @@ import { Args, Command, Options } from '@effect/cli'
 import { Effect } from 'effect'
 import React from 'react'
 
-import { run } from '@overeng/tui-react'
-import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
+import { run, isJson } from '@overeng/tui-react'
+import { outputOption, outputModeLayer, resolveOutputMode } from '@overeng/tui-react/node'
 
 import { captureStoryProps, StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
@@ -90,11 +90,19 @@ export const renderCommand = Command.make(
       const timelineModeStr =
         at._tag === 'Some' ? `at:${at.value}` : isFinal === true ? 'final' : 'initial'
 
+      /**
+       * Resolve the effective output mode to pick the right story render config.
+       * When the outer command outputs JSON (e.g. auto → json in a pipe), render
+       * the story as plain text so the JSON payload doesn't contain ANSI escapes.
+       */
+      const effectiveMode = resolveOutputMode(output)
+      const storyRenderOutput = isJson(effectiveMode) === true ? 'log' : 'ci'
+
       const result = yield* renderStory({
         captured,
         width,
         timelineMode,
-        output: 'ci',
+        output: storyRenderOutput,
       })
 
       const renderedLines = result.split('\n')
