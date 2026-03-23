@@ -336,11 +336,12 @@ const validateDeterminateNixExtraConf = ({
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
     for (const [stepIndex, step] of job.steps.entries()) {
-      if (!('uses' in step)) continue
-      if (!step.uses.startsWith('DeterminateSystems/determinate-nix-action')) continue
+      if ('uses' in step === false) continue
+      if (step.uses.startsWith('DeterminateSystems/determinate-nix-action') === false) continue
 
       const extraConf = step.with?.['extra-conf']
-      if (typeof extraConf === 'string' && extraConf.includes('experimental-features')) continue
+      if (typeof extraConf === 'string' && extraConf.includes('experimental-features') === true)
+        continue
 
       issues.push({
         severity: 'warning',
