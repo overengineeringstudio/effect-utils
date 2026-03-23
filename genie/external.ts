@@ -236,6 +236,9 @@ export const commonPnpmPolicySettings = {
   dedupePeerDependents: true as const,
   strictPeerDependencies: true as const,
   enableGlobalVirtualStore: true as const,
+  /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
+  optimisticRepeatInstall: false as const,
+  verifyDepsBeforeRun: false as const,
   supportedArchitectures: {
     os: ['linux', 'darwin'],
     cpu: ['x64', 'arm64'],
