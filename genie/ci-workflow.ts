@@ -323,7 +323,11 @@ echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
   nix --version || true
 } > "$DIAG_ROOT/environment.txt" 2>&1
 
-DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv.log")
+if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+  echo "::error::resolve_devenv failed. Last 30 lines of log:"
+  tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+  exit 1
+fi
 DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 
 # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
@@ -331,7 +335,11 @@ if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
   echo "::warning::devenv store path invalid, repairing targeted path..."
   nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
   rm -rf ~/.cache/nix/eval-cache-*
-  DEVENV_OUT=$(resolve_devenv 2>"$DIAG_ROOT/resolve-devenv-post-repair.log")
+  if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+    echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+    tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+    exit 1
+  fi
   DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 fi
 
