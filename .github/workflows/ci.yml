@@ -38,6 +38,7 @@ jobs:
         with:
           extra-conf: |
             experimental-features = nix-command flakes
+            accept-flake-config = true
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
@@ -199,6 +200,7 @@ jobs:
         with:
           extra-conf: |
             experimental-features = nix-command flakes
+            accept-flake-config = true
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
@@ -363,6 +365,7 @@ jobs:
         with:
           extra-conf: |
             experimental-features = nix-command flakes
+            accept-flake-config = true
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
@@ -527,6 +530,7 @@ jobs:
         with:
           extra-conf: |
             experimental-features = nix-command flakes
+            accept-flake-config = true
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
@@ -692,6 +696,7 @@ jobs:
         with:
           extra-conf: |
             experimental-features = nix-command flakes
+            accept-flake-config = true
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
