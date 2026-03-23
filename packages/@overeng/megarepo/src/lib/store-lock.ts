@@ -96,6 +96,25 @@ const makeKeyedLock = ({
   })
 
 /**
+ * Create the StoreLock layer from an arbitrary DistributedSemaphoreBacking layer.
+ * Useful for testing with an in-memory backing.
+ */
+export const makeStoreLockLayerFromBacking = (
+  backingLayer: Layer.Layer<DistributedSemaphoreBacking>,
+) =>
+  Layer.scoped(
+    StoreLock,
+    Effect.gen(function* () {
+      const backingContext = yield* Layer.build(backingLayer)
+
+      return {
+        withRepoLock: yield* makeKeyedLock({ backingContext, namespace: 'repo' }),
+        withWorktreeLock: yield* makeKeyedLock({ backingContext, namespace: 'worktree' }),
+      } as const
+    }),
+  )
+
+/**
  * Create the StoreLock layer backed by file-system locks at the given path.
  * Lock files stored in {basePath}.locks/ directory.
  */

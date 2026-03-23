@@ -7,6 +7,9 @@ export {
   SemaphoreBackingError,
 } from 'effect-distributed-lock'
 
+/** In-memory backing for distributed semaphore (useful for tests) */
+export * as InMemoryBacking from './in-memory-backing.ts'
+
 /** Debug utilities for tracing scope and finalizer lifecycle */
 export * from './ScopeDebugger.ts'
 
