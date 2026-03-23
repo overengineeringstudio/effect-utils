@@ -132,12 +132,12 @@ const parseMeta = (defaultExport: unknown): StoryMeta | undefined => {
   }
 }
 
-/** Check if an export looks like a StoryObj (has a render function or args) */
-const isStoryExport = (value: unknown): boolean => {
-  if (typeof value !== 'object' || value === null) return false
-  const obj = value as Record<string, unknown>
-  return typeof obj.render === 'function' || obj.args !== undefined
-}
+/**
+ * Check if an export looks like a StoryObj.
+ * Accepts empty objects (`export const X: Story = {}`) which inherit from meta per CSF spec.
+ */
+const isStoryExport = (value: unknown): boolean =>
+  typeof value === 'object' && value !== null && Array.isArray(value) === false
 
 /** Parse a complete CSF module into structured data */
 export const parseStoryModule = ({
