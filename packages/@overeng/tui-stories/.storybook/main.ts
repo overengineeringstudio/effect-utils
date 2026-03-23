@@ -7,24 +7,23 @@ const config = createTuiStorybookConfig({
 })
 
 /* Resolve megarepo internal imports used by _megarepo-renders.ts.
-   Vite alias ensures the relative workspace paths work in both
-   dev mode and production build regardless of runner CWD. */
+   Vite alias ensures the imports work in both dev and production builds. */
 const megarepoSrc = resolve(import.meta.dirname, '../../megarepo/src')
 
 export default {
   ...config,
   viteFinal: async (viteConfig: Record<string, unknown>) => {
     const existingViteFinal = (config as { viteFinal?: (c: unknown) => Promise<unknown> }).viteFinal
-    const base = existingViteFinal !== undefined ? await existingViteFinal(viteConfig) : viteConfig
+    const base = (
+      existingViteFinal !== undefined ? await existingViteFinal(viteConfig) : viteConfig
+    ) as Record<string, unknown>
+    const baseResolve = (base.resolve ?? {}) as Record<string, unknown>
+    const baseAlias = (baseResolve.alias ?? {}) as Record<string, unknown>
     return {
-      ...(base as Record<string, unknown>),
+      ...base,
       resolve: {
-        ...(((base as Record<string, unknown>).resolve as Record<string, unknown>) ?? {}),
-        alias: {
-          ...(((((base as Record<string, unknown>).resolve as Record<string, unknown>) ?? {})
-            .alias as Record<string, unknown>) ?? {}),
-          '@megarepo-internal': megarepoSrc,
-        },
+        ...baseResolve,
+        alias: { ...baseAlias, '@megarepo-internal': megarepoSrc },
       },
     }
   },
