@@ -26,7 +26,11 @@ import {
   initGitRepo,
   runGitCommand,
 } from '../test-utils/setup.ts'
-import { createStoreFixture, createWorkspaceWithLock } from '../test-utils/store-setup.ts'
+import {
+  createStoreFixture,
+  createWorkspaceWithLock,
+  type StoreFixtureResult,
+} from '../test-utils/store-setup.ts'
 import { Cwd } from './context.ts'
 import { mrCommand } from './mod.ts'
 
@@ -1036,10 +1040,20 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     }
   })
 
-const createNestedMegarepoLockSyncFixture = () =>
+/**
+ * Per-test workspace fixture for nested megarepo lock tests.
+ *
+ * Each test gets its own store via createStoreFixture. We cannot share stores between
+ * tests because the CLI acquires file-system distributed locks on the store directory
+ * (via StoreLock/DistributedSemaphore). Shared locks between tests in the same process
+ * cause deadlocks since the semaphore permit is never released across test boundaries.
+ *
+ * The store creation (~1.5s) is the main cost. Per-test timeout is set to 15s to account
+ * for macOS CI runners where git process spawning is slower than Linux.
+ */
+const createNestedWorkspaceFixture = () =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const { storePath, worktreePaths } = yield* createStoreFixture([
+    const store = yield* createStoreFixture([
       {
         host: 'example.com',
         owner: 'acme',
@@ -1047,9 +1061,15 @@ const createNestedMegarepoLockSyncFixture = () =>
         branches: ['main'],
       },
     ])
+    return yield* createNestedWorkspaceFixtureFromStore(store)
+  })
+
+const createNestedWorkspaceFixtureFromStore = (store: StoreFixtureResult) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
 
     const sharedKey = 'example.com/acme/shared#main'
-    const sharedWorktreePath = worktreePaths[sharedKey]
+    const sharedWorktreePath = store.worktreePaths[sharedKey]
     if (sharedWorktreePath === undefined) {
       throw new Error(`Missing worktree path for ${sharedKey}`)
     }
@@ -1120,16 +1140,16 @@ const createNestedMegarepoLockSyncFixture = () =>
     return {
       parentPath,
       childPath,
-      storePath,
+      storePath: store.storePath,
       sharedCommit,
       staleNestedCommit,
     }
   })
 
-const createNonMegarepoMemberWithMegarepoLockFixture = () =>
+const createNonMegarepoWorkspaceFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const fixture = yield* createNestedMegarepoLockSyncFixture()
+    const fixture = yield* createNestedWorkspaceFixture()
     const childConfigPath = EffectPath.ops.join(
       fixture.childPath,
       EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
@@ -1138,6 +1158,55 @@ const createNonMegarepoMemberWithMegarepoLockFixture = () =>
     return fixture
   })
 
+const createAliasWorkspaceFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const fixture = yield* createNestedWorkspaceFixture()
+    const parentConfigPath = EffectPath.ops.join(
+      fixture.parentPath,
+      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
+    )
+    const parentConfigContent = yield* fs.readFileString(parentConfigPath)
+    const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
+      parentConfigContent,
+    )
+    const updatedConfig = {
+      ...parentConfig,
+      members: {
+        ...parentConfig.members,
+        'shared-alias': 'https://example.com/acme/shared#main' as const,
+      },
+    }
+    yield* fs.writeFileString(
+      parentConfigPath,
+      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) + '\n',
+    )
+
+    const parentLockPath = EffectPath.ops.join(
+      fixture.parentPath,
+      EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+    )
+    const parentLockOpt = yield* readLockFile(parentLockPath)
+    const parentLock = Option.getOrThrow(parentLockOpt)
+    const sharedMember = parentLock.members['shared']
+    if (sharedMember === undefined) {
+      throw new Error('Missing shared member in parent lock fixture')
+    }
+    const parentLockWithAlias = updateLockedMember({
+      lockFile: parentLock,
+      memberName: 'shared-alias',
+      member: createLockedMember({
+        url: sharedMember.url,
+        ref: sharedMember.ref,
+        commit: sharedMember.commit,
+      }),
+    })
+    yield* writeLockFile({ lockPath: parentLockPath, lockFile: parentLockWithAlias })
+
+    return fixture
+  })
+
+/** Standalone fixture — needs a different store config (two branches) */
 const createNestedMegarepoLockRefMatchFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1253,61 +1322,13 @@ const createNestedMegarepoLockRefMatchFixture = () =>
     }
   })
 
-const createNestedMegarepoLockAliasMatchFixture = () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const fixture = yield* createNestedMegarepoLockSyncFixture()
-    const parentConfigPath = EffectPath.ops.join(
-      fixture.parentPath,
-      EffectPath.unsafe.relativeFile(CONFIG_FILE_NAME_JSON),
-    )
-    const parentConfigContent = yield* fs.readFileString(parentConfigPath)
-    const parentConfig = yield* Schema.decodeUnknown(Schema.parseJson(MegarepoConfig))(
-      parentConfigContent,
-    )
-    const updatedConfig = {
-      ...parentConfig,
-      members: {
-        ...parentConfig.members,
-        'shared-alias': 'https://example.com/acme/shared#main' as const,
-      },
-    }
-    yield* fs.writeFileString(
-      parentConfigPath,
-      (yield* Schema.encode(Schema.parseJson(MegarepoConfig, { space: 2 }))(updatedConfig)) + '\n',
-    )
-
-    const parentLockPath = EffectPath.ops.join(
-      fixture.parentPath,
-      EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-    )
-    const parentLockOpt = yield* readLockFile(parentLockPath)
-    const parentLock = Option.getOrThrow(parentLockOpt)
-    const sharedMember = parentLock.members['shared']
-    if (sharedMember === undefined) {
-      throw new Error('Missing shared member in parent lock fixture')
-    }
-    const parentLockWithAlias = updateLockedMember({
-      lockFile: parentLock,
-      memberName: 'shared-alias',
-      member: createLockedMember({
-        url: sharedMember.url,
-        ref: sharedMember.ref,
-        commit: sharedMember.commit,
-      }),
-    })
-    yield* writeLockFile({ lockPath: parentLockPath, lockFile: parentLockWithAlias })
-
-    return fixture
-  })
-
 describe('nested megarepo.lock sync scope', () => {
   it.effect(
     'should not sync nested megarepo.lock in default workspace sync mode',
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
-          yield* createNestedMegarepoLockSyncFixture()
+          yield* createNestedWorkspaceFixture()
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1335,6 +1356,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -1342,7 +1364,7 @@ describe('nested megarepo.lock sync scope', () => {
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, sharedCommit, staleNestedCommit } =
-          yield* createNestedMegarepoLockSyncFixture()
+          yield* createNestedWorkspaceFixture()
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1370,6 +1392,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -1377,7 +1400,7 @@ describe('nested megarepo.lock sync scope', () => {
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
-          yield* createNestedMegarepoLockSyncFixture()
+          yield* createNestedWorkspaceFixture()
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1412,6 +1435,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -1419,7 +1443,7 @@ describe('nested megarepo.lock sync scope', () => {
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
-          yield* createNestedMegarepoLockSyncFixture()
+          yield* createNestedWorkspaceFixture()
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1447,6 +1471,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -1454,7 +1479,7 @@ describe('nested megarepo.lock sync scope', () => {
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, staleNestedCommit } =
-          yield* createNonMegarepoMemberWithMegarepoLockFixture()
+          yield* createNonMegarepoWorkspaceFixture()
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1482,6 +1507,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -1517,6 +1543,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -1524,7 +1551,7 @@ describe('nested megarepo.lock sync scope', () => {
     Effect.fnUntraced(
       function* () {
         const { parentPath, childPath, storePath, sharedCommit, staleNestedCommit } =
-          yield* createNestedMegarepoLockAliasMatchFixture()
+          yield* createAliasWorkspaceFixture()
 
         const nestedLockPath = EffectPath.ops.join(
           childPath,
@@ -1552,7 +1579,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
-    { timeout: 30_000 },
+    { timeout: 15_000 },
   )
 })
 
@@ -2721,6 +2748,11 @@ describe('sync member filtering', () => {
 // Worktree Ref Mismatch Detection Tests (Issue #88)
 // =============================================================================
 
+/**
+ * These tests mutate the store worktree itself (git checkout, commit), so each needs
+ * its own createStoreFixture. Higher timeout because store creation + CLI execution
+ * can exceed the default 5s on macOS CI runners.
+ */
 describe('sync worktree ref mismatch detection', () => {
   /**
    * REGRESSION TEST for issue #88: mr apply should detect worktree ref mismatch
@@ -2836,6 +2868,7 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 
   it.effect(
@@ -2940,6 +2973,7 @@ describe('sync worktree ref mismatch detection', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
+    { timeout: 15_000 },
   )
 })
 
