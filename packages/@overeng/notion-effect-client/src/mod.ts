@@ -47,6 +47,9 @@ export type {
 export { NotionDatabases } from './databases.ts'
 // Error
 export { NotionApiError, NotionErrorCode, NotionErrorResponse } from './error.ts'
+// File uploads
+export type { UploadFileOptions } from './files.ts'
+export { NotionFiles } from './files.ts'
 // Pagination utilities
 export type { PaginatedResult, PaginationOptions } from './internal/pagination.ts'
 // Markdown converter
