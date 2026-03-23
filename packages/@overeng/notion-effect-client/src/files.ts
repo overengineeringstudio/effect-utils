@@ -94,7 +94,7 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
           content_type: opts.contentType,
         }),
       })
-      if (!res.ok) {
+      if (res.ok === false) {
         const text = await res.text()
         throw new Error(`File upload create failed (${res.status}): ${text}`)
       }
@@ -129,7 +129,11 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
 
   // Step 2: Send file data via multipart form-data
   const formData = new FormData()
-  formData.append('file', new Blob([opts.content.buffer as ArrayBuffer], { type: opts.contentType }), opts.filename)
+  formData.append(
+    'file',
+    new Blob([opts.content.buffer as ArrayBuffer], { type: opts.contentType }),
+    opts.filename,
+  )
 
   yield* Effect.tryPromise({
     try: async () => {
@@ -138,7 +142,7 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
         headers,
         body: formData,
       })
-      if (!res.ok) {
+      if (res.ok === false) {
         const text = await res.text()
         throw new Error(`File upload send failed (${res.status}): ${text}`)
       }
@@ -162,4 +166,5 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
 // Namespace export
 // ---------------------------------------------------------------------------
 
+/** Notion file upload operations */
 export const NotionFiles = { upload } as const
