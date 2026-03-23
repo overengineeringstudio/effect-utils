@@ -1,8 +1,13 @@
 import { Args, Command, Options } from '@effect/cli'
-import { Console, Effect } from 'effect'
+import { Effect } from 'effect'
+import React from 'react'
+
+import { run } from '@overeng/tui-react'
+import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 
 import { discoverStories } from '../StoryDiscovery.ts'
-import { findStory, type ArgType } from '../StoryModule.ts'
+import { findStory } from '../StoryModule.ts'
+import { InspectApp, InspectView } from './renderers/InspectOutput/mod.ts'
 
 const storyIdArg = Args.text({ name: 'story-id' }).pipe(
   Args.withDescription('Story title or ID to inspect'),
@@ -12,85 +17,48 @@ const pathOption = Options.text('path').pipe(
   Options.withDescription('Package directory to search for stories'),
 )
 
-const jsonOption = Options.boolean('json').pipe(
-  Options.withDescription('Output as JSON'),
-  Options.withDefault(false),
-)
-
-const formatArgType = ({
-  name,
-  argType,
-}: {
-  readonly name: string
-  readonly argType: ArgType
-}): string => {
-  const desc = argType.description !== undefined ? ` — ${argType.description}` : ''
-  const ctrl = argType.control
-
-  switch (ctrl.type) {
-    case 'boolean':
-      return `  --${name}  (boolean)${desc}`
-    case 'select':
-      return `  --${name}  (${ctrl.options?.join(' | ') ?? 'select'})${desc}`
-    case 'text':
-      return `  --${name}  (text)${desc}`
-    case 'number':
-      return `  --${name}  (number)${desc}`
-    case 'range': {
-      const range =
-        ctrl.min !== undefined && ctrl.max !== undefined ? ` [${ctrl.min}..${ctrl.max}]` : ''
-      return `  --${name}  (range${range})${desc}`
-    }
-  }
-}
-
 /** CLI subcommand to inspect story metadata and args */
 export const inspectCommand = Command.make(
   'inspect',
-  { storyId: storyIdArg, path: pathOption, json: jsonOption },
-  ({ storyId, path, json }) =>
+  { storyId: storyIdArg, path: pathOption, output: outputOption },
+  ({ storyId, path, output }) =>
     Effect.gen(function* () {
       const modules = yield* discoverStories({ packageDirs: [path] })
       const story = findStory({ modules, query: storyId })
 
       if (story === undefined) {
-        yield* Console.error(`Story not found: "${storyId}"`)
+        yield* Effect.fail(new Error(`Story not found: "${storyId}"`))
         return
       }
-
-      if (json === true) {
-        const data = {
-          id: story.id,
-          title: story.title,
-          name: story.name,
-          filePath: story.filePath,
-          args: story.args,
-          argTypes: story.argTypes,
-          hasTimeline: story.args.interactive !== undefined,
-        }
-        yield* Console.log(JSON.stringify(data, null, 2))
-        return
-      }
-
-      yield* Console.log(`\nStory: ${story.id}`)
-      yield* Console.log(`File:  ${story.filePath}`)
 
       const argTypeEntries = Object.entries(story.argTypes)
-      if (argTypeEntries.length > 0) {
-        yield* Console.log('\nArgs:')
-        for (const [name, argType] of argTypeEntries) {
-          const conditional = argType.if !== undefined ? ` [if ${argType.if.arg}]` : ''
-          const defaultVal = story.args[name]
-          const defaultStr =
-            defaultVal !== undefined ? `  (default: ${JSON.stringify(defaultVal)})` : ''
-          yield* Console.log(`${formatArgType({ name, argType })}${defaultStr}${conditional}`)
-        }
-      }
+      const args = argTypeEntries.map(([name, argType]) => ({
+        name,
+        controlType: argType.control.type,
+        description: argType.description,
+        defaultValue: story.args[name] !== undefined ? JSON.stringify(story.args[name]) : undefined,
+        options: argType.control.type === 'select' ? [...argType.control.options] : undefined,
+        conditional: argType.if?.arg,
+      }))
 
-      const hasTimeline = story.args.interactive !== undefined
-      yield* Console.log(
-        `\nTimeline: ${hasTimeline === true ? 'yes (use --final to apply)' : 'no'}`,
-      )
-      yield* Console.log('')
+      yield* run(
+        InspectApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetState',
+              state: {
+                id: story.id,
+                title: story.title,
+                name: story.name,
+                filePath: story.filePath,
+                args,
+                hasTimeline: story.args.interactive !== undefined,
+                timelineEventCount: 0,
+              },
+            })
+          }),
+        { view: React.createElement(InspectView, { stateAtom: InspectApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Inspect story metadata and available args'))

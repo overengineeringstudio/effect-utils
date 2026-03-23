@@ -1,10 +1,15 @@
 import { Args, Command, Options } from '@effect/cli'
-import { Console, Effect } from 'effect'
+import { Effect } from 'effect'
+import React from 'react'
+
+import { run } from '@overeng/tui-react'
+import { outputOption, outputModeLayer } from '@overeng/tui-react/node'
 
 import { captureStoryProps, StoryCaptureError } from '../StoryCapture.ts'
 import { discoverStories } from '../StoryDiscovery.ts'
 import { findStory, parseArgOverrides } from '../StoryModule.ts'
-import { renderStory, OUTPUT_MODES, type OutputMode, type TimelineMode } from '../StoryRenderer.ts'
+import { renderStory, type TimelineMode } from '../StoryRenderer.ts'
+import { RenderApp, RenderView } from './renderers/RenderOutput/mod.ts'
 
 const storyIdArg = Args.text({ name: 'story-id' }).pipe(
   Args.withDescription('Story title or ID to render (supports prefix/substring match)'),
@@ -24,12 +29,6 @@ const widthOption = Options.integer('width').pipe(
   Options.withAlias('w'),
   Options.withDescription('Terminal width for layout'),
   Options.withDefault(80),
-)
-
-const outputOption = Options.choice('output', [...OUTPUT_MODES]).pipe(
-  Options.withAlias('o'),
-  Options.withDescription('Output mode: tty, alt-screen, ci, ci-plain, pipe, log, json, ndjson'),
-  Options.withDefault('ci' as OutputMode),
 )
 
 const finalOption = Options.boolean('final').pipe(
@@ -69,8 +68,6 @@ export const renderCommand = Command.make(
 
       const story = findStory({ modules, query })
       if (story === undefined) {
-        yield* Console.error(`Story not found: "${query}"`)
-        yield* Console.error('Use `tui-stories list --path <dir>` to see available stories.')
         return yield* Effect.fail(
           new StoryCaptureError({ storyId: query, message: 'Story not found' }),
         )
@@ -90,13 +87,35 @@ export const renderCommand = Command.make(
       const timelineMode: TimelineMode =
         at._tag === 'Some' ? { at: at.value } : isFinal === true ? 'final' : 'initial'
 
+      const timelineModeStr =
+        at._tag === 'Some' ? `at:${at.value}` : isFinal === true ? 'final' : 'initial'
+
       const result = yield* renderStory({
         captured,
         width,
         timelineMode,
-        output,
+        output: 'ci',
       })
 
-      yield* Console.log(result)
+      const renderedLines = result.split('\n')
+
+      yield* run(
+        RenderApp,
+        (tui) =>
+          Effect.sync(() => {
+            tui.dispatch({
+              _tag: 'SetState',
+              state: {
+                _tag: 'Complete',
+                storyId: story.id,
+                output: 'ci',
+                width,
+                timelineMode: timelineModeStr,
+                renderedLines,
+              },
+            })
+          }),
+        { view: React.createElement(RenderView, { stateAtom: RenderApp.stateAtom }) },
+      ).pipe(Effect.provide(outputModeLayer(output)))
     }),
 ).pipe(Command.withDescription('Render a story to terminal output'))
