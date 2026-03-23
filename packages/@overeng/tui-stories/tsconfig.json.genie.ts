@@ -12,7 +12,6 @@ export default tsconfigJson({
     ...reactJsx,
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*.ts', 'bin/**/*.tsx', '../../../types/css.d.ts'],
-  exclude: ['src/**/stories/_megarepo-renders.ts'],
   references: [
     { path: '../megarepo' },
     { path: '../tui-core' },

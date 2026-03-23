@@ -1,3 +1,5 @@
+// @ts-nocheck — Vite resolves these relative workspace imports at build time.
+// TS --build can't resolve paths outside rootDir, but this file is only used by Storybook.
 /**
  * Pre-rendered megarepo output for realistic story fixtures.
  *
