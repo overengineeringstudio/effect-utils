@@ -321,6 +321,41 @@ const validateRunsOn = ({
   return issues
 }
 
+/**
+ * TODO: Remove this validator once upstream ca-derivations issues are resolved
+ * (NixOS/nix#12361, cachix/devenv#2364)
+ */
+const validateDeterminateNixExtraConf = ({
+  args,
+  location,
+}: {
+  args: GitHubWorkflowArgs
+  location: string
+}): GenieValidationIssue[] => {
+  const issues: GenieValidationIssue[] = []
+
+  for (const [jobName, job] of Object.entries(args.jobs)) {
+    for (const [stepIndex, step] of job.steps.entries()) {
+      if ('uses' in step === false) continue
+      if (step.uses.startsWith('DeterminateSystems/determinate-nix-action') === false) continue
+
+      const extraConf = step.with?.['extra-conf']
+      if (typeof extraConf === 'string' && extraConf.includes('experimental-features') === true)
+        continue
+
+      issues.push({
+        severity: 'warning',
+        packageName: location,
+        dependency: `jobs.${jobName}.steps[${stepIndex}]`,
+        message: `jobs.${jobName}.steps[${stepIndex}] uses DeterminateSystems/determinate-nix-action without "experimental-features" in extra-conf. Determinate Nix enables ca-derivations by default which causes store path validity failures with devenv. Add "experimental-features = nix-command flakes" to extra-conf.`,
+        rule: 'github-workflow-determinate-nix-extra-conf',
+      })
+    }
+  }
+
+  return issues
+}
+
 const validateWorkflow = ({
   args,
   location,
@@ -333,6 +368,8 @@ const validateWorkflow = ({
   for (const [jobName, job] of Object.entries(args.jobs)) {
     issues.push(...validateRunsOn({ jobName, runsOn: job['runs-on'], location }))
   }
+
+  issues.push(...validateDeterminateNixExtraConf({ args, location }))
 
   return issues
 }

@@ -208,6 +208,8 @@ export const installNixStep = (opts?: { extraConf?: string }) => ({
        * @see https://github.com/cachix/devenv/issues/2364
        */
       'experimental-features = nix-command flakes',
+      /** Trust flake-level nixConfig (e.g. devenv's extra-substituters for devenv.cachix.org) */
+      'accept-flake-config = true',
       'extra-substituters = https://devenv.cachix.org',
       'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
       'access-tokens = github.com=${{ github.token }}',
