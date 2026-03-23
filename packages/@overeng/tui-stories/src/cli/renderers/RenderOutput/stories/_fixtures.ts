@@ -2,6 +2,19 @@ import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { RenderStateType, RenderActionType } from '../schema.ts'
 
+/** CLI flag–derived config passed into fixture factories */
+export type RenderFlagConfig = {
+  output: RenderStateType & { _tag: 'Complete' } extends { output: infer O } ? O : never
+  width: number
+  timelineMode: string
+}
+
+const defaultFlagConfig: RenderFlagConfig = {
+  output: 'ci',
+  width: 80,
+  timelineMode: 'initial',
+}
+
 /** Creates a render state with overrides */
 export const createRenderState = (
   overrides: Partial<RenderStateType & { _tag: 'Complete' }>,
@@ -56,33 +69,51 @@ const storeStatusLines = [
   '1 error · 0 warnings',
 ]
 
-export const createStatusRender = (): RenderStateType =>
-  createRenderState({
+export const createStatusRender = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
+  const c = { ...defaultFlagConfig, ...config }
+  return createRenderState({
     storyId: 'CLI/Status/Basic/Default',
     renderedLines: statusOutputLines,
+    output: c.output,
+    width: c.width,
+    timelineMode: c.timelineMode,
   })
+}
 
-export const createExecRender = (): RenderStateType =>
-  createRenderState({
+export const createExecRender = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
+  const c = { ...defaultFlagConfig, timelineMode: 'final', ...config }
+  return createRenderState({
     storyId: 'CLI/Exec/Running/RunningVerboseParallel',
-    timelineMode: 'final',
     renderedLines: execOutputLines,
+    output: c.output,
+    width: c.width,
+    timelineMode: c.timelineMode,
   })
+}
 
-export const createStoreStatusRender = (): RenderStateType =>
-  createRenderState({
+export const createStoreStatusRender = (
+  config: Partial<RenderFlagConfig> = {},
+): RenderStateType => {
+  const c = { ...defaultFlagConfig, width: 100, ...config }
+  return createRenderState({
     storyId: 'CLI/Store/Status/MixedIssues',
     renderedLines: storeStatusLines,
-    width: 100,
+    output: c.output,
+    width: c.width,
+    timelineMode: c.timelineMode,
   })
+}
 
-export const createRenderingState = (): RenderStateType => ({
-  _tag: 'Rendering',
-  storyId: 'CLI/Sync/Fetch/FetchResults',
-  output: 'ci',
-  width: 80,
-  timelineMode: 'final',
-})
+export const createRenderingState = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
+  const c = { ...defaultFlagConfig, timelineMode: 'final', ...config }
+  return {
+    _tag: 'Rendering',
+    storyId: 'CLI/Sync/Fetch/FetchResults',
+    output: c.output,
+    width: c.width,
+    timelineMode: c.timelineMode,
+  }
+}
 
 export const createErrorState = (): RenderStateType => ({
   _tag: 'Error',
@@ -90,28 +121,36 @@ export const createErrorState = (): RenderStateType => ({
   message: 'Story not found: "CLI/NonExistent/Missing"',
 })
 
-export const createTimeline = (): TimelineEvent<RenderActionType>[] => [
-  {
-    at: 0,
-    action: {
-      _tag: 'SetState',
-      state: {
-        _tag: 'Rendering',
-        storyId: 'CLI/Status/Basic/Default',
-        output: 'ci',
-        width: 80,
-        timelineMode: 'initial',
+export const createTimeline = (
+  config: Partial<RenderFlagConfig> = {},
+): TimelineEvent<RenderActionType>[] => {
+  const c = { ...defaultFlagConfig, ...config }
+  return [
+    {
+      at: 0,
+      action: {
+        _tag: 'SetState',
+        state: {
+          _tag: 'Rendering',
+          storyId: 'CLI/Status/Basic/Default',
+          output: c.output,
+          width: c.width,
+          timelineMode: c.timelineMode,
+        },
       },
     },
-  },
-  {
-    at: 800,
-    action: {
-      _tag: 'SetState',
-      state: createRenderState({
-        storyId: 'CLI/Status/Basic/Default',
-        renderedLines: statusOutputLines,
-      }),
+    {
+      at: 800,
+      action: {
+        _tag: 'SetState',
+        state: createRenderState({
+          storyId: 'CLI/Status/Basic/Default',
+          renderedLines: statusOutputLines,
+          output: c.output,
+          width: c.width,
+          timelineMode: c.timelineMode,
+        }),
+      },
     },
-  },
-]
+  ]
+}

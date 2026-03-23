@@ -7,14 +7,14 @@ export const RenderState = Schema.Union(
   Schema.Struct({
     _tag: Schema.Literal('Rendering'),
     storyId: Schema.String,
-    output: Schema.Literal('ci', 'ci-plain', 'tty', 'alt-screen', 'pipe', 'log'),
+    output: Schema.Literal('ci', 'ci-plain', 'tty', 'alt-screen', 'pipe', 'log', 'json', 'ndjson'),
     width: Schema.Number,
     timelineMode: Schema.String,
   }),
   Schema.Struct({
     _tag: Schema.Literal('Complete'),
     storyId: Schema.String,
-    output: Schema.Literal('ci', 'ci-plain', 'tty', 'alt-screen', 'pipe', 'log'),
+    output: Schema.Literal('ci', 'ci-plain', 'tty', 'alt-screen', 'pipe', 'log', 'json', 'ndjson'),
     width: Schema.Number,
     timelineMode: Schema.String,
     renderedLines: Schema.Array(Schema.String),
