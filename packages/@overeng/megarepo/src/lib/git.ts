@@ -135,7 +135,13 @@ const runGitCommand = ({ args, cwd }: { args: ReadonlyArray<string>; cwd?: strin
 // Transient Error Retry
 // =============================================================================
 
-/** Classify whether a git error is likely transient (network issue) and worth retrying */
+/**
+ * Classify whether a git error is likely transient (network issue) and worth retrying.
+ *
+ * Only matches connection-level failures (handshake, connect, read) — NOT permanent
+ * SSL certificate validation errors (e.g. "certificate rejected") which would fail
+ * identically on every retry.
+ */
 export const isTransientGitError = (error: GitCommandError): boolean => {
   const stderr = error.stderr.toLowerCase()
   return (
@@ -148,9 +154,12 @@ export const isTransientGitError = (error: GitCommandError): boolean => {
     stderr.includes('timed out') ||
     stderr.includes('unexpected disconnect') ||
     stderr.includes('the remote end hung up') ||
-    stderr.includes('ssl') ||
-    stderr.includes('gnutls') ||
-    stderr.includes('curl')
+    stderr.includes('ssl_connect') ||
+    stderr.includes('ssl handshake') ||
+    stderr.includes('ssl_read') ||
+    stderr.includes('gnutls_handshake') ||
+    stderr.includes('gnutls_record_recv') ||
+    stderr.includes('curl error')
   )
 }
 

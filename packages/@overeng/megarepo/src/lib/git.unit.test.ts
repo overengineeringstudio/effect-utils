@@ -166,12 +166,15 @@ describe('git', () => {
       'fatal: unable to access: Could not resolve host: github.com',
       'fatal: unable to access: Failed to connect: Connection refused',
       'fatal: the remote end hung up unexpectedly',
-      'error: RPC failed; curl 56 GnuTLS recv error',
-      'fatal: unable to access: SSL connect error',
+      'error: RPC failed; curl error 56 GnuTLS_handshake failed',
+      'fatal: unable to access: SSL_connect error',
       'fatal: unable to access: Connection timed out',
       'fatal: unable to access: Connection reset by peer',
-      'error: RPC failed; curl 18 transfer closed with outstanding read data remaining',
       'fatal: unexpected disconnect while reading sideband packet',
+      'error: RPC failed; curl error 35 SSL handshake failure',
+      'error: RPC failed; result=22, HTTP code = 500 gnutls_record_recv: unexpected eof',
+      'fatal: unable to access: SSL_read: connection reset',
+      'error: RPC failed; curl 18 transfer closed with outstanding read data remaining',
     ])('should classify as transient: %s', (stderr) => {
       expect(isTransientGitError(mkError(stderr))).toBe(true)
     })
@@ -184,6 +187,7 @@ describe('git', () => {
       "fatal: ambiguous argument 'nonexistent': unknown revision",
       'ERROR: Permission denied (publickey)',
       'Host key verification failed',
+      'fatal: unable to access: SSL certificate problem: certificate rejected',
     ])('should classify as non-transient: %s', (stderr) => {
       expect(isTransientGitError(mkError(stderr))).toBe(false)
     })
