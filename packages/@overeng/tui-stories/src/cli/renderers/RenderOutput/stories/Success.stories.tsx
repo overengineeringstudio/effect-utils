@@ -1,17 +1,17 @@
 /** Render command success stories — showing rendered story output */
 
 import type { Meta, StoryObj } from '@storybook/react'
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 import {
   ALL_OUTPUT_TABS,
   commonArgTypes,
-  createInteractiveProps,
   defaultStoryArgs,
   TuiStoryPreview,
 } from '@overeng/tui-react/storybook'
 
 import { RenderApp } from '../app.ts'
+import type { RenderStateType } from '../schema.ts'
 import { RenderView } from '../view.tsx'
 import type { RenderFlagConfig } from './_fixtures.ts'
 import * as fixtures from './_fixtures.ts'
@@ -48,6 +48,28 @@ export default {
 
 type Story = StoryObj<StoryArgs>
 
+/** Hook to load an async fixture and return it (undefined while loading) */
+const useAsyncState = ({
+  loader,
+  deps,
+}: {
+  readonly loader: () => Promise<RenderStateType>
+  readonly deps: readonly unknown[]
+}): RenderStateType | undefined => {
+  const [state, setState] = useState<RenderStateType | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    void loader().then((s) => {
+      if (cancelled === false) setState(s)
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  return state
+}
+
 /** Derives RenderFlagConfig from story args */
 const useFlagConfig = (args: StoryArgs): Partial<RenderFlagConfig> =>
   useMemo(
@@ -65,19 +87,21 @@ const buildCommand = ({ args, storyId }: { args: StoryArgs; storyId: string }): 
 /** Rendered mr status output */
 const StatusOutputRender = (args: StoryArgs) => {
   const flagConfig = useFlagConfig(args)
+  const state = useAsyncState({
+    loader: () => fixtures.createStatusRender(flagConfig),
+    deps: [flagConfig],
+  })
+
+  if (state === undefined) return null
+
   return (
     <TuiStoryPreview
       View={RenderView}
       app={RenderApp}
+      initialState={state}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command={buildCommand({ args, storyId: 'CLI/Status/Basic/Default' })}
-      {...createInteractiveProps({
-        args,
-        staticState: fixtures.createStatusRender(flagConfig),
-        idleState: fixtures.createRenderingState(flagConfig),
-        createTimeline: () => fixtures.createTimeline(flagConfig),
-      })}
     />
   )
 }
@@ -89,11 +113,18 @@ export const StatusOutput: Story = {
 /** Rendered mr exec output (final timeline state) */
 const ExecOutputRender = (args: StoryArgs) => {
   const flagConfig = useFlagConfig(args)
+  const state = useAsyncState({
+    loader: () => fixtures.createExecRender(flagConfig),
+    deps: [flagConfig],
+  })
+
+  if (state === undefined) return null
+
   return (
     <TuiStoryPreview
       View={RenderView}
       app={RenderApp}
-      initialState={fixtures.createExecRender(flagConfig)}
+      initialState={state}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command={buildCommand({ args, storyId: 'CLI/Exec/Running/RunningVerboseParallel' })}
@@ -109,11 +140,18 @@ export const ExecOutput: Story = {
 /** Rendered mr store status output (wider width) */
 const StoreStatusOutputRender = (args: StoryArgs) => {
   const flagConfig = useFlagConfig(args)
+  const state = useAsyncState({
+    loader: () => fixtures.createStoreStatusRender(flagConfig),
+    deps: [flagConfig],
+  })
+
+  if (state === undefined) return null
+
   return (
     <TuiStoryPreview
       View={RenderView}
       app={RenderApp}
-      initialState={fixtures.createStoreStatusRender(flagConfig)}
+      initialState={state}
       height={args.height}
       tabs={ALL_OUTPUT_TABS}
       command={buildCommand({ args, storyId: 'CLI/Store/Status/MixedIssues' })}

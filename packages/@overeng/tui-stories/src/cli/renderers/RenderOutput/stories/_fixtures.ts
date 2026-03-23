@@ -1,7 +1,7 @@
 import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { RenderStateType, RenderActionType } from '../schema.ts'
-import { statusLines, execLines, storeStatusLines } from './_megarepo-renders.ts'
+import { getStatusLines, getExecLines, getStoreStatusLines } from './_megarepo-renders.ts'
 
 /** CLI flag–derived config for story content rendering (width, timeline) */
 export type RenderFlagConfig = {
@@ -26,36 +26,40 @@ export const createRenderState = (
   ...overrides,
 })
 
-/** Creates a status render fixture with real megarepo output */
-export const createStatusRender = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
+/** Creates a status render fixture with real megarepo output (async) */
+export const createStatusRender = async (
+  config: Partial<RenderFlagConfig> = {},
+): Promise<RenderStateType> => {
   const c = { ...defaultFlagConfig, ...config }
   return createRenderState({
     storyId: 'CLI/Status/Basic/Default',
-    renderedLines: statusLines,
+    renderedLines: await getStatusLines(),
     width: c.width,
     timelineMode: c.timelineMode,
   })
 }
 
-/** Creates an exec render fixture with real megarepo output */
-export const createExecRender = (config: Partial<RenderFlagConfig> = {}): RenderStateType => {
+/** Creates an exec render fixture with real megarepo output (async) */
+export const createExecRender = async (
+  config: Partial<RenderFlagConfig> = {},
+): Promise<RenderStateType> => {
   const c = { ...defaultFlagConfig, timelineMode: 'final', ...config }
   return createRenderState({
     storyId: 'CLI/Exec/Running/RunningVerboseParallel',
-    renderedLines: execLines,
+    renderedLines: await getExecLines(),
     width: c.width,
     timelineMode: c.timelineMode,
   })
 }
 
-/** Creates a store status render fixture with real megarepo output */
-export const createStoreStatusRender = (
+/** Creates a store status render fixture with real megarepo output (async) */
+export const createStoreStatusRender = async (
   config: Partial<RenderFlagConfig> = {},
-): RenderStateType => {
+): Promise<RenderStateType> => {
   const c = { ...defaultFlagConfig, width: 100, ...config }
   return createRenderState({
     storyId: 'CLI/Store/Status/MixedIssues',
-    renderedLines: storeStatusLines,
+    renderedLines: await getStoreStatusLines(),
     width: c.width,
     timelineMode: c.timelineMode,
   })
@@ -79,11 +83,12 @@ export const createErrorState = (): RenderStateType => ({
   message: 'Story not found: "CLI/NonExistent/Missing"',
 })
 
-/** Creates a timeline from rendering to complete */
-export const createTimeline = (
+/** Creates a timeline from rendering to complete (async) */
+export const createTimeline = async (
   config: Partial<RenderFlagConfig> = {},
-): TimelineEvent<RenderActionType>[] => {
+): Promise<TimelineEvent<RenderActionType>[]> => {
   const c = { ...defaultFlagConfig, ...config }
+  const lines = await getStatusLines()
   return [
     {
       at: 0,
@@ -103,7 +108,7 @@ export const createTimeline = (
         _tag: 'SetState',
         state: createRenderState({
           storyId: 'CLI/Status/Basic/Default',
-          renderedLines: statusLines,
+          renderedLines: lines,
           width: c.width,
           timelineMode: c.timelineMode,
         }),
