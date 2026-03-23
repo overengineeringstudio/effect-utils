@@ -13,7 +13,9 @@ import type { Schema } from 'effect'
 import React, { type ReactElement, type ComponentType } from 'react'
 
 import { renderToString } from '@overeng/tui-react'
-import { TuiStoryPreview, type TimelineEvent } from '@overeng/tui-react/storybook'
+// Import only the type — the runtime TuiStoryPreview import pulls in xterm.js
+// which creates open handles that prevent process exit in Node/Bun.
+import type { TimelineEvent } from '@overeng/tui-react/storybook'
 
 import type { ResolvedStory } from './StoryModule.ts'
 
@@ -67,12 +69,9 @@ const extractPreviewProps = (element: ReactElement): CapturedStoryProps | undefi
 
   if (props === undefined) return undefined
 
-  // Check by reference identity first (most reliable)
-  if (type === TuiStoryPreview) {
-    return extractFromProps(props)
-  }
-
-  // Check by function name as fallback (handles bundler deduplication edge cases)
+  // Identify TuiStoryPreview by function name. We avoid importing the actual
+  // component at runtime because @overeng/tui-react/storybook pulls in xterm.js
+  // which creates timers that prevent clean process exit in Node/Bun.
   if (typeof type === 'function' && type.name === 'TuiStoryPreview') {
     return extractFromProps(props)
   }
