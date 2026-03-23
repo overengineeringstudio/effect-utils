@@ -1,25 +1,23 @@
-// @ts-nocheck — Vite resolves these relative workspace imports at build time.
-// TS --build can't resolve paths outside rootDir, but this file is only used by Storybook.
+// @ts-nocheck — Resolved by Vite alias (@megarepo-internal → megarepo/src).
+// TS --build can't resolve these, but Storybook's Vite build handles them.
 /**
  * Pre-rendered megarepo output for realistic story fixtures.
  *
  * Imports real megarepo View components and renders them via renderToString
  * so the Storybook preview shows actual colored TUI output.
  *
- * Uses relative workspace paths because Vite's production build enforces
- * package exports strictly — deep `@overeng/megarepo/src/...` imports
- * fail in prod even though they work in dev mode.
+ * Uses @megarepo-internal alias (configured in .storybook/main.ts) which
+ * Vite resolves to the megarepo source tree at build time.
  */
 
 import { Atom } from '@effect-atom/atom'
+import { ExecView } from '@megarepo-internal/cli/renderers/ExecOutput/mod.ts'
+import * as execFixtures from '@megarepo-internal/cli/renderers/ExecOutput/stories/_fixtures.ts'
+import { StatusView } from '@megarepo-internal/cli/renderers/StatusOutput/mod.ts'
+import * as statusFixtures from '@megarepo-internal/cli/renderers/StatusOutput/stories/_fixtures.ts'
+import { StoreView } from '@megarepo-internal/cli/renderers/StoreOutput/mod.ts'
+import * as storeFixtures from '@megarepo-internal/cli/renderers/StoreOutput/stories/_fixtures.ts'
 
-import { ExecView } from '../../../../../../../../megarepo/src/cli/renderers/ExecOutput/mod.ts'
-import * as execFixtures from '../../../../../../../../megarepo/src/cli/renderers/ExecOutput/stories/_fixtures.ts'
-/* Relative workspace imports (stories only, not runtime CLI code) */
-import { StatusView } from '../../../../../../../../megarepo/src/cli/renderers/StatusOutput/mod.ts'
-import * as statusFixtures from '../../../../../../../../megarepo/src/cli/renderers/StatusOutput/stories/_fixtures.ts'
-import { StoreView } from '../../../../../../../../megarepo/src/cli/renderers/StoreOutput/mod.ts'
-import * as storeFixtures from '../../../../../../../../megarepo/src/cli/renderers/StoreOutput/stories/_fixtures.ts'
 import { renderViewToLines } from './_render-helper.ts'
 
 /** Cached render results (lazily initialized on first access) */
