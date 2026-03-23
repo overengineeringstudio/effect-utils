@@ -509,7 +509,7 @@ export const createTerminalInput = (
   options: TerminalInputOptions = {},
 ): Effect.Effect<TerminalInput, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const input = options.input ?? process.stdin
+    const input: Readable = options.input ?? process.stdin
     const output = options.output ?? process.stdout
     const rawMode = options.rawMode ?? true
     const handleCtrlC = options.handleCtrlC ?? false
