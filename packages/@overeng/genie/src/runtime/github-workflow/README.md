@@ -32,6 +32,19 @@ export default githubWorkflow({
   - Permissions, concurrency, environment settings
 - **YAML output**: Generates properly formatted YAML
 
+## Validation
+
+`githubWorkflow()` validates each job's `runs-on` value before emitting YAML.
+
+This rejects invalid runner labels such as:
+
+- empty `runs-on` arrays
+- non-string labels
+- empty string labels
+- stale placeholder labels like `namespace-features:github.run-id=undefined`
+
+This is mainly intended to catch CI helper API drift early. Without this validation, stale generated workflows can look superficially valid in the repo but only fail later when GitHub tries to load or schedule the workflow.
+
 ## Type Reference
 
 See [GitHub Actions workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) for detailed documentation on all options.
