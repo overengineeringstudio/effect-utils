@@ -64,18 +64,24 @@ const importStoryFile = (filePath: string): Effect.Effect<ParsedStoryModule | un
     Effect.catchAll(() => Effect.succeed(undefined)),
   )
 
+/** Result of story discovery including skip statistics */
+export interface DiscoverStoriesResult {
+  readonly modules: readonly ParsedStoryModule[]
+  readonly skippedCount: number
+}
+
 /** Discover and parse all story files in the given package directories */
 export const discoverStories = (options: {
   readonly packageDirs: readonly string[]
   readonly patterns?: readonly string[]
-}): Effect.Effect<readonly ParsedStoryModule[]> =>
+}): Effect.Effect<DiscoverStoriesResult> =>
   Effect.gen(function* () {
     const patterns = options.patterns ?? DEFAULT_PATTERNS
 
     const filePaths = options.packageDirs.flatMap((dir) => globFiles({ dir, patterns }))
 
     if (filePaths.length === 0) {
-      return []
+      return { modules: [], skippedCount: 0 }
     }
 
     const results = yield* Effect.all(
@@ -83,7 +89,10 @@ export const discoverStories = (options: {
       { concurrency: 10 },
     )
 
-    return results.filter((m): m is ParsedStoryModule => m !== undefined)
+    const modules = results.filter((m): m is ParsedStoryModule => m !== undefined)
+    const skippedCount = results.length - modules.length
+
+    return { modules, skippedCount }
   })
 
 // =============================================================================
@@ -97,7 +106,7 @@ export class StoryDiscovery extends Context.Tag('StoryDiscovery')<
     readonly discover: (options: {
       readonly packageDirs: readonly string[]
       readonly patterns?: readonly string[]
-    }) => Effect.Effect<readonly ParsedStoryModule[]>
+    }) => Effect.Effect<DiscoverStoriesResult>
   }
 >() {
   static readonly live = StoryDiscovery.of({

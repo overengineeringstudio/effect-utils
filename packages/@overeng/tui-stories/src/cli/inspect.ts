@@ -23,7 +23,7 @@ export const inspectCommand = Command.make(
   { storyId: storyIdArg, path: pathOption, output: outputOption },
   ({ storyId, path, output }) =>
     Effect.gen(function* () {
-      const modules = yield* discoverStories({ packageDirs: [path] })
+      const { modules } = yield* discoverStories({ packageDirs: [path] })
       const story = findStory({ modules, query: storyId })
 
       if (story === undefined) {

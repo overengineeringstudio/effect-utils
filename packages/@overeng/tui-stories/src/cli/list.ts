@@ -18,7 +18,7 @@ export const listCommand = Command.make(
   { path: pathOption, output: outputOption },
   ({ path, output }) =>
     Effect.gen(function* () {
-      const modules = yield* discoverStories({ packageDirs: [path] })
+      const { modules, skippedCount } = yield* discoverStories({ packageDirs: [path] })
 
       const groups = modules.map((mod) => ({
         title: mod.meta.title,
@@ -35,7 +35,7 @@ export const listCommand = Command.make(
           Effect.sync(() => {
             tui.dispatch({
               _tag: 'SetState',
-              state: { groups, skippedCount: 0, packagePath: path },
+              state: { groups, skippedCount, packagePath: path },
             })
           }),
         { view: React.createElement(ListView, { stateAtom: ListApp.stateAtom }) },

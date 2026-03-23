@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 import { discoverStories } from '../src/StoryDiscovery.ts'
 import { parseStoryModule } from '../src/StoryModule.ts'
 
-const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..')
+const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
 
 describe('StoryDiscovery', () => {
@@ -14,7 +14,7 @@ describe('StoryDiscovery', () => {
     'discovers and parses stories (dynamic import)',
     () =>
       Effect.gen(function* () {
-        const modules = yield* discoverStories({ packageDirs: [MEGAREPO_DIR] })
+        const { modules } = yield* discoverStories({ packageDirs: [MEGAREPO_DIR] })
 
         // In vitest, some stories may fail to import due to browser-only deps.
         // In bun (the real CLI runtime), all stories load.
@@ -32,7 +32,7 @@ describe('StoryDiscovery', () => {
 
   it.effect('returns empty for non-existent directory', () =>
     Effect.gen(function* () {
-      const modules = yield* discoverStories({
+      const { modules } = yield* discoverStories({
         packageDirs: ['/non/existent/path'],
       })
       expect(modules).toEqual([])

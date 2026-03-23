@@ -9,7 +9,12 @@ export {
   type ArgTypeControl,
 } from './StoryModule.ts'
 
-export { discoverStories, StoryDiscovery, StoryDiscoveryError } from './StoryDiscovery.ts'
+export {
+  discoverStories,
+  StoryDiscovery,
+  StoryDiscoveryError,
+  type DiscoverStoriesResult,
+} from './StoryDiscovery.ts'
 
 export { captureStoryProps, StoryCaptureError, type CapturedStoryProps } from './StoryCapture.ts'
 

@@ -150,13 +150,20 @@ export const parseStoryModule = ({
   const meta = parseMeta(exports.default)
   if (meta === undefined) return undefined
 
+  const defaultExport = exports.default as Record<string, unknown> | undefined
+  const metaRender = (
+    typeof defaultExport?.render === 'function' ? defaultExport.render : undefined
+  ) as ((args: Record<string, unknown>) => ReactElement) | undefined
+
   const stories: ResolvedStory[] = []
   for (const [exportName, exportValue] of Object.entries(exports)) {
     if (exportName === 'default') continue
     if (isStoryExport(exportValue) === false) continue
 
     const story = exportValue as Record<string, unknown>
-    const render = story.render as ((args: Record<string, unknown>) => ReactElement) | undefined
+    const render = (story.render ?? metaRender) as
+      | ((args: Record<string, unknown>) => ReactElement)
+      | undefined
     if (render === undefined) continue
 
     const storyArgs = (

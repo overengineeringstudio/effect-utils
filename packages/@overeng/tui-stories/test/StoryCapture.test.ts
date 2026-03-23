@@ -7,13 +7,13 @@ import { captureStoryProps } from '../src/StoryCapture.ts'
 import { discoverStories } from '../src/StoryDiscovery.ts'
 import { findStory } from '../src/StoryModule.ts'
 
-const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../..')
+const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
 
 /** Helper to discover + find a story, skipping the test if not found */
 const findOrSkip = (query: string) =>
   Effect.gen(function* () {
-    const modules = yield* discoverStories({ packageDirs: [MEGAREPO_DIR] })
+    const { modules } = yield* discoverStories({ packageDirs: [MEGAREPO_DIR] })
     const story = findStory({ modules, query })
     if (story === undefined) {
       // Story may not load in vitest context due to missing browser deps
