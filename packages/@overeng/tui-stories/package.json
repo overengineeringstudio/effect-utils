@@ -25,6 +25,8 @@
     "@effect/opentelemetry": "0.61.0",
     "@effect/platform": "0.94.5",
     "@effect/platform-node": "0.104.1",
+    "@effect/printer": "0.47.0",
+    "@effect/printer-ansi": "0.47.0",
     "@effect/rpc": "0.73.2",
     "@effect/vitest": "0.27.0",
     "@effect/workflow": "0.16.0",
@@ -45,6 +47,7 @@
   "devDependencies": {
     "@effect/cli": "0.73.2",
     "@effect/vitest": "0.27.0",
+    "@overeng/megarepo": "workspace:*",
     "@overeng/utils-dev": "workspace:*",
     "@storybook/react": "10.2.3",
     "@storybook/react-vite": "10.2.3",
@@ -83,6 +86,10 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/effect-path",
+      "packages/@overeng/kdl",
+      "packages/@overeng/kdl-effect",
+      "packages/@overeng/megarepo",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/tui-stories",

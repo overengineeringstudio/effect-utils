@@ -4,6 +4,7 @@ import {
   packageJson,
   privatePackageDefaults,
 } from '../../../genie/internal.ts'
+import megarepoPkg from '../megarepo/package.json.genie.ts'
 import tuiCorePkg from '../tui-core/package.json.genie.ts'
 import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
@@ -17,7 +18,7 @@ const runtimeDeps = catalog.compose({
     workspace: [tuiCorePkg, tuiReactPkg, utilsPkg],
   },
   devDependencies: {
-    workspace: [utilsDevPkg],
+    workspace: [megarepoPkg, utilsDevPkg],
     external: {
       ...catalog.pick(
         ...ownPeerDepNames,

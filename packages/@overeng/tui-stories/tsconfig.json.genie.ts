@@ -13,6 +13,7 @@ export default tsconfigJson({
   },
   include: ['src/**/*', 'test/**/*', 'bin/**/*.ts', 'bin/**/*.tsx', '../../../types/css.d.ts'],
   references: [
+    { path: '../megarepo' },
     { path: '../tui-core' },
     { path: '../tui-react' },
     { path: '../utils' },
