@@ -4,26 +4,20 @@
  * Imports real megarepo View components and renders them via renderToString
  * so the Storybook preview shows actual colored TUI output.
  *
- * Uses lazy initialization to avoid top-level await (which breaks Storybook's
- * CSF static analyzer).
+ * Uses relative workspace paths because Vite's production build enforces
+ * package exports strictly — deep `@overeng/megarepo/src/...` imports
+ * fail in prod even though they work in dev mode.
  */
 
 import { Atom } from '@effect-atom/atom'
 
-// @ts-expect-error
-import { ExecView } from '@overeng/megarepo/src/cli/renderers/ExecOutput/mod.ts'
-// @ts-expect-error
-import * as execFixtures from '@overeng/megarepo/src/cli/renderers/ExecOutput/stories/_fixtures.ts'
-/* Deep workspace imports — stories only, not runtime. */
-// @ts-expect-error -- deep workspace import not in megarepo's package exports
-import { StatusView } from '@overeng/megarepo/src/cli/renderers/StatusOutput/mod.ts'
-// @ts-expect-error
-import * as statusFixtures from '@overeng/megarepo/src/cli/renderers/StatusOutput/stories/_fixtures.ts'
-// @ts-expect-error
-import { StoreView } from '@overeng/megarepo/src/cli/renderers/StoreOutput/mod.ts'
-// @ts-expect-error
-import * as storeFixtures from '@overeng/megarepo/src/cli/renderers/StoreOutput/stories/_fixtures.ts'
-
+import { ExecView } from '../../../../../../../../megarepo/src/cli/renderers/ExecOutput/mod.ts'
+import * as execFixtures from '../../../../../../../../megarepo/src/cli/renderers/ExecOutput/stories/_fixtures.ts'
+/* Relative workspace imports (stories only, not runtime CLI code) */
+import { StatusView } from '../../../../../../../../megarepo/src/cli/renderers/StatusOutput/mod.ts'
+import * as statusFixtures from '../../../../../../../../megarepo/src/cli/renderers/StatusOutput/stories/_fixtures.ts'
+import { StoreView } from '../../../../../../../../megarepo/src/cli/renderers/StoreOutput/mod.ts'
+import * as storeFixtures from '../../../../../../../../megarepo/src/cli/renderers/StoreOutput/stories/_fixtures.ts'
 import { renderViewToLines } from './_render-helper.ts'
 
 /** Cached render results (lazily initialized on first access) */
