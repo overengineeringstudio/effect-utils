@@ -23,6 +23,7 @@ packages:
   - packages/@overeng/react-inspector
   - packages/@overeng/tui-core
   - packages/@overeng/tui-react
+  - packages/@overeng/tui-stories
   - packages/@overeng/utils
   - packages/@overeng/utils-dev
 

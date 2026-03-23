@@ -94,6 +94,7 @@ let
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
+    "packages/@overeng/tui-stories"
     "context/opentui"
     "context/effect/socket"
   ];
@@ -155,6 +156,10 @@ let
       name = "tui-react";
     }
     {
+      path = "packages/@overeng/tui-stories";
+      name = "tui-stories";
+    }
+    {
       path = "packages/@overeng/utils";
       name = "utils";
     }
@@ -196,6 +201,11 @@ let
       path = "packages/@overeng/notion-cli";
       name = "notion-cli";
       port = 6012;
+    }
+    {
+      path = "packages/@overeng/tui-stories";
+      name = "tui-stories";
+      port = 6013;
     }
   ];
 in
@@ -341,6 +351,10 @@ in
       entry = "packages/@overeng/megarepo/bin/mr.ts";
     })
     cliBuildStamp.package
+    (mkSourceCli {
+      name = "tui-stories";
+      entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
+    })
   ];
 
   # Source-mode CLIs need pnpm install before running.
