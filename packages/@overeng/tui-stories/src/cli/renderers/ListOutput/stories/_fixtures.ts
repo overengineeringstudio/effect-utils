@@ -92,7 +92,9 @@ export const createLargeState = (): ListStateType =>
     groups: [
       ...componentGroups,
       ...cliGroups,
-      ...cliGroups.map((g) => Object.assign({}, g, { title: g.title.replace('CLI/', 'CLI/Store/') })),
+      ...cliGroups.map((g) =>
+        Object.assign({}, g, { title: g.title.replace('CLI/', 'CLI/Store/') }),
+      ),
     ],
     skippedCount: 12,
   })
