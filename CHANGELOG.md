@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/genie**: Include genie version in `--check` error output (#452)
+  - `GenieGenerationFailedError` message now includes the version string when available, e.g. `2 file(s) are out of date (genie 0.1.0+37b80e4)`
+  - Makes version mismatch between local and CI environments immediately visible in error output
+  - New `GenieVersion` service tag exported from `@overeng/genie` for injecting the version string
+
 ### Fixed
 
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
