@@ -7,10 +7,10 @@ import { Effect } from 'effect'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
-import { genieCommand, GenieVersion } from '../src/build/mod.tsx'
+import { genieCommand } from '../src/build/mod.tsx'
 
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'
@@ -29,7 +29,7 @@ Cli.Command.run(command, {
   version,
 })(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
-  Effect.provideService(GenieVersion, version),
+  Effect.provideService(CliVersion, version),
   Effect.provide(NodeContext.layer),
   runTuiMain(NodeRuntime),
 )

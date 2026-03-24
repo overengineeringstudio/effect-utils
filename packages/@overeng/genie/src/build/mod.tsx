@@ -31,7 +31,6 @@ export {
   GenieGenerationFailedError,
   GenieImportError,
 } from '../core/errors.ts'
-export { GenieVersion } from '../core/core.ts'
 
 /** Bridge GenieEvent stream to TUI dispatch. */
 const dispatchEvent = (tui: { dispatch: (action: any) => void }, event: GenieEvent): void => {

@@ -4,9 +4,10 @@ import path from 'node:path'
 import { type Error as PlatformError, FileSystem } from '@effect/platform'
 import type * as CommandExecutor from '@effect/platform/CommandExecutor'
 import type { Path } from '@effect/platform/Path'
-import { Context, Effect, Either, Option, Ref } from 'effect'
+import { Effect, Either, Option, Ref } from 'effect'
 
 import { assertNever } from '@overeng/utils'
+import { cliVersionSuffix } from '@overeng/utils/node/cli-version'
 
 import { findGenieFiles } from './discovery.ts'
 import { GenieGenerationFailedError } from './errors.ts'
@@ -62,9 +63,6 @@ export const mapResultToStatus = (result: { _tag: string }): GenieFileStatus => 
       return 'error'
   }
 }
-
-/** The genie version string, optionally provided by the CLI binary for error diagnostics. */
-export class GenieVersion extends Context.Tag('GenieVersion')<GenieVersion, string>() {}
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -502,8 +500,7 @@ export const checkAll = ({
         failed,
       }
       yield* emit({ _tag: 'Complete', summary })
-      const genieVersion = yield* Effect.serviceOption(GenieVersion)
-      const versionSuffix = Option.isSome(genieVersion) ? ` (genie ${genieVersion.value})` : ''
+      const versionSuffix = yield* cliVersionSuffix('genie')
       return yield* new GenieGenerationFailedError({
         failedCount: failed,
         message: `${failed} file(s) are out of date${versionSuffix}`,

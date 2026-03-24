@@ -6,7 +6,7 @@ import { Effect, Layer } from 'effect'
 
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { CliVersion, resolveCliVersion } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer } from '@overeng/utils/node/otel'
 
 import { mrCommand } from '../src/cli/mod.ts'
@@ -44,6 +44,7 @@ Cli.Command.run(mrCommand, {
   version,
 })(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
+  Effect.provideService(CliVersion, version),
   Effect.provide(baseLayer),
   runTuiMain(NodeRuntime),
 )

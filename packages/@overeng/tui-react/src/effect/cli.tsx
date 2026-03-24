@@ -24,7 +24,9 @@
  */
 
 import { Options } from '@effect/cli'
-import { Cause, Effect, Layer, Logger } from 'effect'
+import { Cause, Effect, Layer, Logger, Option } from 'effect'
+
+import { CliVersion } from '@overeng/utils/node/cli-version'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode } from './OutputMode.node.ts'
@@ -313,7 +315,7 @@ const runTuiMainImpl = <E, A>({
 
   effect.pipe(
     Effect.tapErrorCause((cause) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         // Check if cause has any loggable content:
         // 1. Typed failures (the E in Effect<A, E>) - filtered by shouldLogError
         // 2. Defects (crashes, thrown exceptions) - always logged
@@ -332,7 +334,9 @@ const runTuiMainImpl = <E, A>({
 
         if (hasLoggableFailure === true || hasDefects === true || isInterrupted === true) {
           const pretty = Cause.pretty(cause, { renderErrorCause: true })
-          process.stderr.write(pretty + '\n')
+          const cliVersion = yield* Effect.serviceOption(CliVersion)
+          const versionLine = Option.isSome(cliVersion) ? `\n  version: ${cliVersion.value}` : ''
+          process.stderr.write(pretty + versionLine + '\n')
         }
       }),
     ),

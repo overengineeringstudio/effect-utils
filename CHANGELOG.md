@@ -6,10 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **@overeng/genie**: Include genie version in `--check` error output (#452)
-  - `GenieGenerationFailedError` message now includes the version string when available, e.g. `2 file(s) are out of date (genie 0.1.0+37b80e4)`
-  - Makes version mismatch between local and CI environments immediately visible in error output
-  - New `GenieVersion` service tag exported from `@overeng/genie` for injecting the version string
+- **@overeng/utils**: Add `CliVersion` service tag and `cliVersionSuffix` helper to `@overeng/utils/node/cli-version` (#452)
+- **@overeng/tui-react**: `runTuiMain` appends CLI version to stderr error output when `CliVersion` is provided
+- **@overeng/genie**: Include genie version in `--check` error output using `cliVersionSuffix('genie')`
+- **@overeng/megarepo**: Provide `CliVersion` in `mr` CLI for version-annotated error output
+- **@overeng/tui-stories**: Wire up `CliVersion` and `resolveCliVersion` for build stamp support
 
 ### Fixed
 

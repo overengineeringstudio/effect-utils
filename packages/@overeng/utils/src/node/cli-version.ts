@@ -1,3 +1,17 @@
+import { Context, Effect, Option } from 'effect'
+
+/** The resolved CLI version string, provided at startup for error diagnostics. */
+export class CliVersion extends Context.Tag('CliVersion')<CliVersion, string>() {}
+
+/**
+ * Yield the CLI version suffix for use in error messages.
+ * Returns e.g. `" (genie 0.1.0+abc123)"` or `""` if `CliVersion` is not provided.
+ */
+export const cliVersionSuffix = (cliName: string): Effect.Effect<string> =>
+  Effect.serviceOption(CliVersion).pipe(
+    Effect.map((v) => (Option.isSome(v) ? ` (${cliName} ${v.value})` : '')),
+  )
+
 /**
  * Local stamp: set via CLI_BUILD_STAMP env var when entering a dev shell.
  * Used for source-based CLI builds (running TypeScript directly).
