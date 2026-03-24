@@ -6,11 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **@overeng/utils**: Add `CliVersion` service tag and `cliVersionSuffix` helper to `@overeng/utils/node/cli-version` (#452)
-- **@overeng/tui-react**: `runTuiMain` appends CLI version to stderr error output when `CliVersion` is provided
-- **@overeng/genie**: Include genie version in `--check` error output using `cliVersionSuffix('genie')`
-- **@overeng/megarepo**: Provide `CliVersion` in `mr` CLI for version-annotated error output
-- **@overeng/tui-stories**: Wire up `CliVersion` and `resolveCliVersion` for build stamp support
+- **@overeng/utils**: Add `CliVersion` service tag with `suffix()` and `enrichErrors()` to `@overeng/utils/node/cli-version` (#452)
+  - `CliVersion.enrichErrors(cliName)` — one-line combinator that appends version suffix to all typed error messages
+  - `CliVersion.suffix(cliName)` — yields a version suffix string for manual use in error messages
+- **@overeng/genie**, **@overeng/megarepo**, **@overeng/tui-stories**: Wire up `CliVersion.enrichErrors` for automatic version-annotated error output
 
 ### Fixed
 

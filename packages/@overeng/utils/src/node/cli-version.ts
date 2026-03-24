@@ -10,6 +10,42 @@ export class CliVersion extends Context.Tag('CliVersion')<CliVersion, string>() 
     Effect.serviceOption(CliVersion).pipe(
       Effect.map((v) => (Option.isSome(v) ? ` (${cliName} ${v.value})` : '')),
     )
+
+  /**
+   * Enrich all typed error messages with a version suffix.
+   * Apply once in the CLI pipe chain — all errors with a `message` field get annotated automatically.
+   *
+   * @example
+   * ```ts
+   * effect.pipe(
+   *   CliVersion.enrichErrors('mr'),
+   *   Effect.provideService(CliVersion, version),
+   *   runTuiMain(NodeRuntime),
+   * )
+   * ```
+   */
+  static enrichErrors =
+    (cliName: string) =>
+    <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+      Effect.flatMap(Effect.serviceOption(CliVersion), (versionOpt) => {
+        if (Option.isNone(versionOpt)) return self
+        const suffix = ` (${cliName} ${versionOpt.value})`
+        return self.pipe(
+          Effect.mapError((error) => {
+            if (
+              typeof error === 'object' &&
+              error !== null &&
+              'message' in error &&
+              typeof (error as any).message === 'string'
+            ) {
+              return Object.assign(Object.create(Object.getPrototypeOf(error)), error, {
+                message: `${(error as any).message}${suffix}`,
+              }) as E
+            }
+            return error
+          }),
+        )
+      })
 }
 
 /**

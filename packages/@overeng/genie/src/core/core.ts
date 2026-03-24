@@ -7,7 +7,6 @@ import type { Path } from '@effect/platform/Path'
 import { Effect, Either, Option, Ref } from 'effect'
 
 import { assertNever } from '@overeng/utils'
-import { CliVersion } from '@overeng/utils/node/cli-version'
 
 import { findGenieFiles } from './discovery.ts'
 import { GenieGenerationFailedError } from './errors.ts'
@@ -500,10 +499,9 @@ export const checkAll = ({
         failed,
       }
       yield* emit({ _tag: 'Complete', summary })
-      const versionSuffix = yield* CliVersion.suffix('genie')
       return yield* new GenieGenerationFailedError({
         failedCount: failed,
-        message: `${failed} file(s) are out of date${versionSuffix}`,
+        message: `${failed} file(s) are out of date`,
         files: genieFiles.map((p) => {
           const r = resultByPath.get(p)
           return {
