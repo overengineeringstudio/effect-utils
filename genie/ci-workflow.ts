@@ -166,18 +166,15 @@ const withGcRaceRetry = (command: string) => {
 }; __nix_gc_retry ${quoted}`
 }
 
-/**
- * Build a workflow step for running devenv tasks with `--mode before` and GC race retry.
- *
- * Returns `{ name, run }` — use as a step directly or spread into a step with a custom name:
- * - As step: `runDevenvTasksBefore('test:unit')` → `{ name: 'devenv: test:unit', run: '...' }`
- * - Custom name: `{ name: 'My step', run: runDevenvTasksBefore('test:unit').run }`
- * - In template string: `${runDevenvTasksBefore('deploy')}` (uses `toString()` → the run command)
- */
-export const runDevenvTasksBefore = (...args: [string, ...string[]]) => {
-  const run = withGcRaceRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
-  return Object.assign({ name: `devenv: ${args.join(' ')}`, run }, { toString: () => run })
-}
+/** Build a command string that runs devenv tasks with `--mode before` and GC race retry. */
+export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
+  withGcRaceRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
+
+/** Build a workflow step `{ name, run }` for running devenv tasks. Derives the step name from the task args. */
+export const runDevenvTasksBeforeStep = (...args: [string, ...string[]]) => ({
+  name: `devenv: ${args.join(' ')}`,
+  run: runDevenvTasksBefore(...args),
+})
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({

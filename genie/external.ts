@@ -589,6 +589,7 @@ export {
   namespaceRunner,
   nixDiagnosticsArtifactStep,
   runDevenvTasksBefore,
+  runDevenvTasksBeforeStep,
   validateNixStoreStep,
   standardCIEnv,
   syncMegarepoWorkspaceStep,
