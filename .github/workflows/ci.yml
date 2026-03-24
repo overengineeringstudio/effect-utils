@@ -140,7 +140,24 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Type check
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run ts:check --mode before"
+        run: |
+          __nix_gc_retry() {
+            local __max=${NIX_GC_RACE_MAX_RETRIES:-10} __n=1 __log __rc __path
+            while [ "$__n" -le "$__max" ]; do
+              __log=$(mktemp)
+              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+              __path=$(grep -oP "path '\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+              rm -f "$__log"
+              [ -z "$__path" ] && return $__rc
+              echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+              nix-store --realise "$__path" 2>/dev/null || true
+              rm -rf ~/.cache/nix/eval-cache-*
+              __n=$((__n + 1))
+            done
+            echo "::error::Nix GC race retry exhausted ($__max attempts)"
+            return 1
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -310,7 +327,24 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Format + lint
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run lint:check --mode before"
+        run: |
+          __nix_gc_retry() {
+            local __max=${NIX_GC_RACE_MAX_RETRIES:-10} __n=1 __log __rc __path
+            while [ "$__n" -le "$__max" ]; do
+              __log=$(mktemp)
+              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+              __path=$(grep -oP "path '\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+              rm -f "$__log"
+              [ -z "$__path" ] && return $__rc
+              echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+              nix-store --realise "$__path" 2>/dev/null || true
+              rm -rf ~/.cache/nix/eval-cache-*
+              __n=$((__n + 1))
+            done
+            echo "::error::Nix GC race retry exhausted ($__max attempts)"
+            return 1
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -483,7 +517,24 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Unit tests
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run test:run --mode before"
+        run: |
+          __nix_gc_retry() {
+            local __max=${NIX_GC_RACE_MAX_RETRIES:-10} __n=1 __log __rc __path
+            while [ "$__n" -le "$__max" ]; do
+              __log=$(mktemp)
+              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+              __path=$(grep -oP "path '\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+              rm -f "$__log"
+              [ -z "$__path" ] && return $__rc
+              echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+              nix-store --realise "$__path" 2>/dev/null || true
+              rm -rf ~/.cache/nix/eval-cache-*
+              __n=$((__n + 1))
+            done
+            echo "::error::Nix GC race retry exhausted ($__max attempts)"
+            return 1
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -656,7 +707,24 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Nix hash check
-        run: "if [ -n \"${NIX_CONFIG:-}\" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' \"$NIX_CONFIG\" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG=\"$NIX_CONFIG_WITH_APPEND\" DT_PASSTHROUGH=1 \"${DEVENV_BIN:?DEVENV_BIN not set}\" tasks run nix:check --mode before"
+        run: |
+          __nix_gc_retry() {
+            local __max=${NIX_GC_RACE_MAX_RETRIES:-10} __n=1 __log __rc __path
+            while [ "$__n" -le "$__max" ]; do
+              __log=$(mktemp)
+              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+              __path=$(grep -oP "path '\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+              rm -f "$__log"
+              [ -z "$__path" ] && return $__rc
+              echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+              nix-store --realise "$__path" 2>/dev/null || true
+              rm -rf ~/.cache/nix/eval-cache-*
+              __n=$((__n + 1))
+            done
+            echo "::error::Nix GC race retry exhausted ($__max attempts)"
+            return 1
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -837,9 +905,41 @@ jobs:
             exit 0
           fi
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\n%s' "$NIX_CONFIG" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before
+            __nix_gc_retry() {
+            local __max=${NIX_GC_RACE_MAX_RETRIES:-10} __n=1 __log __rc __path
+            while [ "$__n" -le "$__max" ]; do
+              __log=$(mktemp)
+              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+              __path=$(grep -oP "path '\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+              rm -f "$__log"
+              [ -z "$__path" ] && return $__rc
+              echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+              nix-store --realise "$__path" 2>/dev/null || true
+              rm -rf ~/.cache/nix/eval-cache-*
+              __n=$((__n + 1))
+            done
+            echo "::error::Nix GC race retry exhausted ($__max attempts)"
+            return 1
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before'
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\n%s' "$NIX_CONFIG" 'restrict-eval = false'); else NIX_CONFIG_WITH_APPEND='restrict-eval = false'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before
+            __nix_gc_retry() {
+            local __max=${NIX_GC_RACE_MAX_RETRIES:-10} __n=1 __log __rc __path
+            while [ "$__n" -le "$__max" ]; do
+              __log=$(mktemp)
+              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+              __path=$(grep -oP "path '\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+              rm -f "$__log"
+              [ -z "$__path" ] && return $__rc
+              echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+              nix-store --realise "$__path" 2>/dev/null || true
+              rm -rf ~/.cache/nix/eval-cache-*
+              __n=$((__n + 1))
+            done
+            echo "::error::Nix GC race retry exhausted ($__max attempts)"
+            return 1
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before'
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()
