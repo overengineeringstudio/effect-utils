@@ -136,9 +136,39 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
     opts,
   })
 
+/**
+ * Retry wrapper for the Nix GC race condition where `derivationStrict` fails with
+ * `path '/nix/store/...' is not valid`. On each retry, fetches the missing path
+ * and clears the eval cache.
+ *
+ * TODO: Remove once NixOS/nix#15469 and DeterminateSystems/nix-src#395 are released
+ * @see https://github.com/NixOS/nix/pull/15469
+ * @see https://github.com/DeterminateSystems/nix-src/issues/395
+ */
+const withGcRaceRetry = (command: string) => {
+  const quoted = shellSingleQuote(command)
+  return `__nix_gc_retry() {
+  local __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __n=1 __log __rc __path
+  while [ "$__n" -le "$__max" ]; do
+    __log=$(mktemp)
+    set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+    [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+    __path=$(grep -oP "path '\\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+    rm -f "$__log"
+    [ -z "$__path" ] && return $__rc
+    echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+    nix-store --realise "$__path" 2>/dev/null || true
+    rm -rf ~/.cache/nix/eval-cache-*
+    __n=$((__n + 1))
+  done
+  echo "::error::Nix GC race retry exhausted ($__max attempts)"
+  return 1
+}; __nix_gc_retry ${quoted}`
+}
+
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)
+  withGcRaceRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
