@@ -1,5 +1,6 @@
 import { Context, Effect, Option } from 'effect'
 
+/** CLI name and version pair, provided at startup for error diagnostics. */
 export interface CliVersionInfo {
   readonly name: string
   readonly version: string
@@ -12,7 +13,7 @@ export class CliVersion extends Context.Tag('CliVersion')<CliVersion, CliVersion
    * Returns e.g. `" (genie 0.1.0+abc123)"` or `""` if `CliVersion` is not provided.
    */
   static suffix: Effect.Effect<string> = Effect.serviceOption(CliVersion).pipe(
-    Effect.map((v) => (Option.isSome(v) ? ` (${v.value.name} ${v.value.version})` : '')),
+    Effect.map((v) => (Option.isSome(v) === true ? ` (${v.value.name} ${v.value.version})` : '')),
   )
 
   /**
@@ -30,7 +31,7 @@ export class CliVersion extends Context.Tag('CliVersion')<CliVersion, CliVersion
    */
   static enrichErrors = <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     Effect.flatMap(Effect.serviceOption(CliVersion), (infoOpt) => {
-      if (Option.isNone(infoOpt)) return self
+      if (Option.isNone(infoOpt) === true) return self
       const suffix = ` (${infoOpt.value.name} ${infoOpt.value.version})`
       return self.pipe(
         Effect.mapError((error) => {
