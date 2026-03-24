@@ -29,8 +29,8 @@ Cli.Command.run(command, {
   version,
 })(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
-  CliVersion.enrichErrors('genie'),
-  Effect.provideService(CliVersion, version),
+  CliVersion.enrichErrors,
+  Effect.provideService(CliVersion, { name: 'genie', version }),
   Effect.provide(NodeContext.layer),
   runTuiMain(NodeRuntime),
 )

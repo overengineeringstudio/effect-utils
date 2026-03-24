@@ -44,8 +44,8 @@ Cli.Command.run(mrCommand, {
   version,
 })(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
-  CliVersion.enrichErrors('mr'),
-  Effect.provideService(CliVersion, version),
+  CliVersion.enrichErrors,
+  Effect.provideService(CliVersion, { name: 'mr', version }),
   Effect.provide(baseLayer),
   runTuiMain(NodeRuntime),
 )

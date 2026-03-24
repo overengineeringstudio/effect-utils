@@ -1,15 +1,19 @@
 import { Context, Effect, Option } from 'effect'
 
-/** The resolved CLI version string, provided at startup for error diagnostics. */
-export class CliVersion extends Context.Tag('CliVersion')<CliVersion, string>() {
+export interface CliVersionInfo {
+  readonly name: string
+  readonly version: string
+}
+
+/** CLI identity and version, provided at startup for error diagnostics. */
+export class CliVersion extends Context.Tag('CliVersion')<CliVersion, CliVersionInfo>() {
   /**
    * Yield a version suffix for use in error messages.
    * Returns e.g. `" (genie 0.1.0+abc123)"` or `""` if `CliVersion` is not provided.
    */
-  static suffix = (cliName: string): Effect.Effect<string> =>
-    Effect.serviceOption(CliVersion).pipe(
-      Effect.map((v) => (Option.isSome(v) ? ` (${cliName} ${v.value})` : '')),
-    )
+  static suffix: Effect.Effect<string> = Effect.serviceOption(CliVersion).pipe(
+    Effect.map((v) => (Option.isSome(v) ? ` (${v.value.name} ${v.value.version})` : '')),
+  )
 
   /**
    * Enrich all typed error messages with a version suffix.
@@ -18,34 +22,32 @@ export class CliVersion extends Context.Tag('CliVersion')<CliVersion, string>() 
    * @example
    * ```ts
    * effect.pipe(
-   *   CliVersion.enrichErrors('mr'),
-   *   Effect.provideService(CliVersion, version),
+   *   CliVersion.enrichErrors,
+   *   Effect.provideService(CliVersion, { name: 'mr', version }),
    *   runTuiMain(NodeRuntime),
    * )
    * ```
    */
-  static enrichErrors =
-    (cliName: string) =>
-    <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-      Effect.flatMap(Effect.serviceOption(CliVersion), (versionOpt) => {
-        if (Option.isNone(versionOpt)) return self
-        const suffix = ` (${cliName} ${versionOpt.value})`
-        return self.pipe(
-          Effect.mapError((error) => {
-            if (
-              typeof error === 'object' &&
-              error !== null &&
-              'message' in error &&
-              typeof (error as any).message === 'string'
-            ) {
-              return Object.assign(Object.create(Object.getPrototypeOf(error)), error, {
-                message: `${(error as any).message}${suffix}`,
-              }) as E
-            }
-            return error
-          }),
-        )
-      })
+  static enrichErrors = <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.flatMap(Effect.serviceOption(CliVersion), (infoOpt) => {
+      if (Option.isNone(infoOpt)) return self
+      const suffix = ` (${infoOpt.value.name} ${infoOpt.value.version})`
+      return self.pipe(
+        Effect.mapError((error) => {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'message' in error &&
+            typeof (error as any).message === 'string'
+          ) {
+            return Object.assign(Object.create(Object.getPrototypeOf(error)), error, {
+              message: `${(error as any).message}${suffix}`,
+            }) as E
+          }
+          return error
+        }),
+      )
+    })
 }
 
 /**

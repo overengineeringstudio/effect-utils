@@ -24,8 +24,8 @@ const cli = Command.run(tuiStoriesCommand, {
 
 cli(rewriteHelpSubcommand(process.argv)).pipe(
   Effect.scoped,
-  CliVersion.enrichErrors('tui-stories'),
-  Effect.provideService(CliVersion, version),
+  CliVersion.enrichErrors,
+  Effect.provideService(CliVersion, { name: 'tui-stories', version }),
   Effect.provide(NodeContext.layer),
   runTuiMain(NodeRuntime),
 )
