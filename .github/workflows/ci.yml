@@ -31,6 +31,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
+      PNPM_HOME: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -218,6 +219,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
+      PNPM_HOME: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -408,6 +410,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
+      PNPM_HOME: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -598,6 +601,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
+      PNPM_HOME: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -788,6 +792,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
+      PNPM_HOME: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
     steps:
       - uses: actions/checkout@v4

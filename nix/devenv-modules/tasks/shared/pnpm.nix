@@ -158,13 +158,13 @@ let
         # TypeScript resolution. Only clear links/ when config changes.
         # Content-addressable store (files/) is unaffected.
         # See: pnpm/pnpm#9739
-        _gvs_hash_file="${cacheRoot}/gvs-links.hash"
         _gvs_hash=$({
           pnpm --version
           sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
           sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
         } | compute_hash)
 
+        _gvs_hash_file=""
         _gvs_links_dir=""
         for _d in \
           "''${PNPM_HOME:-__none__}/store/v11/links" \
@@ -177,6 +177,7 @@ let
         done
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
+          _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, clearing stale links"
             rm -rf "$_gvs_links_dir"
@@ -192,7 +193,9 @@ let
         fi
 
         # Persist GVS hash after successful install
-        echo "$_gvs_hash" > "$_gvs_hash_file"
+        if [ -n "''${_gvs_hash_file:-}" ]; then
+          echo "$_gvs_hash" > "$_gvs_hash_file"
+        fi
 
         ${computeHashFn}
         ${emitDirStateFn}

@@ -60,6 +60,8 @@ export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
+  PNPM_HOME:
+    '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}',
 } as const
 
 /**
@@ -268,6 +270,27 @@ echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
 echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
+
+/** Ephemeral per-job pnpm home path scoped to the CI run/attempt/job */
+export const jobLocalPnpmHome = standardCIEnv.PNPM_HOME
+
+/** Ephemeral per-job pnpm store path derived from PNPM_HOME */
+export const jobLocalPnpmStore = `${jobLocalPnpmHome}/store`
+
+/** Restore/save the pnpm store via actions/cache without sharing a live store between jobs */
+export const cachePnpmStoreStep = (opts?: { keyPrefix?: string }) => {
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+
+  return {
+    name: 'Cache pnpm store',
+    uses: 'actions/cache@v4' as const,
+    with: {
+      path: jobLocalPnpmStore,
+      key: `${keyPrefix}-${'${{ runner.os }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`,
+      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-`,
+    },
+  }
+}
 
 /** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
 export const jobLocalMegarepoStore =
