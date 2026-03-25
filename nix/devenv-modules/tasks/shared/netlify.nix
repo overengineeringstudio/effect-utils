@@ -98,11 +98,12 @@ let
 
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
-        # Use npx instead of pnpm dlx: pnpm 11's dlx doesn't inherit allowBuilds
-        # from the workspace, causing ERR_PNPM_IGNORED_BUILDS for native deps.
-        # (Also avoids bunx chalk ESM/CJS conflict: https://github.com/netlify/cli/issues/7997)
+        # pnpm dlx runs in a temp dir without workspace config. Write allowBuilds
+        # so pnpm 11 permits build scripts for netlify-cli's native deps.
+        _dlx_dir=$(mktemp -d)
+        printf 'allowBuilds:\n  sharp: true\n  esbuild: true\n  unix-dgram: true\n  "@parcel/watcher": true\n' > "$_dlx_dir/pnpm-workspace.yaml"
         # shellcheck disable=SC2086
-        npx --yes netlify deploy \
+        PNPM_HOME="$_dlx_dir" pnpm --package=netlify-cli dlx netlify deploy \
           --dir="$deploy_dir" \
           --site="${site}" \
           $filter_flag \

@@ -423,9 +423,8 @@ let
       targetPrefix,
     }:
     let
-      lockfilePatchPaths = parsePatchPaths lockfileContent;
-      workspacePatchPaths = parseWorkspacePatchPaths workspaceYamlContent;
-      patchPaths = lib.unique (lockfilePatchPaths ++ workspacePatchPaths);
+      # pnpm 11: patches are declared in pnpm-workspace.yaml, not pnpm-lock.yaml
+      patchPaths = parseWorkspacePatchPaths workspaceYamlContent;
       copyOnePatch =
         relPath:
         let

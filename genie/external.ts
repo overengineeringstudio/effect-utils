@@ -218,6 +218,9 @@ export const catalog = defineCatalog({
   'yoga-layout': '3.2.1',
   'string-width': '7.2.0',
   'cli-truncate': '5.1.1',
+
+  // AI agent tooling
+  agentation: '3.0.1',
 })
 
 /**
