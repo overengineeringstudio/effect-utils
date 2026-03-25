@@ -8,19 +8,27 @@
 # The version here MUST match DEFAULT_AGGREGATE_PACKAGE_MANAGER in
 # packages/@overeng/genie/src/runtime/package-json/mod.ts.
 pkgs.pnpm.overrideAttrs (old: {
+  nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.makeWrapper ];
   version = "11.0.0-beta.2";
   src = pkgs.fetchurl {
     url = "https://registry.npmjs.org/pnpm/-/pnpm-11.0.0-beta.2.tgz";
     hash = "sha256-0fp4evy2xE292b7kcNbLuUgO62+cbz7Vsga27x40w8A=";
   };
-  # pnpm 11 ships .cjs bins without execute permission (unlike v10).
-  # The nixpkgs installPhase symlinks bin/pnpm -> libexec/pnpm/bin/pnpm.cjs,
-  # so the .cjs files must be executable for the shebang to work.
+  postInstall = (old.postInstall or "") + ''
+    chmod +x $out/libexec/pnpm/bin/pnpm.cjs
+    chmod +x $out/libexec/pnpm/bin/pnpx.cjs
+    chmod +x $out/libexec/pnpm/bin/pnpm.mjs
+    chmod +x $out/libexec/pnpm/bin/pnpx.mjs
+    rm $out/bin/pnpm
+    rm $out/bin/pnpx
+    makeWrapper ${pkgs.nodejs}/bin/node $out/bin/pnpm \
+      --add-flags $out/libexec/pnpm/bin/pnpm.mjs
+    makeWrapper ${pkgs.nodejs}/bin/node $out/bin/pnpx \
+      --add-flags $out/libexec/pnpm/bin/pnpx.mjs
+  '';
   installPhase = builtins.replaceStrings
     [ "runHook postInstall" ]
     [ ''
-      chmod +x $out/libexec/pnpm/bin/pnpm.cjs
-      chmod +x $out/libexec/pnpm/bin/pnpx.cjs
       runHook postInstall
     '' ]
     old.installPhase;
