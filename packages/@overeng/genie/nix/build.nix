@@ -13,7 +13,7 @@ let
   # content and staged lockfile hash. Disabled until mk-pnpm-cli lockfile hashing
   # is updated to exclude build.nix from the staged source.
   lockfileHash = null;
-  packageJsonDepsHash = "sha256-8+F0d9YSV6Dv+kqZSg13vGymbXAev2QbZK6ZsBif5WU=";
+  packageJsonDepsHash = "sha256-W72mXuz+mfV0fYzKVauO10NjHtT1BdTU8ODvh1uqNZ4=";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";
