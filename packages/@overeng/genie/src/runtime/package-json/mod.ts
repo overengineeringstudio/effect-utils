@@ -286,7 +286,6 @@ export type PackageJsonData = {
   pnpm?: {
     overrides?: Record<string, string>
     patchedDependencies?: Record<string, string>
-    onlyBuiltDependencies?: readonly string[]
     neverBuiltDependencies?: readonly string[]
   }
 }

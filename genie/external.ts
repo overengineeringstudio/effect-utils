@@ -247,7 +247,6 @@ export const commonPnpmPolicySettings = {
     cpu: ['x64', 'arm64'],
     libc: ['glibc', 'musl'],
   },
-  /** pnpm 11: explicit build approval per package (replaces onlyBuiltDependencies) */
   allowBuilds: {
     '@parcel/watcher': true,
     'esbuild': true,

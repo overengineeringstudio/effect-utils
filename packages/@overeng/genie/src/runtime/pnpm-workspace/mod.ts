@@ -327,7 +327,7 @@ export interface PnpmSettings {
   // ---------------------------------------------------------------------------
 
   /**
-   * When true, only packages in onlyBuiltDependencies are built.
+   * When true, only packages in allowBuilds are built.
    * @see https://pnpm.io/settings#ignore-dep-scripts
    */
   ignoreDepScripts?: boolean
@@ -547,15 +547,7 @@ export interface PnpmWorkspaceData {
   neverBuiltDependencies?: readonly string[]
 
   /**
-   * Only these packages will have their build scripts run.
-   * @see https://pnpm.io/pnpm-workspace_yaml#onlybuiltdependencies
-   * @example ['fsevents']
-   * @see allowBuilds for the pnpm 11 replacement
-   */
-  onlyBuiltDependencies?: readonly string[]
-
-  /**
-   * pnpm 11: explicit build approval per package.
+   * Explicit build approval per package.
    * Packages not listed (or set to false) won't run build scripts.
    * @see https://pnpm.io/pnpm-workspace_yaml#allowbuilds
    */
@@ -682,7 +674,7 @@ export interface PnpmWorkspaceData {
   preferWorkspacePackages?: boolean
 
   /**
-   * When true, only packages in onlyBuiltDependencies are built.
+   * When true, only packages in allowBuilds are built.
    * @see https://pnpm.io/settings#ignore-dep-scripts
    */
   ignoreDepScripts?: boolean
@@ -816,10 +808,6 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.neverBuiltDependencies !== undefined) {
     result.neverBuiltDependencies = [...data.neverBuiltDependencies]
-  }
-
-  if (data.onlyBuiltDependencies !== undefined) {
-    result.onlyBuiltDependencies = [...data.onlyBuiltDependencies]
   }
 
   if (data.allowBuilds !== undefined) {
