@@ -251,7 +251,6 @@ let
     workspaceSuffixLines rootPnpmWorkspaceYaml
   );
 
-  rootLockfileContent = builtins.readFile (absoluteSourcePathFor "pnpm-lock.yaml");
   rootWorkspaceFiles = [
     "package.json"
     "pnpm-lock.yaml"
@@ -292,59 +291,6 @@ let
         ${copyFileCmd relPath}
       fi
     '';
-
-  /**
-    Parse patchedDependencies path: entries from a pnpm-lock.yaml string (pure Nix).
-    Works with pnpm 9 lockfile format where entries have explicit `path:` keys.
-  */
-  parsePatchPaths =
-    lockfileContent:
-    let
-      lines = lib.splitString "\n" lockfileContent;
-      collect =
-        {
-          inBlock,
-          paths,
-        }:
-        remaining:
-        if remaining == [ ] then
-          paths
-        else
-          let
-            line = builtins.head remaining;
-            rest = lib.tail remaining;
-            trimmed = lib.trim line;
-          in
-          if !inBlock then
-            if lib.hasPrefix "patchedDependencies:" trimmed then
-              collect {
-                inBlock = true;
-                inherit paths;
-              } rest
-            else
-              collect {
-                inherit inBlock paths;
-              } rest
-          else if trimmed == "" then
-            collect {
-              inherit inBlock paths;
-            } rest
-          else if builtins.substring 0 1 line != " " && builtins.substring 0 1 line != "\t" then
-            paths
-          else if lib.hasPrefix "path:" trimmed then
-            collect {
-              inherit inBlock;
-              paths = paths ++ [ (lib.trim (lib.removePrefix "path:" trimmed)) ];
-            } rest
-          else
-            collect {
-              inherit inBlock paths;
-            } rest;
-    in
-    collect {
-      inBlock = false;
-      paths = [ ];
-    } lines;
 
   /**
     Parse patch file paths from pnpm-workspace.yaml (pnpm 11+ format).
@@ -410,20 +356,17 @@ let
 
   /**
     Copy patch files referenced by a workspace, resolving source paths through workspaceSources.
-    Parses both pnpm 9 lockfile format (path: entries) and pnpm 11 workspace yaml format
-    (name@version: path/to/patch.patch) to find all patch file paths.
+    Parses pnpm-workspace.yaml to find patchedDependencies entries (name@version: path.patch).
 
     Note: the resolved source root (via builtins.path) snapshots the whole matched
     source tree, so this has the same invalidation scope as other copyFileCmd calls.
   */
   copyResolvedPatchFilesCmd =
     {
-      lockfileContent,
-      workspaceYamlContent ? "",
+      workspaceYamlContent,
       targetPrefix,
     }:
     let
-      # pnpm 11: patches are declared in pnpm-workspace.yaml, not pnpm-lock.yaml
       patchPaths = parseWorkspacePatchPaths workspaceYamlContent;
       copyOnePatch =
         relPath:
@@ -444,8 +387,7 @@ let
 
   /**
     Copy patch files from an external install root.
-    Parses both pnpm-lock.yaml (pnpm 9 path: entries) and pnpm-workspace.yaml
-    (pnpm 11 name@version: path.patch entries) at shell time.
+    Parses pnpm-workspace.yaml (name@version: path.patch entries) at shell time.
     These are self-contained (source and target share the same root), so shell-time
     awk parsing is fine — no workspaceSources resolution needed.
   */
@@ -462,38 +404,6 @@ let
       source_root=${sourceRootArg}
       target_prefix=${targetPrefixArg}
 
-      __copy_patch_paths() {
-        while IFS= read -r rel_path; do
-          [ -n "$rel_path" ] || continue
-
-          target_rel_path="$rel_path"
-          if [ -n "$target_prefix" ]; then
-            target_rel_path="$target_prefix/$target_rel_path"
-          fi
-
-          mkdir -p "$out/$(dirname "$target_rel_path")"
-          chmod -R +w "$out/$(dirname "$target_rel_path")" 2>/dev/null || true
-          cp "$source_root/$rel_path" "$out/$target_rel_path"
-        done
-      }
-
-      # Parse patch paths from pnpm-lock.yaml (pnpm 9 format: path: entries)
-      if [ -f "$source_root/pnpm-lock.yaml" ]; then
-        awk '
-          /^patchedDependencies:/ { in_block = 1; next }
-          in_block && $0 ~ /^[^[:space:]]/ { exit }
-          in_block {
-            line = $0
-            sub(/^[[:space:]]+/, "", line)
-            if (index(line, "path:") == 1) {
-              sub(/^path:[[:space:]]*/, "", line)
-              print line
-            }
-          }
-        ' "$source_root/pnpm-lock.yaml" | __copy_patch_paths
-      fi
-
-      # Parse patch paths from pnpm-workspace.yaml (pnpm 11 format: name@version: path.patch)
       if [ -f "$source_root/pnpm-workspace.yaml" ]; then
         awk '
           /^patchedDependencies:/ { in_block = 1; next }
@@ -508,7 +418,18 @@ let
               if (val ~ /\.patch$/) print val
             }
           }
-        ' "$source_root/pnpm-workspace.yaml" | __copy_patch_paths
+        ' "$source_root/pnpm-workspace.yaml" | while IFS= read -r rel_path; do
+          [ -n "$rel_path" ] || continue
+
+          target_rel_path="$rel_path"
+          if [ -n "$target_prefix" ]; then
+            target_rel_path="$target_prefix/$target_rel_path"
+          fi
+
+          mkdir -p "$out/$(dirname "$target_rel_path")"
+          chmod -R +w "$out/$(dirname "$target_rel_path")" 2>/dev/null || true
+          cp "$source_root/$rel_path" "$out/$target_rel_path"
+        done
       fi
     '';
 
@@ -565,7 +486,6 @@ let
           map copyDirCmd aggregateOwnedWorkspaceClosureDirs
       )
       + copyResolvedPatchFilesCmd {
-        lockfileContent = rootLockfileContent;
         workspaceYamlContent = rootPnpmWorkspaceYaml;
         targetPrefix = "";
       }
