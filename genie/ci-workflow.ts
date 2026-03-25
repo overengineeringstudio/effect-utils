@@ -151,9 +151,9 @@ const withGcRaceRetry = (command: string) => {
   local __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __n=1 __log __rc __path
   while [ "$__n" -le "$__max" ]; do
     __log=$(mktemp)
-    set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+    set +e; eval "$1" 2>&1 | tee "$__log"; __rc=${'${PIPESTATUS[0]}'}; set -e
     [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
-    __path=$(grep -oP "path '\\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+    __path=$(sed -n "s/.*path '\\(\\/nix\\/store\\/[^']*\\)'.*/\\1/p" "$__log" | head -1)
     rm -f "$__log"
     [ -z "$__path" ] && return $__rc
     echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
