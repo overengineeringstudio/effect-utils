@@ -37,12 +37,18 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [];
+  vitestExec = ''
+    NODE_OPTIONS="--preserve-symlinks --preserve-symlinks-main''${NODE_OPTIONS:+ $NODE_OPTIONS}" pnpm exec vitest run
+  '';
+  vitestWatchExec = ''
+    NODE_OPTIONS="--preserve-symlinks --preserve-symlinks-main''${NODE_OPTIONS:+ $NODE_OPTIONS}" pnpm exec vitest
+  '';
 
   # Per-package test task using the workspace-aware vitest entrypoint.
   mkTestTask = pkg: {
     "test:${pkg.name}" = {
       description = "Run tests for ${pkg.name}";
-      exec = trace.exec "test:${pkg.name}" "pnpm exec vitest run";
+      exec = trace.exec "test:${pkg.name}" vitestExec;
       cwd = pkg.path;
       execIfModified = [
         "${pkg.path}/src/**/*.ts"
@@ -63,7 +69,7 @@ let
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec = if hasPackages then null else "pnpm exec vitest run";
+      exec = if hasPackages then null else vitestExec;
       after = if hasPackages
         then map (pkg: "test:${pkg.name}") packages ++ extraTests
         else [ "genie:run" ];
@@ -71,7 +77,7 @@ let
     "test:watch" = {
       guard = "vitest";
       description = "Run tests in watch mode";
-      exec = "pnpm exec vitest";
+      exec = vitestWatchExec;
       after = [ "genie:run" ];
     };
   };
