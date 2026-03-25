@@ -444,7 +444,9 @@ let
     builtins.concatStringsSep "\n" (map copyOnePatch patchPaths);
 
   /**
-    Copy patch files from an external install root's lockfile.
+    Copy patch files from an external install root.
+    Parses both pnpm-lock.yaml (pnpm 9 path: entries) and pnpm-workspace.yaml
+    (pnpm 11 name@version: path.patch entries) at shell time.
     These are self-contained (source and target share the same root), so shell-time
     awk parsing is fine — no workspaceSources resolution needed.
   */
@@ -461,6 +463,22 @@ let
       source_root=${sourceRootArg}
       target_prefix=${targetPrefixArg}
 
+      __copy_patch_paths() {
+        while IFS= read -r rel_path; do
+          [ -n "$rel_path" ] || continue
+
+          target_rel_path="$rel_path"
+          if [ -n "$target_prefix" ]; then
+            target_rel_path="$target_prefix/$target_rel_path"
+          fi
+
+          mkdir -p "$out/$(dirname "$target_rel_path")"
+          chmod -R +w "$out/$(dirname "$target_rel_path")" 2>/dev/null || true
+          cp "$source_root/$rel_path" "$out/$target_rel_path"
+        done
+      }
+
+      # Parse patch paths from pnpm-lock.yaml (pnpm 9 format: path: entries)
       if [ -f "$source_root/pnpm-lock.yaml" ]; then
         awk '
           /^patchedDependencies:/ { in_block = 1; next }
@@ -473,18 +491,25 @@ let
               print line
             }
           }
-        ' "$source_root/pnpm-lock.yaml" | while IFS= read -r rel_path; do
-          [ -n "$rel_path" ] || continue
+        ' "$source_root/pnpm-lock.yaml" | __copy_patch_paths
+      fi
 
-          target_rel_path="$rel_path"
-          if [ -n "$target_prefix" ]; then
-            target_rel_path="$target_prefix/$target_rel_path"
-          fi
-
-          mkdir -p "$out/$(dirname "$target_rel_path")"
-          chmod -R +w "$out/$(dirname "$target_rel_path")" 2>/dev/null || true
-          cp "$source_root/$rel_path" "$out/$target_rel_path"
-        done
+      # Parse patch paths from pnpm-workspace.yaml (pnpm 11 format: name@version: path.patch)
+      if [ -f "$source_root/pnpm-workspace.yaml" ]; then
+        awk '
+          /^patchedDependencies:/ { in_block = 1; next }
+          in_block && /^[^[:space:]]/ { exit }
+          in_block {
+            line = $0
+            sub(/^[[:space:]]+/, "", line)
+            idx = index(line, ":")
+            if (idx > 0) {
+              val = substr(line, idx + 1)
+              sub(/^[[:space:]]+/, "", val)
+              if (val ~ /\.patch$/) print val
+            }
+          }
+        ' "$source_root/pnpm-workspace.yaml" | __copy_patch_paths
       fi
     '';
 
