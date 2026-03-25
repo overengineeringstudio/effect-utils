@@ -197,7 +197,7 @@ describe('packageJson', () => {
       name: '@test/package',
       version: '1.0.0',
       dependencies: {
-        '@test/utils': 'workspace:*',
+        '@test/utils': 'workspace:^',
       },
     })
 
@@ -254,7 +254,7 @@ describe('packageJson', () => {
         name: '@test/package',
         version: '1.0.0',
         dependencies: {
-          '@test/utils': 'workspace:*',
+          '@test/utils': 'workspace:^',
         },
       },
       {
@@ -424,7 +424,7 @@ describe('packageJson validate hook', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       peerDependencies: { effect: '^3.0.0' },
     })
     const ctx = makeValidationContext([upstream, downstream])
@@ -479,7 +479,7 @@ describe('packageJson validate hook', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
     })
     const ctx = makeValidationContext([upstream, downstream])
 

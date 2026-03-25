@@ -335,7 +335,7 @@ in
 
   packages = [
     inputs.tsgo.packages.${pkgs.system}.effect-tsgo
-    pkgs.pnpm
+    (import ./nix/pnpm.nix { inherit pkgs; })
     pkgs.nodejs_24
     pkgs.bun
     pkgs.typescript

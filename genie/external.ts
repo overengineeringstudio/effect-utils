@@ -245,6 +245,14 @@ export const commonPnpmPolicySettings = {
   supportedArchitectures: {
     os: ['linux', 'darwin'],
     cpu: ['x64', 'arm64'],
+    libc: ['glibc', 'musl'],
+  },
+  allowBuilds: {
+    '@parcel/watcher': true,
+    'esbuild': true,
+    'msgpackr-extract': true,
+    'sharp': true,
+    'unix-dgram': true,
   },
 }
 

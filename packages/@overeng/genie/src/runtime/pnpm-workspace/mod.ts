@@ -327,7 +327,7 @@ export interface PnpmSettings {
   // ---------------------------------------------------------------------------
 
   /**
-   * When true, only packages in onlyBuiltDependencies are built.
+   * When true, only packages in allowBuilds are built.
    * @see https://pnpm.io/settings#ignore-dep-scripts
    */
   ignoreDepScripts?: boolean
@@ -547,11 +547,11 @@ export interface PnpmWorkspaceData {
   neverBuiltDependencies?: readonly string[]
 
   /**
-   * Only these packages will have their build scripts run.
-   * @see https://pnpm.io/pnpm-workspace_yaml#onlybuiltdependencies
-   * @example ['fsevents']
+   * Explicit build approval per package.
+   * Packages not listed (or set to false) won't run build scripts.
+   * @see https://pnpm.io/pnpm-workspace_yaml#allowbuilds
    */
-  onlyBuiltDependencies?: readonly string[]
+  allowBuilds?: Record<string, boolean>
 
   /**
    * Packages whose build output warnings are ignored.
@@ -674,7 +674,7 @@ export interface PnpmWorkspaceData {
   preferWorkspacePackages?: boolean
 
   /**
-   * When true, only packages in onlyBuiltDependencies are built.
+   * When true, only packages in allowBuilds are built.
    * @see https://pnpm.io/settings#ignore-dep-scripts
    */
   ignoreDepScripts?: boolean
@@ -810,8 +810,8 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     result.neverBuiltDependencies = [...data.neverBuiltDependencies]
   }
 
-  if (data.onlyBuiltDependencies !== undefined) {
-    result.onlyBuiltDependencies = [...data.onlyBuiltDependencies]
+  if (data.allowBuilds !== undefined) {
+    result.allowBuilds = { ...data.allowBuilds }
   }
 
   if (data.ignoredBuiltDependencies !== undefined) {
@@ -1016,7 +1016,39 @@ const rootPnpmWorkspaceYaml = ({
       ? projectedMembers
       : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
 
-  const fullConfig = { ...config, packages: allMembers }
+  // Aggregate per-package gvsTypeExtensions into workspace-level packageExtensions.
+  // See: pnpm/pnpm#9739 — GVS stores real paths outside the project tree, breaking
+  // TypeScript's @types/* resolution. packageExtensions inject @types/* as deps of
+  // external packages so they appear as siblings in GVS node_modules/.
+  const aggregatedExtensions: PnpmWorkspaceData['packageExtensions'] = {}
+  for (const pkg of packages) {
+    if (pkg.gvsTypeExtensions === undefined) continue
+    for (const [target, deps] of Object.entries(pkg.gvsTypeExtensions)) {
+      const existing = aggregatedExtensions[target]
+      aggregatedExtensions[target] = {
+        ...existing,
+        dependencies: { ...existing?.dependencies, ...deps },
+      }
+    }
+  }
+  // Merge: user-provided config.packageExtensions overrides aggregated
+  const mergedExtensions = { ...aggregatedExtensions }
+  if (config.packageExtensions !== undefined) {
+    for (const [target, ext] of Object.entries(config.packageExtensions)) {
+      mergedExtensions[target] = {
+        ...mergedExtensions[target],
+        ...ext,
+        dependencies: { ...mergedExtensions[target]?.dependencies, ...ext.dependencies },
+      }
+    }
+  }
+  const hasExtensions = Object.keys(mergedExtensions).length > 0
+
+  const fullConfig = {
+    ...config,
+    packages: allMembers,
+    ...(hasExtensions === true ? { packageExtensions: mergedExtensions } : {}),
+  }
 
   return createGenieOutput({
     data: fullConfig,

@@ -286,7 +286,6 @@ export type PackageJsonData = {
   pnpm?: {
     overrides?: Record<string, string>
     patchedDependencies?: Record<string, string>
-    onlyBuiltDependencies?: readonly string[]
     neverBuiltDependencies?: readonly string[]
   }
 }
@@ -320,6 +319,9 @@ export type WorkspaceMeta = {
 export type WorkspacePackageLike = {
   data: PackageJsonData
   meta: WorkspaceMeta
+  /** GVS: per-package `packageExtensions` to inject @types/* into external deps.
+   * Aggregated into pnpm-workspace.yaml by `rootPnpmWorkspaceYaml`. */
+  gvsTypeExtensions?: Record<string, Record<string, string>>
 }
 
 /** Package.json genie output that carries workspace-composition metadata. */
@@ -680,6 +682,11 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
       ? ({ workspace: composition.workspace } satisfies WorkspaceMeta)
       : meta
 
+  const effectiveGvsTypeExtensions =
+    composition !== undefined && 'gvsTypeExtensions' in composition
+      ? (composition.gvsTypeExtensions as Record<string, Record<string, string>> | undefined)
+      : undefined
+
   const effectiveWorkspaceMeta =
     effectiveMeta !== undefined &&
     typeof effectiveMeta === 'object' &&
@@ -771,6 +778,9 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
         : []),
     ],
     ...(effectiveMeta === undefined ? {} : { meta: effectiveMeta }),
+    ...(effectiveGvsTypeExtensions === undefined
+      ? {}
+      : { gvsTypeExtensions: effectiveGvsTypeExtensions }),
   })
 }
 

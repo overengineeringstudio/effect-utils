@@ -24,7 +24,7 @@
     "is-dom": "1.1.0"
   },
   "devDependencies": {
-    "@overeng/utils": "workspace:*",
+    "@overeng/utils": "workspace:^",
     "@storybook/react": "10.2.3",
     "@storybook/react-vite": "10.2.3",
     "@testing-library/react": "16.3.1",

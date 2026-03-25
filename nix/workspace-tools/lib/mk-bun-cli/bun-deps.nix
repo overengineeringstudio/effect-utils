@@ -1,4 +1,5 @@
 { pkgs
+, pnpm
 , name
 , bunDepsHash
 , depsManager
@@ -17,7 +18,7 @@ let
   lockFileName = if isPnpm then "pnpm-lock.yaml" else "bun.lock";
   lockHashFile = if isPnpm then ".source-pnpm-lock-hash" else ".source-bun-lock-hash";
   installInputs = if isPnpm
-    then [ pkgs.pnpm pkgs.nodejs_24 pkgs.cacert ]
+    then [ pnpm pkgs.nodejs_24 pkgs.cacert ]
     else [ pkgs.bun pkgs.cacert ];
 in
 if depsHash == null

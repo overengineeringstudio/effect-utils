@@ -12,7 +12,7 @@ import type { WorkspaceIdentity, WorkspaceMetadata, WorkspacePackageLike } from 
 export type CatalogInput = Record<string, string>
 
 type WorkspaceDependencyMap<TWorkspace extends readonly WorkspacePackageLike[]> = {
-  [TPkg in TWorkspace[number] as Extract<TPkg['data']['name'], string>]: 'workspace:*'
+  [TPkg in TWorkspace[number] as Extract<TPkg['data']['name'], string>]: 'workspace:^'
 }
 
 type DependencyBucket<
@@ -45,6 +45,12 @@ type ComposeArgs<
    * `install`: also install inherited peer deps of workspace packages using explicit catalog versions.
    */
   mode?: 'manifest' | 'install'
+  /** GVS: inject @types/* deps into external packages that peer on typed base packages
+   * but don't ship their own type declarations.
+   * Keys = external package names, values = catalog.pick(...) of @types/* to inject.
+   * Aggregated into pnpm-workspace.yaml `packageExtensions` by `rootPnpmWorkspaceYaml`.
+   * See: pnpm/pnpm#9739 */
+  gvsTypeExtensions?: Record<string, CatalogInput>
 }
 
 type ComposeResult<
@@ -59,6 +65,7 @@ type ComposeResult<
   devDependencies: TDevDependenciesExternal & WorkspaceDependencyMap<TDevDependenciesWorkspace>
   peerDependencies: CatalogInput
   workspace: WorkspaceMetadata
+  gvsTypeExtensions?: Record<string, CatalogInput>
 } & {
   readonly [PackageJsonCompositionBrand]: true
 }
@@ -298,6 +305,7 @@ const createComposeFn =
     devDependencies,
     peerDependencies,
     mode = 'manifest',
+    gvsTypeExtensions,
   }: ComposeArgs<
     TDependenciesWorkspace,
     TDependenciesExternal,
@@ -323,7 +331,7 @@ const createComposeFn =
     const peerExternal = peerDependencies?.external ?? ({} as TPeerDependenciesExternal)
     const workspaceDepVersion = (pkg: WorkspacePackageLike): string =>
       pkg.meta.workspace.repoName === workspace.repoName
-        ? 'workspace:*'
+        ? 'workspace:^'
         : `link:repos/${pkg.meta.workspace.repoName}/${pkg.meta.workspace.memberPath}`
     const runtimeWorkspaceDependencies = Object.fromEntries(
       runtimeWorkspace.flatMap((pkg) =>
@@ -368,6 +376,7 @@ const createComposeFn =
         ...workspace,
         deps: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
       },
+      ...(gvsTypeExtensions !== undefined ? { gvsTypeExtensions } : {}),
       [PackageJsonCompositionBrand]: true as const,
     }
   }

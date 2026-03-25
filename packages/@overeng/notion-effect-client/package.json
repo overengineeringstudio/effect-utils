@@ -14,13 +14,13 @@
     }
   },
   "dependencies": {
-    "@overeng/notion-effect-schema": "workspace:*"
+    "@overeng/notion-effect-schema": "workspace:^"
   },
   "devDependencies": {
     "@effect/platform": "0.94.5",
     "@effect/vitest": "0.27.0",
-    "@overeng/utils": "workspace:*",
-    "@overeng/utils-dev": "workspace:*",
+    "@overeng/utils": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
     "@types/node": "25.3.3",
     "effect": "3.19.19",
     "typescript": "5.9.3",

@@ -20,6 +20,8 @@ const peerDepNames = [
   /** Required for consumers to type-check imported .tsx source (not compiled .d.ts) */
   '@types/react',
   '@types/react-reconciler',
+  /** The ./storybook export is consumed by other packages that already have storybook */
+  '@storybook/react',
 ] as const
 const effectAtomDeps = ['@effect-atom/atom', '@effect-atom/atom-react'] as const
 const opentuiDeps = ['@opentui/core', '@opentui/react'] as const

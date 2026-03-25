@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, pnpm }:
 
 {
   name,
@@ -19,7 +19,7 @@
 
 let
   lib = pkgs.lib;
-  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs; };
+  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
 
   workspaceRootPath =
     if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
@@ -251,7 +251,6 @@ let
     workspaceSuffixLines rootPnpmWorkspaceYaml
   );
 
-  rootLockfileContent = builtins.readFile (absoluteSourcePathFor "pnpm-lock.yaml");
   rootWorkspaceFiles = [
     "package.json"
     "pnpm-lock.yaml"
@@ -294,12 +293,16 @@ let
     '';
 
   /**
-    Parse patchedDependencies path: entries from a pnpm-lock.yaml string (pure Nix).
+    Parse patch file paths from pnpm-workspace.yaml (pnpm 11+ format).
+    In pnpm 11, patchedDependencies are declared in pnpm-workspace.yaml as:
+      patchedDependencies:
+        name@version: path/to/patch.patch
+    The value after `: ` is the patch file path relative to the workspace root.
   */
-  parsePatchPaths =
-    lockfileContent:
+  parseWorkspacePatchPaths =
+    workspaceYamlContent:
     let
-      lines = lib.splitString "\n" lockfileContent;
+      lines = lib.splitString "\n" workspaceYamlContent;
       collect =
         {
           inBlock,
@@ -325,20 +328,26 @@ let
                 inherit inBlock paths;
               } rest
           else if trimmed == "" then
-            collect {
-              inherit inBlock paths;
-            } rest
+            paths
           else if builtins.substring 0 1 line != " " && builtins.substring 0 1 line != "\t" then
             paths
-          else if lib.hasPrefix "path:" trimmed then
-            collect {
-              inherit inBlock;
-              paths = paths ++ [ (lib.trim (lib.removePrefix "path:" trimmed)) ];
-            } rest
           else
-            collect {
-              inherit inBlock paths;
-            } rest;
+            let
+              colonIdx = lib.stringLength (
+                builtins.head (builtins.split ":" trimmed)
+              );
+              value = lib.trim (builtins.substring (colonIdx + 1) (lib.stringLength trimmed) trimmed);
+              isPatchPath = lib.hasSuffix ".patch" value;
+            in
+            if isPatchPath then
+              collect {
+                inherit inBlock;
+                paths = paths ++ [ value ];
+              } rest
+            else
+              collect {
+                inherit inBlock paths;
+              } rest;
     in
     collect {
       inBlock = false;
@@ -346,20 +355,19 @@ let
     } lines;
 
   /**
-    Copy patch files from a lockfile, resolving source paths through workspaceSources.
-    Each patch path is resolved at Nix eval time via absoluteSourcePathFor so that
-    patches under workspaceSources prefixes are found in the correct source root.
+    Copy patch files referenced by a workspace, resolving source paths through workspaceSources.
+    Parses pnpm-workspace.yaml to find patchedDependencies entries (name@version: path.patch).
 
     Note: the resolved source root (via builtins.path) snapshots the whole matched
     source tree, so this has the same invalidation scope as other copyFileCmd calls.
   */
   copyResolvedPatchFilesCmd =
     {
-      lockfileContent,
+      workspaceYamlContent,
       targetPrefix,
     }:
     let
-      patchPaths = parsePatchPaths lockfileContent;
+      patchPaths = parseWorkspacePatchPaths workspaceYamlContent;
       copyOnePatch =
         relPath:
         let
@@ -378,7 +386,8 @@ let
     builtins.concatStringsSep "\n" (map copyOnePatch patchPaths);
 
   /**
-    Copy patch files from an external install root's lockfile.
+    Copy patch files from an external install root.
+    Parses pnpm-workspace.yaml (name@version: path.patch entries) at shell time.
     These are self-contained (source and target share the same root), so shell-time
     awk parsing is fine — no workspaceSources resolution needed.
   */
@@ -395,19 +404,21 @@ let
       source_root=${sourceRootArg}
       target_prefix=${targetPrefixArg}
 
-      if [ -f "$source_root/pnpm-lock.yaml" ]; then
+      if [ -f "$source_root/pnpm-workspace.yaml" ]; then
         awk '
           /^patchedDependencies:/ { in_block = 1; next }
-          in_block && $0 ~ /^[^[:space:]]/ { exit }
+          in_block && /^[^[:space:]]/ { exit }
           in_block {
             line = $0
             sub(/^[[:space:]]+/, "", line)
-            if (index(line, "path:") == 1) {
-              sub(/^path:[[:space:]]*/, "", line)
-              print line
+            idx = index(line, ":")
+            if (idx > 0) {
+              val = substr(line, idx + 1)
+              sub(/^[[:space:]]+/, "", val)
+              if (val ~ /\.patch$/) print val
             }
           }
-        ' "$source_root/pnpm-lock.yaml" | while IFS= read -r rel_path; do
+        ' "$source_root/pnpm-workspace.yaml" | while IFS= read -r rel_path; do
           [ -n "$rel_path" ] || continue
 
           target_rel_path="$rel_path"
@@ -475,7 +486,7 @@ let
           map copyDirCmd aggregateOwnedWorkspaceClosureDirs
       )
       + copyResolvedPatchFilesCmd {
-        lockfileContent = rootLockfileContent;
+        workspaceYamlContent = rootPnpmWorkspaceYaml;
         targetPrefix = "";
       }
       + builtins.concatStringsSep "\n" (
@@ -531,7 +542,7 @@ pkgs.stdenv.mkDerivation {
     # Downstream packages still use `pnpm exec ...` in postBuild hooks for
     # asset builds. Prepared-tree restore removes install-time pnpm work, but
     # the builder should still provide the package manager for those hooks.
-    pkgs.pnpm
+    pnpm
     pkgs.zstd
   ]
   ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];

@@ -41,7 +41,7 @@ describe('validatePackageRecompositionForPackage', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       peerDependencies: { effect: '^3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
@@ -59,7 +59,7 @@ describe('validatePackageRecompositionForPackage', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       peerDependencies: { effect: '^3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
@@ -85,7 +85,7 @@ describe('validatePackageRecompositionForPackage', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       peerDependencies: { react: '^19.0.0' },
       // missing peerDependenciesMeta for react
     })
@@ -110,7 +110,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*', react: '19.0.0' },
+      dependencies: { '@test/utils': 'workspace:^', react: '19.0.0' },
       // no peerDependencies or peerDependenciesMeta — should be fine for private packages
     })
     const ctx = makeContext([upstream, downstream])
@@ -128,7 +128,7 @@ describe('validatePackageRecompositionForPackage', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
     })
     const ctx = makeContext([upstream, downstream])
 
@@ -150,7 +150,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/app',
       path: 'packages/app',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
     })
     const ctx = makeContext([upstream, downstream])
 
@@ -168,7 +168,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*', effect: '3.0.0' },
+      dependencies: { '@test/utils': 'workspace:^', effect: '3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
 
@@ -186,7 +186,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       devDependencies: { effect: '3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
@@ -205,7 +205,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       devDependencies: { effect: '^3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
@@ -233,7 +233,7 @@ describe('validatePackageRecompositionForPackage', () => {
       path: 'examples/my-example',
       private: true,
       dependencies: {
-        '@test/utils': 'workspace:*',
+        '@test/utils': 'workspace:^',
         effect: '^3.0.0',
       },
     })
@@ -257,7 +257,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       devDependencies: { effect: '3.0.0' },
       peerDependencies: { effect: '^3.0.0' },
     })
@@ -277,7 +277,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
       peerDependencies: { effect: '^3.0.0' },
     })
     const ctx = makeContext([upstream, downstream])
@@ -296,7 +296,7 @@ describe('validatePackageRecompositionForPackage', () => {
       name: '@test/example',
       path: 'examples/my-example',
       private: true,
-      dependencies: { '@test/utils': 'workspace:*' },
+      dependencies: { '@test/utils': 'workspace:^' },
     })
     const ctx = makeContext([upstream, downstream])
 
@@ -369,7 +369,7 @@ describe('validatePackageRecompositionForPackage', () => {
     const downstream = makePackage({
       name: '@test/app',
       path: 'packages/app',
-      optionalDependencies: { '@test/utils': 'workspace:*' },
+      optionalDependencies: { '@test/utils': 'workspace:^' },
       // missing peer dep
     })
     const ctx = makeContext([upstream, downstream])

@@ -26,7 +26,7 @@
 # - smokeTestSetup: Shell snippet to prepare the smoke test working dir (optional).
 # - extraExcludedSourceNames: Extra top-level paths to omit from the staged workspace.
 # - dirty: When true, link bunDeps and overlay local file deps (defaults to false).
-{ pkgs }:
+{ pkgs, pnpm ? (import ../../pnpm.nix { inherit pkgs; }) }:
 
 {
   name,
@@ -71,6 +71,7 @@ let
   bunDeps = import ./mk-bun-cli/bun-deps.nix {
     inherit
       pkgs
+      pnpm
       name
       bunDepsHash
       depsManager
