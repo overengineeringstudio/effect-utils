@@ -22,9 +22,10 @@
 
 let
   lib = pkgs.lib;
-  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; };
+  pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
+  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-rWD/Zj9F+XBiE+shlRZqeVof9uykchskGpRYTgPBiqY=";
+  pnpmDepsHash = "sha256-YeRJNYVLeYgpuPD88Rc0X4MibPiCw7YZQxMsod37kqk=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then

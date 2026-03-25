@@ -194,6 +194,10 @@
       # Usage: effectUtils.lib.mkBeads { inherit pkgs; }
       lib.mkBeads = { pkgs }: import ./nix/beads.nix { inherit pkgs; };
 
+      # Pinned pnpm for the entire megarepo ecosystem.
+      # Usage: effectUtils.lib.mkPnpm { inherit pkgs; }
+      lib.mkPnpm = { pkgs }: import ./nix/pnpm.nix { inherit pkgs; };
+
       # Note: mkSourceCli is internal-only (not exported).
       # For consuming CLIs from other repos, use:
       #   effectUtils.packages.${system}.genie

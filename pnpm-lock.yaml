@@ -1,13 +1,194 @@
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      '@pnpm/exe':
+        specifier: 11.0.0-beta.2
+        version: 11.0.0-beta.2
+      pnpm:
+        specifier: 11.0.0-beta.2
+        version: 11.0.0-beta.2
+
+packages:
+
+  '@pnpm/exe@11.0.0-beta.2':
+    resolution: {integrity: sha512-lL5LbpWXZPdngSGE98S9vWqzeWLhZqNHcpJ/i6HDBjtOPGxDPEZ5yv9nGM4fXqy0VagA6VfDlTpaGrGkc6w9Zg==}
+    hasBin: true
+
+  '@pnpm/linux-arm64@11.0.0-beta.2':
+    resolution: {integrity: sha512-hnw5djVGiYD7dM1nG1YhCp+2O1q1D+qLLyNJvD/XpCtoP+5Hvb8E99zK3iw0phKwqAEg32lcXvRtprXolox28g==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@pnpm/linux-x64@11.0.0-beta.2':
+    resolution: {integrity: sha512-Mt7qrbHymoTloGJXiLB6TSoZ0CrXETBOy8OG6MOBN3T2FSbzvpAWREcNmokbjWZfmQRMo6ZpVSHCZEUPyeF3rg==}
+    cpu: [x64]
+    os: [linux]
+
+  '@pnpm/macos-arm64@11.0.0-beta.2':
+    resolution: {integrity: sha512-HEPSe+en48F1beN5QybWOMqjgVj2pm9irnZnEWbvhVnb2R9NJQVm0riLsfRAEE5cS2nhYzeTB6cEOOWAMcitRQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@pnpm/macos-x64@11.0.0-beta.2':
+    resolution: {integrity: sha512-1auLDYhExxrdGRr7+aaqQkMrz2deHjcTmgbC+dlLBKoeqICo0kFaGv4NfbZLavn0Lja8c9HMFuFv9mObEX711g==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@pnpm/win-arm64@11.0.0-beta.2':
+    resolution: {integrity: sha512-wTCcaTK10cwsIwucgs1/KDVKw1k/xNX21OwOQ7oEDkPaYFfvuaUpotS5ioDFaNsDEzyqBjCWeGWycfM1zC9blQ==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@pnpm/win-x64@11.0.0-beta.2':
+    resolution: {integrity: sha512-PMgk4yorJso46bWRhfta7cLpp0vfY7DpuAqcTGy9+74lSAM4WKgQXJCS2/wtwgyVkuBuap72XKDFtnqXaHPiow==}
+    cpu: [x64]
+    os: [win32]
+
+  '@reflink/reflink-darwin-arm64@0.1.19':
+    resolution: {integrity: sha512-ruy44Lpepdk1FqDz38vExBY/PVUsjxZA+chd9wozjUH9JjuDT/HEaQYA6wYN9mf041l0yLVar6BCZuWABJvHSA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@reflink/reflink-darwin-x64@0.1.19':
+    resolution: {integrity: sha512-By85MSWrMZa+c26TcnAy8SDk0sTUkYlNnwknSchkhHpGXOtjNDUOxJE9oByBnGbeuIE1PiQsxDG3Ud+IVV9yuA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@reflink/reflink-linux-arm64-gnu@0.1.19':
+    resolution: {integrity: sha512-7P+er8+rP9iNeN+bfmccM4hTAaLP6PQJPKWSA4iSk2bNvo6KU6RyPgYeHxXmzNKzPVRcypZQTpFgstHam6maVg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@reflink/reflink-linux-arm64-musl@0.1.19':
+    resolution: {integrity: sha512-37iO/Dp6m5DDaC2sf3zPtx/hl9FV3Xze4xoYidrxxS9bgP3S8ALroxRK6xBG/1TtfXKTvolvp+IjrUU6ujIGmA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@reflink/reflink-linux-x64-gnu@0.1.19':
+    resolution: {integrity: sha512-jbI8jvuYCaA3MVUdu8vLoLAFqC+iNMpiSuLbxlAgg7x3K5bsS8nOpTRnkLF7vISJ+rVR8W+7ThXlXlUQ93ulkw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@reflink/reflink-linux-x64-musl@0.1.19':
+    resolution: {integrity: sha512-e9FBWDe+lv7QKAwtKOt6A2W/fyy/aEEfr0g6j/hWzvQcrzHCsz07BNQYlNOjTfeytrtLU7k449H1PI95jA4OjQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@reflink/reflink-win32-arm64-msvc@0.1.19':
+    resolution: {integrity: sha512-09PxnVIQcd+UOn4WAW73WU6PXL7DwGS6wPlkMhMg2zlHHG65F3vHepOw06HFCq+N42qkaNAc8AKIabWvtk6cIQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@reflink/reflink-win32-x64-msvc@0.1.19':
+    resolution: {integrity: sha512-E//yT4ni2SyhwP8JRjVGWr3cbnhWDiPLgnQ66qqaanjjnMiu3O/2tjCPQXlcGc/DEYofpDc9fvhv6tALQsMV9w==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@reflink/reflink@0.1.19':
+    resolution: {integrity: sha512-DmCG8GzysnCZ15bres3N5AHCmwBwYgp0As6xjhQ47rAUTUXxJiK+lLUxaGsX3hd/30qUpVElh05PbGuxRPgJwA==}
+    engines: {node: '>= 10'}
+
+  pnpm@11.0.0-beta.2:
+    resolution: {integrity: sha512-co1Z2JmjMvt5v6JWMBDMGMc/BjBEyimcdGWnb0BrfoA4uH7W4UCVLJsIlD+qt+fkFy2woQOG90YBw6ctBo38og==}
+    engines: {node: '>=22.13'}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe@11.0.0-beta.2':
+    dependencies:
+      '@reflink/reflink': 0.1.19
+    optionalDependencies:
+      '@pnpm/linux-arm64': 11.0.0-beta.2
+      '@pnpm/linux-x64': 11.0.0-beta.2
+      '@pnpm/macos-arm64': 11.0.0-beta.2
+      '@pnpm/macos-x64': 11.0.0-beta.2
+      '@pnpm/win-arm64': 11.0.0-beta.2
+      '@pnpm/win-x64': 11.0.0-beta.2
+
+  '@pnpm/linux-arm64@11.0.0-beta.2':
+    optional: true
+
+  '@pnpm/linux-x64@11.0.0-beta.2':
+    optional: true
+
+  '@pnpm/macos-arm64@11.0.0-beta.2':
+    optional: true
+
+  '@pnpm/macos-x64@11.0.0-beta.2':
+    optional: true
+
+  '@pnpm/win-arm64@11.0.0-beta.2':
+    optional: true
+
+  '@pnpm/win-x64@11.0.0-beta.2':
+    optional: true
+
+  '@reflink/reflink-darwin-arm64@0.1.19':
+    optional: true
+
+  '@reflink/reflink-darwin-x64@0.1.19':
+    optional: true
+
+  '@reflink/reflink-linux-arm64-gnu@0.1.19':
+    optional: true
+
+  '@reflink/reflink-linux-arm64-musl@0.1.19':
+    optional: true
+
+  '@reflink/reflink-linux-x64-gnu@0.1.19':
+    optional: true
+
+  '@reflink/reflink-linux-x64-musl@0.1.19':
+    optional: true
+
+  '@reflink/reflink-win32-arm64-msvc@0.1.19':
+    optional: true
+
+  '@reflink/reflink-win32-x64-msvc@0.1.19':
+    optional: true
+
+  '@reflink/reflink@0.1.19':
+    optionalDependencies:
+      '@reflink/reflink-darwin-arm64': 0.1.19
+      '@reflink/reflink-darwin-x64': 0.1.19
+      '@reflink/reflink-linux-arm64-gnu': 0.1.19
+      '@reflink/reflink-linux-arm64-musl': 0.1.19
+      '@reflink/reflink-linux-x64-gnu': 0.1.19
+      '@reflink/reflink-linux-x64-musl': 0.1.19
+      '@reflink/reflink-win32-arm64-msvc': 0.1.19
+      '@reflink/reflink-win32-x64-msvc': 0.1.19
+
+  pnpm@11.0.0-beta.2: {}
+
+---
 lockfileVersion: '9.0'
 
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
+
 patchedDependencies:
-  effect-distributed-lock@0.0.11:
-    hash: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
-    path: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
+  effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
 
 importers:
 
@@ -72,7 +253,7 @@ importers:
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 25.3.3
@@ -99,7 +280,7 @@ importers:
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       effect:
         specifier: 3.19.19
@@ -126,7 +307,7 @@ importers:
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 25.3.3
@@ -144,7 +325,7 @@ importers:
   packages/@overeng/effect-react:
     devDependencies:
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@storybook/react':
         specifier: 10.2.3
@@ -204,7 +385,7 @@ importers:
         specifier: 0.49.0
         version: 0.49.0(@effect/experimental@0.58.0(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19)(ioredis@5.6.1))(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19)
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@tanstack/react-router':
         specifier: 1.145.7
@@ -259,7 +440,7 @@ importers:
         version: 19.2.3(react@19.2.3)
     devDependencies:
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../../utils
       '@playwright/test':
         specifier: 1.58.2
@@ -307,11 +488,11 @@ importers:
   packages/@overeng/effect-schema-form-aria:
     dependencies:
       '@overeng/effect-schema-form':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../effect-schema-form
     devDependencies:
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@storybook/react':
         specifier: 10.2.3
@@ -400,6 +581,9 @@ importers:
       '@playwright/test':
         specifier: 1.58.2
         version: 1.58.2
+      '@storybook/react':
+        specifier: 10.2.3
+        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/react':
         specifier: 19.2.7
         version: 19.2.7
@@ -432,20 +616,17 @@ importers:
         specifier: 0.47.0
         version: 0.47.0(@effect/typeclass@0.38.0(effect@3.19.19))(effect@3.19.19)
       '@overeng/tui-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../tui-core
       '@overeng/tui-react':
-        specifier: workspace:*
-        version: file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)
+        specifier: workspace:^
+        version: file:packages/@overeng/tui-react(4c898c69e76f19daf8b36e7bb2a30352)
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
-      '@storybook/react':
-        specifier: 10.2.3
-        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@storybook/react-vite':
         specifier: 10.2.3
         version: 10.2.3(esbuild@0.27.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(rollup@4.59.0)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
@@ -474,7 +655,7 @@ importers:
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 25.3.3
@@ -492,14 +673,14 @@ importers:
   packages/@overeng/kdl-effect:
     dependencies:
       '@overeng/kdl':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../kdl
     devDependencies:
       '@effect/vitest':
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 25.3.3
@@ -556,23 +737,26 @@ importers:
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/effect-path':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../effect-path
       '@overeng/kdl':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../kdl
       '@overeng/kdl-effect':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../kdl-effect
       '@overeng/tui-react':
-        specifier: workspace:*
-        version: file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)
+        specifier: workspace:^
+        version: file:packages/@overeng/tui-react(4c898c69e76f19daf8b36e7bb2a30352)
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@playwright/test':
         specifier: 1.58.2
         version: 1.58.2
+      '@storybook/react':
+        specifier: 10.2.3
+        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/react':
         specifier: 19.2.7
         version: 19.2.7
@@ -605,11 +789,8 @@ importers:
         specifier: 0.47.0
         version: 0.47.0(@effect/typeclass@0.38.0(effect@3.19.19))(effect@3.19.19)
       '@overeng/tui-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../tui-core
-      '@storybook/react':
-        specifier: 10.2.3
-        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@storybook/react-vite':
         specifier: 10.2.3
         version: 10.2.3(esbuild@0.27.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(rollup@4.59.0)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
@@ -680,26 +861,29 @@ importers:
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/effect-path':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../effect-path
       '@overeng/notion-effect-client':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../notion-effect-client
       '@overeng/notion-effect-schema':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../notion-effect-schema
       '@overeng/tui-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../tui-core
       '@overeng/tui-react':
-        specifier: workspace:*
-        version: file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)
+        specifier: workspace:^
+        version: file:packages/@overeng/tui-react(4c898c69e76f19daf8b36e7bb2a30352)
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@playwright/test':
         specifier: 1.58.2
         version: 1.58.2
+      '@storybook/react':
+        specifier: 10.2.3
+        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/react':
         specifier: 19.2.7
         version: 19.2.7
@@ -732,11 +916,8 @@ importers:
         specifier: 0.38.0
         version: 0.38.0(effect@3.19.19)
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
-      '@storybook/react':
-        specifier: 10.2.3
-        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@storybook/react-vite':
         specifier: 10.2.3
         version: 10.2.3(esbuild@0.27.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(rollup@4.59.0)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
@@ -774,7 +955,7 @@ importers:
         specifier: ^0.16.0
         version: 0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19)(ioredis@5.6.1))(@effect/platform@0.94.5(effect@3.19.19))(@effect/rpc@0.73.2(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19))(effect@3.19.19)
       '@overeng/notion-effect-schema':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../notion-effect-schema
       '@playwright/test':
         specifier: ^1.58.2
@@ -787,10 +968,10 @@ importers:
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 25.3.3
@@ -811,7 +992,7 @@ importers:
         specifier: 0.27.0
         version: 0.27.0(effect@3.19.19)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@types/node':
         specifier: 25.3.3
@@ -864,7 +1045,7 @@ importers:
         version: 1.1.0
     devDependencies:
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@storybook/react':
         specifier: 10.2.3
@@ -951,7 +1132,7 @@ importers:
         specifier: 0.16.0
         version: 0.16.0(@effect/experimental@0.58.0(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19)(ioredis@5.6.1))(@effect/platform@0.94.5(effect@3.19.19))(@effect/rpc@0.73.2(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19))(effect@3.19.19)
       '@overeng/tui-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../tui-core
       '@playwright/test':
         specifier: 1.58.2
@@ -1000,10 +1181,10 @@ importers:
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@storybook/react':
         specifier: 10.2.3
@@ -1090,17 +1271,20 @@ importers:
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/tui-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../tui-core
       '@overeng/tui-react':
-        specifier: workspace:*
-        version: file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)
+        specifier: workspace:^
+        version: file:packages/@overeng/tui-react(4c898c69e76f19daf8b36e7bb2a30352)
       '@overeng/utils':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils
       '@playwright/test':
         specifier: 1.58.2
         version: 1.58.2
+      '@storybook/react':
+        specifier: 10.2.3
+        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/react':
         specifier: 19.2.7
         version: 19.2.7
@@ -1127,14 +1311,11 @@ importers:
         injected: true
     devDependencies:
       '@overeng/megarepo':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../megarepo
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
-      '@storybook/react':
-        specifier: 10.2.3
-        version: 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@storybook/react-vite':
         specifier: 10.2.3
         version: 10.2.3(esbuild@0.27.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(rollup@4.59.0)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
@@ -1212,7 +1393,7 @@ importers:
         specifier: 1.38.0
         version: 1.38.0
       '@overeng/utils-dev':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../utils-dev
       '@playwright/test':
         specifier: 1.58.2
@@ -2043,6 +2224,7 @@ packages:
       '@effect/platform-node': ^0.104.1
       '@opentui/core': ^0.1.88
       '@opentui/react': ^0.1.88
+      '@storybook/react': ^10.2.3
       '@types/react': ^19.2.7
       '@types/react-reconciler': ^0.28.9
       effect: ^3.19.19
@@ -5828,7 +6010,7 @@ snapshots:
       - typescript
       - web-tree-sitter
 
-  '@overeng/tui-react@file:packages/@overeng/tui-react(4b537275326f01fb880b47b143d268a5)':
+  '@overeng/tui-react@file:packages/@overeng/tui-react(4c898c69e76f19daf8b36e7bb2a30352)':
     dependencies:
       '@effect-atom/atom': 0.5.3(@effect/experimental@0.58.0(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19)(ioredis@5.6.1))(@effect/platform@0.94.5(effect@3.19.19))(@effect/rpc@0.73.2(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19))(effect@3.19.19)
       '@effect-atom/atom-react': 0.5.0(@effect/experimental@0.58.0(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19)(ioredis@5.6.1))(@effect/platform@0.94.5(effect@3.19.19))(@effect/rpc@0.73.2(@effect/platform@0.94.5(effect@3.19.19))(effect@3.19.19))(effect@3.19.19)(react@19.2.3)(scheduler@0.27.0)
@@ -5845,6 +6027,7 @@ snapshots:
       '@opentui/react': 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/tui-core': link:packages/@overeng/tui-core
       '@playwright/test': 1.58.2
+      '@storybook/react': 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/react': 19.2.7
       '@types/react-reconciler': 0.28.9(@types/react@19.2.7)
       '@xterm/addon-fit': 0.11.0
@@ -8744,6 +8927,8 @@ snapshots:
       '@react-types/shared': 3.33.1(react@19.2.3)
       '@react-types/table': 3.13.6(react@19.2.3)
       '@swc/helpers': 0.5.19
+      '@types/react': 19.2.7
+      '@types/react-dom': 19.2.3(@types/react@19.2.7)
       client-only: 0.0.1
       react: 19.2.3
       react-aria: 3.47.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)

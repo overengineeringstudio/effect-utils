@@ -98,10 +98,11 @@ let
 
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
-        # TODO: Switch back to `bunx netlify-cli` once upstream fixes chalk v5/v4 ESM/CJS conflict
-        # See: https://github.com/netlify/cli/issues/7997
+        # Use npx instead of pnpm dlx: pnpm 11's dlx doesn't inherit allowBuilds
+        # from the workspace, causing ERR_PNPM_IGNORED_BUILDS for native deps.
+        # (Also avoids bunx chalk ESM/CJS conflict: https://github.com/netlify/cli/issues/7997)
         # shellcheck disable=SC2086
-        pnpm --package=netlify-cli dlx netlify deploy \
+        npx --yes netlify-cli deploy \
           --dir="$deploy_dir" \
           --site="${site}" \
           $filter_flag \

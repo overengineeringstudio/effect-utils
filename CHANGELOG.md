@@ -4,13 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- **@overeng/utils**: Add `CliVersion` service tag with `suffix()` and `enrichErrors()` to `@overeng/utils/node/cli-version` (#452)
-  - `CliVersion.enrichErrors(cliName)` — one-line combinator that appends version suffix to all typed error messages
-  - `CliVersion.suffix(cliName)` — yields a version suffix string for manual use in error messages
-- **@overeng/genie**, **@overeng/megarepo**, **@overeng/tui-stories**: Wire up `CliVersion.enrichErrors` for automatic version-annotated error output
-
 ### Fixed
 
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML

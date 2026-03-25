@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, pnpm }:
 
 {
   name,
@@ -19,7 +19,7 @@
 
 let
   lib = pkgs.lib;
-  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs; };
+  pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
 
   workspaceRootPath =
     if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
@@ -531,7 +531,7 @@ pkgs.stdenv.mkDerivation {
     # Downstream packages still use `pnpm exec ...` in postBuild hooks for
     # asset builds. Prepared-tree restore removes install-time pnpm work, but
     # the builder should still provide the package manager for those hooks.
-    pkgs.pnpm
+    pnpm
     pkgs.zstd
   ]
   ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];

@@ -218,9 +218,6 @@ export const catalog = defineCatalog({
   'yoga-layout': '3.2.1',
   'string-width': '7.2.0',
   'cli-truncate': '5.1.1',
-
-  // AI agent tooling
-  agentation: '3.0.1',
 })
 
 /**
@@ -245,6 +242,15 @@ export const commonPnpmPolicySettings = {
   supportedArchitectures: {
     os: ['linux', 'darwin'],
     cpu: ['x64', 'arm64'],
+    libc: ['glibc', 'musl'],
+  },
+  /** pnpm 11: explicit build approval per package (replaces onlyBuiltDependencies) */
+  allowBuilds: {
+    '@parcel/watcher': true,
+    'esbuild': true,
+    'msgpackr-extract': true,
+    'sharp': true,
+    'unix-dgram': true,
   },
 }
 

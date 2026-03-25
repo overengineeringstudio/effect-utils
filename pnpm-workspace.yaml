@@ -32,9 +32,23 @@ patchedDependencies:
 
 allowUnusedPatches: true
 
+packageExtensions:
+  react-aria-components:
+    dependencies:
+      '@types/react': 19.2.7
+      '@types/react-dom': 19.2.3
+
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+  unix-dgram: true
+
 supportedArchitectures:
   os: [linux, darwin]
   cpu: [x64, arm64]
+  libc: [glibc, musl]
 
 dedupePeerDependents: true
 

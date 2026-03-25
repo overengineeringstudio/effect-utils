@@ -151,6 +151,38 @@ let
 
         export npm_config_manage_package_manager_versions=false
 
+        ${computeHashFn}
+
+        # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
+        # entries without re-resolving packageExtensions, so stale entries break
+        # TypeScript resolution. Only clear links/ when config changes.
+        # Content-addressable store (files/) is unaffected.
+        # See: pnpm/pnpm#9739
+        _gvs_hash_file="${cacheRoot}/gvs-links.hash"
+        _gvs_hash=$({
+          pnpm --version
+          sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
+          sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
+        } | compute_hash)
+
+        _gvs_links_dir=""
+        for _d in \
+          "''${PNPM_HOME:-__none__}/store/v11/links" \
+          "''${XDG_DATA_HOME:-__none__}/pnpm/store/v11/links" \
+          "$HOME/.local/share/pnpm/store/v11/links" \
+          "$HOME/Library/pnpm/store/v11/links"; do
+          if [ -d "$_d" ] || [ -d "$(dirname "$_d")" ]; then
+            _gvs_links_dir="$_d"; break
+          fi
+        done
+
+        if [ -n "''${_gvs_links_dir:-}" ]; then
+          if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
+            echo "[pnpm] GVS config changed, clearing stale links"
+            rm -rf "$_gvs_links_dir"
+          fi
+        fi
+
         if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
           pnpm install --config.confirmModulesPurge=false --frozen-lockfile
         elif [ -n "''${CI:-}" ]; then
@@ -158,6 +190,9 @@ let
         else
           pnpm install --config.confirmModulesPurge=false
         fi
+
+        # Persist GVS hash after successful install
+        echo "$_gvs_hash" > "$_gvs_hash_file"
 
         ${computeHashFn}
         ${emitDirStateFn}

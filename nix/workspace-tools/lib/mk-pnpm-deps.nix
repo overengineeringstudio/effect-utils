@@ -29,7 +29,7 @@
 # By centralizing this logic we keep pnpm out of downstream build phases and
 # avoid duplicating staged-workspace install preparation across builders.
 
-{ pkgs }:
+{ pkgs, pnpm }:
 
 let
   lib = pkgs.lib;
@@ -96,7 +96,7 @@ in
       inherit src sourceRoot;
 
       nativeBuildInputs = [
-        pkgs.pnpm
+        pnpm
         pkgs.nodejs
         pkgs.python3
         pkgs.cacert
@@ -132,10 +132,11 @@ in
         export NODE_ENV=development
         export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
 
-        pnpm config set store-dir "$STORE_PATH"
-        pnpm config set package-import-method clone-or-copy
-        pnpm config set manage-package-manager-versions false
-        pnpm config set side-effects-cache false
+        # pnpm 11 rejects `pnpm config set --global` for keys it considers
+        # workspace-only. Use env vars and .npmrc instead.
+        # Back up .npmrc before appending build-local settings (restored after install).
+        cp .npmrc .npmrc.orig 2>/dev/null || true
+        printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
         ${pnpmPlatform.setupScript}
 
         node -e '
@@ -166,11 +167,6 @@ in
           (
             cd "$install_root"
             pnpm install --frozen-lockfile --ignore-scripts
-            # pnpm still prunes linux-musl optional deps on Linux during the
-            # first install even when supportedArchitectures spans linux/darwin
-            # and x64/arm64. A second musl-targeted pass materializes the full
-            # cross-platform closure that matches macOS.
-            pnpm install --frozen-lockfile --ignore-scripts --force --libc=musl
           )
         done < .pnpm-install-roots.txt
 
@@ -337,8 +333,17 @@ NODE
         # Remove them for the root install plus any nested composed repos.
         find . -type f \( \
           -path '*/node_modules/.modules.yaml' -o \
-          -path '*/node_modules/.pnpm-workspace-state-v1.json' \
+          -path '*/node_modules/.pnpm-workspace-state-*.json' -o \
+          -path '*/node_modules/.pnpm/lock.yaml' \
         \) -delete
+
+        # Restore original .npmrc (remove build-local settings that contain
+        # non-deterministic paths like $STORE_PATH).
+        if [ -f .npmrc.orig ]; then
+          mv .npmrc.orig .npmrc
+        else
+          rm -f .npmrc
+        fi
 
         rm -rf "$STORE_PATH"
         rm -f .pnpm-install-roots.txt

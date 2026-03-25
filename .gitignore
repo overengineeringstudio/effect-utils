@@ -43,3 +43,4 @@ blob-report
 /tasks
 # Devenv generated / internal
 /devenv-swift-git-hooks
+.pnpm-home

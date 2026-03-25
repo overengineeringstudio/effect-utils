@@ -7,9 +7,10 @@
 { pkgs, src, gitRev ? "unknown", commitTs ? 0, dirty ? false }:
 
 let
-  mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs; };
-  lockfileHash = "sha256-P4/K531J1XpG/Emx8wcwi5nQNuggfTjfxhM9FSzsvGA=";
-  packageJsonDepsHash = "sha256-YWB19I7bkalSkvuA1tR9753CiQGIb41ObaHLdXJlP9o=";
+  pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
+  mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  lockfileHash = "sha256-W72mXuz+mfV0fYzKVauO10NjHtT1BdTU8ODvh1uqNZ4=";
+  packageJsonDepsHash = "sha256-8+F0d9YSV6Dv+kqZSg13vGymbXAev2QbZK6ZsBif5WU=";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";
@@ -17,7 +18,7 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     # Managed by `dt nix:hash:genie` — do not edit manually.
-    pnpmDepsHash = "sha256-muLH+QL4tjdyfPA2z5kkFwoceA3B/L7M8vi4AbkdPZ0=";
+    pnpmDepsHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     inherit lockfileHash gitRev commitTs dirty;
   };
 in

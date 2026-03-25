@@ -550,8 +550,16 @@ export interface PnpmWorkspaceData {
    * Only these packages will have their build scripts run.
    * @see https://pnpm.io/pnpm-workspace_yaml#onlybuiltdependencies
    * @example ['fsevents']
+   * @see allowBuilds for the pnpm 11 replacement
    */
   onlyBuiltDependencies?: readonly string[]
+
+  /**
+   * pnpm 11: explicit build approval per package.
+   * Packages not listed (or set to false) won't run build scripts.
+   * @see https://pnpm.io/pnpm-workspace_yaml#allowbuilds
+   */
+  allowBuilds?: Record<string, boolean>
 
   /**
    * Packages whose build output warnings are ignored.
@@ -814,6 +822,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
     result.onlyBuiltDependencies = [...data.onlyBuiltDependencies]
   }
 
+  if (data.allowBuilds !== undefined) {
+    result.allowBuilds = { ...data.allowBuilds }
+  }
+
   if (data.ignoredBuiltDependencies !== undefined) {
     result.ignoredBuiltDependencies = [...data.ignoredBuiltDependencies]
   }
@@ -1016,7 +1028,39 @@ const rootPnpmWorkspaceYaml = ({
       ? projectedMembers
       : [...new Set([...projectedMembers, ...extraMembers])].toSorted((a, b) => a.localeCompare(b))
 
-  const fullConfig = { ...config, packages: allMembers }
+  // Aggregate per-package gvsTypeExtensions into workspace-level packageExtensions.
+  // See: pnpm/pnpm#9739 — GVS stores real paths outside the project tree, breaking
+  // TypeScript's @types/* resolution. packageExtensions inject @types/* as deps of
+  // external packages so they appear as siblings in GVS node_modules/.
+  const aggregatedExtensions: PnpmWorkspaceData['packageExtensions'] = {}
+  for (const pkg of packages) {
+    if (pkg.gvsTypeExtensions === undefined) continue
+    for (const [target, deps] of Object.entries(pkg.gvsTypeExtensions)) {
+      const existing = aggregatedExtensions[target]
+      aggregatedExtensions[target] = {
+        ...existing,
+        dependencies: { ...existing?.dependencies, ...deps },
+      }
+    }
+  }
+  // Merge: user-provided config.packageExtensions overrides aggregated
+  const mergedExtensions = { ...aggregatedExtensions }
+  if (config.packageExtensions !== undefined) {
+    for (const [target, ext] of Object.entries(config.packageExtensions)) {
+      mergedExtensions[target] = {
+        ...mergedExtensions[target],
+        ...ext,
+        dependencies: { ...mergedExtensions[target]?.dependencies, ...ext.dependencies },
+      }
+    }
+  }
+  const hasExtensions = Object.keys(mergedExtensions).length > 0
+
+  const fullConfig = {
+    ...config,
+    packages: allMembers,
+    ...(hasExtensions === true ? { packageExtensions: mergedExtensions } : {}),
+  }
 
   return createGenieOutput({
     data: fullConfig,

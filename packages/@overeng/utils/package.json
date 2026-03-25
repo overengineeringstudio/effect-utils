@@ -68,7 +68,7 @@
     "@opentelemetry/sdk-trace-node": "2.2.0",
     "@opentelemetry/sdk-trace-web": "2.2.0",
     "@opentelemetry/semantic-conventions": "1.38.0",
-    "@overeng/utils-dev": "workspace:*",
+    "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.58.2",
     "@storybook/react-vite": "10.2.3",
     "@types/node": "25.3.3",

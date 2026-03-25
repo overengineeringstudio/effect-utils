@@ -345,7 +345,7 @@ describe('defineCatalog', () => {
       })
 
       expect(composed.dependencies).toEqual({
-        '@test/core': 'workspace:*',
+        '@test/core': 'workspace:^',
         effect: '3.19.14',
         react: '19.2.3',
       })
@@ -388,7 +388,7 @@ describe('defineCatalog', () => {
 
       expect(composed.dependencies).toEqual({
         '@effect/platform': '0.94.1',
-        '@test/utils': 'workspace:*',
+        '@test/utils': 'workspace:^',
         effect: '3.19.14',
         react: '19.2.3',
       })
@@ -439,7 +439,7 @@ describe('defineCatalog', () => {
       })
 
       expect(composed.dependencies).toEqual({
-        '@test/core': 'workspace:*',
+        '@test/core': 'workspace:^',
         effect: '3.19.14',
       })
     })
@@ -478,7 +478,7 @@ describe('defineCatalog', () => {
       ).toThrow('Catalog is missing explicit install version for inherited peer "missing"')
     })
 
-    it('prefers workspace:* over registry version for workspace packages in install mode', () => {
+    it('prefers workspace:^ over registry version for workspace packages in install mode', () => {
       const utilsComposition = catalog.compose({
         workspace: workspace({
           repoName: repo.repoName,
@@ -516,7 +516,7 @@ describe('defineCatalog', () => {
       /** @test/core has peer deps on effect and @effect/platform.
        * When @test/utils is also a devDependency workspace package with peer dep on effect,
        * the inherited peer "effect" should NOT appear as a registry version in dependencies
-       * — only the workspace:* entry should remain. */
+       * — only the workspace:^ entry should remain. */
       const composed = catalog.compose({
         workspace: workspace({
           repoName: repo.repoName,
@@ -534,12 +534,12 @@ describe('defineCatalog', () => {
 
       expect(composed.dependencies).toEqual({
         '@effect/platform': '0.94.1',
-        '@test/core': 'workspace:*',
+        '@test/core': 'workspace:^',
         effect: '3.19.14',
         react: '19.2.3',
       })
       expect(composed.devDependencies).toEqual({
-        '@test/utils': 'workspace:*',
+        '@test/utils': 'workspace:^',
       })
     })
 
@@ -569,7 +569,7 @@ describe('defineCatalog', () => {
       /** @test/core declares @test/utils as a peer dep.
        * The consumer lists @test/utils as a workspace dep in dependencies.
        * In install mode, the inherited peer should NOT generate a registry entry
-       * for @test/utils — the workspace:* entry in dependencies takes precedence. */
+       * for @test/utils — the workspace:^ entry in dependencies takes precedence. */
       const composed = catalog.compose({
         workspace: workspace({
           repoName: repo.repoName,
@@ -582,8 +582,8 @@ describe('defineCatalog', () => {
       })
 
       expect(composed.dependencies).toEqual({
-        '@test/core': 'workspace:*',
-        '@test/utils': 'workspace:*',
+        '@test/core': 'workspace:^',
+        '@test/utils': 'workspace:^',
         effect: '3.19.14',
       })
     })

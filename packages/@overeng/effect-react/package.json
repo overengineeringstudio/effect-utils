@@ -19,7 +19,7 @@
     "storybook:build": "storybook build"
   },
   "devDependencies": {
-    "@overeng/utils": "workspace:*",
+    "@overeng/utils": "workspace:^",
     "@storybook/react": "10.2.3",
     "@storybook/react-vite": "10.2.3",
     "@types/react": "19.2.7",

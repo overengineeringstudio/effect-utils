@@ -148,21 +148,21 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
     name: 'Type check',
-    run: runDevenvTasksBefore('ts:check').run,
+    run: runDevenvTasksBefore('ts:check'),
   }),
   lint: job({
     name: 'Format + lint',
-    run: runDevenvTasksBefore('lint:check').run,
+    run: runDevenvTasksBefore('lint:check'),
   }),
   test: multiPlatformJob({
     name: 'Unit tests',
-    run: runDevenvTasksBefore('test:run').run,
+    run: runDevenvTasksBefore('test:run'),
   }),
   // Verify Nix hashes are up-to-date (pnpmDepsHash + localDeps)
   // This catches stale hashes before they break downstream consumers
   'nix-check': multiPlatformJob({
     name: 'Nix hash check',
-    run: runDevenvTasksBefore('nix:check').run,
+    run: runDevenvTasksBefore('nix:check'),
   }),
 }
 
