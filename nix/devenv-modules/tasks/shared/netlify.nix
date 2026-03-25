@@ -102,7 +102,7 @@ let
         # from the workspace, causing ERR_PNPM_IGNORED_BUILDS for native deps.
         # (Also avoids bunx chalk ESM/CJS conflict: https://github.com/netlify/cli/issues/7997)
         # shellcheck disable=SC2086
-        npx --yes netlify-cli deploy \
+        npx --yes netlify deploy \
           --dir="$deploy_dir" \
           --site="${site}" \
           $filter_flag \
