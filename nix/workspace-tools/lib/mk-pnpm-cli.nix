@@ -295,6 +295,7 @@ let
 
   /**
     Parse patchedDependencies path: entries from a pnpm-lock.yaml string (pure Nix).
+    Works with pnpm 9 lockfile format where entries have explicit `path:` keys.
   */
   parsePatchPaths =
     lockfileContent:
@@ -346,9 +347,71 @@ let
     } lines;
 
   /**
-    Copy patch files from a lockfile, resolving source paths through workspaceSources.
-    Each patch path is resolved at Nix eval time via absoluteSourcePathFor so that
-    patches under workspaceSources prefixes are found in the correct source root.
+    Parse patch file paths from pnpm-workspace.yaml (pnpm 11+ format).
+    In pnpm 11, patchedDependencies are declared in pnpm-workspace.yaml as:
+      patchedDependencies:
+        name@version: path/to/patch.patch
+    The value after `: ` is the patch file path relative to the workspace root.
+  */
+  parseWorkspacePatchPaths =
+    workspaceYamlContent:
+    let
+      lines = lib.splitString "\n" workspaceYamlContent;
+      collect =
+        {
+          inBlock,
+          paths,
+        }:
+        remaining:
+        if remaining == [ ] then
+          paths
+        else
+          let
+            line = builtins.head remaining;
+            rest = lib.tail remaining;
+            trimmed = lib.trim line;
+          in
+          if !inBlock then
+            if lib.hasPrefix "patchedDependencies:" trimmed then
+              collect {
+                inBlock = true;
+                inherit paths;
+              } rest
+            else
+              collect {
+                inherit inBlock paths;
+              } rest
+          else if trimmed == "" then
+            paths
+          else if builtins.substring 0 1 line != " " && builtins.substring 0 1 line != "\t" then
+            paths
+          else
+            let
+              colonIdx = lib.stringLength (
+                builtins.head (builtins.split ":" trimmed)
+              );
+              value = lib.trim (builtins.substring (colonIdx + 1) (lib.stringLength trimmed) trimmed);
+              isPatchPath = lib.hasSuffix ".patch" value;
+            in
+            if isPatchPath then
+              collect {
+                inherit inBlock;
+                paths = paths ++ [ value ];
+              } rest
+            else
+              collect {
+                inherit inBlock paths;
+              } rest;
+    in
+    collect {
+      inBlock = false;
+      paths = [ ];
+    } lines;
+
+  /**
+    Copy patch files referenced by a workspace, resolving source paths through workspaceSources.
+    Parses both pnpm 9 lockfile format (path: entries) and pnpm 11 workspace yaml format
+    (name@version: path/to/patch.patch) to find all patch file paths.
 
     Note: the resolved source root (via builtins.path) snapshots the whole matched
     source tree, so this has the same invalidation scope as other copyFileCmd calls.
@@ -356,10 +419,13 @@ let
   copyResolvedPatchFilesCmd =
     {
       lockfileContent,
+      workspaceYamlContent ? "",
       targetPrefix,
     }:
     let
-      patchPaths = parsePatchPaths lockfileContent;
+      lockfilePatchPaths = parsePatchPaths lockfileContent;
+      workspacePatchPaths = parseWorkspacePatchPaths workspaceYamlContent;
+      patchPaths = lib.unique (lockfilePatchPaths ++ workspacePatchPaths);
       copyOnePatch =
         relPath:
         let
@@ -476,6 +542,7 @@ let
       )
       + copyResolvedPatchFilesCmd {
         lockfileContent = rootLockfileContent;
+        workspaceYamlContent = rootPnpmWorkspaceYaml;
         targetPrefix = "";
       }
       + builtins.concatStringsSep "\n" (
