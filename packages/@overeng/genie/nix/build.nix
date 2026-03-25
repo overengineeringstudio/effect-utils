@@ -9,7 +9,10 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-  lockfileHash = "sha256-8+F0d9YSV6Dv+kqZSg13vGymbXAev2QbZK6ZsBif5WU=";
+  # TODO: lockfileHash oscillates due to circular dependency between build.nix
+  # content and staged lockfile hash. Disabled until mk-pnpm-cli lockfile hashing
+  # is updated to exclude build.nix from the staged source.
+  lockfileHash = null;
   packageJsonDepsHash = "sha256-8+F0d9YSV6Dv+kqZSg13vGymbXAev2QbZK6ZsBif5WU=";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
