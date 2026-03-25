@@ -98,12 +98,14 @@ let
 
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
-        # pnpm dlx runs in a temp dir without workspace config. Write allowBuilds
-        # so pnpm 11 permits build scripts for netlify-cli's native deps.
-        _dlx_dir=$(mktemp -d)
-        printf 'allowBuilds:\n  sharp: true\n  esbuild: true\n  unix-dgram: true\n  "@parcel/watcher": true\n' > "$_dlx_dir/pnpm-workspace.yaml"
+        # pnpm 11 requires explicit --allow-build for packages with native deps
         # shellcheck disable=SC2086
-        PNPM_HOME="$_dlx_dir" pnpm --package=netlify-cli dlx netlify deploy \
+        pnpm --package=netlify-cli dlx \
+          --allow-build=sharp \
+          --allow-build=esbuild \
+          --allow-build=unix-dgram \
+          --allow-build=@parcel/watcher \
+          netlify deploy \
           --dir="$deploy_dir" \
           --site="${site}" \
           $filter_flag \
