@@ -60,8 +60,6 @@ export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
-  PNPM_HOME:
-    '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}',
 } as const
 
 /**
@@ -134,7 +132,7 @@ const withAppendedNixConfig = ({
 
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
   withAppendedNixConfig({
-    command: `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+    command: `PNPM_HOME=${shellSingleQuote(jobLocalPnpmHome)} DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
     opts,
   })
 
@@ -272,7 +270,8 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
 } as const
 
 /** Ephemeral per-job pnpm home path scoped to the CI run/attempt/job */
-export const jobLocalPnpmHome = standardCIEnv.PNPM_HOME
+export const jobLocalPnpmHome =
+  '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
 
 /** Ephemeral per-job pnpm store path derived from PNPM_HOME */
 export const jobLocalPnpmStore = `${jobLocalPnpmHome}/store`
