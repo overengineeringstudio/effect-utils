@@ -151,9 +151,9 @@ const withGcRaceRetry = (command: string) => {
   local __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __n=1 __log __rc __path
   while [ "$__n" -le "$__max" ]; do
     __log=$(mktemp)
-    set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+    set +e; eval "$1" 2>&1 | tee "$__log"; __rc=${'${PIPESTATUS[0]}'}; set -e
     [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
-    __path=$(grep -oP "path '\\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+    __path=$(sed -n "s/.*path '\\(\\/nix\\/store\\/[^']*\\)'.*/\\1/p" "$__log" | head -1)
     rm -f "$__log"
     [ -z "$__path" ] && return $__rc
     echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
@@ -169,15 +169,15 @@ const withGcRaceRetry = (command: string) => {
 /**
  * Build a workflow step for running devenv tasks with `--mode before` and GC race retry.
  *
- * Returns `{ name, run }` — use as a step directly or spread into a step with a custom name:
+ * Returns `{ name, run }`:
  * - As step: `runDevenvTasksBefore('test:unit')` → `{ name: 'devenv: test:unit', run: '...' }`
  * - Custom name: `{ name: 'My step', run: runDevenvTasksBefore('test:unit').run }`
- * - In template string: `${runDevenvTasksBefore('deploy')}` (uses `toString()` → the run command)
+ * - In a larger script: `` `${runDevenvTasksBefore('deploy').run} 2>&1 | tee log` ``
  */
-export const runDevenvTasksBefore = (...args: [string, ...string[]]) => {
-  const run = withGcRaceRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
-  return Object.assign({ name: `devenv: ${args.join(' ')}`, run }, { toString: () => run })
-}
+export const runDevenvTasksBefore = (...args: [string, ...string[]]) => ({
+  name: `devenv: ${args.join(' ')}`,
+  run: withGcRaceRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args)),
+})
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
@@ -543,9 +543,9 @@ export const vercelDeployStep = (project: { name: string; urlEnvKey: string }) =
     'fi',
     'tmp_log="$(mktemp)"',
     'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')} 2>&1 | tee "$tmp_log"`,
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}').run} 2>&1 | tee "$tmp_log"`,
     'else',
-    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
+    `  ${runDevenvTasksBefore(`vercel:deploy:${project.name}`, '--show-output', '--input', 'type=prod').run} 2>&1 | tee "$tmp_log"`,
     'fi',
     'deploy_exit=${PIPESTATUS[0]}',
     `url=$(grep -oE 'https://[^[:space:]"]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
@@ -685,9 +685,9 @@ export const netlifyDeployStep = () => ({
     '  exit 0',
     'fi',
     'if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then',
-    `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=prod')}`,
+    `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=prod').run}`,
     'elif [ "${{ github.event_name }}" = "pull_request" ]; then',
-    `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')}`,
+    `  ${runDevenvTasksBefore('netlify:deploy', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}').run}`,
     'fi',
   ].join('\n'),
 })
