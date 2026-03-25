@@ -26,7 +26,7 @@ export const autoReviewWorkflow = ({
           {
             name: `Request review from ${reviewer}`,
             env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' },
-            run: `gh pr edit \${{ github.event.pull_request.number }} --repo \${{ github.repository }} --add-reviewer ${reviewer}`,
+            run: `nix shell nixpkgs#gh --command gh pr edit \${{ github.event.pull_request.number }} --repo \${{ github.repository }} --add-reviewer ${reviewer}`,
           },
         ],
       },
