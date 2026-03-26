@@ -145,30 +145,83 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
  * @see https://github.com/NixOS/nix/pull/15469
  * @see https://github.com/DeterminateSystems/nix-src/issues/395
  */
-const withGcRaceRetry = (command: string) => {
-  const quoted = shellSingleQuote(command)
+const withGcRaceRetry = ({ command, label }: { command: string; label: string }) => {
+  const quotedCommand = shellSingleQuote(command)
+  const quotedLabel = shellSingleQuote(label)
   return `__nix_gc_retry() {
-  local __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __n=1 __log __rc __path
+  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+  __start=$(date +%s)
+
+  __write_summary() {
+    [ -n "${'${GITHUB_STEP_SUMMARY:-}'}" ] || return 0
+    {
+      echo "### CI Task"
+      echo "- Task: \`$__task\`"
+      echo "- Status: \`$1\`"
+      echo "- Duration: \`$__elapsed s\`"
+      echo "- Attempts: \`$__n/$__max\`"
+      [ -z "${'${2:-}'}" ] || echo "- Note: $2"
+    } >> "$GITHUB_STEP_SUMMARY"
+  }
+
   while [ "$__n" -le "$__max" ]; do
+    echo "::notice::[ci] starting $__task (attempt $__n/$__max)"
+    (
+      while sleep "$__heartbeat"; do
+        __now=$(date +%s)
+        __elapsed=$((__now - __start))
+        echo "::notice::[ci] $__task still running after $__elapsed s (attempt $__n/$__max)"
+      done
+    ) &
+    __hb_pid=$!
+
     __log=$(mktemp)
     set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
-    [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
+
+    kill "$__hb_pid" 2>/dev/null || true
+    wait "$__hb_pid" 2>/dev/null || true
+
+    __now=$(date +%s)
+    __elapsed=$((__now - __start))
+
+    [ $__rc -eq 0 ] && {
+      echo "::notice::[ci] completed $__task in $__elapsed s"
+      if [ "$__n" -gt 1 ]; then
+        __write_summary success "Recovered from Nix GC race after retry"
+      else
+        __write_summary success
+      fi
+      rm -f "$__log"
+      return 0
+    }
+
     __path=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
     rm -f "$__log"
-    [ -z "$__path" ] && return $__rc
-    echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
+    if [ -z "$__path" ]; then
+      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+      __write_summary failure "No Nix GC race signature detected"
+      return $__rc
+    fi
+    echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
     nix-store --realise "$__path" 2>/dev/null || true
     rm -rf ~/.cache/nix/eval-cache-*
     __n=$((__n + 1))
   done
-  echo "::error::Nix GC race retry exhausted ($__max attempts)"
+
+  __now=$(date +%s)
+  __elapsed=$((__now - __start))
+  echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
+  __write_summary failure "Nix GC race retry exhausted"
   return 1
-}; __nix_gc_retry ${quoted}`
+}; __nix_gc_retry ${quotedCommand}`
 }
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
 export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
-  withGcRaceRetry(runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args))
+  withGcRaceRetry({
+    command: runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args),
+    label: `devenv tasks run ${args.join(' ')} --mode before`,
+  })
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
