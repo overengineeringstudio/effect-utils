@@ -425,6 +425,28 @@ export const retrieveAsTree = (
 }
 
 // -----------------------------------------------------------------------------
+// Batched Append
+// -----------------------------------------------------------------------------
+
+const BLOCK_APPEND_BATCH_SIZE = 100
+
+/** Append block children with automatic batching at 100 blocks (Notion API limit) */
+export const appendBatched = Effect.fn('NotionBlocks.appendBatched')(function* (opts: {
+  blockId: string
+  children: readonly unknown[]
+  batchSize?: number
+}) {
+  const size = opts.batchSize ?? BLOCK_APPEND_BATCH_SIZE
+  for (let i = 0; i < opts.children.length; i += size) {
+    const batch = opts.children.slice(i, i + size)
+    yield* append({
+      blockId: opts.blockId,
+      children: batch as Parameters<typeof append>[0]['children'],
+    })
+  }
+})
+
+// -----------------------------------------------------------------------------
 // Namespace Export
 // -----------------------------------------------------------------------------
 
@@ -434,6 +456,7 @@ export const NotionBlocks = {
   retrieveChildren,
   retrieveChildrenStream,
   append,
+  appendBatched,
   update,
   delete: deleteBlock,
   /** Retrieve all nested blocks as a flat stream with depth info */

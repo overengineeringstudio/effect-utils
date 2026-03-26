@@ -13,6 +13,8 @@ import {
   getEquationExpression,
   getTableRowCells,
   isTodoChecked,
+  markdownToBlocks,
+  parseInlineMarkdown,
 } from './markdown.ts'
 
 /** Create a mock block with specific type data */
@@ -258,5 +260,391 @@ describe('Block Helpers', () => {
       const block = mockBlock('equation', { expression: 'x^2 + y^2 = r^2' })
       expect(BlockHelpers.getEquationExpression(block)).toBe('x^2 + y^2 = r^2')
     })
+  })
+})
+
+describe('parseInlineMarkdown', () => {
+  it('handles bold', () => {
+    const result = parseInlineMarkdown('hello **world**')
+    expect(result).toMatchInlineSnapshot(`
+      [
+        {
+          "text": {
+            "content": "hello ",
+          },
+          "type": "text",
+        },
+        {
+          "annotations": {
+            "bold": true,
+          },
+          "text": {
+            "content": "world",
+          },
+          "type": "text",
+        },
+      ]
+    `)
+  })
+
+  it('handles italic', () => {
+    const result = parseInlineMarkdown('hello *world*')
+    expect(result).toMatchInlineSnapshot(`
+      [
+        {
+          "text": {
+            "content": "hello ",
+          },
+          "type": "text",
+        },
+        {
+          "annotations": {
+            "italic": true,
+          },
+          "text": {
+            "content": "world",
+          },
+          "type": "text",
+        },
+      ]
+    `)
+  })
+
+  it('handles mixed bold and italic', () => {
+    const result = parseInlineMarkdown('**bold** and *italic*')
+    expect(result).toMatchInlineSnapshot(`
+      [
+        {
+          "annotations": {
+            "bold": true,
+          },
+          "text": {
+            "content": "bold",
+          },
+          "type": "text",
+        },
+        {
+          "text": {
+            "content": " and ",
+          },
+          "type": "text",
+        },
+        {
+          "annotations": {
+            "italic": true,
+          },
+          "text": {
+            "content": "italic",
+          },
+          "type": "text",
+        },
+      ]
+    `)
+  })
+
+  it('returns plain text when no markdown', () => {
+    const result = parseInlineMarkdown('plain text')
+    expect(result).toMatchInlineSnapshot(`
+      [
+        {
+          "text": {
+            "content": "plain text",
+          },
+          "type": "text",
+        },
+      ]
+    `)
+  })
+})
+
+describe('markdownToBlocks', () => {
+  it('converts headings', () => {
+    const blocks = markdownToBlocks('# H1\n\n## H2\n\n### H3')
+    expect(blocks).toMatchInlineSnapshot(`
+      [
+        {
+          "heading_1": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "H1",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "heading_1",
+        },
+        {
+          "heading_2": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "H2",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "heading_2",
+        },
+        {
+          "heading_3": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "H3",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "heading_3",
+        },
+      ]
+    `)
+  })
+
+  it('converts bullet lists', () => {
+    const blocks = markdownToBlocks('- item one\n- item two')
+    expect(blocks).toMatchInlineSnapshot(`
+      [
+        {
+          "bulleted_list_item": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "item one",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "bulleted_list_item",
+        },
+        {
+          "bulleted_list_item": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "item two",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "bulleted_list_item",
+        },
+      ]
+    `)
+  })
+
+  it('converts numbered lists', () => {
+    const blocks = markdownToBlocks('1. first\n2. second')
+    expect(blocks).toMatchInlineSnapshot(`
+      [
+        {
+          "numbered_list_item": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "first",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "numbered_list_item",
+        },
+        {
+          "numbered_list_item": {
+            "rich_text": [
+              {
+                "text": {
+                  "content": "second",
+                },
+                "type": "text",
+              },
+            ],
+          },
+          "type": "numbered_list_item",
+        },
+      ]
+    `)
+  })
+
+  it('converts dividers', () => {
+    const blocks = markdownToBlocks('---')
+    expect(blocks).toMatchInlineSnapshot(`
+      [
+        {
+          "divider": {},
+          "type": "divider",
+        },
+      ]
+    `)
+  })
+
+  it('converts simple tables', () => {
+    const blocks = markdownToBlocks('| A | B |\n|---|---|\n| 1 | 2 |')
+    expect(blocks).toMatchInlineSnapshot(`
+      [
+        {
+          "table": {
+            "children": [
+              {
+                "table_row": {
+                  "cells": [
+                    [
+                      {
+                        "text": {
+                          "content": "A",
+                        },
+                        "type": "text",
+                      },
+                    ],
+                    [
+                      {
+                        "text": {
+                          "content": "B",
+                        },
+                        "type": "text",
+                      },
+                    ],
+                  ],
+                },
+                "type": "table_row",
+              },
+              {
+                "table_row": {
+                  "cells": [
+                    [
+                      {
+                        "text": {
+                          "content": "1",
+                        },
+                        "type": "text",
+                      },
+                    ],
+                    [
+                      {
+                        "text": {
+                          "content": "2",
+                        },
+                        "type": "text",
+                      },
+                    ],
+                  ],
+                },
+                "type": "table_row",
+              },
+            ],
+            "has_column_header": true,
+            "has_row_header": false,
+            "table_width": 2,
+          },
+          "type": "table",
+        },
+      ]
+    `)
+  })
+
+  it('converts tables with bold cells', () => {
+    const blocks = markdownToBlocks('| **Name** | Value |\n|---|---|\n| **A** | 1 |')
+    const table = blocks[0] as { table: { children: Array<{ table_row: { cells: unknown[][] } }> } }
+    const headerCells = table.table.children[0]!.table_row.cells
+    expect(headerCells[0]).toMatchInlineSnapshot(`
+      [
+        {
+          "annotations": {
+            "bold": true,
+          },
+          "text": {
+            "content": "Name",
+          },
+          "type": "text",
+        },
+      ]
+    `)
+  })
+
+  it('handles large table with multiple rows', () => {
+    const md = [
+      '| Projekt | Leistung | Standort |',
+      '|---|---|---|',
+      '| Solar Park A | 10 MW | Bayern |',
+      '| Solar Park B | 25 MW | NRW |',
+      '| Solar Park C | 15 MW | Sachsen |',
+      '| Solar Park D | 30 MW | Brandenburg |',
+      '| Solar Park E | 20 MW | Hessen |',
+    ].join('\n')
+    const blocks = markdownToBlocks(md)
+    expect(blocks).toHaveLength(1)
+    const table = blocks[0] as { table: { children: unknown[]; table_width: number } }
+    expect(table.table.table_width).toBe(3)
+    expect(table.table.children).toHaveLength(6) // 1 header + 5 data rows
+  })
+
+  it('handles alignment markers in tables', () => {
+    const md = '| Left | Center | Right |\n|:---|:---:|---:|\n| a | b | c |'
+    const blocks = markdownToBlocks(md)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]).toHaveProperty('type', 'table')
+  })
+
+  it('falls back to paragraph for non-table pipe content', () => {
+    const blocks = markdownToBlocks('this | is | not a table')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]).toHaveProperty('type', 'paragraph')
+  })
+
+  it('pads missing cells to table width', () => {
+    const md = '| A | B | C |\n|---|---|---|\n| 1 |'
+    const blocks = markdownToBlocks(md)
+    const table = blocks[0] as { table: { children: Array<{ table_row: { cells: unknown[][] } }> } }
+    const dataRow = table.table.children[1]!.table_row.cells
+    expect(dataRow).toHaveLength(3)
+    // Missing cells should get empty string content
+    expect(dataRow[1]).toMatchInlineSnapshot(`
+      [
+        {
+          "text": {
+            "content": "",
+          },
+          "type": "text",
+        },
+      ]
+    `)
+  })
+
+  it('handles mixed headings + tables + paragraphs', () => {
+    const md = '# Title\n\nSome text here.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n## Section'
+    const blocks = markdownToBlocks(md)
+    expect(blocks.map((b) => b.type)).toMatchInlineSnapshot(`
+      [
+        "heading_1",
+        "paragraph",
+        "table",
+        "heading_2",
+      ]
+    `)
+  })
+
+  it('normalizes <br> before parsing', () => {
+    const blocks = markdownToBlocks('line1<br>line2<br/>line3')
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]).toHaveProperty('type', 'paragraph')
+    const para = blocks[0] as { paragraph: { rich_text: Array<{ text: { content: string } }> } }
+    expect(para.paragraph.rich_text[0]!.text.content).toBe('line1\nline2\nline3')
+  })
+
+  it('splits inline block markers within paragraphs', () => {
+    const blocks = markdownToBlocks('some text\n# Heading')
+    expect(blocks.map((b) => b.type)).toMatchInlineSnapshot(`
+      [
+        "paragraph",
+        "heading_1",
+      ]
+    `)
   })
 })
