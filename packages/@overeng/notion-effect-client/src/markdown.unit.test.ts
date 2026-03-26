@@ -568,7 +568,7 @@ describe('markdownToBlocks', () => {
     `)
   })
 
-  it('handles large table (HEP Solar portfolio)', () => {
+  it('handles large table with multiple rows', () => {
     const md = [
       '| Projekt | Leistung | Standort |',
       '|---|---|---|',
