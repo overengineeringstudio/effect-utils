@@ -153,7 +153,7 @@ const withGcRaceRetry = (command: string) => {
     __log=$(mktemp)
     set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
     [ $__rc -eq 0 ] && { rm -f "$__log"; return 0; }
-    __path=$(grep -oP "path '\\K/nix/store/[^']*" "$__log" 2>/dev/null | head -1 || true)
+    __path=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
     rm -f "$__log"
     [ -z "$__path" ] && return $__rc
     echo "::warning::Nix GC race detected (attempt $__n/$__max): $__path"
