@@ -28,7 +28,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  # Managed by `dt nix:hash:oxlint-npm`. The plugin bundle depends on the
+  # Managed by `nix-hash-refresh --name oxlint-npm`. The plugin bundle depends on the
   # prepared pnpm deps recipe, so the quick-check cache must follow that recipe.
   depsBuildFingerprint = "724a99a482c3ce78acebbf5a2e75cde82392843ed80cfe66349be1852f9b1c57";
   pnpmDepsHash = "sha256-yFw8J/HyB6wKfJppP7MChnK28MKn01Ly3uKYd0wBuJA=";

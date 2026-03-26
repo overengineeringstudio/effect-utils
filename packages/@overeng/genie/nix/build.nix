@@ -15,7 +15,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-  # Managed by `dt nix:hash:genie`. This caches the builder-owned deps recipe
+  # Managed by `nix-hash-refresh --name genie`. This caches the builder-owned deps recipe
   # fingerprint so quick checks can compare against the actual deps contract.
   depsBuildFingerprint = "8e13c3c91439bd89f4f14fde4bc60c023575cadea3e5d71068fcfdaf1155e166";
   unwrapped = mkPnpmCli {

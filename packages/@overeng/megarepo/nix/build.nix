@@ -14,7 +14,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-  # Managed by `dt nix:hash:megarepo`. This tracks the effective deps recipe,
+  # Managed by `nix-hash-refresh --name megarepo`. This tracks the effective deps recipe,
   # not a downstream restatement of individual lockfile/package.json fields.
   depsBuildFingerprint = "27fe896363866ba20ac7e95a6dc87cc088f44337fc9e02bb793932886974f7cb";
   base = mkPnpmCli {
@@ -23,7 +23,7 @@ let
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:megarepo` — do not edit manually.
+    # Managed by `nix-hash-refresh --name megarepo` — do not edit manually.
     pnpmDepsHash = "sha256-Z5r/sMUa4c1ON81Y4LURTvvgFr/KR4vN14xYVenoLQk=";
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
