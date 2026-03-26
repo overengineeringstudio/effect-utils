@@ -166,15 +166,16 @@ let
 
         _gvs_hash_file=""
         _gvs_links_dir=""
-        for _d in \
-          "''${PNPM_HOME:-__none__}/store/v11/links" \
-          "''${XDG_DATA_HOME:-__none__}/pnpm/store/v11/links" \
-          "$HOME/.local/share/pnpm/store/v11/links" \
-          "$HOME/Library/pnpm/store/v11/links"; do
-          if [ -d "$_d" ] || [ -d "$(dirname "$_d")" ]; then
-            _gvs_links_dir="$_d"; break
-          fi
-        done
+        if [ -n "''${PNPM_HOME:-}" ]; then
+          _gvs_links_dir="''${PNPM_HOME}/store/v11/links"
+          mkdir -p "$(dirname "$_gvs_links_dir")"
+        elif [ -n "''${XDG_DATA_HOME:-}" ] && [ -d "''${XDG_DATA_HOME}/pnpm/store/v11" ]; then
+          _gvs_links_dir="''${XDG_DATA_HOME}/pnpm/store/v11/links"
+        elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
+          _gvs_links_dir="$HOME/.local/share/pnpm/store/v11/links"
+        elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
+          _gvs_links_dir="$HOME/Library/pnpm/store/v11/links"
+        fi
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
           _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
