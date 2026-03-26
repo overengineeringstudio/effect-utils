@@ -74,7 +74,9 @@ export {
   getEquationExpression,
   getTableRowCells,
   isTodoChecked,
+  markdownToBlocks,
   NotionMarkdown,
+  parseInlineMarkdown,
 } from './markdown.ts'
 export type {
   ArchivePageOptions,

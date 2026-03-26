@@ -631,8 +631,195 @@ export const BlockHelpers = {
  * })
  * ```
  */
+// -----------------------------------------------------------------------------
+// Markdown → Notion Blocks
+// -----------------------------------------------------------------------------
+
+const RICH_TEXT_CHUNK_SIZE = 2000
+
+/** Parse inline markdown (**bold**, *italic*) into Notion rich_text elements */
+export const parseInlineMarkdown = (text: string): Array<Record<string, unknown>> => {
+  const elements: Array<Record<string, unknown>> = []
+  const regex = /\*\*(.+?)\*\*|\*(.+?)\*/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index)
+      if (before) elements.push({ type: 'text', text: { content: before } })
+    }
+    if (match[1]) {
+      elements.push({
+        type: 'text',
+        text: { content: match[1] },
+        annotations: { bold: true },
+      })
+    } else if (match[2]) {
+      elements.push({
+        type: 'text',
+        text: { content: match[2] },
+        annotations: { italic: true },
+      })
+    }
+    lastIndex = match.index + match[0].length
+  }
+
+  const remaining = text.slice(lastIndex)
+  if (remaining) elements.push({ type: 'text', text: { content: remaining } })
+
+  if (elements.length === 0) elements.push({ type: 'text', text: { content: text } })
+
+  return elements.flatMap((el) => {
+    const content = (el as { text: { content: string } }).text.content
+    if (content.length <= RICH_TEXT_CHUNK_SIZE) return [el]
+    const chunks: Array<Record<string, unknown>> = []
+    for (let i = 0; i < content.length; i += RICH_TEXT_CHUNK_SIZE) {
+      chunks.push({
+        ...el,
+        text: { content: content.slice(i, i + RICH_TEXT_CHUNK_SIZE) },
+      })
+    }
+    return chunks
+  })
+}
+
+/** Parse a single table row (|col1|col2|) into cell strings */
+const parseTableRow = (line: string): string[] =>
+  line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((cell) => cell.trim())
+
+/** Check if a line is a markdown table separator (|---|---| or |:---:|) */
+const isTableSeparator = (line: string): boolean =>
+  /^\|[\s:?-]+(\|[\s:?-]+)+\|?\s*$/.test(line.trim())
+
+/** Parse markdown table lines into a Notion table block */
+const parseMarkdownTable = (lines: string[]): Record<string, unknown> | undefined => {
+  if (lines.length < 2) return undefined
+  if (!lines.every((l) => l.trim().startsWith('|'))) return undefined
+
+  const sepIdx = lines.findIndex((l) => isTableSeparator(l))
+  if (sepIdx < 0) return undefined
+
+  const headerLines = lines.slice(0, sepIdx)
+  const dataLines = lines.slice(sepIdx + 1)
+
+  const headerCells = headerLines.length > 0 ? parseTableRow(headerLines[0]!) : []
+  const tableWidth = headerCells.length
+  if (tableWidth === 0) return undefined
+
+  const toRow = (cells: string[]) => ({
+    type: 'table_row' as const,
+    table_row: {
+      cells: Array.from({ length: tableWidth }, (_, i) => parseInlineMarkdown(cells[i] ?? '')),
+    },
+  })
+
+  const children = [
+    toRow(headerCells),
+    ...dataLines.filter((l) => l.trim().length > 0).map((l) => toRow(parseTableRow(l))),
+  ]
+
+  return {
+    type: 'table',
+    table: {
+      table_width: tableWidth,
+      has_column_header: true,
+      has_row_header: false,
+      children,
+    },
+  }
+}
+
+/** Convert markdown text to Notion blocks (headings, lists, dividers, paragraphs, tables) */
+export const markdownToBlocks = (markdown: string): Array<Record<string, unknown>> => {
+  const blocks: Array<Record<string, unknown>> = []
+  const normalized = markdown.replace(/<br\s*\/?>\s*/gi, '\n')
+  const rawParagraphs = normalized.split(/\n\n+/)
+  const paragraphs: string[] = []
+  for (const raw of rawParagraphs) {
+    const lines = raw.split('\n')
+    let current: string[] = []
+    for (const line of lines) {
+      const isBlockStart = /^#{1,3}\s|^-{3,}$|^- |^\d+\.\s/.test(line.trim())
+      if (isBlockStart && current.length > 0) {
+        paragraphs.push(current.join('\n'))
+        current = [line]
+      } else {
+        current.push(line)
+      }
+    }
+    if (current.length > 0) paragraphs.push(current.join('\n'))
+  }
+
+  for (const para of paragraphs) {
+    const trimmed = para.trim()
+    if (!trimmed) continue
+
+    if (/^-{3,}$/.test(trimmed)) {
+      blocks.push({ type: 'divider', divider: {} })
+      continue
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/)
+    if (headingMatch?.[1] && headingMatch[2]) {
+      const level = headingMatch[1].length as 1 | 2 | 3
+      const type = `heading_${level}` as const
+      blocks.push({
+        type,
+        [type]: { rich_text: parseInlineMarkdown(headingMatch[2]) },
+      })
+      continue
+    }
+
+    const lines = trimmed.split('\n')
+    const allBullets = lines.every((l) => l.trim().startsWith('- '))
+    const allNumbered = lines.every((l) => /^\d+\.\s/.test(l.trim()))
+
+    if (allBullets) {
+      for (const line of lines) {
+        const content = line.trim().replace(/^- /, '')
+        blocks.push({
+          type: 'bulleted_list_item',
+          bulleted_list_item: { rich_text: parseInlineMarkdown(content) },
+        })
+      }
+      continue
+    }
+
+    if (allNumbered) {
+      for (const line of lines) {
+        const content = line.trim().replace(/^\d+\.\s/, '')
+        blocks.push({
+          type: 'numbered_list_item',
+          numbered_list_item: { rich_text: parseInlineMarkdown(content) },
+        })
+      }
+      continue
+    }
+
+    const tableBlock = parseMarkdownTable(lines)
+    if (tableBlock) {
+      blocks.push(tableBlock)
+      continue
+    }
+
+    const text = trimmed.replace(/  \n/g, '\n')
+    blocks.push({
+      type: 'paragraph',
+      paragraph: { rich_text: parseInlineMarkdown(text) },
+    })
+  }
+
+  return blocks
+}
+
 export const NotionMarkdown = {
   pageToMarkdown,
   treeToMarkdown,
   blocksToMarkdown,
+  markdownToBlocks,
 } as const
