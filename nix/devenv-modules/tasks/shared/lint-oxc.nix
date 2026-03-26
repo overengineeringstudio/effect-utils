@@ -57,16 +57,16 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
-  scanDirsArg = builtins.concatStringsSep " " genieCoverageDirs;
-  # Git pathspec exclusion patterns applied to coverage check (e.g. "packages/vendored/")
-  excludePathspecs = builtins.concatStringsSep " " (
-    map (p: "':(exclude)${p}'") genieCoverageExcludes
+  scanDirsSetup = builtins.concatStringsSep "\n" (
+    map (dir: ''scan_dir_args+=(${builtins.toJSON dir})'') genieCoverageDirs
   );
-  # Bash case pattern matching config file names (e.g. "package.json|*/package.json|tsconfig.json|*/tsconfig.json")
-  coverageFilePattern = builtins.concatStringsSep "|" (
+  excludePathspecsSetup = builtins.concatStringsSep "\n" (
+    map (p: ''pathspec_args+=(${builtins.toJSON ":(exclude)${p}"})'') genieCoverageExcludes
+  );
+  coverageFileMatches = builtins.concatStringsSep " || " (
     lib.concatMap (f: [
-      f
-      "*/${f}"
+      ''"$f" == ${builtins.toJSON f}''
+      ''"$f" == */${f}''
     ]) genieCoverageFiles
   );
   lintPathsArg = builtins.concatStringsSep " " lintPaths;
@@ -124,6 +124,11 @@ let
       exec = trace.exec "lint:check:genie:coverage" ''
         set -euo pipefail
 
+        scan_dir_args=()
+        ${scanDirsSetup}
+        pathspec_args=()
+        ${excludePathspecsSetup}
+
         # Enumerate config files via git instead of scanning the filesystem.
         #
         # Rationale:
@@ -133,12 +138,12 @@ let
         # - Prevents false negatives from caching based only on *.genie.ts files.
         files=$(
           {
-            ${git} ls-files -- ${scanDirsArg} ${excludePathspecs}
-            ${git} ls-files --others --exclude-standard -- ${scanDirsArg} ${excludePathspecs}
+            ${git} ls-files -- "''${scan_dir_args[@]}" "''${pathspec_args[@]}"
+            ${git} ls-files --others --exclude-standard -- "''${scan_dir_args[@]}" "''${pathspec_args[@]}"
           } | sort -u | while IFS= read -r f; do
-            case "$f" in
-              ${coverageFilePattern}) echo "$f" ;;
-            esac
+            if [[ ${coverageFileMatches} ]]; then
+              echo "$f"
+            fi
           done
         )
 
