@@ -43,6 +43,16 @@ extract_task_script() {
   chmod +x "$output_path"
 }
 
+rewrite_unrealized_tool_paths() {
+  local script_path="$1"
+
+  # The smoke test evaluates the task shell text directly instead of building
+  # the referenced helper packages. Patch the generated absolute store paths to
+  # temp-local shims so the test only exercises task behavior, not derivation
+  # realisation.
+  perl -0pi -e 's#/nix/store/[^"\s]*/bin/flock#'"$tmpdir"'/bin/flock#g; s#/nix/store/[^"\s]*/bin/node#node#g' "$script_path"
+}
+
 echo "Running pnpm task smoke test..."
 echo ""
 
@@ -83,8 +93,20 @@ exit 1
 EOF
 chmod +x "$tmpdir/bin/pnpm"
 
+cat > "$tmpdir/bin/flock" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The smoke test is single-process, so it only needs a no-op lock command to
+# keep the generated task script moving through its install path.
+exit 0
+EOF
+chmod +x "$tmpdir/bin/flock"
+
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"

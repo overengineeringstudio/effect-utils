@@ -76,6 +76,7 @@ cache_fingerprint() {
 make_projection_fixture() {
   local root="$1"
   local with_dep="$2"
+  local dep_blocks_package_json_export="${3:-0}"
 
   mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
   mkdir -p "$root/node_modules"
@@ -86,9 +87,18 @@ EOF
 
   if [ "$with_dep" = "1" ]; then
     mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep"
-    cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
+    if [ "$dep_blocks_package_json_export" = "1" ]; then
+      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
+{"name":"dep","exports":{".":"./index.js"}}
+EOF
+      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/index.js" <<'EOF'
+module.exports = {}
+EOF
+    else
+      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
 {"name":"dep"}
 EOF
+    fi
   fi
 }
 
@@ -138,7 +148,16 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
-echo "Test 5: Projection health fails when symlinked package loses a transitive dep"
+echo "Test 5: Projection health ignores packages that do not export ./package.json"
+exports_dir="$test_dir/exports"
+make_projection_fixture "$exports_dir" 1 1
+set +e
+check_node_modules_links_healthy "$exports_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health should not depend on package.json exports"
+
+echo "Test 6: Projection health fails when symlinked package loses a transitive dep"
 stale_dir="$test_dir/stale"
 make_projection_fixture "$stale_dir" 0
 set +e
@@ -147,7 +166,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
 
-echo "Test 6: Broken node_modules symlink is rejected before projection checks"
+echo "Test 7: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"

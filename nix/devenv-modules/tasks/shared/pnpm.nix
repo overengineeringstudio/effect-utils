@@ -312,7 +312,18 @@ let
       description = "Remove repo-root and package-level node_modules";
       after = cleanAfter;
       exec = trace.exec "pnpm:clean" ''
+        set -euo pipefail
+        ${resolveGvsLinksDirFn}
+
         rm -rf "node_modules" ${nodeModulesPaths}
+
+        # `pnpm:clean` is expected to force a genuinely fresh install. Keeping
+        # the live GVS projection around defeats that expectation because pnpm
+        # may reuse stale `links/` entries even after node_modules is gone.
+        gvs_links_dir="$(resolve_gvs_links_dir)"
+        if [ -n "''${gvs_links_dir:-}" ]; then
+          rm -rf "$gvs_links_dir" "$(dirname "$gvs_links_dir")/.effect-utils-gvs-links.hash"
+        fi
       '';
     };
 

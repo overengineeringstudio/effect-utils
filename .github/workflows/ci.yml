@@ -57,6 +57,12 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}/store'
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -296,6 +302,12 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}/store'
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -538,6 +550,12 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}/store'
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -780,6 +798,12 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}/store'
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1023,6 +1047,12 @@ jobs:
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
         shell: bash
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}/store'
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then

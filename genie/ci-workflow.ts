@@ -341,8 +341,10 @@ export const cachePnpmStoreStep = (opts?: { keyPrefix?: string }) => {
     uses: 'actions/cache@v4' as const,
     with: {
       path: jobLocalPnpmStore,
-      key: `${keyPrefix}-${'${{ runner.os }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`,
-      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-`,
+      // The fetched store contents are platform-specific, so the restore key
+      // must isolate both OS and CPU architecture.
+      key: `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`,
+      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
     },
   }
 }
