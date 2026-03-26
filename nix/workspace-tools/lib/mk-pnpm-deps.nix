@@ -4,7 +4,7 @@
 #
 # | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
 # |---------------------|----------------------------------------------------|----------------------------------------------|
-# | Cached artifact     | Normalized pnpm store tarball                      | Prepared install tree archive                |
+# | Cached artifact     | Normalized pnpm store tarball                      | Compressed prepared-tree NAR                 |
 # | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
 # | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
 # | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
@@ -21,7 +21,8 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
-#    manifest-only workspace and stores the resulting prepared install tree archive.
+#    manifest-only workspace and stores the resulting prepared install tree as
+#    a compressed NAR.
 #
 # 2. mkRestoreScript: Generates a shell script snippet that extracts the
 #    prepared workspace tree over a full source workspace during the build.
@@ -38,6 +39,10 @@ let
   nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
     const fs = require("fs");
     const raw = fs.readFileSync(0, "utf8");
+    if (raw.trim() === "") {
+      process.stdout.write("0");
+      process.exit(0);
+    }
     const data = JSON.parse(raw);
     const item = Array.isArray(data)
       ? (data[0] ?? {})
@@ -123,7 +128,6 @@ in
 
       nativeBuildInputs = [
         pnpm
-        pkgs.gnutar
         pkgs.nodejs
         pkgs.nix
         pkgs.perl
@@ -524,18 +528,14 @@ NODE
 
         archiveStartedAt=$(timer_now)
         log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
-        # We intentionally keep the output as a single normalized archive. A
-        # direct recursive Nix output looked conceptually simpler, but the NAR
-        # import cost was materially slower than tar+zstd in local benchmarks.
-        LC_ALL=C TZ=UTC ${pkgs.gnutar}/bin/tar \
-          --sort=name \
-          --format=gnu \
-          --mtime='@0' \
-          --owner=0 \
-          --group=0 \
-          --numeric-owner \
-          -C "$SOURCE_DIR" \
-          -cf - . \
+        # We intentionally keep the output as a single compressed artifact, but
+        # tar turned out to be the wrong container: the prepared tree itself was
+        # byte-identical across darwin and linux while GNU tar still emitted
+        # different longlink records. `nix-store --dump` gives us the same
+        # "single file artifact" benefit while delegating serialization to
+        # Nix's own cross-platform canonical archive format without relying on
+        # experimental CLI features inside the builder.
+        nix-store --dump "$SOURCE_DIR" \
           | ${pkgs.zstd}/bin/zstd -T1 -q -o "$out"
         echo "workspace-prep: archive duration=$(timer_elapsed "$archiveStartedAt")s"
 
@@ -561,9 +561,20 @@ NODE
       target ? ".",
     }:
     ''
+      # `nix-store --restore` wants a path that does not already exist. We
+      # therefore allocate a private parent directory first and restore into a
+      # child path inside it instead of relying on `mktemp -u`, which is racy.
+      nar_restore_parent="$(mktemp -d "$NIX_BUILD_TOP/pnpm-restore.XXXXXX")"
+      nar_restore_dir="$nar_restore_parent/tree"
       mkdir -p ${lib.escapeShellArg target}
       ${pkgs.zstd}/bin/zstd -d -c ${deps} \
-        | ${pkgs.gnutar}/bin/tar -xf - -C ${lib.escapeShellArg target}
+        | nix-store --restore "$nar_restore_dir"
+      # Restore into an isolated tree first because the caller's target already
+      # contains real sources. We need overlay semantics here, not a wholesale
+      # replacement of the destination directory.
+      cp -a "$nar_restore_dir"/. ${lib.escapeShellArg target}/
+      chmod -R u+w "$nar_restore_parent"
+      rm -rf "$nar_restore_parent"
 
       export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
       export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
