@@ -98,6 +98,8 @@ in
       nativeBuildInputs = [
         pnpm
         pkgs.nodejs
+        pkgs.nix
+        pkgs.perl
         pkgs.python3
         pkgs.cacert
         pkgs.zstd
@@ -109,9 +111,85 @@ in
       dontFixup = true;
 
       installPhase = ''
+        timer_now() {
+          perl -MTime::HiRes=time -e 'printf "%.3f", time'
+        }
+
+        timer_elapsed() {
+          perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(timer_now)"
+        }
+
+        format_bytes() {
+          numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+        }
+
+        path_bytes() {
+          if [ -d "$1" ]; then
+            du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+          else
+            stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+          fi
+        }
+
+        file_count() {
+          if [ -d "$1" ]; then
+            find "$1" -type f | wc -l | tr -d ' '
+          else
+            echo 1
+          fi
+        }
+
+        nix_closure_bytes() {
+          nix path-info --json --closure-size "$1" 2>/dev/null | python -c '
+import json, sys
+data = json.load(sys.stdin)
+if isinstance(data, list):
+    item = data[0] if data else {}
+elif isinstance(data, dict):
+    item = next(iter(data.values()), {})
+else:
+    item = {}
+if not isinstance(item, dict):
+    item = {}
+print(item.get("closureSize") or item.get("narSize") or 0)
+'
+        }
+
+        log_path_stats() {
+          local label="$1"
+          local path="$2"
+          if [ ! -e "$path" ]; then
+            return
+          fi
+
+          local bytes
+          bytes=$(path_bytes "$path")
+          local files
+          files=$(file_count "$path")
+          echo "workspace-prep: stats $label size=$(format_bytes "$bytes") files=$files path=$path"
+        }
+
+        log_store_closure() {
+          local label="$1"
+          local path="$2"
+          if [ ! -e "$path" ]; then
+            return
+          fi
+
+          local closure_bytes
+          closure_bytes=$(nix_closure_bytes "$path" || true)
+          if [ -n "$closure_bytes" ] && [ "$closure_bytes" != "0" ]; then
+            echo "workspace-prep: closure $label size=$(format_bytes "$closure_bytes") path=$path"
+          fi
+        }
+
+        sourceCopyStartedAt=$(timer_now)
         mkdir source
         cp -r "$src"/. source/
         chmod -R +w source
+        echo "workspace-prep: staged source copy duration=$(timer_elapsed "$sourceCopyStartedAt")s"
+        log_store_closure "src" "$src"
+        log_path_stats "staged-source-copy" source
 
         if [ "$sourceRoot" = "." ]; then
           cd source
@@ -139,7 +217,7 @@ in
         printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
         ${pnpmPlatform.setupScript}
 
-        node -e '
+	        node -e '
           const path = require("path");
           const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
           if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
@@ -153,9 +231,10 @@ in
           }))];
 
           process.stdout.write(installRoots.join("\n") + "\n");
-        ' > .pnpm-install-roots.txt
+	        ' > .pnpm-install-roots.txt
+	        echo "workspace-prep: install roots count=$(wc -l < .pnpm-install-roots.txt | tr -d ' ')"
 
-        node -e '
+	        node -e '
           const fs = require("fs");
           const path = require("path");
 
@@ -184,30 +263,36 @@ in
           }
         '
 
-        while IFS= read -r install_root; do
-          [ -n "$install_root" ] || continue
+	        while IFS= read -r install_root; do
+	          [ -n "$install_root" ] || continue
 
           if [ ! -f "$install_root/package.json" ] || [ ! -f "$install_root/pnpm-lock.yaml" ]; then
             echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
             exit 1
           fi
 
-          echo "workspace-prep: normalizing lockfile for $install_root"
-          (
-            cd "$install_root"
+	          echo "workspace-prep: normalizing lockfile for $install_root"
+	          normalizeStartedAt=$(timer_now)
+	          (
+	            cd "$install_root"
             # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
             # a reduced workspace closure. Rewriting the lockfile against the
             # staged manifests produces the exact lock shape the subsequent
             # frozen install expects.
-            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
-          )
+	            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+	          )
+	          echo "workspace-prep: normalized $install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
+	          log_path_stats "install-root:$install_root-after-normalize" "$install_root"
 
-          echo "workspace-prep: installing $install_root"
-          (
-            cd "$install_root"
-            pnpm install --frozen-lockfile --ignore-scripts
-          )
-        done < .pnpm-install-roots.txt
+	          echo "workspace-prep: installing $install_root"
+	          installStartedAt=$(timer_now)
+	          (
+	            cd "$install_root"
+	            pnpm install --frozen-lockfile --ignore-scripts
+	          )
+	          echo "workspace-prep: installed $install_root duration=$(timer_elapsed "$installStartedAt")s"
+	          log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
+	        done < .pnpm-install-roots.txt
 
         export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
         node <<'NODE'
@@ -376,24 +461,27 @@ NODE
           -path '*/node_modules/.pnpm/lock.yaml' \
         \) -delete
 
-        # Restore original .npmrc (remove build-local settings that contain
-        # non-deterministic paths like $STORE_PATH).
+	        # Restore original .npmrc (remove build-local settings that contain
+	        # non-deterministic paths like $STORE_PATH).
         if [ -f .npmrc.orig ]; then
           mv .npmrc.orig .npmrc
         else
           rm -f .npmrc
         fi
 
-        rm -rf "$STORE_PATH"
-        rm -f .pnpm-install-roots.txt
+	        log_path_stats "prepared-workspace-pre-archive" .
+	        log_path_stats "pnpm-store-final" "$STORE_PATH"
+	        rm -rf "$STORE_PATH"
+	        rm -f .pnpm-install-roots.txt
 
         find . -type d -exec chmod 755 {} +
         find . -type f -perm /111 -exec chmod 555 {} +
         find . -type f ! -perm /111 -exec chmod 444 {} +
 
-        mkdir -p $out
-        export PREPARED_WORKSPACE_ARCHIVE=$(mktemp "$NIX_BUILD_TOP/prepared-workspace.XXXXXX.tar")
-        python <<'PY'
+	        mkdir -p $out
+	        export PREPARED_WORKSPACE_ARCHIVE=$(mktemp "$NIX_BUILD_TOP/prepared-workspace.XXXXXX.tar")
+	        tarStartedAt=$(timer_now)
+	        python <<'PY'
 import os
 import stat
 import tarfile
@@ -451,8 +539,15 @@ with tarfile.open(archive_path, mode="w", format=tarfile.GNU_FORMAT) as archive:
             relpath = os.path.relpath(path, workspace_root)
             add_path(archive, path, f"./{relpath}")
 PY
-        zstd -T1 -q "$PREPARED_WORKSPACE_ARCHIVE" -o $out/prepared-workspace.tar.zst
-        rm -f "$PREPARED_WORKSPACE_ARCHIVE"
+	        echo "workspace-prep: created tar archive duration=$(timer_elapsed "$tarStartedAt")s"
+	        log_path_stats "prepared-workspace-tar" "$PREPARED_WORKSPACE_ARCHIVE"
+	        compressStartedAt=$(timer_now)
+	        zstd -T1 -q "$PREPARED_WORKSPACE_ARCHIVE" -o $out/prepared-workspace.tar.zst
+	        echo "workspace-prep: compressed archive duration=$(timer_elapsed "$compressStartedAt")s"
+	        log_path_stats "prepared-workspace-archive" "$out/prepared-workspace.tar.zst"
+	        log_store_closure "prepared-workspace-output" "$out"
+	        echo "workspace-prep: archive-total duration=$(timer_elapsed "$tarStartedAt")s"
+	        rm -f "$PREPARED_WORKSPACE_ARCHIVE"
 
         runHook postInstall
       '';
