@@ -44,6 +44,23 @@ let
       : (typeof data === "object" && data !== null ? Object.values(data)[0] ?? {} : {});
     process.stdout.write(String(item.closureSize ?? item.narSize ?? 0));
   '';
+  stripPackageManagerScript = pkgs.writeText "strip-package-manager.cjs" ''
+    const fs = require("fs");
+
+    const [manifestPath, backupPath] = process.argv.slice(2);
+    if (!manifestPath || !backupPath || !fs.existsSync(manifestPath)) {
+      process.exit(0);
+    }
+
+    const pkg = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!Object.hasOwn(pkg, "packageManager")) {
+      process.exit(0);
+    }
+
+    fs.copyFileSync(manifestPath, backupPath);
+    delete pkg.packageManager;
+    fs.writeFileSync(manifestPath, JSON.stringify(pkg, null, 2) + "\n");
+  '';
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -185,6 +202,24 @@ in
           fi
         }
 
+        strip_package_manager_field() {
+          local manifest_path="$1"
+          local backup_path="$2"
+          # We provide pnpm externally inside Nix. Keeping packageManager in the
+          # staged manifests makes pnpm install its own platform-specific
+          # runtime packages, which turns a supposedly shared FOD into a
+          # darwin-vs-linux hash divergence.
+          ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stripPackageManagerScript} "$manifest_path" "$backup_path"
+        }
+
+        restore_package_manager_field() {
+          local manifest_path="$1"
+          local backup_path="$2"
+          if [ -f "$backup_path" ]; then
+            mv "$backup_path" "$manifest_path"
+          fi
+        }
+
         SOURCE_DIR="$NIX_BUILD_TOP/source"
         sourceCopyStartedAt=$(timer_now)
         mkdir "$SOURCE_DIR"
@@ -277,6 +312,8 @@ in
             exit 1
           fi
 
+          strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
+
 	          echo "workspace-prep: normalizing lockfile for $install_root"
 	          normalizeStartedAt=$(timer_now)
 	          (
@@ -298,6 +335,7 @@ in
 	          )
 	          echo "workspace-prep: installed $install_root duration=$(timer_elapsed "$installStartedAt")s"
 	          log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
+          restore_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
 	        done < .pnpm-install-roots.txt
 
         export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'

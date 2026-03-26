@@ -21,7 +21,7 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     # Managed by `dt nix:hash:genie` — do not edit manually.
-    pnpmDepsHash = "sha256-phZ9k6BYf3pcLssB3JxrJ31ex+kgK059khSent5nPSA=";
+    pnpmDepsHash = "sha256-UyU4DOUl3TsWnkEd0eKbMp0bKU30paa7nmEOLEyR0hc=";
     inherit lockfileHash gitRev commitTs dirty;
   };
 in
