@@ -647,15 +647,15 @@ export const parseInlineMarkdown = (text: string): Array<Record<string, unknown>
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index)
-      if (before) elements.push({ type: 'text', text: { content: before } })
+      if (before.length > 0) elements.push({ type: 'text', text: { content: before } })
     }
-    if (match[1]) {
+    if (match[1] !== undefined) {
       elements.push({
         type: 'text',
         text: { content: match[1] },
         annotations: { bold: true },
       })
-    } else if (match[2]) {
+    } else if (match[2] !== undefined) {
       elements.push({
         type: 'text',
         text: { content: match[2] },
@@ -666,7 +666,7 @@ export const parseInlineMarkdown = (text: string): Array<Record<string, unknown>
   }
 
   const remaining = text.slice(lastIndex)
-  if (remaining) elements.push({ type: 'text', text: { content: remaining } })
+  if (remaining.length > 0) elements.push({ type: 'text', text: { content: remaining } })
 
   if (elements.length === 0) elements.push({ type: 'text', text: { content: text } })
 
@@ -699,7 +699,7 @@ const isTableSeparator = (line: string): boolean =>
 /** Parse markdown table lines into a Notion table block */
 const parseMarkdownTable = (lines: string[]): Record<string, unknown> | undefined => {
   if (lines.length < 2) return undefined
-  if (!lines.every((l) => l.trim().startsWith('|'))) return undefined
+  if (lines.every((l) => l.trim().startsWith('|')) === false) return undefined
 
   const sepIdx = lines.findIndex((l) => isTableSeparator(l))
   if (sepIdx < 0) return undefined
@@ -745,7 +745,7 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
     let current: string[] = []
     for (const line of lines) {
       const isBlockStart = /^#{1,3}\s|^-{3,}$|^- |^\d+\.\s/.test(line.trim())
-      if (isBlockStart && current.length > 0) {
+      if (isBlockStart === true && current.length > 0) {
         paragraphs.push(current.join('\n'))
         current = [line]
       } else {
@@ -757,15 +757,15 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
 
   for (const para of paragraphs) {
     const trimmed = para.trim()
-    if (!trimmed) continue
+    if (trimmed.length === 0) continue
 
-    if (/^-{3,}$/.test(trimmed)) {
+    if (/^-{3,}$/.test(trimmed) === true) {
       blocks.push({ type: 'divider', divider: {} })
       continue
     }
 
     const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/)
-    if (headingMatch?.[1] && headingMatch[2]) {
+    if (headingMatch?.[1] !== undefined && headingMatch[2] !== undefined) {
       const level = headingMatch[1].length as 1 | 2 | 3
       const type = `heading_${level}` as const
       blocks.push({
@@ -779,7 +779,7 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
     const allBullets = lines.every((l) => l.trim().startsWith('- '))
     const allNumbered = lines.every((l) => /^\d+\.\s/.test(l.trim()))
 
-    if (allBullets) {
+    if (allBullets === true) {
       for (const line of lines) {
         const content = line.trim().replace(/^- /, '')
         blocks.push({
@@ -790,7 +790,7 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
       continue
     }
 
-    if (allNumbered) {
+    if (allNumbered === true) {
       for (const line of lines) {
         const content = line.trim().replace(/^\d+\.\s/, '')
         blocks.push({
@@ -802,7 +802,7 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
     }
 
     const tableBlock = parseMarkdownTable(lines)
-    if (tableBlock) {
+    if (tableBlock !== undefined) {
       blocks.push(tableBlock)
       continue
     }
@@ -817,6 +817,7 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
   return blocks
 }
 
+/** Namespace for Notion markdown conversion utilities */
 export const NotionMarkdown = {
   pageToMarkdown,
   treeToMarkdown,
