@@ -37,12 +37,21 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [];
+  # Do not force preserve-symlinks here. pnpm's projected workspace graph
+  # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
+  # miss hoisted dependencies in CI.
+  vitestExec = ''
+    pnpm exec vitest run
+  '';
+  vitestWatchExec = ''
+    pnpm exec vitest
+  '';
 
   # Per-package test task using the workspace-aware vitest entrypoint.
   mkTestTask = pkg: {
     "test:${pkg.name}" = {
       description = "Run tests for ${pkg.name}";
-      exec = trace.exec "test:${pkg.name}" "pnpm exec vitest run";
+      exec = trace.exec "test:${pkg.name}" vitestExec;
       cwd = pkg.path;
       execIfModified = [
         "${pkg.path}/src/**/*.ts"
@@ -63,7 +72,7 @@ let
     "test:run" = {
       guard = "vitest";
       description = "Run all tests";
-      exec = if hasPackages then null else "pnpm exec vitest run";
+      exec = if hasPackages then null else vitestExec;
       after = if hasPackages
         then map (pkg: "test:${pkg.name}") packages ++ extraTests
         else [ "genie:run" ];
@@ -71,7 +80,7 @@ let
     "test:watch" = {
       guard = "vitest";
       description = "Run tests in watch mode";
-      exec = "pnpm exec vitest";
+      exec = vitestWatchExec;
       after = [ "genie:run" ];
     };
   };

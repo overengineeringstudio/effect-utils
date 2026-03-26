@@ -17,7 +17,7 @@ let
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
-    pnpmDepsHash = "sha256-ppfI0+irxCTv4JZIyaGAMTx1ZSjHzNF3wdJ7nqMkExM=";
+    pnpmDepsHash = "sha256-OWOft83yupv4kxbv0P4oW7iJif0gl9SGFgWGbT32NGE=";
     smokeTestArgs = [ "--help" ];
     inherit lockfileHash gitRev commitTs dirty;
   };
@@ -26,6 +26,11 @@ pkgs.stdenv.mkDerivation {
   pname = "megarepo-with-completions";
   version = base.version or "0.0.0";
   meta.mainProgram = "mr";
+  passthru = {
+    # Mirror the underlying FOD so external tooling can hash-refresh the
+    # prepared deps without rebuilding the completion wrapper.
+    inherit (base.passthru) pnpmDeps;
+  };
 
   phases = [ "installPhase" ];
 

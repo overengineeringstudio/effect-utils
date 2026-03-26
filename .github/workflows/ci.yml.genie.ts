@@ -9,12 +9,14 @@ import {
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
+  cachePnpmStoreStep,
   standardCIEnv,
   ciWorkflow,
   namespaceRunner,
   nixDiagnosticsArtifactStep,
   netlifyDeployStep,
   netlifyStorybookCommentStep,
+  pnpmStoreSetupStep,
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
@@ -25,6 +27,8 @@ const baseSteps = [
   installNixStep(),
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
+  pnpmStoreSetupStep,
+  cachePnpmStoreStep(),
   validateNixStoreStep,
   evictCachedPnpmDepsStep({
     flakeRef: '.#oxlint-npm',

@@ -232,6 +232,13 @@ let
         )
       )
   );
+  externalInstallRootsByWarmupOrder = lib.sort (
+    left: right:
+    if builtins.length left.memberDirs == builtins.length right.memberDirs then
+      left.installDir < right.installDir
+    else
+      builtins.length left.memberDirs < builtins.length right.memberDirs
+  ) externalInstallRoots;
 
   stagedWorkspaceMembers =
     let
@@ -514,9 +521,12 @@ let
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
-    lockfilePaths = lib.sort (left: right: left < right) (
-      [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots
-    );
+    # The first lockfile-only normalization pass pays pnpm's metadata warmup
+    # cost. Normalize smaller nested install roots first and the aggregate root
+    # last to keep the expensive root rewrite off the cold path.
+    lockfilePaths =
+      map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRootsByWarmupOrder
+      ++ [ "pnpm-lock.yaml" ];
     preInstall = ''
       chmod -R +w .
     '';
@@ -534,21 +544,29 @@ let
 
 in
 pkgs.stdenv.mkDerivation {
-  inherit name pnpmDeps;
+  inherit name;
 
   nativeBuildInputs = [
     pkgs.bun
+    # Prepared deps are restored from a compressed NAR via nix-store instead of
+    # tar so the serialized artifact stays cross-platform stable.
+    pkgs.nix
     pkgs.nodejs
     # Downstream packages still use `pnpm exec ...` in postBuild hooks for
     # asset builds. Prepared-tree restore removes install-time pnpm work, but
     # the builder should still provide the package manager for those hooks.
     pnpm
     pkgs.zstd
-  ]
-  ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
+  ];
 
   dontUnpack = true;
   dontFixup = true;
+  passthru = {
+    # Expose the hashed deps artifact directly so tooling such as
+    # nix-hash-refresh can target the real fixed-output boundary instead of the
+    # slower top-level CLI derivation.
+    inherit pnpmDeps;
+  };
 
   buildPhase = ''
     set -euo pipefail

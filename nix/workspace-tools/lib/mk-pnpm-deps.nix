@@ -4,7 +4,7 @@
 #
 # | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
 # |---------------------|----------------------------------------------------|----------------------------------------------|
-# | Cached artifact     | Normalized pnpm store tarball                      | Prepared install tree tarball                |
+# | Cached artifact     | Normalized pnpm store tarball                      | Compressed prepared-tree NAR                 |
 # | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
 # | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
 # | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
@@ -21,7 +21,8 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
-#    manifest-only workspace and archives the resulting prepared install tree.
+#    manifest-only workspace and stores the resulting prepared install tree as
+#    a compressed NAR.
 #
 # 2. mkRestoreScript: Generates a shell script snippet that extracts the
 #    prepared workspace tree over a full source workspace during the build.
@@ -35,6 +36,36 @@ let
   lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
+  nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
+    const fs = require("fs");
+    const raw = fs.readFileSync(0, "utf8");
+    if (raw.trim() === "") {
+      process.stdout.write("0");
+      process.exit(0);
+    }
+    const data = JSON.parse(raw);
+    const item = Array.isArray(data)
+      ? (data[0] ?? {})
+      : (typeof data === "object" && data !== null ? Object.values(data)[0] ?? {} : {});
+    process.stdout.write(String(item.closureSize ?? item.narSize ?? 0));
+  '';
+  stripPackageManagerScript = pkgs.writeText "strip-package-manager.cjs" ''
+    const fs = require("fs");
+
+    const [manifestPath, backupPath] = process.argv.slice(2);
+    if (!manifestPath || !backupPath || !fs.existsSync(manifestPath)) {
+      process.exit(0);
+    }
+
+    const pkg = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!Object.hasOwn(pkg, "packageManager")) {
+      process.exit(0);
+    }
+
+    fs.copyFileSync(manifestPath, backupPath);
+    delete pkg.packageManager;
+    fs.writeFileSync(manifestPath, JSON.stringify(pkg, null, 2) + "\n");
+  '';
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -98,7 +129,8 @@ in
       nativeBuildInputs = [
         pnpm
         pkgs.nodejs
-        pkgs.python3
+        pkgs.nix
+        pkgs.perl
         pkgs.cacert
         pkgs.zstd
       ];
@@ -109,20 +141,111 @@ in
       dontFixup = true;
 
       installPhase = ''
-        mkdir source
-        cp -r "$src"/. source/
-        chmod -R +w source
+        # Keep timing/size instrumentation inside the builder so downstream
+        # hash refresh and CI logs can point to the slow phase directly instead
+        # of only reporting end-to-end wall clock. The extra helpers add a
+        # little shell noise, but they are cheaper than guessing blindly.
+        timer_now() {
+          perl -MTime::HiRes=time -e 'printf "%.3f", time'
+        }
+
+        timer_elapsed() {
+          perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(timer_now)"
+        }
+
+        format_bytes() {
+          numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+        }
+
+        path_bytes() {
+          if [ -d "$1" ]; then
+            du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+          else
+            stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+          fi
+        }
+
+        file_count() {
+          if [ -d "$1" ]; then
+            find "$1" -type f | wc -l | tr -d ' '
+          else
+            echo 1
+          fi
+        }
+
+        nix_closure_bytes() {
+          nix path-info --json --closure-size "$1" 2>/dev/null \
+            | ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nixClosureBytesScript}
+        }
+
+        log_path_stats() {
+          local label="$1"
+          local path="$2"
+          if [ ! -e "$path" ]; then
+            return
+          fi
+
+          local bytes
+          bytes=$(path_bytes "$path")
+          local files
+          files=$(file_count "$path")
+          echo "workspace-prep: stats $label size=$(format_bytes "$bytes") files=$files path=$path"
+        }
+
+        log_store_closure() {
+          local label="$1"
+          local path="$2"
+          if [ ! -e "$path" ]; then
+            return
+          fi
+
+          local closure_bytes
+          closure_bytes=$(nix_closure_bytes "$path" || true)
+          if [ -n "$closure_bytes" ] && [ "$closure_bytes" != "0" ]; then
+            echo "workspace-prep: closure $label size=$(format_bytes "$closure_bytes") path=$path"
+          fi
+        }
+
+        strip_package_manager_field() {
+          local manifest_path="$1"
+          local backup_path="$2"
+          # We provide pnpm externally inside Nix. Keeping packageManager in the
+          # staged manifests makes pnpm install its own platform-specific
+          # runtime packages, which turns a supposedly shared FOD into a
+          # darwin-vs-linux hash divergence.
+          ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stripPackageManagerScript} "$manifest_path" "$backup_path"
+        }
+
+        restore_package_manager_field() {
+          local manifest_path="$1"
+          local backup_path="$2"
+          if [ -f "$backup_path" ]; then
+            mv "$backup_path" "$manifest_path"
+          fi
+        }
+
+        SOURCE_DIR="$NIX_BUILD_TOP/source"
+        sourceCopyStartedAt=$(timer_now)
+        mkdir "$SOURCE_DIR"
+        cp -r "$src"/. "$SOURCE_DIR"/
+        chmod -R +w "$SOURCE_DIR"
+        echo "workspace-prep: staged source copy duration=$(timer_elapsed "$sourceCopyStartedAt")s"
+        log_store_closure "src" "$src"
+        log_path_stats "staged-source-copy" "$SOURCE_DIR"
 
         if [ "$sourceRoot" = "." ]; then
-          cd source
+          cd "$SOURCE_DIR"
         else
-          cd "source/$sourceRoot"
+          cd "$SOURCE_DIR/$sourceRoot"
         fi
 
         runHook preInstall
 
         ${preInstall}
 
+        # pnpm still mutates store metadata (for example index.db and
+        # projects/*), so the Nix build must use a private writable HOME/store
+        # even though the final archive is immutable.
         export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
         export STORE_PATH=$(mktemp -d "$NIX_BUILD_TOP/pnpm-store.XXXXXX")
         export CI=true
@@ -139,7 +262,7 @@ in
         printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
         ${pnpmPlatform.setupScript}
 
-        node -e '
+	        node -e '
           const path = require("path");
           const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
           if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
@@ -150,25 +273,74 @@ in
           const installRoots = [...new Set(lockfilePaths.map((lockfilePath) => {
             const dir = path.dirname(lockfilePath);
             return dir === "" ? "." : dir;
-          }))].sort();
+          }))];
 
           process.stdout.write(installRoots.join("\n") + "\n");
-        ' > .pnpm-install-roots.txt
+	        ' > .pnpm-install-roots.txt
+	        echo "workspace-prep: install roots count=$(wc -l < .pnpm-install-roots.txt | tr -d ' ')"
 
-        while IFS= read -r install_root; do
-          [ -n "$install_root" ] || continue
+	        node -e '
+          const fs = require("fs");
+          const path = require("path");
+
+          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
+          for (const lockfilePath of lockfilePaths) {
+            const absoluteLockfilePath = path.resolve(lockfilePath);
+            if (!fs.existsSync(absoluteLockfilePath)) {
+              continue;
+            }
+
+            const contents = fs.readFileSync(absoluteLockfilePath, "utf8");
+            const docs = contents
+              .split(/^---\s*$/m)
+              .map((doc) => doc.trim())
+              .filter((doc) => doc.length > 0);
+
+            if (docs.length <= 1) {
+              continue;
+            }
+
+            // pnpm 11 may prepend a packageManagerDependencies document to the
+            // real dependency graph lockfile. Inside Nix builders we already
+            // pin pnpm externally, so keep only the final dependency-graph
+            // document for sandbox installs.
+            fs.writeFileSync(absoluteLockfilePath, `---\n''${docs.at(-1)}\n`);
+          }
+        '
+
+	        while IFS= read -r install_root; do
+	          [ -n "$install_root" ] || continue
 
           if [ ! -f "$install_root/package.json" ] || [ ! -f "$install_root/pnpm-lock.yaml" ]; then
             echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
             exit 1
           fi
 
-          echo "workspace-prep: installing $install_root"
-          (
-            cd "$install_root"
-            pnpm install --frozen-lockfile --ignore-scripts
-          )
-        done < .pnpm-install-roots.txt
+          strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
+
+	          echo "workspace-prep: normalizing lockfile for $install_root"
+	          normalizeStartedAt=$(timer_now)
+	          (
+	            cd "$install_root"
+            # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
+            # a reduced workspace closure. Rewriting the lockfile against the
+            # staged manifests produces the exact lock shape the subsequent
+            # frozen install expects.
+	            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+	          )
+	          echo "workspace-prep: normalized $install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
+	          log_path_stats "install-root:$install_root-after-normalize" "$install_root"
+
+	          echo "workspace-prep: installing $install_root"
+	          installStartedAt=$(timer_now)
+	          (
+	            cd "$install_root"
+	            pnpm install --frozen-lockfile --ignore-scripts
+	          )
+	          echo "workspace-prep: installed $install_root duration=$(timer_elapsed "$installStartedAt")s"
+	          log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
+          restore_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
+	        done < .pnpm-install-roots.txt
 
         export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
         node <<'NODE'
@@ -337,88 +509,40 @@ NODE
           -path '*/node_modules/.pnpm/lock.yaml' \
         \) -delete
 
-        # Restore original .npmrc (remove build-local settings that contain
-        # non-deterministic paths like $STORE_PATH).
+	        # Restore original .npmrc (remove build-local settings that contain
+	        # non-deterministic paths like $STORE_PATH).
         if [ -f .npmrc.orig ]; then
           mv .npmrc.orig .npmrc
         else
           rm -f .npmrc
         fi
 
-        rm -rf "$STORE_PATH"
-        rm -f .pnpm-install-roots.txt
+	        log_path_stats "prepared-workspace-pre-archive" .
+	        log_path_stats "pnpm-store-final" "$STORE_PATH"
+	        rm -rf "$STORE_PATH"
+	        rm -f .pnpm-install-roots.txt
 
         find . -type d -exec chmod 755 {} +
         find . -type f -perm /111 -exec chmod 555 {} +
         find . -type f ! -perm /111 -exec chmod 444 {} +
 
-        mkdir -p $out
-        export PREPARED_WORKSPACE_ARCHIVE=$(mktemp "$NIX_BUILD_TOP/prepared-workspace.XXXXXX.tar")
-        python <<'PY'
-import os
-import stat
-import tarfile
-
-workspace_root = os.getcwd()
-archive_path = os.environ["PREPARED_WORKSPACE_ARCHIVE"]
-
-def build_tarinfo(path: str, arcname: str) -> tarfile.TarInfo:
-    st = os.lstat(path)
-    info = tarfile.TarInfo(arcname)
-    info.uid = 0
-    info.gid = 0
-    info.uname = ""
-    info.gname = ""
-    info.mtime = 0
-
-    if stat.S_ISDIR(st.st_mode):
-        info.type = tarfile.DIRTYPE
-        info.mode = 0o755
-    elif stat.S_ISLNK(st.st_mode):
-        info.type = tarfile.SYMTYPE
-        info.mode = 0o777
-        info.linkname = os.readlink(path)
-    elif stat.S_ISREG(st.st_mode):
-        info.type = tarfile.REGTYPE
-        info.mode = 0o555 if st.st_mode & 0o111 else 0o444
-        info.size = st.st_size
-    else:
-        raise RuntimeError(f"Unsupported file type in prepared workspace: {path}")
-
-    return info
-
-def add_path(archive: tarfile.TarFile, path: str, arcname: str) -> None:
-    info = build_tarinfo(path, arcname)
-    if info.isreg():
-        with open(path, "rb") as handle:
-            archive.addfile(info, handle)
-    else:
-        archive.addfile(info)
-
-with tarfile.open(archive_path, mode="w", format=tarfile.GNU_FORMAT) as archive:
-    add_path(archive, workspace_root, ".")
-
-    for current_root, dirnames, filenames in os.walk(workspace_root):
-        dirnames.sort()
-        filenames.sort()
-
-        for dirname in dirnames:
-            path = os.path.join(current_root, dirname)
-            relpath = os.path.relpath(path, workspace_root)
-            add_path(archive, path, f"./{relpath}")
-
-        for filename in filenames:
-            path = os.path.join(current_root, filename)
-            relpath = os.path.relpath(path, workspace_root)
-            add_path(archive, path, f"./{relpath}")
-PY
-        zstd -T1 -q "$PREPARED_WORKSPACE_ARCHIVE" -o $out/prepared-workspace.tar.zst
-        rm -f "$PREPARED_WORKSPACE_ARCHIVE"
+        archiveStartedAt=$(timer_now)
+        log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
+        # We intentionally keep the output as a single compressed artifact, but
+        # tar turned out to be the wrong container: the prepared tree itself was
+        # byte-identical across darwin and linux while GNU tar still emitted
+        # different longlink records. `nix-store --dump` gives us the same
+        # "single file artifact" benefit while delegating serialization to
+        # Nix's own cross-platform canonical archive format without relying on
+        # experimental CLI features inside the builder.
+        nix-store --dump "$SOURCE_DIR" \
+          | ${pkgs.zstd}/bin/zstd -T1 -q -o "$out"
+        echo "workspace-prep: archive duration=$(timer_elapsed "$archiveStartedAt")s"
 
         runHook postInstall
       '';
 
-      outputHashMode = "recursive";
+      outputHashMode = "flat";
       outputHash = pnpmDepsHash;
     };
 
@@ -437,8 +561,20 @@ PY
       target ? ".",
     }:
     ''
+      # `nix-store --restore` wants a path that does not already exist. We
+      # therefore allocate a private parent directory first and restore into a
+      # child path inside it instead of relying on `mktemp -u`, which is racy.
+      nar_restore_parent="$(mktemp -d "$NIX_BUILD_TOP/pnpm-restore.XXXXXX")"
+      nar_restore_dir="$nar_restore_parent/tree"
       mkdir -p ${lib.escapeShellArg target}
-      zstd -d -c ${deps}/prepared-workspace.tar.zst | tar -xf - -C ${lib.escapeShellArg target}
+      ${pkgs.zstd}/bin/zstd -d -c ${deps} \
+        | nix-store --restore "$nar_restore_dir"
+      # Restore into an isolated tree first because the caller's target already
+      # contains real sources. We need overlay semantics here, not a wholesale
+      # replacement of the destination directory.
+      cp -a "$nar_restore_dir"/. ${lib.escapeShellArg target}/
+      chmod -R u+w "$nar_restore_parent"
+      rm -rf "$nar_restore_parent"
 
       export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
       export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"

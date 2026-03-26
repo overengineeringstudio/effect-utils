@@ -29,6 +29,9 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
+  nodeModulesProjectionHealthScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
+    builtins.readFile ./check-node-modules-projection-health.cjs
+  );
 
   sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   flock = "${pkgs.flock}/bin/flock";
@@ -71,6 +74,7 @@ let
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
+  healthCheckNodeModulesPaths = lib.concatStringsSep " " ([ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages));
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
   computeHashFn = ''
@@ -131,6 +135,53 @@ let
     }
   '';
 
+  resolveGvsLinksDirFn = ''
+    resolve_gvs_links_dir() {
+      if [ -n "''${PNPM_HOME:-}" ]; then
+        printf '%s\n' "''${PNPM_HOME}/store/v11/links"
+      elif [ -n "''${XDG_DATA_HOME:-}" ] && [ -d "''${XDG_DATA_HOME}/pnpm/store/v11" ]; then
+        printf '%s\n' "''${XDG_DATA_HOME}/pnpm/store/v11/links"
+      elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
+        printf '%s\n' "$HOME/.local/share/pnpm/store/v11/links"
+      elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
+        printf '%s\n' "$HOME/Library/pnpm/store/v11/links"
+      fi
+    }
+  '';
+
+  checkNodeModulesLinksHealthyFn = ''
+    check_node_modules_links_healthy() {
+      for node_modules_dir in ${healthCheckNodeModulesPaths}; do
+        if [ ! -d "$node_modules_dir" ]; then
+          continue
+        fi
+
+        broken_link="$(
+          find "$node_modules_dir" -mindepth 1 -maxdepth 2 -type l ! -exec test -e {} \; -print -quit
+        )"
+        if [ -n "$broken_link" ]; then
+          echo "[pnpm] Broken node_modules symlink detected: $broken_link" >&2
+          return 1
+        fi
+      done
+
+      # Keep the projection check in a generated script file instead of a
+      # shell heredoc. The heredoc variant broke in CI after devenv rendered
+      # the task into a larger script, and the file form is easier to test.
+      NODE_MODULES_DIRS="$(printf '%s\n' ${healthCheckNodeModulesPaths})" \
+        ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript}
+    }
+  '';
+
+  purgeNodeModulesFn = ''
+    purge_node_modules() {
+      rm -rf node_modules
+      for node_modules_dir in ${nodeModulesPaths}; do
+        rm -rf "$node_modules_dir"
+      done
+    }
+  '';
+
   allTasks = {
     "pnpm:install" = {
       guard = "pnpm";
@@ -152,35 +203,39 @@ let
         export npm_config_manage_package_manager_versions=false
 
         ${computeHashFn}
+        ${resolveGvsLinksDirFn}
+        ${checkNodeModulesLinksHealthyFn}
+        ${purgeNodeModulesFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
         # entries without re-resolving packageExtensions, so stale entries break
         # TypeScript resolution. Only clear links/ when config changes.
         # Content-addressable store (files/) is unaffected.
         # See: pnpm/pnpm#9739
-        _gvs_hash_file="${cacheRoot}/gvs-links.hash"
         _gvs_hash=$({
           pnpm --version
           sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
           sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
         } | compute_hash)
 
-        _gvs_links_dir=""
-        for _d in \
-          "''${PNPM_HOME:-__none__}/store/v11/links" \
-          "''${XDG_DATA_HOME:-__none__}/pnpm/store/v11/links" \
-          "$HOME/.local/share/pnpm/store/v11/links" \
-          "$HOME/Library/pnpm/store/v11/links"; do
-          if [ -d "$_d" ] || [ -d "$(dirname "$_d")" ]; then
-            _gvs_links_dir="$_d"; break
-          fi
-        done
+        _gvs_hash_file=""
+        _gvs_links_dir="$(resolve_gvs_links_dir)"
+        _purged_node_modules=false
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
+          _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
+          mkdir -p "$(dirname "$_gvs_links_dir")"
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, clearing stale links"
             rm -rf "$_gvs_links_dir"
+            purge_node_modules
+            _purged_node_modules=true
           fi
+        fi
+
+        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy; then
+          echo "[pnpm] node_modules projection is stale, purging install state"
+          purge_node_modules
         fi
 
         if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
@@ -192,12 +247,20 @@ let
         fi
 
         # Persist GVS hash after successful install
-        echo "$_gvs_hash" > "$_gvs_hash_file"
+        if [ -n "''${_gvs_hash_file:-}" ]; then
+          echo "$_gvs_hash" > "$_gvs_hash_file"
+        fi
 
         ${computeHashFn}
         ${emitDirStateFn}
         ${computeWorkspaceStateHash}
         cache_value="$(compute_workspace_state_hash)"
+        cache_value="$(
+          {
+            printf '%s\n' "$cache_value"
+            printf '%s\n' "''${_gvs_links_dir:-}"
+          } | compute_hash
+        )"
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
       status = trace.status "pnpm:install" "hash" ''
@@ -209,10 +272,22 @@ let
         fi
 
         ${computeHashFn}
+        ${resolveGvsLinksDirFn}
+        ${checkNodeModulesLinksHealthyFn}
         ${emitDirStateFn}
         ${computeWorkspaceStateHash}
         current_hash="$(compute_workspace_state_hash)"
+        gvs_links_dir="$(resolve_gvs_links_dir)"
+        current_hash="$(
+          {
+            printf '%s\n' "$current_hash"
+            printf '%s\n' "''${gvs_links_dir:-}"
+          } | compute_hash
+        )"
         stored_hash="$(cat "$hash_file")"
+        if ! check_node_modules_links_healthy; then
+          exit 1
+        fi
         if [ "$current_hash" != "$stored_hash" ]; then
           exit 1
         fi
@@ -237,7 +312,18 @@ let
       description = "Remove repo-root and package-level node_modules";
       after = cleanAfter;
       exec = trace.exec "pnpm:clean" ''
+        set -euo pipefail
+        ${resolveGvsLinksDirFn}
+
         rm -rf "node_modules" ${nodeModulesPaths}
+
+        # `pnpm:clean` is expected to force a genuinely fresh install. Keeping
+        # the live GVS projection around defeats that expectation because pnpm
+        # may reuse stale `links/` entries even after node_modules is gone.
+        gvs_links_dir="$(resolve_gvs_links_dir)"
+        if [ -n "''${gvs_links_dir:-}" ]; then
+          rm -rf "$gvs_links_dir" "$(dirname "$gvs_links_dir")/.effect-utils-gvs-links.hash"
+        fi
       '';
     };
 

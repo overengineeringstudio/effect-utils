@@ -76,19 +76,27 @@
         };
       in
       {
-        packages = cliPackages // {
-          beads = import ./nix/beads.nix { inherit pkgs; };
-          cli-build-stamp = cliBuildStamp.package;
-          effect-tsgo = tsgo.packages.${system}.effect-tsgo;
-          genie-dirty = cliPackagesDirty.genie;
-          megarepo-dirty = cliPackagesDirty.megarepo;
-          # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
-          oxlint-npm = oxlintNpm;
-          # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
-          oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
-            inherit pkgs oxlintNpm;
+        packages =
+          cliPackages
+          // {
+            beads = import ./nix/beads.nix { inherit pkgs; };
+            cli-build-stamp = cliBuildStamp.package;
+            effect-tsgo = tsgo.packages.${system}.effect-tsgo;
+            genie-dirty = cliPackagesDirty.genie;
+            # Publish the FODs as first-class flake outputs so external tooling
+            # can refresh hashes against the actual cached boundary without
+            # rebuilding the full CLI package graph.
+            "genie-pnpm-deps" = cliPackages.genie.passthru.pnpmDeps;
+            megarepo-dirty = cliPackagesDirty.megarepo;
+            "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.pnpmDeps;
+            "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
+            # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
+            oxlint-npm = oxlintNpm;
+            # oxlint-npm wrapped with automatic @overeng/oxc-config plugin injection
+            oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
+              inherit pkgs oxlintNpm;
+            };
           };
-        };
 
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {

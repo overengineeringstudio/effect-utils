@@ -25,7 +25,7 @@ let
   pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-YeRJNYVLeYgpuPD88Rc0X4MibPiCw7YZQxMsod37kqk=";
+  pnpmDepsHash = "sha256-yFw8J/HyB6wKfJppP7MChnK28MKn01Ly3uKYd0wBuJA=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -196,9 +196,17 @@ in
 pkgs.stdenv.mkDerivation {
   pname = "oxc-config-plugin";
   version = "0.1.0";
+  passthru = {
+    # Export the plugin's prepared deps boundary directly so hash tooling does
+    # not have to rebuild the full bundling derivation just to refresh one FOD.
+    inherit pnpmDeps;
+  };
 
   nativeBuildInputs = [
     bun
+    # mkRestoreScript now rehydrates the prepared deps through nix-store's NAR
+    # format because GNU tar was not byte-stable across darwin and linux.
+    pkgs.nix
     pkgs.nodejs
     pkgs.zstd
   ];
