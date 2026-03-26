@@ -32,6 +32,8 @@ emit_dir_state() {
 }
 
 resolve_gvs_links_dir() {
+  # Prefer the explicit pnpm home because CI now intentionally decouples the
+  # mutable store location from the workspace-relative GVS projection root.
   if [ -n "${PNPM_HOME:-}" ]; then
     printf '%s\n' "${PNPM_HOME}/store/v11/links"
   elif [ -n "${XDG_DATA_HOME:-}" ] && [ -d "${XDG_DATA_HOME}/pnpm/store/v11" ]; then
@@ -47,6 +49,8 @@ cache_fingerprint() {
   local workspace_state_hash="$1"
   local gvs_links_dir="$2"
 
+  # pnpm 11 bakes absolute paths into the live GVS projection, so two installs
+  # with identical manifests but different projection roots are not equivalent.
   {
     printf '%s\n' "$workspace_state_hash"
     printf '%s\n' "$gvs_links_dir"
