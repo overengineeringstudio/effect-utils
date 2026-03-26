@@ -71,6 +71,7 @@ let
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
+  healthCheckNodeModulesPaths = lib.concatStringsSep " " ([ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages));
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
   computeHashFn = ''
@@ -147,7 +148,7 @@ let
 
   checkNodeModulesLinksHealthyFn = ''
     check_node_modules_links_healthy() {
-      for node_modules_dir in ${nodeModulesPaths}; do
+      for node_modules_dir in ${healthCheckNodeModulesPaths}; do
         if [ ! -d "$node_modules_dir" ]; then
           continue
         fi
@@ -159,6 +160,93 @@ let
           echo "[pnpm] Broken node_modules symlink detected: $broken_link" >&2
           return 1
         fi
+      done
+
+      NODE_MODULES_DIRS="$(printf '%s\n' ${healthCheckNodeModulesPaths})" node <<'NODE'
+      const fs = require("fs");
+      const path = require("path");
+      const { createRequire } = require("module");
+
+      const moduleDirs = (process.env.NODE_MODULES_DIRS || "")
+        .split("\n")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .filter((value, index, values) => values.indexOf(value) === index)
+        .filter((value) => fs.existsSync(value));
+
+      const dependencyProjectionFailures = [];
+
+      const collectEntryPaths = (nodeModulesDir) => {
+        const result = [];
+        for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
+          if (entry.name === ".bin" || entry.name === ".pnpm") continue;
+
+          const entryPath = path.join(nodeModulesDir, entry.name);
+          if (entry.name.startsWith("@") && entry.isDirectory()) {
+            for (const scopedEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+              result.push(path.join(entryPath, scopedEntry.name));
+            }
+            continue;
+          }
+
+          result.push(entryPath);
+        }
+        return result;
+      };
+
+      for (const nodeModulesDir of moduleDirs) {
+        for (const entryPath of collectEntryPaths(nodeModulesDir)) {
+          let stat;
+          try {
+            stat = fs.lstatSync(entryPath);
+          } catch {
+            continue;
+          }
+
+          if (!stat.isSymbolicLink()) continue;
+
+          let realPath;
+          try {
+            realPath = fs.realpathSync(entryPath);
+          } catch {
+            continue;
+          }
+
+          const packageJsonPath = path.join(realPath, "package.json");
+          if (!fs.existsSync(packageJsonPath)) continue;
+
+          const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+          const dependencyNames = Object.keys(pkg.dependencies ?? {});
+          if (dependencyNames.length === 0) continue;
+
+          const requireFromPkg = createRequire(packageJsonPath);
+          for (const dependencyName of dependencyNames) {
+            try {
+              requireFromPkg.resolve(`''${dependencyName}/package.json`);
+            } catch {
+              dependencyProjectionFailures.push(
+                `''${pkg.name ?? entryPath} -> ''${dependencyName} (from ''${nodeModulesDir})`
+              );
+            }
+          }
+        }
+      }
+
+      if (dependencyProjectionFailures.length > 0) {
+        for (const failure of dependencyProjectionFailures) {
+          console.error(`[pnpm] Missing dependency projection: ''${failure}`);
+        }
+        process.exit(1);
+      }
+      NODE
+    }
+  '';
+
+  purgeNodeModulesFn = ''
+    purge_node_modules() {
+      rm -rf node_modules
+      for node_modules_dir in ${nodeModulesPaths}; do
+        rm -rf "$node_modules_dir"
       done
     }
   '';
@@ -185,6 +273,8 @@ let
 
         ${computeHashFn}
         ${resolveGvsLinksDirFn}
+        ${checkNodeModulesLinksHealthyFn}
+        ${purgeNodeModulesFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
         # entries without re-resolving packageExtensions, so stale entries break
@@ -199,6 +289,7 @@ let
 
         _gvs_hash_file=""
         _gvs_links_dir="$(resolve_gvs_links_dir)"
+        _purged_node_modules=false
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
           _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
@@ -206,7 +297,14 @@ let
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, clearing stale links"
             rm -rf "$_gvs_links_dir"
+            purge_node_modules
+            _purged_node_modules=true
           fi
+        fi
+
+        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy; then
+          echo "[pnpm] node_modules projection is stale, purging install state"
+          purge_node_modules
         fi
 
         if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then

@@ -544,10 +544,11 @@ let
 
 in
 pkgs.stdenv.mkDerivation {
-  inherit name pnpmDeps;
+  inherit name;
 
   nativeBuildInputs = [
     pkgs.bun
+    pkgs.gnutar
     pkgs.nodejs
     # Downstream packages still use `pnpm exec ...` in postBuild hooks for
     # asset builds. Prepared-tree restore removes install-time pnpm work, but
@@ -559,6 +560,9 @@ pkgs.stdenv.mkDerivation {
 
   dontUnpack = true;
   dontFixup = true;
+  passthru = {
+    inherit pnpmDeps;
+  };
 
   buildPhase = ''
     set -euo pipefail

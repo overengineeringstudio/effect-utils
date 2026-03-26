@@ -21,13 +21,16 @@ let
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
     # Managed by `dt nix:hash:genie` — do not edit manually.
-    pnpmDepsHash = "sha256-snZcynpTYLnQ/Gokgeq6CENyGanqokPINQI0xQ+Mb2w=";
+    pnpmDepsHash = "sha256-phZ9k6BYf3pcLssB3JxrJ31ex+kgK059khSent5nPSA=";
     inherit lockfileHash gitRev commitTs dirty;
   };
 in
 pkgs.runCommand "genie" {
   nativeBuildInputs = [ pkgs.makeWrapper ];
   meta.mainProgram = "genie";
+  passthru = {
+    inherit (unwrapped.passthru) pnpmDeps;
+  };
 } ''
   mkdir -p $out/bin
   makeWrapper ${unwrapped}/bin/genie $out/bin/genie \

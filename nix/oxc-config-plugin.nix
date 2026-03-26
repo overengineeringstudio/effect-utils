@@ -25,7 +25,7 @@ let
   pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-qS+3pBvPsiD1sqUo9hWAU+9QxqjBDXbeW17mU5Ns5iU=";
+  pnpmDepsHash = "sha256-bybmV13s+GzIjZseTpmW8Qc7vvQ4R4QXsrgGjwt+2c0=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -196,9 +196,13 @@ in
 pkgs.stdenv.mkDerivation {
   pname = "oxc-config-plugin";
   version = "0.1.0";
+  passthru = {
+    inherit pnpmDeps;
+  };
 
   nativeBuildInputs = [
     bun
+    pkgs.gnutar
     pkgs.nodejs
     pkgs.zstd
   ];

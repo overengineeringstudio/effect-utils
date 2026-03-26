@@ -141,7 +141,10 @@ pkgs.stdenv.mkDerivation {
   '';
 
   # Expose plugin path for consumers (e.g., lint-oxc.nix jsPlugins parameter).
-  passthru.pluginPath = if hasPlugin then "${pluginBundle}/plugin.js" else null;
+  passthru = {
+    pluginBundle = if hasPlugin then pluginBundle else null;
+    pluginPath = if hasPlugin then "${pluginBundle}/plugin.js" else null;
+  };
 
   meta = with pkgs.lib; {
     description = "npm oxlint with NAPI bindings for JavaScript plugin support";

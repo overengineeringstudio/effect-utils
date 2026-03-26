@@ -26,6 +26,9 @@ pkgs.stdenv.mkDerivation {
   pname = "megarepo-with-completions";
   version = base.version or "0.0.0";
   meta.mainProgram = "mr";
+  passthru = {
+    inherit (base.passthru) pnpmDeps;
+  };
 
   phases = [ "installPhase" ];
 
