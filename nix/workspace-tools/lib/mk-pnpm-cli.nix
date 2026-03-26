@@ -548,15 +548,16 @@ pkgs.stdenv.mkDerivation {
 
   nativeBuildInputs = [
     pkgs.bun
-    pkgs.gnutar
+    # Prepared deps are restored from a compressed NAR via nix-store instead of
+    # tar so the serialized artifact stays cross-platform stable.
+    pkgs.nix
     pkgs.nodejs
     # Downstream packages still use `pnpm exec ...` in postBuild hooks for
     # asset builds. Prepared-tree restore removes install-time pnpm work, but
     # the builder should still provide the package manager for those hooks.
     pnpm
     pkgs.zstd
-  ]
-  ++ lib.optionals (lockfileHash != null) [ pkgs.nix ];
+  ];
 
   dontUnpack = true;
   dontFixup = true;

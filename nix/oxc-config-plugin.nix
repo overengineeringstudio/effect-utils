@@ -25,7 +25,7 @@ let
   pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-tQlbmH3+PNzVUVFcGKYDPbukWA4GbCoVBPhY9T3JKyg=";
+  pnpmDepsHash = "sha256-yFw8J/HyB6wKfJppP7MChnK28MKn01Ly3uKYd0wBuJA=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -204,7 +204,9 @@ pkgs.stdenv.mkDerivation {
 
   nativeBuildInputs = [
     bun
-    pkgs.gnutar
+    # mkRestoreScript now rehydrates the prepared deps through nix-store's NAR
+    # format because GNU tar was not byte-stable across darwin and linux.
+    pkgs.nix
     pkgs.nodejs
     pkgs.zstd
   ];
