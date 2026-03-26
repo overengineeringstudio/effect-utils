@@ -2,7 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
+HELPERS_SCRIPT="$ROOT/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh"
 PROJECTION_SCRIPT="$ROOT/nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs"
+
+# The unit-style shell tests should execute the same helper implementations as
+# the generated task scripts so they catch real regressions instead of drift in
+# duplicated test-only copies.
+source "$HELPERS_SCRIPT"
 
 assert_eq() {
   local expected="$1"
@@ -28,49 +34,6 @@ assert_exit_code() {
     echo "  actual exit code:   $actual"
     exit 1
   fi
-}
-
-compute_hash() {
-  sha256sum | awk '{print $1}'
-}
-
-resolve_gvs_links_dir() {
-  if [ -n "${PNPM_HOME:-}" ]; then
-    printf '%s\n' "${PNPM_HOME}/store/v11/links"
-  elif [ -n "${XDG_DATA_HOME:-}" ] && [ -d "${XDG_DATA_HOME}/pnpm/store/v11" ]; then
-    printf '%s\n' "${XDG_DATA_HOME}/pnpm/store/v11/links"
-  elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
-    printf '%s\n' "$HOME/.local/share/pnpm/store/v11/links"
-  elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
-    printf '%s\n' "$HOME/Library/pnpm/store/v11/links"
-  fi
-}
-
-check_node_modules_links_healthy() {
-  for node_modules_dir in "$@"; do
-    if [ ! -d "$node_modules_dir" ]; then
-      continue
-    fi
-
-    broken_link="$(
-      find "$node_modules_dir" -mindepth 1 -maxdepth 2 -type l ! -exec test -e {} \; -print -quit
-    )"
-    if [ -n "$broken_link" ]; then
-      echo "[pnpm] Broken node_modules symlink detected: $broken_link" >&2
-      return 1
-    fi
-  done
-
-  NODE_MODULES_DIRS="$(printf '%s\n' "$@")" node "$PROJECTION_SCRIPT"
-}
-
-cache_fingerprint() {
-  local workspace_hash="$1"
-  local gvs_links_dir="$2"
-  {
-    printf '%s\n' "$workspace_hash"
-    printf '%s\n' "$gvs_links_dir"
-  } | compute_hash
 }
 
 make_projection_fixture() {
@@ -143,7 +106,7 @@ echo "Test 4: Projection health passes when symlinked package can resolve deps"
 healthy_dir="$test_dir/healthy"
 make_projection_fixture "$healthy_dir" 1
 set +e
-check_node_modules_links_healthy "$healthy_dir/node_modules"
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$healthy_dir/node_modules"
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
@@ -152,7 +115,7 @@ echo "Test 5: Projection health ignores packages that do not export ./package.js
 exports_dir="$test_dir/exports"
 make_projection_fixture "$exports_dir" 1 1
 set +e
-check_node_modules_links_healthy "$exports_dir/node_modules" >/dev/null 2>&1
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$exports_dir/node_modules" >/dev/null 2>&1
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health should not depend on package.json exports"
@@ -161,7 +124,7 @@ echo "Test 6: Projection health fails when symlinked package loses a transitive 
 stale_dir="$test_dir/stale"
 make_projection_fixture "$stale_dir" 0
 set +e
-check_node_modules_links_healthy "$stale_dir/node_modules" >/dev/null 2>&1
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$stale_dir/node_modules" >/dev/null 2>&1
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
@@ -171,7 +134,7 @@ broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"
 set +e
-check_node_modules_links_healthy "$broken_dir/node_modules" >/dev/null 2>&1
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$broken_dir/node_modules" >/dev/null 2>&1
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "broken symlink is rejected"

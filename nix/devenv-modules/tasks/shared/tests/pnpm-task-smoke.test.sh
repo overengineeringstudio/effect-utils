@@ -129,7 +129,7 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   export HOME="$tmpdir/home"
   export PNPM_HOME="$workspace/.pnpm-home-a"
   bash "$tmpdir/pnpm-install.exec.sh"
-  test -f "$workspace/.direnv/task-cache/pnpm-install/workspace.hash"
+  test -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
   test -d "$workspace/node_modules"
 )
 
