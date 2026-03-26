@@ -9,6 +9,7 @@ import {
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
+  cachePnpmStoreStep,
   standardCIEnv,
   ciWorkflow,
   namespaceRunner,
@@ -25,6 +26,7 @@ const baseSteps = [
   installNixStep(),
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
+  cachePnpmStoreStep(),
   validateNixStoreStep,
   evictCachedPnpmDepsStep({
     flakeRef: '.#oxlint-npm',
