@@ -232,6 +232,13 @@ let
         )
       )
   );
+  externalInstallRootsByWarmupOrder = lib.sort (
+    left: right:
+    if builtins.length left.memberDirs == builtins.length right.memberDirs then
+      left.installDir < right.installDir
+    else
+      builtins.length left.memberDirs < builtins.length right.memberDirs
+  ) externalInstallRoots;
 
   stagedWorkspaceMembers =
     let
@@ -514,9 +521,12 @@ let
     inherit name pnpmDepsHash;
     src = depsSrc;
     sourceRoot = ".";
-    lockfilePaths = lib.sort (left: right: left < right) (
-      [ "pnpm-lock.yaml" ] ++ map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRoots
-    );
+    # The first lockfile-only normalization pass pays pnpm's metadata warmup
+    # cost. Normalize smaller nested install roots first and the aggregate root
+    # last to keep the expensive root rewrite off the cold path.
+    lockfilePaths =
+      map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRootsByWarmupOrder
+      ++ [ "pnpm-lock.yaml" ];
     preInstall = ''
       chmod -R +w .
     '';

@@ -150,7 +150,7 @@ in
           const installRoots = [...new Set(lockfilePaths.map((lockfilePath) => {
             const dir = path.dirname(lockfilePath);
             return dir === "" ? "." : dir;
-          }))].sort();
+          }))];
 
           process.stdout.write(installRoots.join("\n") + "\n");
         ' > .pnpm-install-roots.txt
@@ -191,6 +191,16 @@ in
             echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
             exit 1
           fi
+
+          echo "workspace-prep: normalizing lockfile for $install_root"
+          (
+            cd "$install_root"
+            # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
+            # a reduced workspace closure. Rewriting the lockfile against the
+            # staged manifests produces the exact lock shape the subsequent
+            # frozen install expects.
+            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+          )
 
           echo "workspace-prep: installing $install_root"
           (

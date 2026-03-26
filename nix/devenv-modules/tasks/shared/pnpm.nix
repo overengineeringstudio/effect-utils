@@ -131,6 +131,38 @@ let
     }
   '';
 
+  resolveGvsLinksDirFn = ''
+    resolve_gvs_links_dir() {
+      if [ -n "''${PNPM_HOME:-}" ]; then
+        printf '%s\n' "''${PNPM_HOME}/store/v11/links"
+      elif [ -n "''${XDG_DATA_HOME:-}" ] && [ -d "''${XDG_DATA_HOME}/pnpm/store/v11" ]; then
+        printf '%s\n' "''${XDG_DATA_HOME}/pnpm/store/v11/links"
+      elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
+        printf '%s\n' "$HOME/.local/share/pnpm/store/v11/links"
+      elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
+        printf '%s\n' "$HOME/Library/pnpm/store/v11/links"
+      fi
+    }
+  '';
+
+  checkNodeModulesLinksHealthyFn = ''
+    check_node_modules_links_healthy() {
+      for node_modules_dir in ${nodeModulesPaths}; do
+        if [ ! -d "$node_modules_dir" ]; then
+          continue
+        fi
+
+        broken_link="$(
+          find "$node_modules_dir" -mindepth 1 -maxdepth 2 -type l ! -exec test -e {} \; -print -quit
+        )"
+        if [ -n "$broken_link" ]; then
+          echo "[pnpm] Broken node_modules symlink detected: $broken_link" >&2
+          return 1
+        fi
+      done
+    }
+  '';
+
   allTasks = {
     "pnpm:install" = {
       guard = "pnpm";
@@ -152,6 +184,7 @@ let
         export npm_config_manage_package_manager_versions=false
 
         ${computeHashFn}
+        ${resolveGvsLinksDirFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
         # entries without re-resolving packageExtensions, so stale entries break
@@ -165,20 +198,11 @@ let
         } | compute_hash)
 
         _gvs_hash_file=""
-        _gvs_links_dir=""
-        if [ -n "''${PNPM_HOME:-}" ]; then
-          _gvs_links_dir="''${PNPM_HOME}/store/v11/links"
-          mkdir -p "$(dirname "$_gvs_links_dir")"
-        elif [ -n "''${XDG_DATA_HOME:-}" ] && [ -d "''${XDG_DATA_HOME}/pnpm/store/v11" ]; then
-          _gvs_links_dir="''${XDG_DATA_HOME}/pnpm/store/v11/links"
-        elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
-          _gvs_links_dir="$HOME/.local/share/pnpm/store/v11/links"
-        elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
-          _gvs_links_dir="$HOME/Library/pnpm/store/v11/links"
-        fi
+        _gvs_links_dir="$(resolve_gvs_links_dir)"
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
           _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
+          mkdir -p "$(dirname "$_gvs_links_dir")"
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, clearing stale links"
             rm -rf "$_gvs_links_dir"
@@ -202,6 +226,12 @@ let
         ${emitDirStateFn}
         ${computeWorkspaceStateHash}
         cache_value="$(compute_workspace_state_hash)"
+        cache_value="$(
+          {
+            printf '%s\n' "$cache_value"
+            printf '%s\n' "''${_gvs_links_dir:-}"
+          } | compute_hash
+        )"
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
       status = trace.status "pnpm:install" "hash" ''
@@ -213,10 +243,22 @@ let
         fi
 
         ${computeHashFn}
+        ${resolveGvsLinksDirFn}
+        ${checkNodeModulesLinksHealthyFn}
         ${emitDirStateFn}
         ${computeWorkspaceStateHash}
         current_hash="$(compute_workspace_state_hash)"
+        gvs_links_dir="$(resolve_gvs_links_dir)"
+        current_hash="$(
+          {
+            printf '%s\n' "$current_hash"
+            printf '%s\n' "''${gvs_links_dir:-}"
+          } | compute_hash
+        )"
         stored_hash="$(cat "$hash_file")"
+        if ! check_node_modules_links_healthy; then
+          exit 1
+        fi
         if [ "$current_hash" != "$stored_hash" ]; then
           exit 1
         fi
