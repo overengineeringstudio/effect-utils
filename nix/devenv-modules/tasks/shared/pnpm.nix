@@ -29,6 +29,9 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
+  nodeModulesProjectionHealthScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
+    builtins.readFile ./check-node-modules-projection-health.cjs
+  );
 
   sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   flock = "${pkgs.flock}/bin/flock";
@@ -73,87 +76,6 @@ let
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
   healthCheckNodeModulesPaths = lib.concatStringsSep " " ([ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages));
   lockFilePaths = ''"pnpm-lock.yaml"'';
-  # Broken symlinks are only the first failure mode with pnpm 11 + GVS. We
-  # also verify that each projected package can still resolve its declared
-  # runtime deps, because stale projections can leave "existing" symlinks that
-  # nevertheless point at an incomplete graph.
-  nodeModulesProjectionHealthScript = pkgs.writeText "check-node-modules-projection-health.cjs" ''
-    const fs = require("fs");
-    const path = require("path");
-    const { createRequire } = require("module");
-
-    const moduleDirs = (process.env.NODE_MODULES_DIRS || "")
-      .split("\n")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .filter((value, index, values) => values.indexOf(value) === index)
-      .filter((value) => fs.existsSync(value));
-
-    const dependencyProjectionFailures = [];
-
-    const collectEntryPaths = (nodeModulesDir) => {
-      const result = [];
-      for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
-        if (entry.name === ".bin" || entry.name === ".pnpm") continue;
-
-        const entryPath = path.join(nodeModulesDir, entry.name);
-        if (entry.name.startsWith("@") && entry.isDirectory()) {
-          for (const scopedEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
-            result.push(path.join(entryPath, scopedEntry.name));
-          }
-          continue;
-        }
-
-        result.push(entryPath);
-      }
-      return result;
-    };
-
-    for (const nodeModulesDir of moduleDirs) {
-      for (const entryPath of collectEntryPaths(nodeModulesDir)) {
-        let stat;
-        try {
-          stat = fs.lstatSync(entryPath);
-        } catch {
-          continue;
-        }
-
-        if (!stat.isSymbolicLink()) continue;
-
-        let realPath;
-        try {
-          realPath = fs.realpathSync(entryPath);
-        } catch {
-          continue;
-        }
-
-        const packageJsonPath = path.join(realPath, "package.json");
-        if (!fs.existsSync(packageJsonPath)) continue;
-
-        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-        const dependencyNames = Object.keys(pkg.dependencies ?? {});
-        if (dependencyNames.length === 0) continue;
-
-        const requireFromPkg = createRequire(packageJsonPath);
-        for (const dependencyName of dependencyNames) {
-          try {
-            requireFromPkg.resolve(`''${dependencyName}/package.json`);
-          } catch {
-            dependencyProjectionFailures.push(
-              `''${pkg.name ?? entryPath} -> ''${dependencyName} (from ''${nodeModulesDir})`
-            );
-          }
-        }
-      }
-    }
-
-    if (dependencyProjectionFailures.length > 0) {
-      for (const failure of dependencyProjectionFailures) {
-        console.error(`[pnpm] Missing dependency projection: ''${failure}`);
-      }
-      process.exit(1);
-    }
-  '';
 
   computeHashFn = ''
     compute_hash() {
