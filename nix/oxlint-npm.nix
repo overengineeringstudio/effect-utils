@@ -144,6 +144,7 @@ pkgs.stdenv.mkDerivation {
   passthru = {
     pluginBundle = if hasPlugin then pluginBundle else null;
     pluginPath = if hasPlugin then "${pluginBundle}/plugin.js" else null;
+    depsBuildFingerprint = if hasPlugin then pluginBundle.passthru.depsBuildFingerprint else null;
   };
 
   meta = with pkgs.lib; {

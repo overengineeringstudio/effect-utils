@@ -23,8 +23,14 @@
 let
   lib = pkgs.lib;
   pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
-  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
+  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix {
+    inherit pkgs;
+    pnpm = pinnedPnpm;
+  };
   packageDir = "packages/@overeng/oxc-config";
+  # Managed by `dt nix:hash:oxlint-npm`. The plugin bundle depends on the
+  # prepared pnpm deps recipe, so the quick-check cache must follow that recipe.
+  depsBuildFingerprint = "724a99a482c3ce78acebbf5a2e75cde82392843ed80cfe66349be1852f9b1c57";
   pnpmDepsHash = "sha256-yFw8J/HyB6wKfJppP7MChnK28MKn01Ly3uKYd0wBuJA=";
 
   srcPath =
@@ -48,9 +54,9 @@ let
     || (
       relPath != ""
       && builtins.elem relPath (
-        lib.genList
-          (index: lib.concatStringsSep "/" (lib.take (index + 1) (lib.splitString "/" prefix)))
-          (lib.length (lib.splitString "/" prefix) - 1)
+        lib.genList (index: lib.concatStringsSep "/" (lib.take (index + 1) (lib.splitString "/" prefix))) (
+          lib.length (lib.splitString "/" prefix) - 1
+        )
       )
     );
 
@@ -81,45 +87,66 @@ let
             lines;
 
       # GVS requires a global pnpm store unavailable inside Nix sandboxes
-      stripGvs = lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
+      stripGvs =
+        lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
     in
     stripGvs (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
 
   formatWorkspaceYaml =
     packageDirs: suffixLines:
     let
-      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs);
+      packagesBlock = builtins.concatStringsSep "\n" (
+        [ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs
+      );
       suffix = builtins.concatStringsSep "\n" suffixLines;
     in
-    if suffix == "" then
-      "${packagesBlock}\n"
-    else
-      "${packagesBlock}\n\n${suffix}\n";
+    if suffix == "" then "${packagesBlock}\n" else "${packagesBlock}\n\n${suffix}\n";
 
-  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml [ packageDir ] (workspaceSuffixLines rootPnpmWorkspaceYaml);
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml [ packageDir ] (
+    workspaceSuffixLines rootPnpmWorkspaceYaml
+  );
 
-  copyFileCmd =
-    relPath:
-    ''
-      mkdir -p "$out/$(dirname "${relPath}")"
-      cp "$src/${relPath}" "$out/${relPath}"
-    '';
+  copyFileCmd = relPath: ''
+    mkdir -p "$out/$(dirname "${relPath}")"
+    cp "$src/${relPath}" "$out/${relPath}"
+  '';
 
-  copyDirCmd =
-    relPath:
-    ''
-      mkdir -p "$out/$(dirname "${relPath}")"
-      cp -R "$src/${relPath}" "$out/$(dirname "${relPath}")/"
-      chmod -R +w "$out/${relPath}"
-    '';
+  copyDirCmd = relPath: ''
+    mkdir -p "$out/$(dirname "${relPath}")"
+    cp -R "$src/${relPath}" "$out/$(dirname "${relPath}")/"
+    chmod -R +w "$out/${relPath}"
+  '';
 
-  copyOptionalFileCmd =
-    relPath:
-    ''
-      if [ -f "$src/${relPath}" ]; then
-        ${copyFileCmd relPath}
-      fi
-    '';
+  copyOptionalFileCmd = relPath: ''
+    if [ -f "$src/${relPath}" ]; then
+      ${copyFileCmd relPath}
+    fi
+  '';
+
+  fileFingerprintEntry = relPath: {
+    path = relPath;
+    content = builtins.readFile (srcPath + "/${relPath}");
+  };
+
+  collectRelativeFiles =
+    relDir:
+    let
+      entries = builtins.readDir (srcPath + "/${relDir}");
+      names = lib.sort (left: right: left < right) (builtins.attrNames entries);
+    in
+    lib.concatMap (
+      name:
+      let
+        relPath = "${relDir}/${name}";
+        entryType = entries.${name};
+      in
+      if entryType == "directory" then
+        collectRelativeFiles relPath
+      else if entryType == "regular" || entryType == "symlink" then
+        [ relPath ]
+      else
+        [ ]
+    ) names;
 
   materializeWorkspace =
     {
@@ -131,19 +158,24 @@ let
         set -euo pipefail
         mkdir -p "$out"
       ''
-      + builtins.concatStringsSep "\n" (map copyFileCmd [ "package.json" "pnpm-lock.yaml" ])
-      + builtins.concatStringsSep "\n" (map copyOptionalFileCmd [ ".npmrc" "tsconfig.base.json" ])
-      + ''
-        cat > "$out/pnpm-workspace.yaml" <<'EOF'
-${filteredRootPnpmWorkspaceYaml}
-EOF
-      ''
-      + (
-        if manifestOnly then
-          copyFileCmd "${packageDir}/package.json"
-        else
-          copyDirCmd packageDir
+      + builtins.concatStringsSep "\n" (
+        map copyFileCmd [
+          "package.json"
+          "pnpm-lock.yaml"
+        ]
       )
+      + builtins.concatStringsSep "\n" (
+        map copyOptionalFileCmd [
+          ".npmrc"
+          "tsconfig.base.json"
+        ]
+      )
+      + ''
+                cat > "$out/pnpm-workspace.yaml" <<'EOF'
+        ${filteredRootPnpmWorkspaceYaml}
+        EOF
+      ''
+      + (if manifestOnly then copyFileCmd "${packageDir}/package.json" else copyDirCmd packageDir)
       + "\n"
       + copyDirCmd patchesDir
     );
@@ -152,6 +184,47 @@ EOF
     nameSuffix = "pnpm-deps-src";
     manifestOnly = true;
   };
+
+  depsFingerprintFiles = lib.sort (left: right: left.path < right.path) (
+    (map fileFingerprintEntry [
+      "package.json"
+      "pnpm-lock.yaml"
+      "${packageDir}/package.json"
+    ])
+    ++
+      lib.concatMap
+        (
+          relPath: lib.optional (builtins.pathExists (srcPath + "/${relPath}")) (fileFingerprintEntry relPath)
+        )
+        [
+          ".npmrc"
+          "tsconfig.base.json"
+        ]
+    ++ [
+      {
+        path = "pnpm-workspace.yaml";
+        content = filteredRootPnpmWorkspaceYaml;
+      }
+    ]
+    ++ map fileFingerprintEntry (collectRelativeFiles patchesDir)
+  );
+
+  currentDepsBuildFingerprint = builtins.hashString "sha256" (
+    builtins.toJSON {
+      # Model the deps recipe from staged workspace inputs plus builder code.
+      # Do not hash this file directly: doing so made the stored quick-check
+      # value self-referential and caused unnecessary fingerprint churn after
+      # writing updated values back to disk.
+      builderSources = {
+        mkPnpmDeps = builtins.readFile ./workspace-tools/lib/mk-pnpm-deps.nix;
+        pnpmPlatform = builtins.readFile ./workspace-tools/lib/pnpm-platform.nix;
+      };
+      pnpmVersion = lib.getVersion pinnedPnpm;
+      preInstall = "";
+      lockfilePaths = [ "pnpm-lock.yaml" ];
+      files = depsFingerprintFiles;
+    }
+  );
 
   # Full source for building (includes .ts files, excludes node_modules etc.)
   buildSrc = lib.cleanSourceWith {
@@ -179,7 +252,12 @@ EOF
       in
       !(lib.elem baseName excludedNames)
       && (
-        builtins.elem relPath [ "package.json" "pnpm-lock.yaml" ".npmrc" "tsconfig.base.json" ]
+        builtins.elem relPath [
+          "package.json"
+          "pnpm-lock.yaml"
+          ".npmrc"
+          "tsconfig.base.json"
+        ]
         || hasPathPrefix relPath packageDir
         || hasPathPrefix relPath patchesDir
       );
@@ -189,6 +267,7 @@ EOF
     name = "oxc-config";
     src = depsSrc;
     sourceRoot = ".";
+    depsBuildFingerprint = currentDepsBuildFingerprint;
     inherit pnpmDepsHash;
   };
 
@@ -200,6 +279,7 @@ pkgs.stdenv.mkDerivation {
     # Export the plugin's prepared deps boundary directly so hash tooling does
     # not have to rebuild the full bundling derivation just to refresh one FOD.
     inherit pnpmDeps;
+    depsBuildFingerprint = currentDepsBuildFingerprint;
   };
 
   nativeBuildInputs = [
@@ -215,30 +295,30 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
 
   buildPhase = ''
-    set -euo pipefail
-    runHook preBuild
+        set -euo pipefail
+        runHook preBuild
 
-    cp -r ${buildSrc} workspace
-    chmod -R +w workspace
-    ${pnpmDepsHelper.mkRestoreScript {
-      deps = pnpmDeps;
-      target = "workspace";
-    }}
-    chmod -R +w workspace
-    cat > workspace/pnpm-workspace.yaml <<'EOF'
-${filteredRootPnpmWorkspaceYaml}
-EOF
-    cd workspace
+        cp -r ${buildSrc} workspace
+        chmod -R +w workspace
+        ${pnpmDepsHelper.mkRestoreScript {
+          deps = pnpmDeps;
+          target = "workspace";
+        }}
+        chmod -R +w workspace
+        cat > workspace/pnpm-workspace.yaml <<'EOF'
+    ${filteredRootPnpmWorkspaceYaml}
+    EOF
+        cd workspace
 
-    cd ${packageDir}
+        cd ${packageDir}
 
-    # Bundle into single JS file.
-    # --external jiti: eslint's config loader uses jiti for dynamic imports, but
-    # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
-    # to exclude. This avoids bundling issues with jiti's native module resolution.
-    bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
+        # Bundle into single JS file.
+        # --external jiti: eslint's config loader uses jiti for dynamic imports, but
+        # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
+        # to exclude. This avoids bundling issues with jiti's native module resolution.
+        bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
 
-    runHook postBuild
+        runHook postBuild
   '';
 
   checkPhase = ''
