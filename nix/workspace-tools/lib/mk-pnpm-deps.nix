@@ -155,6 +155,35 @@ in
           process.stdout.write(installRoots.join("\n") + "\n");
         ' > .pnpm-install-roots.txt
 
+        node -e '
+          const fs = require("fs");
+          const path = require("path");
+
+          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
+          for (const lockfilePath of lockfilePaths) {
+            const absoluteLockfilePath = path.resolve(lockfilePath);
+            if (!fs.existsSync(absoluteLockfilePath)) {
+              continue;
+            }
+
+            const contents = fs.readFileSync(absoluteLockfilePath, "utf8");
+            const docs = contents
+              .split(/^---\s*$/m)
+              .map((doc) => doc.trim())
+              .filter((doc) => doc.length > 0);
+
+            if (docs.length <= 1) {
+              continue;
+            }
+
+            // pnpm 11 may prepend a packageManagerDependencies document to the
+            // real dependency graph lockfile. Inside Nix builders we already
+            // pin pnpm externally, so keep only the final dependency-graph
+            // document for sandbox installs.
+            fs.writeFileSync(absoluteLockfilePath, `---\n''${docs.at(-1)}\n`);
+          }
+        '
+
         while IFS= read -r install_root; do
           [ -n "$install_root" ] || continue
 
