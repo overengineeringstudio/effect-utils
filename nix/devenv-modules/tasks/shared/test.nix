@@ -37,6 +37,9 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [];
+  # Do not force preserve-symlinks here. pnpm's projected workspace graph
+  # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
+  # miss hoisted dependencies in CI.
   vitestExec = ''
     pnpm exec vitest run
   '';

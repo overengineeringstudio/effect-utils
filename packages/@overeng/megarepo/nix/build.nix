@@ -27,6 +27,8 @@ pkgs.stdenv.mkDerivation {
   version = base.version or "0.0.0";
   meta.mainProgram = "mr";
   passthru = {
+    # Mirror the underlying FOD so external tooling can hash-refresh the
+    # prepared deps without rebuilding the completion wrapper.
     inherit (base.passthru) pnpmDeps;
   };
 

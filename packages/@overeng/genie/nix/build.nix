@@ -29,6 +29,8 @@ pkgs.runCommand "genie" {
   nativeBuildInputs = [ pkgs.makeWrapper ];
   meta.mainProgram = "genie";
   passthru = {
+    # Keep the prepared pnpm deps reachable from the wrapped CLI too so flake
+    # consumers and hash tooling can target one stable attribute path.
     inherit (unwrapped.passthru) pnpmDeps;
   };
 } ''

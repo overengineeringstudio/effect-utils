@@ -156,10 +156,13 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     [ -n "${'${GITHUB_STEP_SUMMARY:-}'}" ] || return 0
     {
       echo "### CI Task"
-      echo "- Task: \`$__task\`"
-      echo "- Status: \`$1\`"
-      echo "- Duration: \`$__elapsed s\`"
-      echo "- Attempts: \`$__n/$__max\`"
+      # Keep summary values plain text. Backticks inside double quotes trigger
+      # shell command substitution and turned failed-task metadata into bogus
+      # commands on GitHub Actions runners.
+      echo "- Task: $__task"
+      echo "- Status: $1"
+      echo "- Duration: $__elapsed s"
+      echo "- Attempts: $__n/$__max"
       [ -z "${'${2:-}'}" ] || echo "- Note: $2"
     } >> "$GITHUB_STEP_SUMMARY"
   }

@@ -83,6 +83,9 @@
             cli-build-stamp = cliBuildStamp.package;
             effect-tsgo = tsgo.packages.${system}.effect-tsgo;
             genie-dirty = cliPackagesDirty.genie;
+            # Publish the FODs as first-class flake outputs so external tooling
+            # can refresh hashes against the actual cached boundary without
+            # rebuilding the full CLI package graph.
             "genie-pnpm-deps" = cliPackages.genie.passthru.pnpmDeps;
             megarepo-dirty = cliPackagesDirty.megarepo;
             "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.pnpmDeps;
