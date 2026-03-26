@@ -159,8 +159,11 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
   const quotedCommand = shellSingleQuote(command)
   const quotedLabel = shellSingleQuote(label)
   return `__nix_gc_retry() {
-  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __debug=${'${CI_DEBUG_WRAPPER:-0}'} __tail_lines=${'${CI_DEBUG_LOG_TAIL_LINES:-80}'} __snapshot_every=${'${CI_DEBUG_PROCESS_SNAPSHOT_EVERY_HEARTBEATS:-3}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid __cmd_pid
   __start=$(date +%s)
+  if ! [ "$__snapshot_every" -ge 1 ] 2>/dev/null; then
+    __snapshot_every=1
+  fi
 
   __write_summary() {
     [ -n "${'${GITHUB_STEP_SUMMARY:-}'}" ] || return 0
@@ -177,19 +180,74 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     } >> "$GITHUB_STEP_SUMMARY"
   }
 
+  __dump_process_subtree() {
+    local __queue __pid __children
+    __queue="${'${1:-}'}"
+    while [ -n "$__queue" ]; do
+      __pid=${'${__queue%% *}'}
+      if [ "$__queue" = "$__pid" ]; then
+        __queue=''
+      else
+        __queue=${'${__queue#* }'}
+      fi
+      [ -n "$__pid" ] || continue
+      ps -ww -o pid=,ppid=,pgid=,stat=,etime=,%cpu=,%mem=,args= -p "$__pid" 2>/dev/null || true
+      __children=$(pgrep -P "$__pid" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//' || true)
+      [ -z "$__children" ] || __queue="$__queue $__children"
+    done
+  }
+
+  __dump_debug_snapshot() {
+    [ "$__debug" = 1 ] || return 0
+    echo "::group::[ci-debug] $__task snapshot after $__elapsed s (attempt $__n/$__max)"
+    echo "[ci-debug] command pid: ${'${__cmd_pid:-unknown}'}"
+    if [ -n "${'${__cmd_pid:-}'}" ] && kill -0 "$__cmd_pid" 2>/dev/null; then
+      if command -v pstree >/dev/null 2>&1; then
+        echo "[ci-debug] process tree"
+        pstree -apl "$__cmd_pid" || true
+      else
+        echo "[ci-debug] process snapshot"
+        __dump_process_subtree "$__cmd_pid"
+      fi
+    else
+      echo "[ci-debug] wrapped command is no longer running"
+    fi
+
+    if [ -f "$__log" ] && [ -s "$__log" ]; then
+      echo "[ci-debug] recent combined output"
+      tail -n "$__tail_lines" "$__log" || true
+    else
+      echo "[ci-debug] no combined output captured yet"
+    fi
+    echo "::endgroup::"
+  }
+
   while [ "$__n" -le "$__max" ]; do
     echo "::notice::[ci] starting $__task (attempt $__n/$__max)"
+    __log=$(mktemp)
+    set +e
     (
-      while sleep "$__heartbeat"; do
+      set -o pipefail
+      eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+    ) &
+    __cmd_pid=$!
+    (
+      __heartbeat_count=0
+      while kill -0 "$__cmd_pid" 2>/dev/null; do
+        sleep "$__heartbeat" || break
+        kill -0 "$__cmd_pid" 2>/dev/null || break
         __now=$(date +%s)
         __elapsed=$((__now - __start))
+        __heartbeat_count=$((__heartbeat_count + 1))
         echo "::notice::[ci] $__task still running after $__elapsed s (attempt $__n/$__max)"
+        if [ "$__debug" = 1 ] && [ $((__heartbeat_count % __snapshot_every)) -eq 0 ]; then
+          __dump_debug_snapshot
+        fi
       done
     ) &
     __hb_pid=$!
-
-    __log=$(mktemp)
-    set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+    wait "$__cmd_pid"; __rc=$?
+    set -e
 
     kill "$__hb_pid" 2>/dev/null || true
     wait "$__hb_pid" 2>/dev/null || true
@@ -209,6 +267,9 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     }
 
     __path=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+    if [ "$__debug" = 1 ]; then
+      __dump_debug_snapshot
+    fi
     rm -f "$__log"
     if [ -z "$__path" ]; then
       echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
