@@ -29,11 +29,13 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath "pnpm-install";
+  pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
+    builtins.readFile ./pnpm-task-helpers.sh
+  );
   nodeModulesProjectionHealthScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
 
-  sha256sum = "${pkgs.coreutils}/bin/sha256sum";
   flock = "${pkgs.flock}/bin/flock";
 
   packageNameToPath = builtins.listToAttrs (
@@ -77,39 +79,10 @@ let
   healthCheckNodeModulesPaths = lib.concatStringsSep " " ([ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages));
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
-  computeHashFn = ''
-    compute_hash() {
-      ${sha256sum} | awk '{print $1}'
-    }
-  '';
-
-  emitDirStateFn = ''
-    emit_dir_state() {
-      local dir="$1"
-
-      if [ ! -d "$dir" ]; then
-        return
-      fi
-
-      find "$dir" \
-        \( \
-          -name .git -o \
-          -name .direnv -o \
-          -name .devenv -o \
-          -name .turbo -o \
-          -name .cache -o \
-          -name node_modules -o \
-          -name dist -o \
-          -name coverage -o \
-          -name result -o \
-          -name tmp \
-        \) -prune -o -type f -print \
-        | LC_ALL=C sort \
-        | while IFS= read -r file; do
-          printf '%s ' "''${file#"$dir"/}"
-          ${sha256sum} "$file" | awk '{print $1}'
-        done
-    }
+  loadPnpmTaskHelpersFn = ''
+    # Reuse the exact same helper implementations in task execution and shell
+    # tests so cleanup refactors cannot silently drift the two code paths apart.
+    source ${lib.escapeShellArg pnpmTaskHelpersScript}
   '';
 
   computeWorkspaceStateHash = ''
@@ -135,50 +108,30 @@ let
     }
   '';
 
-  resolveGvsLinksDirFn = ''
-    resolve_gvs_links_dir() {
-      if [ -n "''${PNPM_HOME:-}" ]; then
-        printf '%s\n' "''${PNPM_HOME}/store/v11/links"
-      elif [ -n "''${XDG_DATA_HOME:-}" ] && [ -d "''${XDG_DATA_HOME}/pnpm/store/v11" ]; then
-        printf '%s\n' "''${XDG_DATA_HOME}/pnpm/store/v11/links"
-      elif [ -d "$HOME/.local/share/pnpm/store/v11" ]; then
-        printf '%s\n' "$HOME/.local/share/pnpm/store/v11/links"
-      elif [ -d "$HOME/Library/pnpm/store/v11" ]; then
-        printf '%s\n' "$HOME/Library/pnpm/store/v11/links"
+  computeInstallStateHashFn = ''
+    compute_install_state_hash() {
+      local workspace_state_hash
+      local gvs_links_dir
+
+      workspace_state_hash="$(compute_workspace_state_hash)"
+      gvs_links_dir="$(resolve_gvs_links_dir)"
+
+      {
+        printf '%s\n' "$workspace_state_hash"
+        printf '%s\n' "''${gvs_links_dir:-}"
+      } | compute_hash
+    }
+  '';
+
+  runPnpmInstallFn = ''
+    run_pnpm_install() {
+      if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
+        pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+      elif [ -n "''${CI:-}" ]; then
+        pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
+      else
+        pnpm install --config.confirmModulesPurge=false
       fi
-    }
-  '';
-
-  checkNodeModulesLinksHealthyFn = ''
-    check_node_modules_links_healthy() {
-      for node_modules_dir in ${healthCheckNodeModulesPaths}; do
-        if [ ! -d "$node_modules_dir" ]; then
-          continue
-        fi
-
-        broken_link="$(
-          find "$node_modules_dir" -mindepth 1 -maxdepth 2 -type l ! -exec test -e {} \; -print -quit
-        )"
-        if [ -n "$broken_link" ]; then
-          echo "[pnpm] Broken node_modules symlink detected: $broken_link" >&2
-          return 1
-        fi
-      done
-
-      # Keep the projection check in a generated script file instead of a
-      # shell heredoc. The heredoc variant broke in CI after devenv rendered
-      # the task into a larger script, and the file form is easier to test.
-      NODE_MODULES_DIRS="$(printf '%s\n' ${healthCheckNodeModulesPaths})" \
-        ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript}
-    }
-  '';
-
-  purgeNodeModulesFn = ''
-    purge_node_modules() {
-      rm -rf node_modules
-      for node_modules_dir in ${nodeModulesPaths}; do
-        rm -rf "$node_modules_dir"
-      done
     }
   '';
 
@@ -189,8 +142,12 @@ let
       after = installAfter;
       exec = trace.exec "pnpm:install" ''
         set -euo pipefail
+        ${loadPnpmTaskHelpersFn}
         mkdir -p "${cacheRoot}"
-        hash_file="${cacheRoot}/workspace.hash"
+        # This cache tracks the effective install state, not just workspace
+        # manifests. The fingerprint also includes the active GVS projection
+        # root because pnpm 11 bakes absolute paths into `links/`.
+        hash_file="${cacheRoot}/install-state.hash"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -202,10 +159,9 @@ let
 
         export npm_config_manage_package_manager_versions=false
 
-        ${computeHashFn}
-        ${resolveGvsLinksDirFn}
-        ${checkNodeModulesLinksHealthyFn}
-        ${purgeNodeModulesFn}
+        ${computeWorkspaceStateHash}
+        ${computeInstallStateHashFn}
+        ${runPnpmInstallFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
         # entries without re-resolving packageExtensions, so stale entries break
@@ -228,64 +184,40 @@ let
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, clearing stale links"
             rm -rf "$_gvs_links_dir"
-            purge_node_modules
+            purge_node_modules node_modules ${nodeModulesPaths}
             _purged_node_modules=true
           fi
         fi
 
-        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy; then
+        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is stale, purging install state"
-          purge_node_modules
+          purge_node_modules node_modules ${nodeModulesPaths}
         fi
 
-        if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-          pnpm install --config.confirmModulesPurge=false --frozen-lockfile
-        elif [ -n "''${CI:-}" ]; then
-          pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
-        else
-          pnpm install --config.confirmModulesPurge=false
-        fi
+        run_pnpm_install
 
         # Persist GVS hash after successful install
         if [ -n "''${_gvs_hash_file:-}" ]; then
           echo "$_gvs_hash" > "$_gvs_hash_file"
         fi
 
-        ${computeHashFn}
-        ${emitDirStateFn}
-        ${computeWorkspaceStateHash}
-        cache_value="$(compute_workspace_state_hash)"
-        cache_value="$(
-          {
-            printf '%s\n' "$cache_value"
-            printf '%s\n' "''${_gvs_links_dir:-}"
-          } | compute_hash
-        )"
+        cache_value="$(compute_install_state_hash)"
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
       status = trace.status "pnpm:install" "hash" ''
         set -euo pipefail
-        hash_file="${cacheRoot}/workspace.hash"
+        ${loadPnpmTaskHelpersFn}
+        hash_file="${cacheRoot}/install-state.hash"
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
           exit 1
         fi
 
-        ${computeHashFn}
-        ${resolveGvsLinksDirFn}
-        ${checkNodeModulesLinksHealthyFn}
-        ${emitDirStateFn}
         ${computeWorkspaceStateHash}
-        current_hash="$(compute_workspace_state_hash)"
-        gvs_links_dir="$(resolve_gvs_links_dir)"
-        current_hash="$(
-          {
-            printf '%s\n' "$current_hash"
-            printf '%s\n' "''${gvs_links_dir:-}"
-          } | compute_hash
-        )"
+        ${computeInstallStateHashFn}
+        current_hash="$(compute_install_state_hash)"
         stored_hash="$(cat "$hash_file")"
-        if ! check_node_modules_links_healthy; then
+        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
           exit 1
         fi
         if [ "$current_hash" != "$stored_hash" ]; then
@@ -313,9 +245,9 @@ let
       after = cleanAfter;
       exec = trace.exec "pnpm:clean" ''
         set -euo pipefail
-        ${resolveGvsLinksDirFn}
+        ${loadPnpmTaskHelpersFn}
 
-        rm -rf "node_modules" ${nodeModulesPaths}
+        purge_node_modules node_modules ${nodeModulesPaths}
 
         # `pnpm:clean` is expected to force a genuinely fresh install. Keeping
         # the live GVS projection around defeats that expectation because pnpm
