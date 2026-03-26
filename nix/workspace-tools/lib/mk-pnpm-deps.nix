@@ -35,6 +35,15 @@ let
   lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
+  nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
+    const fs = require("fs");
+    const raw = fs.readFileSync(0, "utf8");
+    const data = JSON.parse(raw);
+    const item = Array.isArray(data)
+      ? (data[0] ?? {})
+      : (typeof data === "object" && data !== null ? Object.values(data)[0] ?? {} : {});
+    process.stdout.write(String(item.closureSize ?? item.narSize ?? 0));
+  '';
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -111,6 +120,10 @@ in
       dontFixup = true;
 
       installPhase = ''
+        # Keep timing/size instrumentation inside the builder so downstream
+        # hash refresh and CI logs can point to the slow phase directly instead
+        # of only reporting end-to-end wall clock. The extra helpers add a
+        # little shell noise, but they are cheaper than guessing blindly.
         timer_now() {
           perl -MTime::HiRes=time -e 'printf "%.3f", time'
         }
@@ -140,19 +153,8 @@ in
         }
 
         nix_closure_bytes() {
-          nix path-info --json --closure-size "$1" 2>/dev/null | python -c '
-import json, sys
-data = json.load(sys.stdin)
-if isinstance(data, list):
-    item = data[0] if data else {}
-elif isinstance(data, dict):
-    item = next(iter(data.values()), {})
-else:
-    item = {}
-if not isinstance(item, dict):
-    item = {}
-print(item.get("closureSize") or item.get("narSize") or 0)
-'
+          nix path-info --json --closure-size "$1" 2>/dev/null \
+            | ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nixClosureBytesScript}
         }
 
         log_path_stats() {
@@ -202,6 +204,9 @@ print(item.get("closureSize") or item.get("narSize") or 0)
 
         ${preInstall}
 
+        # pnpm still mutates store metadata (for example index.db and
+        # projects/*), so the Nix build must use a private writable HOME/store
+        # even though the final archive is immutable.
         export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
         export STORE_PATH=$(mktemp -d "$NIX_BUILD_TOP/pnpm-store.XXXXXX")
         export CI=true
@@ -481,6 +486,9 @@ NODE
 
         archiveStartedAt=$(timer_now)
         log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
+        # We intentionally keep the output as a single normalized archive. A
+        # direct recursive Nix output looked conceptually simpler, but the NAR
+        # import cost was materially slower than tar+zstd in local benchmarks.
         LC_ALL=C TZ=UTC ${pkgs.gnutar}/bin/tar \
           --sort=name \
           --format=gnu \

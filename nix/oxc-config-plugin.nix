@@ -197,6 +197,8 @@ pkgs.stdenv.mkDerivation {
   pname = "oxc-config-plugin";
   version = "0.1.0";
   passthru = {
+    # Export the plugin's prepared deps boundary directly so hash tooling does
+    # not have to rebuild the full bundling derivation just to refresh one FOD.
     inherit pnpmDeps;
   };
 

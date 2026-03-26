@@ -561,6 +561,9 @@ pkgs.stdenv.mkDerivation {
   dontUnpack = true;
   dontFixup = true;
   passthru = {
+    # Expose the hashed deps artifact directly so tooling such as
+    # nix-hash-refresh can target the real fixed-output boundary instead of the
+    # slower top-level CLI derivation.
     inherit pnpmDeps;
   };
 
