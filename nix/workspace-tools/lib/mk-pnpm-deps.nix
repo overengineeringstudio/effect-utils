@@ -4,7 +4,7 @@
 #
 # | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
 # |---------------------|----------------------------------------------------|----------------------------------------------|
-# | Cached artifact     | Normalized pnpm store tarball                      | Prepared install tree tarball                |
+# | Cached artifact     | Normalized pnpm store tarball                      | Prepared install tree archive                |
 # | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
 # | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
 # | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
@@ -21,7 +21,7 @@
 # Provides two functions used by both mk-pnpm-cli.nix and oxc-config-plugin.nix:
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
-#    manifest-only workspace and archives the resulting prepared install tree.
+#    manifest-only workspace and stores the resulting prepared install tree archive.
 #
 # 2. mkRestoreScript: Generates a shell script snippet that extracts the
 #    prepared workspace tree over a full source workspace during the build.
@@ -97,10 +97,10 @@ in
 
       nativeBuildInputs = [
         pnpm
+        pkgs.gnutar
         pkgs.nodejs
         pkgs.nix
         pkgs.perl
-        pkgs.python3
         pkgs.cacert
         pkgs.zstd
       ];
@@ -183,18 +183,19 @@ print(item.get("closureSize") or item.get("narSize") or 0)
           fi
         }
 
+        SOURCE_DIR="$NIX_BUILD_TOP/source"
         sourceCopyStartedAt=$(timer_now)
-        mkdir source
-        cp -r "$src"/. source/
-        chmod -R +w source
+        mkdir "$SOURCE_DIR"
+        cp -r "$src"/. "$SOURCE_DIR"/
+        chmod -R +w "$SOURCE_DIR"
         echo "workspace-prep: staged source copy duration=$(timer_elapsed "$sourceCopyStartedAt")s"
         log_store_closure "src" "$src"
-        log_path_stats "staged-source-copy" source
+        log_path_stats "staged-source-copy" "$SOURCE_DIR"
 
         if [ "$sourceRoot" = "." ]; then
-          cd source
+          cd "$SOURCE_DIR"
         else
-          cd "source/$sourceRoot"
+          cd "$SOURCE_DIR/$sourceRoot"
         fi
 
         runHook preInstall
@@ -478,81 +479,24 @@ NODE
         find . -type f -perm /111 -exec chmod 555 {} +
         find . -type f ! -perm /111 -exec chmod 444 {} +
 
-	        mkdir -p $out
-	        export PREPARED_WORKSPACE_ARCHIVE=$(mktemp "$NIX_BUILD_TOP/prepared-workspace.XXXXXX.tar")
-	        tarStartedAt=$(timer_now)
-	        python <<'PY'
-import os
-import stat
-import tarfile
-
-workspace_root = os.getcwd()
-archive_path = os.environ["PREPARED_WORKSPACE_ARCHIVE"]
-
-def build_tarinfo(path: str, arcname: str) -> tarfile.TarInfo:
-    st = os.lstat(path)
-    info = tarfile.TarInfo(arcname)
-    info.uid = 0
-    info.gid = 0
-    info.uname = ""
-    info.gname = ""
-    info.mtime = 0
-
-    if stat.S_ISDIR(st.st_mode):
-        info.type = tarfile.DIRTYPE
-        info.mode = 0o755
-    elif stat.S_ISLNK(st.st_mode):
-        info.type = tarfile.SYMTYPE
-        info.mode = 0o777
-        info.linkname = os.readlink(path)
-    elif stat.S_ISREG(st.st_mode):
-        info.type = tarfile.REGTYPE
-        info.mode = 0o555 if st.st_mode & 0o111 else 0o444
-        info.size = st.st_size
-    else:
-        raise RuntimeError(f"Unsupported file type in prepared workspace: {path}")
-
-    return info
-
-def add_path(archive: tarfile.TarFile, path: str, arcname: str) -> None:
-    info = build_tarinfo(path, arcname)
-    if info.isreg():
-        with open(path, "rb") as handle:
-            archive.addfile(info, handle)
-    else:
-        archive.addfile(info)
-
-with tarfile.open(archive_path, mode="w", format=tarfile.GNU_FORMAT) as archive:
-    add_path(archive, workspace_root, ".")
-
-    for current_root, dirnames, filenames in os.walk(workspace_root):
-        dirnames.sort()
-        filenames.sort()
-
-        for dirname in dirnames:
-            path = os.path.join(current_root, dirname)
-            relpath = os.path.relpath(path, workspace_root)
-            add_path(archive, path, f"./{relpath}")
-
-        for filename in filenames:
-            path = os.path.join(current_root, filename)
-            relpath = os.path.relpath(path, workspace_root)
-            add_path(archive, path, f"./{relpath}")
-PY
-	        echo "workspace-prep: created tar archive duration=$(timer_elapsed "$tarStartedAt")s"
-	        log_path_stats "prepared-workspace-tar" "$PREPARED_WORKSPACE_ARCHIVE"
-	        compressStartedAt=$(timer_now)
-	        zstd -T1 -q "$PREPARED_WORKSPACE_ARCHIVE" -o $out/prepared-workspace.tar.zst
-	        echo "workspace-prep: compressed archive duration=$(timer_elapsed "$compressStartedAt")s"
-	        log_path_stats "prepared-workspace-archive" "$out/prepared-workspace.tar.zst"
-	        log_store_closure "prepared-workspace-output" "$out"
-	        echo "workspace-prep: archive-total duration=$(timer_elapsed "$tarStartedAt")s"
-	        rm -f "$PREPARED_WORKSPACE_ARCHIVE"
+        archiveStartedAt=$(timer_now)
+        log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
+        LC_ALL=C TZ=UTC ${pkgs.gnutar}/bin/tar \
+          --sort=name \
+          --format=gnu \
+          --mtime='@0' \
+          --owner=0 \
+          --group=0 \
+          --numeric-owner \
+          -C "$SOURCE_DIR" \
+          -cf - . \
+          | ${pkgs.zstd}/bin/zstd -T1 -q -o "$out"
+        echo "workspace-prep: archive duration=$(timer_elapsed "$archiveStartedAt")s"
 
         runHook postInstall
       '';
 
-      outputHashMode = "recursive";
+      outputHashMode = "flat";
       outputHash = pnpmDepsHash;
     };
 
@@ -572,7 +516,8 @@ PY
     }:
     ''
       mkdir -p ${lib.escapeShellArg target}
-      zstd -d -c ${deps}/prepared-workspace.tar.zst | tar -xf - -C ${lib.escapeShellArg target}
+      ${pkgs.zstd}/bin/zstd -d -c ${deps} \
+        | ${pkgs.gnutar}/bin/tar -xf - -C ${lib.escapeShellArg target}
 
       export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
       export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"

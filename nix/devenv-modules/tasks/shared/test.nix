@@ -38,10 +38,10 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   hasPackages = packages != [];
   vitestExec = ''
-    NODE_OPTIONS="--preserve-symlinks --preserve-symlinks-main''${NODE_OPTIONS:+ $NODE_OPTIONS}" pnpm exec vitest run
+    pnpm exec vitest run
   '';
   vitestWatchExec = ''
-    NODE_OPTIONS="--preserve-symlinks --preserve-symlinks-main''${NODE_OPTIONS:+ $NODE_OPTIONS}" pnpm exec vitest
+    pnpm exec vitest
   '';
 
   # Per-package test task using the workspace-aware vitest entrypoint.
