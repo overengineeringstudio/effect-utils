@@ -16,6 +16,7 @@ import {
   nixDiagnosticsArtifactStep,
   netlifyDeployStep,
   netlifyStorybookCommentStep,
+  pnpmStoreSetupStep,
   validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
@@ -26,6 +27,7 @@ const baseSteps = [
   installNixStep(),
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
+  pnpmStoreSetupStep,
   cachePnpmStoreStep(),
   validateNixStoreStep,
   evictCachedPnpmDepsStep({
