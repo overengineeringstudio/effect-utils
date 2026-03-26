@@ -130,9 +130,19 @@ const withAppendedNixConfig = ({
   return `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' "$NIX_CONFIG" ${quotedExtraConf}); else NIX_CONFIG_WITH_APPEND=${quotedExtraConf}; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" ${command}`
 }
 
+/**
+ * Fall back to the standard CI pnpm paths when a workflow has not exported
+ * them via `pnpmStoreSetupStep` yet. This keeps `runDevenvTasksBefore` safe for
+ * downstream callers while effect-utils centralizes the preferred setup step.
+ */
+const withCiPnpmState = (command: string) =>
+  `PNPM_HOME="\${PNPM_HOME:-${jobLocalPnpmHome}}" PNPM_STORE_DIR="\${PNPM_STORE_DIR:-${jobLocalPnpmStore}}" ${command}`
+
 const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [string, ...string[]]) =>
   withAppendedNixConfig({
-    command: `PNPM_HOME=${shellSingleQuote(jobLocalPnpmHome)} DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+    command: withCiPnpmState(
+      `DT_PASSTHROUGH=1 ${devenvBinRef} tasks run ${args.join(' ')} --mode before`,
+    ),
     opts,
   })
 
@@ -325,14 +335,36 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
   shell: 'bash',
 } as const
 
-/** Ephemeral per-job pnpm home path scoped to the CI run/attempt/job */
-export const jobLocalPnpmHome =
-  '${{ runner.temp }}/pnpm-home/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
+/**
+ * Keep pnpm's mutable content isolated per job while still allowing cache reuse across runs.
+ *
+ * `PNPM_STORE_DIR` must be stable so `actions/cache` can restore a previous store snapshot.
+ * `PNPM_HOME` stays workspace-relative because the GVS links embed absolute paths and those
+ * need to stay valid for relocatable artifacts like `vercel deploy --prebuilt`.
+ */
+export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 
-/** Ephemeral per-job pnpm store path derived from PNPM_HOME */
-export const jobLocalPnpmStore = `${jobLocalPnpmHome}/store`
+/**
+ * Keep pnpm's mutable content isolated per job while still allowing cache reuse across runs.
+ *
+ * `PNPM_STORE_DIR` must be stable so `actions/cache` can restore a previous store snapshot.
+ */
+export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
 
-/** Restore/save the pnpm store via actions/cache without sharing a live store between jobs */
+/**
+ * Export the canonical CI pnpm paths once so every later shell step shares the
+ * same writable store and the same workspace-relative GVS projection.
+ */
+export const pnpmStoreSetupStep = {
+  name: 'Isolate pnpm store',
+  shell: 'bash',
+  run: [
+    `echo "PNPM_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
+    `echo "PNPM_HOME=${jobLocalPnpmHome}" >> "$GITHUB_ENV"`,
+  ].join('\n'),
+} as const
+
+/** Restore/save the pnpm store via actions/cache without sharing a live store between jobs. */
 export const cachePnpmStoreStep = (opts?: { keyPrefix?: string }) => {
   const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
 
@@ -341,8 +373,8 @@ export const cachePnpmStoreStep = (opts?: { keyPrefix?: string }) => {
     uses: 'actions/cache@v4' as const,
     with: {
       path: jobLocalPnpmStore,
-      // The fetched store contents are platform-specific, so the restore key
-      // must isolate both OS and CPU architecture.
+      // The fetched store contents are platform-specific, so the cache must
+      // isolate both OS and CPU architecture to avoid cross-platform corruption.
       key: `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`,
       'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
     },
