@@ -189,7 +189,11 @@ in
           # Generate root trace context and propagate via devenv task output.
           # Dependent tasks automatically receive TRACEPARENT + OTEL_SHELL_ENTRY_NS
           # as env vars, linking all shell entry spans into a single trace.
-          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
+          # Only propagate shell-entry trace context for interactive sessions.
+          # In CI/non-interactive `devenv tasks run ...` executions, the task
+          # output file path is not needed and has shown deadlock symptoms in
+          # the upstream task runner.
+          if [ -t 1 ] && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
             _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
             _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
             _tp="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
