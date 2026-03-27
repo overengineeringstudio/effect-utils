@@ -14,9 +14,16 @@ describe('ci workflow retry helpers', () => {
 
   it('recognizes cachix evaluation wrappers as the same invalid-store-path failure class', () => {
     expect(ciWorkflowSource).toContain('Failed to convert config\\\\.cachix to JSON')
-    expect(ciWorkflowSource).toContain("while evaluating the option \\`cachix\\\\.package'")
+    expect(ciWorkflowSource).toContain("grep -q 'while evaluating the option'")
+    expect(ciWorkflowSource).toContain("grep -q 'cachix\\\\.package'")
     expect(ciWorkflowSource).toContain(
       'Nix store validity race detected for $__task via cachix eval wrapper',
+    )
+  })
+
+  it('keeps the cachix wrapper matcher shell-safe', () => {
+    expect(ciWorkflowSource).not.toContain(
+      'grep -q "while evaluating the option \\`cachix\\\\.package\'"',
     )
   })
 })

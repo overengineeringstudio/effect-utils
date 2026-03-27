@@ -221,8 +221,10 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     __saw_invalid_path=false
     __saw_cachix_signature=false
     [ -n "$__path" ] && __saw_invalid_path=true
-    printf '%s' "$__flattened" | grep -q "Failed to convert config\\.cachix to JSON" && __saw_cachix_signature=true || true
-    printf '%s' "$__flattened" | grep -q "while evaluating the option \`cachix\\.package'" && __saw_cachix_signature=true || true
+    printf '%s' "$__flattened" | grep -q 'Failed to convert config\\.cachix to JSON' && __saw_cachix_signature=true || true
+    # Match the semantic signal, not the exact quote punctuation, so the shell
+    # stays valid even when the human-facing error wraps the option name.
+    printf '%s' "$__flattened" | grep -q 'while evaluating the option' && printf '%s' "$__flattened" | grep -q 'cachix\\.package' && __saw_cachix_signature=true || true
     rm -f "$__log"
     if [ "$__saw_invalid_path" != true ]; then
       echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
