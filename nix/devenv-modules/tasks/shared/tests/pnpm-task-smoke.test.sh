@@ -159,6 +159,16 @@ if [ "${1:-}" = "install" ]; then
   fi
   mkdir -p node_modules
   touch node_modules/.install-ok
+  # The warm-path status now fingerprints the root projection metadata that
+  # pnpm always writes on a real install. Keep the smoke fixture aligned with
+  # that contract so the test still exercises the task logic instead of
+  # failing on an unrealistically incomplete fake install.
+  cat > node_modules/.modules.yaml <<'YAML'
+hoistPattern: []
+nodeLinker: isolated
+storeDir: /tmp/fake-pnpm-store
+virtualStoreDir: node_modules/.pnpm
+YAML
   exit 0
 fi
 echo "unexpected fake pnpm invocation: $*" >&2
@@ -259,7 +269,9 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
+  test -f "$workspace/.direnv/task-cache/pnpm-install/projection-state.hash"
   test -d "$workspace/node_modules"
+  test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
