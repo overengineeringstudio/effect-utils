@@ -20,6 +20,8 @@ let
   computeGenieStateHash = ''
     compute_genie_state_hash() {
       {
+        # Track both the `.genie.ts` sources and the generated files they own so
+        # warm status checks catch manual drift without booting the full CLI.
         ${pkgs.findutils}/bin/find . \
           -type f \
           -name '*.genie.ts' \

@@ -25,6 +25,8 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   mrStatusCheck = ''
+    # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
+    # second eval/build hop to every warm status check.
     if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
       exit 0
     fi

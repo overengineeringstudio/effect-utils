@@ -157,6 +157,9 @@ let
   setupInnerCacheDirList = lib.concatMapStringsSep " " lib.escapeShellArg innerCacheDirs;
   setupFingerprintEnv = ''
     compute_setup_fingerprint() {
+      # Use git object IDs for tracked inputs and only content-hash dirty files.
+      # That keeps the warm-shell fingerprint cheap while still reacting to
+      # untracked/generated drift that git object IDs cannot describe.
       _setup_head=$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")
       _setup_generated_from_head=$(
         ${git} grep -l -E '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' HEAD -- . 2>/dev/null || true
@@ -237,6 +240,9 @@ let
         return 1
       fi
 
+      # A matching outer fingerprint is only sufficient once at least one of the
+      # task-local caches exists again. This avoids skipping setup after users
+      # delete `.direnv/task-cache/*` without changing any tracked inputs.
       if [ -z "${setupInnerCacheDirList}" ]; then
         return 0
       fi
@@ -334,6 +340,8 @@ in
 
       "${setupRecordCacheTaskName}" = lib.mkIf (setupTasks != [ ]) {
         description = "Record the successful setup fingerprint";
+        # Persist the outer cache only after the setup tasks finished. Writing it
+        # earlier would let later warm shells skip work that never completed.
         after = lib.optionals skipDuringRebase [ "setup:gate" ] ++ setupTasks;
         exec = ''
           set -euo pipefail
