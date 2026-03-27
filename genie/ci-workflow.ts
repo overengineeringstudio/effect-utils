@@ -457,15 +457,17 @@ export const savePnpmStoreStep = (opts?: {
 }
 
 /**
- * Cold-build exported pnpm fixed-output derivations to prove the checked-in
- * `pnpmDepsHash` values still match freshly produced outputs.
+ * Rebuild exported pnpm fixed-output derivations locally and compare them to
+ * the already-realized store outputs.
  *
  * Normal CI often reuses already-realized FOD outputs from the local store or
  * substituters, which can hide stale hashes until some unrelated input change
- * forces a rebuild. This step deliberately evicts the local outputs first and
- * disables substituters for the target attrs only. The trade-off is one extra
- * strict job, but it keeps the expensive cold validation scoped to the actual
- * fixed-output boundaries instead of rebuilding whole CLI packages.
+ * forces a rebuild. We first realize the target attr as-is, then ask Nix to
+ * `--rebuild` that attr and compare the fresh local result against the realized
+ * output. The important trade-off is that dependencies may still come from
+ * caches, but the target pnpm FOD itself must rebuild locally, which keeps the
+ * check focused on the boundary we care about instead of source-building large
+ * swaths of nixpkgs.
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
@@ -479,16 +481,9 @@ export const validateColdPnpmDepsStep = ({
   run: [
     'set -euo pipefail',
     `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
-    '  echo "::group::cold-build $attr"',
-    '  drv=$(nix path-info --derivation "$attr")',
-    '  while IFS= read -r outPath; do',
-    '    [ -n "$outPath" ] || continue',
-    '    if [ -e "$outPath" ]; then',
-    '      echo "evicting local FOD output: $(basename "$outPath")"',
-    '      nix store delete "$outPath" 2>/dev/null || true',
-    '    fi',
-    '  done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  nix build --no-link --option substitute false "$attr"',
+    '  echo "::group::rebuild-check $attr"',
+    '  nix build --no-link "$attr"',
+    '  nix build --no-link --rebuild "$attr"',
     '  echo "::endgroup::"',
     'done',
   ].join('\n'),

@@ -1222,16 +1222,9 @@ jobs:
         run: |
           set -euo pipefail
           for attr in '.#genie-pnpm-deps' '.#megarepo-pnpm-deps' '.#oxc-config-plugin-pnpm-deps'; do
-            echo "::group::cold-build $attr"
-            drv=$(nix path-info --derivation "$attr")
-            while IFS= read -r outPath; do
-              [ -n "$outPath" ] || continue
-              if [ -e "$outPath" ]; then
-                echo "evicting local FOD output: $(basename "$outPath")"
-                nix store delete "$outPath" 2>/dev/null || true
-              fi
-            done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            nix build --no-link --option substitute false "$attr"
+            echo "::group::rebuild-check $attr"
+            nix build --no-link "$attr"
+            nix build --no-link --rebuild "$attr"
             echo "::endgroup::"
           done
       - name: Nix diagnostics summary
