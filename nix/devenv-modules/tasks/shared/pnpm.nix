@@ -76,7 +76,9 @@ let
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
-  healthCheckNodeModulesPaths = lib.concatStringsSep " " ([ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages));
+  healthCheckNodeModulesPaths = lib.concatStringsSep " " (
+    [ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages)
+  );
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
   loadPnpmTaskHelpersFn = ''
@@ -235,7 +237,7 @@ let
         set -euo pipefail
         export npm_config_manage_package_manager_versions=false
         pnpm install --fix-lockfile --config.confirmModulesPurge=false
-        echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
+        echo "Repo-root lockfile updated. Run 'nix-hash-refresh --name <package>' to update Nix hashes."
       '';
     };
 

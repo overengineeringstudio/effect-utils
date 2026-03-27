@@ -15,25 +15,18 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-  # TODO: lockfileHash oscillates due to circular dependency between build.nix
-  # content and staged lockfile hash. Disabled until mk-pnpm-cli lockfile hashing
-  # is updated to exclude build.nix from the staged source.
-  lockfileHash = null;
-  packageJsonDepsHash = "sha256-W72mXuz+mfV0fYzKVauO10NjHtT1BdTU8ODvh1uqNZ4=";
+  # Managed by `nix-hash-refresh --name genie`. This caches the builder-owned deps recipe
+  # fingerprint so quick checks can compare against the actual deps contract.
+  depsBuildFingerprint = "8e13c3c91439bd89f4f14fde4bc60c023575cadea3e5d71068fcfdaf1155e166";
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";
     binaryName = "genie";
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:genie` — do not edit manually.
+    # Managed by `nix-hash-refresh --name genie` — do not edit manually.
     pnpmDepsHash = "sha256-JQSV+QfJnK0joP2dDL8+rAbUnb4Nx1wNa0UaGeA9Hdk=";
-    inherit
-      lockfileHash
-      gitRev
-      commitTs
-      dirty
-      ;
+    inherit gitRev commitTs dirty;
   };
 in
 pkgs.runCommand "genie"
@@ -43,7 +36,7 @@ pkgs.runCommand "genie"
     passthru = {
       # Keep the prepared pnpm deps reachable from the wrapped CLI too so flake
       # consumers and hash tooling can target one stable attribute path.
-      inherit (unwrapped.passthru) pnpmDeps;
+      inherit (unwrapped.passthru) pnpmDeps depsBuildFingerprint;
     };
   }
   ''

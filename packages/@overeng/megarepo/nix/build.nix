@@ -14,23 +14,19 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
-  lockfileHash = null;
-  packageJsonDepsHash = "sha256-FGoqoErZGoDmYQhM+hNWWDP+Md+drwGzZwQpX+kJF1k=";
+  # Managed by `nix-hash-refresh --name megarepo`. This tracks the effective deps recipe,
+  # not a downstream restatement of individual lockfile/package.json fields.
+  depsBuildFingerprint = "27fe896363866ba20ac7e95a6dc87cc088f44337fc9e02bb793932886974f7cb";
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:megarepo` — do not edit manually.
+    # Managed by `nix-hash-refresh --name megarepo` — do not edit manually.
     pnpmDepsHash = "sha256-Z5r/sMUa4c1ON81Y4LURTvvgFr/KR4vN14xYVenoLQk=";
     smokeTestArgs = [ "--help" ];
-    inherit
-      lockfileHash
-      gitRev
-      commitTs
-      dirty
-      ;
+    inherit gitRev commitTs dirty;
   };
 in
 pkgs.stdenv.mkDerivation {
@@ -40,7 +36,7 @@ pkgs.stdenv.mkDerivation {
   passthru = {
     # Mirror the underlying FOD so external tooling can hash-refresh the
     # prepared deps without rebuilding the completion wrapper.
-    inherit (base.passthru) pnpmDeps;
+    inherit (base.passthru) pnpmDeps depsBuildFingerprint;
   };
 
   phases = [ "installPhase" ];

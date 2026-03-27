@@ -7,7 +7,6 @@
   workspaceRoot,
   workspaceSources ? { },
   pnpmDepsHash,
-  lockfileHash ? null,
   binaryName ? name,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -130,7 +129,8 @@ let
             lines;
 
       # GVS requires a global pnpm store unavailable inside Nix sandboxes
-      stripGvs = lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
+      stripGvs =
+        lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
     in
     stripGvs (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
 
@@ -217,6 +217,7 @@ let
           inherit installDir installSourceRoot;
           memberDirs = lib.unique (map (item: item.memberDir) items);
           sourceRelMemberDirs = lib.unique (map (item: item.sourceRelMemberDir) items);
+          inherit sourcePnpmWorkspaceYaml;
           filteredPnpmWorkspaceYaml =
             if hasWorkspaceYaml then
               formatWorkspaceYaml (lib.unique (map (item: item.sourceRelMemberDir) items)) (
@@ -299,6 +300,21 @@ let
       fi
     '';
 
+  fileFingerprintEntry = relPath: {
+    path = relPath;
+    content = builtins.readFile (absoluteSourcePathFor relPath);
+  };
+
+  optionalFileFingerprintEntries =
+    relPath:
+    let
+      srcPath = absoluteSourcePathFor relPath;
+    in
+    lib.optional (builtins.pathExists srcPath) {
+      path = relPath;
+      content = builtins.readFile srcPath;
+    };
+
   /**
     Parse patch file paths from pnpm-workspace.yaml (pnpm 11+ format).
     In pnpm 11, patchedDependencies are declared in pnpm-workspace.yaml as:
@@ -340,9 +356,7 @@ let
             paths
           else
             let
-              colonIdx = lib.stringLength (
-                builtins.head (builtins.split ":" trimmed)
-              );
+              colonIdx = lib.stringLength (builtins.head (builtins.split ":" trimmed));
               value = lib.trim (builtins.substring (colonIdx + 1) (lib.stringLength trimmed) trimmed);
               isPatchPath = lib.hasSuffix ".patch" value;
             in
@@ -517,16 +531,84 @@ let
     manifestOnly = false;
   };
 
+  pnpmInstallLockfilePaths =
+    map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRootsByWarmupOrder
+    ++ [ "pnpm-lock.yaml" ];
+
+  depsFingerprintFiles =
+    let
+      rootFiles =
+        (map fileFingerprintEntry rootWorkspaceFiles)
+        ++ lib.concatMap optionalFileFingerprintEntries optionalRootWorkspaceFiles
+        ++ [
+          {
+            path = "pnpm-workspace.yaml";
+            content = filteredRootPnpmWorkspaceYaml;
+          }
+        ]
+        ++ (map (dir: fileFingerprintEntry "${dir}/package.json") aggregateOwnedWorkspaceClosureDirs)
+        ++ (map fileFingerprintEntry (parseWorkspacePatchPaths rootPnpmWorkspaceYaml));
+
+      externalRootFiles = lib.concatMap (
+        root:
+        let
+          rootFileEntry = relPath: {
+            path = "${root.installDir}/${relPath}";
+            content = builtins.readFile (root.installSourceRoot + "/${relPath}");
+          };
+          optionalRootFileEntry =
+            relPath:
+            lib.optional (builtins.pathExists (root.installSourceRoot + "/${relPath}")) {
+              path = "${root.installDir}/${relPath}";
+              content = builtins.readFile (root.installSourceRoot + "/${relPath}");
+            };
+        in
+        (map rootFileEntry rootWorkspaceFiles)
+        ++ lib.concatMap optionalRootFileEntry optionalRootWorkspaceFiles
+        ++ [
+          {
+            path = "${root.installDir}/pnpm-workspace.yaml";
+            content = root.filteredPnpmWorkspaceYaml;
+          }
+        ]
+        ++ (map (dir: {
+          path = "${dir}/package.json";
+          content = builtins.readFile (absoluteSourcePathFor "${dir}/package.json");
+        }) (builtins.filter (dir: dir != root.installDir) root.memberDirs))
+        ++ (map (relPath: {
+          path = "${root.installDir}/${relPath}";
+          content = builtins.readFile (root.installSourceRoot + "/${relPath}");
+        }) (parseWorkspacePatchPaths root.sourcePnpmWorkspaceYaml))
+      ) externalInstallRoots;
+    in
+    lib.sort (left: right: left.path < right.path) (rootFiles ++ externalRootFiles);
+
+  depsBuildFingerprint = builtins.hashString "sha256" (
+    builtins.toJSON {
+      # The quick-check contract should reflect the normalized deps recipe, not
+      # raw drv identities. Direct drvPath fingerprints were too broad in
+      # practice because dirty-tree changes outside the staged deps inputs could
+      # still perturb derivation identities and create circular updates.
+      builderSources = {
+        mkPnpmCli = builtins.readFile ./mk-pnpm-cli.nix;
+        mkPnpmDeps = builtins.readFile ./mk-pnpm-deps.nix;
+        pnpmPlatform = builtins.readFile ./pnpm-platform.nix;
+      };
+      pnpmVersion = lib.getVersion pnpm;
+      preInstall = "chmod -R +w .";
+      lockfilePaths = pnpmInstallLockfilePaths;
+      files = depsFingerprintFiles;
+    }
+  );
+
   pnpmDeps = pnpmDepsHelper.mkDeps {
-    inherit name pnpmDepsHash;
+    inherit name pnpmDepsHash depsBuildFingerprint;
     src = depsSrc;
     sourceRoot = ".";
     # The first lockfile-only normalization pass pays pnpm's metadata warmup
     # cost. Normalize smaller nested install roots first and the aggregate root
     # last to keep the expensive root rewrite off the cold path.
-    lockfilePaths =
-      map (root: "${root.installDir}/pnpm-lock.yaml") externalInstallRootsByWarmupOrder
-      ++ [ "pnpm-lock.yaml" ];
+    lockfilePaths = pnpmInstallLockfilePaths;
     preInstall = ''
       chmod -R +w .
     '';
@@ -566,28 +648,14 @@ pkgs.stdenv.mkDerivation {
     # nix-hash-refresh can target the real fixed-output boundary instead of the
     # slower top-level CLI derivation.
     inherit pnpmDeps;
+    # Keep the quick-check contract builder-owned. The stored hash source only
+    # caches this value; it must not re-derive builder semantics in shell.
+    inherit (pnpmDeps.passthru) depsBuildFingerprint;
   };
 
   buildPhase = ''
     set -euo pipefail
     runHook preBuild
-
-    ${
-      if lockfileHash != null then
-        ''
-          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceClosureSrc}/pnpm-lock.yaml)"
-          if [ "$currentHash" != "${lockfileHash}" ]; then
-            echo ""
-            echo "error: lockfileHash is stale (run: dt nix:hash)"
-            echo "  expected: ${lockfileHash}"
-            echo "  actual:   $currentHash"
-            echo ""
-            exit 1
-          fi
-        ''
-      else
-        ""
-    }
 
     echo "Copying filtered aggregate workspace..."
     cp -r ${workspaceClosureSrc} workspace

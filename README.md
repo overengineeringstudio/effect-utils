@@ -123,8 +123,7 @@ dt nix:check
 After `pnpm-lock.yaml` changes:
 
 ```bash
-dt nix:hash:genie
-dt nix:hash
+nix-hash-refresh --name genie
 ```
 
 ## Quick Start

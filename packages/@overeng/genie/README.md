@@ -57,7 +57,7 @@ in
 dt nix:build:genie
 
 # After repo-root pnpm-lock.yaml changes (updates dependency hash)
-dt nix:hash:genie
+nix-hash-refresh --name genie
 
 # Build all CLI packages (optional)
 dt nix:build

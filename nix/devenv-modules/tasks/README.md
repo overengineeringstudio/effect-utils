@@ -36,7 +36,7 @@ imports = [
     flaky "File not found" errors when pnpm is concurrently mutating/symlinking
     `node_modules` during CI.
 - `megarepo.nix` - Megarepo workspace tasks
-- `nix-cli.nix` - Nix CLI build tasks (nix:hash, nix:build, nix:flake:check)
+- `nix-cli.nix` - Nix CLI build/check tasks (nix:build, nix:check, nix:check:quick, nix:flake:check)
 - `pnpm.nix` - pnpm install tasks
 - `setup.nix` - Setup tasks
 - `test.nix` - Test tasks
