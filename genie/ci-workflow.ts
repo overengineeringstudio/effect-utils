@@ -147,9 +147,14 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
   })
 
 /**
- * Retry wrapper for the Nix GC race condition where `derivationStrict` fails with
- * `path '/nix/store/...' is not valid`. On each retry, fetches the missing path
- * and clears the eval cache.
+ * Retry wrapper for the Nix store validity race where `derivationStrict` fails
+ * with `path '/nix/store/...' is not valid`.
+ *
+ * In practice this often surfaces through higher-level eval wrappers such as
+ * `Failed to convert config.cachix to JSON` / `while evaluating the option
+ * cachix.package` before the final invalid-store-path line appears. We treat
+ * those as the same root cause and retry after realizing the missing path and
+ * clearing the eval cache.
  *
  * TODO: Remove once NixOS/nix#15469 and DeterminateSystems/nix-src#395 are released
  * @see https://github.com/NixOS/nix/pull/15469
@@ -159,7 +164,7 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
   const quotedCommand = shellSingleQuote(command)
   const quotedLabel = shellSingleQuote(label)
   return `__nix_gc_retry() {
-  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
   __start=$(date +%s)
 
   __write_summary() {
@@ -189,7 +194,10 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     __hb_pid=$!
 
     __log=$(mktemp)
-    set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+    set +e
+    eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+    __rc=$?
+    set -e
 
     kill "$__hb_pid" 2>/dev/null || true
     wait "$__hb_pid" 2>/dev/null || true
@@ -208,14 +216,24 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
       return 0
     }
 
-    __path=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+    __flattened=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log")
+    __path=$(printf '%s' "$__flattened" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+    __saw_invalid_path=false
+    __saw_cachix_signature=false
+    [ -n "$__path" ] && __saw_invalid_path=true
+    printf '%s' "$__flattened" | grep -q "Failed to convert config\\.cachix to JSON" && __saw_cachix_signature=true || true
+    printf '%s' "$__flattened" | grep -q "while evaluating the option \`cachix\\.package'" && __saw_cachix_signature=true || true
     rm -f "$__log"
-    if [ -z "$__path" ]; then
-      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+    if [ "$__saw_invalid_path" != true ]; then
+      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
       __write_summary failure "No Nix GC race signature detected"
       return $__rc
     fi
-    echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+    if [ "$__saw_cachix_signature" = true ]; then
+      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+    else
+      echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+    fi
     nix-store --realise "$__path" 2>/dev/null || true
     rm -rf ~/.cache/nix/eval-cache-*
     __n=$((__n + 1))

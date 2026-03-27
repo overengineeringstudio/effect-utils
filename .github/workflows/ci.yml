@@ -154,7 +154,7 @@ jobs:
       - name: Type check
         run: |
           __nix_gc_retry() {
-            local __task='devenv tasks run ts:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+            local __task='devenv tasks run ts:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
             __write_summary() {
@@ -184,7 +184,10 @@ jobs:
               __hb_pid=$!
 
               __log=$(mktemp)
-              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              set +e
+              eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+              __rc=$?
+              set -e
 
               kill "$__hb_pid" 2>/dev/null || true
               wait "$__hb_pid" 2>/dev/null || true
@@ -203,14 +206,24 @@ jobs:
                 return 0
               }
 
-              __path=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
+              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __saw_invalid_path=false
+              __saw_cachix_signature=false
+              [ -n "$__path" ] && __saw_invalid_path=true
+              printf '%s' "$__flattened" | grep -q "Failed to convert config\.cachix to JSON" && __saw_cachix_signature=true || true
+              printf '%s' "$__flattened" | grep -q "while evaluating the option `cachix\.package'" && __saw_cachix_signature=true || true
               rm -f "$__log"
-              if [ -z "$__path" ]; then
-                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+              if [ "$__saw_invalid_path" != true ]; then
+                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
                 __write_summary failure "No Nix GC race signature detected"
                 return $__rc
               fi
-              echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+              if [ "$__saw_cachix_signature" = true ]; then
+                echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+              else
+                echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+              fi
               nix-store --realise "$__path" 2>/dev/null || true
               rm -rf ~/.cache/nix/eval-cache-*
               __n=$((__n + 1))
@@ -411,7 +424,7 @@ jobs:
       - name: Format + lint
         run: |
           __nix_gc_retry() {
-            local __task='devenv tasks run lint:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+            local __task='devenv tasks run lint:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
             __write_summary() {
@@ -441,7 +454,10 @@ jobs:
               __hb_pid=$!
 
               __log=$(mktemp)
-              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              set +e
+              eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+              __rc=$?
+              set -e
 
               kill "$__hb_pid" 2>/dev/null || true
               wait "$__hb_pid" 2>/dev/null || true
@@ -460,14 +476,24 @@ jobs:
                 return 0
               }
 
-              __path=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
+              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __saw_invalid_path=false
+              __saw_cachix_signature=false
+              [ -n "$__path" ] && __saw_invalid_path=true
+              printf '%s' "$__flattened" | grep -q "Failed to convert config\.cachix to JSON" && __saw_cachix_signature=true || true
+              printf '%s' "$__flattened" | grep -q "while evaluating the option `cachix\.package'" && __saw_cachix_signature=true || true
               rm -f "$__log"
-              if [ -z "$__path" ]; then
-                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+              if [ "$__saw_invalid_path" != true ]; then
+                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
                 __write_summary failure "No Nix GC race signature detected"
                 return $__rc
               fi
-              echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+              if [ "$__saw_cachix_signature" = true ]; then
+                echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+              else
+                echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+              fi
               nix-store --realise "$__path" 2>/dev/null || true
               rm -rf ~/.cache/nix/eval-cache-*
               __n=$((__n + 1))
@@ -671,7 +697,7 @@ jobs:
       - name: Unit tests
         run: |
           __nix_gc_retry() {
-            local __task='devenv tasks run test:run --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+            local __task='devenv tasks run test:run --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
             __write_summary() {
@@ -701,7 +727,10 @@ jobs:
               __hb_pid=$!
 
               __log=$(mktemp)
-              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              set +e
+              eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+              __rc=$?
+              set -e
 
               kill "$__hb_pid" 2>/dev/null || true
               wait "$__hb_pid" 2>/dev/null || true
@@ -720,14 +749,24 @@ jobs:
                 return 0
               }
 
-              __path=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
+              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __saw_invalid_path=false
+              __saw_cachix_signature=false
+              [ -n "$__path" ] && __saw_invalid_path=true
+              printf '%s' "$__flattened" | grep -q "Failed to convert config\.cachix to JSON" && __saw_cachix_signature=true || true
+              printf '%s' "$__flattened" | grep -q "while evaluating the option `cachix\.package'" && __saw_cachix_signature=true || true
               rm -f "$__log"
-              if [ -z "$__path" ]; then
-                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+              if [ "$__saw_invalid_path" != true ]; then
+                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
                 __write_summary failure "No Nix GC race signature detected"
                 return $__rc
               fi
-              echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+              if [ "$__saw_cachix_signature" = true ]; then
+                echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+              else
+                echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+              fi
               nix-store --realise "$__path" 2>/dev/null || true
               rm -rf ~/.cache/nix/eval-cache-*
               __n=$((__n + 1))
@@ -931,7 +970,7 @@ jobs:
       - name: Nix hash check
         run: |
           __nix_gc_retry() {
-            local __task='devenv tasks run nix:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+            local __task='devenv tasks run nix:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
             __write_summary() {
@@ -961,7 +1000,10 @@ jobs:
               __hb_pid=$!
 
               __log=$(mktemp)
-              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              set +e
+              eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+              __rc=$?
+              set -e
 
               kill "$__hb_pid" 2>/dev/null || true
               wait "$__hb_pid" 2>/dev/null || true
@@ -980,14 +1022,24 @@ jobs:
                 return 0
               }
 
-              __path=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
+              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __saw_invalid_path=false
+              __saw_cachix_signature=false
+              [ -n "$__path" ] && __saw_invalid_path=true
+              printf '%s' "$__flattened" | grep -q "Failed to convert config\.cachix to JSON" && __saw_cachix_signature=true || true
+              printf '%s' "$__flattened" | grep -q "while evaluating the option `cachix\.package'" && __saw_cachix_signature=true || true
               rm -f "$__log"
-              if [ -z "$__path" ]; then
-                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+              if [ "$__saw_invalid_path" != true ]; then
+                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
                 __write_summary failure "No Nix GC race signature detected"
                 return $__rc
               fi
-              echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+              if [ "$__saw_cachix_signature" = true ]; then
+                echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+              else
+                echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+              fi
               nix-store --realise "$__path" 2>/dev/null || true
               rm -rf ~/.cache/nix/eval-cache-*
               __n=$((__n + 1))
@@ -1198,7 +1250,7 @@ jobs:
           fi
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             __nix_gc_retry() {
-            local __task='devenv tasks run netlify:deploy --input type=prod --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+            local __task='devenv tasks run netlify:deploy --input type=prod --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
             __write_summary() {
@@ -1228,7 +1280,10 @@ jobs:
               __hb_pid=$!
 
               __log=$(mktemp)
-              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              set +e
+              eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+              __rc=$?
+              set -e
 
               kill "$__hb_pid" 2>/dev/null || true
               wait "$__hb_pid" 2>/dev/null || true
@@ -1247,14 +1302,24 @@ jobs:
                 return 0
               }
 
-              __path=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
+              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __saw_invalid_path=false
+              __saw_cachix_signature=false
+              [ -n "$__path" ] && __saw_invalid_path=true
+              printf '%s' "$__flattened" | grep -q "Failed to convert config\.cachix to JSON" && __saw_cachix_signature=true || true
+              printf '%s' "$__flattened" | grep -q "while evaluating the option `cachix\.package'" && __saw_cachix_signature=true || true
               rm -f "$__log"
-              if [ -z "$__path" ]; then
-                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+              if [ "$__saw_invalid_path" != true ]; then
+                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
                 __write_summary failure "No Nix GC race signature detected"
                 return $__rc
               fi
-              echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+              if [ "$__saw_cachix_signature" = true ]; then
+                echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+              else
+                echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+              fi
               nix-store --realise "$__path" 2>/dev/null || true
               rm -rf ~/.cache/nix/eval-cache-*
               __n=$((__n + 1))
@@ -1268,7 +1333,7 @@ jobs:
           }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before'
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             __nix_gc_retry() {
-            local __task='devenv tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+            local __task='devenv tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
             __write_summary() {
@@ -1298,7 +1363,10 @@ jobs:
               __hb_pid=$!
 
               __log=$(mktemp)
-              set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+              set +e
+              eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+              __rc=$?
+              set -e
 
               kill "$__hb_pid" 2>/dev/null || true
               wait "$__hb_pid" 2>/dev/null || true
@@ -1317,14 +1385,24 @@ jobs:
                 return 0
               }
 
-              __path=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
+              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __saw_invalid_path=false
+              __saw_cachix_signature=false
+              [ -n "$__path" ] && __saw_invalid_path=true
+              printf '%s' "$__flattened" | grep -q "Failed to convert config\.cachix to JSON" && __saw_cachix_signature=true || true
+              printf '%s' "$__flattened" | grep -q "while evaluating the option `cachix\.package'" && __saw_cachix_signature=true || true
               rm -f "$__log"
-              if [ -z "$__path" ]; then
-                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+              if [ "$__saw_invalid_path" != true ]; then
+                echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
                 __write_summary failure "No Nix GC race signature detected"
                 return $__rc
               fi
-              echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
+              if [ "$__saw_cachix_signature" = true ]; then
+                echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+              else
+                echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+              fi
               nix-store --realise "$__path" 2>/dev/null || true
               rm -rf ~/.cache/nix/eval-cache-*
               __n=$((__n + 1))
