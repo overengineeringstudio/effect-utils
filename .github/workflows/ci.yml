@@ -227,7 +227,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: '${{ runner.temp }}/pnpm-store/${{ github.job }}'
-          key: "${{ steps.restore-pnpm-store.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}' }}"
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -484,7 +484,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: '${{ runner.temp }}/pnpm-store/${{ github.job }}'
-          key: "${{ steps.restore-pnpm-store.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}' }}"
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -744,7 +744,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: '${{ runner.temp }}/pnpm-store/${{ github.job }}'
-          key: "${{ steps.restore-pnpm-store.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}' }}"
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1004,7 +1004,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: '${{ runner.temp }}/pnpm-store/${{ github.job }}'
-          key: "${{ steps.restore-pnpm-store.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}' }}"
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1396,7 +1396,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: '${{ runner.temp }}/pnpm-store/${{ github.job }}'
-          key: "${{ steps.restore-pnpm-store.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}' }}"
+          key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash

@@ -422,29 +422,11 @@ export const savePnpmStoreStep = (opts?: {
     uses: 'actions/cache/save@v4' as const,
     with: {
       path,
-      key: `\${{ steps.${restoreStepId}.outputs.cache-primary-key || '${pnpmStoreCachePrimaryKey(keyPrefix)}' }}`,
-    },
-  }
-}
-
-/**
- * Legacy single-step cache helper.
- *
- * Prefer `restorePnpmStoreStep()` + `savePnpmStoreStep()` for new workflows so
- * failed jobs can still seed cold keys. This remains exported while downstream
- * megarepos adopt the split-step form.
- */
-export const cachePnpmStoreStep = (opts?: { keyPrefix?: string; path?: string }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
-  const path = opts?.path ?? jobLocalPnpmStore
-
-  return {
-    name: 'Cache pnpm store',
-    uses: 'actions/cache@v4' as const,
-    with: {
-      path,
+      // Reuse the same primary key expression as restore. GitHub Actions does
+      // not allow nesting `${{ ... }}` inside a fallback string of another
+      // expression, so deriving the key once in TypeScript keeps the emitted
+      // workflow expression valid.
       key: pnpmStoreCachePrimaryKey(keyPrefix),
-      'restore-keys': pnpmStoreCacheRestorePrefix(keyPrefix),
     },
   }
 }
