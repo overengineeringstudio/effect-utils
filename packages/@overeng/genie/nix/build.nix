@@ -4,7 +4,13 @@
 # Fallback pattern: oxfmt is appended to PATH via --suffix, so system oxfmt
 # takes precedence when available, but bundled oxfmt is used as fallback.
 # This avoids formatting churn when oxfmt isn't installed in the environment.
-{ pkgs, src, gitRev ? "unknown", commitTs ? 0, dirty ? false }:
+{
+  pkgs,
+  src,
+  gitRev ? "unknown",
+  commitTs ? 0,
+  dirty ? false,
+}:
 
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
@@ -22,19 +28,26 @@ let
     workspaceRoot = src;
     # Managed by `dt nix:hash:genie` — do not edit manually.
     pnpmDepsHash = "sha256-JQSV+QfJnK0joP2dDL8+rAbUnb4Nx1wNa0UaGeA9Hdk=";
-    inherit lockfileHash gitRev commitTs dirty;
+    inherit
+      lockfileHash
+      gitRev
+      commitTs
+      dirty
+      ;
   };
 in
-pkgs.runCommand "genie" {
-  nativeBuildInputs = [ pkgs.makeWrapper ];
-  meta.mainProgram = "genie";
-  passthru = {
-    # Keep the prepared pnpm deps reachable from the wrapped CLI too so flake
-    # consumers and hash tooling can target one stable attribute path.
-    inherit (unwrapped.passthru) pnpmDeps;
-  };
-} ''
-  mkdir -p $out/bin
-  makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
-    --suffix PATH : ${pkgs.oxfmt}/bin
-''
+pkgs.runCommand "genie"
+  {
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    meta.mainProgram = "genie";
+    passthru = {
+      # Keep the prepared pnpm deps reachable from the wrapped CLI too so flake
+      # consumers and hash tooling can target one stable attribute path.
+      inherit (unwrapped.passthru) pnpmDeps;
+    };
+  }
+  ''
+    mkdir -p $out/bin
+    makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
+      --suffix PATH : ${pkgs.oxfmt}/bin
+  ''

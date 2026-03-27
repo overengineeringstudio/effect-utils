@@ -3,7 +3,13 @@
 #
 # TODO: Move shell completion generation into mkPnpmCli helper
 # so all CLIs get completions automatically.
-{ pkgs, src, gitRev ? "unknown", commitTs ? 0, dirty ? false }:
+{
+  pkgs,
+  src,
+  gitRev ? "unknown",
+  commitTs ? 0,
+  dirty ? false,
+}:
 
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
@@ -19,7 +25,12 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     pnpmDepsHash = "sha256-Z5r/sMUa4c1ON81Y4LURTvvgFr/KR4vN14xYVenoLQk=";
     smokeTestArgs = [ "--help" ];
-    inherit lockfileHash gitRev commitTs dirty;
+    inherit
+      lockfileHash
+      gitRev
+      commitTs
+      dirty
+      ;
   };
 in
 pkgs.stdenv.mkDerivation {
