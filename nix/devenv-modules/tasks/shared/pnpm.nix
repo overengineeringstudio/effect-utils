@@ -135,6 +135,21 @@ let
     }
   '';
 
+  resolvePnpmIdentityFn = ''
+    resolve_pnpm_identity() {
+      local pnpm_bin
+
+      pnpm_bin="$(command -v pnpm)"
+      if command -v realpath >/dev/null 2>&1; then
+        realpath "$pnpm_bin"
+      elif readlink -f "$pnpm_bin" >/dev/null 2>&1; then
+        readlink -f "$pnpm_bin"
+      else
+        printf '%s\n' "$pnpm_bin"
+      fi
+    }
+  '';
+
   allTasks = {
     "pnpm:install" = {
       guard = "pnpm";
@@ -162,6 +177,7 @@ let
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
         ${runPnpmInstallFn}
+        ${resolvePnpmIdentityFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
         # entries without re-resolving packageExtensions, so stale entries break
@@ -169,9 +185,10 @@ let
         # Content-addressable store (files/) is unaffected.
         # See: pnpm/pnpm#9739
         _gvs_hash=$({
-          # pnpm 11 keeps the process alive when stdin stays open, which is
-          # what GitHub Actions does for long-lived shell steps.
-          pnpm --version < /dev/null
+          # Hash the resolved executable path instead of executing pnpm. The
+          # Nix store path already encodes the version, and running pnpm here
+          # can keep store DB handles alive on Namespace runners.
+          resolve_pnpm_identity
           sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
           sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
         } | compute_hash)

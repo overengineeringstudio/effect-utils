@@ -160,11 +160,14 @@ echo "Test 4: status misses after effective GVS path changes"
   assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
 )
 
-echo "Test 5: exec invoked pnpm version and install"
-grep -qxF -- "--version" "$tmpdir/pnpm.log"
+echo "Test 5: exec invoked pnpm install without probing pnpm version"
+if grep -qxF -- "--version" "$tmpdir/pnpm.log"; then
+  echo "FAIL: pnpm install task should not invoke pnpm --version"
+  exit 1
+fi
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 6: exec detaches stdin before probing pnpm version"
+echo "Test 6: exec stays healthy even when fake pnpm version would hang on stdin"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -180,9 +183,12 @@ echo "Test 6: exec detaches stdin before probing pnpm version"
   set -e
   kill "$producer_pid" 2>/dev/null || true
   wait "$producer_pid" 2>/dev/null || true
-  assert_exit_code 0 "$exit_code" "exec should not inherit an open stdin pipe"
+  assert_exit_code 0 "$exit_code" "exec should not depend on pnpm --version"
 )
-grep -qxF -- "--version" "$tmpdir/pnpm.log"
+if grep -qxF -- "--version" "$tmpdir/pnpm.log"; then
+  echo "FAIL: pnpm install task should not invoke pnpm --version"
+  exit 1
+fi
 
 echo ""
 echo "pnpm task smoke test passed"
