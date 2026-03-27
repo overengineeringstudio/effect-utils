@@ -432,9 +432,12 @@ EOF
       if [ -n "$mismatchDrv" ]; then
         echo "  drv:      $mismatchDrv"
         if drvJson=$(${pkgs.nix}/bin/nix derivation show "$mismatchDrv" 2>/dev/null); then
+          # Newer Nix versions return the derivation map at the top level,
+          # while older ones nest it under `.derivations`. Accept both so
+          # stale-hash diagnostics stay informative instead of failing with a
+          # secondary jq error.
           echo "$drvJson" | ${pkgs.jq}/bin/jq -r '
-            .derivations
-            | to_entries[0].value.env
+            ((.derivations // .) | to_entries[0]?.value?.env?) // {}
             | {
                 system,
                 src,
@@ -443,7 +446,7 @@ EOF
               }
             | to_entries[]
             | "  \(.key): \(.value)"
-          '
+          ' || true
         fi
       fi
       exit 1
