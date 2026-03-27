@@ -147,9 +147,14 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
   })
 
 /**
- * Retry wrapper for the Nix GC race condition where `derivationStrict` fails with
- * `path '/nix/store/...' is not valid`. On each retry, fetches the missing path
- * and clears the eval cache.
+ * Retry wrapper for the Nix store validity race where `derivationStrict` fails
+ * with `path '/nix/store/...' is not valid`.
+ *
+ * In practice this often surfaces through higher-level eval wrappers such as
+ * `Failed to convert config.cachix to JSON` / `while evaluating the option
+ * cachix.package` before the final invalid-store-path line appears. We treat
+ * those as the same root cause and retry after realizing the missing path and
+ * clearing the eval cache.
  *
  * TODO: Remove once NixOS/nix#15469 and DeterminateSystems/nix-src#395 are released
  * @see https://github.com/NixOS/nix/pull/15469
@@ -159,7 +164,7 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
   const quotedCommand = shellSingleQuote(command)
   const quotedLabel = shellSingleQuote(label)
   return `__nix_gc_retry() {
-  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid
+  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
   __start=$(date +%s)
 
   __write_summary() {
@@ -189,7 +194,10 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     __hb_pid=$!
 
     __log=$(mktemp)
-    set +e; eval "$1" 2> >(tee "$__log" >&2); __rc=$?; set -e
+    set +e
+    eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
+    __rc=$?
+    set -e
 
     kill "$__hb_pid" 2>/dev/null || true
     wait "$__hb_pid" 2>/dev/null || true
@@ -208,15 +216,32 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
       return 0
     }
 
-    __path=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+    __flattened=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log")
+    __path=$(printf '%s' "$__flattened" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+    __saw_invalid_path=false
+    __saw_cachix_signature=false
+    [ -n "$__path" ] && __saw_invalid_path=true
+    printf '%s' "$__flattened" | grep -q 'Failed to convert config\\.cachix to JSON' && __saw_cachix_signature=true || true
+    # Match the semantic signal, not the exact quote punctuation, so the shell
+    # stays valid even when the human-facing error wraps the option name.
+    printf '%s' "$__flattened" | grep -q 'while evaluating the option' && printf '%s' "$__flattened" | grep -q 'cachix\\.package' && __saw_cachix_signature=true || true
     rm -f "$__log"
-    if [ -z "$__path" ]; then
-      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix GC race"
+    if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then
+      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
       __write_summary failure "No Nix GC race signature detected"
       return $__rc
     fi
-    echo "::warning::Nix GC race detected for $__task (attempt $__n/$__max): $__path"
-    nix-store --realise "$__path" 2>/dev/null || true
+    if [ "$__saw_cachix_signature" = true ] && [ -n "$__path" ]; then
+      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+    elif [ "$__saw_cachix_signature" = true ]; then
+      # The cachix wrapper can surface the GC race before the invalid path makes
+      # it into the flattened log. Retrying after clearing the eval cache still
+      # recovers that case in practice.
+      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper without extracted store path (attempt $__n/$__max)"
+    else
+      echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
+    fi
+    [ -z "$__path" ] || nix-store --realise "$__path" 2>/dev/null || true
     rm -rf ~/.cache/nix/eval-cache-*
     __n=$((__n + 1))
   done
@@ -364,19 +389,69 @@ export const pnpmStoreSetupStep = {
   ].join('\n'),
 } as const
 
-/** Restore/save the pnpm store via actions/cache without sharing a live store between jobs. */
-export const cachePnpmStoreStep = (opts?: { keyPrefix?: string }) => {
+const pnpmStoreCachePrimaryKey = (keyPrefix: string) =>
+  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
+
+const pnpmStoreCacheRestorePrefix = (keyPrefix: string) =>
+  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`
+
+/**
+ * Restore a job-local pnpm store snapshot before any install work runs.
+ *
+ * This is intentionally separate from the save step so a job can still publish
+ * a freshly populated store even if the main task fails later. The trade-off is
+ * slightly more workflow boilerplate in consumers, but it avoids cold-starting
+ * every failing PR until one fully green run happens to save the cache.
+ */
+export const restorePnpmStoreStep = (opts?: {
+  keyPrefix?: string
+  stepId?: string
+  path?: string
+}) => {
   const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+  const path = opts?.path ?? jobLocalPnpmStore
 
   return {
-    name: 'Cache pnpm store',
-    uses: 'actions/cache@v4' as const,
+    id: opts?.stepId ?? 'restore-pnpm-store',
+    name: 'Restore pnpm store',
+    uses: 'actions/cache/restore@v4' as const,
     with: {
-      path: jobLocalPnpmStore,
+      path,
       // The fetched store contents are platform-specific, so the cache must
       // isolate both OS and CPU architecture to avoid cross-platform corruption.
-      key: `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`,
-      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
+      key: pnpmStoreCachePrimaryKey(keyPrefix),
+      'restore-keys': pnpmStoreCacheRestorePrefix(keyPrefix),
+    },
+  }
+}
+
+/**
+ * Save the job-local pnpm store after the main task graph runs.
+ *
+ * We only upload when the restore step missed the exact key. A restore-key hit
+ * still saves the new primary key so lockfile changes warm later runs, while an
+ * exact hit skips the redundant upload.
+ */
+export const savePnpmStoreStep = (opts?: {
+  keyPrefix?: string
+  restoreStepId?: string
+  path?: string
+}) => {
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+  const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-store'
+  const path = opts?.path ?? jobLocalPnpmStore
+
+  return {
+    name: 'Save pnpm store',
+    if: `\${{ always() && !cancelled() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
+    uses: 'actions/cache/save@v4' as const,
+    with: {
+      path,
+      // Reuse the same primary key expression as restore. GitHub Actions does
+      // not allow nesting `${{ ... }}` inside a fallback string of another
+      // expression, so deriving the key once in TypeScript keeps the emitted
+      // workflow expression valid.
+      key: pnpmStoreCachePrimaryKey(keyPrefix),
     },
   }
 }

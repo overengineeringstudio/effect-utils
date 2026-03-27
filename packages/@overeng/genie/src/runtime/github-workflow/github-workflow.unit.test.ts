@@ -141,3 +141,88 @@ describe('determinate-nix-action extra-conf validation', () => {
     )
   })
 })
+
+describe('GitHub expression validation', () => {
+  it('rejects nested GitHub expressions inside a single expression string', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            {
+              name: 'Save pnpm store',
+              uses: 'actions/cache/save@v4',
+              with: {
+                key: "${{ steps.restore.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}' }}",
+                path: '/tmp/pnpm-store',
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    expect(issues).toContainEqual({
+      severity: 'error',
+      packageName: '.github/workflows/ci.yml',
+      dependency: 'jobs.build.steps[0].with.key',
+      message: expect.stringContaining('contains a nested GitHub Actions expression'),
+      rule: 'github-workflow-expression-nesting',
+    })
+  })
+
+  it('allows plain strings that concatenate multiple top-level GitHub expressions', () => {
+    const issues = getWorkflowValidationIssues({
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            {
+              name: 'Restore pnpm store',
+              uses: 'actions/cache/restore@v4',
+              with: {
+                key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
+                path: '/tmp/pnpm-store',
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    expect(issues.filter((i) => i.rule === 'github-workflow-expression-nesting')).toEqual([])
+  })
+
+  it('stringifies valid cache keys with multiple top-level expressions unchanged', () => {
+    const workflow = githubWorkflow({
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            {
+              name: 'Restore pnpm store',
+              uses: 'actions/cache/restore@v4',
+              with: {
+                key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
+                path: '${{ runner.temp }}/pnpm-store/${{ github.job }}',
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const yaml = workflow.stringify(mockGenieContext)
+
+    expect(yaml).toContain(
+      `key: "pnpm-store-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
+    )
+    expect(yaml).toContain(`path: '\${{ runner.temp }}/pnpm-store/\${{ github.job }}'`)
+  })
+})

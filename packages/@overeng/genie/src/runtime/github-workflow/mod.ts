@@ -259,6 +259,8 @@ export type GitHubWorkflowArgs = {
 }
 
 const invalidRunnerLabelPattern = /(^|[=:])(undefined|null)$/
+const githubExpressionStart = '${{'
+const githubExpressionEnd = '}}'
 
 const validateRunsOn = ({
   jobName,
@@ -356,6 +358,65 @@ const validateDeterminateNixExtraConf = ({
   return issues
 }
 
+const containsNestedGitHubExpression = (value: string) => {
+  const trimmed = value.trim()
+  if (trimmed.startsWith(githubExpressionStart) === false) return false
+
+  const firstExpressionClose = trimmed.indexOf(githubExpressionEnd, githubExpressionStart.length)
+  if (firstExpressionClose === -1) return false
+
+  const nestedExpressionStart = trimmed.indexOf(githubExpressionStart, githubExpressionStart.length)
+  if (nestedExpressionStart === -1) return false
+
+  return nestedExpressionStart < firstExpressionClose
+}
+
+const validateGitHubExpressionStrings = ({
+  value,
+  dependency,
+  location,
+}: {
+  value: unknown
+  dependency: string
+  location: string
+}): GenieValidationIssue[] => {
+  if (typeof value === 'string') {
+    if (containsNestedGitHubExpression(value) === false) return []
+
+    return [
+      {
+        severity: 'error',
+        packageName: location,
+        dependency,
+        message: `${dependency} contains a nested GitHub Actions expression. GitHub does not allow \`${githubExpressionStart} ... ${githubExpressionEnd}\` inside another expression. Precompute the fallback string in TypeScript instead of nesting expressions in YAML.`,
+        rule: 'github-workflow-expression-nesting',
+      },
+    ]
+  }
+
+  if (Array.isArray(value) === true) {
+    return value.flatMap((item, index) =>
+      validateGitHubExpressionStrings({
+        value: item,
+        dependency: `${dependency}[${index}]`,
+        location,
+      }),
+    )
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    return Object.entries(value).flatMap(([key, entryValue]) =>
+      validateGitHubExpressionStrings({
+        value: entryValue,
+        dependency: dependency === '' ? key : `${dependency}.${key}`,
+        location,
+      }),
+    )
+  }
+
+  return []
+}
+
 const validateWorkflow = ({
   args,
   location,
@@ -370,6 +431,13 @@ const validateWorkflow = ({
   }
 
   issues.push(...validateDeterminateNixExtraConf({ args, location }))
+  issues.push(
+    ...validateGitHubExpressionStrings({
+      value: args,
+      dependency: '',
+      location,
+    }),
+  )
 
   return issues
 }

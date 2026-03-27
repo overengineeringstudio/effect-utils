@@ -9,7 +9,8 @@ import {
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
-  cachePnpmStoreStep,
+  restorePnpmStoreStep,
+  savePnpmStoreStep,
   standardCIEnv,
   ciWorkflow,
   namespaceRunner,
@@ -28,7 +29,7 @@ const baseSteps = [
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
   pnpmStoreSetupStep,
-  cachePnpmStoreStep(),
+  restorePnpmStoreStep(),
   validateNixStoreStep,
   evictCachedPnpmDepsStep({
     flakeRef: '.#oxlint-npm',
@@ -120,6 +121,7 @@ const job = (step: { name: string; run: string }) => ({
   steps: [
     ...baseSteps,
     step,
+    savePnpmStoreStep(),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -142,6 +144,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   steps: [
     ...baseSteps,
     step,
+    savePnpmStoreStep(),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
     failureReminderStep,
@@ -193,6 +196,7 @@ const deployJobs: Record<string, any> = {
       ...baseSteps,
       netlifyDeployStep(),
       netlifyStorybookCommentStep(NETLIFY_SITE),
+      savePnpmStoreStep(),
       nixDiagnosticsSummaryStep,
       nixDiagnosticsArtifactStep(),
       failureReminderStep,
