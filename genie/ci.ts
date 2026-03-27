@@ -15,7 +15,7 @@ export const RUNNER_PROFILES = [
 export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
 
 /** CI job names (keys in the workflow jobs object) */
-export const CI_JOB_NAMES = ['typecheck', 'lint', 'test', 'nix-check'] as const
+export const CI_JOB_NAMES = ['typecheck', 'lint', 'test', 'nix-check', 'nix-fod-check'] as const
 
 /** Union of canonical CI job keys used across workflow generation and repo settings. */
 export type CIJobName = (typeof CI_JOB_NAMES)[number]
@@ -30,5 +30,6 @@ export const requiredCIJobs = [
   // Matrix jobs - GitHub reports these with the matrix value in parentheses
   ...RUNNER_PROFILES.map((runner) => `test (${runner})`),
   ...RUNNER_PROFILES.map((runner) => `nix-check (${runner})`),
+  ...RUNNER_PROFILES.map((runner) => `nix-fod-check (${runner})`),
   'deploy-storybooks',
 ] as const

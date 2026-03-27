@@ -456,6 +456,44 @@ export const savePnpmStoreStep = (opts?: {
   }
 }
 
+/**
+ * Cold-build exported pnpm fixed-output derivations to prove the checked-in
+ * `pnpmDepsHash` values still match freshly produced outputs.
+ *
+ * Normal CI often reuses already-realized FOD outputs from the local store or
+ * substituters, which can hide stale hashes until some unrelated input change
+ * forces a rebuild. This step deliberately evicts the local outputs first and
+ * disables substituters for the target attrs only. The trade-off is one extra
+ * strict job, but it keeps the expensive cold validation scoped to the actual
+ * fixed-output boundaries instead of rebuilding whole CLI packages.
+ */
+export const validateColdPnpmDepsStep = ({
+  flakeRefs,
+  name = 'Cold pnpm deps validation',
+}: {
+  flakeRefs: readonly [string, ...string[]]
+  name?: string
+}) => ({
+  name,
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
+    '  echo "::group::cold-build $attr"',
+    '  drv=$(nix path-info --derivation "$attr")',
+    '  while IFS= read -r outPath; do',
+    '    [ -n "$outPath" ] || continue',
+    '    if [ -e "$outPath" ]; then',
+    '      echo "evicting local FOD output: $(basename "$outPath")"',
+    '      nix store delete "$outPath" 2>/dev/null || true',
+    '    fi',
+    '  done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+    '  nix build --no-link --option substitute false "$attr"',
+    '  echo "::endgroup::"',
+    'done',
+  ].join('\n'),
+})
+
 /** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
 export const jobLocalMegarepoStore =
   '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
