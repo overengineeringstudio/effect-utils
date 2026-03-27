@@ -364,19 +364,87 @@ export const pnpmStoreSetupStep = {
   ].join('\n'),
 } as const
 
-/** Restore/save the pnpm store via actions/cache without sharing a live store between jobs. */
-export const cachePnpmStoreStep = (opts?: { keyPrefix?: string }) => {
+const pnpmStoreCachePrimaryKey = (keyPrefix: string) =>
+  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
+
+const pnpmStoreCacheRestorePrefix = (keyPrefix: string) =>
+  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`
+
+/**
+ * Restore a job-local pnpm store snapshot before any install work runs.
+ *
+ * This is intentionally separate from the save step so a job can still publish
+ * a freshly populated store even if the main task fails later. The trade-off is
+ * slightly more workflow boilerplate in consumers, but it avoids cold-starting
+ * every failing PR until one fully green run happens to save the cache.
+ */
+export const restorePnpmStoreStep = (opts?: {
+  keyPrefix?: string
+  stepId?: string
+  path?: string
+}) => {
   const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+  const path = opts?.path ?? jobLocalPnpmStore
+
+  return {
+    id: opts?.stepId ?? 'restore-pnpm-store',
+    name: 'Restore pnpm store',
+    uses: 'actions/cache/restore@v4' as const,
+    with: {
+      path,
+      // The fetched store contents are platform-specific, so the cache must
+      // isolate both OS and CPU architecture to avoid cross-platform corruption.
+      key: pnpmStoreCachePrimaryKey(keyPrefix),
+      'restore-keys': pnpmStoreCacheRestorePrefix(keyPrefix),
+    },
+  }
+}
+
+/**
+ * Save the job-local pnpm store after the main task graph runs.
+ *
+ * We only upload when the restore step missed the exact key. A restore-key hit
+ * still saves the new primary key so lockfile changes warm later runs, while an
+ * exact hit skips the redundant upload.
+ */
+export const savePnpmStoreStep = (opts?: {
+  keyPrefix?: string
+  restoreStepId?: string
+  path?: string
+}) => {
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+  const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-store'
+  const path = opts?.path ?? jobLocalPnpmStore
+
+  return {
+    name: 'Save pnpm store',
+    if: `\${{ always() && !cancelled() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
+    uses: 'actions/cache/save@v4' as const,
+    with: {
+      path,
+      key: `\${{ steps.${restoreStepId}.outputs.cache-primary-key || '${pnpmStoreCachePrimaryKey(keyPrefix)}' }}`,
+    },
+  }
+}
+
+/**
+ * Legacy single-step cache helper.
+ *
+ * Prefer `restorePnpmStoreStep()` + `savePnpmStoreStep()` for new workflows so
+ * failed jobs can still seed cold keys. This remains exported while downstream
+ * megarepos adopt the split-step form.
+ */
+export const cachePnpmStoreStep = (opts?: { keyPrefix?: string; path?: string }) => {
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+  const path = opts?.path ?? jobLocalPnpmStore
 
   return {
     name: 'Cache pnpm store',
     uses: 'actions/cache@v4' as const,
     with: {
-      path: jobLocalPnpmStore,
-      // The fetched store contents are platform-specific, so the cache must
-      // isolate both OS and CPU architecture to avoid cross-platform corruption.
-      key: `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`,
-      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
+      path,
+      key: pnpmStoreCachePrimaryKey(keyPrefix),
+      'restore-keys': pnpmStoreCacheRestorePrefix(keyPrefix),
     },
   }
 }
