@@ -80,6 +80,9 @@ cat > "$tmpdir/bin/pnpm" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$*" >> "${TEST_PNPM_LOG:?}"
 if [ "${1:-}" = "--version" ]; then
+  if [ "${TEST_PNPM_VERSION_READS_STDIN:-0}" = "1" ]; then
+    cat >/dev/null
+  fi
   echo "11.0.0-beta.2"
   exit 0
 fi
@@ -160,6 +163,26 @@ echo "Test 4: status misses after effective GVS path changes"
 echo "Test 5: exec invoked pnpm version and install"
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 grep -q "^install " "$tmpdir/pnpm.log"
+
+echo "Test 6: exec detaches stdin before probing pnpm version"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export TEST_PNPM_VERSION_READS_STDIN=1
+  : > "$tmpdir/pnpm.log"
+  mkfifo "$tmpdir/open-stdin"
+  sleep 30 > "$tmpdir/open-stdin" &
+  producer_pid=$!
+  set +e
+  timeout 3s bash "$tmpdir/pnpm-install.exec.sh" < "$tmpdir/open-stdin"
+  exit_code=$?
+  set -e
+  kill "$producer_pid" 2>/dev/null || true
+  wait "$producer_pid" 2>/dev/null || true
+  assert_exit_code 0 "$exit_code" "exec should not inherit an open stdin pipe"
+)
+grep -qxF -- "--version" "$tmpdir/pnpm.log"
 
 echo ""
 echo "pnpm task smoke test passed"
