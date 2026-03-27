@@ -117,6 +117,7 @@ let
       gvs_links_dir="$(resolve_gvs_links_dir)"
 
       {
+        printf '%s\n' "$(pnpm --version 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || echo unknown)"
         printf '%s\n' "$workspace_state_hash"
         printf '%s\n' "''${gvs_links_dir:-}"
       } | compute_hash
@@ -236,15 +237,22 @@ let
       '';
       status = trace.status "pnpm:install" "hash" ''
         set -euo pipefail
-        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-          exit 0
-        fi
         ${loadPnpmTaskHelpersFn}
         hash_file="${cacheRoot}/install-state.hash"
         projection_hash_file="${cacheRoot}/projection-state.hash"
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
           exit 1
+        fi
+
+        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          ${computeProjectionStateHashFn}
+          current_projection_hash="$(compute_projection_state_hash)"
+          stored_projection_hash="$(cat "$projection_hash_file")"
+          if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
+            exit 1
+          fi
+          exit 0
         fi
 
         ${computeWorkspaceStateHash}

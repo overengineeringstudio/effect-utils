@@ -24,14 +24,30 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  cacheRoot = ".direnv/task-cache/mr-apply";
+  membersFile = "${cacheRoot}/members.txt";
+  recordWorkspaceMembers = ''
+    mkdir -p ${lib.escapeShellArg cacheRoot}
+    mr ls --output json \
+      | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .value.members[].name' \
+      | LC_ALL=C sort -u > ${lib.escapeShellArg membersFile}
+  '';
   mrStatusCheck = ''
     # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
     # second eval/build hop to every warm status check.
-    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+    if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
       exit 0
     fi
 
-    if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+      [ -d ./repos ] || exit 1
+      [ -f ${lib.escapeShellArg membersFile} ] || exit 1
+      while IFS= read -r member; do
+        [ -n "$member" ] || continue
+        if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+          exit 1
+        fi
+      done < ${lib.escapeShellArg membersFile}
       exit 0
     fi
 
@@ -53,6 +69,7 @@ let
         fi
 
         mr fetch --apply${if syncAll then " --all" else ""}
+        ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:sync" "binary" mrStatusCheck;
     };
@@ -89,6 +106,7 @@ let
         fi
 
         mr apply${if syncAll then " --all" else ""}
+        ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:apply" "binary" mrStatusCheck;
     };

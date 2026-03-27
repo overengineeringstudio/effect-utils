@@ -57,11 +57,16 @@ const readJsonWithLeadingComments = (filePath) => {
   return JSON.parse(contents.replace(/^(?:\s*\/\/.*\n)+/, ""))
 }
 
+const resolveReferenceTsconfig = (referencePath) => {
+  const resolvedPath = path.resolve(baseDir, referencePath)
+  return path.extname(resolvedPath) ? resolvedPath : path.join(resolvedPath, 'tsconfig.json')
+}
+
 const rootConfig = readJsonWithLeadingComments(sourceTsconfig)
 const baseDir = path.dirname(sourceTsconfig)
 
 rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
-  const refTsconfig = path.resolve(baseDir, reference.path, 'tsconfig.json')
+  const refTsconfig = resolveReferenceTsconfig(reference.path)
   if (!fs.existsSync(refTsconfig)) {
     return true
   }
