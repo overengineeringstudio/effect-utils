@@ -26,4 +26,11 @@ describe('ci workflow retry helpers', () => {
       'grep -q "while evaluating the option \\`cachix\\\\.package\'"',
     )
   })
+
+  it('retries cachix wrapper failures even when the invalid store path was not extracted', () => {
+    expect(ciWorkflowSource).toContain(
+      'if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then',
+    )
+    expect(ciWorkflowSource).toContain('via cachix eval wrapper without extracted store path')
+  })
 })

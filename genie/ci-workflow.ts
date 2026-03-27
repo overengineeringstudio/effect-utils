@@ -226,17 +226,22 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     # stays valid even when the human-facing error wraps the option name.
     printf '%s' "$__flattened" | grep -q 'while evaluating the option' && printf '%s' "$__flattened" | grep -q 'cachix\\.package' && __saw_cachix_signature=true || true
     rm -f "$__log"
-    if [ "$__saw_invalid_path" != true ]; then
+    if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then
       echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
       __write_summary failure "No Nix GC race signature detected"
       return $__rc
     fi
-    if [ "$__saw_cachix_signature" = true ]; then
+    if [ "$__saw_cachix_signature" = true ] && [ -n "$__path" ]; then
       echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
+    elif [ "$__saw_cachix_signature" = true ]; then
+      # The cachix wrapper can surface the GC race before the invalid path makes
+      # it into the flattened log. Retrying after clearing the eval cache still
+      # recovers that case in practice.
+      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper without extracted store path (attempt $__n/$__max)"
     else
       echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
     fi
-    nix-store --realise "$__path" 2>/dev/null || true
+    [ -z "$__path" ] || nix-store --realise "$__path" 2>/dev/null || true
     rm -rf ~/.cache/nix/eval-cache-*
     __n=$((__n + 1))
   done
