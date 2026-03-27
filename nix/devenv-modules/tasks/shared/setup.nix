@@ -258,27 +258,6 @@ let
       return 1
     }
   '';
-  setupTraceEnv = ''
-    if [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
-      if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-        _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-        _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-        _tp="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
-        _now_ns=$(${pkgs.coreutils}/bin/date +%s%N)
-        printf '{"devenv":{"env":{"DEVENV_SETUP_OUTER_CACHE_HIT":"%s","DEVENV_SETUP_FINGERPRINT":"%s","DEVENV_SETUP_GIT_HASH":"%s","TRACEPARENT":"%s","OTEL_SHELL_ENTRY_NS":"%s"}}}' \
-          "$_setup_outer_cache_hit" \
-          "$_setup_current_fingerprint" \
-          "$_setup_git_hash" \
-          "$_tp" \
-          "$_now_ns" > "$DEVENV_TASK_OUTPUT_FILE"
-      else
-        printf '{"devenv":{"env":{"DEVENV_SETUP_OUTER_CACHE_HIT":"%s","DEVENV_SETUP_FINGERPRINT":"%s","DEVENV_SETUP_GIT_HASH":"%s"}}}' \
-          "$_setup_outer_cache_hit" \
-          "$_setup_current_fingerprint" \
-          "$_setup_git_hash" > "$DEVENV_TASK_OUTPUT_FILE"
-      fi
-    fi
-  '';
 in
 {
   tasks = cliGuard.stripGuards (
@@ -303,15 +282,18 @@ in
       # Gate task that fails during rebase, causing dependent tasks to skip.
       # Uses `before` to inject itself as a dependency of each setup task.
       #
-      # OTEL trace propagation:
-      # Generates a W3C TRACEPARENT and propagates it to dependent tasks via
-      # devenv's native task output → env mechanism (devenv.env convention).
-      # When a task writes {"devenv":{"env":{"KEY":"VAL"}}} to $DEVENV_TASK_OUTPUT_FILE,
-      # devenv injects those as env vars into all subsequent task subprocesses.
-      # Ref: https://github.com/cachix/devenv/blob/main/devenv-tasks/src/task_state.rs#L134-L154
-      # Ref: https://devenv.sh/tasks/ (Task Inputs and Outputs)
+      # The gate exports its computed cache metadata through devenv's native
+      # task export channel so every dependent status/exec sees the same
+      # `DEVENV_SETUP_*` values without re-running the fingerprint logic.
       "setup:gate" = lib.mkIf skipDuringRebase {
         description = "Check if setup should run (fails during rebase to skip setup)";
+        exports = [
+          "DEVENV_SETUP_OUTER_CACHE_HIT"
+          "DEVENV_SETUP_FINGERPRINT"
+          "DEVENV_SETUP_GIT_HASH"
+          "TRACEPARENT"
+          "OTEL_SHELL_ENTRY_NS"
+        ];
         exec = ''
           set -euo pipefail
           ${setupFingerprintEnv}
@@ -331,7 +313,16 @@ in
             _setup_outer_cache_hit="0"
           fi
 
-          ${setupTraceEnv}
+          export DEVENV_SETUP_OUTER_CACHE_HIT="$_setup_outer_cache_hit"
+          export DEVENV_SETUP_FINGERPRINT="$_setup_current_fingerprint"
+          export DEVENV_SETUP_GIT_HASH="$_setup_git_hash"
+
+          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+            _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+            _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+            export TRACEPARENT="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
+            export OTEL_SHELL_ENTRY_NS="$(${pkgs.coreutils}/bin/date +%s%N)"
+          fi
         '';
         # This makes setup:gate run BEFORE each setup task
         # If gate fails, the tasks will be "skipped due to dependency failure"
