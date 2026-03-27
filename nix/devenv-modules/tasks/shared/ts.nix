@@ -43,6 +43,9 @@ let
       local source_tsconfig="$1"
       local target_tsconfig="$2"
 
+      # `tsc --build --dry --noCheck` still treats `noEmit` references as emit
+      # work, which made `ts:emit` look perpetually stale. Build a filtered
+      # graph just for this task instead of mutating the checked-in config.
       ${pkgs.nodejs}/bin/node - "$source_tsconfig" "$target_tsconfig" <<'NODE'
 const fs = require('node:fs')
 const path = require('node:path')
@@ -219,6 +222,8 @@ NODE
       exec = ''
         set -euo pipefail
         ${emitTsconfigHelper}
+        # Create the filtered config next to the source tsconfig so referenced
+        # project paths stay relative to the workspace instead of `/tmp`.
         _emit_tmpdir="$(dirname "${tsconfigFile}")"
         _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
         trap 'rm -f "$_emit_tsconfig"' EXIT
@@ -229,6 +234,8 @@ NODE
         set -euo pipefail
         ${emitTsconfigHelper}
 
+        # Reuse the same filtered graph for the dry-run status check so warm
+        # caching answers the same question as the real emit command.
         _emit_tmpdir="$(dirname "${tsconfigFile}")"
         _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
         trap 'rm -f "$_emit_tsconfig"' EXIT

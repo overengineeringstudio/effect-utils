@@ -125,6 +125,9 @@ let
   computeProjectionStateHashFn = ''
     compute_projection_state_hash() {
       {
+        # Keep a cheap fingerprint for the realized node_modules projection.
+        # This catches missing/bad projections on the warm path without the
+        # deeper link-health scan that made cached installs expensive.
         for node_modules_dir in node_modules ${nodeModulesPaths}; do
           if [ -d "$node_modules_dir" ]; then
             printf 'dir %s\n' "$node_modules_dir"
