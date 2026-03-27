@@ -456,6 +456,39 @@ export const savePnpmStoreStep = (opts?: {
   }
 }
 
+/**
+ * Rebuild exported pnpm fixed-output derivations locally and compare them to
+ * the already-realized store outputs.
+ *
+ * Normal CI often reuses already-realized FOD outputs from the local store or
+ * substituters, which can hide stale hashes until some unrelated input change
+ * forces a rebuild. We first realize the target attr as-is, then ask Nix to
+ * `--rebuild` that attr and compare the fresh local result against the realized
+ * output. The important trade-off is that dependencies may still come from
+ * caches, but the target pnpm FOD itself must rebuild locally, which keeps the
+ * check focused on the boundary we care about instead of source-building large
+ * swaths of nixpkgs.
+ */
+export const validateColdPnpmDepsStep = ({
+  flakeRefs,
+  name = 'Cold pnpm deps validation',
+}: {
+  flakeRefs: readonly [string, ...string[]]
+  name?: string
+}) => ({
+  name,
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
+    '  echo "::group::rebuild-check $attr"',
+    '  nix build --no-link "$attr"',
+    '  nix build --no-link --rebuild "$attr"',
+    '  echo "::endgroup::"',
+    'done',
+  ].join('\n'),
+})
+
 /** Ephemeral per-job megarepo store path scoped to the CI run/attempt/job */
 export const jobLocalMegarepoStore =
   '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'

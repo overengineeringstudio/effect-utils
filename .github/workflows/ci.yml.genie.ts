@@ -14,6 +14,7 @@ import {
   standardCIEnv,
   ciWorkflow,
   namespaceRunner,
+  validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
   netlifyDeployStep,
   netlifyStorybookCommentStep,
@@ -151,6 +152,35 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
   ],
 })
 
+const strictNixJobBaseSteps = [
+  checkoutStep(),
+  installNixStep(),
+  cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
+  validateNixStoreStep,
+] as const
+
+const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsStep>) => ({
+  strategy: {
+    'fail-fast': false,
+    matrix: {
+      runner: [...RUNNER_PROFILES],
+    },
+  },
+  'runs-on': namespaceRunner({
+    profile: '${{ matrix.runner }}' as RunnerProfile,
+    runId: '${{ github.run_id }}',
+  }),
+  defaults: bashShellDefaults,
+  env: standardCIEnv,
+  steps: [
+    ...strictNixJobBaseSteps,
+    step,
+    nixDiagnosticsSummaryStep,
+    nixDiagnosticsArtifactStep(),
+    failureReminderStep,
+  ],
+})
+
 // Jobs keyed by CIJobName for type safety with required status checks
 const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
@@ -171,6 +201,13 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
     name: 'Nix hash check',
     run: runDevenvTasksBefore('nix:check'),
   }),
+  // Force a fresh local rebuild of every exported pnpm FOD to catch stale
+  // hashes that normal CI can otherwise mask via store/substituter reuse.
+  'nix-fod-check': multiPlatformStrictNixJob(
+    validateColdPnpmDepsStep({
+      flakeRefs: ['.#genie-pnpm-deps', '.#megarepo-pnpm-deps', '.#oxc-config-plugin-pnpm-deps'],
+    }),
+  ),
 }
 
 const NETLIFY_SITE = 'overeng-utils'
