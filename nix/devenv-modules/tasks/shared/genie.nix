@@ -21,9 +21,26 @@ let
   };
   cacheRoot = ".direnv/task-cache/genie-run";
   stateFile = "${cacheRoot}/state.hash";
+  generatedFilesFile = "${cacheRoot}/generated-files.txt";
+  collectGenieGeneratedFiles = ''
+    collect_genie_generated_files() {
+      ${pkgs.ripgrep}/bin/rg -l \
+        --glob '!tmp/**' \
+        --glob '!.git/**' \
+        --glob '!.direnv/**' \
+        --glob '!.devenv/**' \
+        --glob '!node_modules/**' \
+        '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
+    }
+  '';
   computeGenieStateHash = ''
     compute_genie_state_hash() {
       {
+        if command -v genie >/dev/null 2>&1; then
+          printf 'genie-path %s\n' "$(command -v genie)"
+          printf 'genie-version %s\n' "$(genie --version 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || echo unknown)"
+        fi
+
         # Track both the `.genie.ts` sources and the generated files they own so
         # warm status checks catch manual drift without booting the full CLI.
         ${pkgs.findutils}/bin/find . \
@@ -34,13 +51,7 @@ let
           -not -path './.devenv/*' \
           -not -path './node_modules/*' \
           -print
-        ${pkgs.ripgrep}/bin/rg -l \
-          --glob '!tmp/**' \
-          --glob '!.git/**' \
-          --glob '!.direnv/**' \
-          --glob '!.devenv/**' \
-          --glob '!node_modules/**' \
-          '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' .
+        ${collectGenieGeneratedFiles}
       } \
         | LC_ALL=C sort -u \
         | while IFS= read -r file; do
@@ -67,6 +78,7 @@ let
       exec = trace.exec "genie:run" ''
         set -euo pipefail
         mkdir -p ${lib.escapeShellArg cacheRoot}
+        ${collectGenieGeneratedFiles}
         ${computeGenieStateHash}
         genie
         cache_value="$(compute_genie_state_hash)"
@@ -77,10 +89,23 @@ let
         else
           mv "$tmp_file" ${lib.escapeShellArg stateFile}
         fi
+
+        generated_tmp_file="$(mktemp)"
+        collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
+        mv "$generated_tmp_file" ${lib.escapeShellArg generatedFilesFile}
       '';
       status = trace.status "genie:run" "binary" ''
         set -euo pipefail
         if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          # The outer setup fingerprint already covers tracked generated-file
+          # drift plus genie binary identity. On that warm path, only prove that
+          # the outputs we generated last time still exist.
+          [ -f ${lib.escapeShellArg stateFile} ] || exit 1
+          [ -f ${lib.escapeShellArg generatedFilesFile} ] || exit 1
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            [ -f "$file" ] || exit 1
+          done < ${lib.escapeShellArg generatedFilesFile}
           exit 0
         fi
         [ -f ${lib.escapeShellArg stateFile} ] || exit 1

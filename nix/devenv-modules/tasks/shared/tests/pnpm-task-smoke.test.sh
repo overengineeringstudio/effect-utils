@@ -292,7 +292,31 @@ echo "Test 3: status hits after install with same GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after install"
 )
 
-echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
+echo "Test 4: outer cache hit still misses when projection metadata is missing"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  rm -f node_modules/.modules.yaml
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  unset DEVENV_SETUP_OUTER_CACHE_HIT
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when .modules.yaml is missing"
+)
+
+echo "Test 5: exec restores projection metadata after a miss"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -f "$workspace/node_modules/.modules.yaml"
+)
+
+echo "Test 6: exec defaults PNPM_HOME to a workspace-local projection"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -304,7 +328,7 @@ echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
   grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
-echo "Test 5: status hits after install with the default GVS path"
+echo "Test 7: status hits after install with the default GVS path"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -316,7 +340,7 @@ echo "Test 5: status hits after install with the default GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after default-PNPM_HOME install"
 )
 
-echo "Test 6: status still hits when PNPM_HOME changes but store-dir stays shared"
+echo "Test 8: status still hits when PNPM_HOME changes but store-dir stays shared"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -328,7 +352,7 @@ echo "Test 6: status still hits when PNPM_HOME changes but store-dir stays share
   assert_exit_code 0 "$exit_code" "status should hit when only PNPM_HOME changes"
 )
 
-echo "Test 7: status misses after effective store-dir changes"
+echo "Test 9: status misses after effective store-dir changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -341,10 +365,10 @@ echo "Test 7: status misses after effective store-dir changes"
   assert_exit_code 1 "$exit_code" "status should miss when store-dir changes"
 )
 
-echo "Test 8: exec invoked pnpm install"
+echo "Test 10: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 9: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
+echo "Test 11: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -361,7 +385,7 @@ echo "Test 9: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shar
   grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
-echo "Test 10: nested workspace status hits after nested install"
+echo "Test 12: nested workspace status hits after nested install"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -375,7 +399,7 @@ echo "Test 10: nested workspace status hits after nested install"
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
 
-echo "Test 11: install flags and pre-install hooks are applied"
+echo "Test 13: install flags and pre-install hooks are applied"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -389,7 +413,7 @@ echo "Test 11: install flags and pre-install hooks are applied"
   grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.direnv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
 )
 
-echo "Test 12: CI install failures preserve and classify the pnpm log"
+echo "Test 14: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -413,21 +437,21 @@ echo "Test 12: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 13: generated test task runs vitest without pnpm exec"
+echo "Test 15: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 14: generated storybook task runs storybook without pnpm exec"
+echo "Test 16: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 15: clean leaves shared GVS links intact"
+echo "Test 17: clean leaves shared GVS links intact"
 (
   cd "$workspace"
   mkdir -p "$workspace/.direnv/pnpm-store/v11/links/shared-pkg"

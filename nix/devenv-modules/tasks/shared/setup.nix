@@ -8,7 +8,7 @@
 #   imports = [
 #     (taskModules.setup {
 #       requiredTasks = [ ];
-#       optionalTasks = [ "pnpm:install" "genie:run" "ts:emit" ];
+#       optionalTasks = [ "pnpm:install" "genie:run" "mr:apply" ];
 #       completionsCliNames = [ "genie" "mr" ];
 #     })
 #   ];
@@ -30,7 +30,6 @@
   requiredTasks ? [ ],
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
-  innerCacheDirs ? [ ],
   skipDuringRebase ? true,
 }:
 {
@@ -101,10 +100,6 @@ let
     exit 0
   '';
   completionsStatus = ''
-    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-      exit 0
-    fi
-
     shell=""
     if [ -n "''${FISH_VERSION:-}" ]; then
       shell="fish"
@@ -154,7 +149,6 @@ let
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
   allSetupTasks = setupTasks;
-  setupInnerCacheDirList = lib.concatMapStringsSep " " lib.escapeShellArg innerCacheDirs;
   setupFingerprintEnv = ''
     compute_setup_fingerprint() {
       # This outer fingerprint exists because devenv's built-in `status`
@@ -212,6 +206,17 @@ let
       {
         printf 'head %s\n' "$_setup_head"
 
+        # Shell-entry tasks can short-circuit to lightweight output checks once
+        # the repo inputs are unchanged. Include the task tool identities here so
+        # changing the active pnpm/genie/mr binary still invalidates the outer
+        # cache and forces the next shell to re-validate or refresh setup.
+        for _setup_tool in pnpm genie mr; do
+          if command -v "$_setup_tool" >/dev/null 2>&1; then
+            printf 'tool %s path %s\n' "$_setup_tool" "$(command -v "$_setup_tool")"
+            printf 'tool %s version %s\n' "$_setup_tool" "$($_setup_tool --version 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || echo unknown)"
+          fi
+        done
+
         for _setup_file in package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc megarepo.kdl megarepo.json megarepo.lock; do
           ${git} ls-files -s -- "$_setup_file" 2>/dev/null || true
         done
@@ -256,22 +261,7 @@ let
         return 1
       fi
 
-      # A matching outer fingerprint is only sufficient once at least one of the
-      # task-local caches exists again. This avoids skipping setup after users
-      # delete `.direnv/task-cache/*` without changing any tracked inputs.
-      if [ -z "${setupInnerCacheDirList}" ]; then
-        return 0
-      fi
-
-      for _setup_cache_dir_name in ${setupInnerCacheDirList}; do
-        _setup_cache_dir=${lib.escapeShellArg cache.cacheRoot}/$_setup_cache_dir_name
-        set -- "$_setup_cache_dir"/*.hash
-        if [ -f "$1" ]; then
-          return 0
-        fi
-      done
-
-      return 1
+      return 0
     }
   '';
 in
