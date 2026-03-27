@@ -157,6 +157,22 @@ let
   setupInnerCacheDirList = lib.concatMapStringsSep " " lib.escapeShellArg innerCacheDirs;
   setupFingerprintEnv = ''
     compute_setup_fingerprint() {
+      # This outer fingerprint exists because devenv's built-in `status`
+      # semantics do not prune a dependency subtree: the scheduler only runs a
+      # task's status command once that task itself is ready to execute, after
+      # its upstream dependencies have already been traversed. A cached
+      # aggregate `devenv:enterShell` task therefore would not avoid the warm
+      # `pnpm:install` / `genie:run` / `mr:apply` status probes we are trying
+      # to skip.
+      #
+      # We also intentionally avoid `execIfModified` here. Upstream has fixed
+      # several correctness and performance bugs in that path, but it is still
+      # the wrong primitive for repo bootstrap: setup invalidation depends on
+      # generated-file drift, lockfile topology, and shell/task exports rather
+      # than just a watched file set. Relevant upstream history:
+      # - #1924: enterShell + execIfModified caching was confusing for exports
+      # - #2422 / #2469 / #2588: glob walking could explode through node_modules
+      # - #2577: deletion/removal invalidation needed fixes
       # Use git object IDs for tracked inputs and only content-hash dirty files.
       # That keeps the warm-shell fingerprint cheap while still reacting to
       # untracked/generated drift that git object IDs cannot describe.
@@ -285,6 +301,8 @@ in
       # The gate exports its computed cache metadata through devenv's native
       # task export channel so every dependent status/exec sees the same
       # `DEVENV_SETUP_*` values without re-running the fingerprint logic.
+      # This keeps us aligned with upstream task plumbing instead of carrying a
+      # parallel ad-hoc output protocol in this repo.
       "setup:gate" = lib.mkIf skipDuringRebase {
         description = "Check if setup should run (fails during rebase to skip setup)";
         exports = [
