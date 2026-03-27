@@ -321,10 +321,6 @@ in
         "genie:run"
         "mr:apply"
       ];
-      innerCacheDirs = [
-        "pnpm-install"
-        "genie-run"
-      ];
       completionsCliNames = [
         "genie"
         "mr"

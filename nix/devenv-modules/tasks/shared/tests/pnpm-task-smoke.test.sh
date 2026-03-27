@@ -245,7 +245,30 @@ echo "Test 3: status hits after install with same GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after install"
 )
 
-echo "Test 4: status misses after effective GVS path changes"
+echo "Test 4: outer cache hit still misses when projection metadata is missing"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  rm -f node_modules/.modules.yaml
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when .modules.yaml is missing"
+)
+
+echo "Test 5: exec restores projection metadata after a miss"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -f "$workspace/node_modules/.modules.yaml"
+)
+
+echo "Test 6: status misses after effective GVS path changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -257,7 +280,7 @@ echo "Test 4: status misses after effective GVS path changes"
   assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
 )
 
-echo "Test 5: exec invoked pnpm version and install"
+echo "Test 7: exec invoked pnpm version and install"
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 grep -q "^install " "$tmpdir/pnpm.log"
 

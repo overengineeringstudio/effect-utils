@@ -75,7 +75,6 @@ let
     fi
     return 0
   '';
-
   mrStatusCheck = ''
     # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
     # second eval/build hop to every warm status check.
