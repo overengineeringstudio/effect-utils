@@ -1,24 +1,35 @@
 const fs = require('fs')
 const path = require('path')
 const { createRequire } = require('module')
+const crypto = require('crypto')
 
-/**
- * GVS can leave package symlinks present while still dropping transitive
- * projections after config/path changes. Checking only for broken symlinks
- * misses that failure mode, so this helper resolves each symlinked package's
- * declared runtime deps from the package's real path.
- */
+const mode = process.env.NODE_MODULES_HELPER_MODE || 'health'
+
 const moduleDirs = (process.env.NODE_MODULES_DIRS || '')
   .split('\n')
   .map((value) => value.trim())
   .filter(Boolean)
   .filter((value, index, values) => values.indexOf(value) === index)
-  .filter((value) => fs.existsSync(value))
 
-const dependencyProjectionFailures = []
-const packageContentFailures = []
+const existingModuleDirs = moduleDirs.filter((value) => fs.existsSync(value))
 
-const collectEntryPaths = (nodeModulesDir) => {
+const collectProjectionEntryPaths = (nodeModulesDir) => {
+  const result = []
+  for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
+    const entryPath = path.join(nodeModulesDir, entry.name)
+    if (entry.isDirectory()) {
+      for (const childEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+        result.push(path.join(entryPath, childEntry.name))
+      }
+      continue
+    }
+
+    result.push(entryPath)
+  }
+  return result.sort()
+}
+
+const collectHealthEntryPaths = (nodeModulesDir) => {
   const result = []
   for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
     if (entry.name === '.bin' || entry.name === '.pnpm') continue
@@ -36,12 +47,6 @@ const collectEntryPaths = (nodeModulesDir) => {
   return result
 }
 
-/**
- * `require.resolve("${dependencyName}/package.json")` is not a valid health
- * check because many packages intentionally do not export that subpath. We
- * need to verify the projected package directory itself is reachable via Node's
- * package search paths, independent of its public exports surface.
- */
 const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
   const packagePath = dependencyName.split('/')
   const searchPaths = requireFromPkg.resolve.paths(dependencyName) ?? []
@@ -59,16 +64,6 @@ const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
 const isDeclarationTarget = (value) =>
   value.endsWith('.d.ts') || value.endsWith('.d.mts') || value.endsWith('.d.cts')
 
-/**
- * Only runtime export targets prove whether the package projection can be
- * loaded. Declaration-only branches are intentionally ignored: several packages
- * publish type conditions that are absent from the GVS link projection while
- * their runtime `default` / `import` targets are present and load correctly.
- * See https://github.com/pnpm/pnpm/issues/11385 for the stale runtime-export
- * projection scenario this check guards.
- * TODO(pnpm#11385): remove this package-content check if pnpm starts repairing
- * incomplete GVS link projections during forced installs.
- */
 const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   if (typeof value === 'string') {
     if (conditionName === 'types' || isDeclarationTarget(value)) return []
@@ -88,7 +83,7 @@ const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   return []
 }
 
-const verifyPackageContent = ({ pkg, packageDir, entryPath }) => {
+const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
   if (!packageDir.includes('/v11/links/')) return
 
   const includedFiles = Array.isArray(pkg.files)
@@ -121,64 +116,133 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath }) => {
 
     const resolved = path.resolve(packageDir, target)
     if (!fs.existsSync(resolved)) {
-      packageContentFailures.push(`${pkg.name ?? entryPath} -> ${target} (${packageDir})`)
+      failures.push(`${pkg.name ?? entryPath} -> ${target} (${packageDir})`)
     }
   }
 }
 
-for (const nodeModulesDir of moduleDirs) {
-  for (const entryPath of collectEntryPaths(nodeModulesDir)) {
-    let stat
-    try {
-      stat = fs.lstatSync(entryPath)
-    } catch {
+const runProjectionHash = () => {
+  const hash = crypto.createHash('sha256')
+  const appendLine = (line) => {
+    hash.update(line)
+    hash.update('\n')
+  }
+
+  for (const nodeModulesDir of moduleDirs) {
+    if (fs.existsSync(nodeModulesDir) && fs.statSync(nodeModulesDir).isDirectory()) {
+      appendLine(`dir ${nodeModulesDir}`)
+    } else {
+      appendLine(`missing ${nodeModulesDir}`)
       continue
     }
 
-    if (!stat.isSymbolicLink()) continue
+    for (const entryPath of collectProjectionEntryPaths(nodeModulesDir)) {
+      let stat
+      try {
+        stat = fs.lstatSync(entryPath)
+      } catch {
+        continue
+      }
 
-    let realPath
-    try {
-      realPath = fs.realpathSync(entryPath)
-    } catch {
-      continue
-    }
+      if (!stat.isSymbolicLink()) continue
 
-    const packageJsonPath = path.join(realPath, 'package.json')
-    if (!fs.existsSync(packageJsonPath)) continue
+      let target = ''
+      try {
+        target = fs.readlinkSync(entryPath)
+      } catch {}
 
-    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
-    verifyPackageContent({ pkg, packageDir: realPath, entryPath })
-
-    const dependencyNames = Object.keys(pkg.dependencies ?? {})
-    if (dependencyNames.length === 0) continue
-
-    const requireFromPkg = createRequire(packageJsonPath)
-    for (const dependencyName of dependencyNames) {
-      if (
-        resolveDependencyPackageRoot({
-          requireFromPkg,
-          dependencyName,
-        }) === undefined
-      ) {
-        dependencyProjectionFailures.push(
-          `${pkg.name ?? entryPath} -> ${dependencyName} (from ${nodeModulesDir})`,
-        )
+      if (fs.existsSync(entryPath)) {
+        appendLine(`link ${entryPath} -> ${target}`)
+      } else {
+        appendLine(`broken-link ${entryPath} -> ${target}`)
       }
     }
   }
+
+  const rootModulesYamlPath = process.env.PNPM_ROOT_MODULES_YAML || 'node_modules/.modules.yaml'
+  if (fs.existsSync(rootModulesYamlPath)) {
+    appendLine(
+      `modules-yaml ${crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(rootModulesYamlPath))
+        .digest('hex')}`,
+    )
+  } else {
+    appendLine('modules-yaml missing')
+  }
+
+  process.stdout.write(`${hash.digest('hex')}\n`)
 }
 
-if (dependencyProjectionFailures.length > 0) {
+const runHealthCheck = () => {
+  const dependencyProjectionFailures = []
+  const packageContentFailures = []
+
+  for (const nodeModulesDir of existingModuleDirs) {
+    for (const entryPath of collectHealthEntryPaths(nodeModulesDir)) {
+      let stat
+      try {
+        stat = fs.lstatSync(entryPath)
+      } catch {
+        continue
+      }
+
+      if (!stat.isSymbolicLink()) continue
+
+      let realPath
+      try {
+        realPath = fs.realpathSync(entryPath)
+      } catch {
+        continue
+      }
+
+      const packageJsonPath = path.join(realPath, 'package.json')
+      if (!fs.existsSync(packageJsonPath)) continue
+
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+      verifyPackageContent({
+        pkg,
+        packageDir: realPath,
+        entryPath,
+        failures: packageContentFailures,
+      })
+
+      const dependencyNames = Object.keys(pkg.dependencies ?? {})
+      if (dependencyNames.length === 0) continue
+
+      const requireFromPkg = createRequire(packageJsonPath)
+      for (const dependencyName of dependencyNames) {
+        if (
+          resolveDependencyPackageRoot({
+            requireFromPkg,
+            dependencyName,
+          }) === undefined
+        ) {
+          dependencyProjectionFailures.push(
+            `${pkg.name ?? entryPath} -> ${dependencyName} (from ${nodeModulesDir})`,
+          )
+        }
+      }
+    }
+  }
+
   for (const failure of dependencyProjectionFailures) {
     console.error(`[pnpm] Missing dependency projection: ${failure}`)
   }
-  process.exit(1)
-}
-
-if (packageContentFailures.length > 0) {
   for (const failure of packageContentFailures) {
     console.error(`[pnpm] Missing package content: ${failure}`)
   }
+
+  if (dependencyProjectionFailures.length > 0 || packageContentFailures.length > 0) {
+    process.exit(1)
+  }
+}
+
+if (mode === 'projection-hash') {
+  runProjectionHash()
+} else if (mode === 'health') {
+  runHealthCheck()
+} else {
+  console.error(`[pnpm] Unknown node_modules helper mode: ${mode}`)
   process.exit(1)
 }
