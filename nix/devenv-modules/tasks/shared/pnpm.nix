@@ -236,6 +236,10 @@ let
         fi
 
         if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          # Keep shell entry fast by reusing the cached install-state proof and
+          # only re-validating the realized projection structure here. The full
+          # semantic health check still runs in the exec path before install can
+          # be treated as clean again.
           ${computeProjectionStateHashFn}
           current_projection_hash="$(compute_projection_state_hash)"
           stored_projection_hash="$(cat "$projection_hash_file")"

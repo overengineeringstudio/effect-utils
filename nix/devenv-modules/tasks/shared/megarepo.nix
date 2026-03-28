@@ -27,10 +27,15 @@ let
   cacheRoot = ".direnv/task-cache/mr-apply";
   membersFile = "${cacheRoot}/members.txt";
   recordWorkspaceMembers = ''
+    set -o pipefail
     mkdir -p ${lib.escapeShellArg cacheRoot}
+    tmp_members_file="$(mktemp)"
+    # Rewrite the manifest atomically so a failed `mr ls` never leaves behind
+    # an empty file that would make the warm-path output proof vacuous.
     mr ls --output json \
       | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .value.members[].name' \
-      | LC_ALL=C sort -u > ${lib.escapeShellArg membersFile}
+      | LC_ALL=C sort -u > "$tmp_members_file"
+    mv "$tmp_members_file" ${lib.escapeShellArg membersFile}
   '';
   mrStatusCheck = ''
     # Use the already-installed source CLI here. `nix run ...#megarepo` adds a

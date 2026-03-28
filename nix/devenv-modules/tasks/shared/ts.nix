@@ -52,9 +52,28 @@ const path = require('node:path')
 
 const [sourceTsconfig, targetTsconfig] = process.argv.slice(2)
 
-const readJsonWithLeadingComments = (filePath) => {
-  const contents = fs.readFileSync(filePath, 'utf8')
-  return JSON.parse(contents.replace(/^(?:\s*\/\/.*\n)+/, ""))
+const loadTypescript = () => {
+  try {
+    return require(require.resolve('typescript', { paths: [path.dirname(sourceTsconfig), process.cwd()] }))
+  } catch (error) {
+    throw new Error(
+      'Unable to resolve TypeScript while preparing ts:emit: ' +
+        String(error?.message ?? error)
+    )
+  }
+}
+
+const typescript = loadTypescript()
+
+const readTsconfig = (filePath) => {
+  const parsed = typescript.readConfigFile(filePath, (path) => fs.readFileSync(path, 'utf8'))
+  if (parsed.error) {
+    const message = typeof parsed.error.messageText === 'string'
+      ? parsed.error.messageText
+      : JSON.stringify(parsed.error.messageText)
+    throw new Error('Failed to parse ' + filePath + ': ' + message)
+  }
+  return parsed.config
 }
 
 const resolveReferenceTsconfig = (referencePath) => {
@@ -62,7 +81,7 @@ const resolveReferenceTsconfig = (referencePath) => {
   return path.extname(resolvedPath) ? resolvedPath : path.join(resolvedPath, 'tsconfig.json')
 }
 
-const rootConfig = readJsonWithLeadingComments(sourceTsconfig)
+const rootConfig = readTsconfig(sourceTsconfig)
 const baseDir = path.dirname(sourceTsconfig)
 
 rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
@@ -71,7 +90,7 @@ rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
     return true
   }
 
-  const refConfig = readJsonWithLeadingComments(refTsconfig)
+  const refConfig = readTsconfig(refTsconfig)
   return refConfig.compilerOptions?.noEmit !== true
 })
 
