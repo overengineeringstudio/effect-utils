@@ -361,18 +361,21 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
 } as const
 
 /**
- * Keep pnpm's mutable content isolated per job while still allowing cache reuse across runs.
+ * Keep pnpm's hot mutable content isolated per job while still allowing cache reuse across runs.
  *
- * `PNPM_STORE_DIR` must be stable so `actions/cache` can restore a previous store snapshot.
- * `PNPM_HOME` stays workspace-relative because the GVS links embed absolute paths and those
- * need to stay valid for relocatable artifacts like `vercel deploy --prebuilt`.
+ * In the pnpm 11 + GVS configuration we use today, the effective hot state lives
+ * under `PNPM_HOME`, not `PNPM_STORE_DIR`. `PNPM_HOME` must stay
+ * workspace-relative because the GVS links embed absolute paths and those need
+ * to stay valid for relocatable artifacts like `vercel deploy --prebuilt`.
  */
 export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 
 /**
- * Keep pnpm's mutable content isolated per job while still allowing cache reuse across runs.
+ * Keep pnpm's auxiliary mutable store content isolated per job.
  *
- * `PNPM_STORE_DIR` must be stable so `actions/cache` can restore a previous store snapshot.
+ * We still wire `PNPM_STORE_DIR` explicitly for pnpm, but the primary CI cache
+ * target is `PNPM_HOME` because that is where pnpm 11 GVS keeps the reusable
+ * links and metadata.
  */
 export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
 
@@ -381,7 +384,7 @@ export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }
  * same writable store and the same workspace-relative GVS projection.
  */
 export const pnpmStoreSetupStep = {
-  name: 'Isolate pnpm store',
+  name: 'Isolate pnpm state',
   shell: 'bash',
   run: [
     `echo "PNPM_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
@@ -396,7 +399,7 @@ const pnpmStoreCacheRestorePrefix = (keyPrefix: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`
 
 /**
- * Restore a job-local pnpm store snapshot before any install work runs.
+ * Restore the job-local pnpm home snapshot before any install work runs.
  *
  * This is intentionally separate from the save step so a job can still publish
  * a freshly populated store even if the main task fails later. The trade-off is
@@ -408,12 +411,12 @@ export const restorePnpmStoreStep = (opts?: {
   stepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
-  const path = opts?.path ?? jobLocalPnpmStore
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
+  const path = opts?.path ?? jobLocalPnpmHome
 
   return {
     id: opts?.stepId ?? 'restore-pnpm-store',
-    name: 'Restore pnpm store',
+    name: 'Restore pnpm home',
     uses: 'actions/cache/restore@v4' as const,
     with: {
       path,
@@ -426,7 +429,7 @@ export const restorePnpmStoreStep = (opts?: {
 }
 
 /**
- * Save the job-local pnpm store after the main task graph runs.
+ * Save the job-local pnpm home after the main task graph runs.
  *
  * We only upload when the restore step missed the exact key. A restore-key hit
  * still saves the new primary key so lockfile changes warm later runs, while an
@@ -437,12 +440,12 @@ export const savePnpmStoreStep = (opts?: {
   restoreStepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-store'
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-store'
-  const path = opts?.path ?? jobLocalPnpmStore
+  const path = opts?.path ?? jobLocalPnpmHome
 
   return {
-    name: 'Save pnpm store',
+    name: 'Save pnpm home',
     if: `\${{ always() && !cancelled() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
     uses: 'actions/cache/save@v4' as const,
     with: {

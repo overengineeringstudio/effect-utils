@@ -34,3 +34,16 @@ describe('ci workflow retry helpers', () => {
     expect(ciWorkflowSource).toContain('via cachix eval wrapper without extracted store path')
   })
 })
+
+describe('ci workflow pnpm cache defaults', () => {
+  it('keeps the shared pnpm home workspace-relative', () => {
+    expect(ciWorkflowSource).toContain(
+      "export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'",
+    )
+  })
+
+  it('defaults the split cache helpers to pnpm home instead of pnpm store', () => {
+    expect(ciWorkflowSource).toContain("const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'")
+    expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmHome')
+  })
+})
