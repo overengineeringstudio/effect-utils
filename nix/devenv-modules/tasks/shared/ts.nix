@@ -38,6 +38,39 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  emitTsconfigHelper = ''
+    generate_emit_tsconfig() {
+      local source_tsconfig="$1"
+      local target_tsconfig="$2"
+
+      ${pkgs.nodejs}/bin/node - "$source_tsconfig" "$target_tsconfig" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [sourceTsconfig, targetTsconfig] = process.argv.slice(2)
+
+const readJsonWithLeadingComments = (filePath) => {
+  const contents = fs.readFileSync(filePath, 'utf8')
+  return JSON.parse(contents.replace(/^(?:\s*\/\/.*\n)+/, ""))
+}
+
+const rootConfig = readJsonWithLeadingComments(sourceTsconfig)
+const baseDir = path.dirname(sourceTsconfig)
+
+rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
+  const refTsconfig = path.resolve(baseDir, reference.path, 'tsconfig.json')
+  if (!fs.existsSync(refTsconfig)) {
+    return true
+  }
+
+  const refConfig = readJsonWithLeadingComments(refTsconfig)
+  return refConfig.compilerOptions?.noEmit !== true
+})
+
+fs.writeFileSync(targetTsconfig, JSON.stringify(rootConfig))
+NODE
+    }
+  '';
 
   # Script that runs tsc with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
@@ -183,11 +216,24 @@ let
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
-      exec = tscWithDiagnostics "--build ${tsconfigFile}" "--noCheck";
+      exec = ''
+        set -euo pipefail
+        ${emitTsconfigHelper}
+        _emit_tmpdir="$(dirname "${tsconfigFile}")"
+        _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
+        trap 'rm -f "$_emit_tsconfig"' EXIT
+        generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
+        ${tscWithDiagnostics "--build \"$_emit_tsconfig\"" "--noCheck"}
+      '';
       status = ''
         set -euo pipefail
+        ${emitTsconfigHelper}
 
-        _out="$(${tscBin} --build ${tsconfigFile} --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
+        _emit_tmpdir="$(dirname "${tsconfigFile}")"
+        _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
+        trap 'rm -f "$_emit_tsconfig"' EXIT
+        generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
+        _out="$(${tscBin} --build "$_emit_tsconfig" --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
         # tsc --build --dry reports pending work as:
         # - "A non-dry build would build project ..."
         # - "A non-dry build would update timestamps for output of project ..."

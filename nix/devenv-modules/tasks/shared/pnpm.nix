@@ -122,6 +122,26 @@ let
       } | compute_hash
     }
   '';
+  computeProjectionStateHashFn = ''
+    compute_projection_state_hash() {
+      {
+        for node_modules_dir in node_modules ${nodeModulesPaths}; do
+          if [ -d "$node_modules_dir" ]; then
+            printf 'dir %s\n' "$node_modules_dir"
+          else
+            printf 'missing %s\n' "$node_modules_dir"
+          fi
+        done
+
+        if [ -f node_modules/.modules.yaml ]; then
+          printf 'modules-yaml '
+          sha256sum node_modules/.modules.yaml | awk '{print $1}'
+        else
+          printf 'modules-yaml missing\n'
+        fi
+      } | compute_hash
+    }
+  '';
 
   runPnpmInstallFn = ''
     run_pnpm_install() {
@@ -148,6 +168,7 @@ let
         # manifests. The fingerprint also includes the active GVS projection
         # root because pnpm 11 bakes absolute paths into `links/`.
         hash_file="${cacheRoot}/install-state.hash"
+        projection_hash_file="${cacheRoot}/projection-state.hash"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -161,6 +182,7 @@ let
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
+        ${computeProjectionStateHashFn}
         ${runPnpmInstallFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
@@ -205,24 +227,34 @@ let
 
         cache_value="$(compute_install_state_hash)"
         ${cache.writeCacheFile ''"$hash_file"''}
+
+        cache_value="$(compute_projection_state_hash)"
+        ${cache.writeCacheFile ''"$projection_hash_file"''}
       '';
       status = trace.status "pnpm:install" "hash" ''
         set -euo pipefail
+        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          exit 0
+        fi
         ${loadPnpmTaskHelpersFn}
         hash_file="${cacheRoot}/install-state.hash"
+        projection_hash_file="${cacheRoot}/projection-state.hash"
 
-        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
+        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
           exit 1
         fi
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
+        ${computeProjectionStateHashFn}
         current_hash="$(compute_install_state_hash)"
+        current_projection_hash="$(compute_projection_state_hash)"
         stored_hash="$(cat "$hash_file")"
-        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
+        stored_projection_hash="$(cat "$projection_hash_file")"
+        if [ "$current_hash" != "$stored_hash" ]; then
           exit 1
         fi
-        if [ "$current_hash" != "$stored_hash" ]; then
+        if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
           exit 1
         fi
         exit 0
