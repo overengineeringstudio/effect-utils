@@ -41,7 +41,18 @@
 
 import { Atom, Registry } from '@effect-atom/atom'
 import type { Scope } from 'effect'
-import { Cause, Console, Effect, Function as Fn, PubSub, Runtime, Schema, Stream } from 'effect'
+import {
+  Cause,
+  Console,
+  Context,
+  Effect,
+  Function as Fn,
+  Option,
+  PubSub,
+  Runtime,
+  Schema,
+  Stream,
+} from 'effect'
 import React, { type ReactElement, type ReactNode, createContext } from 'react'
 
 import { renderToString } from '../renderToString.ts'
@@ -69,6 +80,9 @@ export type TuiAppTypeId = typeof TuiAppTypeId
 /** Check if a value is a TuiApp instance. */
 export const isTuiApp = (u: unknown): u is TuiApp<unknown, unknown> =>
   typeof u === 'object' && u !== null && TuiAppTypeId in u
+
+/** Internal tag to skip mode-specific output when standalone run() handles output */
+const SkipModeOutputTag = Context.GenericTag<boolean>('@overeng/tui-react/SkipModeOutput')
 
 // =============================================================================
 // TUI Registry Context (avoids multiple React instance issues with @effect-atom/atom-react)
@@ -538,15 +552,23 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
         unmount,
       }
 
-      // Setup mode-specific behavior
-      rootRef = yield* setupMode({
-        mode,
-        stateAtom,
-        stateSchema,
-        outputSchema,
-        registry,
-        view,
-      })
+      // Check if mode output should be skipped (set by standalone run() with output schema)
+      const skipModeOutput = Option.getOrElse(
+        yield* Effect.serviceOption(SkipModeOutputTag),
+        () => false,
+      )
+
+      // Setup mode-specific behavior (only when not using explicit output schema on run())
+      if (skipModeOutput === false) {
+        rootRef = yield* setupMode({
+          mode,
+          stateAtom,
+          stateSchema,
+          outputSchema,
+          registry,
+          view,
+        })
+      }
 
       // Add finalizer for cleanup
       yield* Effect.addFinalizer((exit) =>
@@ -837,21 +859,71 @@ export const tuiAppConfig = <S, A>(config: TuiAppConfig<S, A>): TuiAppConfig<S, 
 /**
  * Options for `run`.
  */
-export interface TuiAppRunOptions {
+export interface TuiAppRunOptions<O = unknown> {
   /**
    * Optional React element to render in visual modes.
    * Omit for headless mode (JSON modes, testing).
    */
   readonly view?: ReactElement
+  /** Schema for the command's output. When provided in non-visual modes,
+   *  the handler's return value is serialized to stdout instead of the state machine. */
+  readonly output?: Schema.Schema<O>
 }
+
+/** Check if schema resolves to a plain string type */
+const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
+  schema.ast._tag === 'StringKeyword'
+
+/** Write a value to stdout using the appropriate format for its schema type.
+ *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded. */
+const writeOutput = <O,>(value: O, schema: Schema.Schema<O>): Effect.Effect<void> =>
+  isStringSchema(schema as Schema.Schema<unknown>)
+    ? Effect.sync(() => {
+        const str = String(value)
+        process.stdout.write(str)
+        if (str.length > 0 && !str.endsWith('\n')) process.stdout.write('\n')
+      })
+    : Schema.encode(Schema.parseJson(schema))(value).pipe(
+        Effect.flatMap((json) => Console.log(json)),
+        Effect.orDie,
+      )
 
 // oxlint-disable-next-line overeng/named-args -- dual API pattern requires positional args
 const runImpl = <S, A, B, E, R>(
   app: TuiApp<S, A>,
   handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
-  options?: TuiAppRunOptions,
-): Effect.Effect<B, E, R | OutputModeTag> =>
-  Effect.scoped(app.run(options?.view).pipe(Effect.flatMap(handler)))
+  options?: TuiAppRunOptions<B>,
+): Effect.Effect<B, E, R | OutputModeTag> => {
+  // No output schema: existing behavior (state-based JSON output)
+  if (options?.output === undefined) {
+    return Effect.scoped(app.run(options?.view).pipe(Effect.flatMap(handler)))
+  }
+
+  const outputSchema = options.output
+  return Effect.gen(function* () {
+    const mode = yield* OutputModeTag
+
+    if (mode._tag === 'react') {
+      // Visual mode: render view + run handler normally, output is returned to caller
+      return yield* Effect.scoped(
+        app.run(options.view).pipe(Effect.flatMap(handler)),
+      )
+    }
+
+    // Machine mode: skip state JSON output, run handler headless, serialize return value
+    const result = yield* Effect.scoped(
+      app.run().pipe(
+        Effect.provideService(SkipModeOutputTag, true),
+        Effect.flatMap(handler),
+      ),
+    )
+
+    // Write handler's return value to stdout
+    yield* writeOutput(result, outputSchema)
+
+    return result
+  })
+}
 
 /**
  * Run a TuiApp with a handler callback.
@@ -887,13 +959,13 @@ export const run: {
   // Data-last (pipeable): run(handler, options?) returns (app) => Effect
   <S, A, B, E, R>(
     handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
-    options?: TuiAppRunOptions,
+    options?: TuiAppRunOptions<B>,
   ): (app: TuiApp<S, A>) => Effect.Effect<B, E, R | OutputModeTag>
 
   // Data-first: run(app, handler, options?) returns Effect
   <S, A, B, E, R>(
     app: TuiApp<S, A>,
     handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
-    options?: TuiAppRunOptions,
+    options?: TuiAppRunOptions<B>,
   ): Effect.Effect<B, E, R | OutputModeTag>
 } = Fn.dual((args) => isTuiApp(args[0]), runImpl)

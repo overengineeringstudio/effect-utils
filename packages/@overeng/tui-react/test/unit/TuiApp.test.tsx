@@ -526,6 +526,177 @@ describe('run (standalone dual API)', () => {
 })
 
 // =============================================================================
+// run() with output schema tests
+// =============================================================================
+
+describe('run with output schema', () => {
+  let originalLog: typeof console.log
+  let originalStdoutWrite: typeof process.stdout.write
+  let capturedConsole: string[]
+  let capturedStdout: string[]
+
+  beforeEach(() => {
+    originalLog = console.log
+    originalStdoutWrite = process.stdout.write
+    capturedConsole = []
+    capturedStdout = []
+    console.log = (msg: string) => {
+      capturedConsole.push(msg)
+    }
+    process.stdout.write = ((chunk: unknown) => {
+      capturedStdout.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+  })
+
+  afterEach(() => {
+    console.log = originalLog
+    process.stdout.write = originalStdoutWrite
+  })
+
+  describe('string output (Schema.String)', () => {
+    it.effect('json mode: writes raw string to stdout (no JSON encoding)', () =>
+      run(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 42 })
+            return 'my-secret-value'
+          }),
+        { output: Schema.String },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen((result) => {
+          expect(result).toBe('my-secret-value')
+          // Should be written raw to stdout, not as JSON
+          const stdout = capturedStdout.join('')
+          expect(stdout).toBe('my-secret-value\n')
+          // Should NOT produce any console.log output (no state envelope)
+          expect(capturedConsole).toHaveLength(0)
+        }),
+      ),
+    )
+
+    it.effect('json mode: no Success/Failure envelope in output', () =>
+      run(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Increment' })
+            return 'the-output'
+          }),
+        { output: Schema.String },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen(() => {
+          const allOutput = capturedStdout.join('') + capturedConsole.join('')
+          expect(allOutput).not.toContain('Success')
+          expect(allOutput).not.toContain('Failure')
+          expect(allOutput).toContain('the-output')
+        }),
+      ),
+    )
+
+    it.effect('pipe mode (react/final): renders view, not raw output', () =>
+      run(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 55 })
+            return 'should-not-be-raw'
+          }),
+        { view: <CounterView />, output: Schema.String },
+      ).pipe(
+        Effect.provide(testModeLayer('pipe')),
+        Effect.andThen((result) => {
+          // Return value is still propagated
+          expect(result).toBe('should-not-be-raw')
+          // In visual mode, the raw string should NOT be written to stdout
+          // (the view handles rendering instead)
+          const stdout = capturedStdout.join('')
+          expect(stdout).not.toContain('should-not-be-raw')
+        }),
+      ),
+    )
+  })
+
+  describe('structured output (Schema.Struct)', () => {
+    const OutputSchema = Schema.Struct({
+      items: Schema.Array(Schema.String),
+      total: Schema.Number,
+    })
+
+    it.effect('json mode: writes JSON-encoded output to console', () =>
+      run(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 3 })
+            return { items: ['a', 'b', 'c'], total: 3 }
+          }),
+        { output: OutputSchema },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen((result) => {
+          expect(result).toEqual({ items: ['a', 'b', 'c'], total: 3 })
+          // Structured output goes through Console.log (JSON-encoded)
+          expect(capturedConsole).toHaveLength(1)
+          const parsed = JSON.parse(capturedConsole[0]!)
+          expect(parsed).toEqual({ items: ['a', 'b', 'c'], total: 3 })
+          // No Success/Failure wrapper
+          expect(parsed._tag).toBeUndefined()
+        }),
+      ),
+    )
+  })
+
+  describe('without output schema (backwards compatibility)', () => {
+    it.effect('json mode: still produces state-based Success envelope', () =>
+      run(CounterApp, (tui) =>
+        Effect.gen(function* () {
+          tui.dispatch({ _tag: 'Set', value: 88 })
+        }),
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen(() => {
+          expect(capturedConsole).toHaveLength(1)
+          const output = JSON.parse(capturedConsole[0]!)
+          // Old behavior: wrapped in Success with state fields
+          expect(output._tag).toBe('Success')
+          expect(output.count).toBe(88)
+        }),
+      ),
+    )
+  })
+
+  describe('error handling with output schema', () => {
+    class ReadError extends Schema.TaggedError<ReadError>()('ReadError', {
+      message: Schema.String,
+    }) {}
+
+    it.effect('handler error: no stdout output, error propagated', () =>
+      run(
+        CounterApp,
+        () => new ReadError({ message: 'access denied' }),
+        { output: Schema.String },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.catchAll((error) =>
+          Effect.sync(() => {
+            expect(error).toBeInstanceOf(ReadError)
+            expect(error.message).toBe('access denied')
+            // No output should be written on error
+            const stdout = capturedStdout.join('')
+            expect(stdout).toBe('')
+            expect(capturedConsole).toHaveLength(0)
+          }),
+        ),
+      ),
+    )
+  })
+})
+
+// =============================================================================
 // deriveOutputSchema Tests
 // =============================================================================
 
