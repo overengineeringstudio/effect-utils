@@ -42,6 +42,8 @@ import { Schema } from 'effect'
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 
+import { msAsTimeString } from '@overeng/utils'
+
 import {
   RenderConfigProvider,
   ciRenderConfig,
@@ -53,8 +55,6 @@ import {
 import { TuiRegistryContext } from '../effect/TuiApp.tsx'
 import { renderToString } from '../renderToString.ts'
 import { createRoot, type Root } from '../root.tsx'
-import { msAsTimeString } from '@overeng/utils'
-
 import { PowerlinePrompt } from './PowerlinePrompt.tsx'
 import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from './theme.ts'
 
