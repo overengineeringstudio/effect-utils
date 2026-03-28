@@ -194,14 +194,28 @@ let
     compute_projection_state_hash() {
       {
         # Keep a cheap fingerprint for the realized node_modules projection.
-        # This catches missing/bad projections on the warm path without the
-        # deeper link-health scan that made cached installs expensive.
+        # This catches missing or stale projections on the warm path without
+        # the deeper dependency-resolution scan that made cached installs
+        # expensive. Package-level node_modules links are part of the live
+        # projection contract, so we fingerprint their resolved targets too.
         for node_modules_dir in node_modules ${nodeModulesPaths}; do
           if [ -d "$node_modules_dir" ]; then
             printf 'dir %s\n' "$node_modules_dir"
           else
             printf 'missing %s\n' "$node_modules_dir"
+            continue
           fi
+
+          find "$node_modules_dir" -mindepth 1 -maxdepth 2 -type l -print \
+            | LC_ALL=C sort \
+            | while IFS= read -r link_path; do
+              link_target="$(readlink "$link_path" || true)"
+              if [ -e "$link_path" ]; then
+                printf 'link %s -> %s\n' "$link_path" "$link_target"
+              else
+                printf 'broken-link %s -> %s\n' "$link_path" "$link_target"
+              fi
+            done
         done
 
         if [ -f node_modules/.modules.yaml ]; then
