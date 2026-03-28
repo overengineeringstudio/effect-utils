@@ -7,6 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **@overeng/tui-react**: Format timeline timestamps as human-readable durations (e.g. `6m 18s / 16m 21s`) instead of raw seconds (`377.9s / 980.6s`) in `TuiStoryPreview` (#472)
+- **devenv/tasks**: make warm shell bootstrap commit-scoped and remove `ts:emit` from shell entry
+  - Adds an outer `setup:auto` cache so warm `devenv shell` skips unchanged bootstrap work instead of traversing `pnpm:install`, `genie:run`, and `mr:apply` on every entry
+  - Switches shell bootstrap from `mr:sync` to initial `mr:apply` so a fresh worktree is normalized without fetching on every shell
+  - Speeds up warm task status paths by using direct `mr status`, fingerprint-based `genie:run` caching, lighter `pnpm:install` status checks, and a `ts:emit` graph that excludes `noEmit` references at emit time
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
   - Fails `genie` when workflow jobs serialize non-string, empty, or stale placeholder runner labels like `null` / `...=undefined`
   - Prevents CI helper API drift from silently generating invalid workflow files that only fail later in GitHub Actions

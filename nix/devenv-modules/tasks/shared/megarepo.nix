@@ -24,6 +24,22 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  mrStatusCheck = ''
+    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+      exit 0
+    fi
+
+    if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+      exit 0
+    fi
+
+    if [ ! -d ./repos ]; then
+      exit 1
+    fi
+
+    status_json=$(mr status --output json 2>/dev/null) || exit 1
+    echo "$status_json" | ${pkgs.jq}/bin/jq -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
+  '';
 
   tasks = {
     "mr:sync" = {
@@ -36,22 +52,7 @@ let
 
         mr fetch --apply${if syncAll then " --all" else ""}
       '';
-      # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
-      status = trace.status "mr:sync" "binary" ''
-        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
-          exit 0
-        fi
-
-        # Fast check: if repos/ doesn't exist, definitely need sync
-        if [ ! -d ./repos ]; then
-          exit 1
-        fi
-
-        # Use mr status to check the workspace-specific boolean
-        status_json=$(nix run "git+file:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
-
-        echo "$status_json" | ${pkgs.jq}/bin/jq -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
-      '';
+      status = trace.status "mr:sync" "binary" mrStatusCheck;
     };
 
     "mr:lock" = {
@@ -87,6 +88,7 @@ let
 
         mr apply${if syncAll then " --all" else ""}
       '';
+      status = trace.status "mr:apply" "binary" mrStatusCheck;
     };
 
     "mr:check" = {

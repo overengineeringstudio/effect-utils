@@ -15,17 +15,66 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  cacheRoot = ".direnv/task-cache/genie-run";
+  stateFile = "${cacheRoot}/state.hash";
+  computeGenieStateHash = ''
+    compute_genie_state_hash() {
+      {
+        ${pkgs.findutils}/bin/find . \
+          -type f \
+          -name '*.genie.ts' \
+          -not -path './.git/*' \
+          -not -path './.direnv/*' \
+          -not -path './.devenv/*' \
+          -not -path './node_modules/*' \
+          -print
+        ${pkgs.ripgrep}/bin/rg -l \
+          --glob '!tmp/**' \
+          --glob '!.git/**' \
+          --glob '!.direnv/**' \
+          --glob '!.devenv/**' \
+          --glob '!node_modules/**' \
+          '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' .
+      } \
+        | LC_ALL=C sort -u \
+        | while IFS= read -r file; do
+            [ -f "$file" ] || continue
+            printf '%s\n' "$file"
+            ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
+          done \
+        | ${pkgs.coreutils}/bin/sha256sum \
+        | awk '{print $1}'
+    }
+  '';
 
   tasks = {
     "genie:run" = {
       guard = "genie";
       description = "Generate config files from .genie.ts sources";
-      exec = trace.exec "genie:run" "genie";
+      exec = trace.exec "genie:run" ''
+        set -euo pipefail
+        mkdir -p ${lib.escapeShellArg cacheRoot}
+        ${computeGenieStateHash}
+        genie
+        cache_value="$(compute_genie_state_hash)"
+        tmp_file="$(mktemp)"
+        printf "%s" "$cache_value" > "$tmp_file"
+        if [ -f ${lib.escapeShellArg stateFile} ] && cmp -s "$tmp_file" ${lib.escapeShellArg stateFile}; then
+          rm "$tmp_file"
+        else
+          mv "$tmp_file" ${lib.escapeShellArg stateFile}
+        fi
+      '';
       status = trace.status "genie:run" "binary" ''
         set -euo pipefail
-        # Skip when generated files are already up to date.
-        # Silence output to keep shell entry clean.
-        genie --check >/dev/null 2>&1
+        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          exit 0
+        fi
+        [ -f ${lib.escapeShellArg stateFile} ] || exit 1
+        ${computeGenieStateHash}
+        current_hash="$(compute_genie_state_hash)"
+        stored_hash="$(cat ${lib.escapeShellArg stateFile})"
+        [ "$current_hash" = "$stored_hash" ]
       '';
     };
     "genie:watch" = {

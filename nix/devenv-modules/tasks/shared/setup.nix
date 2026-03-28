@@ -30,6 +30,7 @@
   requiredTasks ? [ ],
   optionalTasks ? [ ],
   completionsCliNames ? [ ],
+  innerCacheDirs ? [ ],
   skipDuringRebase ? true,
 }:
 {
@@ -40,12 +41,16 @@
 }:
 let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  cache = import ../lib/cache.nix { inherit config; };
   git = "${pkgs.git}/bin/git";
   userRequiredTasks = requiredTasks;
   userOptionalTasks = optionalTasks;
   completionsEnabled = completionsCliNames != [ ];
   completionsTaskName = "setup:completions";
+  setupRecordCacheTaskName = "setup:record-cache";
   completionsCliList = lib.concatStringsSep " " completionsCliNames;
+  setupFingerprintFile = cache.mkCachePath "setup-fingerprint";
+  setupGitHashFile = cache.mkCachePath "setup-git-hash";
   completionsExec = ''
     shell=""
     if [ -n "''${FISH_VERSION:-}" ]; then
@@ -96,6 +101,10 @@ let
     exit 0
   '';
   completionsStatus = ''
+    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+      exit 0
+    fi
+
     shell=""
     if [ -n "''${FISH_VERSION:-}" ]; then
       shell="fish"
@@ -145,6 +154,125 @@ let
   setupOptionalTasks = userOptionalTasks ++ lib.optionals completionsEnabled [ completionsTaskName ];
   setupTasks = setupRequiredTasks ++ setupOptionalTasks;
   allSetupTasks = setupTasks;
+  setupInnerCacheDirList = lib.concatMapStringsSep " " lib.escapeShellArg innerCacheDirs;
+  setupFingerprintEnv = ''
+    compute_setup_fingerprint() {
+      _setup_head=$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")
+      _setup_generated_from_head=$(
+        ${git} grep -l -E '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' HEAD -- . 2>/dev/null || true
+      )
+      _setup_dirty_files=$(
+        {
+          ${git} -c core.quotepath=off ls-files \
+            --modified \
+            --others \
+            --exclude-standard \
+            --deduplicate \
+            -- \
+            ':(glob)**/*.genie.ts' \
+            ':(glob)**/package.json' 2>/dev/null || true
+
+          for _setup_file in package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc megarepo.kdl megarepo.json megarepo.lock; do
+            if [ -f "$_setup_file" ] && ! ${git} ls-files --error-unmatch -- "$_setup_file" >/dev/null 2>&1; then
+              printf '%s\n' "$_setup_file"
+            elif ! ${git} diff --quiet -- "$_setup_file" 2>/dev/null; then
+              printf '%s\n' "$_setup_file"
+            fi
+          done
+
+          printf '%s\n' "$_setup_generated_from_head" \
+            | while IFS= read -r _setup_file; do
+                [ -n "$_setup_file" ] || continue
+                if [ ! -e "$_setup_file" ] || ! ${git} diff --quiet -- "$_setup_file" 2>/dev/null; then
+                  printf '%s\n' "$_setup_file"
+                fi
+              done
+        } | LC_ALL=C sort -u
+      )
+
+      {
+        printf 'head %s\n' "$_setup_head"
+
+        for _setup_file in package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc megarepo.kdl megarepo.json megarepo.lock; do
+          ${git} ls-files -s -- "$_setup_file" 2>/dev/null || true
+        done
+
+        ${git} -c core.quotepath=off ls-files -s -- ':(glob)**/*.genie.ts' ':(glob)**/package.json' 2>/dev/null || true
+
+        printf '%s\n' "$_setup_generated_from_head" \
+          | while IFS= read -r _setup_file; do
+              [ -n "$_setup_file" ] || continue
+              ${git} ls-files -s -- "$_setup_file" 2>/dev/null || true
+            done
+
+        printf '%s\n' "$_setup_dirty_files" \
+          | while IFS= read -r _setup_file; do
+              [ -n "$_setup_file" ] || continue
+              if [ -f "$_setup_file" ]; then
+                printf 'dirty %s\n' "$_setup_file"
+                ${pkgs.coreutils}/bin/sha256sum "$_setup_file" | awk '{print $1}'
+              else
+                printf 'missing %s\n' "$_setup_file"
+              fi
+            done
+      } \
+        | LC_ALL=C sort -u \
+        | ${pkgs.coreutils}/bin/sha256sum \
+        | awk '{print $1}'
+    }
+
+    setup_outer_cache_hit() {
+      _setup_current_fingerprint="$1"
+
+      if [ "''${FORCE_SETUP:-}" = "1" ]; then
+        return 1
+      fi
+
+      if [ ! -f ${lib.escapeShellArg setupFingerprintFile} ]; then
+        return 1
+      fi
+
+      _setup_cached_fingerprint=$(cat ${lib.escapeShellArg setupFingerprintFile} 2>/dev/null || echo "")
+      if [ "$_setup_current_fingerprint" != "$_setup_cached_fingerprint" ]; then
+        return 1
+      fi
+
+      if [ -z "${setupInnerCacheDirList}" ]; then
+        return 0
+      fi
+
+      for _setup_cache_dir_name in ${setupInnerCacheDirList}; do
+        _setup_cache_dir=${lib.escapeShellArg cache.cacheRoot}/$_setup_cache_dir_name
+        set -- "$_setup_cache_dir"/*.hash
+        if [ -f "$1" ]; then
+          return 0
+        fi
+      done
+
+      return 1
+    }
+  '';
+  setupTraceEnv = ''
+    if [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
+      if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+        _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+        _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
+        _tp="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
+        _now_ns=$(${pkgs.coreutils}/bin/date +%s%N)
+        printf '{"devenv":{"env":{"DEVENV_SETUP_OUTER_CACHE_HIT":"%s","DEVENV_SETUP_FINGERPRINT":"%s","DEVENV_SETUP_GIT_HASH":"%s","TRACEPARENT":"%s","OTEL_SHELL_ENTRY_NS":"%s"}}}' \
+          "$_setup_outer_cache_hit" \
+          "$_setup_current_fingerprint" \
+          "$_setup_git_hash" \
+          "$_tp" \
+          "$_now_ns" > "$DEVENV_TASK_OUTPUT_FILE"
+      else
+        printf '{"devenv":{"env":{"DEVENV_SETUP_OUTER_CACHE_HIT":"%s","DEVENV_SETUP_FINGERPRINT":"%s","DEVENV_SETUP_GIT_HASH":"%s"}}}' \
+          "$_setup_outer_cache_hit" \
+          "$_setup_current_fingerprint" \
+          "$_setup_git_hash" > "$DEVENV_TASK_OUTPUT_FILE"
+      fi
+    fi
+  '';
 in
 {
   tasks = cliGuard.stripGuards (
@@ -179,6 +307,9 @@ in
       "setup:gate" = lib.mkIf skipDuringRebase {
         description = "Check if setup should run (fails during rebase to skip setup)";
         exec = ''
+          set -euo pipefail
+          ${setupFingerprintEnv}
+
           _git_dir=$(${git} rev-parse --git-dir 2>/dev/null)
           if [ -d "$_git_dir/rebase-merge" ] || [ -d "$_git_dir/rebase-apply" ]; then
             echo "Skipping setup during git rebase/cherry-pick"
@@ -186,21 +317,46 @@ in
             exit 1
           fi
 
-          # Generate root trace context and propagate via devenv task output.
-          # Dependent tasks automatically receive TRACEPARENT + OTEL_SHELL_ENTRY_NS
-          # as env vars, linking all shell entry spans into a single trace.
-          if [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
-            _root_trace=$(${pkgs.coreutils}/bin/od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-            _root_span=$(${pkgs.coreutils}/bin/od -An -tx1 -N8 /dev/urandom | tr -d ' \n')
-            _tp="00-''${_root_trace:0:32}-''${_root_span:0:16}-01"
-            _now_ns=$(${pkgs.coreutils}/bin/date +%s%N)
-            printf '{"devenv":{"env":{"TRACEPARENT":"%s","OTEL_SHELL_ENTRY_NS":"%s"}}}' \
-              "$_tp" "$_now_ns" > "$DEVENV_TASK_OUTPUT_FILE"
+          _setup_current_fingerprint="$(compute_setup_fingerprint)"
+          _setup_git_hash=$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")
+          if setup_outer_cache_hit "$_setup_current_fingerprint"; then
+            _setup_outer_cache_hit="1"
+          else
+            _setup_outer_cache_hit="0"
           fi
+
+          ${setupTraceEnv}
         '';
         # This makes setup:gate run BEFORE each setup task
         # If gate fails, the tasks will be "skipped due to dependency failure"
         before = allSetupTasks;
+      };
+
+      "${setupRecordCacheTaskName}" = lib.mkIf (setupTasks != [ ]) {
+        description = "Record the successful setup fingerprint";
+        after = lib.optionals skipDuringRebase [ "setup:gate" ] ++ setupTasks;
+        exec = ''
+          set -euo pipefail
+          ${setupFingerprintEnv}
+
+          mkdir -p ${lib.escapeShellArg cache.cacheRoot}
+
+          cache_value="''${DEVENV_SETUP_FINGERPRINT:-$(compute_setup_fingerprint)}"
+          ${cache.writeCacheFile ''"${setupFingerprintFile}"''}
+
+          cache_value="''${DEVENV_SETUP_GIT_HASH:-$(${git} rev-parse HEAD 2>/dev/null || echo "no-git")}"
+          ${cache.writeCacheFile ''"${setupGitHashFile}"''}
+        '';
+        status = ''
+          set -euo pipefail
+          if [ "''${FORCE_SETUP:-}" = "1" ]; then
+            exit 1
+          fi
+          if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+            exit 0
+          fi
+          exit 1
+        '';
       };
 
       # Wire setup tasks to run during shell entry.
@@ -208,7 +364,8 @@ in
       # failures don't block shell entry.
       "devenv:enterShell" = {
         after = setupRequiredTasks
-          ++ (map (t: "${t}@completed") setupOptionalTasks);
+          ++ (map (t: "${t}@completed") setupOptionalTasks)
+          ++ lib.optionals (setupTasks != [ ]) [ "${setupRecordCacheTaskName}@completed" ];
       };
 
       # Run setup tasks explicitly.

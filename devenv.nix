@@ -319,8 +319,11 @@ in
       optionalTasks = [
         "pnpm:install"
         "genie:run"
-        "mr:sync"
-        "ts:emit"
+        "mr:apply"
+      ];
+      innerCacheDirs = [
+        "pnpm-install"
+        "genie-run"
       ];
       completionsCliNames = [
         "genie"
@@ -364,6 +367,7 @@ in
   tasks."genie:check".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
   tasks."mr:sync".after = [ "pnpm:install" ];
+  tasks."mr:apply".after = [ "pnpm:install" ];
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];
