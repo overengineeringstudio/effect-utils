@@ -20,6 +20,8 @@ let
   generatedFilesFile = "${cacheRoot}/generated-files.txt";
   collectGenieGeneratedFiles = ''
     collect_genie_generated_files() {
+      # Genie owns these markers, so the warm-path fingerprint follows the same
+      # explicit generated-file contract as the generator itself.
       ${pkgs.ripgrep}/bin/rg -l \
         --glob '!tmp/**' \
         --glob '!.git/**' \
@@ -88,7 +90,10 @@ let
         if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
           # The outer setup fingerprint already covers tracked generated-file
           # drift plus genie binary identity. On that warm path, only prove that
-          # the outputs we generated last time still exist.
+          # the outputs we generated last time still exist. Content drift is
+          # intentionally deferred to the next full fingerprint recomputation so
+          # shell entry does not have to boot the generator or re-hash every
+          # generated file on every hit.
           [ -f ${lib.escapeShellArg stateFile} ] || exit 1
           [ -f ${lib.escapeShellArg generatedFilesFile} ] || exit 1
           while IFS= read -r file; do
