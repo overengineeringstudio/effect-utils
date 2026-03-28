@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - **devenv/tasks**: make warm shell bootstrap commit-scoped and remove `ts:emit` from shell entry
   - Adds an outer `setup:auto` cache so warm `devenv shell` skips unchanged bootstrap work instead of traversing `pnpm:install`, `genie:run`, and `mr:apply` on every entry
   - Switches shell bootstrap from `mr:sync` to initial `mr:apply` so a fresh worktree is normalized without fetching on every shell
+  - Replaces setup fingerprint tool-version probes with resolved tool-identity hashing so warm shells do not pay `pnpm`, `genie`, or `mr` CLI startup just to validate unchanged setup inputs
   - Speeds up warm task status paths by using direct `mr status`, fingerprint-based `genie:run` caching, a one-process `pnpm:install` projection hash that preserves the previous structural guarantees, and a `ts:emit` graph that excludes `noEmit` references at emit time
   - Hardens the fast paths by making the outer cache only track setup inputs while each task still verifies its own outputs before skipping
 - **devenv/otel**: pin `devenv` temporarily to the post-#2661 upstream commit and move OTEL shell-entry notices onto `devenv.messages`
