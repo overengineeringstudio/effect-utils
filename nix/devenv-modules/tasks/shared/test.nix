@@ -1,7 +1,7 @@
 # Test tasks (vitest)
 #
-# Self-contained test tasks that run in package cwd while using the repo-root
-# hoisted install via `pnpm exec`.
+# Self-contained test tasks that run in package cwd while resolving Vitest from
+# the installed package graph directly.
 #
 # Usage in devenv.nix:
 #   # Per-package tests (recommended):
@@ -28,23 +28,30 @@
 #   - test:watch - Run tests in watch mode
 #   - test:<name> - Run tests for specific package (when packages provided)
 {
-  packages ? [],
+  packages ? [ ],
   installTask ? "pnpm:install",
-  extraTests ? [],
+  extraTests ? [ ],
 }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
-  hasPackages = packages != [];
+  pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
+    builtins.readFile ./pnpm-task-helpers.sh
+  );
+  hasPackages = packages != [ ];
   # Do not force preserve-symlinks here. pnpm's projected workspace graph
   # relies on realpath-based resolution, and preserve-symlinks caused Vitest to
   # miss hoisted dependencies in CI.
   vitestExec = ''
-    pnpm exec vitest run
+    set -euo pipefail
+    source ${lib.escapeShellArg pnpmTaskHelpersScript}
+    run_package_bin vitest vitest run
   '';
   vitestWatchExec = ''
-    pnpm exec vitest
+    set -euo pipefail
+    source ${lib.escapeShellArg pnpmTaskHelpersScript}
+    run_package_bin vitest vitest
   '';
 
   # Per-package test task using the workspace-aware vitest entrypoint.
@@ -73,9 +80,8 @@ let
       guard = "vitest";
       description = "Run all tests";
       exec = if hasPackages then null else vitestExec;
-      after = if hasPackages
-        then map (pkg: "test:${pkg.name}") packages ++ extraTests
-        else [ "genie:run" ];
+      after =
+        if hasPackages then map (pkg: "test:${pkg.name}") packages ++ extraTests else [ "genie:run" ];
     };
     "test:watch" = {
       guard = "vitest";
@@ -85,11 +91,12 @@ let
     };
   };
 
-in {
+in
+{
   packages = cliGuard.fromTasks guardedTasks;
 
   tasks = lib.mkMerge (
-    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [])
+    (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [ ])
     ++ [ (cliGuard.stripGuards guardedTasks) ]
   );
 }

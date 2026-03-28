@@ -28,16 +28,28 @@
   packages ? [ ],
   installTask ? "pnpm:install",
 }:
-{ lib, config, pkgs, ... }:
+{
+  lib,
+  config,
+  pkgs,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
+    builtins.readFile ./pnpm-task-helpers.sh
+  );
   hasPackages = packages != [ ];
 
   mkBuildTask = pkg: {
     "storybook:build:${pkg.name}" = {
       description = "Build storybook for ${pkg.name}";
-      exec = trace.exec "storybook:build:${pkg.name}" "pnpm exec storybook build";
+      exec = trace.exec "storybook:build:${pkg.name}" ''
+        set -euo pipefail
+        source ${lib.escapeShellArg pnpmTaskHelpersScript}
+        run_package_bin storybook storybook build
+      '';
       cwd = pkg.path;
       after = [ installTask ];
     };
@@ -63,7 +75,8 @@ let
         export DT_PASSTHROUGH=1
         _host="''${TS_HOSTNAME:-localhost}"
         echo "[storybook] ${pkg.name}: http://$_host:${toString (getAllocatedPort pkg)}"
-        pnpm exec storybook dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
+        source ${lib.escapeShellArg pnpmTaskHelpersScript}
+        run_package_bin storybook storybook dev -p ${toString (getAllocatedPort pkg)} --host 0.0.0.0 --no-open --ci --exact-port
       '';
       cwd = pkg.path;
     };
