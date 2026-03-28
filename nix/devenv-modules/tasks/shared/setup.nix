@@ -151,6 +151,26 @@ let
   allSetupTasks = setupTasks;
   setupFingerprintEnv = ''
     compute_setup_fingerprint() {
+      resolve_setup_tool_identity() {
+        _setup_tool="$1"
+        command -v "$_setup_tool" >/dev/null 2>&1 || return 0
+
+        _setup_tool_path="$(command -v "$_setup_tool")"
+        _setup_tool_resolved="$(${pkgs.coreutils}/bin/realpath "$_setup_tool_path" 2>/dev/null || printf '%s\n' "$_setup_tool_path")"
+
+        printf 'tool %s path %s\n' "$_setup_tool" "$_setup_tool_path"
+        printf 'tool %s resolved %s\n' "$_setup_tool" "$_setup_tool_resolved"
+
+        # Resolved Nix store paths already identify an immutable tool build. For
+        # mutable shims outside the store, hash the resolved target so upgrades
+        # still invalidate setup without paying each CLI's startup cost.
+        if [ -f "$_setup_tool_resolved" ] && [[ "$_setup_tool_resolved" != /nix/store/* ]]; then
+          printf 'tool %s sha256 %s\n' \
+            "$_setup_tool" \
+            "$(${pkgs.coreutils}/bin/sha256sum "$_setup_tool_resolved" | awk '{print $1}')"
+        fi
+      }
+
       # This outer fingerprint exists because devenv's built-in `status`
       # semantics do not prune a dependency subtree: the scheduler only runs a
       # task's status command once that task itself is ready to execute, after
@@ -211,10 +231,7 @@ let
         # changing the active pnpm/genie/mr binary still invalidates the outer
         # cache and forces the next shell to re-validate or refresh setup.
         for _setup_tool in pnpm genie mr; do
-          if command -v "$_setup_tool" >/dev/null 2>&1; then
-            printf 'tool %s path %s\n' "$_setup_tool" "$(command -v "$_setup_tool")"
-            printf 'tool %s version %s\n' "$_setup_tool" "$($_setup_tool --version 2>/dev/null | ${pkgs.coreutils}/bin/head -n1 || echo unknown)"
-          fi
+          resolve_setup_tool_identity "$_setup_tool"
         done
 
         for _setup_file in package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc megarepo.kdl megarepo.json megarepo.lock; do
