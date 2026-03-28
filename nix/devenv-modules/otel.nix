@@ -427,6 +427,88 @@ let
     }
   '';
 
+  otelDetectShellEntryState = ''
+    detect_otel_shell_entry_state() {
+      # Detect cold vs warm start (setup-git-hash written by setup.nix)
+      _cold_start="false"
+      if [ ! -f .direnv/task-cache/setup-git-hash ]; then
+        _cold_start="true"
+      elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
+        _cold_start="true"
+      fi
+
+      # Detect what triggered this shell reload by comparing watched file mtimes.
+      # Uses devenv's input-paths.txt (nix inputs that affect the shell derivation),
+      # excluding .devenv/bootstrap/ files which are regenerated on every eval.
+      # Missing paths are tolerated here because input files can legitimately
+      # disappear between eval and shell startup while the user is editing.
+      _reload_trigger="unknown"
+      _otel_mtime_snapshot=".direnv/otel-watch-mtimes"
+      if [ -f ".devenv/input-paths.txt" ]; then
+        _otel_current=$(
+          while IFS= read -r _otel_path; do
+            [ -n "$_otel_path" ] || continue
+            [ -e "$_otel_path" ] || continue
+            ${pkgs.coreutils}/bin/stat -c '%Y %n' "$_otel_path"
+          done < <(${pkgs.gnugrep}/bin/grep -v '\.devenv/bootstrap/' .devenv/input-paths.txt) \
+            | ${pkgs.coreutils}/bin/sort -k2
+        )
+        if [ ! -f "$_otel_mtime_snapshot" ]; then
+          _reload_trigger="initial"
+        elif [ "$_otel_current" = "$(${pkgs.coreutils}/bin/cat "$_otel_mtime_snapshot" 2>/dev/null)" ]; then
+          _reload_trigger="env-change"
+        else
+          _otel_changed=$(
+            (${pkgs.diffutils}/bin/diff <(${pkgs.coreutils}/bin/cat "$_otel_mtime_snapshot") <(echo "$_otel_current") 2>/dev/null || true) \
+              | ${pkgs.gnugrep}/bin/grep '^[<>]' | ${pkgs.gawk}/bin/awk '{print $NF}' | ${pkgs.coreutils}/bin/sort -u \
+              | ${pkgs.gnused}/bin/sed "s|^''${DEVENV_ROOT:-.}/||" \
+              | ${pkgs.coreutils}/bin/head -5 | ${pkgs.coreutils}/bin/paste -sd ',' -
+          )
+          _reload_trigger="''${_otel_changed:-unknown}"
+        fi
+        ${pkgs.coreutils}/bin/mkdir -p .direnv
+        echo "$_otel_current" > "$_otel_mtime_snapshot"
+      fi
+    }
+  '';
+
+  otelEmitShellEntry = ''
+    emit_otel_shell_entry_span() {
+      if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
+        || [ -z "''${TRACEPARENT:-}" ] \
+        || [ -z "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
+        return 0
+      fi
+
+      IFS='-' read -r _ _otel_shell_trace_id _otel_shell_root_span_id _ <<< "$TRACEPARENT"
+
+      # Shell-root tracing must use the store path directly instead of relying
+      # on PATH, because both shell hooks and early shell-entry tasks can run
+      # before package PATH mutations are fully visible.
+      _otel_span_bin="${otelSpan}/bin/otel-span"
+      [ -x "$_otel_span_bin" ] || return 0
+
+      # enterShell can run after traced setup tasks. If we let otel-span infer a
+      # parent from the ambient TRACEPARENT/OTEL_TASK_TRACEPARENT here, the
+      # shell root span can become self-parented or collide with later root
+      # spans. Emit it from explicit shell IDs instead.
+      (
+        unset TRACEPARENT OTEL_TASK_TRACEPARENT
+        "$_otel_span_bin" run "devenv" "shell:entry" \
+          --trace-id "$_otel_shell_trace_id" \
+          --span-id "$_otel_shell_root_span_id" \
+          --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
+          --end-time-ns "$(${pkgs.coreutils}/bin/date +%s%N)" \
+          --attr "cold_start=$_cold_start" \
+          --attr "reload.trigger=$_reload_trigger" \
+          -- true
+      ) || true
+
+      export TRACEPARENT="00-$_otel_shell_trace_id-$_otel_shell_root_span_id-01"
+      unset OTEL_TASK_TRACEPARENT OTEL_SHELL_ENTRY_NS
+    }
+  '';
+
 in
 {
   packages = [
@@ -442,7 +524,8 @@ in
 
   # OTEL shell state is resolved in a task so the same source of truth can
   # export env vars and emit the post-init shell message via devenv.messages.
-  # enterShell then only consumes that exported state.
+  # The shell root span is emitted in a dedicated task after setup work, so
+  # enterShell only consumes exported state and marks the interactive handoff.
   enterShell = lib.mkAfter ''
     # `otel-trace` remains as a cheap on-demand way to reopen the current link,
     # but the user-visible shell-entry message now comes from `otel:shell-env`.
@@ -470,58 +553,10 @@ in
     }
     alias otel-trace=otel_trace
 
-    # Detect cold vs warm start (setup-git-hash written by setup.nix)
-    _cold_start="false"
-    if [ ! -f .direnv/task-cache/setup-git-hash ]; then
-      _cold_start="true"
-    elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
-      _cold_start="true"
-    fi
-
-    # Detect what triggered this shell reload by comparing watched file mtimes.
-    # Uses devenv's input-paths.txt (nix inputs that affect the shell derivation),
-    # excluding .devenv/bootstrap/ files which are regenerated on every eval.
-    # xargs stat is ~2ms for ~50 files — negligible overhead.
-    _reload_trigger="unknown"
-    _otel_mtime_snapshot=".direnv/otel-watch-mtimes"
-    if [ -f ".devenv/input-paths.txt" ]; then
-      _otel_current=$(grep -v '\.devenv/bootstrap/' .devenv/input-paths.txt \
-        | xargs stat -c '%Y %n' 2>/dev/null | sort -k2)
-      if [ ! -f "$_otel_mtime_snapshot" ]; then
-        _reload_trigger="initial"
-      elif [ "$_otel_current" = "$(cat "$_otel_mtime_snapshot" 2>/dev/null)" ]; then
-        _reload_trigger="env-change"
-      else
-        _otel_changed=$(diff <(cat "$_otel_mtime_snapshot") <(echo "$_otel_current") 2>/dev/null \
-          | grep '^[<>]' | awk '{print $NF}' | sort -u \
-          | sed "s|^''${DEVENV_ROOT:-.}/||" \
-          | head -5 | paste -sd ',' -)
-        _reload_trigger="''${_otel_changed:-unknown}"
-      fi
-      mkdir -p .direnv
-      echo "$_otel_current" > "$_otel_mtime_snapshot"
-    fi
-
-    # Emit root shell:entry span covering the full setup duration.
-    # TRACEPARENT and OTEL_SHELL_ENTRY_NS are propagated from setup:gate via
-    # devenv's native task output -> env mechanism (devenv.env convention).
-    if command -v otel-span >/dev/null 2>&1 \
-      && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
-      && [ -n "''${TRACEPARENT:-}" ] \
-      && [ -n "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
-      IFS='-' read -r _ _trace_id _span_id _ <<< "$TRACEPARENT"
-      (
-        unset TRACEPARENT
-        otel-span run "devenv" "shell:entry" \
-          --trace-id "$_trace_id" \
-          --span-id "$_span_id" \
-          --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
-          --end-time-ns "$(date +%s%N)" \
-          --attr "cold_start=$_cold_start" \
-          --attr "reload.trigger=$_reload_trigger" \
-          -- true
-      ) || true
-    fi
+    # setup:gate seeds shell-root trace IDs for setup tasks. Clear the
+    # task-scoped context markers before handing control to the interactive
+    # shell so later `dt` roots do not accidentally reuse shell bootstrap state.
+    unset OTEL_TASK_TRACEPARENT OTEL_SHELL_ENTRY_NS
 
     # Mark the moment the shell becomes interactive (after all setup + OTEL work).
     # Consumed by dt.nix for the shell.ready_ms span attribute.
@@ -632,6 +667,27 @@ in
     after = lib.optionals (builtins.hasAttr "setup:gate" config.tasks) [ "setup:gate" ];
   };
 
+  tasks."otel:shell-entry" = {
+    description = "Emit the shell-entry root trace span after setup completes";
+    exec = ''
+      set -euo pipefail
+      ${otelDetectShellEntryState}
+      ${otelEmitShellEntry}
+      detect_otel_shell_entry_state || true
+      emit_otel_shell_entry_span
+    '';
+    before = [ "devenv:enterShell" ];
+    after =
+      lib.optionals (builtins.hasAttr "devenv:files:cleanup" config.tasks) [ "devenv:files:cleanup" ]
+      ++ lib.optionals (builtins.hasAttr "devenv:files" config.tasks) [ "devenv:files" ]
+      ++ [ "otel:shell-env" ]
+      ++ lib.optionals (builtins.hasAttr "setup:record-cache" config.tasks) [ "setup:record-cache@completed" ]
+      ++ lib.optionals (
+        !(builtins.hasAttr "setup:record-cache" config.tasks)
+        && builtins.hasAttr "setup:gate" config.tasks
+      ) [ "setup:gate" ];
+  };
+
   tasks."otel:test" = {
     description = "Run otel-span shell-level unit tests (offline, no devenv up needed)";
     exec = ''
@@ -651,6 +707,8 @@ in
       export OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}"
 
       ${otelResolveShellState}
+      ${otelDetectShellEntryState}
+      ${otelEmitShellEntry}
 
       _check() {
         local name="$1"
@@ -722,7 +780,112 @@ in
       }
       _check "Shell state resolution (system requires Grafana URL)" _test_shell_state_system_requires_grafana
 
-      # Test 5: TRACEPARENT propagation
+      # Test 5: shell:entry emission uses explicit shell IDs and ignores ambient parents
+      _test_shell_entry_root_span() {
+        local spool="$_tmp/shell-entry-root"
+        mkdir -p "$spool"
+        (
+          export OTEL_SPAN_SPOOL_DIR="$spool"
+          export TRACEPARENT="00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+          export OTEL_SHELL_ENTRY_NS="1234567890000000000"
+          export OTEL_TASK_TRACEPARENT="00-feedfacefeedfacefeedfacefeedface-2222222222222222-01"
+          _cold_start="false"
+          _reload_trigger="initial"
+
+          emit_otel_shell_entry_span
+
+          [ "$TRACEPARENT" = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01" ] || return 1
+          [ -z "''${OTEL_TASK_TRACEPARENT:-}" ] || return 1
+          [ -z "''${OTEL_SHELL_ENTRY_NS:-}" ] || return 1
+        )
+
+        [ -f "$spool/spans.jsonl" ] || return 1
+
+        local line actual_trace actual_span has_parent
+        line=$(head -1 "$spool/spans.jsonl")
+        actual_trace=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        actual_span=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].spanId')
+        has_parent=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0] | has("parentSpanId")')
+
+        [ "$actual_trace" = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ] \
+          && [ "$actual_span" = "bbbbbbbbbbbbbbbb" ] \
+          && [ "$has_parent" = "false" ]
+      }
+      _check "shell:entry root span emission" _test_shell_entry_root_span
+
+      # Test 6: shell:entry emission must not depend on PATH already containing
+      # otel-span because enterShell can run before package PATH setup settles.
+      _test_shell_entry_root_span_without_path() {
+        local spool="$_tmp/shell-entry-no-path"
+        mkdir -p "$spool"
+        (
+          export OTEL_SPAN_SPOOL_DIR="$spool"
+          export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example:4318"
+          export TRACEPARENT="00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01"
+          export OTEL_SHELL_ENTRY_NS="1234567890000000001"
+          export PATH="/nonexistent"
+          _cold_start="false"
+          _reload_trigger="env-change"
+
+          emit_otel_shell_entry_span
+
+          [ "$TRACEPARENT" = "00-cccccccccccccccccccccccccccccccc-dddddddddddddddd-01" ] || return 1
+          [ -z "''${OTEL_SHELL_ENTRY_NS:-}" ] || return 1
+        )
+
+        [ -f "$spool/spans.jsonl" ] || return 1
+
+        local line actual_trace actual_span has_parent
+        line=$(head -1 "$spool/spans.jsonl")
+        actual_trace=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
+        actual_span=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].spanId')
+        has_parent=$(echo "$line" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0] | has("parentSpanId")')
+
+        [ "$actual_trace" = "cccccccccccccccccccccccccccccccc" ] \
+          && [ "$actual_span" = "dddddddddddddddd" ] \
+          && [ "$has_parent" = "false" ]
+      }
+      _check "shell:entry root span emission without PATH" _test_shell_entry_root_span_without_path
+
+      # Test 7: reload-trigger detection uses pinned binaries instead of
+      # ambient PATH, so the shell-entry task works before GNU tools are added.
+      _test_shell_entry_state_without_path() {
+        local workdir="$_tmp/shell-entry-state-no-path"
+        mkdir -p "$workdir/.devenv" "$workdir/.direnv"
+        echo "$workdir/foo.nix" > "$workdir/.devenv/input-paths.txt"
+        echo "x = 1;" > "$workdir/foo.nix"
+
+        (
+          cd "$workdir"
+          export PATH="/nonexistent"
+          detect_otel_shell_entry_state
+          [ "$_cold_start" = "true" ] || return 1
+          [ "$_reload_trigger" = "initial" ] || return 1
+          [ -f ".direnv/otel-watch-mtimes" ] || return 1
+        )
+      }
+      _check "shell-entry state detection without PATH" _test_shell_entry_state_without_path
+
+      # Test 8: reload-trigger detection tolerates input paths that disappear
+      # between eval and shell startup instead of failing the shell-entry task.
+      _test_shell_entry_state_missing_paths() {
+        local workdir="$_tmp/shell-entry-state-missing-paths"
+        mkdir -p "$workdir/.devenv" "$workdir/.direnv"
+        echo "$workdir/foo.nix" > "$workdir/.devenv/input-paths.txt"
+        echo "$workdir/missing.nix" >> "$workdir/.devenv/input-paths.txt"
+        echo "x = 1;" > "$workdir/foo.nix"
+
+        (
+          cd "$workdir"
+          export PATH="/nonexistent"
+          detect_otel_shell_entry_state
+          [ "$_reload_trigger" = "initial" ] || return 1
+          [ -f ".direnv/otel-watch-mtimes" ] || return 1
+        )
+      }
+      _check "shell-entry state detection with missing paths" _test_shell_entry_state_missing_paths
+
+      # Test 9: TRACEPARENT propagation
       _test_traceparent() {
         local spool="$_tmp/tp-test"
         mkdir -p "$spool"
@@ -739,14 +902,14 @@ in
       }
       _check "TRACEPARENT propagation" _test_traceparent
 
-      # Test 6: Spool fallback (nonexistent dir)
+      # Test 10: Spool fallback (nonexistent dir)
       _test_spool_fallback() {
         # With nonexistent spool dir, should still succeed (falls back to curl which may fail silently)
         OTEL_SPAN_SPOOL_DIR="/nonexistent" OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:1" otel-span run "test" "fallback" -- true >/dev/null 2>&1
       }
       _check "Spool fallback" _test_spool_fallback
 
-      # Test 7: Spool file write
+      # Test 11: Spool file write
       _test_spool_write() {
         local spool="$_tmp/write-test"
         mkdir -p "$spool"
@@ -758,7 +921,7 @@ in
       }
       _check "Spool write" _test_spool_write
 
-      # Test 8: --span-id override
+      # Test 9: --span-id override
       _test_span_id_override() {
         local spool="$_tmp/spanid-test"
         mkdir -p "$spool"
@@ -770,7 +933,7 @@ in
       }
       _check "--span-id override" _test_span_id_override
 
-      # Test 9: --start-time-ns override
+      # Test 10: --start-time-ns override
       _test_start_time_override() {
         local spool="$_tmp/startns-test"
         mkdir -p "$spool"
@@ -782,7 +945,7 @@ in
       }
       _check "--start-time-ns override" _test_start_time_override
 
-      # Test 10: --end-time-ns override
+      # Test 11: --end-time-ns override
       _test_end_time_override() {
         local spool="$_tmp/endns-test"
         mkdir -p "$spool"
@@ -794,7 +957,7 @@ in
       }
       _check "--end-time-ns override" _test_end_time_override
 
-      # Test 11: --log-url outputs Grafana trace URL to stderr
+      # Test 12: --log-url outputs Grafana trace URL to stderr
       _test_log_url() {
         local spool="$_tmp/logurl-test"
         mkdir -p "$spool"
@@ -811,7 +974,7 @@ in
       }
       _check "--log-url output" _test_log_url
 
-      # Test 12: No trace context produces root span (no parentSpanId)
+      # Test 13: No trace context produces root span (no parentSpanId)
       _test_no_traceparent_root() {
         local spool="$_tmp/root-test"
         mkdir -p "$spool"
@@ -827,7 +990,7 @@ in
       }
       _check "No trace context = root span" _test_no_traceparent_root
 
-      # Test 13: OTEL_TASK_TRACEPARENT takes precedence over TRACEPARENT
+      # Test 14: OTEL_TASK_TRACEPARENT takes precedence over TRACEPARENT
       _test_task_traceparent_precedence() {
         local spool="$_tmp/task-tp-test"
         mkdir -p "$spool"
@@ -848,7 +1011,7 @@ in
       }
       _check "OTEL_TASK_TRACEPARENT precedence" _test_task_traceparent_precedence
 
-      # Test 14: --status-attr derives bool from exit code (cached case, exit 0)
+      # Test 15: --status-attr derives bool from exit code (cached case, exit 0)
       _test_status_attr_cached() {
         local spool="$_tmp/status-cached"
         mkdir -p "$spool"
@@ -868,7 +1031,7 @@ in
       }
       _check "--status-attr cached (exit 0)" _test_status_attr_cached
 
-      # Test 15: --status-attr derives bool from exit code (uncached case, exit 1)
+      # Test 16: --status-attr derives bool from exit code (uncached case, exit 1)
       _test_status_attr_uncached() {
         local spool="$_tmp/status-uncached"
         mkdir -p "$spool"
@@ -888,7 +1051,7 @@ in
       }
       _check "--status-attr uncached (exit 1)" _test_status_attr_uncached
 
-      # Test 16: --status-attr propagates TRACEPARENT to child (sub-traces)
+      # Test 17: --status-attr propagates TRACEPARENT to child (sub-traces)
       _test_status_attr_subtrace() {
         local spool="$_tmp/status-subtrace"
         mkdir -p "$spool"
@@ -906,7 +1069,7 @@ in
       }
       _check "--status-attr sub-trace propagation" _test_status_attr_subtrace
 
-      # Test 17: otel-span exports OTEL_TASK_TRACEPARENT to child processes
+      # Test 18: otel-span exports OTEL_TASK_TRACEPARENT to child processes
       _test_task_traceparent_export() {
         local spool="$_tmp/task-tp-export"
         mkdir -p "$spool"
