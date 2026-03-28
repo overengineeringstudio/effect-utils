@@ -87,3 +87,70 @@ purge_node_modules() {
     rm -rf "$node_modules_dir"
   done
 }
+
+resolve_package_bin() {
+  local package_name="$1"
+  local bin_name="${2:-$1}"
+  local cwd="${3:-$PWD}"
+  local node_bin="${NODE_BIN:-node}"
+  local shim_path="$cwd/node_modules/.bin/$bin_name"
+
+  if [ -x "$shim_path" ]; then
+    printf '%s\n' "$shim_path"
+    return 0
+  fi
+
+  "$node_bin" - "$package_name" "$bin_name" "$cwd" <<'EOF'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [packageName, binName, cwd] = process.argv.slice(2)
+
+const manifestPath = require.resolve(`${packageName}/package.json`, { paths: [cwd] })
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+const packageDir = path.dirname(manifestPath)
+
+const candidates = []
+if (typeof manifest.bin === 'string') {
+  candidates.push(manifest.bin)
+} else if (manifest.bin && typeof manifest.bin === 'object') {
+  if (typeof manifest.bin[binName] === 'string') {
+    candidates.push(manifest.bin[binName])
+  }
+  if (typeof manifest.bin[packageName] === 'string' && manifest.bin[packageName] !== manifest.bin[binName]) {
+    candidates.push(manifest.bin[packageName])
+  }
+  for (const value of Object.values(manifest.bin)) {
+    if (typeof value === 'string' && !candidates.includes(value)) {
+      candidates.push(value)
+    }
+  }
+}
+
+if (candidates.length === 0) {
+  console.error(`[pnpm] Package '${packageName}' does not declare a usable bin entry for '${binName}'`)
+  process.exit(1)
+}
+
+for (const candidate of candidates) {
+  const resolved = path.resolve(packageDir, candidate)
+  if (fs.existsSync(resolved)) {
+    process.stdout.write(`${resolved}\n`)
+    process.exit(0)
+  }
+}
+
+console.error(`[pnpm] Could not resolve an existing bin path for '${packageName}' from ${manifestPath}`)
+process.exit(1)
+EOF
+}
+
+run_package_bin() {
+  local package_name="$1"
+  local bin_name="${2:-$1}"
+  shift 2
+
+  local bin_path
+  bin_path="$(resolve_package_bin "$package_name" "$bin_name")"
+  "$bin_path" "$@"
+}

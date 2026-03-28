@@ -65,6 +65,39 @@ EOF
   fi
 }
 
+make_bin_fixture() {
+  local root="$1"
+
+  mkdir -p "$root/node_modules/fake-tool/bin" "$root/node_modules/.bin"
+  cat > "$root/node_modules/fake-tool/package.json" <<'EOF'
+{"name":"fake-tool","bin":{"fake-tool":"bin/fake-tool.js","alt-tool":"bin/fake-tool.js"}}
+EOF
+  cat > "$root/node_modules/fake-tool/bin/fake-tool.js" <<'EOF'
+#!/usr/bin/env node
+process.stdout.write(`fake-tool-direct:${process.argv.slice(2).join(',')}\n`)
+EOF
+  chmod +x "$root/node_modules/fake-tool/bin/fake-tool.js"
+  cat > "$root/node_modules/.bin/fake-tool" <<'EOF'
+#!/usr/bin/env bash
+printf 'fake-tool-shim:%s\n' "$*"
+EOF
+  chmod +x "$root/node_modules/.bin/fake-tool"
+}
+
+make_bin_fixture_without_shim() {
+  local root="$1"
+
+  mkdir -p "$root/node_modules/fallback-tool/bin"
+  cat > "$root/node_modules/fallback-tool/package.json" <<'EOF'
+{"name":"fallback-tool","bin":{"fallback-tool":"bin/fallback-tool.js"}}
+EOF
+  cat > "$root/node_modules/fallback-tool/bin/fallback-tool.js" <<'EOF'
+#!/usr/bin/env node
+process.stdout.write(`fallback-tool-direct:${process.argv.slice(2).join(',')}\n`)
+EOF
+  chmod +x "$root/node_modules/fallback-tool/bin/fallback-tool.js"
+}
+
 echo "Running pnpm task helper tests..."
 echo ""
 
@@ -102,7 +135,34 @@ if [ "$fingerprint_a" = "$fingerprint_b" ]; then
   exit 1
 fi
 
-echo "Test 4: Projection health passes when symlinked package can resolve deps"
+echo "Test 4: resolve_package_bin prefers package-local .bin shims"
+bin_fixture="$test_dir/bin-fixture"
+make_bin_fixture "$bin_fixture"
+resolved_bin="$(resolve_package_bin fake-tool fake-tool "$bin_fixture")"
+expected_bin="$bin_fixture/node_modules/.bin/fake-tool"
+assert_eq \
+  "$expected_bin" \
+  "$resolved_bin" \
+  "resolve_package_bin prefers the generated .bin shim"
+
+echo "Test 5: run_package_bin executes the .bin shim when present"
+output="$(cd "$bin_fixture" && run_package_bin fake-tool fake-tool alpha beta)"
+assert_eq \
+  "fake-tool-shim:alpha beta" \
+  "$output" \
+  "run_package_bin executes the resolved shim"
+
+echo "Test 6: resolve_package_bin falls back to the package bin file"
+fallback_fixture="$test_dir/fallback-bin-fixture"
+make_bin_fixture_without_shim "$fallback_fixture"
+resolved_fallback_bin="$(resolve_package_bin fallback-tool fallback-tool "$fallback_fixture")"
+expected_fallback_bin="$(cd "$fallback_fixture/node_modules/fallback-tool/bin" && pwd -P)/fallback-tool.js"
+assert_eq \
+  "$expected_fallback_bin" \
+  "$resolved_fallback_bin" \
+  "resolve_package_bin falls back to the package bin file"
+
+echo "Test 7: Projection health passes when symlinked package can resolve deps"
 healthy_dir="$test_dir/healthy"
 make_projection_fixture "$healthy_dir" 1
 set +e
@@ -111,7 +171,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
-echo "Test 5: Projection health ignores packages that do not export ./package.json"
+echo "Test 8: Projection health ignores packages that do not export ./package.json"
 exports_dir="$test_dir/exports"
 make_projection_fixture "$exports_dir" 1 1
 set +e
@@ -120,7 +180,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health should not depend on package.json exports"
 
-echo "Test 6: Projection health fails when symlinked package loses a transitive dep"
+echo "Test 9: Projection health fails when symlinked package loses a transitive dep"
 stale_dir="$test_dir/stale"
 make_projection_fixture "$stale_dir" 0
 set +e
@@ -129,7 +189,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
 
-echo "Test 7: Broken node_modules symlink is rejected before projection checks"
+echo "Test 10: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"

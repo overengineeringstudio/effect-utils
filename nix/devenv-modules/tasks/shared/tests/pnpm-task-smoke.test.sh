@@ -43,6 +43,48 @@ extract_task_script() {
   chmod +x "$output_path"
 }
 
+extract_shared_task_script() {
+  local module_path="$1"
+  local task_name="$2"
+  local package_path="$3"
+  local package_name="$4"
+  local output_path="$5"
+
+  nix eval --impure --raw --expr "
+    let
+      flake = builtins.getFlake (toString $ROOT);
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      pkgsForTest = pkgs // {
+        writeText = name: text: builtins.toFile name text;
+      };
+      lib = pkgs.lib;
+      evaluated = lib.evalModules {
+        modules = [
+          ({ ... }: {
+            options.tasks = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = { }; };
+            options.processes = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = { }; };
+            options.packages = lib.mkOption { type = lib.types.listOf lib.types.anything; default = [ ]; };
+          })
+          ((import $ROOT/${module_path} {
+            packages = [
+              {
+                path = \"$package_path\";
+                name = \"$package_name\";
+                port = 6006;
+              }
+            ];
+          }) {
+            pkgs = pkgsForTest;
+            lib = lib;
+            config = { };
+          })
+        ];
+      };
+    in evaluated.config.tasks.\"${task_name}\".exec
+  " > "$output_path"
+  chmod +x "$output_path"
+}
+
 rewrite_unrealized_tool_paths() {
   local script_path="$1"
 
@@ -60,7 +102,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 workspace="$tmpdir/workspace"
-mkdir -p "$workspace/.direnv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin"
+mkdir -p "$workspace/.direnv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin"
 
 cat > "$workspace/package.json" <<'EOF'
 {"name":"smoke-workspace","private":true}
@@ -73,6 +115,9 @@ lockfileVersion: '9.0'
 settings: {}
 importers: {}
 packages: {}
+EOF
+cat > "$workspace/packages/demo/package.json" <<'EOF'
+{"name":"demo","private":true}
 EOF
 
 cat > "$tmpdir/bin/pnpm" <<'EOF'
@@ -106,8 +151,48 @@ exit 0
 EOF
 chmod +x "$tmpdir/bin/flock"
 
+mkdir -p "$workspace/packages/demo/node_modules/vitest/bin" "$workspace/packages/demo/node_modules/storybook/bin"
+cat > "$workspace/packages/demo/node_modules/vitest/package.json" <<'EOF'
+{"name":"vitest","bin":{"vitest":"bin/vitest.js"}}
+EOF
+cat > "$workspace/packages/demo/node_modules/vitest/bin/vitest.js" <<'EOF'
+#!/usr/bin/env node
+console.log(`vitest:${process.argv.slice(2).join(' ')}`)
+EOF
+chmod +x "$workspace/packages/demo/node_modules/vitest/bin/vitest.js"
+cat > "$workspace/packages/demo/node_modules/.bin/vitest" <<'EOF'
+#!/usr/bin/env bash
+printf 'vitest-shim:%s\n' "$*"
+EOF
+chmod +x "$workspace/packages/demo/node_modules/.bin/vitest"
+cat > "$workspace/packages/demo/node_modules/storybook/package.json" <<'EOF'
+{"name":"storybook","bin":{"storybook":"bin/storybook.js"}}
+EOF
+cat > "$workspace/packages/demo/node_modules/storybook/bin/storybook.js" <<'EOF'
+#!/usr/bin/env node
+console.log(`storybook:${process.argv.slice(2).join(' ')}`)
+EOF
+chmod +x "$workspace/packages/demo/node_modules/storybook/bin/storybook.js"
+cat > "$workspace/packages/demo/node_modules/.bin/storybook" <<'EOF'
+#!/usr/bin/env bash
+printf 'storybook-shim:%s\n' "$*"
+EOF
+chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
+
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+extract_shared_task_script \
+  "nix/devenv-modules/tasks/shared/test.nix" \
+  "test:demo" \
+  "packages/demo" \
+  "demo" \
+  "$tmpdir/test-demo.exec.sh"
+extract_shared_task_script \
+  "nix/devenv-modules/tasks/shared/storybook.nix" \
+  "storybook:build:demo" \
+  "packages/demo" \
+  "demo" \
+  "$tmpdir/storybook-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
 
@@ -183,6 +268,20 @@ echo "Test 6: exec detaches stdin before probing pnpm version"
   assert_exit_code 0 "$exit_code" "exec should not inherit an open stdin pipe"
 )
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
+
+echo "Test 7: generated test task runs vitest without pnpm exec"
+(
+  cd "$workspace/packages/demo"
+  output="$(bash "$tmpdir/test-demo.exec.sh")"
+  [ "$output" = "vitest-shim:run" ]
+)
+
+echo "Test 8: generated storybook task runs storybook without pnpm exec"
+(
+  cd "$workspace/packages/demo"
+  output="$(bash "$tmpdir/storybook-demo.exec.sh")"
+  [ "$output" = "storybook-shim:build" ]
+)
 
 echo ""
 echo "pnpm task smoke test passed"
