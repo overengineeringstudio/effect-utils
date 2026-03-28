@@ -337,14 +337,14 @@ echo "Test 10: exec detaches stdin before probing pnpm version"
 )
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 
-echo "Test 10: generated test task runs vitest without pnpm exec"
+echo "Test 11: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 11: generated storybook task runs storybook without pnpm exec"
+echo "Test 12: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
