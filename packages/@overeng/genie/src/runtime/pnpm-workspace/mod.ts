@@ -560,6 +560,15 @@ export interface PnpmWorkspaceData {
   ignoredBuiltDependencies?: readonly string[]
 
   /**
+   * Prevents transitive dependencies from using exotic sources (git repos, tarballs).
+   * Defaults to `true` in pnpm 11. Set to `false` when a direct dependency has
+   * git-based subdeps that aren't published on npm (e.g. `@whiskeysockets/baileys`
+   * depends on `libsignal-node` via git).
+   * @see https://pnpm.io/pnpm-workspace_yaml#blockexoticsubdeps
+   */
+  blockExoticSubdeps?: boolean
+
+  /**
    * Allow deprecated versions for specific packages.
    * @see https://pnpm.io/pnpm-workspace_yaml#alloweddeprecatedversions
    */
@@ -816,6 +825,10 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.ignoredBuiltDependencies !== undefined) {
     result.ignoredBuiltDependencies = [...data.ignoredBuiltDependencies]
+  }
+
+  if (data.blockExoticSubdeps !== undefined) {
+    result.blockExoticSubdeps = data.blockExoticSubdeps
   }
 
   if (data.allowedDeprecatedVersions !== undefined) {
