@@ -71,6 +71,18 @@ export type OutputTab =
   | 'json'
   | 'ndjson'
 
+/** Formats milliseconds as a human-readable duration string. */
+const formatDuration = (ms: number): string => {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  if (m < 60) return `${m}m ${String(rem).padStart(2, '0')}s`
+  const h = Math.floor(m / 60)
+  const remM = m % 60
+  return `${h}h ${String(remM).padStart(2, '0')}m`
+}
+
 /** A timed action event for storybook timeline playback. */
 export interface TimelineEvent<A> {
   /** Time offset in milliseconds from start */
@@ -583,9 +595,9 @@ const EventTooltip: React.FC<{
         <span
           style={{ color: '#4a9eff', fontSize: '11px', fontFamily: 'Monaco, Menlo, monospace' }}
         >
-          @ {(event.at / 1000).toFixed(1)}s
+          @ {formatDuration(event.at)}
           {deltaTime !== null && (
-            <span style={{ color: '#666' }}> (+{(deltaTime / 1000).toFixed(1)}s)</span>
+            <span style={{ color: '#666' }}> (+{formatDuration(deltaTime)})</span>
           )}
         </span>
       </div>
@@ -764,7 +776,7 @@ const PlaybackControls = <A,>({
           <span style={{ color: '#888', fontSize: '11px' }}>
             Event {Math.max(0, currentEventIndex + 1)} of {timeline.length}
             {currentEvent && (
-              <span style={{ color: '#666' }}> @ {(currentEvent.at / 1000).toFixed(1)}s</span>
+              <span style={{ color: '#666' }}> @ {formatDuration(currentEvent.at)}</span>
             )}
           </span>
         ) : null}
@@ -774,7 +786,7 @@ const PlaybackControls = <A,>({
 
         {/* Time display */}
         <span style={{ color: '#888', fontSize: '12px', fontFamily: 'Monaco, Menlo, monospace' }}>
-          {(effectiveTime / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s
+          {formatDuration(effectiveTime)} / {formatDuration(totalDuration)}
         </span>
       </div>
 
