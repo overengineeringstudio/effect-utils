@@ -132,8 +132,10 @@ if [ "${1:-}" = "--version" ]; then
   exit 0
 fi
 if [ "${1:-}" = "install" ]; then
-  mkdir -p node_modules
+  mkdir -p node_modules vendor/pkg-v1
   touch node_modules/.install-ok
+  printf '{"name":"pkg","version":"1.0.0"}\n' > vendor/pkg-v1/package.json
+  ln -snf ../vendor/pkg-v1 node_modules/pkg
   # The warm-path status now fingerprints the root projection metadata that
   # pnpm always writes on a real install. Keep the smoke fixture aligned with
   # that contract so the test still exercises the task logic instead of
@@ -284,7 +286,22 @@ echo "Test 6: outer cache hit misses when a projected package symlink breaks"
   rm node_modules/@scope/broken
 )
 
-echo "Test 7: status misses after effective GVS path changes"
+echo "Test 7: outer cache hit misses when a projected symlink disappears"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  bash "$tmpdir/pnpm-install.exec.sh"
+  rm -f node_modules/pkg
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when a projected symlink disappears"
+)
+
+echo "Test 8: status misses after effective GVS path changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -296,11 +313,11 @@ echo "Test 7: status misses after effective GVS path changes"
   assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
 )
 
-echo "Test 8: exec invoked pnpm version and install"
+echo "Test 9: exec invoked pnpm version and install"
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 9: exec detaches stdin before probing pnpm version"
+echo "Test 10: exec detaches stdin before probing pnpm version"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"

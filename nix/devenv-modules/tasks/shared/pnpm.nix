@@ -32,7 +32,7 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./pnpm-task-helpers.sh
   );
-  nodeModulesProjectionHealthScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
+  nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
 
@@ -127,39 +127,13 @@ let
   '';
   computeProjectionStateHashFn = ''
     compute_projection_state_hash() {
-      {
-        # Keep a cheap fingerprint for the realized node_modules projection.
-        # This catches missing or stale projections on the warm path without
-        # the deeper dependency-resolution scan that made cached installs
-        # expensive. Package-level node_modules links are part of the live
-        # projection contract, so we fingerprint their resolved targets too.
-        for node_modules_dir in node_modules ${nodeModulesPaths}; do
-          if [ -d "$node_modules_dir" ]; then
-            printf 'dir %s\n' "$node_modules_dir"
-          else
-            printf 'missing %s\n' "$node_modules_dir"
-            continue
-          fi
-
-          find "$node_modules_dir" -mindepth 1 -maxdepth 2 -type l -print \
-            | LC_ALL=C sort \
-            | while IFS= read -r link_path; do
-              link_target="$(readlink "$link_path" || true)"
-              if [ -e "$link_path" ]; then
-                printf 'link %s -> %s\n' "$link_path" "$link_target"
-              else
-                printf 'broken-link %s -> %s\n' "$link_path" "$link_target"
-              fi
-            done
-        done
-
-        if [ -f node_modules/.modules.yaml ]; then
-          printf 'modules-yaml '
-          sha256sum node_modules/.modules.yaml | awk '{print $1}'
-        else
-          printf 'modules-yaml missing\n'
-        fi
-      } | compute_hash
+      # Keep the warm-path fingerprint semantics identical while avoiding the
+      # shell pipeline's per-link process overhead. The helper hashes the same
+      # ordered line stream that the previous bash implementation produced.
+      NODE_MODULES_HELPER_MODE="projection-hash" \
+      PNPM_ROOT_MODULES_YAML="node_modules/.modules.yaml" \
+      NODE_MODULES_DIRS="$(printf '%s\n' node_modules ${nodeModulesPaths})" \
+      ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript}
     }
   '';
 
@@ -233,7 +207,7 @@ let
           fi
         fi
 
-        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
+        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is stale, purging install state"
           purge_node_modules node_modules ${nodeModulesPaths}
         fi
