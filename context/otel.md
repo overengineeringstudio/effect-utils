@@ -24,7 +24,7 @@ dt pnpm:install
 dt check:quick
 
 # 4. View traces
-otel-trace                      # clickable trace URL for the current shell session
+otel-trace                      # re-open the current shell session's trace URL
 open $OTEL_GRAFANA_URL          # Grafana UI -> Explore -> Tempo
 ```
 
@@ -93,7 +93,7 @@ otel-trace | cat            # plain text: trace:<trace-id> <url>
 
 The function parses `TRACEPARENT` (W3C format: `version-traceId-spanId-traceFlags`) and constructs a Grafana Explore URL from `OTEL_GRAFANA_LINK_URL`.
 
-**Note:** Auto-display of the trace URL on shell entry is blocked by devenv's PTY task runner (`drain_pty_to_vt`), which consumes all shell output before the interactive session starts. Tracked upstream in [cachix/devenv#2500](https://github.com/cachix/devenv/issues/2500).
+**Note:** This repo now uses `devenv.messages` to auto-display the OTEL shell-entry notice. `otel-trace` remains as an on-demand way to reopen the same link later in the session. The repo is temporarily pinned to the upstream post-[cachix/devenv#2661](https://github.com/cachix/devenv/pull/2661) commit while waiting for the next tagged release.
 
 ### `otel-span` -- Trace span CLI
 

@@ -69,6 +69,28 @@ const failureReminderStep = {
 } as const
 
 /**
+ * Verify the lock-pinned devenv rev emits OTEL shell-entry messages under a real PTY.
+ * `--no-reload` keeps the probe on the post-init shell-output path we care about
+ * without exercising the separate interactive reload loop, which currently
+ * panics on the pinned upstream commit.
+ */
+const verifyOtelShellEntryStep = {
+  name: 'Verify OTEL shell entry',
+  shell: 'bash' as const,
+  run: [
+    runDevenvTasksBefore('otel:test'),
+    'command -v script >/dev/null 2>&1',
+    'tmp_log="$(mktemp)"',
+    `printf 'printf "OTEL_MODE=%%s\\n" "$OTEL_MODE"\nprintf "OTEL_GRAFANA_LINK_URL=%%s\\n" "$OTEL_GRAFANA_LINK_URL"\nexit\n' | script -qefc '"${'${DEVENV_BIN:?DEVENV_BIN not set}'}" shell --no-reload' "$tmp_log"`,
+    "grep -q '\\[otel\\] Using .* OTEL stack' \"$tmp_log\"",
+    "grep -q '\\[otel\\] Start with: devenv up' \"$tmp_log\"",
+    "grep -q '^OTEL_MODE=' \"$tmp_log\"",
+    "grep -q '^OTEL_GRAFANA_LINK_URL=http' \"$tmp_log\"",
+    'rm -f "$tmp_log"',
+  ].join('\n'),
+} as const
+
+/**
  * Temporary diagnostics summary for #272.
  * Remove once #201/#272 are root-caused and we can return to a minimal CI flow.
  */
@@ -112,7 +134,7 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
-const job = (step: { name: string; run: string }) => ({
+const job = (step: { name: string; run: string }, extraSteps: readonly any[] = []) => ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -121,6 +143,7 @@ const job = (step: { name: string; run: string }) => ({
   env: standardCIEnv,
   steps: [
     ...baseSteps,
+    ...extraSteps,
     step,
     savePnpmStoreStep(),
     nixDiagnosticsSummaryStep,
@@ -186,7 +209,7 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
   typecheck: job({
     name: 'Type check',
     run: runDevenvTasksBefore('ts:check'),
-  }),
+  }, [verifyOtelShellEntryStep]),
   lint: job({
     name: 'Format + lint',
     run: runDevenvTasksBefore('lint:check'),

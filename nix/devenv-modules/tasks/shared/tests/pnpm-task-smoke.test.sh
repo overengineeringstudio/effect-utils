@@ -268,7 +268,23 @@ echo "Test 5: exec restores projection metadata after a miss"
   test -f "$workspace/node_modules/.modules.yaml"
 )
 
-echo "Test 6: status misses after effective GVS path changes"
+echo "Test 6: outer cache hit misses when a projected package symlink breaks"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  mkdir -p node_modules/@scope
+  ln -s ../missing-package node_modules/@scope/broken
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when a projected symlink is broken"
+  rm node_modules/@scope/broken
+)
+
+echo "Test 7: status misses after effective GVS path changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -280,11 +296,11 @@ echo "Test 6: status misses after effective GVS path changes"
   assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
 )
 
-echo "Test 7: exec invoked pnpm version and install"
+echo "Test 8: exec invoked pnpm version and install"
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 6: exec detaches stdin before probing pnpm version"
+echo "Test 9: exec detaches stdin before probing pnpm version"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -304,19 +320,18 @@ echo "Test 6: exec detaches stdin before probing pnpm version"
 )
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 
-echo "Test 7: generated test task runs vitest without pnpm exec"
+echo "Test 10: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 8: generated storybook task runs storybook without pnpm exec"
+echo "Test 11: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
-
 echo ""
 echo "pnpm task smoke test passed"

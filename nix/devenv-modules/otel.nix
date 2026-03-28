@@ -359,6 +359,74 @@ let
   # Whether to include local OTEL infrastructure (collector, tempo, grafana processes)
   needsLocalInfra = mode != "system";
 
+  otelResolveShellState = ''
+    resolve_otel_shell_state() {
+      if [ "$OTEL_MODE" = "auto" ]; then
+        if [ -n "''${OTEL_STATE_DIR:-}" ]; then
+          OTEL_MODE="system"
+        else
+          OTEL_MODE="local"
+        fi
+      fi
+
+      if [ "$OTEL_MODE" = "system" ]; then
+        if [ -z "''${OTEL_STATE_DIR:-}" ]; then
+          echo "[otel] ERROR: OTEL_MODE=system requires OTEL_STATE_DIR" >&2
+          return 1
+        fi
+        if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+          echo "[otel] ERROR: OTEL_MODE=system requires OTEL_EXPORTER_OTLP_ENDPOINT" >&2
+          return 1
+        fi
+        if [ -z "''${OTEL_GRAFANA_URL:-}" ]; then
+          echo "[otel] ERROR: OTEL_MODE=system requires OTEL_GRAFANA_URL" >&2
+          return 1
+        fi
+        if ! command -v otel >/dev/null 2>&1; then
+          echo "[otel] ERROR: OTEL_MODE=system requires otel CLI for dashboard sync" >&2
+          return 1
+        fi
+        if [ "${toString (builtins.length extraDashboards)}" -gt 0 ]; then
+          echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
+          return 1
+        fi
+        if ! otel dash sync \
+          --source "${allDashboards}" \
+          --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
+          echo "[otel] ERROR: otel dash sync failed" >&2
+          return 1
+        fi
+        _otel_mode_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
+      else
+        export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
+        export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
+        export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
+        _otel_mode_msg="[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
+      fi
+
+      _otel_grafana="$OTEL_GRAFANA_URL"
+      if [ -n "''${TS_HOSTNAME:-}" ]; then
+        _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
+      fi
+      if [ -n "''${TRACEPARENT:-}" ]; then
+        IFS='-' read -r _ _otel_trace_id _ _ <<< "$TRACEPARENT"
+        _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$_otel_trace_id"'"}],"range":{"from":"now-1h","to":"now"}}}'
+        _encoded=$(printf '%s' "$_panes" | sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
+        _otel_grafana_link_url="$_otel_grafana/explore?schemaVersion=1&panes=$_encoded&orgId=1"
+      else
+        unset _otel_trace_id
+        _otel_grafana_link_url="$_otel_grafana"
+      fi
+      if [ -n "''${_otel_trace_id:-}" ]; then
+        _otel_trace_label="trace:$_otel_trace_id"
+      else
+        _otel_trace_label="grafana"
+      fi
+      _otel_grafana_display="$(printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07' "$_otel_grafana_link_url" "$_otel_trace_label")"
+      _otel_start_msg="[otel] Start with: devenv up | $_otel_grafana_display"
+    }
+  '';
+
 in
 {
   packages = [
@@ -372,98 +440,32 @@ in
 
   env.OTEL_MODE = mode;
 
-  # mkAfter ensures this runs after other enterShell code, so env vars
-  # (including TRACEPARENT from setup:gate) are available.
-  # Note: devenv's PTY task runner drains all PROMPT_COMMAND output before the
-  # interactive session, so we provide `otel-trace` for on-demand trace URL access.
+  # OTEL shell state is resolved in a task so the same source of truth can
+  # export env vars and emit the post-init shell message via devenv.messages.
+  # enterShell then only consumes that exported state.
   enterShell = lib.mkAfter ''
-    # ── Mode detection ──────────────────────────────────────────────────
-    # Resolve "auto" to "system" or "local" at runtime.
-    # Contract: a system-level OTEL stack (e.g. home-manager otel-stack module)
-    # advertises itself by setting OTEL_STATE_DIR as a session variable.
-    if [ "$OTEL_MODE" = "auto" ]; then
-      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-        OTEL_MODE="system"
-      else
-        OTEL_MODE="local"
-      fi
-    fi
-
-    if [ "$OTEL_MODE" = "system" ]; then
-      if [ -z "''${OTEL_STATE_DIR:-}" ]; then
-        echo "[otel] ERROR: OTEL_MODE=system requires OTEL_STATE_DIR" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-        echo "[otel] ERROR: OTEL_MODE=system requires OTEL_EXPORTER_OTLP_ENDPOINT" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if ! command -v otel >/dev/null 2>&1; then
-        echo "[otel] ERROR: OTEL_MODE=system requires otel CLI for dashboard sync" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if [ "${toString (builtins.length extraDashboards)}" -gt 0 ]; then
-        echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if ! otel dash sync \
-        --source "${allDashboards}" \
-        --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
-        echo "[otel] ERROR: otel dash sync failed" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
-    else
-      # Local devenv stack — set env vars with local hash-derived ports
-      export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
-      export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
-      export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
-      _otel_entry_msg="[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
-    fi
-
-    _otel_grafana="$OTEL_GRAFANA_URL"
-    if [ -n "''${TS_HOSTNAME:-}" ]; then
-      _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
-    fi
-    # Build Grafana link: trace-specific when TRACEPARENT is available, dashboard otherwise
-    if [ -n "''${TRACEPARENT:-}" ]; then
-      IFS='-' read -r _ _otel_trace_id _ _ <<< "$TRACEPARENT"
-      _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$_otel_trace_id"'"}],"range":{"from":"now-1h","to":"now"}}}'
-      _encoded=$(printf '%s' "$_panes" | sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
-      _grafana_link_url="$_otel_grafana/explore?schemaVersion=1&panes=$_encoded&orgId=1"
-    else
-      _grafana_link_url="$_otel_grafana"
-    fi
-    if [ -n "''${_otel_trace_id:-}" ]; then
-      _trace_label="trace:$_otel_trace_id"
-    else
-      _trace_label="grafana"
-    fi
-    if [ -t 2 ]; then
-      _grafana_display="$(printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07' "$_grafana_link_url" "$_trace_label")"
-    else
-      _grafana_display="$_trace_label $_grafana_link_url"
-    fi
-    _otel_entry_msg="$_otel_entry_msg
-[otel] Start with: devenv up | $_grafana_display"
-
-    # devenv's PTY task runner drains all PROMPT_COMMAND output before the
-    # interactive session starts, so we can't display messages via echo.
-    # Instead, provide an `otel-trace` shell function for on-demand access.
-    # No `export -f` needed — function is defined during rcfile sourcing
-    # and stays available in the interactive shell.
-    export OTEL_GRAFANA_LINK_URL="$_grafana_link_url"
+    # `otel-trace` remains as a cheap on-demand way to reopen the current link,
+    # but the user-visible shell-entry message now comes from `otel:shell-env`.
     otel_trace() {
+      local _url="''${OTEL_GRAFANA_LINK_URL:-''${OTEL_GRAFANA_URL:-}}"
+      if [ -z "$_url" ]; then
+        echo "[otel] No OTEL grafana link available"
+        return 1
+      fi
       if [ -n "''${TRACEPARENT:-}" ]; then
         IFS='-' read -r _ _tid _ _ <<< "$TRACEPARENT"
-        local _url="''${OTEL_GRAFANA_LINK_URL:-$OTEL_GRAFANA_URL}"
+        local _label="trace:$_tid"
         if [ -t 1 ]; then
-          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "trace:$_tid"
+          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "$_label"
         else
-          echo "trace:$_tid $_url"
+          echo "$_label $_url"
         fi
       else
-        echo "[otel] No TRACEPARENT available"
+        if [ -t 1 ]; then
+          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "grafana"
+        else
+          echo "grafana $_url"
+        fi
       fi
     }
     alias otel-trace=otel_trace
@@ -589,6 +591,47 @@ in
   # Tasks
   # =========================================================================
 
+  tasks."otel:shell-env" = {
+    description = "Resolve OTEL shell env and shell-entry message";
+    exports = [
+      "OTEL_MODE"
+      "OTEL_EXPORTER_OTLP_ENDPOINT"
+      "OTEL_GRAFANA_URL"
+      "OTEL_SPAN_SPOOL_DIR"
+      "OTEL_GRAFANA_LINK_URL"
+    ];
+    exec = ''
+      set -euo pipefail
+      ${otelResolveShellState}
+      resolve_otel_shell_state
+
+      ${pkgs.jq}/bin/jq -n \
+        --arg mode "$OTEL_MODE" \
+        --arg endpoint "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" \
+        --arg grafanaUrl "''${OTEL_GRAFANA_URL:-}" \
+        --arg spoolDir "''${OTEL_SPAN_SPOOL_DIR:-}" \
+        --arg linkUrl "$_otel_grafana_link_url" \
+        --arg modeMessage "$_otel_mode_msg" \
+        --arg startMessage "$_otel_start_msg" \
+        '{
+          devenv: {
+            env: (
+              {
+                OTEL_MODE: $mode,
+                OTEL_GRAFANA_LINK_URL: $linkUrl
+              }
+              + (if $endpoint != "" then { OTEL_EXPORTER_OTLP_ENDPOINT: $endpoint } else {} end)
+              + (if $grafanaUrl != "" then { OTEL_GRAFANA_URL: $grafanaUrl } else {} end)
+              + (if $spoolDir != "" then { OTEL_SPAN_SPOOL_DIR: $spoolDir } else {} end)
+            ),
+            messages: [$modeMessage, $startMessage]
+          }
+        }' > "$DEVENV_TASK_OUTPUT_FILE"
+    '';
+    before = [ "devenv:enterShell" ];
+    after = lib.optionals (builtins.hasAttr "setup:gate" config.tasks) [ "setup:gate" ];
+  };
+
   tasks."otel:test" = {
     description = "Run otel-span shell-level unit tests (offline, no devenv up needed)";
     exec = ''
@@ -606,6 +649,8 @@ in
       # otel-span disables file-spooling when OTEL_EXPORTER_OTLP_ENDPOINT is unset,
       # so always provide a local default for the offline unit tests.
       export OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}"
+
+      ${otelResolveShellState}
 
       _check() {
         local name="$1"
@@ -647,7 +692,37 @@ in
       }
       _check "Attribute type handling" _test_attr_types
 
-      # Test 2: TRACEPARENT propagation
+      # Test 3: local shell state resolution exports the local stack and a trace link
+      _test_shell_state_local() {
+        (
+          export OTEL_MODE="local"
+          export TRACEPARENT="00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+          export TS_HOSTNAME="ts.example.test"
+          unset OTEL_GRAFANA_URL OTEL_EXPORTER_OTLP_ENDPOINT OTEL_SPAN_SPOOL_DIR
+          resolve_otel_shell_state
+          [ "$OTEL_EXPORTER_OTLP_ENDPOINT" = "http://127.0.0.1:${toString otelCollectorPort}" ] || return 1
+          [ "$OTEL_GRAFANA_URL" = "http://127.0.0.1:${toString grafanaPort}" ] || return 1
+          [ "$OTEL_SPAN_SPOOL_DIR" = "${spoolDir}" ] || return 1
+          echo "$_otel_grafana_link_url" | grep -q 'ts.example.test' || return 1
+          echo "$_otel_start_msg" | grep -q 'trace:' || return 1
+        )
+      }
+      _check "Shell state resolution (local)" _test_shell_state_local
+
+      # Test 4: system shell state requires an explicit Grafana URL
+      _test_shell_state_system_requires_grafana() {
+        (
+          export OTEL_MODE="system"
+          export OTEL_STATE_DIR="$_tmp/system-state"
+          export OTEL_EXPORTER_OTLP_ENDPOINT="http://collector.example:4318"
+          unset OTEL_GRAFANA_URL OTEL_SPAN_SPOOL_DIR
+          otel() { return 0; }
+          ! resolve_otel_shell_state >/dev/null 2>&1
+        )
+      }
+      _check "Shell state resolution (system requires Grafana URL)" _test_shell_state_system_requires_grafana
+
+      # Test 5: TRACEPARENT propagation
       _test_traceparent() {
         local spool="$_tmp/tp-test"
         mkdir -p "$spool"
@@ -664,14 +739,14 @@ in
       }
       _check "TRACEPARENT propagation" _test_traceparent
 
-      # Test 3: Spool fallback (nonexistent dir)
+      # Test 6: Spool fallback (nonexistent dir)
       _test_spool_fallback() {
         # With nonexistent spool dir, should still succeed (falls back to curl which may fail silently)
         OTEL_SPAN_SPOOL_DIR="/nonexistent" OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:1" otel-span run "test" "fallback" -- true >/dev/null 2>&1
       }
       _check "Spool fallback" _test_spool_fallback
 
-      # Test 4: Spool file write
+      # Test 7: Spool file write
       _test_spool_write() {
         local spool="$_tmp/write-test"
         mkdir -p "$spool"
@@ -683,7 +758,7 @@ in
       }
       _check "Spool write" _test_spool_write
 
-      # Test 5: --span-id override
+      # Test 8: --span-id override
       _test_span_id_override() {
         local spool="$_tmp/spanid-test"
         mkdir -p "$spool"
@@ -695,7 +770,7 @@ in
       }
       _check "--span-id override" _test_span_id_override
 
-      # Test 6: --start-time-ns override
+      # Test 9: --start-time-ns override
       _test_start_time_override() {
         local spool="$_tmp/startns-test"
         mkdir -p "$spool"
@@ -707,7 +782,7 @@ in
       }
       _check "--start-time-ns override" _test_start_time_override
 
-      # Test 7: --end-time-ns override
+      # Test 10: --end-time-ns override
       _test_end_time_override() {
         local spool="$_tmp/endns-test"
         mkdir -p "$spool"
@@ -719,7 +794,7 @@ in
       }
       _check "--end-time-ns override" _test_end_time_override
 
-      # Test 8: --log-url outputs Grafana trace URL to stderr
+      # Test 11: --log-url outputs Grafana trace URL to stderr
       _test_log_url() {
         local spool="$_tmp/logurl-test"
         mkdir -p "$spool"
@@ -736,7 +811,7 @@ in
       }
       _check "--log-url output" _test_log_url
 
-      # Test 9: No trace context produces root span (no parentSpanId)
+      # Test 12: No trace context produces root span (no parentSpanId)
       _test_no_traceparent_root() {
         local spool="$_tmp/root-test"
         mkdir -p "$spool"
@@ -752,7 +827,7 @@ in
       }
       _check "No trace context = root span" _test_no_traceparent_root
 
-      # Test 10: OTEL_TASK_TRACEPARENT takes precedence over TRACEPARENT
+      # Test 13: OTEL_TASK_TRACEPARENT takes precedence over TRACEPARENT
       _test_task_traceparent_precedence() {
         local spool="$_tmp/task-tp-test"
         mkdir -p "$spool"
@@ -773,7 +848,7 @@ in
       }
       _check "OTEL_TASK_TRACEPARENT precedence" _test_task_traceparent_precedence
 
-      # Test 11: --status-attr derives bool from exit code (cached case, exit 0)
+      # Test 14: --status-attr derives bool from exit code (cached case, exit 0)
       _test_status_attr_cached() {
         local spool="$_tmp/status-cached"
         mkdir -p "$spool"
@@ -793,7 +868,7 @@ in
       }
       _check "--status-attr cached (exit 0)" _test_status_attr_cached
 
-      # Test 12: --status-attr derives bool from exit code (uncached case, exit 1)
+      # Test 15: --status-attr derives bool from exit code (uncached case, exit 1)
       _test_status_attr_uncached() {
         local spool="$_tmp/status-uncached"
         mkdir -p "$spool"
@@ -813,7 +888,7 @@ in
       }
       _check "--status-attr uncached (exit 1)" _test_status_attr_uncached
 
-      # Test 13: --status-attr propagates TRACEPARENT to child (sub-traces)
+      # Test 16: --status-attr propagates TRACEPARENT to child (sub-traces)
       _test_status_attr_subtrace() {
         local spool="$_tmp/status-subtrace"
         mkdir -p "$spool"
@@ -831,7 +906,7 @@ in
       }
       _check "--status-attr sub-trace propagation" _test_status_attr_subtrace
 
-      # Test 14: otel-span exports OTEL_TASK_TRACEPARENT to child processes
+      # Test 17: otel-span exports OTEL_TASK_TRACEPARENT to child processes
       _test_task_traceparent_export() {
         local spool="$_tmp/task-tp-export"
         mkdir -p "$spool"

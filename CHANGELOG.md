@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
   - Switches shell bootstrap from `mr:sync` to initial `mr:apply` so a fresh worktree is normalized without fetching on every shell
   - Speeds up warm task status paths by using direct `mr status`, fingerprint-based `genie:run` caching, lighter `pnpm:install` status checks, and a `ts:emit` graph that excludes `noEmit` references at emit time
   - Hardens the fast paths by making the outer cache only track setup inputs while each task still verifies its own outputs before skipping
+- **devenv/otel**: pin `devenv` temporarily to the post-#2661 upstream commit and move OTEL shell-entry notices onto `devenv.messages`
+  - Resolves OTEL mode, dashboard sync, and Grafana trace-link construction in a dedicated shell-entry task instead of ad-hoc `enterShell` output
+  - Auto-displays the OTEL shell-entry message through upstream task messages while keeping `otel-trace` as a lightweight re-open helper
+  - Adds a TODO to switch the temporary commit pin back to the `v2.0.7` tag once it is released
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
   - Fails `genie` when workflow jobs serialize non-string, empty, or stale placeholder runner labels like `null` / `...=undefined`
   - Prevents CI helper API drift from silently generating invalid workflow files that only fail later in GitHub Actions
