@@ -29,7 +29,7 @@ const opentuiDeps = ['@opentui/core', '@opentui/react'] as const
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/tui-react' }),
   dependencies: {
-    workspace: [tuiCorePkg],
+    workspace: [tuiCorePkg, utilsPkg],
     external: catalog.pick(
       'yoga-layout',
       'string-width',
@@ -41,7 +41,7 @@ const runtimeDeps = catalog.compose({
     ),
   },
   devDependencies: {
-    workspace: [utilsPkg, utilsDevPkg],
+    workspace: [utilsDevPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
