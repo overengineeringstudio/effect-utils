@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/tui-react**: Format timeline timestamps as human-readable durations (e.g. `6m 18s / 16m 21s`) instead of raw seconds (`377.9s / 980.6s`) in `TuiStoryPreview` (#472)
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
   - Fails `genie` when workflow jobs serialize non-string, empty, or stale placeholder runner labels like `null` / `...=undefined`
   - Prevents CI helper API drift from silently generating invalid workflow files that only fail later in GitHub Actions

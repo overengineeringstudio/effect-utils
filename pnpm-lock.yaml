@@ -1134,6 +1134,9 @@ importers:
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
+      '@overeng/utils':
+        specifier: workspace:^
+        version: link:../utils
       '@playwright/test':
         specifier: 1.58.2
         version: 1.58.2
@@ -1180,9 +1183,6 @@ importers:
       '@opentui/react':
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
-      '@overeng/utils':
-        specifier: workspace:^
-        version: link:../utils
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -6026,6 +6026,7 @@ snapshots:
       '@opentui/core': 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       '@opentui/react': 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/tui-core': link:packages/@overeng/tui-core
+      '@overeng/utils': link:packages/@overeng/utils
       '@playwright/test': 1.58.2
       '@storybook/react': 10.2.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(storybook@10.2.3(@testing-library/dom@10.4.1)(prettier@3.6.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(typescript@5.9.3)
       '@types/react': 19.2.7

@@ -42,6 +42,8 @@ import { Schema } from 'effect'
 import '@xterm/xterm/css/xterm.css'
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 
+import { msAsTimeString } from '@overeng/utils'
+
 import {
   RenderConfigProvider,
   ciRenderConfig,
@@ -583,9 +585,9 @@ const EventTooltip: React.FC<{
         <span
           style={{ color: '#4a9eff', fontSize: '11px', fontFamily: 'Monaco, Menlo, monospace' }}
         >
-          @ {(event.at / 1000).toFixed(1)}s
+          @ {msAsTimeString(event.at)}
           {deltaTime !== null && (
-            <span style={{ color: '#666' }}> (+{(deltaTime / 1000).toFixed(1)}s)</span>
+            <span style={{ color: '#666' }}> (+{msAsTimeString(deltaTime)})</span>
           )}
         </span>
       </div>
@@ -764,7 +766,7 @@ const PlaybackControls = <A,>({
           <span style={{ color: '#888', fontSize: '11px' }}>
             Event {Math.max(0, currentEventIndex + 1)} of {timeline.length}
             {currentEvent && (
-              <span style={{ color: '#666' }}> @ {(currentEvent.at / 1000).toFixed(1)}s</span>
+              <span style={{ color: '#666' }}> @ {msAsTimeString(currentEvent.at)}</span>
             )}
           </span>
         ) : null}
@@ -774,7 +776,7 @@ const PlaybackControls = <A,>({
 
         {/* Time display */}
         <span style={{ color: '#888', fontSize: '12px', fontFamily: 'Monaco, Menlo, monospace' }}>
-          {(effectiveTime / 1000).toFixed(1)}s / {(totalDuration / 1000).toFixed(1)}s
+          {msAsTimeString(effectiveTime)} / {msAsTimeString(totalDuration)}
         </span>
       </div>
 
