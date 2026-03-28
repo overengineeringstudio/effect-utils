@@ -601,11 +601,22 @@ pkgs.stdenv.mkDerivation {
     # shared wrapper for already-installed workspace binaries in postBuild hooks.
     export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
     export PNPM_HOME="$HOME/.local/share/pnpm"
-    export WORKSPACE_BIN_DIR="$NIX_BUILD_TOP/workspace/node_modules/.bin"
+    export WORKSPACE_ROOT_BIN_DIR="$NIX_BUILD_TOP/workspace/node_modules/.bin"
     mkdir -p "$PNPM_HOME"
     printf '\nmanage-package-manager-versions=false\n' >> .npmrc
     run_workspace_bin() {
-      "$WORKSPACE_BIN_DIR/$1" "''${@:2}"
+      local bin_name="$1"
+      shift
+      local package_bin_dir="$PWD/node_modules/.bin"
+
+      if [ -x "$package_bin_dir/$bin_name" ]; then
+        "$package_bin_dir/$bin_name" "$@"
+      elif [ -x "$WORKSPACE_ROOT_BIN_DIR/$bin_name" ]; then
+        "$WORKSPACE_ROOT_BIN_DIR/$bin_name" "$@"
+      else
+        echo "error: workspace binary '$bin_name' not found in $package_bin_dir or $WORKSPACE_ROOT_BIN_DIR" >&2
+        exit 127
+      fi
     }
 
     cd ${packageDir}
