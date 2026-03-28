@@ -24,6 +24,45 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  cacheRoot = ".direnv/task-cache/mr-apply";
+  membersFile = "${cacheRoot}/members.txt";
+  recordWorkspaceMembers = ''
+    set -o pipefail
+    mkdir -p ${lib.escapeShellArg cacheRoot}
+    tmp_members_file="$(mktemp)"
+    # Rewrite the manifest atomically so a failed `mr ls` never leaves behind
+    # an empty file that would make the warm-path output proof vacuous.
+    mr ls --output json \
+      | ${pkgs.jq}/bin/jq -r 'select(._tag == "Success") | .value.members[].name' \
+      | LC_ALL=C sort -u > "$tmp_members_file"
+    mv "$tmp_members_file" ${lib.escapeShellArg membersFile}
+  '';
+  mrStatusCheck = ''
+    # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
+    # second eval/build hop to every warm status check.
+    if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+      exit 0
+    fi
+
+    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+      [ -d ./repos ] || exit 1
+      [ -f ${lib.escapeShellArg membersFile} ] || exit 1
+      while IFS= read -r member; do
+        [ -n "$member" ] || continue
+        if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+          exit 1
+        fi
+      done < ${lib.escapeShellArg membersFile}
+      exit 0
+    fi
+
+    if [ ! -d ./repos ]; then
+      exit 1
+    fi
+
+    status_json=$(mr status --output json 2>/dev/null) || exit 1
+    echo "$status_json" | ${pkgs.jq}/bin/jq -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
+  '';
 
   tasks = {
     "mr:sync" = {
@@ -35,23 +74,9 @@ let
         fi
 
         mr fetch --apply${if syncAll then " --all" else ""}
+        ${recordWorkspaceMembers}
       '';
-      # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
-      status = trace.status "mr:sync" "binary" ''
-        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
-          exit 0
-        fi
-
-        # Fast check: if repos/ doesn't exist, definitely need sync
-        if [ ! -d ./repos ]; then
-          exit 1
-        fi
-
-        # Use mr status to check the workspace-specific boolean
-        status_json=$(nix run "git+file:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
-
-        echo "$status_json" | ${pkgs.jq}/bin/jq -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
-      '';
+      status = trace.status "mr:sync" "binary" mrStatusCheck;
     };
 
     "mr:lock" = {
@@ -86,7 +111,9 @@ let
         fi
 
         mr apply${if syncAll then " --all" else ""}
+        ${recordWorkspaceMembers}
       '';
+      status = trace.status "mr:apply" "binary" mrStatusCheck;
     };
 
     "mr:check" = {
