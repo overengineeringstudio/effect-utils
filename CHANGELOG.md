@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - Resolves OTEL mode, dashboard sync, and Grafana trace-link construction in a dedicated shell-entry task instead of ad-hoc `enterShell` output
   - Auto-displays the OTEL shell-entry message through upstream task messages while keeping `otel-trace` as a lightweight re-open helper
   - Adds a TODO to switch the temporary commit pin back to the `v2.0.7` tag once it is released
+  - Scrubs ambient task trace context before emitting `devenv/shell:entry` so the shell root span cannot self-parent or collide with later `dt` root spans
+  - Emits `devenv/shell:entry` via the pinned store path for `otel-span` so tracing still works before `enterShell` PATH mutations are fully visible
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
   - Fails `genie` when workflow jobs serialize non-string, empty, or stale placeholder runner labels like `null` / `...=undefined`
   - Prevents CI helper API drift from silently generating invalid workflow files that only fail later in GitHub Actions
