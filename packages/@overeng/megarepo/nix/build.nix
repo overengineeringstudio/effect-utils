@@ -23,7 +23,7 @@ let
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
-    pnpmDepsHash = "sha256-QJ7XxrmW+ZsOK06jpEuf79VvTdWd2hXQLjR2PEp6r/E=";
+    pnpmDepsHash = "sha256-MJDDfYaXsh1h2I/+dqMgQz/b1HfKEifXU+YEDz/XKaQ=";
     smokeTestArgs = [ "--help" ];
     inherit
       lockfileHash
