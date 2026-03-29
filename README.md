@@ -217,3 +217,5 @@ This monorepo uses:
 - **Effect** for core functionality
 
 See individual package READMEs for package-specific documentation.
+# debug: test watch termination 1774800803
+# debug: test watch termination 1774800818
