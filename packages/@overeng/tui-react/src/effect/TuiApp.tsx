@@ -905,17 +905,12 @@ const runImpl = <S, A, B, E, R>(
 
     if (mode._tag === 'react') {
       // Visual mode: render view + run handler normally, output is returned to caller
-      return yield* Effect.scoped(
-        app.run(options.view).pipe(Effect.flatMap(handler)),
-      )
+      return yield* Effect.scoped(app.run(options.view).pipe(Effect.flatMap(handler)))
     }
 
     // Machine mode: skip state JSON output, run handler headless, serialize return value
     const result = yield* Effect.scoped(
-      app.run().pipe(
-        Effect.provideService(SkipModeOutputTag, true),
-        Effect.flatMap(handler),
-      ),
+      app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
     )
 
     // Write handler's return value to stdout

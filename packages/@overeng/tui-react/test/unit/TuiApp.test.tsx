@@ -675,11 +675,9 @@ describe('run with output schema', () => {
     }) {}
 
     it.effect('handler error: no stdout output, error propagated', () =>
-      run(
-        CounterApp,
-        () => new ReadError({ message: 'access denied' }),
-        { output: Schema.String },
-      ).pipe(
+      run(CounterApp, () => new ReadError({ message: 'access denied' }), {
+        output: Schema.String,
+      }).pipe(
         Effect.provide(testModeLayer('json')),
         Effect.catchAll((error) =>
           Effect.sync(() => {

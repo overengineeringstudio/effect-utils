@@ -24,7 +24,7 @@
  */
 
 import { Options } from '@effect/cli'
-import { Cause, Effect, Layer, Logger } from 'effect'
+import { Cause, Effect, Layer, Logger, Option } from 'effect'
 
 import { createLogCapture } from './LogCapture.ts'
 import { detectOutputMode } from './OutputMode.node.ts'
@@ -207,16 +207,39 @@ export const resolveOutputMode = (value: OutputModeValue): OutputMode => {
  */
 export interface RunTuiMainOptions {
   /**
-   * Filter function to determine which errors should be logged to stderr.
-   * Return `true` to log the error, `false` to suppress it.
+   * Format an error cause for stderr output.
    *
-   * This is useful for errors that are already represented in the command's
-   * JSON output (like `SyncFailedError` in megarepo) - you can suppress the
-   * stderr logging while still preserving the non-zero exit code.
+   * - `Option.some(message)` — write message to stderr
+   * - `Option.none()` — suppress this error entirely (exit code still reflects it)
    *
-   * @default All errors are logged
+   * @default `defaultFormatError` (verbose with stack traces via `Cause.pretty`)
+   *
+   * @example Suppress errors already represented in JSON output:
+   * ```typescript
+   * formatError: (cause) =>
+   *   Cause.failures(cause).pipe(chunk =>
+   *     [...chunk].some(e => e._tag === 'SyncFailedError')
+   *   ) ? Option.none()
+   *     : defaultFormatError(cause)
+   * ```
    */
-  readonly shouldLogError?: (error: unknown) => boolean
+  readonly formatError?: (cause: Cause.Cause<unknown>) => Option.Option<string>
+}
+
+/** Verbose error formatter — full stack traces via `Cause.pretty`. This is the default. */
+export const defaultFormatError = (cause: Cause.Cause<unknown>): Option.Option<string> =>
+  Option.some(Cause.pretty(cause, { renderErrorCause: true }))
+
+/** Compact error formatter — just error messages, no stack traces. For machine/agent output. */
+export const compactFormatError = (cause: Cause.Cause<unknown>): Option.Option<string> => {
+  const messages: string[] = []
+  for (const failure of Cause.failures(cause)) {
+    messages.push(failure instanceof Error ? failure.message : String(failure))
+  }
+  for (const defect of Cause.defects(cause)) {
+    messages.push(defect instanceof Error ? defect.message : String(defect))
+  }
+  return messages.length > 0 ? Option.some(messages.join('\n')) : Option.none()
 }
 
 /**
@@ -236,7 +259,7 @@ export interface TuiRuntime {
  * - Errors are written to stderr (not stdout) to avoid polluting JSON output
  * - Uses `disableErrorReporting` to prevent `runMain` from logging to stdout
  * - Preserves exit codes from errors
- * - Optionally filter which errors get logged via `shouldLogError`
+ * - Customizable error formatting via `formatError` (verbose, compact, or custom)
  *
  * Supports Effect's dual API pattern for flexible usage in pipe chains.
  *
@@ -258,11 +281,11 @@ export interface TuiRuntime {
  *
  * @example
  * ```typescript
- * // With options:
+ * // With compact errors (for agent-friendly CLIs):
  * Cli.Command.run(myCommand, { name: 'my-cli', version })(process.argv).pipe(
  *   Effect.scoped,
  *   Effect.provide(baseLayer),
- *   runTuiMain(NodeRuntime, { shouldLogError: (e) => e._tag !== 'MyExpectedError' })
+ *   runTuiMain(NodeRuntime, { formatError: compactFormatError })
  * )
  * ```
  */
@@ -309,30 +332,14 @@ const runTuiMainImpl = <E, A>({
   effect: Effect.Effect<A, E>
   options?: RunTuiMainOptions | undefined
 }): void => {
-  const shouldLogError = options?.shouldLogError ?? (() => true)
+  const formatError = options?.formatError ?? defaultFormatError
 
   effect.pipe(
     Effect.tapErrorCause((cause) =>
       Effect.sync(() => {
-        // Check if cause has any loggable content:
-        // 1. Typed failures (the E in Effect<A, E>) - filtered by shouldLogError
-        // 2. Defects (crashes, thrown exceptions) - always logged
-        // 3. Interruptions - always logged
-        const failures = Cause.failures(cause)
-        const hasLoggableFailure = failures.pipe((chunk) => {
-          for (const error of chunk) {
-            if (shouldLogError(error) === true) return true
-          }
-          return false
-        })
-
-        // Always log defects and interruptions - these are unexpected and need visibility
-        const hasDefects = !Cause.defects(cause).pipe((chunk) => chunk.length === 0)
-        const isInterrupted = Cause.isInterrupted(cause)
-
-        if (hasLoggableFailure === true || hasDefects === true || isInterrupted === true) {
-          const pretty = Cause.pretty(cause, { renderErrorCause: true })
-          process.stderr.write(pretty + '\n')
+        const formatted = formatError(cause)
+        if (Option.isSome(formatted)) {
+          process.stderr.write(formatted.value + '\n')
         }
       }),
     ),
