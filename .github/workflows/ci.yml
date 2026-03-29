@@ -990,7 +990,7 @@ jobs:
           exit 1
       - name: Nix hash check
         run: |
-          export NIX_CMD=$(command -v nix); __nix_gc_retry() {
+          __nix_gc_retry() {
             local __task='devenv tasks run nix:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
             __start=$(date +%s)
 
