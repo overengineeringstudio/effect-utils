@@ -94,16 +94,21 @@ in
       lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
-      # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
-      # in the derivation name. When inputs change, the name changes, which
-      # makes Nix treat this as a NEW derivation — bypassing any cached output
-      # from the local store or binary caches (cachix).
+      # Embed a content-based fingerprint of the FOD's inputs in the derivation
+      # name. When inputs change, the name changes, which makes Nix treat this
+      # as a NEW derivation — bypassing any cached output from the local store
+      # or binary caches (cachix).
       #
       # Without this, a binary cache can serve old (previously valid) outputs
       # indefinitely, masking stale pnpmDepsHash values. The `nix build` command
       # trusts local store content and never re-verifies the hash.
       #
       # See: https://blog.eigenvalue.net/nix-rerunning-fixed-output-derivations/
+      #
+      # Uses builtins.hashFile on lockfile content instead of the src store path.
+      # This ensures the fingerprint is stable across different nix evaluators
+      # (e.g. devenv's pkgs.nix vs DeterminateSystems nix) which may produce
+      # different store paths for the same git checkout.
       #
       # NOTE: This does NOT cover npm registry content drift (a tarball
       # republished with different content at the same version). In that case
@@ -117,7 +122,7 @@ in
       # complete. CA derivations eliminate manually-maintained FOD hashes entirely.
       # Track: NixOS/nix#6623
       srcFingerprint = builtins.substring 0 8 (
-        builtins.unsafeDiscardStringContext (baseNameOf (toString src))
+        builtins.hashString "sha256" pnpmDepsHash
       );
     in
     pkgs.stdenvNoCC.mkDerivation {
