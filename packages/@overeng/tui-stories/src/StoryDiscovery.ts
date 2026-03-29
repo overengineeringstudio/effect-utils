@@ -89,7 +89,7 @@ export const discoverStories = (options: {
        module's bindings uninitialized for other importers. With the shared
        @overeng/tui-react/storybook dependency this caused ~100% TDZ failure rate.
        Performance is unaffected — shared modules are cached after first evaluation.
-       See: https://github.com/overengineeringstudio/effect-utils/issues/470 */
+       See: https://github.com/oven-sh/bun/issues/20489 */
     const results = yield* Effect.all(
       filePaths.map((fp) => importStoryFile(fp)),
       { concurrency: 1 },
