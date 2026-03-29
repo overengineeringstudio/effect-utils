@@ -238,7 +238,7 @@ Structured JSON output at command completion.
 
 Streaming JSON output (NDJSON format) as state changes.
 
-**Use cases:** Real-time monitoring, log aggregation
+**Use cases:** Real-time monitoring, log aggregation, agent consumption
 
 **Behavior:**
 
@@ -254,13 +254,47 @@ Streaming JSON output (NDJSON format) as state changes.
 | `stdout` | JSON lines only (one per state change) |
 | `stderr` | Log messages, errors, debug output     |
 
-**Format:**
+**Default format (full state snapshots):**
 
 ```
 {"_tag":"Progress","service":"api-server","phase":"pulling"}
 {"_tag":"Progress","service":"api-server","phase":"healthy"}
 {"_tag":"Complete","services":[...],"duration":3421}
 ```
+
+**Event-based format (with `NdjsonConfig`):**
+
+When `createTuiApp` is configured with a `ndjson` option, intermediate lines
+emit mapped events instead of full state snapshots. This reduces output size
+for apps with large state that changes incrementally (e.g. CI monitors, deploy tools).
+
+```typescript
+const App = createTuiApp({
+  stateSchema,
+  actionSchema,
+  initial,
+  reducer,
+  ndjson: {
+    eventSchema: MyEvent,
+    fromAction: ({ action, prevState }) => [
+      /* events */
+    ],
+  },
+})
+```
+
+Stream contract with events:
+
+```
+Line 1 (initial):   {"count":0}                         ← full state snapshot
+Line 2 (event):     {"_tag":"Incremented","newCount":1}  ← event from fromAction
+Line 3 (event):     {"_tag":"Incremented","newCount":2}  ← event from fromAction
+Line 4 (final):     {"_tag":"Success","count":2}         ← wrapped final state
+```
+
+- **Line 1**: Full state snapshot (for consumer bootstrapping)
+- **Intermediate lines**: Events produced by `fromAction({ action, prevState })`
+- **Final line**: `Success`/`Failure` wrapper with full state (unchanged)
 
 ### Log Capture (Progressive Modes)
 

@@ -196,6 +196,7 @@ export {
   type TuiApp,
   type TuiAppConfig,
   type TuiAppApi,
+  type NdjsonConfig,
   type TuiAppRunOptions,
   type RunResultOptions,
   type TuiOutput,

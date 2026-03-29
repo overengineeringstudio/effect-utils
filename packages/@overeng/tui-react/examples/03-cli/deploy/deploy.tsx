@@ -13,7 +13,9 @@ import { createTuiApp, run } from '../../../src/mod.tsx'
 import {
   DeployState,
   DeployAction,
+  DeployNdjsonEvent,
   deployReducer,
+  deployFromAction,
   type DeployOptions,
   type DeployResult,
   type LogEntry,
@@ -37,6 +39,10 @@ export const DeployApp = createTuiApp({
   actionSchema: DeployAction,
   initial: { _tag: 'Idle' } as DeployState,
   reducer: deployReducer,
+  ndjson: {
+    eventSchema: DeployNdjsonEvent,
+    fromAction: deployFromAction,
+  },
 })
 
 // =============================================================================
