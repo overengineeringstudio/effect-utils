@@ -41,7 +41,7 @@ export const DeployApp = createTuiApp({
   reducer: deployReducer,
   ndjson: {
     eventSchema: DeployNdjsonEvent,
-    fromAction: (action, prevState) => deployFromAction({ action, prevState }),
+    fromAction: deployFromAction,
   },
 })
 

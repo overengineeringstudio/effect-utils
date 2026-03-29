@@ -217,7 +217,7 @@ describe('createTuiApp', () => {
       reducer: counterReducer,
       ndjson: {
         eventSchema: CounterEvent,
-        fromAction: (action, prevState) => {
+        fromAction: ({ action, prevState }) => {
           const newCount = counterReducer({ state: prevState, action }).count
           switch (action._tag) {
             case 'Increment':
@@ -305,7 +305,7 @@ describe('createTuiApp', () => {
         reducer: counterReducer,
         ndjson: {
           eventSchema: CounterEvent,
-          fromAction: (action, prevState) => {
+          fromAction: ({ action, prevState }) => {
             const newCount = counterReducer({ state: prevState, action }).count
             return [
               { _tag: 'Decremented' as const, newCount: prevState.count },

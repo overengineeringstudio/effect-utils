@@ -212,7 +212,7 @@ export interface NdjsonConfig<in S, in A, E> {
   /** Schema for encoding output events */
   readonly eventSchema: Schema.Schema<E>
   /** Map an action + previous state to zero or more output events */
-  readonly fromAction: (action: A, prevState: S) => ReadonlyArray<E>
+  readonly fromAction: (args: { action: A; prevState: S }) => ReadonlyArray<E>
 }
 
 // =============================================================================
@@ -929,7 +929,7 @@ const setupProgressiveJsonWithEvents = <S, E>({
 
     // Emitter callback — called from dispatch() for each action
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
-      const events = fromAction(action, prevState)
+      const events = fromAction({ action, prevState })
       for (const event of events) {
         Runtime.runSync(runtime)(
           Schema.encode(Schema.parseJson(eventSchema))(event).pipe(
