@@ -514,6 +514,13 @@ NODE
           -path '*/node_modules/.pnpm/lock.yaml' \
         \) -delete
 
+        # Remove normalized lockfiles from the archive. The lockfile
+        # normalization step (`pnpm install --lockfile-only --no-frozen-lockfile`)
+        # rewrites the lockfile non-deterministically (key ordering, metadata from
+        # registry responses). Since node_modules is already installed, the lockfile
+        # is not needed by downstream builders and only widens the determinism surface.
+        find . -name 'pnpm-lock.yaml' -delete
+
 	        # Restore original .npmrc (remove build-local settings that contain
 	        # non-deterministic paths like $STORE_PATH).
         if [ -f .npmrc.orig ]; then
