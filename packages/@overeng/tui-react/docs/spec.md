@@ -270,10 +270,15 @@ for apps with large state that changes incrementally (e.g. CI monitors, deploy t
 
 ```typescript
 const App = createTuiApp({
-  stateSchema, actionSchema, initial, reducer,
+  stateSchema,
+  actionSchema,
+  initial,
+  reducer,
   ndjson: {
     eventSchema: MyEvent,
-    fromAction: ({ action, prevState }) => [/* events */],
+    fromAction: ({ action, prevState }) => [
+      /* events */
+    ],
   },
 })
 ```
