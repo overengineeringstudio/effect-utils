@@ -192,6 +192,27 @@ export interface TuiAppConfig<S, A> {
    * ```
    */
   readonly exitCode?: (state: S) => number | undefined
+
+  /**
+   * Optional NDJSON event configuration.
+   * When provided and in progressive JSON (NDJSON) mode, emits mapped events
+   * per action instead of full state snapshots on every change.
+   */
+  readonly ndjson?: NdjsonConfig<S, A, any>
+}
+
+/**
+ * Configuration for event-based NDJSON output.
+ * Maps each dispatched action to zero or more typed events for the NDJSON stream.
+ *
+ * The event type `E` is inferred from `eventSchema` at the call site —
+ * `fromAction`'s return type is checked against it by TypeScript.
+ */
+export interface NdjsonConfig<in S, in A, E> {
+  /** Schema for encoding output events */
+  readonly eventSchema: Schema.Schema<E>
+  /** Map an action + previous state to zero or more output events */
+  readonly fromAction: (action: A, prevState: S) => ReadonlyArray<E>
 }
 
 // =============================================================================
@@ -500,10 +521,16 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
       const actionPubSub = yield* PubSub.unbounded<A>()
       const runtime = yield* Effect.runtime<never>()
 
+      // Mutable ref for NDJSON event emitter (set after setupMode when ndjson config is active)
+      let eventEmitterRef: ((args: { action: A; prevState: S }) => void) | undefined
+
       // Sync dispatch function that updates the atom and publishes to PubSub
       const dispatch = (action: A): void => {
+        const prevState = eventEmitterRef !== undefined ? registry.get(stateAtom) : undefined
         // Update atom synchronously via registry
         registry.set(dispatchAtom, action)
+        // Emit NDJSON events if configured
+        if (eventEmitterRef !== undefined) eventEmitterRef({ action, prevState: prevState! })
         // Also publish to PubSub for action stream
         void Runtime.runFork(runtime)(PubSub.publish(actionPubSub, action))
       }
@@ -560,14 +587,17 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 
       // Setup mode-specific behavior (only when not using explicit output schema on run())
       if (skipModeOutput === false) {
-        rootRef = yield* setupMode({
+        const setupResult = yield* setupMode({
           mode,
           stateAtom,
           stateSchema,
           outputSchema,
           registry,
           view,
+          ndjsonConfig: config.ndjson,
         })
+        rootRef = setupResult.root
+        eventEmitterRef = setupResult.eventEmitter
       }
 
       // Add finalizer for cleanup
@@ -608,6 +638,12 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
 // Mode Setup
 // =============================================================================
 
+interface SetupModeResult {
+  readonly root: Root | null
+  /** When set, called from dispatch() to emit NDJSON events instead of full state snapshots */
+  readonly eventEmitter: ((args: { action: any; prevState: any }) => void) | undefined
+}
+
 const setupMode = <S,>({
   mode,
   stateAtom,
@@ -615,6 +651,7 @@ const setupMode = <S,>({
   outputSchema,
   registry,
   view,
+  ndjsonConfig,
 }: {
   mode: OutputMode
   stateAtom: Atom.Writable<S>
@@ -622,39 +659,50 @@ const setupMode = <S,>({
   outputSchema: Schema.Schema<TuiOutput<S>>
   registry: Registry.Registry
   view?: ReactElement | undefined
-}): Effect.Effect<Root | null, never, Scope.Scope> => {
+  ndjsonConfig?: NdjsonConfig<S, any, any> | undefined
+}): Effect.Effect<SetupModeResult, never, Scope.Scope> => {
   // Handle based on output format
   if (mode._tag === 'react') {
     if (mode.timing === 'progressive') {
       // Progressive React rendering (inline or fullscreen)
-      return view !== undefined
-        ? setupProgressiveVisualWithView({
-            registry,
-            view,
-            renderConfig: mode.render,
-            ...(mode.capturedLogs !== undefined ? { capturedLogs: mode.capturedLogs } : {}),
-          })
-        : Effect.succeed(null)
+      if (view !== undefined) {
+        return setupProgressiveVisualWithView({
+          registry,
+          view,
+          renderConfig: mode.render,
+          ...(mode.capturedLogs !== undefined ? { capturedLogs: mode.capturedLogs } : {}),
+        }).pipe(Effect.map((root) => ({ root, eventEmitter: undefined })))
+      }
+      return Effect.succeed({ root: null, eventEmitter: undefined })
     } else {
       // Final React rendering (single output at end)
       return setupFinalVisualWithAtom({
         view,
         registry,
         renderConfig: mode.render,
-      }).pipe(Effect.as(null))
+      }).pipe(Effect.as({ root: null, eventEmitter: undefined }))
     }
   } else {
     // JSON modes
     if (mode.timing === 'progressive') {
+      if (ndjsonConfig !== undefined) {
+        return setupProgressiveJsonWithEvents({
+          stateAtom,
+          stateSchema,
+          outputSchema,
+          registry,
+          ndjsonConfig,
+        }).pipe(Effect.map((emitter) => ({ root: null, eventEmitter: emitter })))
+      }
       return setupProgressiveJsonWithAtom({
         stateAtom,
         stateSchema,
         outputSchema,
         registry,
-      }).pipe(Effect.as(null))
+      }).pipe(Effect.as({ root: null, eventEmitter: undefined }))
     } else {
       return setupFinalJsonWithAtom({ stateAtom, stateSchema, outputSchema, registry }).pipe(
-        Effect.as(null),
+        Effect.as({ root: null, eventEmitter: undefined }),
       )
     }
   }
@@ -841,6 +889,74 @@ const setupProgressiveJsonWithAtom = <S,>({
         yield* Console.log(jsonString)
       }).pipe(Effect.orDie),
     )
+  })
+
+/**
+ * Progressive JSON mode with event mapping: emits mapped events per action
+ * instead of full state snapshots.
+ *
+ * Stream contract:
+ * - Line 1: full state snapshot (for consumer bootstrapping)
+ * - Intermediate lines: events produced by `ndjsonConfig.fromAction(action, prevState)`
+ * - Final line: Success/Failure wrapper with full state
+ *
+ * Returns an emitter callback to be called from `dispatch()`.
+ */
+const setupProgressiveJsonWithEvents = <S, E>({
+  stateAtom,
+  stateSchema,
+  outputSchema,
+  registry,
+  ndjsonConfig,
+}: {
+  stateAtom: Atom.Writable<S>
+  stateSchema: Schema.Schema<S>
+  outputSchema: Schema.Schema<TuiOutput<S>>
+  registry: Registry.Registry
+  ndjsonConfig: NdjsonConfig<S, any, E>
+}): Effect.Effect<(args: { action: any; prevState: S }) => void, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const runtime = yield* Effect.runtime<never>()
+    const isStruct = isStructSchema(stateSchema)
+    const { eventSchema, fromAction } = ndjsonConfig
+
+    // Output initial state (full snapshot for bootstrapping)
+    const initialState = registry.get(stateAtom)
+    const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
+      Effect.orDie,
+    )
+    yield* Console.log(initialJson)
+
+    // Emitter callback — called from dispatch() for each action
+    const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
+      const events = fromAction(action, prevState)
+      for (const event of events) {
+        Runtime.runSync(runtime)(
+          Schema.encode(Schema.parseJson(eventSchema))(event).pipe(
+            Effect.flatMap((jsonString) => Console.log(jsonString)),
+            Effect.orDie,
+          ),
+        )
+      }
+    }
+
+    // Finalizer: emit final wrapped result (same as atom-based progressive JSON)
+    yield* Effect.addFinalizer((exit) =>
+      Effect.gen(function* () {
+        const finalState = registry.get(stateAtom)
+        const output =
+          exit._tag === 'Success'
+            ? isStruct === true
+              ? { _tag: 'Success' as const, ...finalState }
+              : { _tag: 'Success' as const, value: finalState }
+            : { _tag: 'Failure' as const, cause: exit.cause as OutputCause, state: finalState }
+
+        const jsonString = yield* Schema.encode(Schema.parseJson(outputSchema))(output as any)
+        yield* Console.log(jsonString)
+      }).pipe(Effect.orDie),
+    )
+
+    return emitter
   })
 
 // =============================================================================

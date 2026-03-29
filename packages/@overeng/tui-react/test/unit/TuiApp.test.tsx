@@ -203,6 +203,142 @@ describe('createTuiApp', () => {
     )
   })
 
+  describe('ndjson mode with event mapping', () => {
+    const CounterEvent = Schema.Union(
+      Schema.TaggedStruct('Incremented', { newCount: Schema.Number }),
+      Schema.TaggedStruct('Decremented', { newCount: Schema.Number }),
+      Schema.TaggedStruct('Reset', { from: Schema.Number, to: Schema.Number }),
+    )
+
+    const EventCounterApp = createTuiApp({
+      stateSchema: CounterState,
+      actionSchema: CounterAction,
+      initial: { count: 0 },
+      reducer: counterReducer,
+      ndjson: {
+        eventSchema: CounterEvent,
+        fromAction: (action, prevState) => {
+          const newCount = counterReducer({ state: prevState, action }).count
+          switch (action._tag) {
+            case 'Increment':
+              return [{ _tag: 'Incremented' as const, newCount }]
+            case 'Decrement':
+              return [{ _tag: 'Decremented' as const, newCount }]
+            case 'Set':
+              return [{ _tag: 'Reset' as const, from: prevState.count, to: newCount }]
+          }
+        },
+      },
+    })
+
+    it.live('emits events instead of full state snapshots', () =>
+      Effect.gen(function* () {
+        const tui = yield* EventCounterApp.run()
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Increment' })
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Increment' })
+        yield* Effect.sleep('10 millis')
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('ndjson')),
+        Effect.andThen(() => {
+          // Line 1: initial full state snapshot
+          const initialState = decodeJson(CounterState, capturedOutput[0]!)
+          expect(initialState).toEqual({ count: 0 })
+
+          // Intermediate lines: events (not full state)
+          const event1 = decodeJson(CounterEvent, capturedOutput[1]!)
+          expect(event1).toEqual({ _tag: 'Incremented', newCount: 1 })
+
+          const event2 = decodeJson(CounterEvent, capturedOutput[2]!)
+          expect(event2).toEqual({ _tag: 'Incremented', newCount: 2 })
+
+          // Final line: Success wrapper with full state
+          const finalOutput = decodeJson(
+            EventCounterApp.outputSchema,
+            capturedOutput[capturedOutput.length - 1]!,
+          )
+          expect(finalOutput).toEqual({ _tag: 'Success', count: 2 })
+        }),
+      ),
+    )
+
+    it.live('suppresses output when fromAction returns empty array', () => {
+      const SilentApp = createTuiApp({
+        stateSchema: CounterState,
+        actionSchema: CounterAction,
+        initial: { count: 0 },
+        reducer: counterReducer,
+        ndjson: {
+          eventSchema: CounterEvent,
+          fromAction: () => [],
+        },
+      })
+
+      return Effect.gen(function* () {
+        const tui = yield* SilentApp.run()
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Increment' })
+        tui.dispatch({ _tag: 'Increment' })
+        yield* Effect.sleep('10 millis')
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('ndjson')),
+        Effect.andThen(() => {
+          // Only initial state + final wrapped output (no intermediate events)
+          expect(capturedOutput).toHaveLength(2)
+          expect(decodeJson(CounterState, capturedOutput[0]!)).toEqual({ count: 0 })
+          expect(decodeJson(SilentApp.outputSchema, capturedOutput[1]!)).toEqual({
+            _tag: 'Success',
+            count: 2,
+          })
+        }),
+      )
+    })
+
+    it.live('emits multiple events per action', () => {
+      const MultiEventApp = createTuiApp({
+        stateSchema: CounterState,
+        actionSchema: CounterAction,
+        initial: { count: 0 },
+        reducer: counterReducer,
+        ndjson: {
+          eventSchema: CounterEvent,
+          fromAction: (action, prevState) => {
+            const newCount = counterReducer({ state: prevState, action }).count
+            return [
+              { _tag: 'Decremented' as const, newCount: prevState.count },
+              { _tag: 'Incremented' as const, newCount },
+            ]
+          },
+        },
+      })
+
+      return Effect.gen(function* () {
+        const tui = yield* MultiEventApp.run()
+        yield* Effect.sleep('10 millis')
+        tui.dispatch({ _tag: 'Increment' })
+        yield* Effect.sleep('10 millis')
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(testModeLayer('ndjson')),
+        Effect.andThen(() => {
+          // Initial + 2 events from 1 action + final
+          expect(capturedOutput).toHaveLength(4)
+          expect(decodeJson(CounterEvent, capturedOutput[1]!)).toEqual({
+            _tag: 'Decremented',
+            newCount: 0,
+          })
+          expect(decodeJson(CounterEvent, capturedOutput[2]!)).toEqual({
+            _tag: 'Incremented',
+            newCount: 1,
+          })
+        }),
+      )
+    })
+  })
+
   describe('config access', () => {
     test('exposes config for testing', () => {
       expect(CounterApp.config.initial).toEqual({ count: 0 })
