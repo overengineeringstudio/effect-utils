@@ -123,6 +123,12 @@ let
   updateHashScript = pkgs.writeShellScript "update-all-hashes" ''
         set -euo pipefail
 
+        # NIX_CMD allows overriding the nix binary used for flake evaluation.
+        # In CI, this should be set to the system nix (DeterminateSystems) to
+        # match nix-fod-check. Falls back to the devenv nix if unset.
+        NIX_CMD="''${NIX_CMD:-${pkgs.nix}/bin/nix}"
+        NIX_HASH_CMD="$(dirname "$NIX_CMD")/nix-hash"
+
         flakeRef="$1"
         hashSource="$2"
         name="$3"
@@ -138,7 +144,7 @@ let
         update_fingerprint_hashes() {
           if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
             # Update lockfileHash
-            newLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
+            newLockfileHash="sha256-$($NIX_HASH_CMD --type sha256 --base64 "$lockfile")"
             if [ -n "$(read_hash_from_file "lockfileHash" "$hashSource" "$name")" ]; then
               update_hash_in_file "lockfileHash" "$newLockfileHash" "$hashSource" "$name"
               echo "Updated lockfileHash to $newLockfileHash"
@@ -151,7 +157,7 @@ let
             if [ -f "$packageJson" ] && [ -n "$(read_hash_from_file "packageJsonDepsHash" "$hashSource" "$name")" ]; then
               tmpDeps=$(mktemp)
               ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-              newPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
+              newPackageJsonDepsHash="sha256-$($NIX_HASH_CMD --type sha256 --base64 "$tmpDeps")"
               rm "$tmpDeps"
               update_hash_in_file "packageJsonDepsHash" "$newPackageJsonDepsHash" "$hashSource" "$name"
               echo "Updated packageJsonDepsHash to $newPackageJsonDepsHash"
@@ -236,7 +242,7 @@ let
           echo "=== Iteration $iteration ==="
 
           set +e
-          output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --keep-going --option substituters "https://cache.nixos.org" 2>&1)
+          output=$($NIX_CMD build "$flakeRef" --no-link --keep-going --option substituters "https://cache.nixos.org" --option extra-substituters "" 2>&1)
           status=$?
           set -e
 
@@ -336,6 +342,13 @@ let
   checkHashScript = pkgs.writeShellScript "check-hash" ''
     set -euo pipefail
 
+    # NIX_CMD allows overriding the nix binary used for flake evaluation.
+    # In CI, this should be set to the system nix (DeterminateSystems) to
+    # match nix-fod-check. Falls back to the devenv nix if unset.
+    NIX_CMD="''${NIX_CMD:-${pkgs.nix}/bin/nix}"
+    NIX_HASH_CMD="$(dirname "$NIX_CMD")/nix-hash"
+    NIX_STORE_CMD="$(dirname "$NIX_CMD")/nix-store"
+
     flakeRef="$1"
     name="$2"
     hashSource="''${3-}"
@@ -351,7 +364,7 @@ let
         packageJson="$(dirname "$lockfile")/package.json"
       fi
 
-      currentLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
+      currentLockfileHash="sha256-$($NIX_HASH_CMD --type sha256 --base64 "$lockfile")"
       storedLockfileHash=$(read_hash_from_file "lockfileHash" "$hashSource" "$name")
 
       if [ -z "$storedLockfileHash" ]; then
@@ -366,7 +379,7 @@ let
       if [ -f "$packageJson" ]; then
         tmpDeps=$(mktemp)
         ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-        currentPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
+        currentPackageJsonDepsHash="sha256-$($NIX_HASH_CMD --type sha256 --base64 "$tmpDeps")"
         rm "$tmpDeps"
 
         storedPackageJsonDepsHash=$(read_hash_from_file "packageJsonDepsHash" "$hashSource" "$name")
@@ -396,20 +409,20 @@ let
     # production-ready — they eliminate FOD hash staleness entirely.
     # Track: NixOS/nix#6623
     if [ -n "''${CI:-}" ]; then
-      topDrv=$(${pkgs.nix}/bin/nix path-info --derivation "$flakeRef" 2>/dev/null || true)
+      topDrv=$($NIX_CMD path-info --derivation "$flakeRef" 2>/dev/null || true)
       if [ -n "$topDrv" ]; then
-        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
-          for outPath in $(${pkgs.nix}/bin/nix-store -q --outputs "$drv" 2>/dev/null || true); do
+        for drv in $($NIX_STORE_CMD -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
+          for outPath in $($NIX_STORE_CMD -q --outputs "$drv" 2>/dev/null || true); do
             if [ -e "$outPath" ]; then
               echo "  evicting cached: $(basename "$outPath")"
-              ${pkgs.nix}/bin/nix store delete "$outPath" 2>/dev/null || true
+              $NIX_CMD store delete "$outPath" 2>/dev/null || true
             fi
           done
         done
       fi
     fi
 
-    if output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
+    if output=$($NIX_CMD build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" --option extra-substituters "" 2>&1); then
       echo "✓ $name: up to date"
       exit 0
     fi
@@ -433,7 +446,7 @@ let
       fi
       if [ -n "$mismatchDrv" ]; then
         echo "  drv:      $mismatchDrv"
-        if drvJson=$(${pkgs.nix}/bin/nix derivation show "$mismatchDrv" 2>/dev/null); then
+        if drvJson=$($NIX_CMD derivation show "$mismatchDrv" 2>/dev/null); then
           # Newer Nix versions return the derivation map at the top level,
           # while older ones nest it under `.derivations`. Accept both so
           # stale-hash diagnostics stay informative instead of failing with a
@@ -499,6 +512,9 @@ let
   quickCheckScript = pkgs.writeShellScript "check-lockfile-hash" ''
     set -euo pipefail
 
+    NIX_CMD="''${NIX_CMD:-${pkgs.nix}/bin/nix}"
+    NIX_HASH_CMD="$(dirname "$NIX_CMD")/nix-hash"
+
     name="$1"
     hashSource="$2"
     lockfile="$3"
@@ -512,7 +528,7 @@ let
     failed=false
 
     # Check 1: lockfileHash (lockfile changed without hash update)
-    currentLockfileHash=$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
+    currentLockfileHash=$($NIX_HASH_CMD --type sha256 --base64 "$lockfile" 2>/dev/null || echo "")
     if [ -z "$currentLockfileHash" ]; then
       echo "⚠ $name: lockfile not found ($lockfile), skipping lockfile check"
     else
@@ -533,7 +549,7 @@ let
     if [ -f "$packageJson" ]; then
       tmpDeps=$(mktemp)
       ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-      currentPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
+      currentPackageJsonDepsHash="sha256-$($NIX_HASH_CMD --type sha256 --base64 "$tmpDeps")"
       rm "$tmpDeps"
 
       storedPackageJsonDepsHash=$(read_hash_from_file "packageJsonDepsHash" "$hashSource" "$name")

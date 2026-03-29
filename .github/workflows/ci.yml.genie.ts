@@ -196,10 +196,12 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
     run: runDevenvTasksBefore('test:run'),
   }),
   // Verify Nix hashes are up-to-date (pnpmDepsHash + localDeps)
-  // This catches stale hashes before they break downstream consumers
+  // This catches stale hashes before they break downstream consumers.
+  // NIX_CMD is set to the system nix (DeterminateSystems) to ensure
+  // nix-check evaluates flake sources identically to nix-fod-check.
   'nix-check': multiPlatformJob({
     name: 'Nix hash check',
-    run: runDevenvTasksBefore('nix:check'),
+    run: `export NIX_CMD=$(command -v nix); ${runDevenvTasksBefore('nix:check')}`,
   }),
   // Force a fresh local rebuild of every exported pnpm FOD to catch stale
   // hashes that normal CI can otherwise mask via store/substituter reuse.
