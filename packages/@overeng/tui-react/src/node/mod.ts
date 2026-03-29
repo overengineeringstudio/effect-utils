@@ -31,6 +31,8 @@ export {
   outputModeLayer,
   resolveOutputMode,
   runTuiMain,
+  defaultFormatError,
+  compactFormatError,
   OUTPUT_MODE_VALUES,
   type OutputModeValue,
   type RunTuiMainOptions,

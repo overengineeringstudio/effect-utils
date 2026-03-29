@@ -11,6 +11,7 @@ import { testModeLayer } from '../../src/effect/testing.tsx'
 import {
   createTuiApp,
   run,
+  runResult,
   useTuiAtomValue,
   deriveOutputSchema,
   Box,
@@ -523,6 +524,164 @@ describe('run (standalone dual API)', () => {
       { view: <CounterView /> },
     ).pipe(Effect.provide(testModeLayer('tty'))),
   )
+})
+
+// =============================================================================
+// runResult — Result-oriented command execution
+// =============================================================================
+
+describe('runResult', () => {
+  let originalLog: typeof console.log
+  let originalStdoutWrite: typeof process.stdout.write
+  let capturedConsole: string[]
+  let capturedStdout: string[]
+
+  beforeEach(() => {
+    originalLog = console.log
+    originalStdoutWrite = process.stdout.write
+    capturedConsole = []
+    capturedStdout = []
+    console.log = (msg: string) => {
+      capturedConsole.push(msg)
+    }
+    process.stdout.write = ((chunk: unknown) => {
+      capturedStdout.push(String(chunk))
+      return true
+    }) as typeof process.stdout.write
+  })
+
+  afterEach(() => {
+    console.log = originalLog
+    process.stdout.write = originalStdoutWrite
+  })
+
+  describe('string result (Schema.String)', () => {
+    it.effect('json mode: writes raw string to stdout (no JSON encoding)', () =>
+      runResult(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 42 })
+            return 'my-secret-value'
+          }),
+        { result: Schema.String },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen((result) => {
+          expect(result).toBe('my-secret-value')
+          const stdout = capturedStdout.join('')
+          expect(stdout).toBe('my-secret-value\n')
+          expect(capturedConsole).toHaveLength(0)
+        }),
+      ),
+    )
+
+    it.effect('json mode: no Success/Failure envelope in output', () =>
+      runResult(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Increment' })
+            return 'the-output'
+          }),
+        { result: Schema.String },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen(() => {
+          const allOutput = capturedStdout.join('') + capturedConsole.join('')
+          expect(allOutput).not.toContain('Success')
+          expect(allOutput).not.toContain('Failure')
+          expect(allOutput).toContain('the-output')
+        }),
+      ),
+    )
+
+    it.effect('pipe mode (react/final): renders view, not raw result', () =>
+      runResult(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 55 })
+            return 'should-not-be-raw'
+          }),
+        { result: Schema.String, view: <CounterView /> },
+      ).pipe(
+        Effect.provide(testModeLayer('pipe')),
+        Effect.andThen((result) => {
+          expect(result).toBe('should-not-be-raw')
+          const stdout = capturedStdout.join('')
+          expect(stdout).not.toContain('should-not-be-raw')
+        }),
+      ),
+    )
+  })
+
+  describe('structured result (Schema.Struct)', () => {
+    const ResultSchema = Schema.Struct({
+      items: Schema.Array(Schema.String),
+      total: Schema.Number,
+    })
+
+    it.effect('json mode: writes JSON-encoded result to console', () =>
+      runResult(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 3 })
+            return { items: ['a', 'b', 'c'], total: 3 }
+          }),
+        { result: ResultSchema },
+      ).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.andThen((result) => {
+          expect(result).toEqual({ items: ['a', 'b', 'c'], total: 3 })
+          expect(capturedConsole).toHaveLength(1)
+          const parsed = JSON.parse(capturedConsole[0]!)
+          expect(parsed).toEqual({ items: ['a', 'b', 'c'], total: 3 })
+          expect(parsed._tag).toBeUndefined()
+        }),
+      ),
+    )
+  })
+
+  describe('ndjson assertion', () => {
+    it.effect(
+      'ndjson mode: fails with clear error (result commands do not support streaming)',
+      () =>
+        runResult(CounterApp, () => Effect.succeed('value'), { result: Schema.String }).pipe(
+          Effect.provide(testModeLayer('ndjson')),
+          Effect.catchAllDefect((defect) =>
+            Effect.sync(() => {
+              expect(defect).toBeInstanceOf(Error)
+              expect((defect as Error).message).toContain('runResult does not support ndjson')
+            }),
+          ),
+        ),
+    )
+  })
+
+  describe('error handling', () => {
+    class ReadError extends Schema.TaggedError<ReadError>()('ReadError', {
+      message: Schema.String,
+    }) {}
+
+    it.effect('handler error: no stdout, error propagated', () =>
+      runResult(CounterApp, () => new ReadError({ message: 'access denied' }), {
+        result: Schema.String,
+      }).pipe(
+        Effect.provide(testModeLayer('json')),
+        Effect.catchAll((error) =>
+          Effect.sync(() => {
+            expect(error).toBeInstanceOf(ReadError)
+            expect(error.message).toBe('access denied')
+            const stdout = capturedStdout.join('')
+            expect(stdout).toBe('')
+            expect(capturedConsole).toHaveLength(0)
+          }),
+        ),
+      ),
+    )
+  })
 })
 
 // =============================================================================
