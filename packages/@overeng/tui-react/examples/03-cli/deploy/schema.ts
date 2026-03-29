@@ -149,6 +149,87 @@ export const DeployResult = Schema.Struct({
 export type DeployResult = Schema.Schema.Type<typeof DeployResult>
 
 // =============================================================================
+// NDJSON Events (semantic deltas for streaming consumers)
+// =============================================================================
+
+/** Events emitted in NDJSON mode instead of full state snapshots */
+export const DeployNdjsonEvent = Schema.Union(
+  Schema.TaggedStruct('PhaseChanged', {
+    phase: Schema.Literal('Validating', 'Progress', 'Complete', 'Failed', 'RollingBack', 'Interrupted'),
+  }),
+  Schema.TaggedStruct('ServiceStatusChanged', {
+    name: Schema.String,
+    status: ServiceStatus,
+    message: Schema.optional(Schema.String),
+  }),
+  Schema.TaggedStruct('LogAdded', { log: LogEntry }),
+)
+export type DeployNdjsonEvent = typeof DeployNdjsonEvent.Type
+
+type Phase = typeof DeployNdjsonEvent.Type extends { _tag: 'PhaseChanged'; phase: infer P } ? P : never
+
+/** Derive NDJSON events from a deploy action + previous state */
+export const deployFromAction = (
+  action: DeployAction,
+  prevState: DeployState,
+): ReadonlyArray<DeployNdjsonEvent> => {
+  switch (action._tag) {
+    case 'SetState': {
+      const events: DeployNdjsonEvent[] = []
+      if (action.state._tag !== prevState._tag && action.state._tag !== 'Idle') {
+        events.push({ _tag: 'PhaseChanged', phase: action.state._tag as Phase })
+      }
+      // Emit new logs (diff against previous)
+      const prevLogs = 'logs' in prevState ? prevState.logs : []
+      const newLogs = 'logs' in action.state ? action.state.logs : []
+      for (const log of newLogs.slice(prevLogs.length)) {
+        events.push({ _tag: 'LogAdded', log })
+      }
+      // Emit service status changes
+      if (action.state._tag === 'Progress' && prevState._tag === 'Progress') {
+        for (let i = 0; i < action.state.services.length; i++) {
+          const prev = prevState.services[i]
+          const next = action.state.services[i]!
+          if (!prev || prev.status !== next.status) {
+            events.push({
+              _tag: 'ServiceStatusChanged',
+              name: next.name,
+              status: next.status,
+              message: next.message,
+            })
+          }
+        }
+      } else if (action.state._tag === 'Progress') {
+        for (const svc of action.state.services) {
+          events.push({
+            _tag: 'ServiceStatusChanged',
+            name: svc.name,
+            status: svc.status,
+            message: svc.message,
+          })
+        }
+      }
+      return events
+    }
+    case 'UpdateServiceStatus': {
+      if (prevState._tag !== 'Progress') return []
+      const svc = prevState.services[action.index]
+      if (!svc) return []
+      return [{
+        _tag: 'ServiceStatusChanged',
+        name: svc.name,
+        status: action.status,
+        message: action.message,
+      }]
+    }
+    case 'AddLog':
+      return [{ _tag: 'LogAdded', log: action.log }]
+    case 'Interrupted':
+      return [{ _tag: 'PhaseChanged', phase: 'Interrupted' }]
+  }
+}
+
+// =============================================================================
 // Deploy Actions (for reducer pattern)
 // =============================================================================
 
