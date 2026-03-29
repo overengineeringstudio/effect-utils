@@ -59,12 +59,17 @@ export const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<strin
     return result.trim()
   })
 
-/** Initialize a new git repository */
+/** Initialize a new git repository (writes user config directly to avoid extra process spawns) */
 export const initGitRepo = (path: AbsoluteDirPath) =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
     yield* runGitCommand(path, 'init')
-    yield* runGitCommand(path, 'config', 'user.email', 'test@example.com')
-    yield* runGitCommand(path, 'config', 'user.name', 'Test User')
+    const configPath = EffectPath.ops.join(path, EffectPath.unsafe.relativeFile('.git/config'))
+    const existing = yield* fs.readFileString(configPath)
+    yield* fs.writeFileString(
+      configPath,
+      `${existing}[user]\n\temail = test@example.com\n\tname = Test User\n`,
+    )
   })
 
 /** Add files and create a commit */
