@@ -338,7 +338,7 @@ const runTuiMainImpl = <E, A>({
     Effect.tapErrorCause((cause) =>
       Effect.sync(() => {
         const formatted = formatError(cause)
-        if (Option.isSome(formatted)) {
+        if (Option.isSome(formatted) === true) {
           process.stderr.write(formatted.value + '\n')
         }
       }),

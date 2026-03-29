@@ -876,12 +876,18 @@ const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
 
 /** Write a value to stdout using the appropriate format for its schema type.
  *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded. */
-const writeOutput = <O,>(value: O, schema: Schema.Schema<O>): Effect.Effect<void> =>
-  isStringSchema(schema as Schema.Schema<unknown>)
+const writeOutput = <O,>({
+  value,
+  schema,
+}: {
+  value: O
+  schema: Schema.Schema<O>
+}): Effect.Effect<void> =>
+  isStringSchema(schema as Schema.Schema<unknown>) === true
     ? Effect.sync(() => {
         const str = String(value)
         process.stdout.write(str)
-        if (str.length > 0 && !str.endsWith('\n')) process.stdout.write('\n')
+        if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
       })
     : Schema.encode(Schema.parseJson(schema))(value).pipe(
         Effect.flatMap((json) => Console.log(json)),
@@ -914,7 +920,7 @@ const runImpl = <S, A, B, E, R>(
     )
 
     // Write handler's return value to stdout
-    yield* writeOutput(result, outputSchema)
+    yield* writeOutput({ value: result, schema: outputSchema })
 
     return result
   })
