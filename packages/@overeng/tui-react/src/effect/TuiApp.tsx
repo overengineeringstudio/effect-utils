@@ -859,15 +859,69 @@ export const tuiAppConfig = <S, A>(config: TuiAppConfig<S, A>): TuiAppConfig<S, 
 /**
  * Options for `run`.
  */
-export interface TuiAppRunOptions<O = unknown> {
+export interface TuiAppRunOptions {
   /**
    * Optional React element to render in visual modes.
    * Omit for headless mode (JSON modes, testing).
    */
   readonly view?: ReactElement
-  /** Schema for the command's output. When provided in non-visual modes,
-   *  the handler's return value is serialized to stdout instead of the state machine. */
-  readonly output?: Schema.Schema<O>
+}
+
+// oxlint-disable-next-line overeng/named-args -- dual API pattern requires positional args
+const runImpl = <S, A, B, E, R>(
+  app: TuiApp<S, A>,
+  handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
+  options?: TuiAppRunOptions,
+): Effect.Effect<B, E, R | OutputModeTag> =>
+  Effect.scoped(app.run(options?.view).pipe(Effect.flatMap(handler)))
+
+/**
+ * Run a TuiApp with a handler callback. State/view is the contract.
+ *
+ * Use this for state-driven commands where the TUI state machine IS the output
+ * (e.g., dashboards, interactive TUIs). In JSON modes, the final state is
+ * serialized via `TuiApp.outputSchema`.
+ *
+ * For result-oriented commands (where the handler returns a value and the state
+ * machine is just visual scaffolding), use `runResult` instead.
+ *
+ * @example
+ * ```typescript
+ * yield* run(DeployApp, (tui) =>
+ *   Effect.gen(function* () {
+ *     tui.dispatch({ _tag: 'Start' })
+ *   }),
+ *   { view: <DeployView stateAtom={DeployApp.stateAtom} /> }
+ * )
+ * ```
+ */
+export const run: {
+  // Data-last (pipeable): run(handler, options?) returns (app) => Effect
+  <S, A, B, E, R>(
+    handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
+    options?: TuiAppRunOptions,
+  ): (app: TuiApp<S, A>) => Effect.Effect<B, E, R | OutputModeTag>
+
+  // Data-first: run(app, handler, options?) returns Effect
+  <S, A, B, E, R>(
+    app: TuiApp<S, A>,
+    handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
+    options?: TuiAppRunOptions,
+  ): Effect.Effect<B, E, R | OutputModeTag>
+} = Fn.dual((args) => isTuiApp(args[0]), runImpl)
+
+// =============================================================================
+// runResult — Result-oriented command execution
+// =============================================================================
+
+/**
+ * Options for `runResult`.
+ */
+export interface RunResultOptions<O> {
+  /** Schema for the command's result type (the handler's return value). */
+  readonly result: Schema.Schema<O>
+  /** Optional React element to render in visual modes. */
+  readonly view?: ReactElement
 }
 
 /** Check if schema resolves to a plain string type */
@@ -876,7 +930,7 @@ const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
 
 /** Write a value to stdout using the appropriate format for its schema type.
  *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded. */
-const writeOutput = <O,>({
+const writeResult = <O,>({
   value,
   schema,
 }: {
@@ -895,78 +949,89 @@ const writeOutput = <O,>({
       )
 
 // oxlint-disable-next-line overeng/named-args -- dual API pattern requires positional args
-const runImpl = <S, A, B, E, R>(
+const runResultImpl = <S, A, O, E, R>(
   app: TuiApp<S, A>,
-  handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
-  options?: TuiAppRunOptions<B>,
-): Effect.Effect<B, E, R | OutputModeTag> => {
-  // No output schema: existing behavior (state-based JSON output)
-  if (options?.output === undefined) {
-    return Effect.scoped(app.run(options?.view).pipe(Effect.flatMap(handler)))
-  }
-
-  const outputSchema = options.output
-  return Effect.gen(function* () {
+  handler: (api: TuiAppApi<S, A>) => Effect.Effect<O, E, R>,
+  options: RunResultOptions<O>,
+): Effect.Effect<O, E, R | OutputModeTag> =>
+  Effect.gen(function* () {
     const mode = yield* OutputModeTag
 
+    // Result-oriented commands do not support state streaming.
+    // ndjson streams intermediate state changes, which contradicts the result-first contract.
+    if (mode._tag === 'json' && mode.timing === 'progressive') {
+      return yield* Effect.die(
+        new Error(
+          'runResult does not support ndjson (state streaming). ' +
+            'Result-oriented commands produce a single output value. ' +
+            'Use run() with App.run() for streamed state output.',
+        ),
+      )
+    }
+
     if (mode._tag === 'react') {
-      // Visual mode: render view + run handler normally, output is returned to caller
+      // Visual mode: render view + run handler, return result to caller
       return yield* Effect.scoped(app.run(options.view).pipe(Effect.flatMap(handler)))
     }
 
-    // Machine mode: skip state JSON output, run handler headless, serialize return value
+    // Machine mode (json final): skip state serialization, run handler, write result
     const result = yield* Effect.scoped(
       app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
     )
 
-    // Write handler's return value to stdout
-    yield* writeOutput({ value: result, schema: outputSchema })
+    yield* writeResult({ value: result, schema: options.result })
 
     return result
   })
-}
 
 /**
- * Run a TuiApp with a handler callback.
+ * Run a TuiApp where the handler's return value is the contract.
  *
- * Manages scope internally — consumers do not need `Effect.scoped`.
- * The error type `E` is inferred from the handler, so typed errors
- * propagate naturally via the Effect channel.
+ * Use this for result-oriented commands where the TUI state machine is visual
+ * scaffolding and the handler produces the actual output (e.g., `op-proxy read`
+ * returns a secret string, `op-proxy list` returns an items array).
  *
- * Supports Effect's dual/pipeable pattern:
+ * In visual modes (TTY): renders the view, handler return value is passed through.
+ * In machine modes (json): handler return value is serialized to stdout.
+ *   - `Schema.String` → raw string (no JSON quotes)
+ *   - Structured schemas → JSON-encoded
+ * In ndjson mode: fails loudly (result-oriented commands don't support state streaming).
  *
  * @example
  * ```typescript
- * // Data-first:
- * yield* run(DeployApp, (tui) =>
+ * // Value command — raw string in machine mode
+ * yield* runResult(RequestApp, (tui) =>
  *   Effect.gen(function* () {
- *     tui.dispatch({ _tag: 'Start' })
- *     // ...work...
- *     return tui.getState()
+ *     tui.dispatch({ _tag: 'SetWaiting' })
+ *     const secret = yield* fetchSecret()
+ *     tui.dispatch({ _tag: 'SetApproved', output: secret })
+ *     return secret
  *   }),
- *   { view: <DeployView stateAtom={DeployApp.stateAtom} /> }
+ *   { result: Schema.String, view: <RequestView /> },
  * )
  *
- * // Data-last (pipeable):
- * yield* pipe(DeployApp, run((tui) =>
+ * // Collection command — JSON array in machine mode
+ * yield* runResult(ListApp, (tui) =>
  *   Effect.gen(function* () {
- *     tui.dispatch({ _tag: 'Start' })
+ *     const items = yield* fetchItems()
+ *     tui.dispatch({ _tag: 'SetItems', items })
+ *     return items
  *   }),
- *   { view: <DeployView stateAtom={DeployApp.stateAtom} /> }
- * ))
+ *   { result: Schema.Array(ItemSchema), view: <ListView /> },
+ * )
  * ```
  */
-export const run: {
-  // Data-last (pipeable): run(handler, options?) returns (app) => Effect
-  <S, A, B, E, R>(
-    handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
-    options?: TuiAppRunOptions<B>,
-  ): (app: TuiApp<S, A>) => Effect.Effect<B, E, R | OutputModeTag>
+export const runResult: {
+  // Data-last (pipeable)
+  <S, A, O, E, R>(
+    handler: (api: TuiAppApi<S, A>) => Effect.Effect<O, E, R>,
+    options: RunResultOptions<O>,
+  ): (app: TuiApp<S, A>) => Effect.Effect<O, E, R | OutputModeTag>
 
-  // Data-first: run(app, handler, options?) returns Effect
-  <S, A, B, E, R>(
+  // Data-first
+  <S, A, O, E, R>(
     app: TuiApp<S, A>,
-    handler: (api: TuiAppApi<S, A>) => Effect.Effect<B, E, R>,
-    options?: TuiAppRunOptions<B>,
-  ): Effect.Effect<B, E, R | OutputModeTag>
-} = Fn.dual((args) => isTuiApp(args[0]), runImpl)
+    handler: (api: TuiAppApi<S, A>) => Effect.Effect<O, E, R>,
+    options: RunResultOptions<O>,
+  ): Effect.Effect<O, E, R | OutputModeTag>
+} = Fn.dual((args) => isTuiApp(args[0]), runResultImpl)
