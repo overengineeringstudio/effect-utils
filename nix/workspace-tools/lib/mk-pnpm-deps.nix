@@ -4,7 +4,7 @@
 #
 # | Aspect              | nixpkgs `fetchPnpmDeps` + `pnpmConfigHook`         | This helper                                  |
 # |---------------------|----------------------------------------------------|----------------------------------------------|
-# | Cached artifact     | Normalized pnpm store tarball                      | Compressed prepared-tree NAR                 |
+# | Cached artifact     | Normalized pnpm store tarball                      | Prepared workspace directory                 |
 # | Downstream behavior | Restores store, then runs `pnpm install --offline` | Restores prepared tree, skips pnpm entirely  |
 # | Primary goal        | Generic packaging and broad cache reuse            | Fast downstream CLI builds in staged workspaces |
 # | Monorepo model      | Generic pnpm workspace filters                     | Custom staged workspace + install-root model |
@@ -22,9 +22,9 @@
 #
 # 1. mkDeps: Creates a fixed-output derivation (FOD) that installs a staged
 #    manifest-only workspace and stores the resulting prepared install tree as
-#    a compressed NAR.
+#    a fixed-output directory.
 #
-# 2. mkRestoreScript: Generates a shell script snippet that extracts the
+# 2. mkRestoreScript: Generates a shell script snippet that overlays the
 #    prepared workspace tree over a full source workspace during the build.
 #
 # By centralizing this logic we keep pnpm out of downstream build phases and
@@ -132,7 +132,6 @@ in
         pkgs.nix
         pkgs.perl
         pkgs.cacert
-        pkgs.zstd
       ];
 
       dontUnpack = true;
@@ -535,21 +534,18 @@ in
 
                 archiveStartedAt=$(timer_now)
                 log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
-                # Keep the prepared tree as one compressed artifact, but import it into
-                # the store first. `nix-store --dump` only accepts store paths; dumping
-                # the raw build directory silently produced an empty artifact and masked
-                # itself as a stale hash mismatch.
-                prepared_store_path=$(nix-store --add-fixed --recursive sha256 "$SOURCE_DIR")
-                nix-store --dump "$prepared_store_path" \
-                  | ${pkgs.zstd}/bin/zstd -T1 -q -o "$out"
-                log_store_closure "prepared-store-path" "$prepared_store_path"
-                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s"
+                # Materialize the prepared workspace directly as the fixed-output
+                # directory. This keeps the hash boundary aligned with the actual
+                # restored tree and avoids serializer-specific failures for large
+                # prepared workspaces.
+                cp -a "$SOURCE_DIR"/. "$out"/
+                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=recursive-copy"
                 log_prep_phase "complete" "duration=$(timer_elapsed "$prepStartedAt")s output_hash=${pnpmDepsHash}"
 
                 runHook postInstall
       '';
 
-      outputHashMode = "flat";
+      outputHashMode = "recursive";
       outputHash = pnpmDepsHash;
     };
 
@@ -561,7 +557,7 @@ in
   #
   # Arguments:
   #   deps: The derivation returned by mkDeps
-  #   target: Directory to extract the prepared workspace into
+  #   target: Directory to overlay the prepared workspace into
   #   label: Stable install-root label used in restore timing logs
   mkRestoreScript =
     {
@@ -599,20 +595,10 @@ in
             }
 
             restoreStartedAt=$(restore_timer_now)
-            # `nix-store --restore` wants a path that does not already exist. We
-            # therefore allocate a private parent directory first and restore into a
-            # child path inside it instead of relying on `mktemp -u`, which is racy.
-            nar_restore_parent="$(mktemp -d "$NIX_BUILD_TOP/pnpm-restore.XXXXXX")"
-            nar_restore_dir="$nar_restore_parent/tree"
             mkdir -p ${lib.escapeShellArg target}
-            ${pkgs.zstd}/bin/zstd -d -c ${deps} \
-              | nix-store --restore "$nar_restore_dir"
-            # Restore into an isolated tree first because the caller's target already
-            # contains real sources. We need overlay semantics here, not a wholesale
-            # replacement of the destination directory.
-            cp -a "$nar_restore_dir"/. ${lib.escapeShellArg target}/
-            chmod -R u+w "$nar_restore_parent"
-            rm -rf "$nar_restore_parent"
+            # Restore with overlay semantics because the caller's target already
+            # contains the real source tree.
+            cp -a ${deps}/. ${lib.escapeShellArg target}/
 
             export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
             export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"

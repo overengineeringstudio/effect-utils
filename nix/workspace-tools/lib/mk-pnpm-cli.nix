@@ -633,13 +633,10 @@ pkgs.stdenv.mkDerivation {
 
   nativeBuildInputs = [
     pkgs.bun
-    # Prepared deps are restored from a compressed NAR via nix-store instead of
-    # tar so the serialized artifact stays cross-platform stable.
     pkgs.nix
     pkgs.nodejs
     pkgs.perl
     pnpm
-    pkgs.zstd
   ];
 
   dontUnpack = true;
