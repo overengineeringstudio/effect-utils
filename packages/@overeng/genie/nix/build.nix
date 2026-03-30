@@ -13,6 +13,12 @@
 }:
 
 let
+  selectHashForSystem =
+    hashes:
+    if builtins.hasAttr pkgs.system hashes then
+      hashes.${pkgs.system}
+    else
+      throw "Missing genie deps hash for system ${pkgs.system}";
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   unwrapped = mkPnpmCli {
@@ -24,7 +30,12 @@ let
     # Managed by `dt nix:hash:genie` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-50RP0Be+nHX3e40OJfM3pwySAJYfDaEsPWpzVRFlT2c=";
+        hash = selectHashForSystem {
+          aarch64-darwin = "sha256-50RP0Be+nHX3e40OJfM3pwySAJYfDaEsPWpzVRFlT2c=";
+          x86_64-darwin = "sha256-50RP0Be+nHX3e40OJfM3pwySAJYfDaEsPWpzVRFlT2c=";
+          x86_64-linux = "sha256-50RP0Be+nHX3e40OJfM3pwySAJYfDaEsPWpzVRFlT2c=";
+          aarch64-linux = "sha256-ov9ObT6iptqO97gO/ZqVtEX3rsn7rXD6FWKDmmm8cW0=";
+        };
       };
     };
     inherit gitRev commitTs dirty;

@@ -216,7 +216,8 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
       return 0
     }
 
-    __flattened=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log")
+    __esc=$(printf '\\033')
+    __flattened=$(sed "s/${'${__esc}'}\\[[0-9;]*m//g" "$__log" | tr '\n' ' ')
     __path=$(printf '%s' "$__flattened" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
     __saw_invalid_path=false
     __saw_cachix_signature=false

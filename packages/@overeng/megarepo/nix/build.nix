@@ -12,6 +12,12 @@
 }:
 
 let
+  selectHashForSystem =
+    hashes:
+    if builtins.hasAttr pkgs.system hashes then
+      hashes.${pkgs.system}
+    else
+      throw "Missing megarepo deps hash for system ${pkgs.system}";
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
   base = mkPnpmCli {
@@ -23,7 +29,12 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-YtZIGkPM4lbXtu0z5iD+xxwvr79mCVdJ3+uOAf6EFTQ=";
+        hash = selectHashForSystem {
+          aarch64-darwin = "sha256-YtZIGkPM4lbXtu0z5iD+xxwvr79mCVdJ3+uOAf6EFTQ=";
+          x86_64-darwin = "sha256-YtZIGkPM4lbXtu0z5iD+xxwvr79mCVdJ3+uOAf6EFTQ=";
+          x86_64-linux = "sha256-YtZIGkPM4lbXtu0z5iD+xxwvr79mCVdJ3+uOAf6EFTQ=";
+          aarch64-linux = "sha256-RSxFgMU1jzuNF6Ak4/Fq2b7RjKGWd3PI4Om4thmfxk8=";
+        };
       };
     };
     smokeTestArgs = [ "--help" ];
