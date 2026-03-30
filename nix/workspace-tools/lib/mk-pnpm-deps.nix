@@ -323,18 +323,79 @@ in
 
           strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
 
-	          echo "workspace-prep: normalizing lockfile for $install_root"
-	          normalizeStartedAt=$(timer_now)
+          # Deterministically prune the lockfile to match the staged workspace closure.
+          # pnpm 11 rejects a full-workspace lockfile when the staged workspace only
+          # contains a subset of packages. Instead of using `pnpm install --lockfile-only
+          # --no-frozen-lockfile` (which contacts the registry and produces non-deterministic
+          # output), we prune the lockfile's importers section to only include packages
+          # that exist in the staged workspace. This is pure and deterministic (R05).
+	          echo "workspace-prep: pruning lockfile for $install_root"
+	          pruneStartedAt=$(timer_now)
 	          (
 	            cd "$install_root"
-            # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
-            # a reduced workspace closure. Rewriting the lockfile against the
-            # staged manifests produces the exact lock shape the subsequent
-            # frozen install expects.
-	            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+	            node <<'PRUNE_LOCKFILE'
+              const fs = require("fs");
+              const path = require("path");
+
+              const lockfilePath = "pnpm-lock.yaml";
+              const content = fs.readFileSync(lockfilePath, "utf8");
+
+              /* Prune importers whose package.json is absent from the staged workspace.
+               * Uses line-by-line parsing to avoid needing a YAML library. The pnpm
+               * lockfile v9 format has a top-level `importers:` section where each
+               * entry is indented 2 spaces with the importer path as key. */
+              const lines = content.split("\n");
+              const output = [];
+              let inImporters = false;
+              let skipEntry = false;
+              let importerIndent = -1;
+              let entryIndent = -1;
+
+              for (const line of lines) {
+                const trimmed = line.trimStart();
+                const indent = line.length - trimmed.length;
+
+                if (!inImporters) {
+                  if (trimmed === "importers:") {
+                    inImporters = true;
+                    importerIndent = indent;
+                  }
+                  output.push(line);
+                  continue;
+                }
+
+                // Empty line inside importers — keep only if not skipping
+                if (trimmed.length === 0) {
+                  if (!skipEntry) output.push(line);
+                  continue;
+                }
+
+                // Left importers section (same or less indent, non-empty)
+                if (indent <= importerIndent) {
+                  inImporters = false;
+                  skipEntry = false;
+                  output.push(line);
+                  continue;
+                }
+
+                // New importer entry (indent == importerIndent + 2, key ends with ":")
+                if (indent === importerIndent + 2 && trimmed.endsWith(":")) {
+                  entryIndent = indent;
+                  const key = trimmed.slice(0, -1).replace(/^['"]|['"]$/g, "");
+                  const dir = key === "." ? "." : key;
+                  skipEntry = !fs.existsSync(path.join(dir, "package.json"));
+                }
+
+                if (!skipEntry) {
+                  output.push(line);
+                }
+              }
+
+              fs.writeFileSync(lockfilePath, output.join("\n"));
+PRUNE_LOCKFILE
 	          )
-	          echo "workspace-prep: normalized $install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
-	          log_path_stats "install-root:$install_root-after-normalize" "$install_root"
+	          echo "workspace-prep: pruned $install_root duration=$(timer_elapsed "$pruneStartedAt")s"
+	          log_path_stats "install-root:$install_root-after-prune" "$install_root"
 
 	          echo "workspace-prep: installing $install_root"
 	          installStartedAt=$(timer_now)
@@ -514,12 +575,6 @@ NODE
           -path '*/node_modules/.pnpm/lock.yaml' \
         \) -delete
 
-        # Remove normalized lockfiles from the archive. The lockfile
-        # normalization step (`pnpm install --lockfile-only --no-frozen-lockfile`)
-        # rewrites the lockfile non-deterministically (key ordering, metadata from
-        # registry responses). Since node_modules is already installed, the lockfile
-        # is not needed by downstream builders and only widens the determinism surface.
-        find . -name 'pnpm-lock.yaml' -delete
 
 	        # Restore original .npmrc (remove build-local settings that contain
 	        # non-deterministic paths like $STORE_PATH).
