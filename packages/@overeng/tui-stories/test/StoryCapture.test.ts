@@ -10,13 +10,18 @@ import { findStory } from '../src/StoryModule.ts'
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
 
+/* Eagerly kick off discovery once at module load and share the promise across all tests.
+   Without this, each test calls discoverStories() independently — the first call per file
+   pays the full glob + sequential-import cost (sequential due to the Bun TDZ workaround),
+   which on CI exceeds the default 5s vitest timeout. */
+const discoveryResult = Effect.runPromise(discoverStories({ packageDirs: [MEGAREPO_DIR] }))
+
 /** Helper to discover + find a story, skipping the test if not found */
 const findOrSkip = (query: string) =>
   Effect.gen(function* () {
-    const { modules } = yield* discoverStories({ packageDirs: [MEGAREPO_DIR] })
+    const { modules } = yield* Effect.promise(() => discoveryResult)
     const story = findStory({ modules, query })
     if (story === undefined) {
-      // Story may not load in vitest context due to missing browser deps
       console.warn(`Skipping: story "${query}" not found (may be an import issue)`)
       return undefined
     }
