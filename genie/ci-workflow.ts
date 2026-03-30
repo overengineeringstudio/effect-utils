@@ -165,6 +165,9 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
   const quotedLabel = shellSingleQuote(label)
   return `__nix_gc_retry() {
   local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+  # Keep basic shell utilities reachable even when child tooling prepends its
+  # own shims ahead of the runner's system profile.
+  export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${'${PATH:+:$PATH}'}"
   __start=$(date +%s)
 
   __write_summary() {
@@ -371,13 +374,16 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
 export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 
 /**
- * Keep pnpm's auxiliary mutable store content isolated per job.
+ * Keep pnpm's auxiliary mutable store content in the workspace so it can be
+ * cached and restored alongside the GVS projection under `PNPM_HOME`.
  *
- * We still wire `PNPM_STORE_DIR` explicitly for pnpm, but the primary CI cache
- * target is `PNPM_HOME` because that is where pnpm 11 GVS keeps the reusable
- * links and metadata.
+ * The content-addressable store is still mutable job state, but each Actions
+ * job already gets an isolated checkout path. A workspace-relative store keeps
+ * the restored paths stable while avoiding runner-temp churn between jobs.
  */
-export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
+export const jobLocalPnpmStore = '${{ github.workspace }}/.pnpm-store'
+
+const pnpmStateCachePaths = `${jobLocalPnpmHome}\n${jobLocalPnpmStore}`
 
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
@@ -411,12 +417,12 @@ export const restorePnpmStoreStep = (opts?: {
   stepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
-  const path = opts?.path ?? jobLocalPnpmHome
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-state'
+  const path = opts?.path ?? pnpmStateCachePaths
 
   return {
     id: opts?.stepId ?? 'restore-pnpm-store',
-    name: 'Restore pnpm home',
+    name: 'Restore pnpm state',
     uses: 'actions/cache/restore@v4' as const,
     with: {
       path,
@@ -440,12 +446,12 @@ export const savePnpmStoreStep = (opts?: {
   restoreStepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-state'
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-store'
-  const path = opts?.path ?? jobLocalPnpmHome
+  const path = opts?.path ?? pnpmStateCachePaths
 
   return {
-    name: 'Save pnpm home',
+    name: 'Save pnpm state',
     if: `\${{ always() && !cancelled() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
     uses: 'actions/cache/save@v4' as const,
     with: {

@@ -60,15 +60,17 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-state-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -155,6 +157,9 @@ jobs:
         run: |
           __nix_gc_retry() {
             local __task='devenv tasks run ts:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+            # Keep basic shell utilities reachable even when child tooling prepends its
+            # own shims ahead of the runner's system profile.
+            export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
             __start=$(date +%s)
 
             __write_summary() {
@@ -206,8 +211,8 @@ jobs:
                 return 0
               }
 
-              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
-              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(tr '\n' ' ' < "$__log" | sed -E $'s/\x1b\[[0-9;]*[[:alpha:]]//g')
+              __path=$(printf '%s' "$__flattened" | sed -nE "s/.*error:[[:space:]]+path '([^']+)'[[:space:]]+is not valid.*/\1/p" | grep '^/nix/store/' | head -1 | tr -d '[:space:]' || true)
               __saw_invalid_path=false
               __saw_cachix_signature=false
               [ -n "$__path" ] && __saw_invalid_path=true
@@ -241,13 +246,15 @@ jobs:
             echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
             __write_summary failure "Nix GC race retry exhausted"
             return 1
-          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
-      - name: Save pnpm home
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check --mode before'
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -337,15 +344,17 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-state-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -432,6 +441,9 @@ jobs:
         run: |
           __nix_gc_retry() {
             local __task='devenv tasks run lint:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+            # Keep basic shell utilities reachable even when child tooling prepends its
+            # own shims ahead of the runner's system profile.
+            export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
             __start=$(date +%s)
 
             __write_summary() {
@@ -483,8 +495,8 @@ jobs:
                 return 0
               }
 
-              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
-              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(tr '\n' ' ' < "$__log" | sed -E $'s/\x1b\[[0-9;]*[[:alpha:]]//g')
+              __path=$(printf '%s' "$__flattened" | sed -nE "s/.*error:[[:space:]]+path '([^']+)'[[:space:]]+is not valid.*/\1/p" | grep '^/nix/store/' | head -1 | tr -d '[:space:]' || true)
               __saw_invalid_path=false
               __saw_cachix_signature=false
               [ -n "$__path" ] && __saw_invalid_path=true
@@ -518,13 +530,15 @@ jobs:
             echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
             __write_summary failure "Nix GC race retry exhausted"
             return 1
-          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
-      - name: Save pnpm home
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -617,15 +631,17 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-state-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -712,6 +728,9 @@ jobs:
         run: |
           __nix_gc_retry() {
             local __task='devenv tasks run test:run --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+            # Keep basic shell utilities reachable even when child tooling prepends its
+            # own shims ahead of the runner's system profile.
+            export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
             __start=$(date +%s)
 
             __write_summary() {
@@ -763,8 +782,8 @@ jobs:
                 return 0
               }
 
-              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
-              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(tr '\n' ' ' < "$__log" | sed -E $'s/\x1b\[[0-9;]*[[:alpha:]]//g')
+              __path=$(printf '%s' "$__flattened" | sed -nE "s/.*error:[[:space:]]+path '([^']+)'[[:space:]]+is not valid.*/\1/p" | grep '^/nix/store/' | head -1 | tr -d '[:space:]' || true)
               __saw_invalid_path=false
               __saw_cachix_signature=false
               [ -n "$__path" ] && __saw_invalid_path=true
@@ -798,13 +817,15 @@ jobs:
             echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
             __write_summary failure "Nix GC race retry exhausted"
             return 1
-          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
-      - name: Save pnpm home
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -897,15 +918,17 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-state-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -992,6 +1015,9 @@ jobs:
         run: |
           __nix_gc_retry() {
             local __task='devenv tasks run nix:check --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+            # Keep basic shell utilities reachable even when child tooling prepends its
+            # own shims ahead of the runner's system profile.
+            export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
             __start=$(date +%s)
 
             __write_summary() {
@@ -1043,8 +1069,8 @@ jobs:
                 return 0
               }
 
-              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
-              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(tr '\n' ' ' < "$__log" | sed -E $'s/\x1b\[[0-9;]*[[:alpha:]]//g')
+              __path=$(printf '%s' "$__flattened" | sed -nE "s/.*error:[[:space:]]+path '([^']+)'[[:space:]]+is not valid.*/\1/p" | grep '^/nix/store/' | head -1 | tr -d '[:space:]' || true)
               __saw_invalid_path=false
               __saw_cachix_signature=false
               [ -n "$__path" ] && __saw_invalid_path=true
@@ -1078,13 +1104,15 @@ jobs:
             echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
             __write_summary failure "Nix GC race retry exhausted"
             return 1
-          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
-      - name: Save pnpm home
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1320,15 +1348,17 @@ jobs:
       - name: Isolate pnpm state
         shell: bash
         run: |
-          echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_STORE_DIR=${{ github.workspace }}/.pnpm-store" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          restore-keys: 'pnpm-state-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1421,6 +1451,9 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             __nix_gc_retry() {
             local __task='devenv tasks run netlify:deploy --input type=prod --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+            # Keep basic shell utilities reachable even when child tooling prepends its
+            # own shims ahead of the runner's system profile.
+            export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
             __start=$(date +%s)
 
             __write_summary() {
@@ -1472,8 +1505,8 @@ jobs:
                 return 0
               }
 
-              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
-              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(tr '\n' ' ' < "$__log" | sed -E $'s/\x1b\[[0-9;]*[[:alpha:]]//g')
+              __path=$(printf '%s' "$__flattened" | sed -nE "s/.*error:[[:space:]]+path '([^']+)'[[:space:]]+is not valid.*/\1/p" | grep '^/nix/store/' | head -1 | tr -d '[:space:]' || true)
               __saw_invalid_path=false
               __saw_cachix_signature=false
               [ -n "$__path" ] && __saw_invalid_path=true
@@ -1507,10 +1540,13 @@ jobs:
             echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
             __write_summary failure "Nix GC race retry exhausted"
             return 1
-          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before'
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before'
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             __nix_gc_retry() {
             local __task='devenv tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' __max=${NIX_GC_RACE_MAX_RETRIES:-10} __heartbeat=${CI_PROGRESS_HEARTBEAT_SECONDS:-60} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
+            # Keep basic shell utilities reachable even when child tooling prepends its
+            # own shims ahead of the runner's system profile.
+            export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}"
             __start=$(date +%s)
 
             __write_summary() {
@@ -1562,8 +1598,8 @@ jobs:
                 return 0
               }
 
-              __flattened=$(perl -0pe 's/\e\[[0-9;]*m//g; s/\n/ /g' "$__log")
-              __path=$(printf '%s' "$__flattened" | grep -oP "error:\s+path '\K/nix/store/[^']*(?='\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+              __flattened=$(tr '\n' ' ' < "$__log" | sed -E $'s/\x1b\[[0-9;]*[[:alpha:]]//g')
+              __path=$(printf '%s' "$__flattened" | sed -nE "s/.*error:[[:space:]]+path '([^']+)'[[:space:]]+is not valid.*/\1/p" | grep '^/nix/store/' | head -1 | tr -d '[:space:]' || true)
               __saw_invalid_path=false
               __saw_cachix_signature=false
               [ -n "$__path" ] && __saw_invalid_path=true
@@ -1597,7 +1633,7 @@ jobs:
             echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
             __write_summary failure "Nix GC race retry exhausted"
             return 1
-          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before'
+          }; __nix_gc_retry 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ github.workspace }}/.pnpm-store}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before'
           fi
       - name: Post deploy URLs
         if: always() && !cancelled()
@@ -1653,12 +1689,14 @@ jobs:
             nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
               || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
           fi
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ github.workspace }}/.pnpm-store
+          key: "pnpm-state-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
