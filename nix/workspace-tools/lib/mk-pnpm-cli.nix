@@ -6,7 +6,8 @@
   packageDir,
   workspaceRoot,
   workspaceSources ? { },
-  pnpmDepsHash,
+  pnpmDepsHash ? null,
+  pnpmDepsHashes ? null,
   lockfileHash ? null,
   binaryName ? name,
   gitRev ? "unknown",
@@ -290,6 +291,43 @@ let
   installRootDerivationName =
     installDir:
     if installDir == "." then name else "${name}-${lib.replaceStrings [ "/" ] [ "-" ] installDir}";
+  installRootHashEntries =
+    if pnpmDepsHashes == null then
+      [ ]
+    else
+      map (
+        entry:
+        if !(entry ? dir && entry ? hash) then
+          throw "mk-pnpm-cli: pnpmDepsHashes entries must be { dir, hash }"
+        else
+          {
+            dir = entry.dir;
+            hash = entry.hash;
+          }
+      ) pnpmDepsHashes;
+
+  /**
+    Resolve the fixed-output hash for one authoritative install root.
+
+    Single-root CLIs can keep using `pnpmDepsHash`, because there is only one
+    prepared dependency artifact. Composed CLIs must provide `pnpmDepsHashes`
+    with one entry per install root so hash refresh can track each prepared
+    tree independently.
+  */
+  pnpmDepsHashForInstallRoot =
+    installDir:
+    let
+      matches = builtins.filter (entry: entry.dir == installDir) installRootHashEntries;
+    in
+    if pnpmDepsHashes != null then
+      if matches == [ ] then
+        throw "mk-pnpm-cli: pnpmDepsHashes is missing an entry for install root ${installDir}"
+      else if builtins.length matches > 1 then
+        throw "mk-pnpm-cli: pnpmDepsHashes has multiple entries for install root ${installDir}"
+      else
+        (builtins.head matches).hash
+    else
+      pnpmDepsHash;
 
   copyFileCmd =
     relPath:
@@ -497,7 +535,7 @@ let
         preInstall = ''
           chmod -R +w .
         '';
-        inherit pnpmDepsHash;
+        pnpmDepsHash = pnpmDepsHashForInstallRoot root.installDir;
       };
     in
     root
@@ -516,7 +554,8 @@ let
     lockfilePath = "pnpm-lock.yaml";
     depsSrc = rootDepsSrc;
     pnpmDeps = pnpmDepsHelper.mkDeps {
-      inherit name pnpmDepsHash;
+      inherit name;
+      pnpmDepsHash = pnpmDepsHashForInstallRoot ".";
       src = rootDepsSrc;
       sourceRoot = ".";
       lockfilePaths = [ "pnpm-lock.yaml" ];
@@ -526,6 +565,31 @@ let
     };
   };
   pnpmDepsInstallRoots = [ rootInstallRoot ] ++ externalInstallRootDeps;
+  installRootDirs = map (root: root.installDir) pnpmDepsInstallRoots;
+  unusedInstallRootHashEntries = builtins.filter (
+    entry: !(lib.elem entry.dir installRootDirs)
+  ) installRootHashEntries;
+  _validateInstallRootHashContract =
+    if pnpmDepsHash != null && pnpmDepsHashes != null then
+      throw "mk-pnpm-cli: pass either pnpmDepsHash or pnpmDepsHashes, not both"
+    else if builtins.length pnpmDepsInstallRoots == 1 then
+      if pnpmDepsHash == null && pnpmDepsHashes == null then
+        throw "mk-pnpm-cli: single-root builds require pnpmDepsHash"
+      else if pnpmDepsHashes != null && unusedInstallRootHashEntries != [ ] then
+        throw "mk-pnpm-cli: pnpmDepsHashes contains unknown install roots"
+      else
+        true
+    else if pnpmDepsHashes == null then
+      throw ''
+        mk-pnpm-cli: composed builds require pnpmDepsHashes = [
+          { dir = "."; hash = "..."; }
+          ...
+        ]
+      ''
+    else if unusedInstallRootHashEntries != [ ] then
+      throw "mk-pnpm-cli: pnpmDepsHashes contains unknown install roots"
+    else
+      true;
   pnpmDepsByInstallRoot = builtins.listToAttrs (
     map (root: {
       name = root.attrName;
@@ -628,6 +692,7 @@ let
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
 
 in
+assert _validateInstallRootHashContract;
 pkgs.stdenv.mkDerivation {
   inherit name;
 
@@ -646,6 +711,11 @@ pkgs.stdenv.mkDerivation {
     inherit depsSrcByInstallRoot pnpmDepsByInstallRoot;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;
+    }) pnpmDepsInstallRoots;
+    pnpmDepsHashEntries = map (root: {
+      dir = root.installDir;
+      attrName = root.attrName;
+      hash = pnpmDepsHashForInstallRoot root.installDir;
     }) pnpmDepsInstallRoots;
   }
   // lib.optionalAttrs (builtins.length pnpmDepsInstallRoots == 1) {

@@ -39,3 +39,15 @@ When a downstream repo consumes `effect-utils` packages or pnpm-based builders,
 its root `nixpkgs` and `flake-utils` should follow `effect-utils/nixpkgs` and
 `effect-utils/flake-utils`. That keeps prepared pnpm trees content-addressed
 against one canonical build graph across standalone and composed views.
+
+For `mk-pnpm-cli`, the deps-hash contract now matches the actual prepared-artifact
+shape:
+
+- single-root CLIs use one `pnpmDepsHash`
+- composed CLIs use `pnpmDepsHashes = [{ dir, hash }, ...]`, one entry per
+  authoritative install root
+
+The helper exposes the resulting install-root metadata via `passthru.installRoots`,
+`passthru.pnpmDepsByInstallRoot`, and `passthru.pnpmDepsHashEntries` so downstream
+hash-refresh tooling can target the direct prepared dependency boundary for each
+root.
