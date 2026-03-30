@@ -141,405 +141,412 @@ in
       dontFixup = true;
 
       installPhase = ''
-        # Keep timing/size instrumentation inside the builder so downstream
-        # hash refresh and CI logs can point to the slow phase directly instead
-        # of only reporting end-to-end wall clock. The extra helpers add a
-        # little shell noise, but they are cheaper than guessing blindly.
-        timer_now() {
-          perl -MTime::HiRes=time -e 'printf "%.3f", time'
-        }
-
-        timer_elapsed() {
-          perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(timer_now)"
-        }
-
-        format_bytes() {
-          numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
-        }
-
-        path_bytes() {
-          if [ -d "$1" ]; then
-            du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
-          else
-            stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
-          fi
-        }
-
-        file_count() {
-          if [ -d "$1" ]; then
-            find "$1" -type f | wc -l | tr -d ' '
-          else
-            echo 1
-          fi
-        }
-
-        nix_closure_bytes() {
-          nix path-info --json --closure-size "$1" 2>/dev/null \
-            | ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nixClosureBytesScript}
-        }
-
-        log_path_stats() {
-          local label="$1"
-          local path="$2"
-          if [ ! -e "$path" ]; then
-            return
-          fi
-
-          local bytes
-          bytes=$(path_bytes "$path")
-          local files
-          files=$(file_count "$path")
-          echo "workspace-prep: stats $label size=$(format_bytes "$bytes") files=$files path=$path"
-        }
-
-        log_store_closure() {
-          local label="$1"
-          local path="$2"
-          if [ ! -e "$path" ]; then
-            return
-          fi
-
-          local closure_bytes
-          closure_bytes=$(nix_closure_bytes "$path" || true)
-          if [ -n "$closure_bytes" ] && [ "$closure_bytes" != "0" ]; then
-            echo "workspace-prep: closure $label size=$(format_bytes "$closure_bytes") path=$path"
-          fi
-        }
-
-        strip_package_manager_field() {
-          local manifest_path="$1"
-          local backup_path="$2"
-          # We provide pnpm externally inside Nix. Keeping packageManager in the
-          # staged manifests makes pnpm install its own platform-specific
-          # runtime packages, which turns a supposedly shared FOD into a
-          # darwin-vs-linux hash divergence.
-          ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stripPackageManagerScript} "$manifest_path" "$backup_path"
-        }
-
-        restore_package_manager_field() {
-          local manifest_path="$1"
-          local backup_path="$2"
-          if [ -f "$backup_path" ]; then
-            mv "$backup_path" "$manifest_path"
-          fi
-        }
-
-        SOURCE_DIR="$NIX_BUILD_TOP/source"
-        sourceCopyStartedAt=$(timer_now)
-        mkdir "$SOURCE_DIR"
-        cp -r "$src"/. "$SOURCE_DIR"/
-        chmod -R +w "$SOURCE_DIR"
-        echo "workspace-prep: staged source copy duration=$(timer_elapsed "$sourceCopyStartedAt")s"
-        log_store_closure "src" "$src"
-        log_path_stats "staged-source-copy" "$SOURCE_DIR"
-
-        if [ "$sourceRoot" = "." ]; then
-          cd "$SOURCE_DIR"
-        else
-          cd "$SOURCE_DIR/$sourceRoot"
-        fi
-
-        runHook preInstall
-
-        ${preInstall}
-
-        # pnpm still mutates store metadata (for example index.db and
-        # projects/*), so the Nix build must use a private writable HOME/store
-        # even though the final archive is immutable.
-        export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
-        export STORE_PATH=$(mktemp -d "$NIX_BUILD_TOP/pnpm-store.XXXXXX")
-        export CI=true
-        export NPM_CONFIG_PRODUCTION=false
-        export npm_config_production=false
-        export npm_config_manage_package_manager_versions=false
-        export NODE_ENV=development
-        export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
-
-        # pnpm 11 rejects `pnpm config set --global` for keys it considers
-        # workspace-only. Use env vars and .npmrc instead.
-        # Back up .npmrc before appending build-local settings (restored after install).
-        cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
-        ${pnpmPlatform.setupScript}
-
-	        node -e '
-          const path = require("path");
-          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
-          if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
-            console.error("workspace-prep: FATAL - no staged lockfiles were provided");
-            process.exit(1);
-          }
-
-          const installRoots = [...new Set(lockfilePaths.map((lockfilePath) => {
-            const dir = path.dirname(lockfilePath);
-            return dir === "" ? "." : dir;
-          }))];
-
-          process.stdout.write(installRoots.join("\n") + "\n");
-	        ' > .pnpm-install-roots.txt
-	        echo "workspace-prep: install roots count=$(wc -l < .pnpm-install-roots.txt | tr -d ' ')"
-
-	        node -e '
-          const fs = require("fs");
-          const path = require("path");
-
-          const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
-          for (const lockfilePath of lockfilePaths) {
-            const absoluteLockfilePath = path.resolve(lockfilePath);
-            if (!fs.existsSync(absoluteLockfilePath)) {
-              continue;
-            }
-
-            const contents = fs.readFileSync(absoluteLockfilePath, "utf8");
-            const docs = contents
-              .split(/^---\s*$/m)
-              .map((doc) => doc.trim())
-              .filter((doc) => doc.length > 0);
-
-            if (docs.length <= 1) {
-              continue;
-            }
-
-            // pnpm 11 may prepend a packageManagerDependencies document to the
-            // real dependency graph lockfile. Inside Nix builders we already
-            // pin pnpm externally, so keep only the final dependency-graph
-            // document for sandbox installs.
-            fs.writeFileSync(absoluteLockfilePath, `---\n''${docs.at(-1)}\n`);
-          }
-        '
-
-	        while IFS= read -r install_root; do
-	          [ -n "$install_root" ] || continue
-
-          if [ ! -f "$install_root/package.json" ] || [ ! -f "$install_root/pnpm-lock.yaml" ]; then
-            echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
-            exit 1
-          fi
-
-          strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
-
-	          echo "workspace-prep: normalizing lockfile for $install_root"
-	          normalizeStartedAt=$(timer_now)
-	          (
-	            cd "$install_root"
-            # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
-            # a reduced workspace closure. Rewriting the lockfile against the
-            # staged manifests produces the exact lock shape the subsequent
-            # frozen install expects.
-	            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
-	          )
-	          echo "workspace-prep: normalized $install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
-	          log_path_stats "install-root:$install_root-after-normalize" "$install_root"
-
-	          echo "workspace-prep: installing $install_root"
-	          installStartedAt=$(timer_now)
-	          (
-	            cd "$install_root"
-	            pnpm install --frozen-lockfile --ignore-scripts
-	          )
-	          echo "workspace-prep: installed $install_root duration=$(timer_elapsed "$installStartedAt")s"
-	          log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
-          restore_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
-	        done < .pnpm-install-roots.txt
-
-        export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
-        node <<'NODE'
-        const fs = require("fs");
-        const path = require("path");
-
-        const workspaceRoot = process.cwd();
-        const workspaceRealRoot = fs.realpathSync(workspaceRoot);
-        const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
-
-        const rewriteTextFile = (filePath, transform) => {
-          if (!fs.existsSync(filePath)) {
-            return;
-          }
-
-          const next = transform(fs.readFileSync(filePath, "utf8"));
-          fs.writeFileSync(filePath, next);
-        };
-
-        /**
-         * Deterministic directory traversal is critical here because we mutate
-         * the prepared tree in-place before archiving it. If pnpm layout
-         * rewrites happen in filesystem iteration order, the fixed-output hash
-         * can drift across machines even when the final archive writer is sorted.
-         */
-        const sortedDirEntries = (dirPath) =>
-          fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) =>
-            left.name.localeCompare(right.name)
-          );
-
-        // pnpm virtual packages for workspace `file:` deps should point back to
-        // the staged workspace members, not copied package snapshots, or the
-        // prepared tree will bake in install-root-specific absolute paths.
-        const workspacePackages = new Map();
-
-        const collectWorkspacePackages = (dirPath) => {
-          for (const entry of sortedDirEntries(dirPath)) {
-            if (!entry.isDirectory()) {
-              continue;
-            }
-
-            if (entry.name === "node_modules" || entry.name === ".git") {
-              continue;
-            }
-
-            const entryPath = path.join(dirPath, entry.name);
-            const packageJsonPath = path.join(entryPath, "package.json");
-            if (fs.existsSync(packageJsonPath)) {
-              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-              if (typeof packageJson.name === "string" && !workspacePackages.has(packageJson.name)) {
-                workspacePackages.set(packageJson.name, entryPath);
-              }
-            }
-
-            collectWorkspacePackages(entryPath);
-          }
-        };
-
-        const packageDirsInNodeModules = (nodeModulesPath) => {
-          if (!fs.existsSync(nodeModulesPath)) {
-            return [];
-          }
-
-          const packageDirs = [];
-          for (const entry of sortedDirEntries(nodeModulesPath)) {
-            if (!entry.isDirectory()) {
-              continue;
-            }
-
-            if (entry.name.startsWith("@")) {
-              const scopeDir = path.join(nodeModulesPath, entry.name);
-              for (const scopedEntry of sortedDirEntries(scopeDir)) {
-                if (scopedEntry.isDirectory()) {
-                  packageDirs.push(path.join(scopeDir, scopedEntry.name));
-                }
-              }
-            } else {
-              packageDirs.push(path.join(nodeModulesPath, entry.name));
-            }
-          }
-
-          return packageDirs;
-        };
-
-        const relinkLocalVirtualPackages = (dirPath) => {
-          for (const entry of sortedDirEntries(dirPath)) {
-            if (!entry.isDirectory()) {
-              continue;
-            }
-
-            const entryPath = path.join(dirPath, entry.name);
-            if (entry.name === ".pnpm") {
-              for (const virtualEntry of sortedDirEntries(entryPath)) {
-                if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
-                  continue;
+                # Keep timing/size instrumentation inside the builder so downstream
+                # hash refresh and CI logs can point to the slow phase directly instead
+                # of only reporting end-to-end wall clock. The extra helpers add a
+                # little shell noise, but they are cheaper than guessing blindly.
+                timer_now() {
+                  perl -MTime::HiRes=time -e 'printf "%.3f", time'
                 }
 
-                const virtualNodeModulesPath = path.join(entryPath, virtualEntry.name, "node_modules");
-                for (const packageDir of packageDirsInNodeModules(virtualNodeModulesPath)) {
-                  const packageJsonPath = path.join(packageDir, "package.json");
-                  if (!fs.existsSync(packageJsonPath)) {
-                    continue;
+                timer_elapsed() {
+                  perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(timer_now)"
+                }
+
+                format_bytes() {
+                  numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+                }
+
+                path_bytes() {
+                  if [ -d "$1" ]; then
+                    du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+                  else
+                    stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+                  fi
+                }
+
+                file_count() {
+                  if [ -d "$1" ]; then
+                    find "$1" -type f | wc -l | tr -d ' '
+                  else
+                    echo 1
+                  fi
+                }
+
+                nix_closure_bytes() {
+                  nix path-info --json --closure-size "$1" 2>/dev/null \
+                    | ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nixClosureBytesScript}
+                }
+
+                log_path_stats() {
+                  local label="$1"
+                  local path="$2"
+                  if [ ! -e "$path" ]; then
+                    return
+                  fi
+
+                  local bytes
+                  bytes=$(path_bytes "$path")
+                  local files
+                  files=$(file_count "$path")
+                  echo "workspace-prep: stats $label size=$(format_bytes "$bytes") files=$files path=$path"
+                }
+
+                log_prep_phase() {
+                  local phase="$1"
+                  shift
+                  echo "workspace-prep: phase=$phase $*"
+                }
+
+                log_store_closure() {
+                  local label="$1"
+                  local path="$2"
+                  if [ ! -e "$path" ]; then
+                    return
+                  fi
+
+                  local closure_bytes
+                  closure_bytes=$(nix_closure_bytes "$path" || true)
+                  if [ -n "$closure_bytes" ] && [ "$closure_bytes" != "0" ]; then
+                    echo "workspace-prep: closure $label size=$(format_bytes "$closure_bytes") path=$path"
+                  fi
+                }
+
+                strip_package_manager_field() {
+                  local manifest_path="$1"
+                  local backup_path="$2"
+                  # We provide pnpm externally inside Nix. Keeping packageManager in the
+                  # staged manifests makes pnpm install its own platform-specific
+                  # runtime packages, which turns a supposedly shared FOD into a
+                  # darwin-vs-linux hash divergence.
+                  ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stripPackageManagerScript} "$manifest_path" "$backup_path"
+                }
+
+                restore_package_manager_field() {
+                  local manifest_path="$1"
+                  local backup_path="$2"
+                  if [ -f "$backup_path" ]; then
+                    mv "$backup_path" "$manifest_path"
+                  fi
+                }
+
+                SOURCE_DIR="$NIX_BUILD_TOP/source"
+                prepStartedAt=$(timer_now)
+                sourceCopyStartedAt=$(timer_now)
+                mkdir "$SOURCE_DIR"
+                cp -r "$src"/. "$SOURCE_DIR"/
+                chmod -R +w "$SOURCE_DIR"
+                log_prep_phase "stage-source-copy" "duration=$(timer_elapsed "$sourceCopyStartedAt")s source_root=$sourceRoot"
+                log_store_closure "src" "$src"
+                log_path_stats "staged-source-copy" "$SOURCE_DIR"
+
+                if [ "$sourceRoot" = "." ]; then
+                  cd "$SOURCE_DIR"
+                else
+                  cd "$SOURCE_DIR/$sourceRoot"
+                fi
+
+                runHook preInstall
+
+                ${preInstall}
+
+                # pnpm still mutates store metadata (for example index.db and
+                # projects/*), so the Nix build must use a private writable HOME/store
+                # even though the final archive is immutable.
+                export HOME=$(mktemp -d "$NIX_BUILD_TOP/pnpm-home.XXXXXX")
+                export STORE_PATH=$(mktemp -d "$NIX_BUILD_TOP/pnpm-store.XXXXXX")
+                export CI=true
+                export NPM_CONFIG_PRODUCTION=false
+                export npm_config_production=false
+                export npm_config_manage_package_manager_versions=false
+                export NODE_ENV=development
+                export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
+
+                # pnpm 11 rejects `pnpm config set --global` for keys it considers
+                # workspace-only. Use env vars and .npmrc instead.
+                # Back up .npmrc before appending build-local settings (restored after install).
+                cp .npmrc .npmrc.orig 2>/dev/null || true
+                printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
+                ${pnpmPlatform.setupScript}
+
+                node -e '
+                  const path = require("path");
+                  const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
+                  if (!Array.isArray(lockfilePaths) || lockfilePaths.length === 0) {
+                    console.error("workspace-prep: FATAL - no staged lockfiles were provided");
+                    process.exit(1);
                   }
 
-                  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-                  const workspacePackageDir = workspacePackages.get(packageJson.name);
-                  if (!workspacePackageDir) {
-                    continue;
+                  const installRoots = [...new Set(lockfilePaths.map((lockfilePath) => {
+                    const dir = path.dirname(lockfilePath);
+                    return dir === "" ? "." : dir;
+                  }))];
+
+                  process.stdout.write(installRoots.join("\n") + "\n");
+                ' > .pnpm-install-roots.txt
+                log_prep_phase "install-roots" "count=$(wc -l < .pnpm-install-roots.txt | tr -d ' ')"
+
+                node -e '
+                  const fs = require("fs");
+                  const path = require("path");
+
+                  const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
+                  for (const lockfilePath of lockfilePaths) {
+                    const absoluteLockfilePath = path.resolve(lockfilePath);
+                    if (!fs.existsSync(absoluteLockfilePath)) {
+                      continue;
+                    }
+
+                    const contents = fs.readFileSync(absoluteLockfilePath, "utf8");
+                    const docs = contents
+                      .split(/^---\s*$/m)
+                      .map((doc) => doc.trim())
+                      .filter((doc) => doc.length > 0);
+
+                    if (docs.length <= 1) {
+                      continue;
+                    }
+
+                    // pnpm 11 may prepend a packageManagerDependencies document to the
+                    // real dependency graph lockfile. Inside Nix builders we already
+                    // pin pnpm externally, so keep only the final dependency-graph
+                    // document for sandbox installs.
+                    fs.writeFileSync(absoluteLockfilePath, `---\n''${docs.at(-1)}\n`);
+                  }
+                '
+
+                while IFS= read -r install_root; do
+                  [ -n "$install_root" ] || continue
+
+                  if [ ! -f "$install_root/package.json" ] || [ ! -f "$install_root/pnpm-lock.yaml" ]; then
+                    echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
+                    exit 1
+                  fi
+
+                  strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
+
+                  log_prep_phase "normalize-lockfile-start" "install_root=$install_root"
+                  normalizeStartedAt=$(timer_now)
+                  (
+                    cd "$install_root"
+                    # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
+                    # a reduced workspace closure. Rewriting the lockfile against the
+                    # staged manifests produces the exact lock shape the subsequent
+                    # frozen install expects.
+                    pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+                  )
+                  log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
+                  log_path_stats "install-root:$install_root-after-normalize" "$install_root"
+
+                  log_prep_phase "install-start" "install_root=$install_root"
+                  installStartedAt=$(timer_now)
+                  (
+                    cd "$install_root"
+                    pnpm install --frozen-lockfile --ignore-scripts
+                  )
+                  log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
+                  log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
+                  restore_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
+                done < .pnpm-install-roots.txt
+
+                export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
+                node <<'NODE'
+                const fs = require("fs");
+                const path = require("path");
+
+                const workspaceRoot = process.cwd();
+                const workspaceRealRoot = fs.realpathSync(workspaceRoot);
+                const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+
+                const rewriteTextFile = (filePath, transform) => {
+                  if (!fs.existsSync(filePath)) {
+                    return;
                   }
 
-                  fs.rmSync(packageDir, { recursive: true, force: true });
-                  fs.symlinkSync(path.relative(path.dirname(packageDir), workspacePackageDir), packageDir, "dir");
-                }
-              }
-            } else {
-              relinkLocalVirtualPackages(entryPath);
-            }
-          }
-        };
+                  const next = transform(fs.readFileSync(filePath, "utf8"));
+                  fs.writeFileSync(filePath, next);
+                };
 
-        collectWorkspacePackages(workspaceRoot);
-        relinkLocalVirtualPackages(workspaceRoot);
+                /**
+                 * Deterministic directory traversal is critical here because we mutate
+                 * the prepared tree in-place before archiving it. If pnpm layout
+                 * rewrites happen in filesystem iteration order, the fixed-output hash
+                 * can drift across machines even when the final archive writer is sorted.
+                 */
+                const sortedDirEntries = (dirPath) =>
+                  fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) =>
+                    left.name.localeCompare(right.name)
+                  );
 
-        const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-          const realDirPath = fs.realpathSync(dirPath);
-          if (visitedRealPaths.has(realDirPath)) {
-            return;
-          }
-          visitedRealPaths.add(realDirPath);
+                // pnpm virtual packages for workspace `file:` deps should point back to
+                // the staged workspace members, not copied package snapshots, or the
+                // prepared tree will bake in install-root-specific absolute paths.
+                const workspacePackages = new Map();
 
-          for (const entry of sortedDirEntries(dirPath)) {
-            const entryPath = path.join(dirPath, entry.name);
-            const isDirectory =
-              entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
+                const collectWorkspacePackages = (dirPath) => {
+                  for (const entry of sortedDirEntries(dirPath)) {
+                    if (!entry.isDirectory()) {
+                      continue;
+                    }
 
-            if (!isDirectory) {
-              continue;
-            }
+                    if (entry.name === "node_modules" || entry.name === ".git") {
+                      continue;
+                    }
 
-            if (entry.name === ".bin") {
-              for (const binEntry of sortedDirEntries(entryPath)) {
-                if (!binEntry.isFile()) {
-                  continue;
-                }
-                rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
-                  script.split(workspaceRoot).join(workspacePlaceholder)
-                );
-              }
-              continue;
-            }
+                    const entryPath = path.join(dirPath, entry.name);
+                    const packageJsonPath = path.join(entryPath, "package.json");
+                    if (fs.existsSync(packageJsonPath)) {
+                      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+                      if (typeof packageJson.name === "string" && !workspacePackages.has(packageJson.name)) {
+                        workspacePackages.set(packageJson.name, entryPath);
+                      }
+                    }
 
-            rewriteBinScripts(entryPath, visitedRealPaths);
-          }
-        };
+                    collectWorkspacePackages(entryPath);
+                  }
+                };
 
-        rewriteBinScripts(workspaceRoot);
-NODE
+                const packageDirsInNodeModules = (nodeModulesPath) => {
+                  if (!fs.existsSync(nodeModulesPath)) {
+                    return [];
+                  }
 
-        # These pnpm bookkeeping files are only needed for future pnpm
-        # operations. Downstream builders restore a prepared tree and go
-        # straight to bun, so keeping them only widens the determinism surface.
-        # Remove them for the root install plus any nested composed repos.
-        find . -type f \( \
-          -path '*/node_modules/.modules.yaml' -o \
-          -path '*/node_modules/.pnpm-workspace-state-*.json' -o \
-          -path '*/node_modules/.pnpm/lock.yaml' \
-        \) -delete
+                  const packageDirs = [];
+                  for (const entry of sortedDirEntries(nodeModulesPath)) {
+                    if (!entry.isDirectory()) {
+                      continue;
+                    }
 
-	        # Restore original .npmrc (remove build-local settings that contain
-	        # non-deterministic paths like $STORE_PATH).
-        if [ -f .npmrc.orig ]; then
-          mv .npmrc.orig .npmrc
-        else
-          rm -f .npmrc
-        fi
+                    if (entry.name.startsWith("@")) {
+                      const scopeDir = path.join(nodeModulesPath, entry.name);
+                      for (const scopedEntry of sortedDirEntries(scopeDir)) {
+                        if (scopedEntry.isDirectory()) {
+                          packageDirs.push(path.join(scopeDir, scopedEntry.name));
+                        }
+                      }
+                    } else {
+                      packageDirs.push(path.join(nodeModulesPath, entry.name));
+                    }
+                  }
 
-	        log_path_stats "prepared-workspace-pre-archive" .
-	        log_path_stats "pnpm-store-final" "$STORE_PATH"
-	        rm -rf "$STORE_PATH"
-	        rm -f .pnpm-install-roots.txt
+                  return packageDirs;
+                };
 
-        find . -type d -exec chmod 755 {} +
-        find . -type f -perm /111 -exec chmod 555 {} +
-        find . -type f ! -perm /111 -exec chmod 444 {} +
+                const relinkLocalVirtualPackages = (dirPath) => {
+                  for (const entry of sortedDirEntries(dirPath)) {
+                    if (!entry.isDirectory()) {
+                      continue;
+                    }
 
-        archiveStartedAt=$(timer_now)
-        log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
-        # We intentionally keep the output as a single compressed artifact, but
-        # tar turned out to be the wrong container: the prepared tree itself was
-        # byte-identical across darwin and linux while GNU tar still emitted
-        # different longlink records. `nix-store --dump` gives us the same
-        # "single file artifact" benefit while delegating serialization to
-        # Nix's own cross-platform canonical archive format without relying on
-        # experimental CLI features inside the builder.
-        nix-store --dump "$SOURCE_DIR" \
-          | ${pkgs.zstd}/bin/zstd -T1 -q -o "$out"
-        echo "workspace-prep: archive duration=$(timer_elapsed "$archiveStartedAt")s"
+                    const entryPath = path.join(dirPath, entry.name);
+                    if (entry.name === ".pnpm") {
+                      for (const virtualEntry of sortedDirEntries(entryPath)) {
+                        if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
+                          continue;
+                        }
 
-        runHook postInstall
+                        const virtualNodeModulesPath = path.join(entryPath, virtualEntry.name, "node_modules");
+                        for (const packageDir of packageDirsInNodeModules(virtualNodeModulesPath)) {
+                          const packageJsonPath = path.join(packageDir, "package.json");
+                          if (!fs.existsSync(packageJsonPath)) {
+                            continue;
+                          }
+
+                          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+                          const workspacePackageDir = workspacePackages.get(packageJson.name);
+                          if (!workspacePackageDir) {
+                            continue;
+                          }
+
+                          fs.rmSync(packageDir, { recursive: true, force: true });
+                          fs.symlinkSync(path.relative(path.dirname(packageDir), workspacePackageDir), packageDir, "dir");
+                        }
+                      }
+                    } else {
+                      relinkLocalVirtualPackages(entryPath);
+                    }
+                  }
+                };
+
+                collectWorkspacePackages(workspaceRoot);
+                relinkLocalVirtualPackages(workspaceRoot);
+
+                const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+                  const realDirPath = fs.realpathSync(dirPath);
+                  if (visitedRealPaths.has(realDirPath)) {
+                    return;
+                  }
+                  visitedRealPaths.add(realDirPath);
+
+                  for (const entry of sortedDirEntries(dirPath)) {
+                    const entryPath = path.join(dirPath, entry.name);
+                    const isDirectory =
+                      entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
+
+                    if (!isDirectory) {
+                      continue;
+                    }
+
+                    if (entry.name === ".bin") {
+                      for (const binEntry of sortedDirEntries(entryPath)) {
+                        if (!binEntry.isFile()) {
+                          continue;
+                        }
+                        rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
+                          script.split(workspaceRoot).join(workspacePlaceholder)
+                        );
+                      }
+                      continue;
+                    }
+
+                    rewriteBinScripts(entryPath, visitedRealPaths);
+                  }
+                };
+
+                rewriteBinScripts(workspaceRoot);
+        NODE
+
+                # These pnpm bookkeeping files are only needed for future pnpm
+                # operations. Downstream builders restore a prepared tree and go
+                # straight to bun, so keeping them only widens the determinism surface.
+                # Remove them for the root install plus any nested composed repos.
+                find . -type f \( \
+                  -path '*/node_modules/.modules.yaml' -o \
+                  -path '*/node_modules/.pnpm-workspace-state-*.json' -o \
+                  -path '*/node_modules/.pnpm/lock.yaml' \
+                \) -delete
+
+                # Restore original .npmrc (remove build-local settings that contain
+                # non-deterministic paths like $STORE_PATH).
+                if [ -f .npmrc.orig ]; then
+                  mv .npmrc.orig .npmrc
+                else
+                  rm -f .npmrc
+                fi
+
+                log_path_stats "prepared-workspace-pre-archive" .
+                log_path_stats "pnpm-store-final" "$STORE_PATH"
+                rm -rf "$STORE_PATH"
+                rm -f .pnpm-install-roots.txt
+
+                find . -type d -exec chmod 755 {} +
+                find . -type f -perm /111 -exec chmod 555 {} +
+                find . -type f ! -perm /111 -exec chmod 444 {} +
+
+                archiveStartedAt=$(timer_now)
+                log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
+                # Keep the prepared tree as one compressed artifact, but import it into
+                # the store first. `nix-store --dump` only accepts store paths; dumping
+                # the raw build directory silently produced an empty artifact and masked
+                # itself as a stale hash mismatch.
+                prepared_store_path=$(nix-store --add-fixed --recursive sha256 "$SOURCE_DIR")
+                nix-store --dump "$prepared_store_path" \
+                  | ${pkgs.zstd}/bin/zstd -T1 -q -o "$out"
+                log_store_closure "prepared-store-path" "$prepared_store_path"
+                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s"
+                log_prep_phase "complete" "duration=$(timer_elapsed "$prepStartedAt")s output_hash=${pnpmDepsHash}"
+
+                runHook postInstall
       '';
 
       outputHashMode = "flat";
@@ -555,81 +562,116 @@ NODE
   # Arguments:
   #   deps: The derivation returned by mkDeps
   #   target: Directory to extract the prepared workspace into
+  #   label: Stable install-root label used in restore timing logs
   mkRestoreScript =
     {
       deps,
       target ? ".",
+      label ? "prepared-workspace",
     }:
     ''
-      # `nix-store --restore` wants a path that does not already exist. We
-      # therefore allocate a private parent directory first and restore into a
-      # child path inside it instead of relying on `mktemp -u`, which is racy.
-      nar_restore_parent="$(mktemp -d "$NIX_BUILD_TOP/pnpm-restore.XXXXXX")"
-      nar_restore_dir="$nar_restore_parent/tree"
-      mkdir -p ${lib.escapeShellArg target}
-      ${pkgs.zstd}/bin/zstd -d -c ${deps} \
-        | nix-store --restore "$nar_restore_dir"
-      # Restore into an isolated tree first because the caller's target already
-      # contains real sources. We need overlay semantics here, not a wholesale
-      # replacement of the destination directory.
-      cp -a "$nar_restore_dir"/. ${lib.escapeShellArg target}/
-      chmod -R u+w "$nar_restore_parent"
-      rm -rf "$nar_restore_parent"
-
-      export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
-      export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
-
-      find "$PREPARED_WORKSPACE_TARGET" -path '*/.bin/*' -type f -exec chmod u+w {} +
-
-      node <<'NODE'
-      const fs = require("fs");
-      const path = require("path");
-
-      const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
-      const workspaceTarget = process.env.PREPARED_WORKSPACE_TARGET;
-
-      const rewriteTextFile = (filePath) => {
-        if (!fs.existsSync(filePath)) {
-          return;
-        }
-
-        const current = fs.readFileSync(filePath, "utf8");
-        const next = current.split(workspacePlaceholder).join(workspaceTarget);
-        if (next !== current) {
-          fs.writeFileSync(filePath, next);
-        }
-      };
-
-      const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-        const realDirPath = fs.realpathSync(dirPath);
-        if (visitedRealPaths.has(realDirPath)) {
-          return;
-        }
-        visitedRealPaths.add(realDirPath);
-
-        for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-          const entryPath = path.join(dirPath, entry.name);
-          const isDirectory =
-            entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
-
-          if (!isDirectory) {
-            continue;
-          }
-
-          if (entry.name === ".bin") {
-            for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
-              if (binEntry.isFile()) {
-                rewriteTextFile(path.join(entryPath, binEntry.name));
-              }
+            restore_timer_now() {
+              perl -MTime::HiRes=time -e 'printf "%.3f", time'
             }
-            continue;
-          }
 
-          rewriteBinScripts(entryPath, visitedRealPaths);
-        }
-      };
+            restore_timer_elapsed() {
+              perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(restore_timer_now)"
+            }
 
-      rewriteBinScripts(workspaceTarget);
-NODE
+            restore_format_bytes() {
+              numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+            }
+
+            restore_path_bytes() {
+              if [ -d "$1" ]; then
+                du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+              else
+                stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+              fi
+            }
+
+            restore_file_count() {
+              if [ -d "$1" ]; then
+                find "$1" -type f | wc -l | tr -d ' '
+              else
+                echo 1
+              fi
+            }
+
+            restoreStartedAt=$(restore_timer_now)
+            # `nix-store --restore` wants a path that does not already exist. We
+            # therefore allocate a private parent directory first and restore into a
+            # child path inside it instead of relying on `mktemp -u`, which is racy.
+            nar_restore_parent="$(mktemp -d "$NIX_BUILD_TOP/pnpm-restore.XXXXXX")"
+            nar_restore_dir="$nar_restore_parent/tree"
+            mkdir -p ${lib.escapeShellArg target}
+            ${pkgs.zstd}/bin/zstd -d -c ${deps} \
+              | nix-store --restore "$nar_restore_dir"
+            # Restore into an isolated tree first because the caller's target already
+            # contains real sources. We need overlay semantics here, not a wholesale
+            # replacement of the destination directory.
+            cp -a "$nar_restore_dir"/. ${lib.escapeShellArg target}/
+            chmod -R u+w "$nar_restore_parent"
+            rm -rf "$nar_restore_parent"
+
+            export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
+            export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
+
+            find "$PREPARED_WORKSPACE_TARGET" -path '*/.bin/*' -type f -exec chmod u+w {} +
+
+            node <<'NODE'
+            const fs = require("fs");
+            const path = require("path");
+
+            const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+            const workspaceTarget = process.env.PREPARED_WORKSPACE_TARGET;
+
+            const rewriteTextFile = (filePath) => {
+              if (!fs.existsSync(filePath)) {
+                return;
+              }
+
+              const current = fs.readFileSync(filePath, "utf8");
+              const next = current.split(workspacePlaceholder).join(workspaceTarget);
+              if (next !== current) {
+                fs.writeFileSync(filePath, next);
+              }
+            };
+
+            const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+              const realDirPath = fs.realpathSync(dirPath);
+              if (visitedRealPaths.has(realDirPath)) {
+                return;
+              }
+              visitedRealPaths.add(realDirPath);
+
+              for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+                const entryPath = path.join(dirPath, entry.name);
+                const isDirectory =
+                  entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
+
+                if (!isDirectory) {
+                  continue;
+                }
+
+                if (entry.name === ".bin") {
+                  for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+                    if (binEntry.isFile()) {
+                      rewriteTextFile(path.join(entryPath, binEntry.name));
+                    }
+                  }
+                  continue;
+                }
+
+                rewriteBinScripts(entryPath, visitedRealPaths);
+              }
+            };
+
+            rewriteBinScripts(workspaceTarget);
+      NODE
+
+            restored_bytes=$(restore_path_bytes "$PREPARED_WORKSPACE_TARGET")
+            restored_files=$(restore_file_count "$PREPARED_WORKSPACE_TARGET")
+            echo "workspace-restore: phase=restore label=${label} target=$PREPARED_WORKSPACE_TARGET duration=$(restore_timer_elapsed "$restoreStartedAt")s size=$(restore_format_bytes "$restored_bytes") files=$restored_files"
     '';
 }

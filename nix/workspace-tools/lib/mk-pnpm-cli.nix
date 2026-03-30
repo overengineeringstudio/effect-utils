@@ -273,6 +273,9 @@ let
     workspaceSuffixLines rootPnpmWorkspaceYaml
   );
 
+  # These are the files that define dependency identity for the aggregate root.
+  # Keep this list narrow so source-only edits do not invalidate prepared deps,
+  # but broad enough that any manifest / workspace policy drift still does.
   rootWorkspaceFiles = [
     "package.json"
     "pnpm-lock.yaml"
@@ -447,6 +450,10 @@ let
       ]
     );
 
+  # The aggregate root owns the top-level lockfile plus any workspace members
+  # not delegated to nested install roots. It still stages external install-root
+  # manifests so the aggregate lockfile can resolve linked workspace packages
+  # against the exact member set that will exist in the final composed build.
   rootDepsSrc = pkgs.runCommand "${name}-pnpm-deps-src" { } (
     ''
       set -euo pipefail
@@ -466,6 +473,11 @@ let
     + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
   );
 
+  # Each external install root gets its own manifest-only derivation and its
+  # own prepared deps artifact. This is the key reuse boundary for composed
+  # workspaces: root-only changes should not force a full reinstall of
+  # `repos/effect-utils`, while changes inside that nested workspace should
+  # still invalidate its own prepared tree deterministically.
   externalInstallRootDeps = map (
     root:
     let
@@ -495,6 +507,9 @@ let
     }
   ) externalInstallRoots;
 
+  # Keep the aggregate root as a first-class install root alongside any nested
+  # composed roots. Final restoration simply overlays each prepared tree into
+  # the full workspace snapshot in a deterministic order.
   rootInstallRoot = {
     attrName = "root";
     installDir = ".";
@@ -546,6 +561,10 @@ let
           root:
           builtins.concatStringsSep "\n" (
             (
+              # `manifestOnly` is used for dependency preparation, where we want
+              # the narrowest possible invalidation boundary. The full workspace
+              # snapshot is used later by the actual CLI build, where source
+              # files are needed but dependency prep should already be cached.
               if manifestOnly then
                 (map (file: copyFileCmd "${root.installDir}/${file}") rootWorkspaceFiles)
                 ++ (map (file: copyOptionalFileCmd "${root.installDir}/${file}") optionalRootWorkspaceFiles)
@@ -618,6 +637,7 @@ pkgs.stdenv.mkDerivation {
     # tar so the serialized artifact stays cross-platform stable.
     pkgs.nix
     pkgs.nodejs
+    pkgs.perl
     pnpm
     pkgs.zstd
   ];
@@ -642,6 +662,32 @@ pkgs.stdenv.mkDerivation {
     set -euo pipefail
     runHook preBuild
 
+    timer_now() {
+      perl -MTime::HiRes=time -e 'printf "%.3f", time'
+    }
+
+    timer_elapsed() {
+      perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(timer_now)"
+    }
+
+    format_bytes() {
+      numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+    }
+
+    path_bytes() {
+      if [ -d "$1" ]; then
+        du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+      else
+        stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+      fi
+    }
+
+    log_cli_phase() {
+      local phase="$1"
+      shift
+      echo "cli-build: phase=$phase cli=${binaryName} package=${packageDir} $*"
+    }
+
     ${
       if lockfileHash != null then
         ''
@@ -659,15 +705,22 @@ pkgs.stdenv.mkDerivation {
         ""
     }
 
+    buildStartedAt=$(timer_now)
+    log_cli_phase "start" "install_roots=${toString (builtins.length pnpmDepsInstallRoots)}"
+
     echo "Copying filtered aggregate workspace..."
+    workspaceCopyStartedAt=$(timer_now)
     cp -r ${workspaceClosureSrc} workspace
     chmod -R +w workspace
+    log_cli_phase "workspace-copy" "duration=$(timer_elapsed "$workspaceCopyStartedAt")s"
+
     ${builtins.concatStringsSep "\n" (
       map (
         root:
         pnpmDepsHelper.mkRestoreScript {
           deps = root.pnpmDeps;
           target = "workspace";
+          label = root.installDir;
         }
       ) pnpmDepsInstallRoots
     )}
@@ -700,26 +753,51 @@ pkgs.stdenv.mkDerivation {
     cd ${packageDir}
 
     if [ -f "${entryRelativeToPackage}" ]; then
+      stampStartedAt=$(timer_now)
       substituteInPlace "${entryRelativeToPackage}" \
         --replace-quiet "const buildStamp = '__CLI_BUILD_STAMP__'" "const buildStamp = '${nixStampJson}'"
+      log_cli_phase "stamp-build-metadata" "duration=$(timer_elapsed "$stampStartedAt")s entry=${entryRelativeToPackage}"
     fi
 
     echo "Building CLI..."
     mkdir -p output
+    bunBuildStartedAt=$(timer_now)
     bun build ${entryRelativeToPackage} --compile ${lib.concatStringsSep " " extraBunBuildArgs} --outfile=output/${binaryName}
+    binaryBytes=$(path_bytes "output/${binaryName}")
+    log_cli_phase "bun-build" "duration=$(timer_elapsed "$bunBuildStartedAt")s binary_size=$(format_bytes "$binaryBytes")"
 
     if [ -n "${smokeTestArgsStr}" ]; then
       echo "Running smoke test..."
+      smokeStartedAt=$(timer_now)
       ./output/${binaryName} ${smokeTestArgsStr}
+      log_cli_phase "smoke-test" "duration=$(timer_elapsed "$smokeStartedAt")s args=${lib.escapeShellArg (builtins.concatStringsSep " " smokeTestArgs)}"
     fi
+
+    log_cli_phase "build-complete" "duration=$(timer_elapsed "$buildStartedAt")s"
 
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
+    install_timer_now() {
+      perl -MTime::HiRes=time -e 'printf "%.3f", time'
+    }
+
+    install_timer_elapsed() {
+      perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(install_timer_now)"
+    }
+
+    install_format_bytes() {
+      numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+    }
+
+    installStartedAt=$(install_timer_now)
     mkdir -p "$out/bin"
     cp "$NIX_BUILD_TOP/workspace/${packageDir}/output/${binaryName}" "$out/bin/"
+    installedBytes=$(du --apparent-size -sk "$out/bin/${binaryName}" 2>/dev/null | awk '{print $1 * 1024}')
+    installedBytes=''${installedBytes:-0}
+    echo "cli-build: phase=install cli=${binaryName} package=${packageDir} duration=$(install_timer_elapsed "$installStartedAt")s installed_size=$(install_format_bytes "$installedBytes")"
     runHook postInstall
   '';
 }
