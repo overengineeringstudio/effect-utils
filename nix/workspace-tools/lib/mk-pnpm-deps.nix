@@ -597,8 +597,14 @@ in
             restoreStartedAt=$(restore_timer_now)
             mkdir -p ${lib.escapeShellArg target}
             # Restore with overlay semantics because the caller's target already
-            # contains the real source tree.
+            # contains the real source tree. `cp -a` preserves the read-only
+            # mode bits from the prepared artifact, so each restore must make
+            # the overlaid tree writable again before the next install root is
+            # merged. Otherwise the second restore in a composed workspace can
+            # fail with EACCES when it tries to write into directories created
+            # by the first one.
             cp -a ${deps}/. ${lib.escapeShellArg target}/
+            chmod -R u+w ${lib.escapeShellArg target}
 
             export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
             export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
