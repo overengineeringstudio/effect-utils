@@ -1,26 +1,30 @@
 import { resolve } from 'node:path'
 
-import { describe, it, expect } from '@effect/vitest'
-import { Effect } from 'effect'
+import { expect, layer } from '@effect/vitest'
+import { Context, Effect, Layer } from 'effect'
 
 import { captureStoryProps } from '../src/StoryCapture.ts'
-import { discoverStories } from '../src/StoryDiscovery.ts'
+import { discoverStories, type DiscoverStoriesResult } from '../src/StoryDiscovery.ts'
 import { findStory } from '../src/StoryModule.ts'
 import { renderStory } from '../src/StoryRenderer.ts'
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
 const MEGAREPO_DIR = resolve(WORKSPACE_ROOT, 'packages/@overeng/megarepo')
 
-/* Eagerly kick off discovery once at module load and share the promise across all tests.
-   Without this, each test calls discoverStories() independently — the first call per file
-   pays the full glob + sequential-import cost (sequential due to the Bun TDZ workaround),
-   which on CI exceeds the default 5s vitest timeout. */
-const discoveryResult = Effect.runPromise(discoverStories({ packageDirs: [MEGAREPO_DIR] }))
+/* Story discovery is slow on CI (glob + sequential imports due to Bun TDZ workaround
+   can take >5s). Provide it as a layer so it runs once in beforeAll — independent of
+   per-test timeouts — and is shared across all tests via dependency injection. */
+class TestStories extends Context.Tag('TestStories')<TestStories, DiscoverStoriesResult>() {
+  static readonly layer = Layer.effect(
+    TestStories,
+    discoverStories({ packageDirs: [MEGAREPO_DIR] }),
+  )
+}
 
 /** Helper to discover + find + capture a story */
 const captureOrSkip = (query: string, overrides?: Record<string, unknown>) =>
   Effect.gen(function* () {
-    const { modules } = yield* Effect.promise(() => discoveryResult)
+    const { modules } = yield* TestStories
     const story = findStory({ modules, query })
     if (story === undefined) {
       console.warn(`Skipping: story "${query}" not found`)
@@ -29,7 +33,7 @@ const captureOrSkip = (query: string, overrides?: Record<string, unknown>) =>
     return yield* Effect.promise(() => captureStoryProps({ story, argOverrides: overrides }))
   })
 
-describe('StoryRenderer', () => {
+layer(TestStories.layer, { timeout: '30 seconds' })('StoryRenderer', (it) => {
   it.effect('renders log mode (no colors, no ANSI)', () =>
     Effect.gen(function* () {
       const captured = yield* captureOrSkip('CLI/Status/Basic')
