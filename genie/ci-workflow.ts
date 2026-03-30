@@ -246,7 +246,7 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
       return 0
     }
 
-    __flattened=$(tr '\n' ' ' < "$__log")
+    __flattened=$(tr '\\n' ' ' < "$__log")
     __path=$(grep -aoE "path '/nix/store/[^']+' is not valid" "$__log" | head -n 1 || true)
     if [ -n "$__path" ]; then
       __path=${'${__path#path \'}'}
