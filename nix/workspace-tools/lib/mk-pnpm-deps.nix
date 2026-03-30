@@ -94,33 +94,20 @@ in
       lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
-      # Embed a content-based fingerprint of the FOD's inputs in the derivation
-      # name. When inputs change, the name changes, which makes Nix treat this
-      # as a NEW derivation — bypassing any cached output from the local store
-      # or binary caches (cachix).
+      # Embed a content-based fingerprint in the derivation name so Nix treats
+      # lockfile changes as new derivations — bypassing stale binary cache outputs.
       #
-      # Without this, a binary cache can serve old (previously valid) outputs
-      # indefinitely, masking stale pnpmDepsHash values. The `nix build` command
-      # trusts local store content and never re-verifies the hash.
+      # Uses pnpmDepsHash (a pure string) instead of the src store path. The src
+      # store path varies across nix evaluator versions (e.g. devenv's pkgs.nix vs
+      # DeterminateSystems nix evaluate `self` to different store paths), which
+      # caused nix-check and nix-fod-check to disagree on derivation identity.
+      # pnpmDepsHash is stable across evaluators and changes when deps actually change.
+      #
+      # The CI store eviction mechanism (nix-cli.nix) handles the edge case where
+      # lockfile changes before hash updates by deleting cached outputs before building.
       #
       # See: https://blog.eigenvalue.net/nix-rerunning-fixed-output-derivations/
-      #
-      # Uses builtins.hashFile on lockfile content instead of the src store path.
-      # This ensures the fingerprint is stable across different nix evaluators
-      # (e.g. devenv's pkgs.nix vs DeterminateSystems nix) which may produce
-      # different store paths for the same git checkout.
-      #
-      # NOTE: This does NOT cover npm registry content drift (a tarball
-      # republished with different content at the same version). In that case
-      # the lockfile stays the same, so the fingerprint doesn't change and
-      # cachix can still serve a stale output. The CI store eviction in
-      # nix-cli.nix handles that edge case by deleting cached pnpm-deps
-      # outputs before building.
-      #
-      # TODO(nix-ca): Replace with content-addressed (CA) derivations once the
-      # experimental feature is production-ready and binary cache support is
-      # complete. CA derivations eliminate manually-maintained FOD hashes entirely.
-      # Track: NixOS/nix#6623
+      # TODO(nix-ca): Replace with CA derivations once production-ready (NixOS/nix#6623)
       srcFingerprint = builtins.substring 0 8 (
         builtins.hashString "sha256" pnpmDepsHash
       );
@@ -323,79 +310,18 @@ in
 
           strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
 
-          # Deterministically prune the lockfile to match the staged workspace closure.
-          # pnpm 11 rejects a full-workspace lockfile when the staged workspace only
-          # contains a subset of packages. Instead of using `pnpm install --lockfile-only
-          # --no-frozen-lockfile` (which contacts the registry and produces non-deterministic
-          # output), we prune the lockfile's importers section to only include packages
-          # that exist in the staged workspace. This is pure and deterministic (R05).
-	          echo "workspace-prep: pruning lockfile for $install_root"
-	          pruneStartedAt=$(timer_now)
+	          echo "workspace-prep: normalizing lockfile for $install_root"
+	          normalizeStartedAt=$(timer_now)
 	          (
 	            cd "$install_root"
-	            node <<'PRUNE_LOCKFILE'
-              const fs = require("fs");
-              const path = require("path");
-
-              const lockfilePath = "pnpm-lock.yaml";
-              const content = fs.readFileSync(lockfilePath, "utf8");
-
-              /* Prune importers whose package.json is absent from the staged workspace.
-               * Uses line-by-line parsing to avoid needing a YAML library. The pnpm
-               * lockfile v9 format has a top-level `importers:` section where each
-               * entry is indented 2 spaces with the importer path as key. */
-              const lines = content.split("\n");
-              const output = [];
-              let inImporters = false;
-              let skipEntry = false;
-              let importerIndent = -1;
-              let entryIndent = -1;
-
-              for (const line of lines) {
-                const trimmed = line.trimStart();
-                const indent = line.length - trimmed.length;
-
-                if (!inImporters) {
-                  if (trimmed === "importers:") {
-                    inImporters = true;
-                    importerIndent = indent;
-                  }
-                  output.push(line);
-                  continue;
-                }
-
-                // Empty line inside importers — keep only if not skipping
-                if (trimmed.length === 0) {
-                  if (!skipEntry) output.push(line);
-                  continue;
-                }
-
-                // Left importers section (same or less indent, non-empty)
-                if (indent <= importerIndent) {
-                  inImporters = false;
-                  skipEntry = false;
-                  output.push(line);
-                  continue;
-                }
-
-                // New importer entry (indent == importerIndent + 2, key ends with ":")
-                if (indent === importerIndent + 2 && trimmed.endsWith(":")) {
-                  entryIndent = indent;
-                  const key = trimmed.slice(0, -1).replace(/^['"]|['"]$/g, "");
-                  const dir = key === "." ? "." : key;
-                  skipEntry = !fs.existsSync(path.join(dir, "package.json"));
-                }
-
-                if (!skipEntry) {
-                  output.push(line);
-                }
-              }
-
-              fs.writeFileSync(lockfilePath, output.join("\n"));
-PRUNE_LOCKFILE
+            # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
+            # a reduced workspace closure. Rewriting the lockfile against the
+            # staged manifests produces the exact lock shape the subsequent
+            # frozen install expects.
+	            pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
 	          )
-	          echo "workspace-prep: pruned $install_root duration=$(timer_elapsed "$pruneStartedAt")s"
-	          log_path_stats "install-root:$install_root-after-prune" "$install_root"
+	          echo "workspace-prep: normalized $install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
+	          log_path_stats "install-root:$install_root-after-normalize" "$install_root"
 
 	          echo "workspace-prep: installing $install_root"
 	          installStartedAt=$(timer_now)
@@ -574,7 +500,6 @@ NODE
           -path '*/node_modules/.pnpm-workspace-state-*.json' -o \
           -path '*/node_modules/.pnpm/lock.yaml' \
         \) -delete
-
 
 	        # Restore original .npmrc (remove build-local settings that contain
 	        # non-deterministic paths like $STORE_PATH).
