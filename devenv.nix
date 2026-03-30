@@ -37,6 +37,7 @@ let
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
+    lock-sync = import ./nix/devenv-modules/tasks/shared/lock-sync.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
     beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
@@ -228,6 +229,7 @@ in
     taskModules.genie
     (taskModules.ts { })
     (taskModules.megarepo { })
+    (taskModules.lock-sync { })
     (taskModules.check { extraChecks = [ "workspace:check" ]; })
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task

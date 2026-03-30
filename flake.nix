@@ -142,6 +142,7 @@
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
           beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
+          lock-sync = import ./nix/devenv-modules/tasks/shared/lock-sync.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
