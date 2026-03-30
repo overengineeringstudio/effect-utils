@@ -216,9 +216,13 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
       return 0
     }
 
-    __esc=$(printf '\\033')
-    __flattened=$(tr '\\n' ' ' < "$__log" | sed "s/${'${__esc}'}\\[[0-9;]*m//g")
-    __path=$(printf '%s' "$__flattened" | sed -nE "s#.*error:[[:space:]]+path '(/nix/store/[^']*)'[[:space:]]+is not valid.*#\\1#p" | head -1 | tr -d '[:space:]' || true)
+    __flattened=$(tr '\\n' ' ' < "$__log")
+    __path=$(grep -aoE "path '/nix/store/[^']+' is not valid" "$__log" | head -n 1 || true)
+    if [ -n "$__path" ]; then
+      __path=\${__path#path \'}
+      __path=\${__path%\' is not valid}
+      __path=$(printf '%s' "$__path" | tr -d '[:space:]')
+    fi
     __saw_invalid_path=false
     __saw_cachix_signature=false
     [ -n "$__path" ] && __saw_invalid_path=true
