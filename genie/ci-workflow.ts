@@ -247,19 +247,22 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
     }
 
     __flattened=$(tr '\\n' ' ' < "$__log")
-    __path=$(grep -aoE "path '/nix/store/[^']+' is not valid" "$__log" | head -n 1 || true)
-    if [ -n "$__path" ]; then
-      __path=${'${__path#path \'}'}
-      __path=${'${__path%\' is not valid}'}
-      __path=$(printf '%s' "$__path" | tr -d '[:space:]')
-    fi
+    __path=$(printf '%s' "$__flattened" | sed -nE "s@.*path '(/nix/store/[^']+)' is not valid.*@\\1@p" | sed -n '1p' | tr -d '[:space:]' || true)
     __saw_invalid_path=false
     __saw_cachix_signature=false
     [ -n "$__path" ] && __saw_invalid_path=true
-    printf '%s' "$__flattened" | grep -q 'Failed to convert config\\.cachix to JSON' && __saw_cachix_signature=true || true
+    case "$__flattened" in
+      *"Failed to convert config.cachix to JSON"*)
+        __saw_cachix_signature=true
+        ;;
+    esac
     # Match the semantic signal, not the exact quote punctuation, so the shell
     # stays valid even when the human-facing error wraps the option name.
-    printf '%s' "$__flattened" | grep -q 'while evaluating the option' && printf '%s' "$__flattened" | grep -q 'cachix\\.package' && __saw_cachix_signature=true || true
+    case "$__flattened" in
+      *"while evaluating the option"*cachix.package*)
+        __saw_cachix_signature=true
+        ;;
+    esac
     rm -f "$__log"
     if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then
       echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
