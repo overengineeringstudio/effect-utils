@@ -6,9 +6,7 @@
   packageDir,
   workspaceRoot,
   workspaceSources ? { },
-  pnpmDepsHash ? null,
-  pnpmDepsHashes ? null,
-  lockfileHash ? null,
+  depsBuilds,
   binaryName ? name,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -287,47 +285,70 @@ let
   ];
   installRootScopedPath =
     installDir: relPath: if installDir == "." then relPath else "${installDir}/${relPath}";
-  installRootAttrName = installDir: if installDir == "." then "root" else installDir;
+  # Expose a stable, CLI-friendly attr key while keeping the real install dir
+  # in `dir`. This avoids leaking path separators into flake package names and
+  # keeps downstream tooling simple.
+  installRootAttrName =
+    installDir:
+    if installDir == "." then
+      "root"
+    else
+      lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] installDir);
   installRootDerivationName =
     installDir:
     if installDir == "." then name else "${name}-${lib.replaceStrings [ "/" ] [ "-" ] installDir}";
-  installRootHashEntries =
-    if pnpmDepsHashes == null then
-      [ ]
-    else
-      map (
-        entry:
-        if !(entry ? dir && entry ? hash) then
-          throw "mk-pnpm-cli: pnpmDepsHashes entries must be { dir, hash }"
-        else
-          {
-            dir = entry.dir;
-            hash = entry.hash;
-          }
-      ) pnpmDepsHashes;
+  installRootMemberDirs =
+    root:
+    if root ? memberDirs then lib.sort (left: right: left < right) root.memberDirs else [ root.installDir ];
+  /**
+    Generic identity for a filtered install-root dependency boundary.
+
+    This does not try to name downstream reuse profiles like "tui" or "full".
+    Upstream only exposes the authoritative filtered member set plus a stable
+    key derived from that set. Downstream repos can then decide whether a
+    repeated boundary is worth naming and sharing for amortization.
+  */
+  installRootProfileKey =
+    root:
+    builtins.hashString "sha256" (builtins.toJSON {
+      dir = root.installDir;
+      memberDirs = installRootMemberDirs root;
+    });
 
   /**
-    Resolve the fixed-output hash for one authoritative install root.
+    `depsBuilds` is the canonical source of truth for prepared pnpm artifacts.
 
-    Single-root CLIs can keep using `pnpmDepsHash`, because there is only one
-    prepared dependency artifact. Composed CLIs must provide `pnpmDepsHashes`
-    with one entry per install root so hash refresh can track each prepared
-    tree independently.
+    Each install root gets one fixed-output derivation, and the downstream CLI
+    derivation depends on those prepared artifacts directly. That means the
+    artifact hash already is the effective dependency fingerprint for downstream
+    rebuilds: if the prepared tree changes, the store path changes and the CLI
+    rebuilds; if it does not change, the CLI can reuse the cached deps build.
+
+    A second builder-level fingerprint would only help faster preflight stale
+    checks. It would not improve correctness, reuse, or downstream invalidation,
+    so that concern stays in tooling rather than the builder contract.
   */
-  pnpmDepsHashForInstallRoot =
-    installDir:
-    let
-      matches = builtins.filter (entry: entry.dir == installDir) installRootHashEntries;
-    in
-    if pnpmDepsHashes != null then
-      if matches == [ ] then
-        throw "mk-pnpm-cli: pnpmDepsHashes is missing an entry for install root ${installDir}"
-      else if builtins.length matches > 1 then
-        throw "mk-pnpm-cli: pnpmDepsHashes has multiple entries for install root ${installDir}"
+  depsBuildEntries =
+    map (
+      installDir:
+      let
+        entry = builtins.getAttr installDir depsBuilds;
+      in
+      if !(builtins.isAttrs entry && entry ? hash) then
+        throw "mk-pnpm-cli: depsBuilds.${installDir} must be { hash = \"sha256-...\"; }"
       else
-        (builtins.head matches).hash
+        {
+          dir = installDir;
+          hash = entry.hash;
+        }
+    ) (builtins.attrNames depsBuilds);
+
+  depsBuildHashForInstallRoot =
+    installDir:
+    if !(builtins.hasAttr installDir depsBuilds) then
+      throw "mk-pnpm-cli: depsBuilds is missing an entry for install root ${installDir}"
     else
-      pnpmDepsHash;
+      (builtins.getAttr installDir depsBuilds).hash;
 
   copyFileCmd =
     relPath:
@@ -527,7 +548,7 @@ let
         + stageExternalInstallRootManifestOnlyCmd root
       );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
-      pnpmDeps = pnpmDepsHelper.mkDeps {
+      depsBuild = pnpmDepsHelper.mkDeps {
         name = installRootDerivationName root.installDir;
         src = depsSrc;
         sourceRoot = ".";
@@ -535,13 +556,13 @@ let
         preInstall = ''
           chmod -R +w .
         '';
-        pnpmDepsHash = pnpmDepsHashForInstallRoot root.installDir;
+        pnpmDepsHash = depsBuildHashForInstallRoot root.installDir;
       };
     in
     root
     // {
       attrName = installRootAttrName root.installDir;
-      inherit depsSrc lockfilePath pnpmDeps;
+      inherit depsSrc lockfilePath depsBuild;
     }
   ) externalInstallRoots;
 
@@ -553,9 +574,9 @@ let
     installDir = ".";
     lockfilePath = "pnpm-lock.yaml";
     depsSrc = rootDepsSrc;
-    pnpmDeps = pnpmDepsHelper.mkDeps {
+    depsBuild = pnpmDepsHelper.mkDeps {
       inherit name;
-      pnpmDepsHash = pnpmDepsHashForInstallRoot ".";
+      pnpmDepsHash = depsBuildHashForInstallRoot ".";
       src = rootDepsSrc;
       sourceRoot = ".";
       lockfilePaths = [ "pnpm-lock.yaml" ];
@@ -564,43 +585,37 @@ let
       '';
     };
   };
-  pnpmDepsInstallRoots = [ rootInstallRoot ] ++ externalInstallRootDeps;
-  installRootDirs = map (root: root.installDir) pnpmDepsInstallRoots;
-  unusedInstallRootHashEntries = builtins.filter (
-    entry: !(lib.elem entry.dir installRootDirs)
-  ) installRootHashEntries;
+  depsInstallRoots = [ rootInstallRoot ] ++ externalInstallRootDeps;
+  installRootDirs = map (root: root.installDir) depsInstallRoots;
+  unknownDepsBuildDirs = builtins.filter (dir: !(lib.elem dir installRootDirs)) (builtins.attrNames depsBuilds);
   _validateInstallRootHashContract =
-    if pnpmDepsHash != null && pnpmDepsHashes != null then
-      throw "mk-pnpm-cli: pass either pnpmDepsHash or pnpmDepsHashes, not both"
-    else if builtins.length pnpmDepsInstallRoots == 1 then
-      if pnpmDepsHash == null && pnpmDepsHashes == null then
-        throw "mk-pnpm-cli: single-root builds require pnpmDepsHash"
-      else if pnpmDepsHashes != null && unusedInstallRootHashEntries != [ ] then
-        throw "mk-pnpm-cli: pnpmDepsHashes contains unknown install roots"
-      else
-        true
-    else if pnpmDepsHashes == null then
+    if unknownDepsBuildDirs != [ ] then
+      throw "mk-pnpm-cli: depsBuilds contains unknown install roots"
+    else if builtins.length depsInstallRoots == 0 then
+      throw "mk-pnpm-cli: expected at least one install root"
+    else if builtins.any (installDir: !(builtins.hasAttr installDir depsBuilds)) installRootDirs then
       throw ''
-        mk-pnpm-cli: composed builds require pnpmDepsHashes = [
-          { dir = "."; hash = "..."; }
-          ...
-        ]
+        mk-pnpm-cli: depsBuilds must provide one { hash = "..."; } entry per install root.
+        discovered install roots: ${builtins.toJSON installRootDirs}
+        provided depsBuild keys: ${builtins.toJSON (builtins.attrNames depsBuilds)}
+        example:
+          depsBuilds = {
+            "." = { hash = "sha256-..."; };
+          };
       ''
-    else if unusedInstallRootHashEntries != [ ] then
-      throw "mk-pnpm-cli: pnpmDepsHashes contains unknown install roots"
     else
       true;
-  pnpmDepsByInstallRoot = builtins.listToAttrs (
+  depsBuildsByInstallRoot = builtins.listToAttrs (
     map (root: {
       name = root.attrName;
-      value = root.pnpmDeps;
-    }) pnpmDepsInstallRoots
+      value = root.depsBuild;
+    }) depsInstallRoots
   );
   depsSrcByInstallRoot = builtins.listToAttrs (
     map (root: {
       name = root.attrName;
       value = root.depsSrc;
-    }) pnpmDepsInstallRoots
+    }) depsInstallRoots
   );
 
   materializeWorkspace =
@@ -708,21 +723,19 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
   passthru = {
     depsSrc = rootDepsSrc;
-    inherit depsSrcByInstallRoot pnpmDepsByInstallRoot;
+    inherit depsSrcByInstallRoot depsBuildsByInstallRoot;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;
-    }) pnpmDepsInstallRoots;
-    pnpmDepsHashEntries = map (root: {
+      memberDirs = installRootMemberDirs root;
+      profileKey = installRootProfileKey root;
+    }) depsInstallRoots;
+    depsBuildEntries = map (root: {
       dir = root.installDir;
       attrName = root.attrName;
-      hash = pnpmDepsHashForInstallRoot root.installDir;
-    }) pnpmDepsInstallRoots;
-  }
-  // lib.optionalAttrs (builtins.length pnpmDepsInstallRoots == 1) {
-    # Expose the hashed deps artifact directly so tooling such as
-    # nix-hash-refresh can target the real fixed-output boundary instead of the
-    # slower top-level CLI derivation.
-    pnpmDeps = rootInstallRoot.pnpmDeps;
+      memberDirs = installRootMemberDirs root;
+      profileKey = installRootProfileKey root;
+      hash = depsBuildHashForInstallRoot root.installDir;
+    }) depsInstallRoots;
   };
 
   buildPhase = ''
@@ -755,25 +768,8 @@ pkgs.stdenv.mkDerivation {
       echo "cli-build: phase=$phase cli=${binaryName} package=${packageDir} $*"
     }
 
-    ${
-      if lockfileHash != null then
-        ''
-          currentHash="sha256-$(nix-hash --type sha256 --base64 ${workspaceClosureSrc}/pnpm-lock.yaml)"
-          if [ "$currentHash" != "${lockfileHash}" ]; then
-            echo ""
-            echo "error: lockfileHash is stale (run: dt nix:hash)"
-            echo "  expected: ${lockfileHash}"
-            echo "  actual:   $currentHash"
-            echo ""
-            exit 1
-          fi
-        ''
-      else
-        ""
-    }
-
     buildStartedAt=$(timer_now)
-    log_cli_phase "start" "install_roots=${toString (builtins.length pnpmDepsInstallRoots)}"
+    log_cli_phase "start" "install_roots=${toString (builtins.length depsInstallRoots)}"
 
     echo "Copying filtered aggregate workspace..."
     workspaceCopyStartedAt=$(timer_now)
@@ -785,11 +781,11 @@ pkgs.stdenv.mkDerivation {
       map (
         root:
         pnpmDepsHelper.mkRestoreScript {
-          deps = root.pnpmDeps;
+          deps = root.depsBuild;
           target = "workspace";
           label = root.installDir;
         }
-      ) pnpmDepsInstallRoots
+      ) depsInstallRoots
     )}
     chmod -R +w workspace
 
