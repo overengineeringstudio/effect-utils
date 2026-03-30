@@ -86,9 +86,9 @@
             # Publish the FODs as first-class flake outputs so external tooling
             # can refresh hashes against the actual cached boundary without
             # rebuilding the full CLI package graph.
-            "genie-pnpm-deps" = cliPackages.genie.passthru.pnpmDeps;
+            "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
             megarepo-dirty = cliPackagesDirty.megarepo;
-            "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.pnpmDeps;
+            "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
             "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
             # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
             oxlint-npm = oxlintNpm;

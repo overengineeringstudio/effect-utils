@@ -39,3 +39,25 @@ When a downstream repo consumes `effect-utils` packages or pnpm-based builders,
 its root `nixpkgs` and `flake-utils` should follow `effect-utils/nixpkgs` and
 `effect-utils/flake-utils`. That keeps prepared pnpm trees content-addressed
 against one canonical build graph across standalone and composed views.
+
+For `mk-pnpm-cli`, the core contract mirrors the layered derivation graph:
+
+```nix
+depsBuilds = {
+  "." = { hash = "sha256-..."; };
+  "repos/effect-utils" = { hash = "sha256-..."; };
+};
+```
+
+- single-root CLIs use one `"."` entry
+- composed CLIs use one entry per authoritative install root
+
+Each `hash` is the authoritative fixed-output hash of one prepared deps
+artifact. The downstream CLI derivation depends on those artifacts directly, so
+the artifact hash already is the effective dependency fingerprint for rebuilds.
+Any faster preflight staleness check belongs in tooling, not in the builder API.
+
+The helper exposes the resulting install-root metadata via
+`passthru.installRoots`, `passthru.depsBuildsByInstallRoot`, and
+`passthru.depsBuildEntries` so downstream hash-refresh tooling can target the
+real prepared dependency boundary for each root.
