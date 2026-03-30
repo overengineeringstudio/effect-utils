@@ -105,6 +105,36 @@ const resolveDevenvFnScript = `resolve_devenv() {
   nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
+const repoUrlToFlakeRefScript = `repo_url_to_flake_ref() {
+  local url="$1" rev="$2" normalized
+  case "$url" in
+    git@github.com:*)
+      normalized=${'${url#git@github.com:}'}
+      normalized=${'${normalized%.git}'}
+      printf 'git+ssh://git@github.com/%s?rev=%s' "$normalized" "$rev"
+      ;;
+    ssh://git@github.com/*)
+      normalized=${'${url#ssh://git@github.com/}'}
+      normalized=${'${normalized%.git}'}
+      printf 'git+ssh://git@github.com/%s?rev=%s' "$normalized" "$rev"
+      ;;
+    https://github.com/*)
+      normalized=${'${url#https://github.com/}'}
+      normalized=${'${normalized%.git}'}
+      printf 'git+https://github.com/%s?rev=%s' "$normalized" "$rev"
+      ;;
+    http://github.com/*)
+      normalized=${'${url#http://github.com/}'}
+      normalized=${'${normalized%.git}'}
+      printf 'git+http://github.com/%s?rev=%s' "$normalized" "$rev"
+      ;;
+    *)
+      echo "::error::unsupported megarepo repo URL: $url" >&2
+      return 1
+      ;;
+  esac
+}`
+
 const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
 
 /** Build extra-conf / NIX_CONFIG content for common Nix feature flags. */
@@ -216,8 +246,13 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
       return 0
     }
 
-    __flattened=$(perl -0pe 's/\\e\\[[0-9;]*m//g; s/\\n/ /g' "$__log")
-    __path=$(printf '%s' "$__flattened" | grep -oP "error:\\s+path '\\K/nix/store/[^']*(?='\\s+is not valid)" 2>/dev/null | head -1 | tr -d '[:space:]' || true)
+    __flattened=$(tr '\n' ' ' < "$__log")
+    __path=$(grep -aoE "path '/nix/store/[^']+' is not valid" "$__log" | head -n 1 || true)
+    if [ -n "$__path" ]; then
+      __path=${'${__path#path \'}'}
+      __path=${'${__path%\' is not valid}'}
+      __path=$(printf '%s' "$__path" | tr -d '[:space:]')
+    fi
     __saw_invalid_path=false
     __saw_cachix_signature=false
     [ -n "$__path" ] && __saw_invalid_path=true
@@ -527,14 +562,21 @@ export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
   return {
     name: 'Sync megarepo dependencies',
     env: { MEGAREPO_STORE: jobLocalMegarepoStore },
-    run: `EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
+    run: `EU_URL=$(jq -r '.members["effect-utils"].url' megarepo.lock)
+if [ -z "$EU_URL" ] || [ "$EU_URL" = "null" ]; then
+  echo '::error::megarepo.lock missing members["effect-utils"].url'
+  exit 1
+fi
+EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
 if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
   echo '::error::megarepo.lock missing members["effect-utils"].commit'
   exit 1
 fi
+${repoUrlToFlakeRefScript}
+EU_FLAKE_REF=$(repo_url_to_flake_ref "$EU_URL" "$EU_REV") || exit 1
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "$EU_FLAKE_REF#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
