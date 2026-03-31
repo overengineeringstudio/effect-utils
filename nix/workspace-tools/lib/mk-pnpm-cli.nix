@@ -777,7 +777,7 @@ pkgs.stdenv.mkDerivation {
     chmod -R +w workspace
     log_cli_phase "workspace-copy" "duration=$(timer_elapsed "$workspaceCopyStartedAt")s"
 
-    ${builtins.concatStringsSep "\n" (
+    ${builtins.concatStringsSep "\nchmod -R +w workspace\n" (
       map (
         root:
         pnpmDepsHelper.mkRestoreScript {
