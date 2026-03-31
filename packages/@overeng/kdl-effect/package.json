@@ -16,15 +16,15 @@
     "@overeng/kdl": "workspace:^"
   },
   "devDependencies": {
-    "@effect/vitest": "0.27.0",
+    "@effect/vitest": "0.29.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "25.3.3",
-    "effect": "3.19.19",
+    "effect": "3.21.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "effect": "^3.19.19"
+    "effect": "^3.21.0"
   },
   "$genie": {
     "source": "package.json.genie.ts",

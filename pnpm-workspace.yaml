@@ -38,14 +38,18 @@ packageExtensions:
       '@types/react': 19.2.7
       '@types/react-dom': 19.2.3
 
+peerDependencyRules:
+  allowedVersions:
+    '@effect/experimental': '>=0.58.0'
+    '@effect/platform': '>=0.94.2'
+    '@effect/rpc': '>=0.73.0'
+
 allowBuilds:
   '@parcel/watcher': true
   esbuild: true
   msgpackr-extract: true
   sharp: true
   unix-dgram: true
-
-minimumReleaseAge: 4320
 
 supportedArchitectures:
   os: [linux, darwin]
