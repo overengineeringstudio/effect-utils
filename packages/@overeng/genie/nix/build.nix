@@ -24,7 +24,10 @@ let
     # Managed by `dt nix:hash:genie` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-6mqWjemOQ52s87Js86pFrMKiDS64B4kasEhlZPYYnGE=";
+        hash = {
+          aarch64-darwin = "sha256-6mqWjemOQ52s87Js86pFrMKiDS64B4kasEhlZPYYnGE=";
+          x86_64-linux = "sha256-WwjmAkCfBA8HFdihp1K40AD1StXOp69fN+3G2RbRHuA=";
+        }.${pkgs.stdenv.hostPlatform.system} or (throw "genie: unsupported system ${pkgs.stdenv.hostPlatform.system}");
       };
     };
     inherit gitRev commitTs dirty;
