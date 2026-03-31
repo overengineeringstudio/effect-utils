@@ -117,6 +117,9 @@ export const catalog = defineCatalog({
   '@opentelemetry/sdk-trace-web': '2.2.0',
   '@opentelemetry/semantic-conventions': '1.38.0',
 
+  // Schema
+  '@standard-schema/spec': '1.1.0',
+
   // Effect ecosystem
   '@effect/ai': '0.33.2',
   'effect-distributed-lock': '0.0.11',
