@@ -15,6 +15,7 @@ import {
   checkFile,
   checkFileDetailed,
   errorOriginatesInFile,
+  findCatalogConflictError,
   generateFile,
   type LoadedGenieFile,
   isTdzError,
@@ -224,6 +225,11 @@ export const generateAll = ({
     const successes = results.filter(Either.isRight).map((r) => r.right)
     const failures = results.filter(Either.isLeft).map((r) => r.left)
 
+    // Surface CatalogConflictError from initial failures before TDZ re-validation
+    const catalogConflict = failures
+      .map((f) => findCatalogConflictError(f.cause))
+      .find((e) => e !== undefined)
+
     // Handle TDZ errors with sequential re-validation
     const hasTdzErrors = failures.some((f) => isTdzError(f.cause))
 
@@ -262,9 +268,14 @@ export const generateAll = ({
       const summary = computeSummary({ successes, failedCount: revalidateErrors.length })
       yield* emit({ _tag: 'Complete', summary })
 
+      const catalogConflictHint =
+        catalogConflict !== undefined
+          ? `\n\nRoot cause: ${catalogConflict.message}`
+          : ''
+
       return yield* new GenieGenerationFailedError({
         failedCount: revalidateErrors.length,
-        message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)`,
+        message: `${rootCauses.length} root cause error(s), ${dependentCount} dependent failure(s)${catalogConflictHint}`,
         files: genieFiles.map((p) => {
           const reErr = revalidateErrors.find((e) => e.genieFilePath === p)
           return {

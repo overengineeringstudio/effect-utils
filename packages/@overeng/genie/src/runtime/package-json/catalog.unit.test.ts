@@ -179,6 +179,38 @@ describe('defineCatalog', () => {
         }),
       ).toThrow('effect')
     })
+
+    it('includes remediation guidance in error message', () => {
+      try {
+        defineCatalog({
+          extends: baseCatalog,
+          packages: {
+            effect: '3.20.0',
+          },
+        })
+        expect.fail('Should have thrown')
+      } catch (err) {
+        const error = err as CatalogConflictError
+        expect(error.message).toContain('Remove "effect" from the extending catalog')
+        expect(error.message).toContain('TDZ errors')
+      }
+    })
+
+    it('includes TDZ cascade warning in error message', () => {
+      try {
+        defineCatalog({
+          extends: baseCatalog,
+          packages: {
+            effect: '3.20.0',
+          },
+        })
+        expect.fail('Should have thrown')
+      } catch (err) {
+        const error = err as CatalogConflictError
+        expect(error.message).toContain('Cannot access')
+        expect(error.message).toContain('masking the root cause')
+      }
+    })
   })
 
   describe('multiple extends', () => {
@@ -218,6 +250,26 @@ describe('defineCatalog', () => {
           packages: {},
         }),
       ).toThrow(CatalogConflictError)
+    })
+
+    it('includes remediation guidance for base-base conflicts', () => {
+      const catalogConflicting = defineCatalog({
+        effect: '3.20.0',
+      })
+
+      try {
+        defineCatalog({
+          extends: [catalogA, catalogConflicting],
+          packages: {},
+        })
+        expect.fail('Should have thrown')
+      } catch (err) {
+        const error = err as CatalogConflictError
+        expect(error.packageName).toBe('effect')
+        expect(error.baseVersion).toBe('3.19.14')
+        expect(error.newVersion).toBe('3.20.0')
+        expect(error.message).toContain('Remove "effect" from the extending catalog')
+      }
     })
 
     it('allows same version across multiple bases', () => {
