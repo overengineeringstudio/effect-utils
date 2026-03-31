@@ -177,7 +177,10 @@ export class CatalogConflictError extends Error {
   constructor(args: { packageName: string; baseVersion: string; newVersion: string }) {
     const { packageName, baseVersion, newVersion } = args
     super(
-      `Catalog conflict for "${packageName}": base has "${baseVersion}" but extending with "${newVersion}"`,
+      `Catalog conflict for "${packageName}": base has "${baseVersion}" but extending with "${newVersion}". ` +
+        `Remove "${packageName}" from the extending catalog or update its version to match the base. ` +
+        `Note: this error occurs during module initialization and will cascade as TDZ errors ` +
+        `(Cannot access 'X' before initialization) in all downstream imports, masking the root cause.`,
     )
     this.packageName = packageName
     this.baseVersion = baseVersion

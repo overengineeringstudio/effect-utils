@@ -15,6 +15,7 @@ import { DistributedSemaphore } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
+import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import { ensureImportMapResolver } from './discovery.ts'
 import {
   GenieCheckError,
@@ -75,6 +76,22 @@ const safeErrorString = (error: unknown): string => {
 export const isTdzError = (error: unknown): error is ReferenceError =>
   error instanceof ReferenceError &&
   /Cannot access .* before initialization/.test((error as Error).message)
+
+/**
+ * Check if an error (or its cause chain) contains a CatalogConflictError.
+ *
+ * CatalogConflictErrors thrown during module initialization abort the module,
+ * causing all downstream imports to produce TDZ errors. Detecting the original
+ * CatalogConflictError in the cause chain lets us surface the root cause.
+ */
+export const findCatalogConflictError = (error: unknown): CatalogConflictError | undefined => {
+  let current: unknown = error
+  while (current instanceof Error) {
+    if (current instanceof CatalogConflictError) return current
+    current = current.cause
+  }
+  return undefined
+}
 
 /**
  * Check if an error originated in the given file (vs being propagated from a dependency).
