@@ -118,4 +118,12 @@ export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
   patchedDependencies: utilsPatches,
   allowUnusedPatches: true as const,
+  peerDependencyRules: {
+    /** @effect-atom/atom@0.5.3 pins pre-1.0 Effect peer ranges that don't cover our versions */
+    allowedVersions: {
+      '@effect/experimental': '>=0.58.0',
+      '@effect/platform': '>=0.94.2',
+      '@effect/rpc': '>=0.73.0',
+    },
+  },
 }

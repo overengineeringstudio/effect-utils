@@ -25,7 +25,7 @@ let
   pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
   pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-mWnkWtRmuprynlacvBIE+PHJgm3hXX4RNdhLqEDfnu0=";
+  pnpmDepsHash = "sha256-q3xWg/lQASa/jIc7kM0dj3Zz0JwlKMfJGW1Din2X2n0=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
