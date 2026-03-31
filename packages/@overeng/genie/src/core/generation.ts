@@ -14,8 +14,8 @@ import { Duration, Effect, Either, Option } from 'effect'
 import { DistributedSemaphore } from '@overeng/utils'
 import { FileSystemBacking } from '@overeng/utils/node'
 
-import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import type { GenieOutput } from '../runtime/mod.ts'
+import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import { ensureImportMapResolver } from './discovery.ts'
 import {
   GenieCheckError,

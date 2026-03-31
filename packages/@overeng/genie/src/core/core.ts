@@ -269,9 +269,7 @@ export const generateAll = ({
       yield* emit({ _tag: 'Complete', summary })
 
       const catalogConflictHint =
-        catalogConflict !== undefined
-          ? `\n\nRoot cause: ${catalogConflict.message}`
-          : ''
+        catalogConflict !== undefined ? `\n\nRoot cause: ${catalogConflict.message}` : ''
 
       return yield* new GenieGenerationFailedError({
         failedCount: revalidateErrors.length,
