@@ -27,6 +27,13 @@ describe('ci workflow retry helpers', () => {
     )
   })
 
+  it('avoids non-portable perl and grep -P usage in the retry helper', () => {
+    expect(ciWorkflowSource).not.toContain('perl -0pe')
+    expect(ciWorkflowSource).not.toContain('grep -oP')
+    expect(ciWorkflowSource).toContain("tr '\\n' ' ' < \"$__log\"")
+    expect(ciWorkflowSource).toContain('sed -n "s#.*error:[[:space:]]*path')
+  })
+
   it('retries cachix wrapper failures even when the invalid store path was not extracted', () => {
     expect(ciWorkflowSource).toContain(
       'if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then',
