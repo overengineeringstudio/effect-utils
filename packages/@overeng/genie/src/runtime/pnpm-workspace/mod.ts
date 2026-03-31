@@ -569,6 +569,22 @@ export interface PnpmWorkspaceData {
   blockExoticSubdeps?: boolean
 
   /**
+   * Minimum number of minutes that must pass after a version is published
+   * before pnpm will install it. Mitigates supply chain attacks by ensuring
+   * newly published (potentially compromised) versions are not installed
+   * before the community has a chance to detect them.
+   * @see https://pnpm.io/pnpm-workspace_yaml#minimumreleaseage
+   */
+  minimumReleaseAge?: number
+
+  /**
+   * Packages exempt from the `minimumReleaseAge` restriction.
+   * Supports exact names and glob patterns (e.g. `@myorg/*`).
+   * @see https://pnpm.io/pnpm-workspace_yaml#minimumreleaseageexclude
+   */
+  minimumReleaseAgeExclude?: readonly string[]
+
+  /**
    * Allow deprecated versions for specific packages.
    * @see https://pnpm.io/pnpm-workspace_yaml#alloweddeprecatedversions
    */
@@ -829,6 +845,14 @@ const buildPnpmWorkspaceYaml = <T extends PnpmWorkspaceData>({
 
   if (data.blockExoticSubdeps !== undefined) {
     result.blockExoticSubdeps = data.blockExoticSubdeps
+  }
+
+  if (data.minimumReleaseAge !== undefined) {
+    result.minimumReleaseAge = data.minimumReleaseAge
+  }
+
+  if (data.minimumReleaseAgeExclude !== undefined) {
+    result.minimumReleaseAgeExclude = [...data.minimumReleaseAgeExclude]
   }
 
   if (data.allowedDeprecatedVersions !== undefined) {

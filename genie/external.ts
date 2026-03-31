@@ -245,6 +245,8 @@ export const commonPnpmPolicySettings = {
   /** Disable until pnpm#10393 is resolved (install no-ops for workspace changes) */
   optimisticRepeatInstall: false as const,
   verifyDepsBeforeRun: false as const,
+  /** 3-day quarantine for newly published versions to mitigate supply chain attacks */
+  minimumReleaseAge: 4320,
   supportedArchitectures: {
     os: ['linux', 'darwin'],
     cpu: ['x64', 'arm64'],
