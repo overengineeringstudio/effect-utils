@@ -1226,9 +1226,8 @@ jobs:
         run: |
           set -euo pipefail
           for attr in '.#genie-pnpm-deps' '.#megarepo-pnpm-deps' '.#oxc-config-plugin-pnpm-deps'; do
-            echo "::group::rebuild-check $attr"
-            nix build --no-link "$attr"
-            nix build --no-link --rebuild "$attr"
+            echo "::group::cold-build $attr"
+            nix build --no-link --option substitute false "$attr"
             echo "::endgroup::"
           done
       - name: Nix diagnostics summary
