@@ -460,15 +460,18 @@ export const savePnpmStoreStep = (opts?: {
 }
 
 /**
- * Validate exported pnpm fixed-output derivations by evicting any cached
- * outputs and rebuilding from scratch.
+ * Validate exported pnpm fixed-output derivations by realizing them (which
+ * may substitute from Cachix), then evicting the output and rebuilding from
+ * scratch.
  *
- * FOD derivation hashes are computed from the declared output hash, not the
- * build inputs. When Cachix has a previously-valid output cached under that
- * derivation hash, `nix build` (and even `nix build --rebuild`) will reuse it
- * without detecting that the declared hash is stale. Evicting the specific FOD
- * output forces Nix to re-derive it while still allowing substitution for
- * transitive dependencies (nixpkgs packages, etc.).
+ * FOD output paths are deterministic from the declared hash. If Cachix has a
+ * previously-valid output (uploaded when the hash was correct), Nix substitutes
+ * it without rebuilding — even if the hash is now stale. `--rebuild` also
+ * doesn't help because it compares the rebuild against the same trusted output.
+ *
+ * The fix: realize → evict → rebuild. The second build must produce the output
+ * locally. If the declared hash doesn't match the actual pnpm install result,
+ * the build fails with a hash mismatch.
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
@@ -483,12 +486,15 @@ export const validateColdPnpmDepsStep = ({
     'set -euo pipefail',
     `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
     '  echo "::group::cold-build $attr"',
-    '  # Evict cached FOD output so Nix must re-derive it',
+    '  # Step 1: Realize (may substitute from cache) to populate dependencies',
+    '  nix build --no-link "$attr" || true',
+    '  # Step 2: Evict the (possibly stale) cached FOD output',
     '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
-    '  if [ -n "$outPath" ] && [ -e "$outPath" ]; then',
+    '  if [ -n "$outPath" ]; then',
     '    echo "  evicting: $outPath"',
     '    nix store delete "$outPath" 2>/dev/null || true',
     '  fi',
+    '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
     '  nix build --no-link "$attr"',
     '  echo "::endgroup::"',
     'done',
