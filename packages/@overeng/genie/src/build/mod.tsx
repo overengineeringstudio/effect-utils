@@ -55,6 +55,9 @@ const dispatchEvent = (tui: { dispatch: (action: any) => void }, event: GenieEve
     case 'Error':
       tui.dispatch({ _tag: 'Error', message: event.message })
       break
+    case 'ValidationWarnings':
+      tui.dispatch({ _tag: 'ValidationWarnings', message: event.message })
+      break
   }
 }
 

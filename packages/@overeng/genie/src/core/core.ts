@@ -8,6 +8,7 @@ import { Effect, Either, Option, Ref } from 'effect'
 
 import { assertNever } from '@overeng/utils'
 
+import { formatValidationIssues } from '../runtime/package-json/validation.ts'
 import { findGenieFiles } from './discovery.ts'
 import { GenieGenerationFailedError } from './errors.ts'
 import { type GenieEventBus, emit } from './events.ts'
@@ -152,6 +153,12 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
       message,
       files: [],
     })
+  }
+
+  const warnings = validationResult.right
+  if (warnings.length > 0) {
+    const formatted = formatValidationIssues(warnings)
+    yield* emit({ _tag: 'ValidationWarnings', message: formatted })
   }
 })
 

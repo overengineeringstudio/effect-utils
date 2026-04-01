@@ -581,6 +581,33 @@ export const ValidationFailedDuringGeneration: Story = {
   },
 }
 
+/** Validation warnings (non-blocking peer dep mismatches, etc.) */
+export const WithWarnings: Story = {
+  args: { mode: 'check', interactive: false },
+  argTypes: {
+    interactive: { control: false },
+    playbackSpeed: { control: false },
+  },
+  render: (args) => {
+    const stateConfig = useMemo(
+      () => fixtures.createWithWarningsState({ mode: args.mode }),
+      [args.mode],
+    )
+
+    return (
+      <TuiStoryPreview
+        command="genie build"
+        View={GenieView}
+        app={GenieApp}
+        initialState={stateConfig}
+        height={args.height}
+        autoRun={false}
+        tabs={ALL_OUTPUT_TABS}
+      />
+    )
+  },
+}
+
 /** Files skipped (parent directory missing, etc.) */
 export const WithSkipped: Story = {
   render: (args) => {

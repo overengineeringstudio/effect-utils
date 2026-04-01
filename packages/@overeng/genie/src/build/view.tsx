@@ -456,7 +456,7 @@ export interface GenieViewProps {
  */
 export const GenieView = ({ stateAtom }: GenieViewProps) => {
   const state = useTuiAtomValue(stateAtom)
-  const { phase, mode, cwd, files, summary, error, watchCycle } = state
+  const { phase, mode, cwd, files, summary, error, warnings, watchCycle } = state
 
   // ===================
   // Discovering Phase
@@ -537,6 +537,19 @@ export const GenieView = ({ stateAtom }: GenieViewProps) => {
           hasSummary={summary !== undefined}
           expanded={true}
         />
+      )}
+
+      {/* Validation warnings */}
+      {warnings && (
+        <>
+          <Text> </Text>
+          <Text bold backgroundColor="yellow" color="black">
+            {' '}
+            WARNING{' '}
+          </Text>
+          <Text> </Text>
+          <Text dim>{warnings}</Text>
+        </>
       )}
 
       {/* Separator and summary */}

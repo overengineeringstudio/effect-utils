@@ -253,6 +253,31 @@ export const createValidationFailedState = (overrides: { mode?: GenieMode } = {}
   })
 
 /**
+ * Warnings-only state - all files pass but validation emits warnings.
+ */
+export const createWithWarningsState = (overrides: { mode?: GenieMode } = {}): GenieState =>
+  createState({
+    mode: overrides.mode ?? 'check',
+    files: [
+      {
+        path: '/workspace/pnpm-workspace.yaml',
+        relativePath: 'pnpm-workspace.yaml',
+        status: 'unchanged',
+      },
+      {
+        path: '/workspace/packages/foo/package.json',
+        relativePath: 'packages/foo/package.json',
+        status: 'unchanged',
+      },
+    ],
+    summary: { created: 0, updated: 0, unchanged: 2, skipped: 0, failed: 0 },
+    warnings: `\n@effect-atom/atom:
+  \u26A0 @effect-atom/atom@0.5.3 peers on @effect/experimental: ^0.58.0, but catalog has 0.60.0 (suppressed by peerDependencyRules)
+  \u26A0 @effect-atom/atom@0.5.3 peers on @effect/platform: ^0.94.2, but catalog has 0.96.0 (suppressed by peerDependencyRules)
+  \u26A0 @effect-atom/atom@0.5.3 peers on @effect/rpc: ^0.73.0, but catalog has 0.75.0 (suppressed by peerDependencyRules)`,
+  })
+
+/**
  * Mixed error types - combination of errors + skipped + success.
  */
 export const createMixedErrorTypesState = (): GenieState =>
