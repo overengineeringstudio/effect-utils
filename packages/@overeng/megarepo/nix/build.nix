@@ -23,9 +23,7 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = if pkgs.stdenv.isDarwin
-          then "sha256-lkMbv1HbXuQHbVa5C8D/Nd/hOc95j8k6PkfartCgxdo="
-          else "sha256-5h/sfU8jgeNdmKxJA7nK+jGjFqMsCXX6R65DxxiB7I0=";
+        hash = "sha256-5h/sfU8jgeNdmKxJA7nK+jGjFqMsCXX6R65DxxiB7I0=";
       };
     };
     smokeTestArgs = [ "--help" ];
