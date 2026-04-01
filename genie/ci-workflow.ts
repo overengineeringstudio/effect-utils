@@ -283,7 +283,7 @@ export const evictCachedPnpmDepsStep = ({
     '        nix store delete "$outPath" 2>/dev/null || true',
     '      fi',
     '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\\.drv$" || true)',
+    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\\.drv$" || true)',
     'fi',
   ].join('\n'),
 })

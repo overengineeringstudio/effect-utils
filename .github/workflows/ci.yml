@@ -136,7 +136,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -414,7 +414,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -695,7 +695,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -976,7 +976,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -1408,7 +1408,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"

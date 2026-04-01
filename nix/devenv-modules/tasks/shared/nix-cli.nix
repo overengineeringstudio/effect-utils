@@ -392,7 +392,7 @@ let
     if [ -n "''${CI:-}" ]; then
       topDrv=$(${pkgs.nix}/bin/nix path-info --derivation "$flakeRef" 2>/dev/null || true)
       if [ -n "$topDrv" ]; then
-        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
+        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true); do
           for outPath in $(${pkgs.nix}/bin/nix-store -q --outputs "$drv" 2>/dev/null || true); do
             if [ -e "$outPath" ]; then
               echo "  evicting cached: $(basename "$outPath")"
