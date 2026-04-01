@@ -136,7 +136,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -414,7 +414,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -695,7 +695,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -976,7 +976,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -1226,9 +1226,17 @@ jobs:
         run: |
           set -euo pipefail
           for attr in '.#genie-pnpm-deps' '.#megarepo-pnpm-deps' '.#oxc-config-plugin-pnpm-deps'; do
-            echo "::group::rebuild-check $attr"
+            echo "::group::cold-build $attr"
+            # Step 1: Realize (may substitute from cache) to populate dependencies
+            nix build --no-link "$attr" || true
+            # Step 2: Evict the (possibly stale) cached FOD output
+            outPath=$(nix path-info "$attr" 2>/dev/null || true)
+            if [ -n "$outPath" ]; then
+              echo "  evicting: $outPath"
+              nix store delete "$outPath" 2>/dev/null || true
+            fi
+            # Step 3: Rebuild from scratch — fails if declared hash is stale
             nix build --no-link "$attr"
-            nix build --no-link --rebuild "$attr"
             echo "::endgroup::"
           done
       - name: Nix diagnostics summary
@@ -1400,7 +1408,7 @@ jobs:
                   nix store delete "$outPath" 2>/dev/null || true
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"

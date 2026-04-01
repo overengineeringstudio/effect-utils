@@ -382,23 +382,17 @@ let
       fi
     fi
 
-    # [CI-only] Evict cached pnpm-deps FOD outputs from the local Nix store.
-    #
-    # Binary caches (cachix) populate the local store with previously-valid
-    # outputs whose hash matched at the time of upload. Once in the local
-    # store, `nix build` trusts them unconditionally — it never re-fetches
-    # or re-verifies the hash. This masks stale pnpmDepsHash values.
-    #
-    # By deleting pnpm-deps outputs before building, we force Nix to
-    # re-derive them, which triggers a fresh hash comparison.
-    #
-    # TODO(nix-ca): Remove once content-addressed (CA) derivations are
-    # production-ready — they eliminate FOD hash staleness entirely.
-    # Track: NixOS/nix#6623
+    # [CI-only] Evict cached pnpm-deps FOD outputs so Nix must re-derive them.
+    # Cachix can serve stale FOD outputs (keyed by declared hash, not build
+    # inputs), masking hash staleness. Evicting the specific outputs forces a
+    # fresh build whose actual hash is compared against the declared hash.
+    # NOTE: We evict only the FOD outputs (not all deps) so transitive
+    # dependencies can still be substituted from cache.
+    # TODO(nix-ca): Remove once content-addressed derivations are stable (NixOS/nix#6623).
     if [ -n "''${CI:-}" ]; then
       topDrv=$(${pkgs.nix}/bin/nix path-info --derivation "$flakeRef" 2>/dev/null || true)
       if [ -n "$topDrv" ]; then
-        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
+        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true); do
           for outPath in $(${pkgs.nix}/bin/nix-store -q --outputs "$drv" 2>/dev/null || true); do
             if [ -e "$outPath" ]; then
               echo "  evicting cached: $(basename "$outPath")"

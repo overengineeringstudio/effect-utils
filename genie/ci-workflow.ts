@@ -283,7 +283,7 @@ export const evictCachedPnpmDepsStep = ({
     '        nix store delete "$outPath" 2>/dev/null || true',
     '      fi',
     '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\\.drv$" || true)',
+    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\\.drv$" || true)',
     'fi',
   ].join('\n'),
 })
@@ -460,17 +460,18 @@ export const savePnpmStoreStep = (opts?: {
 }
 
 /**
- * Rebuild exported pnpm fixed-output derivations locally and compare them to
- * the already-realized store outputs.
+ * Validate exported pnpm fixed-output derivations by realizing them (which
+ * may substitute from Cachix), then evicting the output and rebuilding from
+ * scratch.
  *
- * Normal CI often reuses already-realized FOD outputs from the local store or
- * substituters, which can hide stale hashes until some unrelated input change
- * forces a rebuild. We first realize the target attr as-is, then ask Nix to
- * `--rebuild` that attr and compare the fresh local result against the realized
- * output. The important trade-off is that dependencies may still come from
- * caches, but the target pnpm FOD itself must rebuild locally, which keeps the
- * check focused on the boundary we care about instead of source-building large
- * swaths of nixpkgs.
+ * FOD output paths are deterministic from the declared hash. If Cachix has a
+ * previously-valid output (uploaded when the hash was correct), Nix substitutes
+ * it without rebuilding — even if the hash is now stale. `--rebuild` also
+ * doesn't help because it compares the rebuild against the same trusted output.
+ *
+ * The fix: realize → evict → rebuild. The second build must produce the output
+ * locally. If the declared hash doesn't match the actual pnpm install result,
+ * the build fails with a hash mismatch.
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
@@ -484,9 +485,17 @@ export const validateColdPnpmDepsStep = ({
   run: [
     'set -euo pipefail',
     `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
-    '  echo "::group::rebuild-check $attr"',
+    '  echo "::group::cold-build $attr"',
+    '  # Step 1: Realize (may substitute from cache) to populate dependencies',
+    '  nix build --no-link "$attr" || true',
+    '  # Step 2: Evict the (possibly stale) cached FOD output',
+    '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
+    '  if [ -n "$outPath" ]; then',
+    '    echo "  evicting: $outPath"',
+    '    nix store delete "$outPath" 2>/dev/null || true',
+    '  fi',
+    '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
     '  nix build --no-link "$attr"',
-    '  nix build --no-link --rebuild "$attr"',
     '  echo "::endgroup::"',
     'done',
   ].join('\n'),
