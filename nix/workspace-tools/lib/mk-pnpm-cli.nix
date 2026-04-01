@@ -7,6 +7,11 @@
   workspaceRoot,
   workspaceSources ? { },
   depsBuilds,
+  # Optional: path to a committed normalized lockfile for the root install root.
+  # When provided, the FOD uses this instead of running `--no-frozen-lockfile`
+  # normalization inside the sandbox, making the output fully deterministic.
+  # Generate with: `dt nix:normalize-lockfile:<name>`
+  normalizedLockfile ? null,
   binaryName ? name,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -579,7 +584,7 @@ let
     lockfilePath = "pnpm-lock.yaml";
     depsSrc = rootDepsSrc;
     depsBuild = pnpmDepsHelper.mkDeps {
-      inherit name;
+      inherit name normalizedLockfile;
       pnpmDepsHash = depsBuildHashForInstallRoot ".";
       src = rootDepsSrc;
       sourceRoot = ".";

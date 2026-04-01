@@ -23,10 +23,11 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-i7h0e4Q0ssUla+J8A/loZU2TEwmo7vJwQ/VICi6uUrQ=";
+        hash = "sha256-QbfCwaOKPp0aVdDk/6PVdYKpVrtRagFXu61agL+3xy0=";
       };
     };
     smokeTestArgs = [ "--help" ];
+    normalizedLockfile = ./pnpm-lock.normalized.yaml;
     inherit gitRev commitTs dirty;
   };
 in
