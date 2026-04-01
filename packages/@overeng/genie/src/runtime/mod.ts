@@ -34,3 +34,5 @@ export {
 } from './pnpm-workspace/mod.ts'
 export * from './tsconfig-json/mod.ts'
 export * from './validation/mod.ts'
+export { validateCatalogPeerDeps, parsePeerDepsFromLockfile } from './catalog-peer-deps/mod.ts'
+export { satisfiesRange, parseVersion } from './semver/mod.ts'
