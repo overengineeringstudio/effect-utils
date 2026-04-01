@@ -7,7 +7,13 @@
     flake-utils.follows = "effect-utils/flake-utils";
   };
 
-  outputs = { nixpkgs, flake-utils, effect-utils, ... }:
+  outputs =
+    {
+      nixpkgs,
+      flake-utils,
+      effect-utils,
+      ...
+    }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let

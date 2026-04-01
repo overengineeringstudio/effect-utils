@@ -11,8 +11,16 @@
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, effect-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      effect-utils,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
         mkBunCli = import "${effect-utils}/nix/workspace-tools/lib/mk-bun-cli.nix" {
@@ -33,5 +41,6 @@
           app-cli = appCli;
           default = appCli;
         };
-      });
+      }
+    );
 }

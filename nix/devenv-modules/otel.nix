@@ -377,153 +377,153 @@ in
   # Note: devenv's PTY task runner drains all PROMPT_COMMAND output before the
   # interactive session, so we provide `otel-trace` for on-demand trace URL access.
   enterShell = lib.mkAfter ''
-    # ── Mode detection ──────────────────────────────────────────────────
-    # Resolve "auto" to "system" or "local" at runtime.
-    # Contract: a system-level OTEL stack (e.g. home-manager otel-stack module)
-    # advertises itself by setting OTEL_STATE_DIR as a session variable.
-    if [ "$OTEL_MODE" = "auto" ]; then
-      if [ -n "''${OTEL_STATE_DIR:-}" ]; then
-        OTEL_MODE="system"
-      else
-        OTEL_MODE="local"
-      fi
-    fi
-
-    if [ "$OTEL_MODE" = "system" ]; then
-      if [ -z "''${OTEL_STATE_DIR:-}" ]; then
-        echo "[otel] ERROR: OTEL_MODE=system requires OTEL_STATE_DIR" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
-        echo "[otel] ERROR: OTEL_MODE=system requires OTEL_EXPORTER_OTLP_ENDPOINT" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if ! command -v otel >/dev/null 2>&1; then
-        echo "[otel] ERROR: OTEL_MODE=system requires otel CLI for dashboard sync" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if [ "${toString (builtins.length extraDashboards)}" -gt 0 ]; then
-        echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      if ! otel dash sync \
-        --source "${allDashboards}" \
-        --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
-        echo "[otel] ERROR: otel dash sync failed" >&2
-        return 1 2>/dev/null || exit 1
-      fi
-      _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
-    else
-      # Local devenv stack — set env vars with local hash-derived ports
-      export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
-      export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
-      export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
-      _otel_entry_msg="[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
-    fi
-
-    _otel_grafana="$OTEL_GRAFANA_URL"
-    if [ -n "''${TS_HOSTNAME:-}" ]; then
-      _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
-    fi
-    # Build Grafana link: trace-specific when TRACEPARENT is available, dashboard otherwise
-    if [ -n "''${TRACEPARENT:-}" ]; then
-      IFS='-' read -r _ _otel_trace_id _ _ <<< "$TRACEPARENT"
-      _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$_otel_trace_id"'"}],"range":{"from":"now-1h","to":"now"}}}'
-      _encoded=$(printf '%s' "$_panes" | sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
-      _grafana_link_url="$_otel_grafana/explore?schemaVersion=1&panes=$_encoded&orgId=1"
-    else
-      _grafana_link_url="$_otel_grafana"
-    fi
-    if [ -n "''${_otel_trace_id:-}" ]; then
-      _trace_label="trace:$_otel_trace_id"
-    else
-      _trace_label="grafana"
-    fi
-    if [ -t 2 ]; then
-      _grafana_display="$(printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07' "$_grafana_link_url" "$_trace_label")"
-    else
-      _grafana_display="$_trace_label $_grafana_link_url"
-    fi
-    _otel_entry_msg="$_otel_entry_msg
-[otel] Start with: devenv up | $_grafana_display"
-
-    # devenv's PTY task runner drains all PROMPT_COMMAND output before the
-    # interactive session starts, so we can't display messages via echo.
-    # Instead, provide an `otel-trace` shell function for on-demand access.
-    # No `export -f` needed — function is defined during rcfile sourcing
-    # and stays available in the interactive shell.
-    export OTEL_GRAFANA_LINK_URL="$_grafana_link_url"
-    otel_trace() {
-      if [ -n "''${TRACEPARENT:-}" ]; then
-        IFS='-' read -r _ _tid _ _ <<< "$TRACEPARENT"
-        local _url="''${OTEL_GRAFANA_LINK_URL:-$OTEL_GRAFANA_URL}"
-        if [ -t 1 ]; then
-          printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "trace:$_tid"
-        else
-          echo "trace:$_tid $_url"
+        # ── Mode detection ──────────────────────────────────────────────────
+        # Resolve "auto" to "system" or "local" at runtime.
+        # Contract: a system-level OTEL stack (e.g. home-manager otel-stack module)
+        # advertises itself by setting OTEL_STATE_DIR as a session variable.
+        if [ "$OTEL_MODE" = "auto" ]; then
+          if [ -n "''${OTEL_STATE_DIR:-}" ]; then
+            OTEL_MODE="system"
+          else
+            OTEL_MODE="local"
+          fi
         fi
-      else
-        echo "[otel] No TRACEPARENT available"
-      fi
-    }
-    alias otel-trace=otel_trace
 
-    # Detect cold vs warm start (setup-git-hash written by setup.nix)
-    _cold_start="false"
-    if [ ! -f .direnv/task-cache/setup-git-hash ]; then
-      _cold_start="true"
-    elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
-      _cold_start="true"
-    fi
+        if [ "$OTEL_MODE" = "system" ]; then
+          if [ -z "''${OTEL_STATE_DIR:-}" ]; then
+            echo "[otel] ERROR: OTEL_MODE=system requires OTEL_STATE_DIR" >&2
+            return 1 2>/dev/null || exit 1
+          fi
+          if [ -z "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+            echo "[otel] ERROR: OTEL_MODE=system requires OTEL_EXPORTER_OTLP_ENDPOINT" >&2
+            return 1 2>/dev/null || exit 1
+          fi
+          if ! command -v otel >/dev/null 2>&1; then
+            echo "[otel] ERROR: OTEL_MODE=system requires otel CLI for dashboard sync" >&2
+            return 1 2>/dev/null || exit 1
+          fi
+          if [ "${toString (builtins.length extraDashboards)}" -gt 0 ]; then
+            echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
+            return 1 2>/dev/null || exit 1
+          fi
+          if ! otel dash sync \
+            --source "${allDashboards}" \
+            --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
+            echo "[otel] ERROR: otel dash sync failed" >&2
+            return 1 2>/dev/null || exit 1
+          fi
+          _otel_entry_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
+        else
+          # Local devenv stack — set env vars with local hash-derived ports
+          export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:${toString otelCollectorPort}"
+          export OTEL_GRAFANA_URL="http://127.0.0.1:${toString grafanaPort}"
+          export OTEL_SPAN_SPOOL_DIR="${spoolDir}"
+          _otel_entry_msg="[otel] Using local devenv OTEL stack (mode=$OTEL_MODE)"
+        fi
 
-    # Detect what triggered this shell reload by comparing watched file mtimes.
-    # Uses devenv's input-paths.txt (nix inputs that affect the shell derivation),
-    # excluding .devenv/bootstrap/ files which are regenerated on every eval.
-    # xargs stat is ~2ms for ~50 files — negligible overhead.
-    _reload_trigger="unknown"
-    _otel_mtime_snapshot=".direnv/otel-watch-mtimes"
-    if [ -f ".devenv/input-paths.txt" ]; then
-      _otel_current=$(grep -v '\.devenv/bootstrap/' .devenv/input-paths.txt \
-        | xargs stat -c '%Y %n' 2>/dev/null | sort -k2)
-      if [ ! -f "$_otel_mtime_snapshot" ]; then
-        _reload_trigger="initial"
-      elif [ "$_otel_current" = "$(cat "$_otel_mtime_snapshot" 2>/dev/null)" ]; then
-        _reload_trigger="env-change"
-      else
-        _otel_changed=$(diff <(cat "$_otel_mtime_snapshot") <(echo "$_otel_current") 2>/dev/null \
-          | grep '^[<>]' | awk '{print $NF}' | sort -u \
-          | sed "s|^''${DEVENV_ROOT:-.}/||" \
-          | head -5 | paste -sd ',' -)
-        _reload_trigger="''${_otel_changed:-unknown}"
-      fi
-      mkdir -p .direnv
-      echo "$_otel_current" > "$_otel_mtime_snapshot"
-    fi
+        _otel_grafana="$OTEL_GRAFANA_URL"
+        if [ -n "''${TS_HOSTNAME:-}" ]; then
+          _otel_grafana="''${_otel_grafana//127.0.0.1/$TS_HOSTNAME}"
+        fi
+        # Build Grafana link: trace-specific when TRACEPARENT is available, dashboard otherwise
+        if [ -n "''${TRACEPARENT:-}" ]; then
+          IFS='-' read -r _ _otel_trace_id _ _ <<< "$TRACEPARENT"
+          _panes='{"a":{"datasource":{"type":"tempo","uid":"tempo"},"queries":[{"refId":"A","datasource":{"type":"tempo","uid":"tempo"},"queryType":"traceql","query":"'"$_otel_trace_id"'"}],"range":{"from":"now-1h","to":"now"}}}'
+          _encoded=$(printf '%s' "$_panes" | sed 's/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/"/%22/g;s/:/%3A/g;s/,/%2C/g;s/ /%20/g')
+          _grafana_link_url="$_otel_grafana/explore?schemaVersion=1&panes=$_encoded&orgId=1"
+        else
+          _grafana_link_url="$_otel_grafana"
+        fi
+        if [ -n "''${_otel_trace_id:-}" ]; then
+          _trace_label="trace:$_otel_trace_id"
+        else
+          _trace_label="grafana"
+        fi
+        if [ -t 2 ]; then
+          _grafana_display="$(printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07' "$_grafana_link_url" "$_trace_label")"
+        else
+          _grafana_display="$_trace_label $_grafana_link_url"
+        fi
+        _otel_entry_msg="$_otel_entry_msg
+    [otel] Start with: devenv up | $_grafana_display"
 
-    # Emit root shell:entry span covering the full setup duration.
-    # TRACEPARENT and OTEL_SHELL_ENTRY_NS are propagated from setup:gate via
-    # devenv's native task output -> env mechanism (devenv.env convention).
-    if command -v otel-span >/dev/null 2>&1 \
-      && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
-      && [ -n "''${TRACEPARENT:-}" ] \
-      && [ -n "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
-      IFS='-' read -r _ _trace_id _span_id _ <<< "$TRACEPARENT"
-      (
-        unset TRACEPARENT
-        otel-span run "devenv" "shell:entry" \
-          --trace-id "$_trace_id" \
-          --span-id "$_span_id" \
-          --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
-          --end-time-ns "$(date +%s%N)" \
-          --attr "cold_start=$_cold_start" \
-          --attr "reload.trigger=$_reload_trigger" \
-          -- true
-      ) || true
-    fi
+        # devenv's PTY task runner drains all PROMPT_COMMAND output before the
+        # interactive session starts, so we can't display messages via echo.
+        # Instead, provide an `otel-trace` shell function for on-demand access.
+        # No `export -f` needed — function is defined during rcfile sourcing
+        # and stays available in the interactive shell.
+        export OTEL_GRAFANA_LINK_URL="$_grafana_link_url"
+        otel_trace() {
+          if [ -n "''${TRACEPARENT:-}" ]; then
+            IFS='-' read -r _ _tid _ _ <<< "$TRACEPARENT"
+            local _url="''${OTEL_GRAFANA_LINK_URL:-$OTEL_GRAFANA_URL}"
+            if [ -t 1 ]; then
+              printf '\e]8;;%s\x07\e[4m%s\e[24m\e]8;;\x07\n' "$_url" "trace:$_tid"
+            else
+              echo "trace:$_tid $_url"
+            fi
+          else
+            echo "[otel] No TRACEPARENT available"
+          fi
+        }
+        alias otel-trace=otel_trace
 
-    # Mark the moment the shell becomes interactive (after all setup + OTEL work).
-    # Consumed by dt.nix for the shell.ready_ms span attribute.
-    export SHELL_ENTRY_TIME_NS=$(date +%s%N)
+        # Detect cold vs warm start (setup-git-hash written by setup.nix)
+        _cold_start="false"
+        if [ ! -f .direnv/task-cache/setup-git-hash ]; then
+          _cold_start="true"
+        elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
+          _cold_start="true"
+        fi
+
+        # Detect what triggered this shell reload by comparing watched file mtimes.
+        # Uses devenv's input-paths.txt (nix inputs that affect the shell derivation),
+        # excluding .devenv/bootstrap/ files which are regenerated on every eval.
+        # xargs stat is ~2ms for ~50 files — negligible overhead.
+        _reload_trigger="unknown"
+        _otel_mtime_snapshot=".direnv/otel-watch-mtimes"
+        if [ -f ".devenv/input-paths.txt" ]; then
+          _otel_current=$(grep -v '\.devenv/bootstrap/' .devenv/input-paths.txt \
+            | xargs stat -c '%Y %n' 2>/dev/null | sort -k2)
+          if [ ! -f "$_otel_mtime_snapshot" ]; then
+            _reload_trigger="initial"
+          elif [ "$_otel_current" = "$(cat "$_otel_mtime_snapshot" 2>/dev/null)" ]; then
+            _reload_trigger="env-change"
+          else
+            _otel_changed=$(diff <(cat "$_otel_mtime_snapshot") <(echo "$_otel_current") 2>/dev/null \
+              | grep '^[<>]' | awk '{print $NF}' | sort -u \
+              | sed "s|^''${DEVENV_ROOT:-.}/||" \
+              | head -5 | paste -sd ',' -)
+            _reload_trigger="''${_otel_changed:-unknown}"
+          fi
+          mkdir -p .direnv
+          echo "$_otel_current" > "$_otel_mtime_snapshot"
+        fi
+
+        # Emit root shell:entry span covering the full setup duration.
+        # TRACEPARENT and OTEL_SHELL_ENTRY_NS are propagated from setup:gate via
+        # devenv's native task output -> env mechanism (devenv.env convention).
+        if command -v otel-span >/dev/null 2>&1 \
+          && [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] \
+          && [ -n "''${TRACEPARENT:-}" ] \
+          && [ -n "''${OTEL_SHELL_ENTRY_NS:-}" ]; then
+          IFS='-' read -r _ _trace_id _span_id _ <<< "$TRACEPARENT"
+          (
+            unset TRACEPARENT
+            otel-span run "devenv" "shell:entry" \
+              --trace-id "$_trace_id" \
+              --span-id "$_span_id" \
+              --start-time-ns "$OTEL_SHELL_ENTRY_NS" \
+              --end-time-ns "$(date +%s%N)" \
+              --attr "cold_start=$_cold_start" \
+              --attr "reload.trigger=$_reload_trigger" \
+              -- true
+          ) || true
+        fi
+
+        # Mark the moment the shell becomes interactive (after all setup + OTEL work).
+        # Consumed by dt.nix for the shell.ready_ms span attribute.
+        export SHELL_ENTRY_TIME_NS=$(date +%s%N)
   '';
 
   # =========================================================================

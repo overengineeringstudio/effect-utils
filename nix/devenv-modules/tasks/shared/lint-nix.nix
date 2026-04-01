@@ -18,7 +18,7 @@
 # Provides: lint:nix, lint:nix:format, lint:nix:deadcode, lint:nix:eval-warnings
 #           lint:nix:fix:format
 {
-  evalTargets ? [],
+  evalTargets ? [ ],
 }:
 { lib, pkgs, ... }:
 let
@@ -26,7 +26,7 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
 
-  hasEvalTargets = evalTargets != [];
+  hasEvalTargets = evalTargets != [ ];
 
   evalScript = pkgs.writeShellScript "lint-nix-eval-warnings" ''
     set -euo pipefail
@@ -85,11 +85,16 @@ let
       after = [
         "lint:nix:format"
         "lint:nix:deadcode"
-      ] ++ lib.optional hasEvalTargets "lint:nix:eval-warnings";
+      ]
+      ++ lib.optional hasEvalTargets "lint:nix:eval-warnings";
     };
   };
 in
 {
-  packages = [ pkgs.nixfmt-rfc-style pkgs.deadnix ] ++ cliGuard.fromTasks guardedTasks;
+  packages = [
+    pkgs.nixfmt-rfc-style
+    pkgs.deadnix
+  ]
+  ++ cliGuard.fromTasks guardedTasks;
   tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 }

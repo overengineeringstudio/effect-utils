@@ -26,7 +26,10 @@
 # - smokeTestSetup: Shell snippet to prepare the smoke test working dir (optional).
 # - extraExcludedSourceNames: Extra top-level paths to omit from the staged workspace.
 # - dirty: When true, link bunDeps and overlay local file deps (defaults to false).
-{ pkgs, pnpm ? (import ../../pnpm.nix { inherit pkgs; }) }:
+{
+  pkgs,
+  pnpm ? (import ../../pnpm.nix { inherit pkgs; }),
+}:
 
 {
   name,
@@ -46,7 +49,7 @@
   smokeTestArgs ? [ "--help" ],
   smokeTestCwd ? null,
   smokeTestSetup ? null,
-  extraExcludedSourceNames ? [],
+  extraExcludedSourceNames ? [ ],
   dirty ? false,
 }:
 
@@ -54,19 +57,42 @@ let
   lib = pkgs.lib;
 
   source = import ./mk-bun-cli/source.nix {
-    inherit lib workspaceRoot extraExcludedSourceNames packageDir packageJsonPath gitRev commitTs dirty;
+    inherit
+      lib
+      workspaceRoot
+      extraExcludedSourceNames
+      packageDir
+      packageJsonPath
+      gitRev
+      commitTs
+      dirty
+      ;
   };
-  inherit (source) workspaceRootPath workspaceSrc packageJson baseVersion nixStampJson stageWorkspace;
+  inherit (source)
+    workspaceRootPath
+    workspaceSrc
+    packageJson
+    baseVersion
+    nixStampJson
+    stageWorkspace
+    ;
 
   localDeps = import ./mk-bun-cli/local-deps.nix {
-    inherit lib workspaceRootPath packageJson packageDir depsManager;
+    inherit
+      lib
+      workspaceRootPath
+      packageJson
+      packageDir
+      depsManager
+      ;
   };
   inherit (localDeps)
     localDependencies
     localDependenciesInstallScript
     localDependenciesCopyScript
     localDependenciesLinkPackageScript
-    localDependenciesLinkWorkspaceScript;
+    localDependenciesLinkWorkspaceScript
+    ;
 
   bunDeps = import ./mk-bun-cli/bun-deps.nix {
     inherit
@@ -80,20 +106,22 @@ let
       packageDir
       localDependencies
       localDependenciesInstallScript
-      localDependenciesCopyScript;
+      localDependenciesCopyScript
+      ;
   };
 
   # Skip typechecking in dirty mode (TS6305) and when local deps are present
   # because TypeScript module resolution requires a full node_modules layout.
-  typecheckEnabled = typecheck && !dirty && localDependencies == [];
+  typecheckEnabled = typecheck && !dirty && localDependencies == [ ];
 
   typecheckTsconfigChecked =
-    if typecheckEnabled
-    then
-      if typecheckTsconfig != null
-      then typecheckTsconfig
-      else "${builtins.dirOf packageJsonPath}/tsconfig.json"
-    else typecheckTsconfig;
+    if typecheckEnabled then
+      if typecheckTsconfig != null then
+        typecheckTsconfig
+      else
+        "${builtins.dirOf packageJsonPath}/tsconfig.json"
+    else
+      typecheckTsconfig;
 
   smokeTestArgsChecked = lib.escapeShellArgs smokeTestArgs;
   smokeTestSetupChecked = lib.optionalString (smokeTestSetup != null) smokeTestSetup;
@@ -101,13 +129,16 @@ let
   isPnpm = depsManager == "pnpm";
   lockFileName = if isPnpm then "pnpm-lock.yaml" else "bun.lock";
   lockHashFile = if isPnpm then ".source-pnpm-lock-hash" else ".source-bun-lock-hash";
-  useNodePath = dirty || localDependencies != [];
+  useNodePath = dirty || localDependencies != [ ];
 
 in
 pkgs.stdenv.mkDerivation {
   inherit name;
 
-  nativeBuildInputs = [ pkgs.bun pkgs.cacert ];
+  nativeBuildInputs = [
+    pkgs.bun
+    pkgs.cacert
+  ];
 
   dontStrip = true;
   dontPatchELF = true;
@@ -156,8 +187,8 @@ pkgs.stdenv.mkDerivation {
     if ${lib.boolToString useNodePath}; then
       # Use NODE_PATH resolution when dirty or when local deps need their own node_modules.
       mkdir -p "$package_path/node_modules"
-      ${lib.optionalString (localDependencies != []) localDependenciesLinkPackageScript}
-      ${lib.optionalString (localDependencies != []) localDependenciesLinkWorkspaceScript}
+      ${lib.optionalString (localDependencies != [ ]) localDependenciesLinkPackageScript}
+      ${lib.optionalString (localDependencies != [ ]) localDependenciesLinkWorkspaceScript}
       if [ -d "$bun_deps/node_modules/@types" ]; then
         rm -rf "$package_path/node_modules/@types"
         ln -s "$bun_deps/node_modules/@types" "$package_path/node_modules/@types"

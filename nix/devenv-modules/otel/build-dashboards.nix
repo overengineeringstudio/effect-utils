@@ -61,19 +61,18 @@ let
     }
   ];
 
-  buildDashboard = name:
-    pkgs.runCommand "grafana-dashboard-${name}"
-      { nativeBuildInputs = [ pkgs.go-jsonnet ]; }
-      ''
-        mkdir -p $out
-        jsonnet \
-          -J ${grafonnetJpath} \
-          -J ${grafonnetSrc} \
-          -J ${builtinDashboardsSrcDir} \
-          -J ${src} \
-          ${src}/${name}.jsonnet \
-          -o $out/${name}.json
-      '';
+  buildDashboard =
+    name:
+    pkgs.runCommand "grafana-dashboard-${name}" { nativeBuildInputs = [ pkgs.go-jsonnet ]; } ''
+      mkdir -p $out
+      jsonnet \
+        -J ${grafonnetJpath} \
+        -J ${grafonnetSrc} \
+        -J ${builtinDashboardsSrcDir} \
+        -J ${src} \
+        ${src}/${name}.jsonnet \
+        -o $out/${name}.json
+    '';
 in
 pkgs.linkFarm "otel-dashboards-extra" (
   map (name: {

@@ -19,19 +19,19 @@
   # Including libc variants ensures all native packages are fetched in a single pass,
   # producing identical FOD output on Linux and macOS.
   setupScript = ''
-    cat >> $HOME/.npmrc << 'NPMRC'
-supportedArchitectures[os][]=linux
-supportedArchitectures[os][]=darwin
-supportedArchitectures[cpu][]=x64
-supportedArchitectures[cpu][]=arm64
-supportedArchitectures[libc][]=glibc
-supportedArchitectures[libc][]=musl
-NPMRC
-    if ! grep -q 'supportedArchitectures\[cpu\]\[\]=x64' "$HOME/.npmrc" ||
-       ! grep -q 'supportedArchitectures\[cpu\]\[\]=arm64' "$HOME/.npmrc"; then
-      echo "error: pnpm supportedArchitectures not written to .npmrc"
-      cat "$HOME/.npmrc"
-      exit 1
-    fi
+        cat >> $HOME/.npmrc << 'NPMRC'
+    supportedArchitectures[os][]=linux
+    supportedArchitectures[os][]=darwin
+    supportedArchitectures[cpu][]=x64
+    supportedArchitectures[cpu][]=arm64
+    supportedArchitectures[libc][]=glibc
+    supportedArchitectures[libc][]=musl
+    NPMRC
+        if ! grep -q 'supportedArchitectures\[cpu\]\[\]=x64' "$HOME/.npmrc" ||
+           ! grep -q 'supportedArchitectures\[cpu\]\[\]=arm64' "$HOME/.npmrc"; then
+          echo "error: pnpm supportedArchitectures not written to .npmrc"
+          cat "$HOME/.npmrc"
+          exit 1
+        fi
   '';
 }

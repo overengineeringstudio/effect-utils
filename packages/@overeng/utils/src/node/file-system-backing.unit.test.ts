@@ -3,7 +3,8 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { FileSystem, Path } from '@effect/platform'
-import { Duration, Effect, Layer, Schema } from 'effect'
+import { NodeContext } from '@effect/platform-node'
+import { Duration, Effect, Layer, Schema, Stream } from 'effect'
 import { DistributedSemaphoreBacking } from 'effect-distributed-lock'
 import { expect } from 'vitest'
 
@@ -814,6 +815,34 @@ Vitest.describe('FileSystemBacking', () => {
         })
         expect(revoked).toEqual([])
       }).pipe(Effect.provide(TestLayer), Effect.scoped),
+    )
+  })
+
+  Vitest.describe('onPermitsReleased', () => {
+    Vitest.it.effect('completes when watched directory is deleted (no hang)', () =>
+      Effect.gen(function* () {
+        const fsService = yield* FileSystem.FileSystem
+        const tempDir = yield* fsService.makeTempDirectory()
+        const lockDir = `${tempDir}/locks`
+
+        const backingLayer = FileSystemBacking.layer({ lockDir })
+
+        yield* Effect.gen(function* () {
+          const backing = yield* DistributedSemaphoreBacking
+
+          yield* backing.tryAcquire('test-key', 'holder-1', Duration.seconds(30), 2, 1)
+
+          const stream = backing.onPermitsReleased!('test-key')
+
+          // Delete the lock directory to trigger fs.watch error
+          yield* fsService.remove(`${lockDir}/${encodeURIComponent('test-key')}`, {
+            recursive: true,
+          })
+
+          // Stream should complete (not hang) — the 5s timeout is a safety net
+          yield* stream.pipe(Stream.runDrain, Effect.timeout(Duration.seconds(5)))
+        }).pipe(Effect.provide(backingLayer))
+      }).pipe(Effect.provide(NodeContext.layer), Effect.scoped),
     )
   })
 })

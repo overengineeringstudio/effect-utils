@@ -7,17 +7,28 @@
 }:
 let
   workspaceRootPath =
-    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot
-    then workspaceRoot.outPath
-    else workspaceRoot;
+    if builtins.isAttrs workspaceRoot && builtins.hasAttr "outPath" workspaceRoot then
+      workspaceRoot.outPath
+    else
+      workspaceRoot;
 in
 {
   genie = import (workspaceRootPath + "/packages/@overeng/genie/nix/build.nix") {
-    inherit pkgs gitRev commitTs dirty;
+    inherit
+      pkgs
+      gitRev
+      commitTs
+      dirty
+      ;
     src = workspaceRoot;
   };
   megarepo = import (workspaceRootPath + "/packages/@overeng/megarepo/nix/build.nix") {
-    inherit pkgs gitRev commitTs dirty;
+    inherit
+      pkgs
+      gitRev
+      commitTs
+      dirty
+      ;
     src = workspaceRoot;
   };
 }

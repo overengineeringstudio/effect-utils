@@ -6,16 +6,25 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
-        gitRev = self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
+        gitRev =
+          self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
       in
       {
         packages.default = import ./nix/build.nix {
           pkgs = import nixpkgs { inherit system; };
-          src = ../../..;  # effect-utils root (for bun.lock, package.json)
+          src = ../../..; # effect-utils root (for bun.lock, package.json)
           inherit gitRev;
         };
-      });
+      }
+    );
 }

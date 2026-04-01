@@ -7,7 +7,10 @@
 let
   package = pkgs.writeShellApplication {
     name = "cli-build-stamp";
-    runtimeInputs = [ pkgs.coreutils pkgs.git ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.git
+    ];
     text = ''
       set -euo pipefail
       rev=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
