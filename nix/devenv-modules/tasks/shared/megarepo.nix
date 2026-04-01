@@ -3,9 +3,8 @@
 # Uses the `mr` CLI for megarepo operations.
 #
 # Tasks:
-# - mr:sync - Fetch latest refs and apply to workspace (mr fetch --apply)
+# - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
-# - mr:fetch-apply - Fetch latest refs and apply (mr fetch --apply)
 # - mr:apply - Apply megarepo.lock exactly (mr apply)
 # - mr:check - Verify megarepo setup is complete
 # - mr:lock-sync-check - Verify Nix lock files match megarepo.lock revisions (~5ms)
@@ -17,7 +16,7 @@
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
-#   tasks."mr:sync".after = [ "pnpm:install:megarepo" ];
+#   tasks."mr:fetch-apply".after = [ "pnpm:install:megarepo" ];
 {
   syncAll ? true,
 }:
@@ -64,10 +63,10 @@ let
   '';
 
   tasks = {
-    "mr:sync" = {
+    "mr:fetch-apply" = {
       guard = "mr";
       description = "Fetch latest refs and apply to workspace";
-      exec = trace.exec "mr:sync" ''
+      exec = trace.exec "mr:fetch-apply" ''
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -75,7 +74,7 @@ let
         mr fetch --apply${if syncAll then " --all" else ""}
       '';
       # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
-      status = trace.status "mr:sync" "binary" ''
+      status = trace.status "mr:fetch-apply" "binary" ''
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
@@ -86,7 +85,7 @@ let
         fi
 
         # Use mr status to check the workspace-specific boolean
-        status_json=$(nix run "git+file:$PWD#megarepo" -- status --output json 2>/dev/null) || exit 1
+        status_json=$(mr status --output json 2>/dev/null) || exit 1
 
         echo "$status_json" | ${jq} -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
       '';
@@ -101,17 +100,6 @@ let
         fi
 
         mr lock${if syncAll then " --all" else ""}
-      '';
-    };
-
-    "mr:fetch-apply" = {
-      description = "Fetch latest refs and apply to workspace";
-      exec = trace.exec "mr:fetch-apply" ''
-        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
-          exit 0
-        fi
-
-        mr fetch --apply${if syncAll then " --all" else ""}
       '';
     };
 
@@ -130,7 +118,7 @@ let
     "mr:check" = {
       guard = "mr";
       description = "Verify megarepo setup is complete";
-      after = [ "mr:sync" ];
+      after = [ "mr:fetch-apply" ];
       # Check that repos dir exists and all members have symlinks
       status = trace.status "mr:check" "path" ''
         set -o pipefail
@@ -161,7 +149,7 @@ let
 
         if [ ! -d ./repos ]; then
           echo "[devenv] Missing repos/ directory." >&2
-          echo "[devenv] Fix: devenv tasks run mr:sync" >&2
+          echo "[devenv] Fix: devenv tasks run mr:fetch-apply" >&2
           exit 1
         fi
 
@@ -176,7 +164,7 @@ let
 
         if [ -n "$missing" ]; then
           echo "[devenv] Missing member symlinks:$missing" >&2
-          echo "[devenv] Fix: devenv tasks run mr:sync" >&2
+          echo "[devenv] Fix: devenv tasks run mr:fetch-apply" >&2
           exit 1
         fi
       '';
@@ -184,7 +172,7 @@ let
 
     "mr:lock-sync-check" = {
       description = "Verify Nix lock files match megarepo.lock revisions";
-      after = [ "mr:sync" ];
+      after = [ "mr:fetch-apply" ];
       status = trace.status "mr:lock-sync-check" "binary" ''
         if [ ! -f ./megarepo.lock ]; then
           exit 0
@@ -238,7 +226,7 @@ let
         if [ "$failed" -eq 1 ]; then
           echo ""
           echo "Lock files out of sync with megarepo.lock."
-          echo "Fix: dt mr:sync"
+          echo "Fix: dt mr:fetch-apply"
           exit 1
         fi
       '';

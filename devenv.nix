@@ -321,7 +321,7 @@ in
       optionalTasks = [
         "pnpm:install"
         "genie:run"
-        "mr:sync"
+        "mr:fetch-apply"
         "ts:emit"
       ];
       completionsCliNames = [
@@ -365,7 +365,7 @@ in
   tasks."genie:watch".after = [ "pnpm:install" ];
   tasks."genie:check".after = [ "pnpm:install" ];
   tasks."lint:check:genie".after = [ "pnpm:install" ];
-  tasks."mr:sync".after = [ "pnpm:install" ];
+  tasks."mr:fetch-apply".after = [ "pnpm:install" ];
 
   tasks."gh:apply-settings" = {
     after = [ "genie:run" ];
