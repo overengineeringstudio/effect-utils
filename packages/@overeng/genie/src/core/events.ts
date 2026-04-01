@@ -24,6 +24,8 @@ export const GenieEvent = Schema.Union(
   Schema.TaggedStruct('Complete', { summary: GenieSummary }),
 
   Schema.TaggedStruct('Error', { message: Schema.String }),
+
+  Schema.TaggedStruct('ValidationWarnings', { message: Schema.String }),
 )
 /** Inferred union of all progress events emitted during generation/check. */
 export type GenieEvent = typeof GenieEvent.Type

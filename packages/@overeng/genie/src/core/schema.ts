@@ -111,6 +111,9 @@ export const GenieState = Schema.Struct({
 
   /** Global error message */
   error: Schema.optional(Schema.String),
+
+  /** Validation warnings (non-blocking) */
+  warnings: Schema.optional(Schema.String),
 })
 /** Genie state type */
 export type GenieState = Schema.Schema.Type<typeof GenieState>
@@ -151,6 +154,9 @@ export const GenieAction = Schema.Union(
 
   /** Global error occurred */
   Schema.TaggedStruct('Error', { message: Schema.String }),
+
+  /** Validation warnings (non-blocking) */
+  Schema.TaggedStruct('ValidationWarnings', { message: Schema.String }),
 
   /** Watch mode - reset for new cycle */
   Schema.TaggedStruct('WatchReset', {}),
@@ -225,6 +231,12 @@ export const genieReducer = ({
         error: action.message,
       }
 
+    case 'ValidationWarnings':
+      return {
+        ...state,
+        warnings: action.message,
+      }
+
     case 'WatchReset':
       return {
         ...state,
@@ -232,6 +244,7 @@ export const genieReducer = ({
         files: [],
         summary: undefined,
         error: undefined,
+        warnings: undefined,
         watchCycle: (state.watchCycle ?? 0) + 1,
       }
   }

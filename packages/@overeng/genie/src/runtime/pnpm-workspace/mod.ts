@@ -5,10 +5,13 @@
  * Reference: https://pnpm.io/pnpm-workspace_yaml
  */
 
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { validateCatalogPeerDeps } from '../catalog-peer-deps/mod.ts'
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext } from '../core.ts'
+import type { CatalogInput } from '../package-json/catalog.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
 import { stringify } from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
@@ -1041,11 +1044,14 @@ const rootPnpmWorkspaceYaml = ({
   packages,
   repoName,
   extraMembers = [],
+  catalogVersions,
   ...config
 }: {
   packages: readonly WorkspacePackageLike[]
   repoName: string
   extraMembers?: readonly string[]
+  /** When provided, validates that catalog versions satisfy peer dependency ranges from the lockfile. */
+  catalogVersions?: CatalogInput
 } & Omit<PnpmWorkspaceData, 'packages'>) => {
   const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
   const allMembers =
@@ -1091,13 +1097,34 @@ const rootPnpmWorkspaceYaml = ({
     data: fullConfig,
     stringify: (ctx: GenieContext) =>
       stringify(buildPnpmWorkspaceYaml({ data: fullConfig, location: ctx.location })),
-    validate: (ctx: GenieContext) => [
-      ...validatePnpmWorkspaceData({ data: fullConfig, location: ctx.location }),
-      ...validateRootPatchCoverage({
-        packages,
-        rootPatchedDependencies: config.patchedDependencies,
-      }),
-    ],
+    validate: (ctx: GenieContext) => {
+      const issues: GenieValidationIssue[] = [
+        ...validatePnpmWorkspaceData({ data: fullConfig, location: ctx.location }),
+        ...validateRootPatchCoverage({
+          packages,
+          rootPatchedDependencies: config.patchedDependencies,
+        }),
+      ]
+
+      if (catalogVersions !== undefined) {
+        try {
+          const lockfileContent = readFileSync(path.join(ctx.cwd, 'pnpm-lock.yaml'), 'utf-8')
+          issues.push(
+            ...validateCatalogPeerDeps({
+              catalog: catalogVersions,
+              lockfileContent,
+              ...(config.peerDependencyRules !== undefined
+                ? { peerDependencyRules: config.peerDependencyRules }
+                : {}),
+            }),
+          )
+        } catch {
+          /* lockfile not available — skip peer dep validation */
+        }
+      }
+
+      return issues
+    },
   })
 }
 
