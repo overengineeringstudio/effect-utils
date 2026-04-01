@@ -460,17 +460,15 @@ export const savePnpmStoreStep = (opts?: {
 }
 
 /**
- * Rebuild exported pnpm fixed-output derivations locally and compare them to
- * the already-realized store outputs.
+ * Build exported pnpm fixed-output derivations with substituters disabled,
+ * forcing Nix to re-derive each FOD from scratch.
  *
- * Normal CI often reuses already-realized FOD outputs from the local store or
- * substituters, which can hide stale hashes until some unrelated input change
- * forces a rebuild. We first realize the target attr as-is, then ask Nix to
- * `--rebuild` that attr and compare the fresh local result against the realized
- * output. The important trade-off is that dependencies may still come from
- * caches, but the target pnpm FOD itself must rebuild locally, which keeps the
- * check focused on the boundary we care about instead of source-building large
- * swaths of nixpkgs.
+ * FOD derivation hashes are computed from the declared output hash, not the
+ * build inputs. When Cachix has a previously-valid output cached under that
+ * derivation hash, `nix build` (and even `nix build --rebuild`) will reuse it
+ * without detecting that the declared hash is stale. Disabling substituters
+ * forces a fresh local build whose actual output hash is compared against the
+ * declared hash — a mismatch fails the build immediately.
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
@@ -484,9 +482,8 @@ export const validateColdPnpmDepsStep = ({
   run: [
     'set -euo pipefail',
     `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
-    '  echo "::group::rebuild-check $attr"',
-    '  nix build --no-link "$attr"',
-    '  nix build --no-link --rebuild "$attr"',
+    '  echo "::group::cold-build $attr"',
+    '  nix build --no-link --option substitute false "$attr"',
     '  echo "::endgroup::"',
     'done',
   ].join('\n'),

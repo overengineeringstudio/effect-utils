@@ -382,34 +382,18 @@ let
       fi
     fi
 
-    # [CI-only] Evict cached pnpm-deps FOD outputs from the local Nix store.
-    #
-    # Binary caches (cachix) populate the local store with previously-valid
-    # outputs whose hash matched at the time of upload. Once in the local
-    # store, `nix build` trusts them unconditionally — it never re-fetches
-    # or re-verifies the hash. This masks stale pnpmDepsHash values.
-    #
-    # By deleting pnpm-deps outputs before building, we force Nix to
-    # re-derive them, which triggers a fresh hash comparison.
-    #
-    # TODO(nix-ca): Remove once content-addressed (CA) derivations are
-    # production-ready — they eliminate FOD hash staleness entirely.
-    # Track: NixOS/nix#6623
+    # In CI, disable substituters so Nix must rebuild FODs from scratch.
+    # Cachix can serve stale FOD outputs (keyed by declared hash, not build
+    # inputs), masking hash staleness. With substitute=false, a stale hash
+    # causes a hash mismatch error immediately.
+    # TODO(nix-ca): Remove once content-addressed derivations are stable (NixOS/nix#6623).
     if [ -n "''${CI:-}" ]; then
-      topDrv=$(${pkgs.nix}/bin/nix path-info --derivation "$flakeRef" 2>/dev/null || true)
-      if [ -n "$topDrv" ]; then
-        for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
-          for outPath in $(${pkgs.nix}/bin/nix-store -q --outputs "$drv" 2>/dev/null || true); do
-            if [ -e "$outPath" ]; then
-              echo "  evicting cached: $(basename "$outPath")"
-              ${pkgs.nix}/bin/nix store delete "$outPath" 2>/dev/null || true
-            fi
-          done
-        done
-      fi
+      __nix_sub_arg="--option substitute false"
+    else
+      __nix_sub_arg="--option substituters https://cache.nixos.org"
     fi
 
-    if output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
+    if output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link $__nix_sub_arg 2>&1); then
       echo "✓ $name: up to date"
       exit 0
     fi
