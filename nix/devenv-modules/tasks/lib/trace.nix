@@ -72,8 +72,7 @@ let
 
   # Wrap a task's exec and status scripts with otel-span tracing.
   withStatus =
-    taskName:
-    method:
+    taskName: method:
     { exec, status, ... }@attrs:
     attrs
     // {

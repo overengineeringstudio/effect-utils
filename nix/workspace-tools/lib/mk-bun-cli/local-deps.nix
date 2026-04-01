@@ -1,64 +1,79 @@
-{ lib, workspaceRootPath, packageJson, packageDir, depsManager }:
+{
+  lib,
+  workspaceRootPath,
+  packageJson,
+  packageDir,
+  depsManager,
+}:
 
 let
   # Collect local file dependencies so dirty builds can overlay them.
   localDependencyMap =
-    (packageJson.dependencies or {})
-    // (packageJson.devDependencies or {})
-    // (packageJson.optionalDependencies or {});
+    (packageJson.dependencies or { })
+    // (packageJson.devDependencies or { })
+    // (packageJson.optionalDependencies or { });
 
   localDependencies =
     let
-      isLocal = value:
+      isLocal =
+        value:
         lib.hasPrefix "./" value
         || lib.hasPrefix "../" value
         || lib.hasPrefix "file:" value
         || lib.hasPrefix "link:" value;
-      normalize = value:
-        if lib.hasPrefix "file:" value
-        then lib.removePrefix "file:" value
-        else if lib.hasPrefix "link:" value
-        then lib.removePrefix "link:" value
-        else value;
-      normalizeRelativePath = depName: depValue: rootStr: path:
+      normalize =
+        value:
+        if lib.hasPrefix "file:" value then
+          lib.removePrefix "file:" value
+        else if lib.hasPrefix "link:" value then
+          lib.removePrefix "link:" value
+        else
+          value;
+      normalizeRelativePath =
+        depName: depValue: rootStr: path:
         let
           parts = lib.splitString "/" path;
-          step = acc: part:
-            if part == "" || part == "."
-            then acc
-            else if part == ".."
+          step =
+            acc: part:
+            if part == "" || part == "." then
+              acc
+            else if
+              part == ".."
             # Fail fast when a local dependency escapes the workspace root.
-            then if acc == []
-            then throw "mk-bun-cli: local dependency ${depName} resolves outside the workspace root (value: ${depValue}, path: ${path}, packageDir: ${packageDir}, workspaceRoot: ${rootStr})"
-            else lib.init acc
-            else acc ++ [part];
+            then
+              if acc == [ ] then
+                throw "mk-bun-cli: local dependency ${depName} resolves outside the workspace root (value: ${depValue}, path: ${path}, packageDir: ${packageDir}, workspaceRoot: ${rootStr})"
+              else
+                lib.init acc
+            else
+              acc ++ [ part ];
         in
-        lib.concatStringsSep "/" (lib.foldl' step [] parts);
-      toWorkspaceRelPath = depName: depValue:
+        lib.concatStringsSep "/" (lib.foldl' step [ ] parts);
+      toWorkspaceRelPath =
+        depName: depValue:
         let
           rawPath = normalize depValue;
           rootStr = toString workspaceRootPath;
         in
-        if lib.hasPrefix "/" rawPath
-        then
-          if lib.hasPrefix (rootStr + "/") rawPath
-          then lib.removePrefix (rootStr + "/") rawPath
-          else throw "mk-bun-cli: local dependency ${depName} path ${rawPath} is outside the workspace root ${rootStr}"
-        else normalizeRelativePath depName depValue rootStr "${packageDir}/${rawPath}";
+        if lib.hasPrefix "/" rawPath then
+          if lib.hasPrefix (rootStr + "/") rawPath then
+            lib.removePrefix (rootStr + "/") rawPath
+          else
+            throw "mk-bun-cli: local dependency ${depName} path ${rawPath} is outside the workspace root ${rootStr}"
+        else
+          normalizeRelativePath depName depValue rootStr "${packageDir}/${rawPath}";
     in
-    lib.mapAttrsToList
-      (depName: depValue: {
-        name = depName;
-        workspacePath = toWorkspaceRelPath depName depValue;
-      })
-      (lib.filterAttrs (_: value: isLocal value) localDependencyMap);
+    lib.mapAttrsToList (depName: depValue: {
+      name = depName;
+      workspacePath = toWorkspaceRelPath depName depValue;
+    }) (lib.filterAttrs (_: value: isLocal value) localDependencyMap);
 
   lockFileName = if depsManager == "pnpm" then "pnpm-lock.yaml" else "bun.lock";
 
   # Install local dependency node_modules inside the bunDeps snapshot so dirty builds
   # can link them without reaching outside the Nix store.
-  localDependenciesInstallScript = lib.concatStringsSep "\n" (map
-    (dep: ''
+  localDependenciesInstallScript = lib.concatStringsSep "\n" (
+    map (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
       dep_rel=${lib.escapeShellArg dep.workspacePath}
       dep_path="$workspace/$dep_rel"
@@ -72,11 +87,11 @@ let
       fi
 
       deps_install_checked "$dep_path" "$dep_name"
-    '')
-    localDependencies);
+    '') localDependencies
+  );
 
-  localDependenciesCopyScript = lib.concatStringsSep "\n" (map
-    (dep: ''
+  localDependenciesCopyScript = lib.concatStringsSep "\n" (
+    map (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
       dep_rel=${lib.escapeShellArg dep.workspacePath}
       dep_path="$PWD/workspace/$dep_rel"
@@ -87,11 +102,11 @@ let
       fi
       mkdir -p "$out/local-node-modules/$dep_rel"
       cp -R -L "$dep_node_modules" "$out/local-node-modules/$dep_rel/node_modules"
-    '')
-    localDependencies);
+    '') localDependencies
+  );
 
-  localDependenciesLinkPackageScript = lib.concatStringsSep "\n" (map
-    (dep: ''
+  localDependenciesLinkPackageScript = lib.concatStringsSep "\n" (
+    map (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
       dep_rel=${lib.escapeShellArg dep.workspacePath}
       dep_source="$workspace/$dep_rel"
@@ -104,11 +119,11 @@ let
       mkdir -p "$(dirname "$dep_target")"
       rm -rf "$dep_target"
       ln -s "$dep_source" "$dep_target"
-    '')
-    localDependencies);
+    '') localDependencies
+  );
 
-  localDependenciesLinkWorkspaceScript = lib.concatStringsSep "\n" (map
-    (dep: ''
+  localDependenciesLinkWorkspaceScript = lib.concatStringsSep "\n" (
+    map (dep: ''
       dep_name=${lib.escapeShellArg dep.name}
       dep_rel=${lib.escapeShellArg dep.workspacePath}
       dep_source="$workspace/$dep_rel"
@@ -129,8 +144,8 @@ let
           fi
           ;;
       esac
-    '')
-    localDependencies);
+    '') localDependencies
+  );
 in
 {
   inherit
@@ -138,5 +153,6 @@ in
     localDependenciesInstallScript
     localDependenciesCopyScript
     localDependenciesLinkPackageScript
-    localDependenciesLinkWorkspaceScript;
+    localDependenciesLinkWorkspaceScript
+    ;
 }

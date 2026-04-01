@@ -2,7 +2,12 @@
 #
 # v0.57+ self-manages dolt sql-server (auto-start with deterministic port).
 # This module sets BEADS_DIR and provides push/pull convenience tasks.
-{ beadsPrefix, beadsRepoName, beadsRepoPath ? "repos/${beadsRepoName}", beadsRepoRef ? "main" }:
+{
+  beadsPrefix,
+  beadsRepoName,
+  beadsRepoPath ? "repos/${beadsRepoName}",
+  beadsRepoRef ? "main",
+}:
 { pkgs, config, ... }:
 let
   git = "${pkgs.git}/bin/git";
@@ -78,7 +83,7 @@ in
         (cd "$BEADS_REPO" && ${bd} comment "$issue_id" "$comment") 2>/dev/null || true
       done
     ''}";
-    stages = ["post-commit"];
+    stages = [ "post-commit" ];
     always_run = true;
     pass_filenames = false;
   };

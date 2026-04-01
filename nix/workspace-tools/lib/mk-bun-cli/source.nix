@@ -1,18 +1,30 @@
-{ lib, workspaceRoot, extraExcludedSourceNames, packageDir, packageJsonPath, gitRev, commitTs, dirty }:
+{
+  lib,
+  workspaceRoot,
+  extraExcludedSourceNames,
+  packageDir,
+  packageJsonPath,
+  gitRev,
+  commitTs,
+  dirty,
+}:
 
 let
   # Resolve flake inputs or paths into a concrete filesystem path.
-  toPath = source:
-    if builtins.isAttrs source && builtins.hasAttr "outPath" source
-    then source.outPath
-    else if builtins.isPath source
-    then source
-    else builtins.toPath source;
+  toPath =
+    source:
+    if builtins.isAttrs source && builtins.hasAttr "outPath" source then
+      source.outPath
+    else if builtins.isPath source then
+      source
+    else
+      builtins.toPath source;
 
   workspaceRootPath =
-    if workspaceRoot == null
-    then throw "mk-bun-cli: workspaceRoot is required"
-    else toPath workspaceRoot;
+    if workspaceRoot == null then
+      throw "mk-bun-cli: workspaceRoot is required"
+    else
+      toPath workspaceRoot;
 
   # Keep the staged workspace lean (skip caches, outputs, and node_modules).
   defaultExcludedSourceNames = [
@@ -32,33 +44,29 @@ let
   ];
   excludedSourceNames = lib.unique (defaultExcludedSourceNames ++ extraExcludedSourceNames);
 
-  sourceFilter = root: path: type:
+  sourceFilter =
+    root: path: type:
     let
       rootStr = toString root;
       pathStr = toString path;
-      relPath =
-        if pathStr == rootStr
-        then ""
-        else lib.removePrefix (rootStr + "/") pathStr;
-      parts = if relPath == "" then [] else lib.splitString "/" relPath;
+      relPath = if pathStr == rootStr then "" else lib.removePrefix (rootStr + "/") pathStr;
+      parts = if relPath == "" then [ ] else lib.splitString "/" relPath;
       # Only exclude result* at the workspace root to avoid filtering real files.
-      topLevel = if parts == [] then "" else builtins.head parts;
-      hasExcluded = lib.any
-        (segment: lib.elem segment excludedSourceNames)
-        parts
-        || topLevel == "result";
+      topLevel = if parts == [ ] then "" else builtins.head parts;
+      hasExcluded = lib.any (segment: lib.elem segment excludedSourceNames) parts || topLevel == "result";
     in
     lib.cleanSourceFilter path type && !hasExcluded;
 
   workspaceRootStr = toString workspaceRootPath;
   useCleanSource = !(dirty && lib.hasPrefix "/nix/store/" workspaceRootStr);
   workspaceSrc =
-    if useCleanSource
-    then lib.cleanSourceWith {
-      src = workspaceRootPath;
-      filter = sourceFilter workspaceRootPath;
-    }
-    else workspaceRootPath;
+    if useCleanSource then
+      lib.cleanSourceWith {
+        src = workspaceRootPath;
+        filter = sourceFilter workspaceRootPath;
+      }
+    else
+      workspaceRootPath;
 
   packageJsonFullPath = workspaceSrc + "/${packageJsonPath}";
   packageJson = builtins.fromJSON (builtins.readFile packageJsonFullPath);
@@ -80,5 +88,12 @@ let
   '';
 in
 {
-  inherit workspaceRootPath workspaceSrc packageJson baseVersion nixStampJson stageWorkspace;
+  inherit
+    workspaceRootPath
+    workspaceSrc
+    packageJson
+    baseVersion
+    nixStampJson
+    stageWorkspace
+    ;
 }

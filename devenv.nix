@@ -220,7 +220,7 @@ in
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
     # Git hook: prevent commits on default branch + enforce linked worktrees
-    (taskModules.worktree-guard {})
+    (taskModules.worktree-guard { })
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { })
     # Playwright browser drivers and environment setup
@@ -229,8 +229,13 @@ in
     taskModules.genie
     (taskModules.ts { })
     (taskModules.megarepo { })
-    (taskModules.lint-nix {})
-    (taskModules.check { extraChecks = [ "workspace:check" "lint:nix" ]; })
+    (taskModules.lint-nix { })
+    (taskModules.check {
+      extraChecks = [
+        "workspace:check"
+        "lint:nix"
+      ];
+    })
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md

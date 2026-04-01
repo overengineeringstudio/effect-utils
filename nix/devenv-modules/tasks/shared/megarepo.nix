@@ -250,7 +250,8 @@ in
   packages = [
     pkgs.git
     pkgs.openssh
-  ] ++ cliGuard.fromTasks tasks;
+  ]
+  ++ cliGuard.fromTasks tasks;
 
   tasks = cliGuard.stripGuards tasks;
 }

@@ -76,7 +76,9 @@ let
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
   nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
-  healthCheckNodeModulesPaths = lib.concatStringsSep " " ([ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages));
+  healthCheckNodeModulesPaths = lib.concatStringsSep " " (
+    [ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages)
+  );
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
   loadPnpmTaskHelpersFn = ''

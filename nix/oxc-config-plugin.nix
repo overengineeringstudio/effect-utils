@@ -23,7 +23,10 @@
 let
   lib = pkgs.lib;
   pinnedPnpm = import ./pnpm.nix { inherit pkgs; };
-  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix { inherit pkgs; pnpm = pinnedPnpm; };
+  pnpmDepsHelper = import ./workspace-tools/lib/mk-pnpm-deps.nix {
+    inherit pkgs;
+    pnpm = pinnedPnpm;
+  };
   packageDir = "packages/@overeng/oxc-config";
   pnpmDepsHash = "sha256-q3xWg/lQASa/jIc7kM0dj3Zz0JwlKMfJGW1Din2X2n0=";
 
@@ -48,9 +51,9 @@ let
     || (
       relPath != ""
       && builtins.elem relPath (
-        lib.genList
-          (index: lib.concatStringsSep "/" (lib.take (index + 1) (lib.splitString "/" prefix)))
-          (lib.length (lib.splitString "/" prefix) - 1)
+        lib.genList (index: lib.concatStringsSep "/" (lib.take (index + 1) (lib.splitString "/" prefix))) (
+          lib.length (lib.splitString "/" prefix) - 1
+        )
       )
     );
 
@@ -81,45 +84,41 @@ let
             lines;
 
       # GVS requires a global pnpm store unavailable inside Nix sandboxes
-      stripGvs = lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
+      stripGvs =
+        lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
     in
     stripGvs (dropPackageBlock (dropUntilPackagesHeader (lib.splitString "\n" workspaceYaml)));
 
   formatWorkspaceYaml =
     packageDirs: suffixLines:
     let
-      packagesBlock = builtins.concatStringsSep "\n" ([ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs);
+      packagesBlock = builtins.concatStringsSep "\n" (
+        [ "packages:" ] ++ map (dir: "  - ${dir}") packageDirs
+      );
       suffix = builtins.concatStringsSep "\n" suffixLines;
     in
-    if suffix == "" then
-      "${packagesBlock}\n"
-    else
-      "${packagesBlock}\n\n${suffix}\n";
+    if suffix == "" then "${packagesBlock}\n" else "${packagesBlock}\n\n${suffix}\n";
 
-  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml [ packageDir ] (workspaceSuffixLines rootPnpmWorkspaceYaml);
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml [ packageDir ] (
+    workspaceSuffixLines rootPnpmWorkspaceYaml
+  );
 
-  copyFileCmd =
-    relPath:
-    ''
-      mkdir -p "$out/$(dirname "${relPath}")"
-      cp "$src/${relPath}" "$out/${relPath}"
-    '';
+  copyFileCmd = relPath: ''
+    mkdir -p "$out/$(dirname "${relPath}")"
+    cp "$src/${relPath}" "$out/${relPath}"
+  '';
 
-  copyDirCmd =
-    relPath:
-    ''
-      mkdir -p "$out/$(dirname "${relPath}")"
-      cp -R "$src/${relPath}" "$out/$(dirname "${relPath}")/"
-      chmod -R +w "$out/${relPath}"
-    '';
+  copyDirCmd = relPath: ''
+    mkdir -p "$out/$(dirname "${relPath}")"
+    cp -R "$src/${relPath}" "$out/$(dirname "${relPath}")/"
+    chmod -R +w "$out/${relPath}"
+  '';
 
-  copyOptionalFileCmd =
-    relPath:
-    ''
-      if [ -f "$src/${relPath}" ]; then
-        ${copyFileCmd relPath}
-      fi
-    '';
+  copyOptionalFileCmd = relPath: ''
+    if [ -f "$src/${relPath}" ]; then
+      ${copyFileCmd relPath}
+    fi
+  '';
 
   materializeWorkspace =
     {
@@ -131,19 +130,24 @@ let
         set -euo pipefail
         mkdir -p "$out"
       ''
-      + builtins.concatStringsSep "\n" (map copyFileCmd [ "package.json" "pnpm-lock.yaml" ])
-      + builtins.concatStringsSep "\n" (map copyOptionalFileCmd [ ".npmrc" "tsconfig.base.json" ])
-      + ''
-        cat > "$out/pnpm-workspace.yaml" <<'EOF'
-${filteredRootPnpmWorkspaceYaml}
-EOF
-      ''
-      + (
-        if manifestOnly then
-          copyFileCmd "${packageDir}/package.json"
-        else
-          copyDirCmd packageDir
+      + builtins.concatStringsSep "\n" (
+        map copyFileCmd [
+          "package.json"
+          "pnpm-lock.yaml"
+        ]
       )
+      + builtins.concatStringsSep "\n" (
+        map copyOptionalFileCmd [
+          ".npmrc"
+          "tsconfig.base.json"
+        ]
+      )
+      + ''
+                cat > "$out/pnpm-workspace.yaml" <<'EOF'
+        ${filteredRootPnpmWorkspaceYaml}
+        EOF
+      ''
+      + (if manifestOnly then copyFileCmd "${packageDir}/package.json" else copyDirCmd packageDir)
       + "\n"
       + copyDirCmd patchesDir
     );
@@ -179,7 +183,12 @@ EOF
       in
       !(lib.elem baseName excludedNames)
       && (
-        builtins.elem relPath [ "package.json" "pnpm-lock.yaml" ".npmrc" "tsconfig.base.json" ]
+        builtins.elem relPath [
+          "package.json"
+          "pnpm-lock.yaml"
+          ".npmrc"
+          "tsconfig.base.json"
+        ]
         || hasPathPrefix relPath packageDir
         || hasPathPrefix relPath patchesDir
       );
@@ -212,30 +221,30 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
 
   buildPhase = ''
-    set -euo pipefail
-    runHook preBuild
+        set -euo pipefail
+        runHook preBuild
 
-    cp -r ${buildSrc} workspace
-    chmod -R +w workspace
-    ${pnpmDepsHelper.mkRestoreScript {
-      deps = pnpmDeps;
-      target = "workspace";
-    }}
-    chmod -R +w workspace
-    cat > workspace/pnpm-workspace.yaml <<'EOF'
-${filteredRootPnpmWorkspaceYaml}
-EOF
-    cd workspace
+        cp -r ${buildSrc} workspace
+        chmod -R +w workspace
+        ${pnpmDepsHelper.mkRestoreScript {
+          deps = pnpmDeps;
+          target = "workspace";
+        }}
+        chmod -R +w workspace
+        cat > workspace/pnpm-workspace.yaml <<'EOF'
+    ${filteredRootPnpmWorkspaceYaml}
+    EOF
+        cd workspace
 
-    cd ${packageDir}
+        cd ${packageDir}
 
-    # Bundle into single JS file.
-    # --external jiti: eslint's config loader uses jiti for dynamic imports, but
-    # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
-    # to exclude. This avoids bundling issues with jiti's native module resolution.
-    bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
+        # Bundle into single JS file.
+        # --external jiti: eslint's config loader uses jiti for dynamic imports, but
+        # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
+        # to exclude. This avoids bundling issues with jiti's native module resolution.
+        bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
 
-    runHook postBuild
+        runHook postBuild
   '';
 
   checkPhase = ''

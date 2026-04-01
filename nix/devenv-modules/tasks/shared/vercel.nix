@@ -52,7 +52,9 @@ let
           # where prebuilt binaries lack proper RPATH for Nix store paths.
           export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-          ${lib.concatStringsSep "\n          " (lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") extraEnv)}
+          ${lib.concatStringsSep "\n          " (
+            lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") extraEnv
+          )}
 
           if [ -z "''${VERCEL_TOKEN:-}" ]; then
             echo "Error: VERCEL_TOKEN is not set." >&2

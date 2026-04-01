@@ -43,11 +43,11 @@ let
     };
   };
 
-in {
+in
+{
   packages = cliGuard.fromTasks guardedTasks;
 
   tasks = lib.mkMerge (
-    map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages
-    ++ [ (cliGuard.stripGuards guardedTasks) ]
+    map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages ++ [ (cliGuard.stripGuards guardedTasks) ]
   );
 }

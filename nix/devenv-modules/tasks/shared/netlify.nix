@@ -26,15 +26,15 @@
 #
 # NOTE: pkg.name must be a valid Netlify alias slug (lowercase, alphanumeric, hyphens only).
 {
-  packages ? [],
-  site,  # Required — Netlify site name (e.g. "overeng-utils")
+  packages ? [ ],
+  site, # Required — Netlify site name (e.g. "overeng-utils")
   buildTaskPrefix ? "storybook:build",
 }:
 { lib, pkgs, ... }:
 let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
-  hasPackages = packages != [];
+  hasPackages = packages != [ ];
 
   mkDeployTask = pkg: {
     "netlify:deploy:${pkg.name}" = {
@@ -116,17 +116,18 @@ let
     };
   };
 
-in {
+in
+{
   tasks = lib.mkMerge (
-    (if hasPackages then map (pkg: cliGuard.stripGuards (mkDeployTask pkg)) packages else [])
-    ++ [(cliGuard.stripGuards {
-      "netlify:deploy" = {
-        description = "Deploy all storybooks to Netlify";
-        exec = null;
-        after = if hasPackages
-          then map (pkg: "netlify:deploy:${pkg.name}") packages
-          else [];
-      };
-    })]
+    (if hasPackages then map (pkg: cliGuard.stripGuards (mkDeployTask pkg)) packages else [ ])
+    ++ [
+      (cliGuard.stripGuards {
+        "netlify:deploy" = {
+          description = "Deploy all storybooks to Netlify";
+          exec = null;
+          after = if hasPackages then map (pkg: "netlify:deploy:${pkg.name}") packages else [ ];
+        };
+      })
+    ]
   );
 }

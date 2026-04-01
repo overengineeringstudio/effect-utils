@@ -26,10 +26,13 @@ pkgs.pnpm.overrideAttrs (old: {
     makeWrapper ${pkgs.nodejs}/bin/node $out/bin/pnpx \
       --add-flags $out/libexec/pnpm/bin/pnpx.mjs
   '';
-  installPhase = builtins.replaceStrings
-    [ "runHook postInstall" ]
-    [ ''
-      runHook postInstall
-    '' ]
-    old.installPhase;
+  installPhase =
+    builtins.replaceStrings
+      [ "runHook postInstall" ]
+      [
+        ''
+          runHook postInstall
+        ''
+      ]
+      old.installPhase;
 })

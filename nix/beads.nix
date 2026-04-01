@@ -1,6 +1,9 @@
 # Beads (bd) — pre-built binary package from GitHub releases.
 # v0.57+ self-manages dolt sql-server per project (deterministic port from FNV hash of BEADS_DIR).
-{ pkgs, beadsPrimaryRef ? "main" }:
+{
+  pkgs,
+  beadsPrimaryRef ? "main",
+}:
 let
   version = "0.59.0";
   tag = "v${version}";

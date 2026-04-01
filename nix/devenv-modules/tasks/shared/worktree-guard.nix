@@ -93,7 +93,9 @@ in
 
       branch="$($git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
       if [ -z "$branch" ]; then
-        if [ "${if enforceMegarepoStoreRefMatch then "1" else "0"}" = "1" ] && [ "$storeExpectedType" = "branch" ]; then
+        if [ "${
+          if enforceMegarepoStoreRefMatch then "1" else "0"
+        }" = "1" ] && [ "$storeExpectedType" = "branch" ]; then
           commitSha="$($git rev-parse --short HEAD 2>/dev/null || echo unknown)"
           echo "error: ref mismatch: store path implies '$storeExpectedRef' but worktree is detached at $commitSha" >&2
           echo "hint: use 'mr pin <member> -c $commitSha' to create proper worktree, or 'git checkout $storeExpectedRef' to restore expected state" >&2
@@ -117,7 +119,9 @@ in
         exit 1
       fi
 
-      if [ "${if enforceMegarepoStoreRefMatch then "1" else "0"}" = "1" ] && [ "$storeExpectedType" = "branch" ] && [ "$branch" != "$storeExpectedRef" ]; then
+      if [ "${
+        if enforceMegarepoStoreRefMatch then "1" else "0"
+      }" = "1" ] && [ "$storeExpectedType" = "branch" ] && [ "$branch" != "$storeExpectedRef" ]; then
         echo "error: ref mismatch: store path implies '$storeExpectedRef' but worktree HEAD is '$branch'" >&2
         echo "hint: use 'mr pin <member> -c $branch' to create proper worktree, or 'git checkout $storeExpectedRef' to restore expected state" >&2
         exit 1

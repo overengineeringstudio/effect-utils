@@ -165,13 +165,19 @@ let
       guard = tscBin;
       description = "Type check the whole workspace (tsc --build)";
       exec = trace.exec "ts:check" (tscWithDiagnostics "--build ${tsconfigFile}" "");
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
     };
     "ts:build" = {
       guard = tscBin;
       description = "Build all packages with type checking (tsc --build)";
       exec = trace.exec "ts:build" (tscWithDiagnostics "--build ${tsconfigFile}" "");
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
     };
   };
 
@@ -179,7 +185,10 @@ let
     "ts:build-watch" = {
       description = "Build all packages in watch mode (tsc --build --watch)";
       exec = "${tscBin} --build --watch ${tsconfigFile}";
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
@@ -195,7 +204,10 @@ let
         echo "$_out" | grep -q "A non-dry build would" && exit 1
         exit 0
       '';
-      after = [ "genie:run" "pnpm:install" ];
+      after = [
+        "genie:run"
+        "pnpm:install"
+      ];
     };
     "ts:clean" = {
       description = "Remove TypeScript build artifacts";
@@ -206,7 +218,8 @@ in
 {
   packages = [
     pkgs.bc
-  ] ++ cliGuard.fromTasks guardedTasks;
+  ]
+  ++ cliGuard.fromTasks guardedTasks;
 
   tasks = cliGuard.stripGuards (guardedTasks // otherTasks);
 }

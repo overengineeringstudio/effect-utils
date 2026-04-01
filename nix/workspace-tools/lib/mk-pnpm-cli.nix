@@ -299,7 +299,10 @@ let
     if installDir == "." then name else "${name}-${lib.replaceStrings [ "/" ] [ "-" ] installDir}";
   installRootMemberDirs =
     root:
-    if root ? memberDirs then lib.sort (left: right: left < right) root.memberDirs else [ root.installDir ];
+    if root ? memberDirs then
+      lib.sort (left: right: left < right) root.memberDirs
+    else
+      [ root.installDir ];
   /**
     Generic identity for a filtered install-root dependency boundary.
 
@@ -310,10 +313,12 @@ let
   */
   installRootProfileKey =
     root:
-    builtins.hashString "sha256" (builtins.toJSON {
-      dir = root.installDir;
-      memberDirs = installRootMemberDirs root;
-    });
+    builtins.hashString "sha256" (
+      builtins.toJSON {
+        dir = root.installDir;
+        memberDirs = installRootMemberDirs root;
+      }
+    );
 
   /**
     `depsBuilds` is the canonical source of truth for prepared pnpm artifacts.
@@ -328,20 +333,19 @@ let
     checks. It would not improve correctness, reuse, or downstream invalidation,
     so that concern stays in tooling rather than the builder contract.
   */
-  depsBuildEntries =
-    map (
-      installDir:
-      let
-        entry = builtins.getAttr installDir depsBuilds;
-      in
-      if !(builtins.isAttrs entry && entry ? hash) then
-        throw "mk-pnpm-cli: depsBuilds.${installDir} must be { hash = \"sha256-...\"; }"
-      else
-        {
-          dir = installDir;
-          hash = entry.hash;
-        }
-    ) (builtins.attrNames depsBuilds);
+  depsBuildEntries = map (
+    installDir:
+    let
+      entry = builtins.getAttr installDir depsBuilds;
+    in
+    if !(builtins.isAttrs entry && entry ? hash) then
+      throw "mk-pnpm-cli: depsBuilds.${installDir} must be { hash = \"sha256-...\"; }"
+    else
+      {
+        dir = installDir;
+        hash = entry.hash;
+      }
+  ) (builtins.attrNames depsBuilds);
 
   depsBuildHashForInstallRoot =
     installDir:
@@ -587,7 +591,9 @@ let
   };
   depsInstallRoots = [ rootInstallRoot ] ++ externalInstallRootDeps;
   installRootDirs = map (root: root.installDir) depsInstallRoots;
-  unknownDepsBuildDirs = builtins.filter (dir: !(lib.elem dir installRootDirs)) (builtins.attrNames depsBuilds);
+  unknownDepsBuildDirs = builtins.filter (dir: !(lib.elem dir installRootDirs)) (
+    builtins.attrNames depsBuilds
+  );
   _validateInstallRootHashContract =
     if unknownDepsBuildDirs != [ ] then
       throw "mk-pnpm-cli: depsBuilds contains unknown install roots"

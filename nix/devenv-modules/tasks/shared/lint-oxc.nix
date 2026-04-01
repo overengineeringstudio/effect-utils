@@ -58,10 +58,10 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
   scanDirsSetup = builtins.concatStringsSep "\n" (
-    map (dir: ''scan_dir_args+=(${builtins.toJSON dir})'') genieCoverageDirs
+    map (dir: "scan_dir_args+=(${builtins.toJSON dir})") genieCoverageDirs
   );
   excludePathspecsSetup = builtins.concatStringsSep "\n" (
-    map (p: ''pathspec_args+=(${builtins.toJSON ":(exclude)${p}"})'') genieCoverageExcludes
+    map (p: "pathspec_args+=(${builtins.toJSON ":(exclude)${p}"})") genieCoverageExcludes
   );
   coverageFileMatches = builtins.concatStringsSep " || " (
     lib.concatMap (f: [

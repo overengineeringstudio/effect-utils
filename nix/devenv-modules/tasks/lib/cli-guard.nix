@@ -130,9 +130,17 @@ let
   # devenv's module-level `env` attributes are not propagated to task
   # subprocesses, but per-task `env` is. Pass all tasks (guarded + other)
   # so every task can call guarded CLIs during task execution.
-  stripGuards = builtins.mapAttrs (_: def:
-    let stripped = builtins.removeAttrs def [ "guard" ];
-    in stripped // { env = (stripped.env or { }) // { DT_PASSTHROUGH = "1"; }; }
+  stripGuards = builtins.mapAttrs (
+    _: def:
+    let
+      stripped = builtins.removeAttrs def [ "guard" ];
+    in
+    stripped
+    // {
+      env = (stripped.env or { }) // {
+        DT_PASSTHROUGH = "1";
+      };
+    }
   );
 
 in

@@ -35,9 +35,10 @@ let
   # "apps/example.com" -> "example-com"
   # "tests/wa-sqlite" -> "tests-wa-sqlite"
   # "scripts" -> "scripts"
-  toName = path:
+  toName =
+    path:
     let
-      sanitize = s: builtins.replaceStrings ["/" "."] ["-" "-"] s;
+      sanitize = s: builtins.replaceStrings [ "/" "." ] [ "-" "-" ] s;
       # Only strip "packages/" or "apps/" prefix, keep others like "tests/"
       stripped = lib.removePrefix "apps/" (lib.removePrefix "packages/" path);
       # Strip @scope/ pattern (e.g., "@overeng/foo" -> "foo")
@@ -51,7 +52,10 @@ let
       description = "Install dependencies for ${toName path}";
       exec = "bun install";
       cwd = path;
-      execIfModified = [ "${path}/package.json" "${path}/bun.lock" ];
+      execIfModified = [
+        "${path}/package.json"
+        "${path}/bun.lock"
+      ];
       after = [ "genie:run" ];
     };
   };
@@ -59,21 +63,25 @@ let
   nodeModulesPaths = lib.concatMapStringsSep " " (p: "${p}/node_modules") packages;
   lockFilePaths = lib.concatMapStringsSep " " (p: "${p}/bun.lock") packages;
 
-in {
-  tasks = lib.mkMerge (map mkInstallTask packages ++ [
-    {
-      "bun:install" = {
-        description = "Install all bun dependencies";
-        after = map (p: "bun:install:${toName p}") packages;
-      };
-      "bun:clean" = {
-        description = "Remove node_modules for all managed packages";
-        exec = "rm -rf ${nodeModulesPaths}";
-      };
-      "bun:clean-lock-files" = {
-        description = "Remove bun lock files for all managed packages";
-        exec = "rm -f ${lockFilePaths}";
-      };
-    }
-  ]);
+in
+{
+  tasks = lib.mkMerge (
+    map mkInstallTask packages
+    ++ [
+      {
+        "bun:install" = {
+          description = "Install all bun dependencies";
+          after = map (p: "bun:install:${toName p}") packages;
+        };
+        "bun:clean" = {
+          description = "Remove node_modules for all managed packages";
+          exec = "rm -rf ${nodeModulesPaths}";
+        };
+        "bun:clean-lock-files" = {
+          description = "Remove bun lock files for all managed packages";
+          exec = "rm -f ${lockFilePaths}";
+        };
+      }
+    ]
+  );
 }

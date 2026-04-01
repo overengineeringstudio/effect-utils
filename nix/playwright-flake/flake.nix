@@ -7,13 +7,20 @@
     playwright-web-flake.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { nixpkgs, playwright-web-flake, ... }:
+  outputs =
+    { nixpkgs, playwright-web-flake, ... }:
     let
       lib = nixpkgs.lib;
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
       forAllSystems = f: lib.genAttrs systems (system: f system);
 
-      mkPlaywrightWrapper = system:
+      mkPlaywrightWrapper =
+        system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
           playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;
@@ -30,7 +37,8 @@
         default = mkPlaywrightWrapper system;
       });
 
-      devenvModules.default = { pkgs, ... }:
+      devenvModules.default =
+        { pkgs, ... }:
         let
           system = pkgs.stdenv.hostPlatform.system;
           playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;

@@ -207,8 +207,7 @@ in
       # Required tasks are hard dependencies; optional tasks use @completed so
       # failures don't block shell entry.
       "devenv:enterShell" = {
-        after = setupRequiredTasks
-          ++ (map (t: "${t}@completed") setupOptionalTasks);
+        after = setupRequiredTasks ++ (map (t: "${t}@completed") setupOptionalTasks);
       };
 
       # Run setup tasks explicitly.
