@@ -33,6 +33,7 @@ let
     netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
     lint-genie = ./nix/devenv-modules/tasks/shared/lint-genie.nix;
     ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
+    lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
     lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
     bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
@@ -228,7 +229,8 @@ in
     taskModules.genie
     (taskModules.ts { })
     (taskModules.megarepo { })
-    (taskModules.check { extraChecks = [ "workspace:check" ]; })
+    (taskModules.lint-nix {})
+    (taskModules.check { extraChecks = [ "workspace:check" "lint:nix" ]; })
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task
     # NOTE: Using pnpm temporarily. See: context/workarounds/bun-issues.md
