@@ -23,7 +23,10 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-lkMbv1HbXuQHbVa5C8D/Nd/hOc95j8k6PkfartCgxdo=";
+        hash = {
+          aarch64-darwin = "sha256-lkMbv1HbXuQHbVa5C8D/Nd/hOc95j8k6PkfartCgxdo=";
+          x86_64-linux = "sha256-5h/sfU8jgeNdmKxJA7nK+jGjFqMsCXX6R65DxxiB7I0=";
+        }.${pkgs.stdenv.hostPlatform.system} or (throw "megarepo: unsupported system ${pkgs.stdenv.hostPlatform.system}");
       };
     };
     smokeTestArgs = [ "--help" ];
