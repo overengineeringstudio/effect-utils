@@ -382,17 +382,14 @@ let
       fi
     fi
 
-    # [CI-only] Realize→evict→rebuild to catch stale FOD hashes.
-    # Cachix can serve stale FOD outputs (keyed by declared hash). On fresh
-    # runners there's nothing to evict pre-build, so we must: (1) build once
-    # (populating store from cache), (2) evict pnpm-deps FOD outputs, then
-    # (3) rebuild. The second build re-derives FODs locally — if the declared
-    # hash is stale, it fails with a hash mismatch.
+    # [CI-only] Evict cached pnpm-deps FOD outputs so Nix must re-derive them.
+    # Cachix can serve stale FOD outputs (keyed by declared hash, not build
+    # inputs), masking hash staleness. Evicting the specific outputs forces a
+    # fresh build whose actual hash is compared against the declared hash.
+    # NOTE: We evict only the FOD outputs (not all deps) so transitive
+    # dependencies can still be substituted from cache.
     # TODO(nix-ca): Remove once content-addressed derivations are stable (NixOS/nix#6623).
     if [ -n "''${CI:-}" ]; then
-      # Step 1: realize (may substitute from cache)
-      ${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>/dev/null || true
-      # Step 2: evict pnpm-deps FOD outputs
       topDrv=$(${pkgs.nix}/bin/nix path-info --derivation "$flakeRef" 2>/dev/null || true)
       if [ -n "$topDrv" ]; then
         for drv in $(${pkgs.nix}/bin/nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps.*\.drv$" || true); do
@@ -406,7 +403,6 @@ let
       fi
     fi
 
-    # Step 3 (CI) or single build (local): rebuild from scratch
     if output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --option substituters "https://cache.nixos.org" 2>&1); then
       echo "✓ $name: up to date"
       exit 0
