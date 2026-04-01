@@ -69,7 +69,7 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
     if (inPackages === false) continue
 
     /* New top-level section ends the packages block */
-    if (/^\S/.test(line) && line !== 'packages:') {
+    if (/^\S/.test(line) === true && line !== 'packages:') {
       flush()
       inPackages = false
       continue
@@ -95,7 +95,7 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
     }
 
     /* Any other 4-space key exits the peerDependencies block */
-    if (/^    \S/.test(line) && line !== '    peerDependencies:') {
+    if (/^    \S/.test(line) === true && line !== '    peerDependencies:') {
       inPeerDeps = false
       continue
     }

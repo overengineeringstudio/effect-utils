@@ -40,7 +40,7 @@ const satisfiesSingle = (version: string, range: string): boolean => {
 
   if (trimmed.startsWith('^') === true) {
     const r = parseVersion(trimmed.slice(1))
-    if (!gte(v, r)) return false
+    if (gte(v, r) === false) return false
     if (r[0] > 0) return v[0] === r[0]
     if (r[1] > 0) return v[0] === 0 && v[1] === r[1]
     return v[0] === 0 && v[1] === 0 && v[2] === r[2]
@@ -67,5 +67,6 @@ const satisfiesSingle = (version: string, range: string): boolean => {
 }
 
 /** Check if a concrete version satisfies a range (handles `||` disjunction). */
+// oxlint-disable-next-line overeng/named-args -- positional version+range mirrors node-semver API
 export const satisfiesRange = (version: string, range: string): boolean =>
   range.split('||').some((part) => satisfiesSingle(version, part.trim()))
