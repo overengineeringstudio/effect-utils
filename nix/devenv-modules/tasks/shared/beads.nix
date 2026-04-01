@@ -22,7 +22,7 @@ in
 
   tasks."beads:push" = {
     description = "Push beads changes to Dolt remote";
-    after = [ "mr:sync" ];
+    after = [ "mr:fetch-apply" ];
     exec = ''
       if [ ! -d "$BEADS_DIR" ]; then
         echo "[beads] Beads repo not found." >&2
@@ -35,7 +35,7 @@ in
 
   tasks."beads:pull" = {
     description = "Pull beads changes from Dolt remote";
-    after = [ "mr:sync" ];
+    after = [ "mr:fetch-apply" ];
     exec = ''
       if [ ! -d "$BEADS_DIR" ]; then
         echo "[beads] Beads repo not found." >&2

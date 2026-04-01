@@ -13,7 +13,7 @@
 //   - genie:run (config generation)
 //   - lint:check (linting)
 //   - test:run (test execution)
-//   - mr:sync (repo synchronization)
+//   - mr:fetch-apply (repo synchronization)
 //   - nix:build, nix:check, nix:hash (Nix operations)
 //   - tsc per-project breakdown (from extendedDiagnostics spans)
 local g = import 'g.libsonnet';
@@ -290,7 +290,7 @@ g.dashboard.new('dt Task Duration Trends')
   at(g.panel.row.new('Megarepo + Other'), 0, y.megarepoRow, 24, 1),
 
   at(
-    taskDurationPanel('mr:sync (p50 / p95 / p99)', 'mr:sync'),
+    taskDurationPanel('mr:fetch-apply (p50 / p95 / p99)', 'mr:fetch-apply'),
     0, y.megarepoContent, 8, 8,
   ),
 
@@ -335,7 +335,7 @@ g.dashboard.new('dt Task Duration Trends')
   at(
     taskDurationPanel(
       'Shell entry sub-tasks (p50 / p95)',
-      'setup:gate|pnpm:install|genie:run|mr:sync|ts:emit|setup:completions|devenv:.*',
+      'setup:gate|pnpm:install|genie:run|mr:fetch-apply|ts:emit|setup:completions|devenv:.*',
     ),
     12, y.shellContent, 12, 8,
   ),
