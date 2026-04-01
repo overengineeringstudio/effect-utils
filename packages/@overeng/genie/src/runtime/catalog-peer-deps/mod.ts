@@ -13,6 +13,7 @@ import type { GenieValidationIssue } from '../validation/mod.ts'
 // Lockfile Parser
 // =============================================================================
 
+/** Resolved peer dependency metadata for a single lockfile package. */
 export type PeerDepsEntry = {
   version: string
   peerDependencies: Record<string, string>
@@ -21,7 +22,10 @@ export type PeerDepsEntry = {
 /** Strip surrounding YAML quotes from a string value. */
 const unquote = (s: string): string => {
   const t = s.trim()
-  if ((t.startsWith("'") && t.endsWith("'")) || (t.startsWith('"') && t.endsWith('"')))
+  if (
+    (t.startsWith("'") === true && t.endsWith("'") === true) ||
+    (t.startsWith('"') === true && t.endsWith('"') === true)
+  )
     return t.slice(1, -1)
   return t
 }
@@ -76,7 +80,7 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
     if (pkgMatch !== null) {
       flush()
       const spec = pkgMatch[1]!
-      const atIdx = spec.startsWith('@') ? spec.indexOf('@', 1) : spec.indexOf('@')
+      const atIdx = spec.startsWith('@') === true ? spec.indexOf('@', 1) : spec.indexOf('@')
       if (atIdx > 0) {
         currentPkg = spec.slice(0, atIdx)
         currentVersion = spec.slice(atIdx + 1)
@@ -112,6 +116,7 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
 // Validation
 // =============================================================================
 
+/** Input for `validateCatalogPeerDeps`: catalog versions, lockfile content, and optional override rules. */
 export type CatalogPeerDepsValidationArgs = {
   /** Catalog entries: package name → version */
   catalog: Record<string, string>

@@ -5,6 +5,7 @@
  * `^`, `~`, `>=X <Y`, `>=X`, `||` disjunction, `*`, and bare versions.
  */
 
+/** Parsed semver version as a `[major, minor, patch]` tuple. */
 export type SemVer = readonly [major: number, minor: number, patch: number]
 
 /** Parse a version string like `1.2.3` into a `[major, minor, patch]` tuple. */
@@ -14,10 +15,13 @@ export const parseVersion = (version: string): SemVer => {
   return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0] as const
 }
 
+// oxlint-disable-next-line overeng/named-args
 const cmp = (a: SemVer, b: SemVer): number =>
   a[0] !== b[0] ? a[0] - b[0] : a[1] !== b[1] ? a[1] - b[1] : a[2] - b[2]
 
+// oxlint-disable-next-line overeng/named-args
 const gte = (a: SemVer, b: SemVer): boolean => cmp(a, b) >= 0
+// oxlint-disable-next-line overeng/named-args
 const lt = (a: SemVer, b: SemVer): boolean => cmp(a, b) < 0
 
 /**
@@ -27,13 +31,14 @@ const lt = (a: SemVer, b: SemVer): boolean => cmp(a, b) < 0
  * This is the key behavior that catches `@effect-atom/atom` declaring
  * `^0.58.0` which does NOT cover `0.60.0`.
  */
+// oxlint-disable-next-line overeng/named-args
 const satisfiesSingle = (version: string, range: string): boolean => {
   const v = parseVersion(version)
   const trimmed = range.trim()
 
   if (trimmed === '*') return true
 
-  if (trimmed.startsWith('^')) {
+  if (trimmed.startsWith('^') === true) {
     const r = parseVersion(trimmed.slice(1))
     if (!gte(v, r)) return false
     if (r[0] > 0) return v[0] === r[0]
@@ -41,21 +46,21 @@ const satisfiesSingle = (version: string, range: string): boolean => {
     return v[0] === 0 && v[1] === 0 && v[2] === r[2]
   }
 
-  if (trimmed.startsWith('~')) {
+  if (trimmed.startsWith('~') === true) {
     const r = parseVersion(trimmed.slice(1))
     return v[0] === r[0] && v[1] === r[1] && v[2] >= r[2]
   }
 
   /* `>=X.Y.Z <A.B.C` compound range */
-  if (trimmed.startsWith('>=') && trimmed.includes('<')) {
+  if (trimmed.startsWith('>=') === true && trimmed.includes('<') === true) {
     const parts = trimmed.split(/\s+/)
     const lo = parseVersion(parts[0]!.slice(2))
-    const hiPart = parts.find((p) => p.startsWith('<') && p.startsWith('<=') === false)
+    const hiPart = parts.find((p) => p.startsWith('<') === true && p.startsWith('<=') === false)
     if (hiPart !== undefined) return gte(v, lo) && lt(v, parseVersion(hiPart.slice(1)))
   }
 
   /* `>=X.Y.Z` standalone */
-  if (trimmed.startsWith('>=')) return gte(v, parseVersion(trimmed.slice(2)))
+  if (trimmed.startsWith('>=') === true) return gte(v, parseVersion(trimmed.slice(2)))
 
   /* Bare version — exact match */
   return version === trimmed
