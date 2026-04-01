@@ -100,7 +100,7 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
       continue
     }
 
-    if (inPeerDeps) {
+    if (inPeerDeps === true) {
       const m = line.match(/^      (.+?):\s+(.+)$/)
       if (m !== null) {
         peerDeps[unquote(m[1]!)] = unquote(m[2]!)
