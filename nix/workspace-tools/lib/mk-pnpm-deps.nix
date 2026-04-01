@@ -92,6 +92,11 @@ in
       pnpmDepsHash,
       preInstall ? "",
       lockfilePaths ? [ "pnpm-lock.yaml" ],
+      # Optional: path to a pre-normalized lockfile. When provided, the FOD
+      # replaces the staged lockfile and skips the registry-dependent
+      # `--lockfile-only --no-frozen-lockfile` normalization step, making the
+      # FOD output fully deterministic.
+      normalizedLockfile ? null,
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -326,15 +331,21 @@ in
 
                   log_prep_phase "normalize-lockfile-start" "install_root=$install_root"
                   normalizeStartedAt=$(timer_now)
+                  ${if normalizedLockfile != null then ''
+                  # Use pre-normalized lockfile — fully deterministic, no registry access
+                  cp ${normalizedLockfile} "$install_root/pnpm-lock.yaml"
+                  chmod +w "$install_root/pnpm-lock.yaml"
+                  log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=committed"
+                  '' else ''
                   (
                     cd "$install_root"
-                    # pnpm 11 rejects a full-workspace lockfile once mk-pnpm-cli stages
-                    # a reduced workspace closure. Rewriting the lockfile against the
-                    # staged manifests produces the exact lock shape the subsequent
-                    # frozen install expects.
+                    # DEPRECATED: In-FOD normalization hits the npm registry, making output
+                    # non-deterministic over time. Migrate to committed normalized lockfiles.
+                    # See: https://github.com/overengineeringstudio/effect-utils/issues/513
                     pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
                   )
-                  log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s"
+                  log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=in-fod-DEPRECATED"
+                  ''}
                   log_path_stats "install-root:$install_root-after-normalize" "$install_root"
 
                   log_prep_phase "install-start" "install_root=$install_root"
