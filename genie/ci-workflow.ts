@@ -558,9 +558,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --
  */
 export const validateNixStoreStep = {
   name: 'Resolve devenv',
-  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
-  ${resolveDevenvRevScript}
-fi
+  run: `${resolveDevenvRevScript}
 
 ${resolveDevenvFnScript}
 
