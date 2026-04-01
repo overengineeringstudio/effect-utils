@@ -1113,7 +1113,9 @@ const rootPnpmWorkspaceYaml = ({
             ...validateCatalogPeerDeps({
               catalog: catalogVersions,
               lockfileContent,
-              peerDependencyRules: config.peerDependencyRules,
+              ...(config.peerDependencyRules !== undefined
+                ? { peerDependencyRules: config.peerDependencyRules }
+                : {}),
             }),
           )
         } catch {
