@@ -460,15 +460,15 @@ export const savePnpmStoreStep = (opts?: {
 }
 
 /**
- * Build exported pnpm fixed-output derivations with substituters disabled,
- * forcing Nix to re-derive each FOD from scratch.
+ * Validate exported pnpm fixed-output derivations by evicting any cached
+ * outputs and rebuilding from scratch.
  *
  * FOD derivation hashes are computed from the declared output hash, not the
  * build inputs. When Cachix has a previously-valid output cached under that
  * derivation hash, `nix build` (and even `nix build --rebuild`) will reuse it
- * without detecting that the declared hash is stale. Disabling substituters
- * forces a fresh local build whose actual output hash is compared against the
- * declared hash — a mismatch fails the build immediately.
+ * without detecting that the declared hash is stale. Evicting the specific FOD
+ * output forces Nix to re-derive it while still allowing substitution for
+ * transitive dependencies (nixpkgs packages, etc.).
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
@@ -483,7 +483,13 @@ export const validateColdPnpmDepsStep = ({
     'set -euo pipefail',
     `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
     '  echo "::group::cold-build $attr"',
-    '  nix build --no-link --option substitute false "$attr"',
+    '  # Evict cached FOD output so Nix must re-derive it',
+    '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
+    '  if [ -n "$outPath" ] && [ -e "$outPath" ]; then',
+    '    echo "  evicting: $outPath"',
+    '    nix store delete "$outPath" 2>/dev/null || true',
+    '  fi',
+    '  nix build --no-link "$attr"',
     '  echo "::endgroup::"',
     'done',
   ].join('\n'),

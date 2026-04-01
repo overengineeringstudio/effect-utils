@@ -1227,7 +1227,13 @@ jobs:
           set -euo pipefail
           for attr in '.#genie-pnpm-deps' '.#megarepo-pnpm-deps' '.#oxc-config-plugin-pnpm-deps'; do
             echo "::group::cold-build $attr"
-            nix build --no-link --option substitute false "$attr"
+            # Evict cached FOD output so Nix must re-derive it
+            outPath=$(nix path-info "$attr" 2>/dev/null || true)
+            if [ -n "$outPath" ] && [ -e "$outPath" ]; then
+              echo "  evicting: $outPath"
+              nix store delete "$outPath" 2>/dev/null || true
+            fi
+            nix build --no-link "$attr"
             echo "::endgroup::"
           done
       - name: Nix diagnostics summary
