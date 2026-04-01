@@ -38,6 +38,66 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  emitTsconfigHelper = ''
+    generate_emit_tsconfig() {
+      local source_tsconfig="$1"
+      local target_tsconfig="$2"
+
+      # `tsc --build --dry --noCheck` still treats `noEmit` references as emit
+      # work, which made `ts:emit` look perpetually stale. Build a filtered
+      # graph just for this task instead of mutating the checked-in config.
+      ${pkgs.nodejs}/bin/node - "$source_tsconfig" "$target_tsconfig" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [sourceTsconfig, targetTsconfig] = process.argv.slice(2)
+
+const loadTypescript = () => {
+  try {
+    return require(require.resolve('typescript', { paths: [path.dirname(sourceTsconfig), process.cwd()] }))
+  } catch (error) {
+    throw new Error(
+      'Unable to resolve TypeScript while preparing ts:emit: ' +
+        String(error?.message ?? error)
+    )
+  }
+}
+
+const typescript = loadTypescript()
+
+const readTsconfig = (filePath) => {
+  const parsed = typescript.readConfigFile(filePath, (path) => fs.readFileSync(path, 'utf8'))
+  if (parsed.error) {
+    const message = typeof parsed.error.messageText === 'string'
+      ? parsed.error.messageText
+      : JSON.stringify(parsed.error.messageText)
+    throw new Error('Failed to parse ' + filePath + ': ' + message)
+  }
+  return parsed.config
+}
+
+const resolveReferenceTsconfig = (referencePath) => {
+  const resolvedPath = path.resolve(baseDir, referencePath)
+  return path.extname(resolvedPath) ? resolvedPath : path.join(resolvedPath, 'tsconfig.json')
+}
+
+const rootConfig = readTsconfig(sourceTsconfig)
+const baseDir = path.dirname(sourceTsconfig)
+
+rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
+  const refTsconfig = resolveReferenceTsconfig(reference.path)
+  if (!fs.existsSync(refTsconfig)) {
+    return true
+  }
+
+  const refConfig = readTsconfig(refTsconfig)
+  return refConfig.compilerOptions?.noEmit !== true
+})
+
+fs.writeFileSync(targetTsconfig, JSON.stringify(rootConfig))
+NODE
+    }
+  '';
 
   # Script that runs tsc with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
@@ -183,11 +243,28 @@ let
     };
     "ts:emit" = trace.withStatus "ts:emit" "binary" {
       description = "Emit build outputs without full type checking (tsc --build --noCheck)";
-      exec = tscWithDiagnostics "--build ${tsconfigFile}" "--noCheck";
+      exec = ''
+        set -euo pipefail
+        ${emitTsconfigHelper}
+        # Create the filtered config next to the source tsconfig so referenced
+        # project paths stay relative to the workspace instead of `/tmp`.
+        _emit_tmpdir="$(dirname "${tsconfigFile}")"
+        _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
+        trap 'rm -f "$_emit_tsconfig"' EXIT
+        generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
+        ${tscWithDiagnostics "--build \"$_emit_tsconfig\"" "--noCheck"}
+      '';
       status = ''
         set -euo pipefail
+        ${emitTsconfigHelper}
 
-        _out="$(${tscBin} --build ${tsconfigFile} --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
+        # Reuse the same filtered graph for the dry-run status check so warm
+        # caching answers the same question as the real emit command.
+        _emit_tmpdir="$(dirname "${tsconfigFile}")"
+        _emit_tsconfig="$(mktemp "$_emit_tmpdir/.ts-emit-XXXXXX.json")"
+        trap 'rm -f "$_emit_tsconfig"' EXIT
+        generate_emit_tsconfig "${tsconfigFile}" "$_emit_tsconfig"
+        _out="$(${tscBin} --build "$_emit_tsconfig" --dry --noCheck --verbose --pretty false 2>&1)" || exit 1
         # tsc --build --dry reports pending work as:
         # - "A non-dry build would build project ..."
         # - "A non-dry build would update timestamps for output of project ..."

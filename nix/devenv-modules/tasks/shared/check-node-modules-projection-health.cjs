@@ -1,12 +1,14 @@
 const fs = require('fs')
 const path = require('path')
 const { createRequire } = require('module')
+const crypto = require('crypto')
+
+const mode = process.env.NODE_MODULES_HELPER_MODE || 'health'
 
 /**
- * GVS can leave package symlinks present while still dropping transitive
- * projections after config/path changes. Checking only for broken symlinks
- * misses that failure mode, so this helper resolves each symlinked package's
- * declared runtime deps from the package's real path.
+ * Keep the node_modules helper logic in one process so the warm status path
+ * can preserve its exact structural fingerprint semantics without paying for
+ * hundreds of shell-level `readlink` subprocesses.
  */
 const moduleDirs = (process.env.NODE_MODULES_DIRS || '')
   .split('\n')
@@ -15,9 +17,23 @@ const moduleDirs = (process.env.NODE_MODULES_DIRS || '')
   .filter((value, index, values) => values.indexOf(value) === index)
   .filter((value) => fs.existsSync(value))
 
-const dependencyProjectionFailures = []
+const collectProjectionEntryPaths = (nodeModulesDir) => {
+  const result = []
+  for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
+    const entryPath = path.join(nodeModulesDir, entry.name)
+    if (entry.isDirectory()) {
+      for (const childEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+        result.push(path.join(entryPath, childEntry.name))
+      }
+      continue
+    }
 
-const collectEntryPaths = (nodeModulesDir) => {
+    result.push(entryPath)
+  }
+  return result.sort()
+}
+
+const collectHealthEntryPaths = (nodeModulesDir) => {
   const result = []
   for (const entry of fs.readdirSync(nodeModulesDir, { withFileTypes: true })) {
     if (entry.name === '.bin' || entry.name === '.pnpm') continue
@@ -55,50 +71,115 @@ const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
   return undefined
 }
 
-for (const nodeModulesDir of moduleDirs) {
-  for (const entryPath of collectEntryPaths(nodeModulesDir)) {
-    let stat
-    try {
-      stat = fs.lstatSync(entryPath)
-    } catch {
+const runProjectionHash = () => {
+  const hash = crypto.createHash('sha256')
+  const appendLine = (line) => {
+    hash.update(line)
+    hash.update('\n')
+  }
+
+  for (const nodeModulesDir of moduleDirs) {
+    if (fs.existsSync(nodeModulesDir) && fs.statSync(nodeModulesDir).isDirectory()) {
+      appendLine(`dir ${nodeModulesDir}`)
+    } else {
+      appendLine(`missing ${nodeModulesDir}`)
       continue
     }
 
-    if (!stat.isSymbolicLink()) continue
+    for (const entryPath of collectProjectionEntryPaths(nodeModulesDir)) {
+      let stat
+      try {
+        stat = fs.lstatSync(entryPath)
+      } catch {
+        continue
+      }
 
-    let realPath
-    try {
-      realPath = fs.realpathSync(entryPath)
-    } catch {
-      continue
-    }
+      if (!stat.isSymbolicLink()) continue
 
-    const packageJsonPath = path.join(realPath, 'package.json')
-    if (!fs.existsSync(packageJsonPath)) continue
+      let target = ''
+      try {
+        target = fs.readlinkSync(entryPath)
+      } catch {}
 
-    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
-    const dependencyNames = Object.keys(pkg.dependencies ?? {})
-    if (dependencyNames.length === 0) continue
-
-    const requireFromPkg = createRequire(packageJsonPath)
-    for (const dependencyName of dependencyNames) {
-      if (
-        resolveDependencyPackageRoot({
-          requireFromPkg,
-          dependencyName,
-        }) === undefined
-      ) {
-        dependencyProjectionFailures.push(
-          `${pkg.name ?? entryPath} -> ${dependencyName} (from ${nodeModulesDir})`,
-        )
+      if (fs.existsSync(entryPath)) {
+        appendLine(`link ${entryPath} -> ${target}`)
+      } else {
+        appendLine(`broken-link ${entryPath} -> ${target}`)
       }
     }
   }
+
+  const rootModulesYamlPath = process.env.PNPM_ROOT_MODULES_YAML || 'node_modules/.modules.yaml'
+  if (fs.existsSync(rootModulesYamlPath)) {
+    appendLine(
+      `modules-yaml ${crypto
+        .createHash('sha256')
+        .update(fs.readFileSync(rootModulesYamlPath))
+        .digest('hex')}`,
+    )
+  } else {
+    appendLine('modules-yaml missing')
+  }
+
+  process.stdout.write(`${hash.digest('hex')}\n`)
 }
 
-if (dependencyProjectionFailures.length > 0) {
-  for (const failure of dependencyProjectionFailures) {
-    console.error(`[pnpm] Missing dependency projection: ${failure}`)
+const runHealthCheck = () => {
+  const dependencyProjectionFailures = []
+  for (const nodeModulesDir of moduleDirs) {
+    for (const entryPath of collectHealthEntryPaths(nodeModulesDir)) {
+      let stat
+      try {
+        stat = fs.lstatSync(entryPath)
+      } catch {
+        continue
+      }
+
+      if (!stat.isSymbolicLink()) continue
+
+      let realPath
+      try {
+        realPath = fs.realpathSync(entryPath)
+      } catch {
+        continue
+      }
+
+      const packageJsonPath = path.join(realPath, 'package.json')
+      if (!fs.existsSync(packageJsonPath)) continue
+
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+      const dependencyNames = Object.keys(pkg.dependencies ?? {})
+      if (dependencyNames.length === 0) continue
+
+      const requireFromPkg = createRequire(packageJsonPath)
+      for (const dependencyName of dependencyNames) {
+        if (
+          resolveDependencyPackageRoot({
+            requireFromPkg,
+            dependencyName,
+          }) === undefined
+        ) {
+          dependencyProjectionFailures.push(
+            `${pkg.name ?? entryPath} -> ${dependencyName} (from ${nodeModulesDir})`,
+          )
+        }
+      }
+    }
   }
+
+  if (dependencyProjectionFailures.length > 0) {
+    for (const failure of dependencyProjectionFailures) {
+      console.error(`[pnpm] Missing dependency projection: ${failure}`)
+    }
+    process.exit(1)
+  }
+}
+
+if (mode === 'projection-hash') {
+  runProjectionHash()
+} else if (mode === 'health') {
+  runHealthCheck()
+} else {
+  console.error(`[pnpm] Unknown node_modules helper mode: ${mode}`)
   process.exit(1)
 }

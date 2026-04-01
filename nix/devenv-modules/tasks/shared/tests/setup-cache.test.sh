@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# Tests for setup.nix git hash caching with inner cache awareness
+# Tests for setup.nix outer setup fingerprint caching.
 #
-# Validates the two-tier caching design (R5, R11 compliance):
-# - Outer tier: git hash
-# - Inner tier: per-task content caches (e.g., pnpm-install/*.hash)
-#
-# Tasks should only be skipped when BOTH tiers are valid.
-# If innerCacheDirs is empty, inner cache check is skipped (git-hash-only mode).
+# The outer cache only answers whether shell-entry inputs changed. Task-local
+# status checks own output validation, so this test intentionally stays focused
+# on fingerprint persistence and FORCE_SETUP behavior.
 set -euo pipefail
-
-# ============================================================================
-# Test helpers
-# ============================================================================
 
 assert_exit_code() {
   local expected="$1"
@@ -27,194 +20,147 @@ assert_exit_code() {
   echo "  ok: $label"
 }
 
-# ============================================================================
-# Simulate the gitHashStatus function from setup.nix
-# This mirrors the logic so we can test it in isolation
-# ============================================================================
+simulate_setup_outer_cache_hit() {
+  local fingerprint_file="$1"
+  local current_fingerprint="$2"
+  local force_setup="${3-}"  # Explicit parameter only, ignore env var for testing
 
-simulate_git_hash_status() {
-  local hash_file="$1"
-  local cache_root="$2"
-  local current_hash="$3"
-  local force_setup="${4-}"  # Explicit parameter only, ignore env var for testing
-  local inner_cache_dirs="${5-pnpm-install}"  # space-separated list, empty = git-hash-only
-
-  # Allow bypass via force_setup parameter (NOT env var - env var breaks CI tests)
   [ "$force_setup" = "1" ] && return 1
 
   local cached
-  cached=$(cat "$hash_file" 2>/dev/null || echo "")
-
-  # If git hash differs, always run
-  if [ "$current_hash" != "$cached" ]; then
-    return 1
-  fi
-
-  # If no inner cache dirs configured, use git-hash-only mode
-  if [ -z "$inner_cache_dirs" ]; then
-    return 0
-  fi
-
-  # Check each configured inner cache dir for *.hash files
-  for dir_name in $inner_cache_dirs; do
-    local cache_dir="$cache_root/$dir_name"
-    # Directory must exist and contain at least one .hash file
-    if [ -d "$cache_dir" ]; then
-      # Simple and reliable: iterate over files and check suffix
-      for f in "$cache_dir"/*; do
-        case "$f" in
-          *.hash)
-            [ -f "$f" ] && return 0
-            ;;
-        esac
-      done
-    fi
-  done
-
-  # No valid inner caches found - run to populate them
-  return 1
+  cached=$(cat "$fingerprint_file" 2>/dev/null || echo "")
+  [ "$current_fingerprint" = "$cached" ]
 }
 
-# ============================================================================
-# Test cases
-# ============================================================================
+simulate_tool_identity() {
+  local tool_name="$1"
+  local tool_path="$2"
+  local resolved_path
+
+  resolved_path=$(python - <<'PY' "$tool_path"
+import pathlib
+import sys
+
+print(pathlib.Path(sys.argv[1]).resolve())
+PY
+)
+
+  {
+    printf 'tool %s path %s\n' "$tool_name" "$tool_path"
+    printf 'tool %s resolved %s\n' "$tool_name" "$resolved_path"
+
+    if [ -f "$resolved_path" ] && [[ "$resolved_path" != /nix/store/* ]]; then
+      printf 'tool %s sha256 %s\n' "$tool_name" "$(shasum -a 256 "$resolved_path" | awk '{print $1}')"
+    fi
+  } | shasum -a 256 | awk '{print $1}'
+}
 
 echo "Running setup-cache tests..."
 echo ""
 
-# Create temp directory structure
 test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 
 cache_root="$test_dir/.direnv/task-cache"
-hash_file="$cache_root/setup-git-hash"
-pnpm_cache_dir="$cache_root/pnpm-install"
+fingerprint_file="$cache_root/setup-fingerprint"
 
 mkdir -p "$cache_root"
 
-# Test 1: Fresh cache (no git hash file) -> should return 1 (run)
-echo "Test 1: Fresh cache (no git hash file)"
+echo "Test 1: Fresh cache (no fingerprint file)"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_setup_outer_cache_hit "$fingerprint_file" "abc123"
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "fresh cache returns 1 (needs to run)"
 
-# Test 2: Matching git hash but NO inner caches -> should return 1 (run)
 echo ""
-echo "Test 2: Matching git hash but no inner caches"
-echo "abc123" > "$hash_file"
+echo "Test 2: Matching fingerprint"
+echo "abc123" > "$fingerprint_file"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_setup_outer_cache_hit "$fingerprint_file" "abc123"
 exit_code=$?
 set -e
-assert_exit_code 1 "$exit_code" "matching hash + no inner caches returns 1 (run to populate)"
+assert_exit_code 0 "$exit_code" "matching fingerprint returns 0 (skip)"
 
-# Test 3: Matching git hash AND inner caches with .hash files -> should return 0 (skip)
 echo ""
-echo "Test 3: Matching git hash + inner caches with .hash files"
-mkdir -p "$pnpm_cache_dir"
-echo "somehash" > "$pnpm_cache_dir/genie.hash"
+echo "Test 3: Different fingerprint"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_setup_outer_cache_hit "$fingerprint_file" "def456"
 exit_code=$?
 set -e
-assert_exit_code 0 "$exit_code" "matching hash + .hash files returns 0 (skip)"
+assert_exit_code 1 "$exit_code" "different fingerprint returns 1 (needs to run)"
 
-# Test 4: Different git hash -> should return 1 (run) even with inner caches
 echo ""
-echo "Test 4: Different git hash (inner caches exist)"
+echo "Test 4: FORCE_SETUP=1 bypasses cache"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "def456"
-exit_code=$?
-set -e
-assert_exit_code 1 "$exit_code" "different hash returns 1 (needs to run)"
-
-# Test 5: FORCE_SETUP=1 -> should return 1 (run) regardless of cache state
-echo ""
-echo "Test 5: FORCE_SETUP=1 bypasses cache"
-set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123" "1"
+simulate_setup_outer_cache_hit "$fingerprint_file" "abc123" "1"
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "FORCE_SETUP=1 returns 1 (always run)"
 
-# Test 6: Empty inner cache directory -> should return 1 (run)
 echo ""
-echo "Test 6: Empty inner cache directory"
-rm -f "$pnpm_cache_dir"/*
+echo "Test 5: Empty fingerprint file"
+: > "$fingerprint_file"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_setup_outer_cache_hit "$fingerprint_file" "abc123"
 exit_code=$?
 set -e
-assert_exit_code 1 "$exit_code" "empty inner cache dir returns 1 (run to populate)"
+assert_exit_code 1 "$exit_code" "empty fingerprint file returns 1 (needs to run)"
 
-# Test 7: Inner cache with multiple .hash files -> should return 0 (skip)
 echo ""
-echo "Test 7: Multiple inner cache .hash files"
-echo "hash1" > "$pnpm_cache_dir/genie.hash"
-echo "hash2" > "$pnpm_cache_dir/megarepo.hash"
-echo "hash3" > "$pnpm_cache_dir/utils.hash"
+echo "Test 6: Trailing newline in cache file still matches"
+printf 'abc123\n' > "$fingerprint_file"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_setup_outer_cache_hit "$fingerprint_file" "abc123"
 exit_code=$?
 set -e
-assert_exit_code 0 "$exit_code" "multiple .hash files returns 0 (skip)"
+assert_exit_code 0 "$exit_code" "cached newline-trimmed fingerprint returns 0 (skip)"
 
-# Test 8: Inner cache with only non-.hash files -> should return 1 (run)
 echo ""
-echo "Test 8: Inner cache with only non-.hash files (false positive prevention)"
-rm -f "$pnpm_cache_dir"/*
-echo "not a hash" > "$pnpm_cache_dir/some.lock"
-echo "also not" > "$pnpm_cache_dir/partial.tmp"
+echo "Test 7: Similar but different fingerprint does not false-hit"
 set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123"
+simulate_setup_outer_cache_hit "$fingerprint_file" "abc1234"
 exit_code=$?
 set -e
-assert_exit_code 1 "$exit_code" "non-.hash files returns 1 (run to populate proper caches)"
+assert_exit_code 1 "$exit_code" "different fingerprint text returns 1 (needs to run)"
 
-# Test 9: Git-hash-only mode (empty innerCacheDirs) -> should return 0 when hash matches
 echo ""
-echo "Test 9: Git-hash-only mode (innerCacheDirs='')"
-rm -rf "$pnpm_cache_dir"  # Remove inner caches entirely
-set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123" "" ""
-exit_code=$?
-set -e
-assert_exit_code 0 "$exit_code" "git-hash-only mode returns 0 when hash matches"
+echo "Test 8: Mutable tool target content invalidates fingerprint"
+tool_dir="$test_dir/tool"
+mkdir -p "$tool_dir/bin" "$tool_dir/pkg-v1" "$tool_dir/pkg-v2"
+printf 'echo v1\n' > "$tool_dir/pkg-v1/tool"
+printf 'echo v2\n' > "$tool_dir/pkg-v2/tool"
+chmod +x "$tool_dir/pkg-v1/tool" "$tool_dir/pkg-v2/tool"
+ln -s ../pkg-v1/tool "$tool_dir/bin/tool"
 
-# Test 10: Git-hash-only mode with different hash -> should return 1 (run)
-echo ""
-echo "Test 10: Git-hash-only mode with different hash"
-set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "xyz999" "" ""
-exit_code=$?
-set -e
-assert_exit_code 1 "$exit_code" "git-hash-only mode returns 1 when hash differs"
+tool_fp_v1=$(simulate_tool_identity tool "$tool_dir/bin/tool")
+ln -sf ../pkg-v2/tool "$tool_dir/bin/tool"
+tool_fp_v2=$(simulate_tool_identity tool "$tool_dir/bin/tool")
 
-# Test 11: Multiple inner cache dirs, only one has .hash files -> should return 0 (skip)
-echo ""
-echo "Test 11: Multiple inner cache dirs, partial population"
-mkdir -p "$pnpm_cache_dir"
-mkdir -p "$cache_root/other-cache"
-echo "hash1" > "$pnpm_cache_dir/genie.hash"
-# other-cache has no .hash files
-set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123" "" "pnpm-install other-cache"
-exit_code=$?
-set -e
-assert_exit_code 0 "$exit_code" "at least one valid inner cache returns 0 (skip)"
+if [ "$tool_fp_v1" = "$tool_fp_v2" ]; then
+  echo "FAIL: retargeting mutable tool should change fingerprint"
+  exit 1
+fi
+echo "  ok: retargeting mutable tool changes fingerprint"
 
-# Test 12: Multiple inner cache dirs, none have .hash files -> should return 1 (run)
 echo ""
-echo "Test 12: Multiple inner cache dirs, none populated"
-rm -f "$pnpm_cache_dir"/*.hash
-echo "not a hash" > "$cache_root/other-cache/lock.file"
-set +e
-simulate_git_hash_status "$hash_file" "$cache_root" "abc123" "" "pnpm-install other-cache"
-exit_code=$?
-set -e
-assert_exit_code 1 "$exit_code" "no valid inner caches returns 1 (run)"
+echo "Test 9: Nix store style tool path fingerprints by resolved path"
+store_dir="$test_dir/nix/store/hash-demo-tool/bin"
+mkdir -p "$store_dir"
+printf 'echo store-tool\n' > "$store_dir/tool"
+chmod +x "$store_dir/tool"
+ln -s "$store_dir/tool" "$tool_dir/bin/store-tool"
+
+store_fp_1=$(simulate_tool_identity store-tool "$tool_dir/bin/store-tool")
+mv "$test_dir/nix/store/hash-demo-tool" "$test_dir/nix/store/hash-demo-tool-2"
+ln -sf "$test_dir/nix/store/hash-demo-tool-2/bin/tool" "$tool_dir/bin/store-tool"
+store_fp_2=$(simulate_tool_identity store-tool "$tool_dir/bin/store-tool")
+
+if [ "$store_fp_1" = "$store_fp_2" ]; then
+  echo "FAIL: changing resolved store path should change fingerprint"
+  exit 1
+fi
+echo "  ok: resolved store path change invalidates fingerprint"
 
 echo ""
 echo "All setup-cache tests passed"

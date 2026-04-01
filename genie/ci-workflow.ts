@@ -351,6 +351,10 @@ export const cachixStep = (opts: { name: string; authToken?: string }) => ({
 
 /**
  * Prepare lock-pinned devenv metadata from devenv.lock.
+ *
+ * The lock may temporarily point at an upstream commit instead of a release tag
+ * while we validate a fix ahead of the next devenv release.
+ * TODO: Drop that temporary pin once v2.0.7 is available.
  */
 export const preparePinnedDevenvStep = {
   name: 'Use pinned devenv from lock',
@@ -554,9 +558,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --
  */
 export const validateNixStoreStep = {
   name: 'Resolve devenv',
-  run: `if [ -z "${'${DEVENV_REV:-}'}" ]; then
-  ${resolveDevenvRevScript}
-fi
+  run: `${resolveDevenvRevScript}
 
 ${resolveDevenvFnScript}
 

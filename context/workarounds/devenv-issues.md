@@ -124,6 +124,10 @@ removed as they are no longer needed.
 
 **Issue:** https://github.com/cachix/devenv/issues/2500
 
+**Upstream status:** Fixed by https://github.com/cachix/devenv/pull/2661.
+
+**Repo status:** Temporarily resolved here by pinning `devenv` to the merged upstream commit while waiting for the next tagged release.
+
 **Affected repos:** Any repo wanting to display messages (e.g. trace URLs) on shell entry
 
 **Symptoms:**
@@ -136,11 +140,11 @@ removed as they are no longer needed.
 
 devenv's PTY task runner sends two echo sentinels and reads until both are found, feeding all output to a headless VT. This intentionally hides task runner noise but also swallows any user-facing messages from `enterShell`.
 
-**Workaround:**
+**Current repo approach:**
 
-Provide an on-demand `otel-trace` shell function instead of auto-displaying. The function is defined during rcfile sourcing and stays available in the interactive shell.
-
-**Upstream proposal:** A post-drain hook mechanism (env var, file-based, or `ShellCommand` variant) to run code after the interactive session starts.
+- Emit OTEL shell-entry notices through `devenv.messages` task output.
+- Reuse the exported Grafana link env in `otel-trace` for on-demand reopening.
+- Keep a TODO to return to the `v2.0.7` tag once that release is available.
 
 ---
 
@@ -243,10 +247,9 @@ Git hooks run in a subprocess that doesn't inherit the direnv environment.
   - Remove manual JSON trace post-processing from CI pipelines
   - Update R10 status in this document to reflect full compliance
 
-- **DEVENV-05 fixed (post-drain hook via #2500):**
-  - Implement auto-display of otel trace URL using the new hook mechanism
-  - Remove "on-demand only" comment in `nix/devenv-modules/otel.nix`
-  - Update `context/otel.md` to reflect auto-display capability
+- **DEVENV-05 follow-up (tagged release contains #2661):**
+  - Replace the temporary commit pin with the `v2.0.7` tag
+  - Remove the temporary pin note from `devenv.yaml` / CI docs
 
 - **COMPAT-01 improved (web coding agent support):**
   - When Claude Code Web adds Nix domains to allowlist: update status, remove "Full internet" workaround
