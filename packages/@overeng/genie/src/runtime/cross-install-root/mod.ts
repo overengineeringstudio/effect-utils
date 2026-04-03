@@ -93,7 +93,7 @@ const collectRepoNames = ({
   const result = new Set<string>()
   for (const pkg of packages) {
     const key = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
-    if (visited.has(key)) continue
+    if (visited.has(key) === true) continue
     visited.add(key)
     result.add(pkg.meta.workspace.repoName)
     for (const name of collectRepoNames({ packages: pkg.meta.workspace.deps, visited })) {

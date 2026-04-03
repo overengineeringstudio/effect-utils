@@ -5,7 +5,7 @@ import { detectVersionDivergence, parseResolvedVersionsFromLockfile } from './mo
 const makeLockfileYaml = (packages: string[]) => {
   const lines = ["lockfileVersion: '9.0'", '', 'packages:', '']
   for (const spec of packages) {
-    const needsQuote = spec.startsWith('@')
+    const needsQuote = spec.startsWith('@') === true
     lines.push(needsQuote ? `  '${spec}':` : `  ${spec}:`)
     lines.push('    resolution: {integrity: sha512-fake}')
     lines.push('')
