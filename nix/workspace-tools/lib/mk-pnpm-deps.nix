@@ -200,6 +200,11 @@ in
                 mkdir "$SOURCE_DIR"
                 cp -r "$src"/. "$SOURCE_DIR"/
                 chmod -R +w "$SOURCE_DIR"
+                # The staged workspace must start from declared sources only.
+                # Self-hosted checkouts and local worktrees can accumulate ignored
+                # install artifacts, and pnpm's symlink layout will then collide
+                # with those preexisting node_modules trees during materialization.
+                find "$SOURCE_DIR" -type d -name node_modules -prune -exec rm -rf {} +
                 log_prep_phase "stage-source-copy" "duration=$(timer_elapsed "$sourceCopyStartedAt")s source_root=$sourceRoot"
                 log_store_closure "src" "$src"
                 log_path_stats "staged-source-copy" "$SOURCE_DIR"
