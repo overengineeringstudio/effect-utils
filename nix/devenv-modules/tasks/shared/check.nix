@@ -16,31 +16,17 @@
 #   # Without nix checks (for repos without Nix CLI builds):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasNixCheck = false; }) ];
 #
-# Aggregate check tasks
-#
-# Usage in devenv.nix:
-#   # With unit tests (default):
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.check {}) ];
-#
-#   # With unit tests and playwright e2e tests:
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasPlaywright = true; }) ];
-#
-#   # Without any tests:
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasTests = false; }) ];
-#
-#   # Without lint (for repos not using lint-oxc module yet):
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasTests = false; hasLint = false; }) ];
-#
-#   # Without nix checks (for repos without Nix CLI builds):
-#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasNixCheck = false; }) ];
+#   # Without megarepo checks (for repos that skip members in CI):
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasMegarepoCheck = false; }) ];
 #
 #   # With additional custom checks:
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check { extraChecks = [ "workspace:check" ]; }) ];
 #
 # Provides: check:quick, check:all
 #
-# check:quick - Fast local development (ts:check, mr:check, lint, nix-fingerprint)
+# check:quick - Fast local development (ts:check, mr:check*, lint, nix-fingerprint)
 # check:all   - Comprehensive pre-push validation (includes nix flake check)
+#               * mr:check included unless hasMegarepoCheck = false
 #
 # Note: Requires ts:check task to exist.
 # Requires lint:check task (unless hasLint = false).
@@ -54,6 +40,7 @@
   hasPlaywright ? false,
   hasLint ? true,
   hasNixCheck ? true,
+  hasMegarepoCheck ? true,
   extraChecks ? [ ], # Additional check tasks to include (e.g., [ "workspace:check" ])
 }:
 { lib, ... }:
@@ -62,6 +49,7 @@ let
   nixQuickTask = lib.optionals hasNixCheck [ "nix:check:quick" ];
   nixFullTask = lib.optionals hasNixCheck [ "nix:flake:check" ];
   testTasks = lib.optionals hasTests ([ "test:run" ] ++ lib.optional hasPlaywright "test:pw:run");
+  megarepoTasks = lib.optionals hasMegarepoCheck [ "mr:check" "mr:lock-sync-check" ];
 
   # Build description parts
   descParts =
@@ -79,9 +67,8 @@ in
       exec = "true";
       after = [
         "ts:check"
-        "mr:check"
-        "mr:lock-sync-check"
       ]
+      ++ megarepoTasks
       ++ lintTask
       ++ nixQuickTask
       ++ extraChecks;
@@ -93,9 +80,8 @@ in
       exec = "true";
       after = [
         "ts:check"
-        "mr:check"
-        "mr:lock-sync-check"
       ]
+      ++ megarepoTasks
       ++ extraChecks
       ++ lintTask
       ++ nixFullTask
