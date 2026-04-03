@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto'
-import os from 'node:os'
 import path from 'node:path'
 
 import type { Path } from '@effect/platform'
@@ -502,8 +500,7 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   targetFilePath: string
   effect: Effect.Effect<void, E, FileSystem.FileSystem>
 }) {
-  const lockNamespace = createHash('sha256').update(cwd).digest('hex').slice(0, 16)
-  const lockDir = path.join(os.tmpdir(), 'genie-locks', lockNamespace)
+  const lockDir = path.join(cwd, 'tmp', 'genie-locks')
   const lockLayer = FileSystemBacking.layer({ lockDir })
   const lockKey = `genie:file:${path.resolve(targetFilePath)}`
 
