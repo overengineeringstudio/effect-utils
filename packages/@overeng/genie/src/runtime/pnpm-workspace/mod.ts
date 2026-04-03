@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { validateCatalogPeerDeps } from '../catalog-peer-deps/mod.ts'
+import { validateCrossInstallRootVersions } from '../cross-install-root/mod.ts'
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext } from '../core.ts'
 import type { CatalogInput } from '../package-json/catalog.ts'
@@ -1045,6 +1046,7 @@ const rootPnpmWorkspaceYaml = ({
   repoName,
   extraMembers = [],
   catalogVersions,
+  identityCriticalPackages,
   ...config
 }: {
   packages: readonly WorkspacePackageLike[]
@@ -1052,6 +1054,8 @@ const rootPnpmWorkspaceYaml = ({
   extraMembers?: readonly string[]
   /** When provided, validates that catalog versions satisfy peer dependency ranges from the lockfile. */
   catalogVersions?: CatalogInput
+  /** Package names that must resolve to the same version across all install roots (e.g. `['effect']`). */
+  identityCriticalPackages?: readonly string[]
 } & Omit<PnpmWorkspaceData, 'packages'>) => {
   const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
   const allMembers =
@@ -1121,6 +1125,17 @@ const rootPnpmWorkspaceYaml = ({
         } catch {
           /* lockfile not available — skip peer dep validation */
         }
+      }
+
+      if (identityCriticalPackages !== undefined && identityCriticalPackages.length > 0) {
+        issues.push(
+          ...validateCrossInstallRootVersions({
+            packages,
+            repoName,
+            cwd: ctx.cwd,
+            identityCriticalPackages,
+          }),
+        )
       }
 
       return issues

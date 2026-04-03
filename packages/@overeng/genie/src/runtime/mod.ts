@@ -35,4 +35,9 @@ export {
 export * from './tsconfig-json/mod.ts'
 export * from './validation/mod.ts'
 export { validateCatalogPeerDeps, parsePeerDepsFromLockfile } from './catalog-peer-deps/mod.ts'
+export {
+  validateCrossInstallRootVersions,
+  detectVersionDivergence,
+  parseResolvedVersionsFromLockfile,
+} from './cross-install-root/mod.ts'
 export { satisfiesRange, parseVersion } from './semver/mod.ts'
