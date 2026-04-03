@@ -459,14 +459,22 @@ in
                 # restored tree and avoids serializer-specific failures for large
                 # prepared workspaces.
                 #
-                # Self-hosted runners can leave behind a non-empty `$out.tmp`
-                # after interrupted builds. Copying into that stale tree makes
-                # `cp -a` fail on existing symlink targets even when the staged
-                # workspace itself is correct, so reset the destination first.
+                # Self-hosted darwin runners have shown `cp -a` spuriously failing
+                # with `create_symlink: File exists` while materializing pnpm's
+                # symlink-heavy trees into `$out.tmp`, even after clearing the
+                # destination. Stream the tree through tar instead so the output
+                # model stays recursive without relying on `cp`'s platform-specific
+                # directory copy semantics.
                 rm -rf "$out"
                 mkdir -p "$out"
-                cp -a "$SOURCE_DIR"/. "$out"/
-                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=recursive-copy"
+                (
+                  cd "$SOURCE_DIR"
+                  tar -cf - .
+                ) | (
+                  cd "$out"
+                  tar -xf -
+                )
+                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=tar-stream-copy"
                 log_prep_phase "complete" "duration=$(timer_elapsed "$prepStartedAt")s output_hash=${pnpmDepsHash}"
 
                 runHook postInstall
