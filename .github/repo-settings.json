@@ -33,6 +33,9 @@
             "context": "lint"
           },
           {
+            "context": "pnpm-builder-contract"
+          },
+          {
             "context": "test (namespace-profile-linux-x86-64)"
           },
           {

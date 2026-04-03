@@ -476,27 +476,109 @@ export const savePnpmStoreStep = (opts?: {
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
   name = 'Cold pnpm deps validation',
+  substituters,
 }: {
   flakeRefs: readonly [string, ...string[]]
+  name?: string
+  substituters?: readonly string[]
+}) => ({
+  name,
+  shell: 'bash',
+  run: (() => {
+    const substituterArgs =
+      substituters === undefined || substituters.length === 0
+        ? ''
+        : ` --option substituters ${shellSingleQuote(substituters.join(' '))}`
+
+    return [
+      'set -euo pipefail',
+      `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
+      '  echo "::group::cold-build $attr"',
+      '  # Step 1: Realize (may substitute from cache) to populate dependencies',
+      `  nix build --no-link "$attr"${substituterArgs} || true`,
+      '  # Step 2: Evict the (possibly stale) cached FOD output',
+      '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
+      '  if [ -n "$outPath" ]; then',
+      '    echo "  evicting: $outPath"',
+      '    nix store delete "$outPath" 2>/dev/null || true',
+      '  fi',
+      '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
+      `  nix build --no-link "$attr"${substituterArgs}`,
+      '  echo "::endgroup::"',
+      'done',
+    ].join('\n')
+  })(),
+})
+
+/** Evict any cached pnpm-deps outputs below a flake target and rebuild it against cache.nixos.org only. */
+export const coldFreshNixBuildStep = ({
+  flakeRef,
+  name = 'Cold fresh Nix build',
+  extraArgs = [],
+}: {
+  flakeRef: string
+  name?: string
+  extraArgs?: readonly string[]
+}) => ({
+  name,
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    `topDrv=$(nix path-info --derivation ${shellSingleQuote(flakeRef)} 2>/dev/null || true)`,
+    'if [ -n "$topDrv" ]; then',
+    '  while IFS= read -r drv; do',
+    '    [ -n "$drv" ] || continue',
+    '    while IFS= read -r outPath; do',
+    '      [ -n "$outPath" ] || continue',
+    '      if [ -e "$outPath" ]; then',
+    '        echo "evicting cached: $(basename "$outPath")"',
+    '        nix store delete "$outPath" 2>/dev/null || true',
+    '      fi',
+    '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\\.drv$" || true)',
+    'fi',
+    `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
+  ].join('\n'),
+})
+
+/**
+ * Guard the pnpm dependency-prep contract against regressions that would
+ * silently reintroduce package-manager self-bootstrap or non-frozen lockfile
+ * normalization inside fixed-output builds.
+ */
+export const pnpmBuilderContractStep = ({
+  builderFile = 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
+  name = 'Guard pnpm builder contract',
+}: {
+  builderFile?: string
   name?: string
 }) => ({
   name,
   shell: 'bash',
   run: [
     'set -euo pipefail',
-    `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
-    '  echo "::group::cold-build $attr"',
-    '  # Step 1: Realize (may substitute from cache) to populate dependencies',
-    '  nix build --no-link "$attr" || true',
-    '  # Step 2: Evict the (possibly stale) cached FOD output',
-    '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
-    '  if [ -n "$outPath" ]; then',
-    '    echo "  evicting: $outPath"',
-    '    nix store delete "$outPath" 2>/dev/null || true',
+    `builder=${shellSingleQuote(builderFile)}`,
+    'if [ ! -f "$builder" ]; then',
+    '  echo "::error::missing pnpm deps builder: $builder"',
+    '  exit 1',
+    'fi',
+    'for required in \\',
+    "  'manage-package-manager-versions=false' \\",
+    "  'npm_config_manage_package_manager_versions=false' \\",
+    "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
+    '  if ! grep -Fq -- "$required" "$builder"; then',
+    '    echo "::error::missing required pnpm builder contract fragment: $required"',
+    '    exit 1',
     '  fi',
-    '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
-    '  nix build --no-link "$attr"',
-    '  echo "::endgroup::"',
+    'done',
+    'for forbidden in \\',
+    "  '--no-frozen-lockfile' \\",
+    "  'lockfile-only' \\",
+    "  'pnpm add pnpm@'; do",
+    '  if grep -Fq -- "$forbidden" "$builder"; then',
+    '    echo "::error::forbidden pnpm builder contract fragment present: $forbidden"',
+    '    exit 1',
+    '  fi',
     'done',
   ].join('\n'),
 })

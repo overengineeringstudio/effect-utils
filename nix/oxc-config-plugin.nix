@@ -199,11 +199,6 @@ let
     src = depsSrc;
     sourceRoot = ".";
     inherit pnpmDepsHash;
-    # Committed normalized lockfile — eliminates registry-dependent lockfile
-    # normalization inside the FOD, making the output fully deterministic.
-    # Regenerate with: pnpm install --lockfile-only --no-frozen-lockfile
-    # in a staged workspace filtered to packages/@overeng/oxc-config.
-    normalizedLockfile = ./oxc-config-pnpm-lock.normalized.yaml;
   };
 
 in

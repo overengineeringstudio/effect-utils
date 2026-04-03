@@ -6,6 +6,7 @@ import {
   checkoutStep,
   notifyAlignmentJob,
   evictCachedPnpmDepsStep,
+  pnpmBuilderContractStep,
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
@@ -112,7 +113,7 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
-const job = (step: { name: string; run: string }) => ({
+const job = (step: { name: string; run: string; shell?: string }) => ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -206,6 +207,12 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
   'nix-fod-check': multiPlatformStrictNixJob(
     validateColdPnpmDepsStep({
       flakeRefs: ['.#genie-pnpm-deps', '.#megarepo-pnpm-deps', '.#oxc-config-plugin-pnpm-deps'],
+      substituters: ['https://cache.nixos.org'],
+    }),
+  ),
+  'pnpm-builder-contract': job(
+    pnpmBuilderContractStep({
+      builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
     }),
   ),
 }
