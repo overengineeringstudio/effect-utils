@@ -104,7 +104,11 @@ in
       );
     in
     pkgs.stdenvNoCC.mkDerivation {
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v3";
+      # Bump the prepared-workspace artifact version whenever the materialization
+      # strategy changes, even if the recursive output hash stays the same.
+      # Self-hosted darwin runners can otherwise keep colliding with stale temp
+      # output paths for earlier artifact layouts while evaluating the same FOD.
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v4";
       version = "0.0.0";
 
       inherit src sourceRoot;
