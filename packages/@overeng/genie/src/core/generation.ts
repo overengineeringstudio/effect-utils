@@ -500,6 +500,7 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   targetFilePath: string
   effect: Effect.Effect<void, E, FileSystem.FileSystem>
 }) {
+  /** Use cwd-relative dir instead of shared /tmp to avoid EACCES when multiple CI jobs with different UIDs share the same tmpdir */
   const lockDir = path.join(cwd, 'tmp', 'genie-locks')
   const lockLayer = FileSystemBacking.layer({ lockDir })
   const lockKey = `genie:file:${path.resolve(targetFilePath)}`
