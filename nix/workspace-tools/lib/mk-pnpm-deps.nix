@@ -331,21 +331,26 @@ in
 
                   log_prep_phase "normalize-lockfile-start" "install_root=$install_root"
                   normalizeStartedAt=$(timer_now)
-                  ${if normalizedLockfile != null then ''
-                  # Use pre-normalized lockfile — fully deterministic, no registry access
-                  cp ${normalizedLockfile} "$install_root/pnpm-lock.yaml"
-                  chmod +w "$install_root/pnpm-lock.yaml"
-                  log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=committed"
-                  '' else ''
-                  (
-                    cd "$install_root"
-                    # DEPRECATED: In-FOD normalization hits the npm registry, making output
-                    # non-deterministic over time. Migrate to committed normalized lockfiles.
-                    # See: https://github.com/overengineeringstudio/effect-utils/issues/513
-                    pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
-                  )
-                  log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=in-fod-DEPRECATED"
-                  ''}
+                  ${
+                    if normalizedLockfile != null then
+                      ''
+                        # Use pre-normalized lockfile — fully deterministic, no registry access
+                        cp ${normalizedLockfile} "$install_root/pnpm-lock.yaml"
+                        chmod +w "$install_root/pnpm-lock.yaml"
+                        log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=committed"
+                      ''
+                    else
+                      ''
+                        (
+                          cd "$install_root"
+                          # DEPRECATED: In-FOD normalization hits the npm registry, making output
+                          # non-deterministic over time. Migrate to committed normalized lockfiles.
+                          # See: https://github.com/overengineeringstudio/effect-utils/issues/513
+                          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+                        )
+                        log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=in-fod-DEPRECATED"
+                      ''
+                  }
                   log_path_stats "install-root:$install_root-after-normalize" "$install_root"
 
                   log_prep_phase "install-start" "install_root=$install_root"
