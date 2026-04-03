@@ -83,17 +83,20 @@ type InstallRoot = {
  * The root repo's lockfile is at `cwd/pnpm-lock.yaml`.
  * External repos have lockfiles at `cwd/repos/{repoName}/pnpm-lock.yaml`.
  */
-const collectRepoNames = (
-  packages: readonly WorkspacePackageLike[],
-  visited: Set<string> = new Set(),
-): Set<string> => {
+const collectRepoNames = ({
+  packages,
+  visited = new Set(),
+}: {
+  packages: readonly WorkspacePackageLike[]
+  visited?: Set<string>
+}): Set<string> => {
   const result = new Set<string>()
   for (const pkg of packages) {
     const key = `${pkg.meta.workspace.repoName}:${pkg.meta.workspace.memberPath}`
     if (visited.has(key)) continue
     visited.add(key)
     result.add(pkg.meta.workspace.repoName)
-    for (const name of collectRepoNames(pkg.meta.workspace.deps, visited)) {
+    for (const name of collectRepoNames({ packages: pkg.meta.workspace.deps, visited })) {
       result.add(name)
     }
   }
@@ -109,7 +112,7 @@ const discoverInstallRoots = ({
   repoName: string
   cwd: string
 }): InstallRoot[] => {
-  const repoNames = collectRepoNames(packages)
+  const repoNames = collectRepoNames({ packages })
   repoNames.add(repoName)
 
   return [...repoNames].map((name) => ({
