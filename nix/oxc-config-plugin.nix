@@ -28,7 +28,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-gWz22oNxvDPPEllRV7sBF17z6KwjOoHmvlPbaWOfElg=";
+  pnpmDepsHash = "sha256-AA/eK5eHMtWICyiJqOrOkq3yLEGm4B5IU9FtPHLnX1Q=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -199,6 +199,11 @@ let
     src = depsSrc;
     sourceRoot = ".";
     inherit pnpmDepsHash;
+    # Committed normalized lockfile — eliminates registry-dependent lockfile
+    # normalization inside the FOD, making the output fully deterministic.
+    # Regenerate with: pnpm install --lockfile-only --no-frozen-lockfile
+    # in a staged workspace filtered to packages/@overeng/oxc-config.
+    normalizedLockfile = ./oxc-config-pnpm-lock.normalized.yaml;
   };
 
 in
