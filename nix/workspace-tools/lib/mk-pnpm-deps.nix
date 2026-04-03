@@ -458,6 +458,13 @@ in
                 # directory. This keeps the hash boundary aligned with the actual
                 # restored tree and avoids serializer-specific failures for large
                 # prepared workspaces.
+                #
+                # Self-hosted runners can leave behind a non-empty `$out.tmp`
+                # after interrupted builds. Copying into that stale tree makes
+                # `cp -a` fail on existing symlink targets even when the staged
+                # workspace itself is correct, so reset the destination first.
+                rm -rf "$out"
+                mkdir -p "$out"
                 cp -a "$SOURCE_DIR"/. "$out"/
                 log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=recursive-copy"
                 log_prep_phase "complete" "duration=$(timer_elapsed "$prepStartedAt")s output_hash=${pnpmDepsHash}"
