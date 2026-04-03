@@ -27,10 +27,6 @@ let
         hash = "sha256-6WWmABPR2IMEEal+9egIKQ0rSYWQrOSRKXc7IoD8kg8=";
       };
     };
-    # Committed normalized lockfile — eliminates registry-dependent lockfile
-    # normalization inside the FOD, making the output fully deterministic.
-    # Regenerate with: `dt nix:normalize-lockfile:genie`
-    normalizedLockfile = ./pnpm-lock.normalized.yaml;
     inherit gitRev commitTs dirty;
   };
 in

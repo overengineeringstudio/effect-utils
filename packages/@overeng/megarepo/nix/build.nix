@@ -27,7 +27,6 @@ let
       };
     };
     smokeTestArgs = [ "--help" ];
-    normalizedLockfile = ./pnpm-lock.normalized.yaml;
     inherit gitRev commitTs dirty;
   };
 in
