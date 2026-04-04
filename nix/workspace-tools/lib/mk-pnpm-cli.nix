@@ -734,6 +734,7 @@ pkgs.stdenv.mkDerivation {
     depsBuildEntries = map (root: {
       dir = root.installDir;
       attrName = root.attrName;
+      drvPath = root.depsBuild.drvPath;
       memberDirs = installRootMemberDirs root;
       profileKey = installRootProfileKey root;
       hash = depsBuildHashForInstallRoot root.installDir;

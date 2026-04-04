@@ -188,6 +188,45 @@ export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
     label: `devenv tasks run ${args.join(' ')} --mode before`,
   })
 
+const evictOutPathShellLines = [
+  '      if nix path-info "$outPath" >/dev/null 2>&1; then',
+  '        echo "evicting cached: $(basename "$outPath")"',
+  '        nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true',
+  '        if nix path-info "$outPath" >/dev/null 2>&1; then',
+  '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+  '          exit 1',
+  '        fi',
+  '      fi',
+] as const
+
+const withEachPnpmDepsDrvShellLines = ({
+  flakeRef,
+  bodyLines,
+}: {
+  flakeRef: string
+  bodyLines: readonly string[]
+}) =>
+  [
+    `targetRef=${shellSingleQuote(flakeRef)}`,
+    'entriesJson=$(mktemp)',
+    'if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then',
+    "  while IFS=$'\\t' read -r attrName drv; do",
+    '    [ -n "$drv" ] || continue',
+    ...bodyLines,
+    '  done < <(jq -r \'.[] | [.attrName, (.drvPath // "")] | @tsv\' "$entriesJson")',
+    'else',
+    '  topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)',
+    '  if [ -n "$topDrv" ]; then',
+    '    while IFS= read -r drv; do',
+    '      [ -n "$drv" ] || continue',
+    '      attrName=""',
+    ...bodyLines,
+    '    done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
+    '  fi',
+    'fi',
+    'rm -f "$entriesJson"',
+  ] as const
+
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
   flakeRef,
@@ -198,28 +237,15 @@ export const evictCachedPnpmDepsStep = ({
 }) => ({
   name,
   shell: 'bash',
-  run: [
-    `topDrv=$(nix path-info --derivation ${shellSingleQuote(flakeRef)} 2>/dev/null || true)`,
-    'if [ -n "$topDrv" ]; then',
-    '  while IFS= read -r drv; do',
-    '    [ -n "$drv" ] || continue',
-    '    while IFS= read -r outPath; do',
-    '      [ -n "$outPath" ] || continue',
-    '      if [ -e "$outPath" ]; then',
-    '        echo "evicting cached: $(basename "$outPath")"',
-    '        if ! nix store delete "$outPath" 2>/dev/null; then',
-    '          echo "::error::failed to evict cached pnpm-deps output: $outPath"',
-    '          exit 1',
-    '        fi',
-    '        if [ -e "$outPath" ]; then',
-    '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
-    '          exit 1',
-    '        fi',
-    '      fi',
-    '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
-    'fi',
-  ].join('\n'),
+  run: withEachPnpmDepsDrvShellLines({
+    flakeRef,
+    bodyLines: [
+      '    while IFS= read -r outPath; do',
+      '      [ -n "$outPath" ] || continue',
+      ...evictOutPathShellLines,
+      '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+    ],
+  }).join('\n'),
 })
 
 /**
@@ -434,11 +460,8 @@ export const validateColdPnpmDepsStep = ({
       '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
       '  if [ -n "$outPath" ]; then',
       '    echo "  evicting: $outPath"',
-      '    if ! nix store delete "$outPath" 2>/dev/null; then',
-      '      echo "::error::failed to evict cached pnpm-deps output: $outPath"',
-      '      exit 1',
-      '    fi',
-      '    if [ -e "$outPath" ]; then',
+      '    nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true',
+      '    if nix path-info "$outPath" >/dev/null 2>&1; then',
       '      echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
       '      exit 1',
       '    fi',
@@ -465,26 +488,15 @@ export const coldFreshNixBuildStep = ({
   shell: 'bash',
   run: [
     'set -euo pipefail',
-    `topDrv=$(nix path-info --derivation ${shellSingleQuote(flakeRef)} 2>/dev/null || true)`,
-    'if [ -n "$topDrv" ]; then',
-    '  while IFS= read -r drv; do',
-    '    [ -n "$drv" ] || continue',
-    '    while IFS= read -r outPath; do',
-    '      [ -n "$outPath" ] || continue',
-    '      if [ -e "$outPath" ]; then',
-    '        echo "evicting cached: $(basename "$outPath")"',
-    '        if ! nix store delete "$outPath" 2>/dev/null; then',
-    '          echo "::error::failed to evict cached pnpm-deps output: $outPath"',
-    '          exit 1',
-    '        fi',
-    '        if [ -e "$outPath" ]; then',
-    '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
-    '          exit 1',
-    '        fi',
-    '      fi',
-    '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
-    'fi',
+    ...withEachPnpmDepsDrvShellLines({
+      flakeRef,
+      bodyLines: [
+        '    while IFS= read -r outPath; do',
+        '      [ -n "$outPath" ] || continue',
+        ...evictOutPathShellLines,
+        '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+      ],
+    }),
     `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
   ].join('\n'),
 })

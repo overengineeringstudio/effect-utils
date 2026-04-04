@@ -31,6 +31,17 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmHome')
   })
 
+  it('evicts pnpm deps outputs without treating store liveness as a hard failure', () => {
+    expect(ciWorkflowSource).toContain('nix store delete --ignore-liveness "$outPath"')
+    expect(ciWorkflowSource).not.toContain('if ! nix store delete "$outPath" 2>/dev/null; then')
+  })
+
+  it('prefers explicit depsBuildEntries metadata before falling back to closure scanning', () => {
+    expect(ciWorkflowSource).toContain('$targetRef.passthru.depsBuildEntries')
+    expect(ciWorkflowSource).toContain('(.drvPath // "")')
+    expect(ciWorkflowSource).toContain('grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\\\.drv$"')
+  })
+
   it('keeps the diagnostics summary portable', () => {
     expect(generatedWorkflowSource).toContain('head -n 120 "$markers_file"')
     expect(generatedWorkflowSource).not.toContain('sed -n "1,120p" "$markers_file"')

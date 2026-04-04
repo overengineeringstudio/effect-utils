@@ -125,26 +125,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -428,26 +446,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -734,26 +770,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -1040,26 +1094,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -1333,11 +1405,8 @@ jobs:
             outPath=$(nix path-info "$attr" 2>/dev/null || true)
             if [ -n "$outPath" ]; then
               echo "  evicting: $outPath"
-              if ! nix store delete "$outPath" 2>/dev/null; then
-                echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                exit 1
-              fi
-              if [ -e "$outPath" ]; then
+              nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+              if nix path-info "$outPath" >/dev/null 2>&1; then
                 echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                 exit 1
               fi
@@ -1500,26 +1569,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -1720,26 +1807,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash
@@ -1921,26 +2026,44 @@ jobs:
       - name: Evict cached pnpm deps for oxlint-npm
         shell: bash
         run: |
-          topDrv=$(nix path-info --derivation '.#oxlint-npm' 2>/dev/null || true)
-          if [ -n "$topDrv" ]; then
-            while IFS= read -r drv; do
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
               [ -n "$drv" ] || continue
               while IFS= read -r outPath; do
                 [ -n "$outPath" ] || continue
-                if [ -e "$outPath" ]; then
+                if nix path-info "$outPath" >/dev/null 2>&1; then
                   echo "evicting cached: $(basename "$outPath")"
-                  if ! nix store delete "$outPath" 2>/dev/null; then
-                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
-                    exit 1
-                  fi
-                  if [ -e "$outPath" ]; then
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
                     echo "::error::cached pnpm-deps output still present after eviction: $outPath"
                     exit 1
                   fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
           fi
+          rm -f "$entriesJson"
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
         shell: bash

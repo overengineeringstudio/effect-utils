@@ -60,4 +60,7 @@ Any faster preflight staleness check belongs in tooling, not in the builder API.
 The helper exposes the resulting install-root metadata via
 `passthru.installRoots`, `passthru.depsBuildsByInstallRoot`, and
 `passthru.depsBuildEntries` so downstream hash-refresh tooling can target the
-real prepared dependency boundary for each root.
+real prepared dependency boundary for each root. Each `depsBuildEntries`
+element also includes the install-root `drvPath`, which lets CI/tooling evict
+or realize the authoritative prepared-deps derivation without guessing from
+derivation names.
