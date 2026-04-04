@@ -562,9 +562,11 @@ ${args.join(' ')}`,
 }
 
 /**
- * Apply megarepo.lock using the locked effect-utils commit from megarepo.lock.
- * Resolves the commit inline and uses `nix run` to avoid `nix profile install`
- * (which can conflict on self-hosted).
+ * Sync megarepo state using the locked effect-utils commit from megarepo.lock.
+ * CI intentionally uses `fetch --apply --all` here instead of `apply --all`
+ * because nested megarepos can carry stale branch locks that need a fetch
+ * before recursive apply can converge. Resolves the CLI inline with `nix run`
+ * to avoid `nix profile install` conflicts on self-hosted runners.
  */
 export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
   const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
@@ -578,7 +580,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- fetch --apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
