@@ -23,6 +23,8 @@
  * ```
  */
 
+import { readFileSync } from 'node:fs'
+
 import {
   githubWorkflow,
   type GitHubWorkflowArgs,
@@ -146,6 +148,11 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
     opts,
   })
 
+const readCiHelperScript = (relativePath: string) =>
+  readFileSync(new URL(relativePath, import.meta.url), 'utf8').trim()
+
+const nixGcRaceRetryScript = readCiHelperScript('./ci-scripts/nix-gc-race-retry.sh')
+
 /**
  * Retry wrapper for the Nix store validity race where `derivationStrict` fails
  * with `path '/nix/store/...' is not valid`.
@@ -163,95 +170,15 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
 const withGcRaceRetry = ({ command, label }: { command: string; label: string }) => {
   const quotedCommand = shellSingleQuote(command)
   const quotedLabel = shellSingleQuote(label)
-  return `__nix_gc_retry() {
-  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
-  __start=$(date +%s)
-
-  __write_summary() {
-    [ -n "${'${GITHUB_STEP_SUMMARY:-}'}" ] || return 0
-    {
-      echo "### CI Task"
-      # Keep summary values plain text. Backticks inside double quotes trigger
-      # shell command substitution and turned failed-task metadata into bogus
-      # commands on GitHub Actions runners.
-      echo "- Task: $__task"
-      echo "- Status: $1"
-      echo "- Duration: $__elapsed s"
-      echo "- Attempts: $__n/$__max"
-      [ -z "${'${2:-}'}" ] || echo "- Note: $2"
-    } >> "$GITHUB_STEP_SUMMARY"
-  }
-
-  while [ "$__n" -le "$__max" ]; do
-    echo "::notice::[ci] starting $__task (attempt $__n/$__max)"
-    (
-      while sleep "$__heartbeat"; do
-        __now=$(date +%s)
-        __elapsed=$((__now - __start))
-        echo "::notice::[ci] $__task still running after $__elapsed s (attempt $__n/$__max)"
-      done
-    ) &
-    __hb_pid=$!
-
-    __log=$(mktemp)
-    set +e
-    eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
-    __rc=$?
-    set -e
-
-    kill "$__hb_pid" 2>/dev/null || true
-    wait "$__hb_pid" 2>/dev/null || true
-
-    __now=$(date +%s)
-    __elapsed=$((__now - __start))
-
-    [ $__rc -eq 0 ] && {
-      echo "::notice::[ci] completed $__task in $__elapsed s"
-      if [ "$__n" -gt 1 ]; then
-        __write_summary success "Recovered from Nix GC race after retry"
-      else
-        __write_summary success
-      fi
-      rm -f "$__log"
-      return 0
-    }
-
-    __flattened=$(tr '\n' ' ' < "$__log" | sed "s/$(printf '\\033')\\[[0-9;]*m//g")
-    __path=$(printf '%s' "$__flattened" | sed -n "s#.*error:[[:space:]]*path '\\\\(/nix/store/[^']*\\\\)'[[:space:]]*is not valid.*#\\\\1#p" | head -1 | tr -d '[:space:]' || true)
-    __saw_invalid_path=false
-    __saw_cachix_signature=false
-    [ -n "$__path" ] && __saw_invalid_path=true
-    printf '%s' "$__flattened" | grep -q 'Failed to convert config\\.cachix to JSON' && __saw_cachix_signature=true || true
-    # Match the semantic signal, not the exact quote punctuation, so the shell
-    # stays valid even when the human-facing error wraps the option name.
-    printf '%s' "$__flattened" | grep -q 'while evaluating the option' && printf '%s' "$__flattened" | grep -q 'cachix\\.package' && __saw_cachix_signature=true || true
-    rm -f "$__log"
-    if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then
-      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
-      __write_summary failure "No Nix GC race signature detected"
-      return $__rc
-    fi
-    if [ "$__saw_cachix_signature" = true ] && [ -n "$__path" ]; then
-      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
-    elif [ "$__saw_cachix_signature" = true ]; then
-      # The cachix wrapper can surface the GC race before the invalid path makes
-      # it into the flattened log. Retrying after clearing the eval cache still
-      # recovers that case in practice.
-      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper without extracted store path (attempt $__n/$__max)"
-    else
-      echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
-    fi
-    [ -z "$__path" ] || nix-store --realise "$__path" 2>/dev/null || true
-    rm -rf ~/.cache/nix/eval-cache-*
-    __n=$((__n + 1))
-  done
-
-  __now=$(date +%s)
-  __elapsed=$((__now - __start))
-  echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
-  __write_summary failure "Nix GC race retry exhausted"
-  return 1
-}; __nix_gc_retry ${quotedCommand}`
+  return [
+    '__nix_gc_retry_helper=$(mktemp)',
+    'cat > "$__nix_gc_retry_helper" <<\'EOF\'',
+    nixGcRaceRetryScript,
+    'EOF',
+    '. "$__nix_gc_retry_helper"',
+    'rm -f "$__nix_gc_retry_helper"',
+    `run_nix_gc_race_retry ${quotedLabel} ${quotedCommand}`,
+  ].join('\n')
 }
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */

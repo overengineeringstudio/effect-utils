@@ -103,7 +103,7 @@ const nixDiagnosticsSummaryStep = {
     '    echo ""',
     '    echo "### Signature markers"',
     "    echo '```text'",
-    '    sed -n "1,120p" "$markers_file"',
+    '    head -n 120 "$markers_file"',
     "    echo '```'",
     '  } >> "$GITHUB_STEP_SUMMARY"',
     'else',
@@ -215,6 +215,13 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
       builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
     }),
   ),
+  'pnpm-regression': job({
+    name: 'pnpm regression suite',
+    run: [
+      'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+      'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
+    ].join('\n'),
+  }),
 }
 
 const NETLIFY_SITE = 'overeng-utils'

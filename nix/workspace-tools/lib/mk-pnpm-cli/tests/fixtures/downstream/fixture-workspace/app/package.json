@@ -1,0 +1,15 @@
+{
+  "name": "mk-pnpm-cli-pure-eval-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@overeng/utils": "link:../repos/effect-utils/packages/@overeng/utils"
+  },
+  "$genie": {
+    "workspaceClosureDirs": [
+      "app",
+      "repos/effect-utils/packages/@overeng/utils"
+    ]
+  }
+}
