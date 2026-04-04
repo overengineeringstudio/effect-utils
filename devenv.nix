@@ -62,6 +62,13 @@ let
       packageJson = "packages/@overeng/megarepo/package.json";
     }
     {
+      name = "tui-stories";
+      flakeRef = ".#tui-stories";
+      hashSource = "packages/@overeng/tui-stories/nix/build.nix";
+      lockfile = "pnpm-lock.yaml";
+      packageJson = "packages/@overeng/tui-stories/package.json";
+    }
+    {
       name = "oxlint-npm";
       flakeRef = ".#oxlint-npm";
       hashSource = "nix/oxc-config-plugin.nix";
