@@ -1,0 +1,13 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+  .: {}
+  app:
+    dependencies:
+      '@overeng/utils':
+        specifier: link:../repos/effect-utils/packages/@overeng/utils
+        version: link:../repos/effect-utils/packages/@overeng/utils

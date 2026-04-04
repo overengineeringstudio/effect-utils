@@ -9,7 +9,9 @@ SYSTEM="${NIX_SYSTEM:-}"
 SKIP_GENIE=0
 SKIP_MEGAREPO=0
 SKIP_OXLINT=0
+SKIP_DEVENV_SHELL=0
 SKIP_DOWNSTREAM=0
+SKIP_DOWNSTREAM_MEGAREPO=0
 WORKSPACE=""
 KEEP=0
 
@@ -24,7 +26,10 @@ Options:
   --skip-genie        Skip building the genie CLI
   --skip-megarepo     Skip building the megarepo CLI
   --skip-oxlint       Skip the downstream oxlint-npm regression build
+  --skip-devenv-shell Skip downstream devenv shell coverage
   --skip-downstream   Skip downstream flake-input regression coverage
+  --skip-downstream-megarepo
+                     Skip the downstream megarepo regression build
   --help              Show this help
 USAGE
 }
@@ -63,8 +68,16 @@ while [ $# -gt 0 ]; do
       SKIP_OXLINT=1
       shift
       ;;
+    --skip-devenv-shell)
+      SKIP_DEVENV_SHELL=1
+      shift
+      ;;
     --skip-downstream)
       SKIP_DOWNSTREAM=1
+      shift
+      ;;
+    --skip-downstream-megarepo)
+      SKIP_DOWNSTREAM_MEGAREPO=1
       shift
       ;;
     --help|-h)
@@ -166,16 +179,45 @@ run_downstream_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#packages.$SYSTEM.$attr"
 
-  echo "Devenv: downstream shell with composed repos/effect-utils path"
-  (
-    cd "$DOWNSTREAM_DIR" &&
-      devenv shell \
-        --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
-        --no-tui \
-        -- true
-  )
+  if [ "$SKIP_DEVENV_SHELL" -eq 0 ]; then
+    echo "Devenv: downstream shell with composed repos/effect-utils path"
+    (
+      cd "$DOWNSTREAM_DIR" &&
+        devenv shell \
+          --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+          --no-tui \
+          -- true
+    )
+  fi
 
   echo "Timing: downstream-$attr $(( $(date +%s) - start ))s"
+}
+
+run_downstream_pure_eval_regression() {
+  local start
+  start="$(date +%s)"
+
+  echo "Build: downstream pure-eval regression (standalone effect-utils path)"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-external-install-roots"
+
+  echo "Build: downstream pure-eval derived-workspace-root regression (standalone effect-utils path)"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-derived-workspace-root"
+
+  echo "Build: downstream pure-eval regression (composed repos/effect-utils path)"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-external-install-roots"
+
+  echo "Build: downstream pure-eval derived-workspace-root regression (composed repos/effect-utils path)"
+  nix build --no-link --no-write-lock-file \
+    --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+    "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-derived-workspace-root"
+
+  echo "Timing: downstream-pure-eval $(( $(date +%s) - start ))s"
 }
 
 if [ "$SKIP_GENIE" -eq 0 ]; then
@@ -188,8 +230,11 @@ fi
 
 if [ "$SKIP_DOWNSTREAM" -eq 0 ]; then
   prepare_downstream_workspace
+  run_downstream_pure_eval_regression
   run_downstream_regression "genie"
-  run_downstream_regression "megarepo"
+  if [ "$SKIP_DOWNSTREAM_MEGAREPO" -eq 0 ]; then
+    run_downstream_regression "megarepo"
+  fi
   if [ "$SKIP_OXLINT" -eq 0 ]; then
     run_downstream_regression "oxlint-npm"
   fi
