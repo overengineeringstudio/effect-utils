@@ -61,6 +61,15 @@
               ;
             src = self;
           };
+          tui-stories = import (rootPath + "/packages/@overeng/tui-stories/nix/build.nix") {
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
+            src = self;
+          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -69,6 +78,11 @@
             dirty = true;
           };
           megarepo = import (rootPath + "/packages/@overeng/megarepo/nix/build.nix") {
+            inherit pkgs gitRev commitTs;
+            src = self;
+            dirty = true;
+          };
+          tui-stories = import (rootPath + "/packages/@overeng/tui-stories/nix/build.nix") {
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
@@ -87,6 +101,8 @@
           "genie-pnpm-deps" = cliPackages.genie.passthru.depsBuildsByInstallRoot.root;
           megarepo-dirty = cliPackagesDirty.megarepo;
           "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
+          tui-stories-dirty = cliPackagesDirty.tui-stories;
+          "tui-stories-pnpm-deps" = cliPackages.tui-stories.passthru.depsBuildsByInstallRoot.root;
           "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
           oxlint-npm = oxlintNpm;
@@ -100,10 +116,12 @@
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
           megarepo = cliPackages.megarepo.outPath;
+          tui-stories = cliPackages.tui-stories.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
+          tui-stories = cliPackagesDirty.tui-stories.outPath;
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {

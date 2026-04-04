@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
+
 ### Changed
 
 - **deps**: Upgrade all Effect ecosystem packages (+2 minor each): `effect` 3.19.19 → 3.21.0, `@effect/platform` 0.94.5 → 0.96.0, `@effect/ai` 0.33.2 → 0.35.0, and 12 other `@effect/*` packages to latest
