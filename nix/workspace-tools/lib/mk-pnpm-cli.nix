@@ -23,7 +23,7 @@ let
   coerceSourceRoot =
     sourceRoot:
     if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
-      builtins.toPath sourceRoot.outPath
+      if (sourceRoot.type or null) == "derivation" then sourceRoot.outPath else sourceRoot
     else if builtins.isPath sourceRoot then
       sourceRoot
     else
@@ -35,10 +35,9 @@ let
     prefix: sourceRoot:
     let
       rawPath = coerceSourceRoot sourceRoot;
-      normalizedPathString = builtins.unsafeDiscardStringContext (toString rawPath);
     in
     builtins.path {
-      path = normalizedPathString;
+      path = rawPath;
       name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
     };
 
@@ -83,11 +82,8 @@ let
 
   snapshotPath =
     namePrefix: path:
-    let
-      normalizedPathString = builtins.unsafeDiscardStringContext (toString path);
-    in
     builtins.path {
-      path = normalizedPathString;
+      path = path;
       name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] namePrefix);
     };
 

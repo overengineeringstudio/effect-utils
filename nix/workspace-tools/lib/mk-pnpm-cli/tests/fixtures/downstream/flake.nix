@@ -22,6 +22,10 @@
         effectUtilsPackages = effect-utils.packages.${system};
         effectUtilsSource = effect-utils;
         pinnedPnpm = import "${effectUtilsSource}/nix/pnpm.nix" { inherit pkgs; };
+        derivedWorkspaceRoot = pkgs.runCommand "mk-pnpm-cli-derived-workspace-root" { } ''
+          cp -R ${./fixture-workspace} "$out"
+          chmod -R +w "$out"
+        '';
         mkPnpmCliFactory = import "${effectUtilsSource}/nix/workspace-tools/lib/mk-pnpm-cli.nix";
         mkPnpmCli = mkPnpmCliFactory (
           {
@@ -53,6 +57,25 @@
           };
           smokeTestArgs = [ ];
         };
+        pureEvalDerivedWorkspaceFixture = mkPnpmCli {
+          name = "mk-pnpm-cli-pure-eval-derived-workspace-fixture";
+          binaryName = "mk-pnpm-cli-pure-eval-derived-workspace-fixture";
+          entry = "app/src/mod.ts";
+          packageDir = "app";
+          workspaceRoot = derivedWorkspaceRoot;
+          workspaceSources = {
+            "repos/effect-utils" = effectUtilsSource;
+          };
+          depsBuilds = {
+            "." = {
+              hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+            };
+            "repos/effect-utils" = {
+              hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+            };
+          };
+          smokeTestArgs = [ ];
+        };
       in
       {
         packages = {
@@ -66,6 +89,15 @@
           expected='[".","repos/effect-utils"]'
           if [ "$actual" != "$expected" ]; then
             echo "unexpected install roots: $actual" >&2
+            exit 1
+          fi
+          printf '%s' "$actual" > "$out"
+        '';
+        checks.pure-eval-derived-workspace-root = pkgs.runCommand "mk-pnpm-cli-pure-eval-derived-workspace-root" { } ''
+          actual='${builtins.toJSON (map (root: root.installDir) pureEvalDerivedWorkspaceFixture.passthru.installRoots)}'
+          expected='[".","repos/effect-utils"]'
+          if [ "$actual" != "$expected" ]; then
+            echo "unexpected install roots for derived workspace root: $actual" >&2
             exit 1
           fi
           printf '%s' "$actual" > "$out"
