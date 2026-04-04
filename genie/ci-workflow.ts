@@ -487,10 +487,10 @@ export const coldFreshNixBuildStep = ({
     ...withEachPnpmDepsDrvShellLines({
       flakeRef,
       bodyLines: [
-        '    while IFS= read -r outPath; do',
-        '      [ -n "$outPath" ] || continue',
-        ...evictOutPathShellLines,
-        '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+        '    installable="${drv}^*"',
+        '    echo "rebuild-checking pnpm deps: ${attrName:-$drv}"',
+        '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
+        '    nix build --no-link --rebuild "$installable" --option substituters "https://cache.nixos.org"',
       ],
     }),
     `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
