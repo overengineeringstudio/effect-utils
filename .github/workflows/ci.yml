@@ -133,10 +133,17 @@ jobs:
                 [ -n "$outPath" ] || continue
                 if [ -e "$outPath" ]; then
                   echo "evicting cached: $(basename "$outPath")"
-                  nix store delete "$outPath" 2>/dev/null || true
+                  if ! nix store delete "$outPath" 2>/dev/null; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if [ -e "$outPath" ]; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -411,10 +418,17 @@ jobs:
                 [ -n "$outPath" ] || continue
                 if [ -e "$outPath" ]; then
                   echo "evicting cached: $(basename "$outPath")"
-                  nix store delete "$outPath" 2>/dev/null || true
+                  if ! nix store delete "$outPath" 2>/dev/null; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if [ -e "$outPath" ]; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -692,10 +706,17 @@ jobs:
                 [ -n "$outPath" ] || continue
                 if [ -e "$outPath" ]; then
                   echo "evicting cached: $(basename "$outPath")"
-                  nix store delete "$outPath" 2>/dev/null || true
+                  if ! nix store delete "$outPath" 2>/dev/null; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if [ -e "$outPath" ]; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -973,10 +994,17 @@ jobs:
                 [ -n "$outPath" ] || continue
                 if [ -e "$outPath" ]; then
                   echo "evicting cached: $(basename "$outPath")"
-                  nix store delete "$outPath" 2>/dev/null || true
+                  if ! nix store delete "$outPath" 2>/dev/null; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if [ -e "$outPath" ]; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -1233,7 +1261,14 @@ jobs:
             outPath=$(nix path-info "$attr" 2>/dev/null || true)
             if [ -n "$outPath" ]; then
               echo "  evicting: $outPath"
-              nix store delete "$outPath" 2>/dev/null || true
+              if ! nix store delete "$outPath" 2>/dev/null; then
+                echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                exit 1
+              fi
+              if [ -e "$outPath" ]; then
+                echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                exit 1
+              fi
             fi
             # Step 3: Rebuild from scratch — fails if declared hash is stale
             nix build --no-link "$attr" --option substituters 'https://cache.nixos.org'
@@ -1401,10 +1436,17 @@ jobs:
                 [ -n "$outPath" ] || continue
                 if [ -e "$outPath" ]; then
                   echo "evicting cached: $(basename "$outPath")"
-                  nix store delete "$outPath" 2>/dev/null || true
+                  if ! nix store delete "$outPath" 2>/dev/null; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if [ -e "$outPath" ]; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"
@@ -1618,10 +1660,17 @@ jobs:
                 [ -n "$outPath" ] || continue
                 if [ -e "$outPath" ]; then
                   echo "evicting cached: $(basename "$outPath")"
-                  nix store delete "$outPath" 2>/dev/null || true
+                  if ! nix store delete "$outPath" 2>/dev/null; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if [ -e "$outPath" ]; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
                 fi
               done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
-            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\.drv$" || true)
+            done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
           fi
       - name: Force diagnostics failure (debug)
         if: "${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}"

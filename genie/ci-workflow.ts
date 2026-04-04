@@ -280,10 +280,17 @@ export const evictCachedPnpmDepsStep = ({
     '      [ -n "$outPath" ] || continue',
     '      if [ -e "$outPath" ]; then',
     '        echo "evicting cached: $(basename "$outPath")"',
-    '        nix store delete "$outPath" 2>/dev/null || true',
+    '        if ! nix store delete "$outPath" 2>/dev/null; then',
+    '          echo "::error::failed to evict cached pnpm-deps output: $outPath"',
+    '          exit 1',
+    '        fi',
+    '        if [ -e "$outPath" ]; then',
+    '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+    '          exit 1',
+    '        fi',
     '      fi',
     '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\\.drv$" || true)',
+    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
     'fi',
   ].join('\n'),
 })
@@ -500,7 +507,14 @@ export const validateColdPnpmDepsStep = ({
       '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
       '  if [ -n "$outPath" ]; then',
       '    echo "  evicting: $outPath"',
-      '    nix store delete "$outPath" 2>/dev/null || true',
+      '    if ! nix store delete "$outPath" 2>/dev/null; then',
+      '      echo "::error::failed to evict cached pnpm-deps output: $outPath"',
+      '      exit 1',
+      '    fi',
+      '    if [ -e "$outPath" ]; then',
+      '      echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+      '      exit 1',
+      '    fi',
       '  fi',
       '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
       `  nix build --no-link "$attr"${substituterArgs}`,
@@ -532,10 +546,17 @@ export const coldFreshNixBuildStep = ({
     '      [ -n "$outPath" ] || continue',
     '      if [ -e "$outPath" ]; then',
     '        echo "evicting cached: $(basename "$outPath")"',
-    '        nix store delete "$outPath" 2>/dev/null || true',
+    '        if ! nix store delete "$outPath" 2>/dev/null; then',
+    '          echo "::error::failed to evict cached pnpm-deps output: $outPath"',
+    '          exit 1',
+    '        fi',
+    '        if [ -e "$outPath" ]; then',
+    '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+    '          exit 1',
+    '        fi',
     '      fi',
     '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\\.drv$" || true)',
+    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
     'fi',
     `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
   ].join('\n'),
@@ -799,16 +820,15 @@ export const dispatchAlignmentStep = (opts: {
   targetRepo: string
   /** Event type sent in the dispatch (default: 'upstream-changed') */
   eventType?: string
-}) =>
-  ({
-    name: 'Dispatch alignment to coordinator',
-    env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: [
-      `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
-      `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
-    ].join(' && '),
-    shell: 'bash',
-  })
+}) => ({
+  name: 'Dispatch alignment to coordinator',
+  env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
+  run: [
+    `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
+    `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
+  ].join(' && '),
+  shell: 'bash',
+})
 
 /**
  * Complete notify-alignment job definition.
@@ -819,13 +839,12 @@ export const notifyAlignmentJob = (opts: {
   needs: readonly string[]
   /** Branches that trigger notification (default: main only) */
   branches?: readonly string[]
-}) =>
-  ({
-    'runs-on': linuxX64Runner,
-    needs: [...opts.needs],
-    if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
-    steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],
-  })
+}) => ({
+  'runs-on': linuxX64Runner,
+  needs: [...opts.needs],
+  if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
+  steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],
+})
 
 // =============================================================================
 // Vercel Deploy Helpers
