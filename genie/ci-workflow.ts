@@ -191,7 +191,10 @@ export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
 const evictOutPathShellLines = [
   '      if nix path-info "$outPath" >/dev/null 2>&1; then',
   '        echo "evicting cached: $(basename "$outPath")"',
-  '        nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true',
+  '        if ! nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1; then',
+  '          echo "::error::failed to evict cached pnpm-deps output: $outPath"',
+  '          exit 1',
+  '        fi',
   '        if nix path-info "$outPath" >/dev/null 2>&1; then',
   '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
   '          exit 1',
