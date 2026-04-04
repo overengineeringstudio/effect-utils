@@ -1398,21 +1398,12 @@ jobs:
         run: |
           set -euo pipefail
           for attr in '.#genie-pnpm-deps' '.#megarepo-pnpm-deps' '.#oxc-config-plugin-pnpm-deps'; do
-            echo "::group::cold-build $attr"
-            # Step 1: Realize (may substitute from cache) to populate dependencies
-            nix build --no-link "$attr" --option substituters 'https://cache.nixos.org' || true
-            # Step 2: Evict the (possibly stale) cached FOD output
-            outPath=$(nix path-info "$attr" 2>/dev/null || true)
-            if [ -n "$outPath" ]; then
-              echo "  evicting: $outPath"
-              nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true
-              if nix path-info "$outPath" >/dev/null 2>&1; then
-                echo "::error::cached pnpm-deps output still present after eviction: $outPath"
-                exit 1
-              fi
-            fi
-            # Step 3: Rebuild from scratch — fails if declared hash is stale
+            echo "::group::rebuild-check $attr"
+            # Step 1: Realize once (may substitute) so rebuild has a trusted output to compare against.
             nix build --no-link "$attr" --option substituters 'https://cache.nixos.org'
+            # Step 2: Rebuild and compare locally. This fails on stale fixed-output hashes without
+            # relying on whether a shared daemon store made the prior out path disappear.
+            nix build --no-link --rebuild "$attr" --option substituters 'https://cache.nixos.org'
             echo "::endgroup::"
           done
       - name: Nix diagnostics summary

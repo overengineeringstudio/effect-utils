@@ -427,11 +427,13 @@ export const savePnpmStoreStep = (opts?: {
  * FOD output paths are deterministic from the declared hash. If Cachix has a
  * previously-valid output (uploaded when the hash was correct), Nix substitutes
  * it without rebuilding — even if the hash is now stale. `--rebuild` also
- * doesn't help because it compares the rebuild against the same trusted output.
+ * must avoid shared-daemon-store heuristics. On CI runners, `nix store delete`
+ * may succeed while the out path still appears valid due to lingering roots or
+ * daemon-managed store state, which makes path-visibility checks flaky.
  *
- * The fix: realize → evict → rebuild. The second build must produce the output
- * locally. If the declared hash doesn't match the actual pnpm install result,
- * the build fails with a hash mismatch.
+ * The fix: realize once, then use `nix build --rebuild`. Nix rebuilds the FOD
+ * and compares the result to the trusted store path directly. If the declared
+ * hash is stale, the rebuild/check fails with the underlying hash mismatch.
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
@@ -453,21 +455,12 @@ export const validateColdPnpmDepsStep = ({
     return [
       'set -euo pipefail',
       `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
-      '  echo "::group::cold-build $attr"',
-      '  # Step 1: Realize (may substitute from cache) to populate dependencies',
-      `  nix build --no-link "$attr"${substituterArgs} || true`,
-      '  # Step 2: Evict the (possibly stale) cached FOD output',
-      '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
-      '  if [ -n "$outPath" ]; then',
-      '    echo "  evicting: $outPath"',
-      '    nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1 || true',
-      '    if nix path-info "$outPath" >/dev/null 2>&1; then',
-      '      echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
-      '      exit 1',
-      '    fi',
-      '  fi',
-      '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
+      '  echo "::group::rebuild-check $attr"',
+      '  # Step 1: Realize once (may substitute) so rebuild has a trusted output to compare against.',
       `  nix build --no-link "$attr"${substituterArgs}`,
+      '  # Step 2: Rebuild and compare locally. This fails on stale fixed-output hashes without',
+      '  # relying on whether a shared daemon store made the prior out path disappear.',
+      `  nix build --no-link --rebuild "$attr"${substituterArgs}`,
       '  echo "::endgroup::"',
       'done',
     ].join('\n')
