@@ -294,7 +294,14 @@ export const githubAppInstallationTokenStep = (opts: {
   },
 })
 
-/** Append a GitHub access token line to NIX_CONFIG for later shell steps. */
+/**
+ * Export a GitHub access token for later shell steps and append it to NIX_CONFIG.
+ *
+ * Self-hosted runners already have Nix installed, so the install action's
+ * extra-conf is effectively skipped there. Exporting `GITHUB_TOKEN` keeps the
+ * runner-side Nix wrapper on the same auth path while `NIX_CONFIG` covers raw
+ * shell invocations in later steps.
+ */
 export const appendGitHubAccessTokenToNixConfigStep = (opts: {
   tokenExpression: string
   name?: string
@@ -303,6 +310,7 @@ export const appendGitHubAccessTokenToNixConfigStep = (opts: {
   shell: 'bash' as const,
   run: [
     `token=${shellSingleQuote(opts.tokenExpression)}`,
+    'printf "GITHUB_TOKEN=%s\\nGH_TOKEN=%s\\n" "$token" "$token" >> "$GITHUB_ENV"',
     'if [ -n "${NIX_CONFIG:-}" ]; then',
     '  printf "NIX_CONFIG<<EOF\\n%s\\naccess-tokens = github.com=%s\\nEOF\\n" "$NIX_CONFIG" "$token" >> "$GITHUB_ENV"',
     'else',

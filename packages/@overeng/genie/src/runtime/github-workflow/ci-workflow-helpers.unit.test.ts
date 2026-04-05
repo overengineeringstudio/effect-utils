@@ -92,8 +92,10 @@ describe('ci workflow shared auth helpers', () => {
     )
   })
 
-  it('can append GitHub access tokens to NIX_CONFIG for later shell steps', () => {
+  it('exports GitHub access tokens for self-hosted wrappers and appends them to NIX_CONFIG', () => {
     expect(ciWorkflowSource).toContain('export const appendGitHubAccessTokenToNixConfigStep')
+    expect(ciWorkflowSource).toContain('GITHUB_TOKEN=%s')
+    expect(ciWorkflowSource).toContain('GH_TOKEN=%s')
     expect(ciWorkflowSource).toContain('access-tokens = github.com=%s')
   })
 })
