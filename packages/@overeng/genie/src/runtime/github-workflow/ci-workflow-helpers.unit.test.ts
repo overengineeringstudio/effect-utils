@@ -92,10 +92,18 @@ describe('ci workflow shared auth helpers', () => {
     )
   })
 
-  it('exports GitHub access tokens for self-hosted wrappers and appends them to NIX_CONFIG', () => {
+  it('exposes a dedicated env helper for self-hosted wrapper auth', () => {
+    expect(ciWorkflowSource).toContain('export const githubAccessTokenEnv')
+    expect(ciWorkflowSource).toContain('GITHUB_TOKEN: tokenExpression')
+    expect(ciWorkflowSource).toContain('GH_TOKEN: tokenExpression')
+    expect(ciWorkflowSource).toContain('export const withGitHubAccessTokenEnv')
+  })
+
+  it('only appends GitHub access tokens to NIX_CONFIG through GITHUB_ENV', () => {
     expect(ciWorkflowSource).toContain('export const appendGitHubAccessTokenToNixConfigStep')
-    expect(ciWorkflowSource).toContain('GITHUB_TOKEN=%s')
-    expect(ciWorkflowSource).toContain('GH_TOKEN=%s')
     expect(ciWorkflowSource).toContain('access-tokens = github.com=%s')
+    expect(ciWorkflowSource).not.toContain(
+      'printf "GITHUB_TOKEN=%s\\nGH_TOKEN=%s\\n" "$token" "$token"',
+    )
   })
 })

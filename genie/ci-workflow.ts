@@ -295,12 +295,43 @@ export const githubAppInstallationTokenStep = (opts: {
 })
 
 /**
- * Export a GitHub access token for later shell steps and append it to NIX_CONFIG.
+ * Build shell env bindings for a GitHub token.
  *
- * Self-hosted runners already have Nix installed, so the install action's
- * extra-conf is effectively skipped there. Exporting `GITHUB_TOKEN` keeps the
- * runner-side Nix wrapper on the same auth path while `NIX_CONFIG` covers raw
- * shell invocations in later steps.
+ * Use this on later run steps when self-hosted wrappers or ad hoc git/nix
+ * invocations must authenticate with the minted installation token.
+ */
+export const githubAccessTokenEnv = (tokenExpression: string) => ({
+  GITHUB_TOKEN: tokenExpression,
+  GH_TOKEN: tokenExpression,
+})
+
+/**
+ * Attach a GitHub token env binding to an existing workflow step.
+ *
+ * This is the supported way to pass an installation token through later steps.
+ * GitHub Actions does not allow overriding `GITHUB_*` variables via `$GITHUB_ENV`.
+ */
+export const withGitHubAccessTokenEnv = <
+  TStep extends {
+    env?: Record<string, string>
+  },
+>(
+  step: TStep,
+  tokenExpression: string,
+): TStep => ({
+  ...step,
+  env: {
+    ...step.env,
+    ...githubAccessTokenEnv(tokenExpression),
+  },
+})
+
+/**
+ * Append a GitHub access token line to NIX_CONFIG for later shell steps.
+ *
+ * This only updates `NIX_CONFIG`. Use `withGitHubAccessTokenEnv(...)` when the
+ * same token also needs to be visible to self-hosted runner wrappers or other
+ * tools that read `GITHUB_TOKEN` / `GH_TOKEN` from the step environment.
  */
 export const appendGitHubAccessTokenToNixConfigStep = (opts: {
   tokenExpression: string
@@ -310,7 +341,6 @@ export const appendGitHubAccessTokenToNixConfigStep = (opts: {
   shell: 'bash' as const,
   run: [
     `token=${shellSingleQuote(opts.tokenExpression)}`,
-    'printf "GITHUB_TOKEN=%s\\nGH_TOKEN=%s\\n" "$token" "$token" >> "$GITHUB_ENV"',
     'if [ -n "${NIX_CONFIG:-}" ]; then',
     '  printf "NIX_CONFIG<<EOF\\n%s\\naccess-tokens = github.com=%s\\nEOF\\n" "$NIX_CONFIG" "$token" >> "$GITHUB_ENV"',
     'else',
