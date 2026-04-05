@@ -7,8 +7,7 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
-import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { createGenieOutput } from '../core.ts'
@@ -467,19 +466,11 @@ const readTsconfigCompilerOptions = (packageRoot: string) => {
   if (existsSync(tsconfigPath) === false) return undefined
 
   try {
-    const requireFromPackage = createRequire(tsconfigPath)
-    const requireFromGenie = createRequire(import.meta.url)
-    // oxlint-disable-next-line typescript-eslint/consistent-type-imports -- dynamic require needs runtime type annotation
-    const ts: typeof import('typescript') = (() => {
-      try {
-        return requireFromPackage('typescript')
-      } catch {
-        return requireFromGenie('typescript')
-      }
-    })()
-    const { config, error } = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
-    if (error !== undefined || config === undefined) return undefined
-    return config.compilerOptions
+    const tsconfigText = readFileSync(tsconfigPath, 'utf8')
+    const tsconfig = JSON.parse(
+      tsconfigText.replace(/^\s*\/\/.*$/gmu, ''),
+    ) as { compilerOptions?: Record<string, unknown> }
+    return tsconfig.compilerOptions
   } catch {
     return undefined
   }
