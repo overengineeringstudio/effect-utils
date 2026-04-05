@@ -8,6 +8,7 @@
  */
 
 import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import { createGenieOutput } from '../core.ts'
@@ -452,6 +453,73 @@ const toDeclarationPaths = (target: string): string[] => {
   return []
 }
 
+const normalizeRelativePath = (target: string) =>
+  path.posix.normalize(target.replace(/^\.\//u, ''))
+
+const declarationExtensionForSourceTarget = (target: string) => {
+  if (target.endsWith('.mts')) return '.d.mts'
+  if (target.endsWith('.cts')) return '.d.cts'
+  return '.d.ts'
+}
+
+const readTsconfigCompilerOptions = (packageRoot: string) => {
+  const tsconfigPath = path.join(packageRoot, 'tsconfig.json')
+  if (existsSync(tsconfigPath) === false) return undefined
+
+  try {
+    const requireFromPackage = createRequire(tsconfigPath)
+    const requireFromGenie = createRequire(import.meta.url)
+    // oxlint-disable-next-line typescript-eslint/consistent-type-imports -- dynamic require needs runtime type annotation
+    const ts: typeof import('typescript') = (() => {
+      try {
+        return requireFromPackage('typescript')
+      } catch {
+        return requireFromGenie('typescript')
+      }
+    })()
+    const { config, error } = ts.readConfigFile(tsconfigPath, ts.sys.readFile)
+    if (error !== undefined || config === undefined) return undefined
+    return config.compilerOptions
+  } catch {
+    return undefined
+  }
+}
+
+const deriveEmittedDeclarationPath = ({
+  packageRoot,
+  sourceTarget,
+}: {
+  packageRoot: string
+  sourceTarget: string
+}) => {
+  if (
+    sourceTarget.endsWith('.ts') === false &&
+    sourceTarget.endsWith('.tsx') === false &&
+    sourceTarget.endsWith('.mts') === false &&
+    sourceTarget.endsWith('.cts') === false
+  ) {
+    return undefined
+  }
+
+  const compilerOptions = readTsconfigCompilerOptions(packageRoot)
+  const outDir = compilerOptions?.outDir
+  const rootDir = compilerOptions?.rootDir
+  if (typeof outDir !== 'string' || typeof rootDir !== 'string') return undefined
+
+  const normalizedSource = normalizeRelativePath(sourceTarget)
+  const normalizedRootDir = normalizeRelativePath(rootDir)
+  const normalizedOutDir = normalizeRelativePath(outDir)
+  const relativeSource = path.posix.relative(normalizedRootDir, normalizedSource)
+  if (relativeSource.startsWith('..')) return undefined
+
+  const declarationPath = relativeSource.replace(
+    /\.(?:tsx|mts|cts|ts)$/u,
+    declarationExtensionForSourceTarget(sourceTarget),
+  )
+
+  return `./${path.posix.join(normalizedOutDir, declarationPath)}`
+}
+
 const specifierForExportPath = ({
   packageName,
   exportPath,
@@ -481,13 +549,17 @@ export const declarationPathMappingsForPackage = ({
   for (const exportPath of exportPaths) {
     const publishTarget = getPreferredExportTarget(publishConfigExports?.[exportPath])
     const sourceTarget = getPreferredExportTarget(exports?.[exportPath])
-    const declarationTargets = [publishTarget, sourceTarget].flatMap((target) =>
-      target === undefined ? [] : toDeclarationPaths(target),
-    )
-    const declarationTarget =
-      declarationTargets.find((target) =>
-        existsSync(path.join(packageRoot, target.replace(/^\.\//u, ''))),
-      ) ?? declarationTargets[0]
+    const declarationTargets = [
+      ...(sourceTarget === undefined
+        ? []
+        : [deriveEmittedDeclarationPath({ packageRoot, sourceTarget })].flatMap((target) =>
+            target === undefined ? [] : [target],
+          )),
+      ...[publishTarget, sourceTarget].flatMap((target) =>
+        target === undefined ? [] : toDeclarationPaths(target),
+      ),
+    ]
+    const declarationTarget = declarationTargets[0]
 
     if (declarationTarget === undefined) continue
 

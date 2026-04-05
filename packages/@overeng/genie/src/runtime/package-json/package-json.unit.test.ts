@@ -227,10 +227,10 @@ describe('packageJson', () => {
   })
 
   it('prefers dist/src declarations when that is the emitted layout', () => {
-    const repo = createTempRepo('packages/test-package/dist/src')
+    const repo = createTempRepo('packages/test-package')
     fs.writeFileSync(
-      path.join(repo.memberDirs['packages/test-package/dist/src'], 'index.d.ts'),
-      'export {};\n',
+      path.join(repo.memberDirs['packages/test-package'], 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { rootDir: '.', outDir: './dist' } }),
     )
 
     expect(
@@ -241,6 +241,32 @@ describe('packageJson', () => {
           '.': './src/index.ts',
         },
         publishConfigExports: undefined,
+      }),
+    ).toEqual({
+      '@test/package': [`${path.relative(process.cwd(), repo.memberDirs['packages/test-package'])}/dist/src/index.d.ts`],
+    })
+  })
+
+  it('prefers emitted local declarations over publishConfig exports', () => {
+    const repo = createTempRepo('packages/test-package')
+    fs.writeFileSync(
+      path.join(repo.memberDirs['packages/test-package'], 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { rootDir: '.', outDir: './dist' } }),
+    )
+
+    expect(
+      declarationPathMappingsForPackage({
+        packageName: '@test/package',
+        packageBasePath: path.relative(process.cwd(), repo.memberDirs['packages/test-package']),
+        exports: {
+          '.': './src/index.ts',
+        },
+        publishConfigExports: {
+          '.': {
+            types: './dist/index.d.ts',
+            default: './dist/index.js',
+          },
+        },
       }),
     ).toEqual({
       '@test/package': [`${path.relative(process.cwd(), repo.memberDirs['packages/test-package'])}/dist/src/index.d.ts`],
