@@ -4,7 +4,12 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { packageJson, type GenieContext, type PackageInfo } from '../mod.ts'
+import {
+  declarationPathMappingsForPackage,
+  packageJson,
+  type GenieContext,
+  type PackageInfo,
+} from '../mod.ts'
 import { defineCatalog } from './catalog.ts'
 
 /** Mock GenieContext for package tests (nested package location) */
@@ -171,6 +176,75 @@ describe('packageJson', () => {
     const parsed = JSON.parse(json)
     const paths = Object.keys(parsed.exports)
     expect(paths[0]).toBe('.')
+  })
+
+  it('derives declaration path mappings from publishConfig exports', () => {
+    expect(
+      declarationPathMappingsForPackage({
+        packageName: '@test/package',
+        packageBasePath: '../repos/test/packages/package',
+        exports: {
+          '.': './src/mod.ts',
+          './effect': './src/effect/mod.ts',
+        },
+        publishConfigExports: {
+          '.': {
+            types: './dist/mod.d.ts',
+            default: './dist/mod.js',
+          },
+          './effect': {
+            types: './dist/effect/mod.d.ts',
+            default: './dist/effect/mod.js',
+          },
+        },
+      }),
+    ).toEqual({
+      '@test/package': ['../repos/test/packages/package/dist/mod.d.ts'],
+      '@test/package/effect': ['../repos/test/packages/package/dist/effect/mod.d.ts'],
+    })
+  })
+
+  it('falls back to derived dist declarations when publishConfig exports are absent', () => {
+    expect(
+      declarationPathMappingsForPackage({
+        packageName: '@test/package',
+        packageBasePath: '../packages/test-package',
+        exports: {
+          '.': './src/index.ts',
+          './node': './src/node/mod.ts',
+          './feature': {
+            browser: './src/feature/browser.ts',
+            default: './src/feature/node.ts',
+          },
+        },
+        publishConfigExports: undefined,
+      }),
+    ).toEqual({
+      '@test/package': ['../packages/test-package/dist/index.d.ts'],
+      '@test/package/feature': ['../packages/test-package/dist/feature/node.d.ts'],
+      '@test/package/node': ['../packages/test-package/dist/node/mod.d.ts'],
+    })
+  })
+
+  it('prefers dist/src declarations when that is the emitted layout', () => {
+    const repo = createTempRepo('packages/test-package/dist/src')
+    fs.writeFileSync(
+      path.join(repo.memberDirs['packages/test-package/dist/src'], 'index.d.ts'),
+      'export {};\n',
+    )
+
+    expect(
+      declarationPathMappingsForPackage({
+        packageName: '@test/package',
+        packageBasePath: path.relative(process.cwd(), repo.memberDirs['packages/test-package']),
+        exports: {
+          '.': './src/index.ts',
+        },
+        publishConfigExports: undefined,
+      }),
+    ).toEqual({
+      '@test/package': [`${path.relative(process.cwd(), repo.memberDirs['packages/test-package'])}/dist/src/index.d.ts`],
+    })
   })
 
   it('preserves non-emitted metadata when provided as the second argument', () => {

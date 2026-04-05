@@ -8,6 +8,7 @@
  */
 
 import {
+  declarationPathMappingsForPackage,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,
@@ -48,6 +49,7 @@ import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/ru
 
 /** Re-export so TypeScript can reference it in generated declaration files */
 export {
+  declarationPathMappingsForPackage,
   defineCatalog,
   definePatchedDependencies,
   githubRuleset,

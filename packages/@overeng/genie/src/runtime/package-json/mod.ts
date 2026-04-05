@@ -7,6 +7,9 @@
  * Reference: https://github.com/sindresorhus/type-fest/blob/main/source/package-json.d.ts
  */
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
 import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
 import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
@@ -136,6 +139,21 @@ type Funding =
       type?: string
       url?: string
     }
+
+const EXPORT_CONDITION_PRIORITY = [
+  'types',
+  'default',
+  'import',
+  'node',
+  'require',
+  'browser',
+  'react-native',
+  'bun',
+  'worker',
+  'workerd',
+  'development',
+  'production',
+] as const
 
 /**
  * Patches registry type.
@@ -389,6 +407,95 @@ const sortExports = (
     sorted[exportPath] = sortExportConditions(exports[exportPath]!)
   }
   return sorted
+}
+
+const getPreferredExportTarget = (entry: ExportsEntry | undefined): string | undefined => {
+  if (entry === undefined) return undefined
+  if (typeof entry === 'string') return entry
+  const recordEntry = entry as Record<string, string>
+
+  for (const condition of EXPORT_CONDITION_PRIORITY) {
+    const target = recordEntry[condition]
+    if (target !== undefined) return target
+  }
+
+  return Object.values(recordEntry).find((value) => typeof value === 'string')
+}
+
+const toDeclarationPaths = (target: string): string[] => {
+  if (target.endsWith('.d.ts') || target.endsWith('.d.mts') || target.endsWith('.d.cts')) {
+    return [target]
+  }
+
+  if (target.endsWith('.js') || target.endsWith('.mjs') || target.endsWith('.cjs')) {
+    return [target.replace(/\.(?:mjs|cjs|js)$/u, '.d.ts')]
+  }
+
+  if (
+    target.endsWith('.ts') ||
+    target.endsWith('.mts') ||
+    target.endsWith('.cts') ||
+    target.endsWith('.tsx')
+  ) {
+    const declarationTarget = target.replace(/\.(?:tsx|mts|cts|ts)$/u, '.d.ts')
+
+    if (target.startsWith('./src/')) {
+      return [
+        declarationTarget.replace(/^\.\/src\//u, './dist/'),
+        declarationTarget.replace(/^\.\/src\//u, './dist/src/'),
+      ]
+    }
+
+    return [declarationTarget]
+  }
+
+  return []
+}
+
+const specifierForExportPath = ({
+  packageName,
+  exportPath,
+}: {
+  packageName: string
+  exportPath: string
+}) => (exportPath === '.' ? packageName : `${packageName}${exportPath.slice(1)}`)
+
+export const declarationPathMappingsForPackage = ({
+  packageName,
+  exports,
+  publishConfigExports,
+  packageBasePath,
+}: {
+  packageName: string
+  exports: Record<string, ExportsEntry> | undefined
+  publishConfigExports: Record<string, ExportsEntry> | undefined
+  packageBasePath: string
+}): Record<string, string[]> => {
+  const packageRoot = path.resolve(process.cwd(), packageBasePath)
+  const exportPaths = new Set([
+    ...Object.keys(exports ?? {}),
+    ...Object.keys(publishConfigExports ?? {}),
+  ])
+  const mappings: Record<string, string[]> = {}
+
+  for (const exportPath of exportPaths) {
+    const publishTarget = getPreferredExportTarget(publishConfigExports?.[exportPath])
+    const sourceTarget = getPreferredExportTarget(exports?.[exportPath])
+    const declarationTargets = [publishTarget, sourceTarget].flatMap((target) =>
+      target === undefined ? [] : toDeclarationPaths(target),
+    )
+    const declarationTarget =
+      declarationTargets.find((target) =>
+        existsSync(path.join(packageRoot, target.replace(/^\.\//u, ''))),
+      ) ?? declarationTargets[0]
+
+    if (declarationTarget === undefined) continue
+
+    const specifier = specifierForExportPath({ packageName, exportPath })
+    mappings[specifier] = [`${packageBasePath}/${declarationTarget.replace(/^\.\//u, '')}`]
+  }
+
+  return mappings
 }
 
 /** Prefixes for internal dependencies that use absolute repo paths */

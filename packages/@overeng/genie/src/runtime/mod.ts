@@ -13,6 +13,7 @@ export {
   defineOverrides,
   definePatchedDependencies,
   packageJson,
+  declarationPathMappingsForPackage,
   type AggregatePackageJsonData,
   type Catalog,
   type CatalogInput,
