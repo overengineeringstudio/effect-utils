@@ -56,15 +56,20 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmHome')
   })
 
-  it('rebuild-checks pnpm deps artifacts instead of deleting shared-store outputs', () => {
+  it('cold-builds pnpm deps artifacts by evicting cached outputs before the second build', () => {
     expect(coldFreshBuildSource).toContain('installable="${drv}^*"')
+    expect(coldFreshBuildSource).toContain('while IFS= read -r outPath; do')
+    expect(coldFreshBuildSource).toContain(
+      'done < <(nix path-info "$installable" 2>/dev/null || true)',
+    )
+    expect(coldFreshBuildSource).toContain('...evictOutPathShellLines')
+    expect(ciWorkflowSource).toContain('nix store delete --ignore-liveness "$outPath"')
+    expect(ciWorkflowSource).toContain(
+      'echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+    )
     expect(coldFreshBuildSource).toContain(
       'nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
     )
-    expect(coldFreshBuildSource).toContain(
-      'nix build --no-link --rebuild "$installable" --option substituters "https://cache.nixos.org"',
-    )
-    expect(coldFreshBuildSource).not.toContain('nix store delete --ignore-liveness "$outPath"')
   })
 
   it('prefers explicit depsBuildEntries metadata before falling back to closure scanning', () => {
@@ -76,5 +81,34 @@ describe('ci workflow pnpm cache defaults', () => {
   it('keeps the diagnostics summary portable', () => {
     expect(generatedWorkflowSource).toContain('head -n 120 "$markers_file"')
     expect(generatedWorkflowSource).not.toContain('sed -n "1,120p" "$markers_file"')
+  })
+})
+
+describe('ci workflow shared auth helpers', () => {
+  it('supports minting GitHub App installation tokens for downstream private inputs', () => {
+    expect(ciWorkflowSource).toContain('export const githubAppInstallationTokenStep')
+    expect(ciWorkflowSource).toContain("uses: 'actions/create-github-app-token@v2' as const")
+  })
+
+  it('lets installNixStep override the GitHub access token expression', () => {
+    expect(ciWorkflowSource).toContain('githubAccessTokenExpression?: string')
+    expect(ciWorkflowSource).toContain(
+      "access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}",
+    )
+  })
+
+  it('exposes a dedicated env helper for self-hosted wrapper auth', () => {
+    expect(ciWorkflowSource).toContain('export const githubAccessTokenEnv')
+    expect(ciWorkflowSource).toContain('GITHUB_TOKEN: tokenExpression')
+    expect(ciWorkflowSource).toContain('GH_TOKEN: tokenExpression')
+    expect(ciWorkflowSource).toContain('export const withGitHubAccessTokenEnv')
+  })
+
+  it('only appends GitHub access tokens to NIX_CONFIG through GITHUB_ENV', () => {
+    expect(ciWorkflowSource).toContain('export const appendGitHubAccessTokenToNixConfigStep')
+    expect(ciWorkflowSource).toContain('access-tokens = github.com=%s')
+    expect(ciWorkflowSource).not.toContain(
+      'printf "GITHUB_TOKEN=%s\\nGH_TOKEN=%s\\n" "$token" "$token"',
+    )
   })
 })

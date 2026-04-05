@@ -274,6 +274,81 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
   ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
 })
 
+/** Mint a GitHub App installation token for downstream private-repo fetches. */
+export const githubAppInstallationTokenStep = (opts: {
+  id: string
+  appId: string
+  privateKey: string
+  owner: string
+  repositories: readonly [string, ...string[]]
+  name?: string
+}) => ({
+  id: opts.id,
+  name: opts.name ?? `Mint ${opts.owner} GitHub App token`,
+  uses: 'actions/create-github-app-token@v2' as const,
+  with: {
+    'app-id': opts.appId,
+    'private-key': opts.privateKey,
+    owner: opts.owner,
+    repositories: opts.repositories.join(','),
+  },
+})
+
+/**
+ * Build shell env bindings for a GitHub token.
+ *
+ * Use this on later run steps when self-hosted wrappers or ad hoc git/nix
+ * invocations must authenticate with the minted installation token.
+ */
+export const githubAccessTokenEnv = (tokenExpression: string) => ({
+  GITHUB_TOKEN: tokenExpression,
+  GH_TOKEN: tokenExpression,
+})
+
+/**
+ * Attach a GitHub token env binding to an existing workflow step.
+ *
+ * This is the supported way to pass an installation token through later steps.
+ * GitHub Actions does not allow overriding `GITHUB_*` variables via `$GITHUB_ENV`.
+ */
+export const withGitHubAccessTokenEnv = <
+  TStep extends {
+    env?: Record<string, string>
+  },
+>(
+  step: TStep,
+  tokenExpression: string,
+): TStep => ({
+  ...step,
+  env: {
+    ...step.env,
+    ...githubAccessTokenEnv(tokenExpression),
+  },
+})
+
+/**
+ * Append a GitHub access token line to NIX_CONFIG for later shell steps.
+ *
+ * This only updates `NIX_CONFIG`. Use `withGitHubAccessTokenEnv(...)` when the
+ * same token also needs to be visible to self-hosted runner wrappers or other
+ * tools that read `GITHUB_TOKEN` / `GH_TOKEN` from the step environment.
+ */
+export const appendGitHubAccessTokenToNixConfigStep = (opts: {
+  tokenExpression: string
+  name?: string
+}) => ({
+  name: opts.name ?? 'Export GitHub access token for Nix',
+  shell: 'bash' as const,
+  run: [
+    `token=${shellSingleQuote(opts.tokenExpression)}`,
+    'if [ -n "${NIX_CONFIG:-}" ]; then',
+    '  printf "NIX_CONFIG<<EOF\\n%s\\naccess-tokens = github.com=%s\\nEOF\\n" "$NIX_CONFIG" "$token" >> "$GITHUB_ENV"',
+    'else',
+    '  printf "NIX_CONFIG<<EOF\\naccess-tokens = github.com=%s\\nEOF\\n" "$token" >> "$GITHUB_ENV"',
+    'fi',
+  ].join('\n'),
+})
+
 /**
  * Install Nix via DeterminateSystems/determinate-nix-action@v3.
  * Includes devenv.cachix.org as extra substituter and github.com access-tokens
@@ -281,7 +356,10 @@ export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: 
  * and extra-conf is silently skipped — the runner's nix wrapper handles
  * access-tokens there by reading GITHUB_TOKEN from the environment.
  */
-export const installNixStep = (opts?: { extraConf?: string }) => ({
+export const installNixStep = (opts?: {
+  extraConf?: string
+  githubAccessTokenExpression?: string
+}) => ({
   name: 'Install Nix',
   uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
   with: {
@@ -296,7 +374,7 @@ export const installNixStep = (opts?: { extraConf?: string }) => ({
       'accept-flake-config = true',
       'extra-substituters = https://devenv.cachix.org',
       'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
-      'access-tokens = github.com=${{ github.token }}',
+      `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
   },
@@ -488,9 +566,13 @@ export const coldFreshNixBuildStep = ({
       flakeRef,
       bodyLines: [
         '    installable="${drv}^*"',
-        '    echo "rebuild-checking pnpm deps: ${attrName:-$drv}"',
+        '    echo "cold-building pnpm deps: ${attrName:-$drv}"',
+        '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org" || true',
+        '    while IFS= read -r outPath; do',
+        '      [ -n "$outPath" ] || continue',
+        ...evictOutPathShellLines,
+        '    done < <(nix path-info "$installable" 2>/dev/null || true)',
         '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
-        '    nix build --no-link --rebuild "$installable" --option substituters "https://cache.nixos.org"',
       ],
     }),
     `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
