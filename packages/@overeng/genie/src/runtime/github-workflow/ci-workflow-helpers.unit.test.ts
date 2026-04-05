@@ -58,10 +58,15 @@ describe('ci workflow pnpm cache defaults', () => {
 
   it('cold-builds pnpm deps artifacts by evicting cached outputs before the second build', () => {
     expect(coldFreshBuildSource).toContain('installable="${drv}^*"')
+    expect(coldFreshBuildSource).toContain('while IFS= read -r outPath; do')
     expect(coldFreshBuildSource).toContain(
-      'outPath=$(nix path-info "$installable" 2>/dev/null || true)',
+      'done < <(nix path-info "$installable" 2>/dev/null || true)',
     )
-    expect(coldFreshBuildSource).toContain('nix store delete "$outPath" 2>/dev/null || true')
+    expect(coldFreshBuildSource).toContain('...evictOutPathShellLines')
+    expect(ciWorkflowSource).toContain('nix store delete --ignore-liveness "$outPath"')
+    expect(ciWorkflowSource).toContain(
+      'echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+    )
     expect(coldFreshBuildSource).toContain(
       'nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
     )
