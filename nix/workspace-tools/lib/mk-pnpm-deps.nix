@@ -49,23 +49,6 @@ let
       : (typeof data === "object" && data !== null ? Object.values(data)[0] ?? {} : {});
     process.stdout.write(String(item.closureSize ?? item.narSize ?? 0));
   '';
-  stripPackageManagerScript = pkgs.writeText "strip-package-manager.cjs" ''
-    const fs = require("fs");
-
-    const [manifestPath, backupPath] = process.argv.slice(2);
-    if (!manifestPath || !backupPath || !fs.existsSync(manifestPath)) {
-      process.exit(0);
-    }
-
-    const pkg = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    if (!Object.hasOwn(pkg, "packageManager")) {
-      process.exit(0);
-    }
-
-    fs.copyFileSync(manifestPath, backupPath);
-    delete pkg.packageManager;
-    fs.writeFileSync(manifestPath, JSON.stringify(pkg, null, 2) + "\n");
-  '';
 in
 {
   # Create a fixed-output derivation that prepares a workspace install tree.
@@ -92,11 +75,6 @@ in
       pnpmDepsHash,
       preInstall ? "",
       lockfilePaths ? [ "pnpm-lock.yaml" ],
-      # Optional: path to a pre-normalized lockfile. When provided, the FOD
-      # replaces the staged lockfile and skips the registry-dependent
-      # `--lockfile-only --no-frozen-lockfile` normalization step, making the
-      # FOD output fully deterministic.
-      normalizedLockfile ? null,
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -126,7 +104,11 @@ in
       );
     in
     pkgs.stdenvNoCC.mkDerivation {
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v3";
+      # Bump the prepared-workspace artifact version whenever the materialization
+      # strategy changes, even if the recursive output hash stays the same.
+      # Self-hosted darwin runners can otherwise keep colliding with stale temp
+      # output paths for earlier artifact layouts while evaluating the same FOD.
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v4";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -216,30 +198,17 @@ in
                   fi
                 }
 
-                strip_package_manager_field() {
-                  local manifest_path="$1"
-                  local backup_path="$2"
-                  # We provide pnpm externally inside Nix. Keeping packageManager in the
-                  # staged manifests makes pnpm install its own platform-specific
-                  # runtime packages, which turns a supposedly shared FOD into a
-                  # darwin-vs-linux hash divergence.
-                  ${pkgs.nodejs}/bin/node ${lib.escapeShellArg stripPackageManagerScript} "$manifest_path" "$backup_path"
-                }
-
-                restore_package_manager_field() {
-                  local manifest_path="$1"
-                  local backup_path="$2"
-                  if [ -f "$backup_path" ]; then
-                    mv "$backup_path" "$manifest_path"
-                  fi
-                }
-
                 SOURCE_DIR="$NIX_BUILD_TOP/source"
                 prepStartedAt=$(timer_now)
                 sourceCopyStartedAt=$(timer_now)
                 mkdir "$SOURCE_DIR"
                 cp -r "$src"/. "$SOURCE_DIR"/
                 chmod -R +w "$SOURCE_DIR"
+                # The staged workspace must start from declared sources only.
+                # Self-hosted checkouts and local worktrees can accumulate ignored
+                # install artifacts, and pnpm's symlink layout will then collide
+                # with those preexisting node_modules trees during materialization.
+                find "$SOURCE_DIR" -type d -name node_modules -prune -exec rm -rf {} +
                 log_prep_phase "stage-source-copy" "duration=$(timer_elapsed "$sourceCopyStartedAt")s source_root=$sourceRoot"
                 log_store_closure "src" "$src"
                 log_path_stats "staged-source-copy" "$SOURCE_DIR"
@@ -290,35 +259,6 @@ in
                 ' > .pnpm-install-roots.txt
                 log_prep_phase "install-roots" "count=$(wc -l < .pnpm-install-roots.txt | tr -d ' ')"
 
-                node -e '
-                  const fs = require("fs");
-                  const path = require("path");
-
-                  const lockfilePaths = JSON.parse(process.env.LOCKFILE_PATHS_JSON || "[]");
-                  for (const lockfilePath of lockfilePaths) {
-                    const absoluteLockfilePath = path.resolve(lockfilePath);
-                    if (!fs.existsSync(absoluteLockfilePath)) {
-                      continue;
-                    }
-
-                    const contents = fs.readFileSync(absoluteLockfilePath, "utf8");
-                    const docs = contents
-                      .split(/^---\s*$/m)
-                      .map((doc) => doc.trim())
-                      .filter((doc) => doc.length > 0);
-
-                    if (docs.length <= 1) {
-                      continue;
-                    }
-
-                    // pnpm 11 may prepend a packageManagerDependencies document to the
-                    // real dependency graph lockfile. Inside Nix builders we already
-                    // pin pnpm externally, so keep only the final dependency-graph
-                    // document for sandbox installs.
-                    fs.writeFileSync(absoluteLockfilePath, `---\n''${docs.at(-1)}\n`);
-                  }
-                '
-
                 while IFS= read -r install_root; do
                   [ -n "$install_root" ] || continue
 
@@ -326,32 +266,6 @@ in
                     echo "workspace-prep: FATAL - staged install root is missing package.json or pnpm-lock.yaml: $install_root"
                     exit 1
                   fi
-
-                  strip_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
-
-                  log_prep_phase "normalize-lockfile-start" "install_root=$install_root"
-                  normalizeStartedAt=$(timer_now)
-                  ${
-                    if normalizedLockfile != null then
-                      ''
-                        # Use pre-normalized lockfile — fully deterministic, no registry access
-                        cp ${normalizedLockfile} "$install_root/pnpm-lock.yaml"
-                        chmod +w "$install_root/pnpm-lock.yaml"
-                        log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=committed"
-                      ''
-                    else
-                      ''
-                        (
-                          cd "$install_root"
-                          # DEPRECATED: In-FOD normalization hits the npm registry, making output
-                          # non-deterministic over time. Migrate to committed normalized lockfiles.
-                          # See: https://github.com/overengineeringstudio/effect-utils/issues/513
-                          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
-                        )
-                        log_prep_phase "normalize-lockfile" "install_root=$install_root duration=$(timer_elapsed "$normalizeStartedAt")s mode=in-fod-DEPRECATED"
-                      ''
-                  }
-                  log_path_stats "install-root:$install_root-after-normalize" "$install_root"
 
                   log_prep_phase "install-start" "install_root=$install_root"
                   installStartedAt=$(timer_now)
@@ -361,7 +275,6 @@ in
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
                   log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
-                  restore_package_manager_field "$install_root/package.json" "$install_root/package.json.package-manager.orig"
                 done < .pnpm-install-roots.txt
 
                 export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
@@ -554,8 +467,23 @@ in
                 # directory. This keeps the hash boundary aligned with the actual
                 # restored tree and avoids serializer-specific failures for large
                 # prepared workspaces.
-                cp -a "$SOURCE_DIR"/. "$out"/
-                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=recursive-copy"
+                #
+                # Self-hosted darwin runners have shown `cp -a` spuriously failing
+                # with `create_symlink: File exists` while materializing pnpm's
+                # symlink-heavy trees into `$out.tmp`, even after clearing the
+                # destination. Stream the tree through tar instead so the output
+                # model stays recursive without relying on `cp`'s platform-specific
+                # directory copy semantics.
+                rm -rf "$out"
+                mkdir -p "$out"
+                (
+                  cd "$SOURCE_DIR"
+                  tar -cf - .
+                ) | (
+                  cd "$out"
+                  tar -xf -
+                )
+                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=tar-stream-copy"
                 log_prep_phase "complete" "duration=$(timer_elapsed "$prepStartedAt")s output_hash=${pnpmDepsHash}"
 
                 runHook postInstall

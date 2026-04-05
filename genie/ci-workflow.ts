@@ -23,6 +23,8 @@
  * ```
  */
 
+import { readFileSync } from 'node:fs'
+
 import {
   githubWorkflow,
   type GitHubWorkflowArgs,
@@ -146,6 +148,11 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
     opts,
   })
 
+const readCiHelperScript = (relativePath: string) =>
+  readFileSync(new URL(relativePath, import.meta.url), 'utf8').trim()
+
+const nixGcRaceRetryScript = readCiHelperScript('./ci-scripts/nix-gc-race-retry.sh')
+
 /**
  * Retry wrapper for the Nix store validity race where `derivationStrict` fails
  * with `path '/nix/store/...' is not valid`.
@@ -163,95 +170,15 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
 const withGcRaceRetry = ({ command, label }: { command: string; label: string }) => {
   const quotedCommand = shellSingleQuote(command)
   const quotedLabel = shellSingleQuote(label)
-  return `__nix_gc_retry() {
-  local __task=${quotedLabel} __max=${'${NIX_GC_RACE_MAX_RETRIES:-10}'} __heartbeat=${'${CI_PROGRESS_HEARTBEAT_SECONDS:-60}'} __n=1 __log __rc __path __start __now __elapsed __hb_pid __flattened __saw_invalid_path __saw_cachix_signature
-  __start=$(date +%s)
-
-  __write_summary() {
-    [ -n "${'${GITHUB_STEP_SUMMARY:-}'}" ] || return 0
-    {
-      echo "### CI Task"
-      # Keep summary values plain text. Backticks inside double quotes trigger
-      # shell command substitution and turned failed-task metadata into bogus
-      # commands on GitHub Actions runners.
-      echo "- Task: $__task"
-      echo "- Status: $1"
-      echo "- Duration: $__elapsed s"
-      echo "- Attempts: $__n/$__max"
-      [ -z "${'${2:-}'}" ] || echo "- Note: $2"
-    } >> "$GITHUB_STEP_SUMMARY"
-  }
-
-  while [ "$__n" -le "$__max" ]; do
-    echo "::notice::[ci] starting $__task (attempt $__n/$__max)"
-    (
-      while sleep "$__heartbeat"; do
-        __now=$(date +%s)
-        __elapsed=$((__now - __start))
-        echo "::notice::[ci] $__task still running after $__elapsed s (attempt $__n/$__max)"
-      done
-    ) &
-    __hb_pid=$!
-
-    __log=$(mktemp)
-    set +e
-    eval "$1" > >(tee -a "$__log") 2> >(tee -a "$__log" >&2)
-    __rc=$?
-    set -e
-
-    kill "$__hb_pid" 2>/dev/null || true
-    wait "$__hb_pid" 2>/dev/null || true
-
-    __now=$(date +%s)
-    __elapsed=$((__now - __start))
-
-    [ $__rc -eq 0 ] && {
-      echo "::notice::[ci] completed $__task in $__elapsed s"
-      if [ "$__n" -gt 1 ]; then
-        __write_summary success "Recovered from Nix GC race after retry"
-      else
-        __write_summary success
-      fi
-      rm -f "$__log"
-      return 0
-    }
-
-    __flattened=$(tr '\n' ' ' < "$__log" | sed "s/$(printf '\\033')\\[[0-9;]*m//g")
-    __path=$(printf '%s' "$__flattened" | sed -n "s#.*error:[[:space:]]*path '\\\\(/nix/store/[^']*\\\\)'[[:space:]]*is not valid.*#\\\\1#p" | head -1 | tr -d '[:space:]' || true)
-    __saw_invalid_path=false
-    __saw_cachix_signature=false
-    [ -n "$__path" ] && __saw_invalid_path=true
-    printf '%s' "$__flattened" | grep -q 'Failed to convert config\\.cachix to JSON' && __saw_cachix_signature=true || true
-    # Match the semantic signal, not the exact quote punctuation, so the shell
-    # stays valid even when the human-facing error wraps the option name.
-    printf '%s' "$__flattened" | grep -q 'while evaluating the option' && printf '%s' "$__flattened" | grep -q 'cachix\\.package' && __saw_cachix_signature=true || true
-    rm -f "$__log"
-    if [ "$__saw_invalid_path" != true ] && [ "$__saw_cachix_signature" != true ]; then
-      echo "::warning::[ci] $__task failed after $__elapsed s without a detected Nix store validity race"
-      __write_summary failure "No Nix GC race signature detected"
-      return $__rc
-    fi
-    if [ "$__saw_cachix_signature" = true ] && [ -n "$__path" ]; then
-      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper (attempt $__n/$__max): $__path"
-    elif [ "$__saw_cachix_signature" = true ]; then
-      # The cachix wrapper can surface the GC race before the invalid path makes
-      # it into the flattened log. Retrying after clearing the eval cache still
-      # recovers that case in practice.
-      echo "::warning::Nix store validity race detected for $__task via cachix eval wrapper without extracted store path (attempt $__n/$__max)"
-    else
-      echo "::warning::Nix store validity race detected for $__task (attempt $__n/$__max): $__path"
-    fi
-    [ -z "$__path" ] || nix-store --realise "$__path" 2>/dev/null || true
-    rm -rf ~/.cache/nix/eval-cache-*
-    __n=$((__n + 1))
-  done
-
-  __now=$(date +%s)
-  __elapsed=$((__now - __start))
-  echo "::error::Nix GC race retry exhausted for $__task ($__max attempts)"
-  __write_summary failure "Nix GC race retry exhausted"
-  return 1
-}; __nix_gc_retry ${quotedCommand}`
+  return [
+    '__nix_gc_retry_helper=$(mktemp)',
+    'cat > "$__nix_gc_retry_helper" <<\'EOF\'',
+    nixGcRaceRetryScript,
+    'EOF',
+    '. "$__nix_gc_retry_helper"',
+    'rm -f "$__nix_gc_retry_helper"',
+    `run_nix_gc_race_retry ${quotedLabel} ${quotedCommand}`,
+  ].join('\n')
 }
 
 /** Build a command that runs one or more devenv tasks with `--mode before`. */
@@ -260,6 +187,48 @@ export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
     command: runDevenvTasksBeforeWithOptions({ unrestrictedEval: true }, ...args),
     label: `devenv tasks run ${args.join(' ')} --mode before`,
   })
+
+const evictOutPathShellLines = [
+  '      if nix path-info "$outPath" >/dev/null 2>&1; then',
+  '        echo "evicting cached: $(basename "$outPath")"',
+  '        if ! nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1; then',
+  '          echo "::error::failed to evict cached pnpm-deps output: $outPath"',
+  '          exit 1',
+  '        fi',
+  '        if nix path-info "$outPath" >/dev/null 2>&1; then',
+  '          echo "::error::cached pnpm-deps output still present after eviction: $outPath"',
+  '          exit 1',
+  '        fi',
+  '      fi',
+] as const
+
+const withEachPnpmDepsDrvShellLines = ({
+  flakeRef,
+  bodyLines,
+}: {
+  flakeRef: string
+  bodyLines: readonly string[]
+}) =>
+  [
+    `targetRef=${shellSingleQuote(flakeRef)}`,
+    'entriesJson=$(mktemp)',
+    'if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then',
+    "  while IFS=$'\\t' read -r attrName drv; do",
+    '    [ -n "$drv" ] || continue',
+    ...bodyLines,
+    '  done < <(jq -r \'.[] | [.attrName, (.drvPath // "")] | @tsv\' "$entriesJson")',
+    'else',
+    '  topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)',
+    '  if [ -n "$topDrv" ]; then',
+    '    while IFS= read -r drv; do',
+    '      [ -n "$drv" ] || continue',
+    '      attrName=""',
+    ...bodyLines,
+    '    done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\\.drv$" || true)',
+    '  fi',
+    'fi',
+    'rm -f "$entriesJson"',
+  ] as const
 
 /** Evict cached pnpm-deps fixed-output outputs so CI re-derives them fresh. */
 export const evictCachedPnpmDepsStep = ({
@@ -271,21 +240,15 @@ export const evictCachedPnpmDepsStep = ({
 }) => ({
   name,
   shell: 'bash',
-  run: [
-    `topDrv=$(nix path-info --derivation ${shellSingleQuote(flakeRef)} 2>/dev/null || true)`,
-    'if [ -n "$topDrv" ]; then',
-    '  while IFS= read -r drv; do',
-    '    [ -n "$drv" ] || continue',
-    '    while IFS= read -r outPath; do',
-    '      [ -n "$outPath" ] || continue',
-    '      if [ -e "$outPath" ]; then',
-    '        echo "evicting cached: $(basename "$outPath")"',
-    '        nix store delete "$outPath" 2>/dev/null || true',
-    '      fi',
-    '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
-    '  done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9]*-v[0-9].*\\.drv$" || true)',
-    'fi',
-  ].join('\n'),
+  run: withEachPnpmDepsDrvShellLines({
+    flakeRef,
+    bodyLines: [
+      '    while IFS= read -r outPath; do',
+      '      [ -n "$outPath" ] || continue',
+      ...evictOutPathShellLines,
+      '    done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)',
+    ],
+  }).join('\n'),
 })
 
 /**
@@ -467,36 +430,111 @@ export const savePnpmStoreStep = (opts?: {
  * FOD output paths are deterministic from the declared hash. If Cachix has a
  * previously-valid output (uploaded when the hash was correct), Nix substitutes
  * it without rebuilding — even if the hash is now stale. `--rebuild` also
- * doesn't help because it compares the rebuild against the same trusted output.
+ * must avoid shared-daemon-store heuristics. On CI runners, `nix store delete`
+ * may succeed while the out path still appears valid due to lingering roots or
+ * daemon-managed store state, which makes path-visibility checks flaky.
  *
- * The fix: realize → evict → rebuild. The second build must produce the output
- * locally. If the declared hash doesn't match the actual pnpm install result,
- * the build fails with a hash mismatch.
+ * The fix: realize once, then use `nix build --rebuild`. Nix rebuilds the FOD
+ * and compares the result to the trusted store path directly. If the declared
+ * hash is stale, the rebuild/check fails with the underlying hash mismatch.
  */
 export const validateColdPnpmDepsStep = ({
   flakeRefs,
   name = 'Cold pnpm deps validation',
+  substituters,
 }: {
   flakeRefs: readonly [string, ...string[]]
+  name?: string
+  substituters?: readonly string[]
+}) => ({
+  name,
+  shell: 'bash',
+  run: (() => {
+    const substituterArgs =
+      substituters === undefined || substituters.length === 0
+        ? ''
+        : ` --option substituters ${shellSingleQuote(substituters.join(' '))}`
+
+    return [
+      'set -euo pipefail',
+      `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
+      '  echo "::group::rebuild-check $attr"',
+      '  # Step 1: Realize once (may substitute) so rebuild has a trusted output to compare against.',
+      `  nix build --no-link "$attr"${substituterArgs}`,
+      '  # Step 2: Rebuild and compare locally. This fails on stale fixed-output hashes without',
+      '  # relying on whether a shared daemon store made the prior out path disappear.',
+      `  nix build --no-link --rebuild "$attr"${substituterArgs}`,
+      '  echo "::endgroup::"',
+      'done',
+    ].join('\n')
+  })(),
+})
+
+/** Evict any cached pnpm-deps outputs below a flake target and rebuild it against cache.nixos.org only. */
+export const coldFreshNixBuildStep = ({
+  flakeRef,
+  name = 'Cold fresh Nix build',
+  extraArgs = [],
+}: {
+  flakeRef: string
+  name?: string
+  extraArgs?: readonly string[]
+}) => ({
+  name,
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    ...withEachPnpmDepsDrvShellLines({
+      flakeRef,
+      bodyLines: [
+        '    installable="${drv}^*"',
+        '    echo "rebuild-checking pnpm deps: ${attrName:-$drv}"',
+        '    nix build --no-link "$installable" --option substituters "https://cache.nixos.org"',
+        '    nix build --no-link --rebuild "$installable" --option substituters "https://cache.nixos.org"',
+      ],
+    }),
+    `nix build --no-link ${shellSingleQuote(flakeRef)}${extraArgs.length === 0 ? '' : ` ${extraArgs.map(shellSingleQuote).join(' ')}`} --option substituters "https://cache.nixos.org"`,
+  ].join('\n'),
+})
+
+/**
+ * Guard the pnpm dependency-prep contract against regressions that would
+ * silently reintroduce package-manager self-bootstrap or non-frozen lockfile
+ * normalization inside fixed-output builds.
+ */
+export const pnpmBuilderContractStep = ({
+  builderFile = 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
+  name = 'Guard pnpm builder contract',
+}: {
+  builderFile?: string
   name?: string
 }) => ({
   name,
   shell: 'bash',
   run: [
     'set -euo pipefail',
-    `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
-    '  echo "::group::cold-build $attr"',
-    '  # Step 1: Realize (may substitute from cache) to populate dependencies',
-    '  nix build --no-link "$attr" || true',
-    '  # Step 2: Evict the (possibly stale) cached FOD output',
-    '  outPath=$(nix path-info "$attr" 2>/dev/null || true)',
-    '  if [ -n "$outPath" ]; then',
-    '    echo "  evicting: $outPath"',
-    '    nix store delete "$outPath" 2>/dev/null || true',
+    `builder=${shellSingleQuote(builderFile)}`,
+    'if [ ! -f "$builder" ]; then',
+    '  echo "::error::missing pnpm deps builder: $builder"',
+    '  exit 1',
+    'fi',
+    'for required in \\',
+    "  'manage-package-manager-versions=false' \\",
+    "  'npm_config_manage_package_manager_versions=false' \\",
+    "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
+    '  if ! grep -Fq -- "$required" "$builder"; then',
+    '    echo "::error::missing required pnpm builder contract fragment: $required"',
+    '    exit 1',
     '  fi',
-    '  # Step 3: Rebuild from scratch — fails if declared hash is stale',
-    '  nix build --no-link "$attr"',
-    '  echo "::endgroup::"',
+    'done',
+    'for forbidden in \\',
+    "  '--no-frozen-lockfile' \\",
+    "  'lockfile-only' \\",
+    "  'pnpm add pnpm@'; do",
+    '  if grep -Fq -- "$forbidden" "$builder"; then',
+    '    echo "::error::forbidden pnpm builder contract fragment present: $forbidden"',
+    '    exit 1',
+    '  fi',
     'done',
   ].join('\n'),
 })
@@ -527,9 +565,11 @@ ${args.join(' ')}`,
 }
 
 /**
- * Apply megarepo.lock using the locked effect-utils commit from megarepo.lock.
- * Resolves the commit inline and uses `nix run` to avoid `nix profile install`
- * (which can conflict on self-hosted).
+ * Sync megarepo state using the locked effect-utils commit from megarepo.lock.
+ * CI intentionally uses `fetch --apply --all` here instead of `apply --all`
+ * because nested megarepos can carry stale branch locks that need a fetch
+ * before recursive apply can converge. Resolves the CLI inline with `nix run`
+ * to avoid `nix profile install` conflicts on self-hosted runners.
  */
 export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
   const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
@@ -543,7 +583,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- fetch --apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
@@ -717,16 +757,15 @@ export const dispatchAlignmentStep = (opts: {
   targetRepo: string
   /** Event type sent in the dispatch (default: 'upstream-changed') */
   eventType?: string
-}) =>
-  ({
-    name: 'Dispatch alignment to coordinator',
-    env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
-    run: [
-      `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
-      `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
-    ].join(' && '),
-    shell: 'bash',
-  })
+}) => ({
+  name: 'Dispatch alignment to coordinator',
+  env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
+  run: [
+    `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
+    `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
+  ].join(' && '),
+  shell: 'bash',
+})
 
 /**
  * Complete notify-alignment job definition.
@@ -737,13 +776,12 @@ export const notifyAlignmentJob = (opts: {
   needs: readonly string[]
   /** Branches that trigger notification (default: main only) */
   branches?: readonly string[]
-}) =>
-  ({
-    'runs-on': linuxX64Runner,
-    needs: [...opts.needs],
-    if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
-    steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],
-  })
+}) => ({
+  'runs-on': linuxX64Runner,
+  needs: [...opts.needs],
+  if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
+  steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],
+})
 
 // =============================================================================
 // Vercel Deploy Helpers

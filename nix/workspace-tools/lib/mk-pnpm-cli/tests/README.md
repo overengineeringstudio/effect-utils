@@ -32,4 +32,6 @@ bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh
 - `--skip-genie` - Skip the `genie` build
 - `--skip-megarepo` - Skip the `megarepo` build
 - `--skip-oxlint` - Skip downstream `oxlint-npm` coverage
+- `--skip-devenv-shell` - Skip downstream `devenv shell -- true` coverage
 - `--skip-downstream` - Skip downstream flake-input regression coverage
+- `--skip-downstream-megarepo` - Skip the heavyweight downstream `megarepo` build

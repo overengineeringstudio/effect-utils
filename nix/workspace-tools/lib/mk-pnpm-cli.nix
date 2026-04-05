@@ -7,11 +7,6 @@
   workspaceRoot,
   workspaceSources ? { },
   depsBuilds,
-  # Optional: path to a committed normalized lockfile for the root install root.
-  # When provided, the FOD uses this instead of running `--no-frozen-lockfile`
-  # normalization inside the sandbox, making the output fully deterministic.
-  # Generate with: `dt nix:normalize-lockfile:<name>`
-  normalizedLockfile ? null,
   binaryName ? name,
   gitRev ? "unknown",
   commitTs ? 0,
@@ -28,7 +23,7 @@ let
   coerceSourceRoot =
     sourceRoot:
     if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
-      sourceRoot.outPath
+      if (sourceRoot.type or null) == "derivation" then sourceRoot.outPath else sourceRoot
     else if builtins.isPath sourceRoot then
       sourceRoot
     else
@@ -40,10 +35,9 @@ let
     prefix: sourceRoot:
     let
       rawPath = coerceSourceRoot sourceRoot;
-      normalizedPathString = builtins.unsafeDiscardStringContext (toString rawPath);
     in
     builtins.path {
-      path = normalizedPathString;
+      path = rawPath;
       name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
     };
 
@@ -88,11 +82,8 @@ let
 
   snapshotPath =
     namePrefix: path:
-    let
-      normalizedPathString = builtins.unsafeDiscardStringContext (toString path);
-    in
     builtins.path {
-      path = normalizedPathString;
+      path = path;
       name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] namePrefix);
     };
 
@@ -584,7 +575,7 @@ let
     lockfilePath = "pnpm-lock.yaml";
     depsSrc = rootDepsSrc;
     depsBuild = pnpmDepsHelper.mkDeps {
-      inherit name normalizedLockfile;
+      inherit name;
       pnpmDepsHash = depsBuildHashForInstallRoot ".";
       src = rootDepsSrc;
       sourceRoot = ".";
@@ -743,6 +734,7 @@ pkgs.stdenv.mkDerivation {
     depsBuildEntries = map (root: {
       dir = root.installDir;
       attrName = root.attrName;
+      drvPath = root.depsBuild.drvPath;
       memberDirs = installRootMemberDirs root;
       profileKey = installRootProfileKey root;
       hash = depsBuildHashForInstallRoot root.installDir;

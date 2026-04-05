@@ -6,6 +6,7 @@ import {
   checkoutStep,
   notifyAlignmentJob,
   evictCachedPnpmDepsStep,
+  pnpmBuilderContractStep,
   preparePinnedDevenvStep,
   installNixStep,
   runDevenvTasksBefore,
@@ -102,7 +103,7 @@ const nixDiagnosticsSummaryStep = {
     '    echo ""',
     '    echo "### Signature markers"',
     "    echo '```text'",
-    '    sed -n "1,120p" "$markers_file"',
+    '    head -n 120 "$markers_file"',
     "    echo '```'",
     '  } >> "$GITHUB_STEP_SUMMARY"',
     'else',
@@ -112,7 +113,7 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
-const job = (step: { name: string; run: string }) => ({
+const job = (step: { name: string; run: string; shell?: string }) => ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -206,8 +207,21 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
   'nix-fod-check': multiPlatformStrictNixJob(
     validateColdPnpmDepsStep({
       flakeRefs: ['.#genie-pnpm-deps', '.#megarepo-pnpm-deps', '.#oxc-config-plugin-pnpm-deps'],
+      substituters: ['https://cache.nixos.org'],
     }),
   ),
+  'pnpm-builder-contract': job(
+    pnpmBuilderContractStep({
+      builderFile: 'nix/workspace-tools/lib/mk-pnpm-deps.nix',
+    }),
+  ),
+  'pnpm-regression': job({
+    name: 'pnpm regression suite',
+    run: [
+      'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+      'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
+    ].join('\n'),
+  }),
 }
 
 const NETLIFY_SITE = 'overeng-utils'

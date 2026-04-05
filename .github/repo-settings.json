@@ -33,6 +33,12 @@
             "context": "lint"
           },
           {
+            "context": "pnpm-builder-contract"
+          },
+          {
+            "context": "pnpm-regression"
+          },
+          {
             "context": "test (namespace-profile-linux-x86-64)"
           },
           {

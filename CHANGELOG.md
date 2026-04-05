@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - **deps**: Upgrade all Effect ecosystem packages (+2 minor each): `effect` 3.19.19 → 3.21.0, `@effect/platform` 0.94.5 → 0.96.0, `@effect/ai` 0.33.2 → 0.35.0, and 12 other `@effect/*` packages to latest
 - **nix**: Update `tsgo` flake input to `Effect-TS/tsgo@24a8a96` (2026-03-30)
+- **nix/workspace-tools**: Replace committed per-package normalized pnpm lockfiles with direct staged installs from the authoritative root lockfile
+  - Keeps the full pnpm 11 multi-document root lockfile intact inside staged workspaces instead of checking in derived `pnpm-lock.normalized.yaml` files
+  - Keeps `manage-package-manager-versions=false` so pinned Nix pnpm builds stay sandbox-safe without self-bootstrapping another pnpm under `$HOME`
+  - Removes first-party `pnpm-lock.normalized.yaml` artifacts from `genie` and `megarepo`
 
 ### Fixed
 
