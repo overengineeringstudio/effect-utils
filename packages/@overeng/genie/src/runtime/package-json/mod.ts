@@ -533,13 +533,15 @@ export const declarationPathMappingsForPackage = ({
   exports,
   publishConfigExports,
   packageBasePath,
+  workspaceRoot,
 }: {
   packageName: string
   exports: Record<string, ExportsEntry> | undefined
   publishConfigExports: Record<string, ExportsEntry> | undefined
   packageBasePath: string
+  workspaceRoot?: string
 }): Record<string, string[]> => {
-  const packageRoot = path.resolve(process.cwd(), packageBasePath)
+  const packageRoot = path.resolve(workspaceRoot ?? process.cwd(), packageBasePath)
   const exportPaths = new Set([
     ...Object.keys(exports ?? {}),
     ...Object.keys(publishConfigExports ?? {}),

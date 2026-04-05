@@ -273,6 +273,33 @@ describe('packageJson', () => {
     })
   })
 
+  it('resolves emitted declarations relative to an explicit workspace root', () => {
+    const repo = createTempRepo('packages/test-package')
+    fs.writeFileSync(
+      path.join(repo.memberDirs['packages/test-package'], 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { rootDir: '.', outDir: './dist' } }),
+    )
+
+    expect(
+      declarationPathMappingsForPackage({
+        packageName: '@test/package',
+        packageBasePath: 'packages/test-package',
+        workspaceRoot: repo.repoRoot,
+        exports: {
+          '.': './src/index.ts',
+        },
+        publishConfigExports: {
+          '.': {
+            types: './dist/index.d.ts',
+            default: './dist/index.js',
+          },
+        },
+      }),
+    ).toEqual({
+      '@test/package': ['packages/test-package/dist/src/index.d.ts'],
+    })
+  })
+
   it('preserves non-emitted metadata when provided as the second argument', () => {
     const result = packageJson(
       {
