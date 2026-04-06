@@ -108,7 +108,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v6";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v7";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -239,13 +239,7 @@ in
                 # workspace-only. Use env vars and .npmrc instead.
                 # Back up .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-                # APFS clone semantics can leave pnpm-prepared trees in a shape
-                # that later recursive Nix copies trip over on darwin runners.
-                # Keep the faster clone-or-copy path on Linux, but force plain
-                # copies on darwin so the prepared tree has one stable layout.
-                printf 'store-dir=%s\npackage-import-method=%s\nside-effects-cache=false\nmanage-package-manager-versions=false\n' \
-                  "$STORE_PATH" \
-                  "${if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy"}" >> .npmrc
+                printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
                 ${pnpmPlatform.setupScript}
 
                 node -e '
