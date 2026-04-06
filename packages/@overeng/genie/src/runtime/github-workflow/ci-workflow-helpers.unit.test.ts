@@ -10,6 +10,13 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const nixGcRaceRetryScriptSource = readFileSync(
+  new URL(
+    ['../../../../../../genie/ci-scripts', 'nix-gc-race-retry.sh'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const extractSourceBlock = (source: string, startMarker: string, endMarker: string) => {
   const start = source.indexOf(startMarker)
@@ -42,6 +49,8 @@ describe('ci workflow retry helpers', () => {
     expect(ciWorkflowSource).toContain('./ci-scripts/nix-gc-race-retry.sh')
     expect(ciWorkflowSource).toContain('__nix_gc_retry_helper=$(mktemp)')
     expect(ciWorkflowSource).toContain('run_nix_gc_race_retry')
+    expect(nixGcRaceRetryScriptSource).toContain("tr '\\r\\n' '  ' < \"$log\"")
+    expect(nixGcRaceRetryScriptSource).not.toContain("awk 'BEGIN { ORS=")
   })
 })
 
@@ -87,7 +96,7 @@ describe('ci workflow pnpm cache defaults', () => {
 describe('ci workflow shared auth helpers', () => {
   it('supports minting GitHub App installation tokens for downstream private inputs', () => {
     expect(ciWorkflowSource).toContain('export const githubAppInstallationTokenStep')
-    expect(ciWorkflowSource).toContain("uses: 'actions/create-github-app-token@v2' as const")
+    expect(ciWorkflowSource).toContain("uses: 'actions/create-github-app-token@v3' as const")
   })
 
   it('lets installNixStep override the GitHub access token expression', () => {
@@ -95,6 +104,11 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain(
       "access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}",
     )
+  })
+
+  it('lets installNixStep disable Determinate summaries when runners reuse a preinstalled Nix', () => {
+    expect(ciWorkflowSource).toContain('summarize?: boolean')
+    expect(ciWorkflowSource).toContain('summarize: opts?.summarize ?? true')
   })
 
   it('exposes a dedicated env helper for self-hosted wrapper auth', () => {
@@ -110,5 +124,10 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).not.toContain(
       'printf "GITHUB_TOKEN=%s\\nGH_TOKEN=%s\\n" "$token" "$token"',
     )
+  })
+
+  it('pins the shared CI actions to the Node-24-safe majors', () => {
+    expect(ciWorkflowSource).toContain("uses: 'actions/checkout@v6' as const")
+    expect(ciWorkflowSource).toContain("uses: 'cachix/cachix-action@v17' as const")
   })
 })
