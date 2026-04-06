@@ -62,7 +62,7 @@ run_nix_gc_race_retry() {
       return 0
     fi
 
-    flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+    flattened=$(sed $'s/\x1B\\[[0-9;]*m//g' "$log" | tr '\n' ' ')
     path=$(printf '%s' "$flattened" |
       grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
       head -1 |
