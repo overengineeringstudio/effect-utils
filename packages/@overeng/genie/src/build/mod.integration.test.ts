@@ -330,6 +330,48 @@ export default { data: {}, stringify: () => '{}' }
   )
 
   Vitest.it.effect(
+    'keeps filesystem lock paths bounded for long target paths',
+    Effect.fnUntraced(
+      function* () {
+        yield* withTestEnv((env) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            const pathSvc = yield* Path.Path
+
+            const longSegments = Array.from({ length: 4 }, (_, index) => {
+              return `segment-${index}-${'a'.repeat(64)}`
+            })
+            const packageDir = pathSvc.join(env.root, 'packages', ...longSegments)
+
+            yield* env.writeFile({
+              path: nodePath.relative(
+                env.root,
+                pathSvc.join(packageDir, 'package.json.genie.ts'),
+              ),
+              content: `
+export default {
+  data: { name: '@test/long-path' },
+  stringify: () => JSON.stringify({ name: '@test/long-path' }, null, 2),
+}
+`,
+            })
+
+            const { exitCode, stderr } = yield* runGenie(env, [])
+
+            expect(exitCode).toBe(0)
+            expect(stderr).not.toContain('ENAMETOOLONG')
+
+            const generatedPath = pathSvc.join(packageDir, 'package.json')
+            expect(yield* fs.exists(generatedPath)).toBe(true)
+          }),
+        )
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
     'normalizes symlink cwd to realpath for correct relative path computation',
     Effect.fnUntraced(
       function* () {
