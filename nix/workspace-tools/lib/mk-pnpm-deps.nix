@@ -102,13 +102,24 @@ in
       srcFingerprint = builtins.substring 0 8 (
         builtins.unsafeDiscardStringContext (baseNameOf (toString src))
       );
+      pnpmPackageImportMethod =
+        /*
+          Self-hosted darwin rebuild-checks compare a trusted realized output with
+          a fresh local rebuild of the same prepared workspace. pnpm's
+          clone-or-copy path can race with preexisting symlink entries inside the
+          temp output tree on APFS, producing nondeterministic "File exists"
+          failures for otherwise-correct fixed-output derivations. Force plain
+          copies on darwin so prepared workspaces materialize by one deterministic
+          filesystem strategy across both the initial realization and the rebuild.
+        */
+        if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
     in
     pkgs.stdenvNoCC.mkDerivation {
       # Bump the prepared-workspace artifact version whenever the materialization
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v4";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v8";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -239,7 +250,7 @@ in
                 # workspace-only. Use env vars and .npmrc instead.
                 # Back up .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-                printf 'store-dir=%s\npackage-import-method=clone-or-copy\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" >> .npmrc
+        printf 'store-dir=%s\npackage-import-method=%s\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
                 ${pnpmPlatform.setupScript}
 
                 node -e '
