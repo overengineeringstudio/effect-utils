@@ -32,7 +32,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -42,8 +42,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -250,7 +251,7 @@ jobs:
                 return 0
               fi
 
-              flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+              flattened=$(tr '\r\n' '  ' < "$log" | sed -E $'s/\x1B\\[[0-9;]*m//g')
               path=$(printf '%s' "$flattened" |
                 grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
                 head -1 |
@@ -359,7 +360,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -369,8 +370,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -577,7 +579,7 @@ jobs:
                 return 0
               fi
 
-              flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+              flattened=$(tr '\r\n' '  ' < "$log" | sed -E $'s/\x1B\\[[0-9;]*m//g')
               path=$(printf '%s' "$flattened" |
                 grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
                 head -1 |
@@ -689,7 +691,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -699,8 +701,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -907,7 +910,7 @@ jobs:
                 return 0
               fi
 
-              flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+              flattened=$(tr '\r\n' '  ' < "$log" | sed -E $'s/\x1B\\[[0-9;]*m//g')
               path=$(printf '%s' "$flattened" |
                 grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
                 head -1 |
@@ -1019,7 +1022,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1029,8 +1032,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -1237,7 +1241,7 @@ jobs:
                 return 0
               fi
 
-              flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+              flattened=$(tr '\r\n' '  ' < "$log" | sed -E $'s/\x1B\\[[0-9;]*m//g')
               path=$(printf '%s' "$flattened" |
                 grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
                 head -1 |
@@ -1349,7 +1353,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1359,8 +1363,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -1491,7 +1496,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1501,8 +1506,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -1735,7 +1741,7 @@ jobs:
       CI: 'true'
       GITHUB_TOKEN: '${{ github.token }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1745,8 +1751,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -1960,7 +1967,7 @@ jobs:
       GITHUB_TOKEN: '${{ github.token }}'
       NETLIFY_AUTH_TOKEN: '${{ secrets.NETLIFY_AUTH_TOKEN }}'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
         with:
@@ -1970,8 +1977,9 @@ jobs:
             extra-substituters = https://devenv.cachix.org
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
+          summarize: true
       - name: Enable Cachix cache
-        uses: cachix/cachix-action@v16
+        uses: cachix/cachix-action@v17
         with:
           name: overeng-effect-utils
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -2184,7 +2192,7 @@ jobs:
                 return 0
               fi
 
-              flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+              flattened=$(tr '\r\n' '  ' < "$log" | sed -E $'s/\x1B\\[[0-9;]*m//g')
               path=$(printf '%s' "$flattened" |
                 grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
                 head -1 |
@@ -2293,7 +2301,7 @@ jobs:
                 return 0
               fi
 
-              flattened=$(awk 'BEGIN { ORS=" " } { gsub(/\033\[[0-9;]*m/, ""); print }' "$log")
+              flattened=$(tr '\r\n' '  ' < "$log" | sed -E $'s/\x1B\\[[0-9;]*m//g')
               path=$(printf '%s' "$flattened" |
                 grep -o "error:[[:space:]]*path '/nix/store/[^']*'[[:space:]]*is not valid" |
                 head -1 |

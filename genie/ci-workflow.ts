@@ -268,9 +268,9 @@ export const namespaceRunner = ({
 // Step Atoms
 // =============================================================================
 
-/** Checkout repository via actions/checkout@v4 */
+/** Checkout repository via actions/checkout@v6 */
 export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: string }) => ({
-  uses: 'actions/checkout@v4' as const,
+  uses: 'actions/checkout@v6' as const,
   ...(opts !== undefined && Object.keys(opts).length > 0 ? { with: opts } : {}),
 })
 
@@ -285,7 +285,7 @@ export const githubAppInstallationTokenStep = (opts: {
 }) => ({
   id: opts.id,
   name: opts.name ?? `Mint ${opts.owner} GitHub App token`,
-  uses: 'actions/create-github-app-token@v2' as const,
+  uses: 'actions/create-github-app-token@v3' as const,
   with: {
     'app-id': opts.appId,
     'private-key': opts.privateKey,
@@ -359,6 +359,7 @@ export const appendGitHubAccessTokenToNixConfigStep = (opts: {
 export const installNixStep = (opts?: {
   extraConf?: string
   githubAccessTokenExpression?: string
+  summarize?: boolean
 }) => ({
   name: 'Install Nix',
   uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
@@ -377,13 +378,14 @@ export const installNixStep = (opts?: {
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),
+    summarize: opts?.summarize ?? true,
   },
 })
 
 /** Enable a Cachix binary cache */
 export const cachixStep = (opts: { name: string; authToken?: string }) => ({
   name: 'Enable Cachix cache',
-  uses: 'cachix/cachix-action@v16' as const,
+  uses: 'cachix/cachix-action@v17' as const,
   with: {
     name: opts.name,
     ...(opts.authToken !== undefined ? { authToken: opts.authToken } : {}),
