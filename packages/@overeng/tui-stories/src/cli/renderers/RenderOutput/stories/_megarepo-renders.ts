@@ -11,12 +11,12 @@
  */
 
 import { Atom } from '@effect-atom/atom'
-import { ExecView } from '@megarepo-internal/cli/renderers/ExecOutput/mod.ts'
-import * as execFixtures from '@megarepo-internal/cli/renderers/ExecOutput/stories/_fixtures.ts'
-import { StatusView } from '@megarepo-internal/cli/renderers/StatusOutput/mod.ts'
-import * as statusFixtures from '@megarepo-internal/cli/renderers/StatusOutput/stories/_fixtures.ts'
-import { StoreView } from '@megarepo-internal/cli/renderers/StoreOutput/mod.ts'
-import * as storeFixtures from '@megarepo-internal/cli/renderers/StoreOutput/stories/_fixtures.ts'
+import { ExecView } from '@megarepo-internal/cli/renderers/ExecOutput/mod'
+import * as execFixtures from '@megarepo-internal/cli/renderers/ExecOutput/stories/_fixtures'
+import { StatusView } from '@megarepo-internal/cli/renderers/StatusOutput/mod'
+import * as statusFixtures from '@megarepo-internal/cli/renderers/StatusOutput/stories/_fixtures'
+import { StoreView } from '@megarepo-internal/cli/renderers/StoreOutput/mod'
+import * as storeFixtures from '@megarepo-internal/cli/renderers/StoreOutput/stories/_fixtures'
 
 import { renderViewToLines } from './_render-helper.ts'
 
