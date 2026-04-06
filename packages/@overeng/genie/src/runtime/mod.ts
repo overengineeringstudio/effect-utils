@@ -9,6 +9,7 @@ export * from './oxlint-config/mod.ts'
 export {
   CatalogConflictError,
   OverrideConflictError,
+  declarationPathMappingsForPackage,
   defineCatalog,
   defineOverrides,
   definePatchedDependencies,

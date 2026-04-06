@@ -97,9 +97,15 @@ type NixConfigOptions = {
 
 const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 
-const resolveDevenvRevScript = `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+const resolveDevenvRevScript = `DEVENV_NODE=$(jq -r '.nodes.root.inputs.devenv // "devenv"' devenv.lock)
+if [ -z "$DEVENV_NODE" ] || [ "$DEVENV_NODE" = "null" ]; then
+  echo '::error::devenv.lock missing .nodes.root.inputs.devenv'
+  exit 1
+fi
+
+DEVENV_REV=$(jq -r --arg node "$DEVENV_NODE" '.nodes[$node].locked.rev // .nodes.devenv.locked.rev // empty' devenv.lock)
 if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-  echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+  echo "::error::devenv.lock missing locked.rev for node $DEVENV_NODE"
   exit 1
 fi`
 
