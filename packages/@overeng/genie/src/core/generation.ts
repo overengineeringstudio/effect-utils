@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 
 import type { Path } from '@effect/platform'
@@ -503,7 +504,7 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
   /** Use cwd-relative dir instead of shared /tmp to avoid EACCES when multiple CI jobs with different UIDs share the same tmpdir */
   const lockDir = path.join(cwd, 'tmp', 'genie-locks')
   const lockLayer = FileSystemBacking.layer({ lockDir })
-  const lockKey = `genie:file:${path.resolve(targetFilePath)}`
+  const lockKey = `genie:file:${createHash('sha256').update(path.resolve(targetFilePath)).digest('hex')}`
 
   const semaphore = yield* DistributedSemaphore.make(lockKey, {
     limit: 1,

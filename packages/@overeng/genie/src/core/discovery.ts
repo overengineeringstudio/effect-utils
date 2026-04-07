@@ -91,6 +91,7 @@ export const ensureImportMapResolver = Effect.sync(() => {
 /** Directories to skip when searching for .genie.ts files */
 const shouldSkipDirectory = (name: string): boolean => {
   if (name === 'node_modules' || name === 'dist' || name === 'tmp') return true
+  if (name === '.pnpm' || name === '.pnpm-store' || name === '.pnpm-home') return true
   if (name === '.git' || name === '.devenv' || name === '.direnv') return true
   // Megarepo member root (symlinked peer repos).
   if (name === 'repos') return true
