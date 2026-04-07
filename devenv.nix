@@ -99,6 +99,7 @@ let
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
     "packages/@overeng/oxc-config"
+    "packages/@overeng/pty-effect"
     "packages/@overeng/react-inspector"
     "packages/@overeng/tui-core"
     "packages/@overeng/tui-react"
@@ -154,6 +155,10 @@ let
     {
       path = "packages/@overeng/oxc-config";
       name = "oxc-config";
+    }
+    {
+      path = "packages/@overeng/pty-effect";
+      name = "pty-effect";
     }
     {
       path = "packages/@overeng/tui-core";

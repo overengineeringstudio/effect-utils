@@ -20,6 +20,7 @@ packages:
   - packages/@overeng/notion-effect-client
   - packages/@overeng/notion-effect-schema
   - packages/@overeng/oxc-config
+  - packages/@overeng/pty-effect
   - packages/@overeng/react-inspector
   - packages/@overeng/tui-core
   - packages/@overeng/tui-react
@@ -29,6 +30,7 @@ packages:
 
 patchedDependencies:
   effect-distributed-lock@0.0.11: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
+  node-pty@1.1.0: packages/@overeng/utils/patches/node-pty@1.1.0.patch
 
 allowUnusedPatches: true
 
@@ -46,8 +48,10 @@ peerDependencyRules:
 
 allowBuilds:
   '@parcel/watcher': true
+  '@myobie/pty': true
   esbuild: true
   msgpackr-extract: true
+  node-pty: true
   sharp: true
   unix-dgram: true
 

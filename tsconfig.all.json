@@ -58,6 +58,9 @@
       "path": "./packages/@overeng/oxc-config"
     },
     {
+      "path": "./packages/@overeng/pty-effect"
+    },
+    {
       "path": "./packages/@overeng/react-inspector"
     },
     {

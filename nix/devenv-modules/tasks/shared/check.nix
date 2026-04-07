@@ -49,7 +49,10 @@ let
   nixQuickTask = lib.optionals hasNixCheck [ "nix:check:quick" ];
   nixFullTask = lib.optionals hasNixCheck [ "nix:flake:check" ];
   testTasks = lib.optionals hasTests ([ "test:run" ] ++ lib.optional hasPlaywright "test:pw:run");
-  megarepoTasks = lib.optionals hasMegarepoCheck [ "mr:check" "mr:lock-sync-check" ];
+  megarepoTasks = lib.optionals hasMegarepoCheck [
+    "mr:check"
+    "mr:lock-sync-check"
+  ];
 
   # Build description parts
   descParts =
