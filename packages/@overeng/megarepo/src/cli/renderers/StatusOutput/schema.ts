@@ -223,11 +223,11 @@ export const StatusState = Schema.Struct({
   /** Quick boolean: does the workspace need a sync? */
   syncNeeded: Schema.Boolean,
 
-  /** Whether repos/worktrees need to be reconciled to megarepo.json. */
-  workspaceSyncNeeded: Schema.Boolean,
+  /** Whether workspace needs mr apply to match the lock */
+  applyNeeded: Schema.Boolean,
 
-  /** Whether megarepo.lock needs to be written to match the current workspace. */
-  lockSyncNeeded: Schema.Boolean,
+  /** Whether megarepo.lock needs mr lock to match the workspace */
+  lockNeeded: Schema.Boolean,
 
   /** Human-readable reasons why sync is needed (empty if syncNeeded=false) */
   syncReasons: Schema.Array(Schema.String),

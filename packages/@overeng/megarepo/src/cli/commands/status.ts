@@ -428,8 +428,8 @@ export const statusCommand = Cli.Command.make(
       }
 
       // Compute workspace vs lock reconciliation needs.
-      const workspaceSyncReasons: string[] = []
-      const lockSyncReasons: string[] = []
+      const applyReasons: string[] = []
+      const lockReasons: string[] = []
 
       // Helper to collect sync reasons from members recursively
       const collectMemberSyncReasons = ({
@@ -443,27 +443,27 @@ export const statusCommand = Cli.Command.make(
           const memberLabel =
             prefix !== undefined && prefix !== '' ? `${prefix}/${member.name}` : member.name
           if (member.symlinkExists === false) {
-            workspaceSyncReasons.push(`Member '${memberLabel}' symlink missing`)
+            applyReasons.push(`Member '${memberLabel}' symlink missing`)
           } else if (member.exists === false) {
-            workspaceSyncReasons.push(`Member '${memberLabel}' worktree missing`)
+            applyReasons.push(`Member '${memberLabel}' worktree missing`)
           }
           if (member.staleLock !== undefined) {
-            lockSyncReasons.push(
+            lockReasons.push(
               `Member '${memberLabel}' stale lock: lock says '${member.staleLock.lockRef}' but actual is '${member.staleLock.actualRef}'`,
             )
           }
           if (member.symlinkDrift !== undefined) {
-            workspaceSyncReasons.push(
+            applyReasons.push(
               `Member '${memberLabel}' symlink drift: tracking '${member.symlinkDrift.symlinkRef}' but source says '${member.symlinkDrift.sourceRef}'`,
             )
           }
           if (member.refMismatch !== undefined) {
-            workspaceSyncReasons.push(
+            applyReasons.push(
               `Member '${memberLabel}' ref mismatch: store path expects '${member.refMismatch.expectedRef}' but git HEAD is '${member.refMismatch.actualRef}'`,
             )
           }
           if (member.commitDrift !== undefined) {
-            lockSyncReasons.push(
+            applyReasons.push(
               `Member '${memberLabel}' commit drift: workspace is '${member.commitDrift.localCommit.slice(0, 8)}' but lock records '${member.commitDrift.lockedCommit.slice(0, 8)}'`,
             )
           }
@@ -477,19 +477,19 @@ export const statusCommand = Cli.Command.make(
       // Check lock staleness
       if (lockStaleness !== undefined) {
         if (lockStaleness.exists === false) {
-          lockSyncReasons.push('Lock file missing')
+          lockReasons.push('Lock file missing')
         }
         for (const memberName of lockStaleness.missingFromLock) {
-          lockSyncReasons.push(`Member '${memberName}' not in lock file`)
+          lockReasons.push(`Member '${memberName}' not in lock file`)
         }
         for (const memberName of lockStaleness.extraInLock) {
-          lockSyncReasons.push(`Lock file has extra member '${memberName}'`)
+          lockReasons.push(`Lock file has extra member '${memberName}'`)
         }
       }
 
-      const syncReasons = [...workspaceSyncReasons, ...lockSyncReasons]
-      const workspaceSyncNeeded = workspaceSyncReasons.length > 0
-      const lockSyncNeeded = lockSyncReasons.length > 0
+      const syncReasons = [...applyReasons, ...lockReasons]
+      const applyNeeded = applyReasons.length > 0
+      const lockNeeded = lockReasons.length > 0
       const syncNeeded = syncReasons.length > 0
 
       // Use StatusApp for all output modes (TTY, CI, JSON, NDJSON)
@@ -503,8 +503,8 @@ export const statusCommand = Cli.Command.make(
                 name: workspaceName,
                 root: root.value,
                 syncNeeded,
-                workspaceSyncNeeded,
-                lockSyncNeeded,
+                applyNeeded,
+                lockNeeded,
                 syncReasons,
                 members,
                 all,

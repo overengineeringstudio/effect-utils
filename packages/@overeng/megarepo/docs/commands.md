@@ -72,8 +72,8 @@ mr status [--json]
 
 Reports:
 
-- `workspaceSyncNeeded`
-- `lockSyncNeeded`
+- `applyNeeded`
+- `lockNeeded`
 - duplicate encoded/unencoded branch worktrees
 - ref mismatch, symlink drift, stale lock, and commit drift
 
