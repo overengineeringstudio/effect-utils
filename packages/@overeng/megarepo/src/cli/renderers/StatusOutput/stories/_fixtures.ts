@@ -139,8 +139,8 @@ const exampleMembersClean: MemberStatus[] = [
 // =============================================================================
 
 export const createDefaultState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
   syncNeeded: true,
@@ -150,8 +150,8 @@ export const createDefaultState = (options?: StateOptions): typeof StatusState.T
 })
 
 export const createCleanState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
   syncNeeded: false,
@@ -162,8 +162,8 @@ export const createCleanState = (options?: StateOptions): typeof StatusState.Typ
 })
 
 export const createSingleMemberState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'minimal',
   root: '/Users/dev/.megarepo/github.com/alice/minimal/refs/heads/main',
@@ -192,8 +192,8 @@ export const createSingleMemberState = (options?: StateOptions): typeof StatusSt
 })
 
 export const createEmptyWorkspaceState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'empty-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/empty-workspace/refs/heads/main',
@@ -207,8 +207,8 @@ export const createEmptyWorkspaceState = (options?: StateOptions): typeof Status
 // =============================================================================
 
 export const createLockMissingState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
@@ -223,8 +223,8 @@ export const createLockMissingState = (options?: StateOptions): typeof StatusSta
 })
 
 export const createLockStaleState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
@@ -243,8 +243,8 @@ export const createLockStaleState = (options?: StateOptions): typeof StatusState
 })
 
 export const createStaleLockState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/.megarepo/github.com/alice/my-megarepo/refs/heads/main',
@@ -300,8 +300,8 @@ export const createStaleLockState = (options?: StateOptions): typeof StatusState
 })
 
 export const createCommitDriftState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/.megarepo/github.com/alice/my-megarepo/refs/heads/main',
@@ -375,8 +375,8 @@ export const createCommitDriftState = (options?: StateOptions): typeof StatusSta
 // =============================================================================
 
 export const createSymlinkDriftState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/.megarepo/github.com/alice/my-megarepo/refs/heads/main',
@@ -452,8 +452,8 @@ export const createSymlinkDriftState = (options?: StateOptions): typeof StatusSt
 export const createMultipleSymlinkDriftState = (
   options?: StateOptions,
 ): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/.megarepo/github.com/alice/my-megarepo/refs/heads/main',
@@ -516,8 +516,8 @@ export const createMultipleSymlinkDriftState = (
 })
 
 export const createRefMismatchState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'my-megarepo',
   root: '/Users/dev/.megarepo/github.com/alice/my-megarepo/refs/heads/main',
@@ -596,8 +596,8 @@ export const createRefMismatchState = (options?: StateOptions): typeof StatusSta
 // =============================================================================
 
 export const createAllDirtyState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
@@ -659,8 +659,8 @@ export const createAllDirtyState = (options?: StateOptions): typeof StatusState.
 })
 
 export const createAllNotSyncedState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'new-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/new-workspace/refs/heads/main',
@@ -708,8 +708,8 @@ export const createAllNotSyncedState = (options?: StateOptions): typeof StatusSt
 })
 
 export const createWarningsState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
@@ -769,8 +769,8 @@ export const createWarningsState = (options?: StateOptions): typeof StatusState.
 // =============================================================================
 
 export const createPinnedMembersState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'dev-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/dev-workspace/refs/heads/main',
@@ -815,8 +815,8 @@ export const createPinnedMembersState = (options?: StateOptions): typeof StatusS
 })
 
 export const createLocalPathMembersState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'local-dev',
   root: '/Users/dev/.megarepo/github.com/alice/local-dev/refs/heads/main',
@@ -861,8 +861,8 @@ export const createLocalPathMembersState = (options?: StateOptions): typeof Stat
 })
 
 export const createManyMembersState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'large-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/large-workspace/refs/heads/main',
@@ -895,8 +895,8 @@ export const createManyMembersState = (options?: StateOptions): typeof StatusSta
 export const createNestedMegareposState = (options?: StateOptions): typeof StatusState.Type => {
   const all = options?.all ?? true
   return {
-    workspaceSyncNeeded: false,
-    lockSyncNeeded: false,
+    applyNeeded: false,
+    lockNeeded: false,
     all,
     name: 'mr-all-blue',
     root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
@@ -1000,8 +1000,8 @@ export const createNestedMegareposState = (options?: StateOptions): typeof Statu
 export const createCurrentLocationState = (options?: StateOptions): typeof StatusState.Type => {
   const all = options?.all ?? false
   return {
-    workspaceSyncNeeded: false,
-    lockSyncNeeded: false,
+    applyNeeded: false,
+    lockNeeded: false,
     all,
     name: 'mr-all-blue',
     root: '/Users/dev/.megarepo/github.com/alice/mr-all-blue/refs/heads/main',
@@ -1073,8 +1073,8 @@ export const createCurrentLocationState = (options?: StateOptions): typeof Statu
 export const createDeeplyNestedState = (options?: StateOptions): typeof StatusState.Type => {
   const all = options?.all ?? false
   return {
-    workspaceSyncNeeded: false,
-    lockSyncNeeded: false,
+    applyNeeded: false,
+    lockNeeded: false,
     all,
     name: 'deep-workspace',
     root: '/Users/dev/.megarepo/github.com/alice/deep-workspace/refs/heads/main',
@@ -1162,8 +1162,8 @@ export const createDeeplyNestedState = (options?: StateOptions): typeof StatusSt
 }
 
 export const createMultipleProblemsState = (options?: StateOptions): typeof StatusState.Type => ({
-  workspaceSyncNeeded: false,
-  lockSyncNeeded: false,
+  applyNeeded: false,
+  lockNeeded: false,
   all: options?.all ?? false,
   name: 'problematic-workspace',
   root: '/Users/dev/.megarepo/github.com/alice/problematic-workspace/refs/heads/main',
