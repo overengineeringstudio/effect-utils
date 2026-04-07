@@ -87,7 +87,7 @@ let
         # Use mr status to check the workspace-specific boolean
         status_json=$(mr status --output json 2>/dev/null) || exit 1
 
-        echo "$status_json" | ${jq} -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
+        echo "$status_json" | ${jq} -e '(.syncNeeded // false) == false' >/dev/null 2>&1
       '';
     };
 
