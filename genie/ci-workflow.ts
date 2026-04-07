@@ -34,22 +34,6 @@ import { RUNNER_PROFILES, type RunnerProfile } from './ci.ts'
 
 export { RUNNER_PROFILES, type RunnerProfile }
 
-/**
- * All self-hosted runner labels used across CI workflows.
- * Single source of truth — consumed by actionlint config to suppress "unknown label" errors.
- */
-export const SELF_HOSTED_RUNNER_LABELS = [
-  ...RUNNER_PROFILES,
-  'sh-linux-x64',
-  'sh-linux-arm64',
-  'sh-darwin-arm64',
-  'nix',
-] as const
-
-export const defaultActionlintConfig: ActionlintConfig = {
-  selfHostedRunnerLabels: SELF_HOSTED_RUNNER_LABELS,
-}
-
 // =============================================================================
 // Shared Config
 // =============================================================================
@@ -62,6 +46,21 @@ export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 
 /** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
 export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
+
+/** All self-hosted runner labels — derived from the runner constants above + RUNNER_PROFILES */
+const SELF_HOSTED_RUNNER_LABELS = [
+  ...new Set([
+    ...RUNNER_PROFILES,
+    ...linuxX64Runner,
+    ...linuxArm64Runner,
+    ...darwinArm64Runner,
+  ]),
+] as const
+
+/** Default actionlint config with all known self-hosted runner labels */
+export const defaultActionlintConfig: ActionlintConfig = {
+  selfHostedRunnerLabels: SELF_HOSTED_RUNNER_LABELS,
+}
 
 /** Standard shell defaults for CI run steps */
 export const bashShellDefaults = {
