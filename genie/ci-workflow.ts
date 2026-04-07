@@ -950,7 +950,7 @@ type VercelProject = { name: string; urlEnvKey: string; projectIdEnv: string }
 export const vercelDeployJobs = (opts: {
   projects: readonly VercelProject[]
   /** CI job names that deploy jobs depend on */
-  needs: readonly string[]
+  needs?: readonly string[]
   runner: readonly string[]
   baseSteps: readonly Record<string, unknown>[]
   env: Record<string, string>
@@ -964,7 +964,7 @@ export const vercelDeployJobs = (opts: {
     opts.deployCondition ??
     [
       'always()',
-      `(github.event_name == 'schedule' || (${opts.needs.map((j) => `needs.${j}.result == 'success'`).join(' && ')}))`,
+      `(github.event_name == 'schedule' || (${(opts.needs ?? []).map((j) => `needs.${j}.result == 'success'`).join(' && ')}))`,
     ].join(' && ')
 
   const deployJobNames = opts.projects.map((p) => `deploy-${p.name}`)
@@ -973,7 +973,7 @@ export const vercelDeployJobs = (opts: {
     opts.projects.map((project) => [
       `deploy-${project.name}`,
       {
-        needs: [...opts.needs],
+        ...(opts.needs && opts.needs.length > 0 ? { needs: [...opts.needs] } : {}),
         if: deployCondition,
         'runs-on': [...opts.runner],
         defaults: bashShellDefaults,
