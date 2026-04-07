@@ -151,15 +151,12 @@ export const runActionlint = ({
   }
 }
 
-/** Resolve actionlint binary from PATH. Returns undefined if not found. */
+/**
+ * Resolve actionlint binary via GENIE_ACTIONLINT_BIN env var.
+ * Set by nix wrappers (build.nix --set, mkSourceCli runtimeEnv) to avoid subprocess overhead.
+ */
 const resolveActionlintBin = (): string | undefined => {
-  try {
-    const result = spawnSync('which', ['actionlint'], { encoding: 'utf-8', timeout: 5_000 })
-    if (result.status === 0 && result.stdout.trim() !== '') {
-      return result.stdout.trim()
-    }
-    return undefined
-  } catch {
-    return undefined
-  }
+  const bin = process.env.GENIE_ACTIONLINT_BIN
+  if (bin !== undefined && bin !== '') return bin
+  return undefined
 }

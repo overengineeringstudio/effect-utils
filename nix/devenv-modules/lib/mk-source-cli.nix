@@ -19,22 +19,9 @@
   Arguments:
   - name: CLI binary name
   - entry: Entry file path relative to WORKSPACE_ROOT or $PWD
-  - runtimeInputs: Extra packages whose bin/ dirs are prepended to PATH
-    (mirrors the nix build.nix makeWrapper --suffix PATH pattern)
 */
-{
-  name,
-  entry,
-  runtimeInputs ? [ ],
-}:
-let
-  pathPrefix =
-    if runtimeInputs == [ ] then
-      ""
-    else
-      "export PATH=\"${pkgs.lib.makeBinPath runtimeInputs}:$PATH\"\n  ";
-in
+{ name, entry }:
 pkgs.writeShellScriptBin name ''
   root="''${WORKSPACE_ROOT:-$PWD}"
-  ${pathPrefix}exec ${pkgs.bun}/bin/bun "$root/${entry}" "$@"
+  exec ${pkgs.bun}/bin/bun "$root/${entry}" "$@"
 ''

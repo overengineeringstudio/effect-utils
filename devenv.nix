@@ -359,7 +359,6 @@ in
     (mkSourceCli {
       name = "genie";
       entry = "packages/@overeng/genie/bin/genie.tsx";
-      runtimeInputs = [ pkgs.actionlint ];
     })
     (mkSourceCli {
       name = "mr";
@@ -371,6 +370,9 @@ in
       entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
     })
   ];
+
+  # actionlint binary path for genie's workflow validation (also used by tests)
+  env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
 
   # Source-mode CLIs need pnpm install before running.
   # (The shared modules don't assume this — they work with Nix packages too.)

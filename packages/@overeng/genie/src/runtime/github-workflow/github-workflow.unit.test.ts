@@ -33,8 +33,8 @@ const getFullValidationIssues = (args: GitHubWorkflowArgs) =>
 
 const hasActionlint = (() => {
   try {
-    const { spawnSync } = require('node:child_process')
-    return spawnSync('which', ['actionlint'], { encoding: 'utf-8' }).status === 0
+    const bin = process.env.GENIE_ACTIONLINT_BIN
+    return bin !== undefined && bin !== ''
   } catch {
     return false
   }
