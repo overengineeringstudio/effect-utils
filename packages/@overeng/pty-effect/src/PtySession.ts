@@ -97,10 +97,16 @@ const wrapPromise = <A>(opts: WrapPromiseOpts<A>) =>
       }),
   })
 
-const matches = (input: { readonly haystack: string; readonly needle: string | RegExp }) =>
-  Predicate.isString(input.needle) === true
-    ? input.haystack.includes(input.needle)
-    : input.needle.test(input.haystack)
+const matches = (input: { readonly haystack: string; readonly needle: string | RegExp }) => {
+  if (Predicate.isString(input.needle) === true) return input.haystack.includes(input.needle)
+  // `RegExp.test` is stateful for regexes with `g` or `y` flags (it advances
+  // `lastIndex` between calls). In `waitFor*` polling loops that causes
+  // identical screenshots to alternate between match and non-match, and can
+  // make `waitForAbsent` return success while the target is still present.
+  // Always test against a fresh, stateless clone.
+  const re = new RegExp(input.needle.source, input.needle.flags)
+  return re.test(input.haystack)
+}
 
 // Build options objects that omit undefined fields entirely. Required because
 // both upstream and our tsconfig use `exactOptionalPropertyTypes`, which
