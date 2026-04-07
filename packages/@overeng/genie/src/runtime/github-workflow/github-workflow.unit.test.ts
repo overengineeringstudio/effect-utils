@@ -7,8 +7,10 @@ const mockGenieContext: GenieContext = {
   cwd: '/workspace',
 }
 
+/** Helper that only checks the built-in TS validators (actionlint disabled) */
 const getValidationIssues = (runsOn: unknown) =>
   githubWorkflow({
+    actionlint: false,
     name: 'CI',
     on: {
       pull_request: { branches: ['main'] },
@@ -21,8 +23,22 @@ const getValidationIssues = (runsOn: unknown) =>
     },
   }).validate?.(mockGenieContext) ?? []
 
+/** Helper that only checks the built-in TS validators (actionlint disabled) */
 const getWorkflowValidationIssues = (args: GitHubWorkflowArgs) =>
+  githubWorkflow({ actionlint: false, ...args }).validate?.(mockGenieContext) ?? []
+
+/** Helper that includes actionlint validation */
+const getFullValidationIssues = (args: GitHubWorkflowArgs) =>
   githubWorkflow(args).validate?.(mockGenieContext) ?? []
+
+const hasActionlint = (() => {
+  try {
+    const bin = process.env.GENIE_ACTIONLINT_BIN
+    return bin !== undefined && bin !== ''
+  } catch {
+    return false
+  }
+})()
 
 describe('githubWorkflow', () => {
   it('accepts valid string runner labels', () => {
@@ -224,5 +240,106 @@ describe('GitHub expression validation', () => {
       `key: "pnpm-store-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
     )
     expect(yaml).toContain(`path: '\${{ runner.temp }}/pnpm-store/\${{ github.job }}'`)
+  })
+})
+
+describe.runIf(hasActionlint)('actionlint integration', () => {
+  it('passes a clean workflow', () => {
+    const issues = getFullValidationIssues({
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ uses: 'actions/checkout@v4' }, { run: 'echo hello' }],
+        },
+      },
+    })
+
+    expect(issues.filter((i) => i.rule.startsWith('actionlint-'))).toEqual([])
+  })
+
+  it('catches script injection via untrusted input in run step', () => {
+    const issues = getFullValidationIssues({
+      name: 'CI',
+      on: { pull_request: null },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ run: 'echo ${{ github.event.pull_request.title }}' }],
+        },
+      },
+    })
+
+    const actionlintErrors = issues.filter(
+      (i) => i.rule.startsWith('actionlint-') && i.severity === 'error',
+    )
+    expect(actionlintErrors.length).toBeGreaterThan(0)
+    expect(actionlintErrors[0]!.message).toContain('untrusted')
+  })
+
+  it('accepts custom self-hosted runner labels via config', () => {
+    const issues = getFullValidationIssues({
+      actionlint: { selfHostedRunnerLabels: ['my-custom-runner', 'nix'] },
+      name: 'CI',
+      on: { push: null },
+      jobs: {
+        build: {
+          'runs-on': ['my-custom-runner', 'nix'],
+          steps: [{ run: 'echo hello' }],
+        },
+      },
+    })
+
+    expect(issues.filter((i) => i.rule === 'actionlint-runner-label')).toEqual([])
+  })
+
+  it('reports unknown runner labels without config', () => {
+    const issues = getFullValidationIssues({
+      name: 'CI',
+      on: { push: null },
+      jobs: {
+        build: {
+          'runs-on': ['my-unknown-runner'],
+          steps: [{ run: 'echo hello' }],
+        },
+      },
+    })
+
+    expect(issues.filter((i) => i.rule === 'actionlint-runner-label').length).toBeGreaterThan(0)
+  })
+
+  it('can be disabled with actionlint: false', () => {
+    const issues = getFullValidationIssues({
+      actionlint: false,
+      name: 'CI',
+      on: { pull_request: null },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ run: 'echo ${{ github.event.pull_request.title }}' }],
+        },
+      },
+    })
+
+    expect(issues.filter((i) => i.rule.startsWith('actionlint-'))).toEqual([])
+  })
+
+  it('strips actionlint config from generated YAML', () => {
+    const workflow = githubWorkflow({
+      actionlint: { selfHostedRunnerLabels: ['my-runner'] },
+      name: 'CI',
+      on: { push: null },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ run: 'echo hello' }],
+        },
+      },
+    })
+
+    const yaml = workflow.stringify(mockGenieContext)
+    expect(yaml).not.toContain('actionlint')
+    expect(yaml).not.toContain('selfHostedRunnerLabels')
   })
 })

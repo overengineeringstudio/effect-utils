@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 
 import {
   githubWorkflow,
+  type ActionlintConfig,
   type GitHubWorkflowArgs,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type RunnerProfile } from './ci.ts'
@@ -45,6 +46,21 @@ export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 
 /** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
 export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
+
+/** All self-hosted runner labels — derived from the runner constants above + RUNNER_PROFILES */
+const SELF_HOSTED_RUNNER_LABELS = [
+  ...new Set([
+    ...RUNNER_PROFILES,
+    ...linuxX64Runner,
+    ...linuxArm64Runner,
+    ...darwinArm64Runner,
+  ]),
+] as const
+
+/** Default actionlint config with all known self-hosted runner labels */
+export const defaultActionlintConfig: ActionlintConfig = {
+  selfHostedRunnerLabels: SELF_HOSTED_RUNNER_LABELS,
+}
 
 /** Standard shell defaults for CI run steps */
 export const bashShellDefaults = {
@@ -84,9 +100,10 @@ export const ciWorkflowConcurrency = {
  * override the policy by passing an explicit `concurrency` field.
  */
 export const ciWorkflow = (args: GitHubWorkflowArgs) =>
-  (({ concurrency, ...rest }) =>
+  (({ concurrency, actionlint, ...rest }) =>
     githubWorkflow({
       concurrency: concurrency ?? ciWorkflowConcurrency,
+      actionlint: actionlint ?? defaultActionlintConfig,
       ...rest,
     }))(args)
 

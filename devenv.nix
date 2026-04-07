@@ -371,6 +371,9 @@ in
     })
   ];
 
+  # actionlint binary path for genie's workflow validation (also used by tests)
+  env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+
   # Source-mode CLIs need pnpm install before running.
   # (The shared modules don't assume this — they work with Nix packages too.)
   tasks."genie:run".after = [ "pnpm:install" ];

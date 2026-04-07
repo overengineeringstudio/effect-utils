@@ -2,6 +2,9 @@ import { createGenieOutput } from '../core.ts'
 import type { GenieOutput, Strict } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
+import { runActionlint, type ActionlintConfig } from './actionlint.ts'
+
+export type { ActionlintConfig }
 
 /**
  * Type-safe GitHub Actions workflow generator
@@ -256,6 +259,8 @@ export type GitHubWorkflowArgs = {
   jobs: Record<string, Job>
   /** Workflow run name */
   'run-name'?: string
+  /** actionlint validation config — pass `false` to disable, or provide runner labels / ignore patterns */
+  actionlint?: ActionlintConfig | false
 }
 
 const invalidRunnerLabelPattern = /(^|[=:])(undefined|null)$/
@@ -419,9 +424,11 @@ const validateGitHubExpressionStrings = ({
 
 const validateWorkflow = ({
   args,
+  yamlContent,
   location,
 }: {
   args: GitHubWorkflowArgs
+  yamlContent: string
   location: string
 }): GenieValidationIssue[] => {
   const issues: GenieValidationIssue[] = []
@@ -438,6 +445,23 @@ const validateWorkflow = ({
       location,
     }),
   )
+
+  if (args.actionlint !== false) {
+    const actionlintResult =
+      args.actionlint !== undefined
+        ? runActionlint({ yaml: yamlContent, location, config: args.actionlint })
+        : runActionlint({ yaml: yamlContent, location })
+    const { issues: actionlintIssues, durationMs } = actionlintResult
+    if (actionlintIssues.length > 0) {
+      console.error(
+        `[genie/actionlint] ${location}: ${actionlintIssues.length} issue(s) in ${durationMs.toFixed(0)}ms`,
+      )
+      for (const issue of actionlintIssues) {
+        console.error(`  [${issue.severity}] ${issue.rule}: ${issue.message}`)
+      }
+    }
+    issues.push(...actionlintIssues)
+  }
 
   return issues
 }
@@ -470,9 +494,14 @@ const validateWorkflow = ({
  */
 export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
   args: Strict<T, GitHubWorkflowArgs>,
-): GenieOutput<T> =>
-  createGenieOutput({
+): GenieOutput<T> => {
+  const { actionlint: _actionlint, ...yamlArgs } = args
+  return createGenieOutput({
     data: args,
-    stringify: (_ctx) => yaml.stringify(args),
-    validate: (ctx) => validateWorkflow({ args, location: ctx.location }),
+    stringify: (_ctx) => yaml.stringify(yamlArgs),
+    validate: (ctx) => {
+      const yamlContent = yaml.stringify(yamlArgs)
+      return validateWorkflow({ args, yamlContent, location: ctx.location })
+    },
   })
+}
