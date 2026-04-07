@@ -1,0 +1,31 @@
+diff --git a/scripts/post-install.js b/scripts/post-install.js
+index 8dbac507ea9c64169ea500a0115816056c0bc309..1ff56bcedaf696b4e2a8dc70fd7b39308f313460 100644
+--- a/scripts/post-install.js
++++ b/scripts/post-install.js
+@@ -77,4 +77,26 @@ if (os.platform() !== 'win32') {
+   }
+ }
+ 
++// @overeng/pty-effect patch: ensure the prebuilt `spawn-helper` for the
++// current platform/arch is executable. The published tarball records mode
++// 0644 and node-pty's own post-install never chmods it, which makes
++// `posix_spawnp` fail at runtime. See:
++//   https://github.com/microsoft/node-pty/issues (root cause)
++//   https://github.com/myobie/pty/issues/6 (downstream context)
++if (os.platform() !== 'win32') {
++  const helper = path.join(
++    __dirname,
++    '..',
++    'prebuilds',
++    `${process.platform}-${process.arch}`,
++    'spawn-helper'
++  );
++  try {
++    fs.chmodSync(helper, 0o755);
++    console.log(`\x1b[32m> chmod +x ${helper}\x1b[0m`);
++  } catch (e) {
++    console.log(`  SKIPPED (no prebuilt spawn-helper at ${helper})`);
++  }
++}
++
+ process.exit(0);

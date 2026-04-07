@@ -143,6 +143,9 @@ export const catalog = defineCatalog({
   'react-dom': '19.2.3',
   'react-aria-components': '1.16.0',
 
+  // PTY
+  '@myobie/pty': '0.4.1',
+
   // Type definitions
   '@types/react': '19.2.7',
   '@types/react-dom': '19.2.3',
@@ -252,8 +255,10 @@ export const commonPnpmPolicySettings = {
   },
   allowBuilds: {
     '@parcel/watcher': true,
+    '@myobie/pty': true,
     'esbuild': true,
     'msgpackr-extract': true,
+    'node-pty': true,
     'sharp': true,
     'unix-dgram': true,
   },

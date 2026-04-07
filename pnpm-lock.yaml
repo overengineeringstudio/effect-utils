@@ -189,6 +189,7 @@ packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
   effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
+  node-pty@1.1.0: 397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e
 
 importers:
 
@@ -1031,6 +1032,31 @@ importers:
       oxlint-tsgolint:
         specifier: 0.11.4
         version: 0.11.4
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
+  packages/@overeng/pty-effect:
+    dependencies:
+      '@myobie/pty':
+        specifier: 0.4.1
+        version: 0.4.1
+    devDependencies:
+      '@effect/vitest':
+        specifier: 0.29.0
+        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+      '@overeng/utils-dev':
+        specifier: workspace:^
+        version: link:../utils-dev
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      effect:
+        specifier: 3.21.0
+        version: 3.21.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -2093,6 +2119,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@myobie/pty@0.4.1':
+    resolution: {integrity: sha512-ULR16zAfsId0aEbAotslLuICEKD+uNfj5aRzaQX86lpyQAaMBJn9KoUnq2tH12oglcG3AqumeiAqcFCzBPo5Kw==}
+    hasBin: true
+
   '@noble/hashes@1.7.1':
     resolution: {integrity: sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ==}
     engines: {node: ^14.21.3 || >=16}
@@ -2398,6 +2428,9 @@ packages:
     resolution: {integrity: sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA==}
     engines: {node: '>=18'}
     hasBin: true
+
+  '@preact/signals-core@1.14.1':
+    resolution: {integrity: sha512-vxPpfXqrwUe9lpjqfYNjAF/0RF/eFGeLgdJzdmIIZjpOnTmGmAB4BjWone562mJGMRP4frU6iZ6ei3PDsu52Ng==}
 
   '@react-aria/autocomplete@3.0.0-rc.6':
     resolution: {integrity: sha512-uymUNJ8NW+dX7lmgkHE+SklAbxwktycAJcI5lBBw6KPZyc0EdMHC+/Fc5CUz3enIAhNwd2oxxogcSHknquMzQA==}
@@ -3592,6 +3625,9 @@ packages:
   '@xterm/addon-fit@0.11.0':
     resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
 
+  '@xterm/addon-serialize@0.14.0':
+    resolution: {integrity: sha512-uteyTU1EkrQa2Ux6P/uFl2fzmXI46jy5uoQMKEOM0fKTyiW7cSn0WrFenHm5vO5uEXX/GpwW/FgILvv3r0WbkA==}
+
   '@xterm/addon-webgl@0.19.0':
     resolution: {integrity: sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A==}
 
@@ -4469,6 +4505,9 @@ packages:
   node-gyp-build-optional-packages@5.2.2:
     resolution: {integrity: sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==}
     hasBin: true
+
+  node-pty@1.1.0:
+    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
   node-releases@2.0.36:
     resolution: {integrity: sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==}
@@ -5876,6 +5915,13 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
+  '@myobie/pty@0.4.1':
+    dependencies:
+      '@preact/signals-core': 1.14.1
+      '@xterm/addon-serialize': 0.14.0
+      '@xterm/headless': 6.0.0
+      node-pty: 1.1.0(patch_hash=397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e)
+
   '@noble/hashes@1.7.1': {}
 
   '@oozcitak/dom@2.0.2':
@@ -6174,6 +6220,8 @@ snapshots:
   '@playwright/test@1.58.2':
     dependencies:
       playwright: 1.58.2
+
+  '@preact/signals-core@1.14.1': {}
 
   '@react-aria/autocomplete@3.0.0-rc.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -7889,6 +7937,8 @@ snapshots:
 
   '@xterm/addon-fit@0.11.0': {}
 
+  '@xterm/addon-serialize@0.14.0': {}
+
   '@xterm/addon-webgl@0.19.0': {}
 
   '@xterm/headless@6.0.0': {}
@@ -8734,6 +8784,10 @@ snapshots:
     dependencies:
       detect-libc: 2.1.2
     optional: true
+
+  node-pty@1.1.0(patch_hash=397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e):
+    dependencies:
+      node-addon-api: 7.1.1
 
   node-releases@2.0.36: {}
 

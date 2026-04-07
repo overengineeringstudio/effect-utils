@@ -1,0 +1,37 @@
+{
+  "name": "@overeng/pty-effect",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js"
+    }
+  },
+  "dependencies": {
+    "@myobie/pty": "0.4.1"
+  },
+  "devDependencies": {
+    "@effect/vitest": "0.29.0",
+    "@overeng/utils-dev": "workspace:^",
+    "@types/node": "25.3.3",
+    "effect": "3.21.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/pty-effect",
+      "packages/@overeng/utils-dev"
+    ]
+  }
+}
