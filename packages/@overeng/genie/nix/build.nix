@@ -41,5 +41,6 @@ pkgs.runCommand "genie"
   ''
     mkdir -p $out/bin
     makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
-      --suffix PATH : ${pkgs.oxfmt}/bin
+      --suffix PATH : ${pkgs.oxfmt}/bin \
+      --suffix PATH : ${pkgs.actionlint}/bin
   ''

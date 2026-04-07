@@ -359,6 +359,7 @@ in
     (mkSourceCli {
       name = "genie";
       entry = "packages/@overeng/genie/bin/genie.tsx";
+      runtimeInputs = [ pkgs.actionlint ];
     })
     (mkSourceCli {
       name = "mr";

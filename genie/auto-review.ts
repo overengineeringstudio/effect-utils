@@ -1,7 +1,7 @@
 /** Shared auto-review workflow: requests review from a human when an assistant opens a PR */
 
 import { githubWorkflow } from '../packages/@overeng/genie/src/runtime/mod.ts'
-import { linuxX64Runner } from './ci-workflow.ts'
+import { defaultActionlintConfig, linuxX64Runner } from './ci-workflow.ts'
 
 /** Generate the shared auto-review workflow used by assistant-authored PRs. */
 export const autoReviewWorkflow = ({
@@ -9,6 +9,7 @@ export const autoReviewWorkflow = ({
   reviewer = 'schickling',
 } = {}) =>
   githubWorkflow({
+    actionlint: defaultActionlintConfig,
     name: 'Auto-request review',
     on: {
       pull_request: {

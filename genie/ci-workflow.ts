@@ -27,11 +27,28 @@ import { readFileSync } from 'node:fs'
 
 import {
   githubWorkflow,
+  type ActionlintConfig,
   type GitHubWorkflowArgs,
 } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import { RUNNER_PROFILES, type RunnerProfile } from './ci.ts'
 
 export { RUNNER_PROFILES, type RunnerProfile }
+
+/**
+ * All self-hosted runner labels used across CI workflows.
+ * Single source of truth — consumed by actionlint config to suppress "unknown label" errors.
+ */
+export const SELF_HOSTED_RUNNER_LABELS = [
+  ...RUNNER_PROFILES,
+  'sh-linux-x64',
+  'sh-linux-arm64',
+  'sh-darwin-arm64',
+  'nix',
+] as const
+
+export const defaultActionlintConfig: ActionlintConfig = {
+  selfHostedRunnerLabels: SELF_HOSTED_RUNNER_LABELS,
+}
 
 // =============================================================================
 // Shared Config
@@ -84,9 +101,10 @@ export const ciWorkflowConcurrency = {
  * override the policy by passing an explicit `concurrency` field.
  */
 export const ciWorkflow = (args: GitHubWorkflowArgs) =>
-  (({ concurrency, ...rest }) =>
+  (({ concurrency, actionlint, ...rest }) =>
     githubWorkflow({
       concurrency: concurrency ?? ciWorkflowConcurrency,
+      actionlint: actionlint ?? defaultActionlintConfig,
       ...rest,
     }))(args)
 
