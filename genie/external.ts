@@ -144,7 +144,11 @@ export const catalog = defineCatalog({
   'react-aria-components': '1.16.0',
 
   // PTY
-  '@myobie/pty': '0.4.1',
+  // TODO: switch back to a published npm version once upstream publishes 0.5.0.
+  // Tracking: https://github.com/myobie/pty/blob/main/package.json (currently
+  // shows 0.5.0 but only 0.4.1 is on npm). Pinning to a fork branch with
+  // dist/ pre-committed so pnpm git-dep installs work without a build step.
+  '@myobie/pty': 'github:schickling/pty#schickling/2026-04-08-prepare-build',
 
   // Type definitions
   '@types/react': '19.2.7',

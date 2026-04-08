@@ -1042,8 +1042,8 @@ importers:
   packages/@overeng/pty-effect:
     dependencies:
       '@myobie/pty':
-        specifier: 0.4.1
-        version: 0.4.1
+        specifier: github:schickling/pty#schickling/2026-04-08-prepare-build
+        version: https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -2119,8 +2119,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@myobie/pty@0.4.1':
-    resolution: {integrity: sha512-ULR16zAfsId0aEbAotslLuICEKD+uNfj5aRzaQX86lpyQAaMBJn9KoUnq2tH12oglcG3AqumeiAqcFCzBPo5Kw==}
+  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb':
+    resolution: {tarball: https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb}
+    version: 0.5.0
     hasBin: true
 
   '@noble/hashes@1.7.1':
@@ -5915,7 +5916,7 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@0.4.1':
+  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0

@@ -4,16 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./client": "./src/client.ts"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/mod.js",
+      "./client": "./dist/client.js"
     }
   },
   "dependencies": {
-    "@myobie/pty": "0.4.1"
+    "@myobie/pty": "github:schickling/pty#schickling/2026-04-08-prepare-build"
   },
   "devDependencies": {
     "@effect/vitest": "0.29.0",
