@@ -9,7 +9,7 @@ import {
   catalog as externalCatalog,
   commonPnpmPolicySettings,
   defineCatalog,
-  definePatchedDependencies,
+  utilsPatches,
 } from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
@@ -90,24 +90,11 @@ export const workspaceMember = ({
 
 /**
  * Patched dependencies for `@overeng/utils`.
- * Shared across workspace yamls that include utils as a workspace member.
+ * Re-exported from `external.ts` (single source of truth) so downstream
+ * projections via `createPnpmPatchedDependencies` and internal workspaces
+ * cannot drift.
  */
-export const utilsPatches = definePatchedDependencies({
-  location: 'packages/@overeng/utils',
-  patches: {
-    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
-    /**
-     * `node-pty`'s prebuilt `spawn-helper` ships with mode 0644 and node-pty's
-     * own post-install never chmods it. Under pnpm GVS the upstream
-     * `@myobie/pty` workaround (relative-path chmod) silently no-ops because
-     * `node-pty` lives in a sibling content-addressed link, not a child of
-     * `@myobie/pty`. We patch node-pty itself so the chmod runs in the
-     * correct CWD via `__dirname`. Drop this patch when microsoft/node-pty
-     * upstreams the same fix.
-     */
-    'node-pty@1.1.0': './patches/node-pty@1.1.0.patch',
-  },
-})
+export { utilsPatches }
 
 /**
  * Common pnpm workspace data for effect-utils workspaces.

@@ -337,16 +337,34 @@ export const createEffectUtilsRefs = (basePath: string) =>
 // =============================================================================
 
 /**
- * Patches registry for effect-utils dependencies.
- * Paths are relative to the effect-utils repo root.
+ * Patched dependencies owned by `@overeng/utils`.
+ *
+ * Single source of truth for all effect-utils patches. Used both internally
+ * (as `utilsPatches` via re-export from `internal.ts`) and projected into
+ * downstream consumers via `createPnpmPatchedDependencies` / `patchPostinstall`.
  *
  * See context/workarounds/bun-patched-dependencies.md for details on why
  * we use postinstall scripts instead of bun's patchedDependencies.
  */
-const patches = {
-  'effect-distributed-lock@0.0.11':
-    'packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch',
-} as const satisfies PatchesRegistry
+export const utilsPatches = definePatchedDependencies({
+  location: 'packages/@overeng/utils',
+  patches: {
+    'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+    /**
+     * `node-pty`'s prebuilt `spawn-helper` ships with mode 0644 and node-pty's
+     * own post-install never chmods it. Under pnpm GVS the upstream
+     * `@myobie/pty` workaround (relative-path chmod) silently no-ops because
+     * `node-pty` lives in a sibling content-addressed link, not a child of
+     * `@myobie/pty`. We patch node-pty itself so the chmod runs in the
+     * correct CWD via `__dirname`. Drop this patch when microsoft/node-pty
+     * upstreams the same fix.
+     */
+    'node-pty@1.1.0': './patches/node-pty@1.1.0.patch',
+  },
+})
+
+/** Repo-root-relative registry used by downstream projection helpers. */
+const patches: PatchesRegistry = utilsPatches
 
 /**
  * Parse a patch specifier into package name and version.
