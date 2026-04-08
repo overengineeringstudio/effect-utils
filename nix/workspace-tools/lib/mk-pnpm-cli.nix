@@ -708,6 +708,62 @@ let
   nixStampJson = ''{\"type\":\"nix\",\"version\":\"${packageVersion}\",\"rev\":\"${gitRev}\",\"commitTs\":${toString commitTs},\"dirty\":${dirtyStr}}'';
   smokeTestArgsStr = lib.escapeShellArgs smokeTestArgs;
 
+  /**
+    Post-restore dedup: symlink overlapping .pnpm entries from external install
+    roots to the aggregate root's copies. pnpm's .pnpm dir names are
+    content-addressed (<name>@<version>_<peer-hash>), so matching names guarantee
+    identical content — safe to deduplicate unconditionally.
+
+    Outside Nix, pnpm's Global Virtual Store (GVS) solves this by sharing a
+    single physical store across all install roots. Inside the Nix sandbox GVS
+    is unavailable (no global store) so it is stripped (see stripGvs above),
+    leaving each root with its own isolated .pnpm store. This dedup step is
+    the sandbox equivalent of what GVS provides at dev time.
+
+    Without this, bun's bundler treats each physical copy as a distinct module,
+    creating duplicate singletons (TagProto, GenericTag, Context.Tag registries)
+    that break cross-root service resolution at runtime.
+  */
+  dedupPnpmScript =
+    if externalInstallRoots == [ ] then
+      ""
+    else
+      let
+        perRootScript =
+          root:
+          let
+            installDirDepth = builtins.length (lib.splitString "/" root.installDir);
+            # Symlink targets resolve relative to the parent directory (.pnpm/),
+            # so we go up: .pnpm + node_modules + installDir segments.
+            upCount = installDirDepth + 2;
+            relPrefix = lib.concatStringsSep "/" (builtins.genList (_: "..") upCount)
+              + "/node_modules/.pnpm";
+          in
+          ''
+            ext_pnpm="workspace/${root.installDir}/node_modules/.pnpm"
+            if [ -d "$ext_pnpm" ]; then
+              for entry in "$ext_pnpm"/*/; do
+                [ -d "$entry" ] || continue
+                entry_name="$(basename "$entry")"
+                if [ -d "$agg_pnpm/$entry_name" ] && [ ! -L "''${entry%/}" ]; then
+                  rm -rf "''${entry%/}"
+                  ln -s "${relPrefix}/$entry_name" "''${entry%/}"
+                  dedup_count=$((dedup_count + 1))
+                fi
+              done
+            fi
+          '';
+      in
+      ''
+        dedupStartedAt=$(timer_now)
+        dedup_count=0
+        agg_pnpm="workspace/node_modules/.pnpm"
+
+        ${builtins.concatStringsSep "\n" (map perRootScript externalInstallRoots)}
+
+        log_cli_phase "dedup-pnpm" "duration=$(timer_elapsed "$dedupStartedAt")s deduped=$dedup_count external_roots=${toString (builtins.length externalInstallRoots)}"
+      '';
+
 in
 assert _validateInstallRootHashContract;
 pkgs.stdenv.mkDerivation {
@@ -791,6 +847,8 @@ pkgs.stdenv.mkDerivation {
       ) depsInstallRoots
     )}
     chmod -R +w workspace
+
+    ${dedupPnpmScript}
 
     cd workspace
 
