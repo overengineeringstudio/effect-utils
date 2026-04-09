@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Option, Schema, Stream } from 'effect'
+import { Chunk, Effect, Option, Stream } from 'effect'
 
 import { type Comment, CommentSchema } from '@overeng/notion-effect-schema'
 
