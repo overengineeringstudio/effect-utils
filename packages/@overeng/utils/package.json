@@ -91,6 +91,7 @@
   },
   "pnpm": {
     "patchedDependencies": {
+      "@myobie/pty@0.5.0": "patches/@myobie-pty-3725304ad9829912a1b44e84d95ceb65cc6522bb.patch",
       "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch",
       "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
     }

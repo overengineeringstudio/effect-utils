@@ -29,6 +29,7 @@ packages:
   - packages/@overeng/utils-dev
 
 patchedDependencies:
+  '@myobie/pty@0.5.0': packages/@overeng/utils/patches/@myobie-pty-3725304ad9829912a1b44e84d95ceb65cc6522bb.patch
   effect-distributed-lock@0.0.11: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
   node-pty@1.1.0: packages/@overeng/utils/patches/node-pty@1.1.0.patch
 

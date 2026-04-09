@@ -357,11 +357,11 @@ export const utilsPatches = definePatchedDependencies({
     /**
      * The pinned `@myobie/pty` dist bundle imports `@xterm/addon-serialize`
      * as a default export, but the published ESM module only provides named
-     * exports. This fails Forge's macOS Nix build when esbuild bundles the
-     * server entrypoint.
+     * exports. We key this patch by the resolved package version rather than
+     * the tarball URL because pnpm 11 rejects non-semver patch selectors in
+     * regular workspace installs, while still matching the exact package here.
      */
-    '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb':
-      './patches/@myobie-pty-3725304ad9829912a1b44e84d95ceb65cc6522bb.patch',
+    '@myobie/pty@0.5.0': './patches/@myobie-pty-3725304ad9829912a1b44e84d95ceb65cc6522bb.patch',
     /**
      * `node-pty`'s prebuilt `spawn-helper` ships with mode 0644 and node-pty's
      * own post-install never chmods it. Under pnpm GVS the upstream
