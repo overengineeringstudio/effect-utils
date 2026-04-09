@@ -11,6 +11,19 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-schema**: Add `heading_4`, `tab`, and `meeting_notes` block types to `BlockType`
 - **@overeng/notion-effect-schema**: Add optional `is_locked` field to `Page` and `DatabaseSchema`
 - **@overeng/notion-effect-client**: Add `BlockInsertPosition` tagged union (`after_block`, `start`, `end`) for block insertion
+- **@overeng/notion-effect-schema**: Add full `DataSourceSchema` for `GET /data_sources/:id` (properties, parent, database_parent, etc.)
+- **@overeng/notion-effect-schema**: Add `PageMarkdown`, `Comment`, `CommentParent`, `View`, `ViewType` schemas
+- **@overeng/notion-effect-schema**: Add `RelativeDate` schema type for query filter values (`today`, `tomorrow`, etc.)
+- **@overeng/notion-effect-client**: Add `NotionDataSources` module with `retrieve()`, `create()`, `update()`
+- **@overeng/notion-effect-client**: Add `NotionComments` module with `create()`, `list()`, `listStream()`
+- **@overeng/notion-effect-client**: Add `NotionViews` module with `retrieve()`, `list()`, `listStream()`, `create()`, `update()`, `delete()`
+- **@overeng/notion-effect-client**: Add `getParagraphIcon()` helper for tab paragraph block icons
+- **@overeng/notion-effect-client**: Add `NotionCustomEmojis` module with `list()` for workspace custom emojis
+- **@overeng/notion-effect-client**: Add `NotionPages.getMarkdown()` and `NotionPages.updateMarkdown()` for server-side markdown API
+- **@overeng/notion-effect-client**: Add `NotionPages.move()` for moving pages between parents
+- **@overeng/notion-effect-client**: Add `markdown` option to `CreatePageOptions` (alternative to `children`)
+- **@overeng/notion-effect-client**: Add `is_locked` and `erase_content` to `UpdatePageOptions`
+- **@overeng/notion-effect-client**: Add `filterProperties` and `inTrash` to data source query options
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Changed
@@ -25,6 +38,12 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-client**: Update search filter from `'database'` to `'data_source'` (API 2025-09-03+ change)
 - **@overeng/notion-effect-client**: Migrate database query from `/databases/:id/query` to `/data_sources/:id/query` (`databaseId` → `dataSourceId`)
 - **@overeng/notion-effect-schema**: Add `data_source_id` parent variant to `PageParent` schema
+- **@overeng/notion-effect-schema**: Rename `DataSource` → `DataSourceRef` for lightweight reference in `DatabaseSchema.data_sources`
+- **@overeng/notion-effect-client**: Widen `SchemaHelpers` to accept both `DatabaseSchema` and `DataSourceSchema`
+
+### Fixed
+
+- **@overeng/notion-cli**: Fix introspection pipeline to read properties from data source (API 2026-03-11 no longer returns properties on `GET /databases/:id`)
 
 ### Changed
 

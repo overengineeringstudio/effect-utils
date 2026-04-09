@@ -29,6 +29,7 @@ import {
   NotionBlocks,
   NotionConfig,
   NotionDatabases,
+  NotionDataSources,
 } from '@overeng/notion-effect-client'
 
 import { generateSchemaCode } from '../../codegen.ts'
@@ -560,14 +561,16 @@ const infoCommand = Command.make(
             const program = Effect.gen(function* () {
               const db = yield* NotionDatabases.retrieve({ databaseId })
 
-              const properties = db.properties ?? {}
+              // In API 2026-03-11, properties live on the data source
+              const dataSourceId = db.data_sources?.[0]?.id ?? databaseId
+              const properties =
+                db.data_sources?.[0]?.id !== undefined
+                  ? (yield* NotionDataSources.retrieve({ dataSourceId })).properties
+                  : (db.properties ?? {})
               const propertyList = Object.entries(properties).map(([propName, propValue]) => {
                 const prop = propValue as { type: string; [key: string]: unknown }
                 return { name: propName, type: prop.type }
               })
-
-              // Get row count (queries go through data sources in API 2026-03-11)
-              const dataSourceId = db.data_sources?.[0]?.id ?? databaseId
               const result = yield* NotionDatabases.query({
                 dataSourceId,
                 pageSize: 1,

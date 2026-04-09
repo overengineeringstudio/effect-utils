@@ -187,6 +187,21 @@ export const getCalloutIcon = (block: BlockWithData): string => {
 }
 
 /**
+ * Get paragraph icon (used for tab paragraph blocks).
+ * Returns empty string if no icon is set.
+ */
+export const getParagraphIcon = (block: BlockWithData): string => {
+  const typeData = block[block.type] as
+    | { icon?: { type?: string; emoji?: string; icon?: { name?: string } } | null }
+    | undefined
+  const icon = typeData?.icon
+  if (icon === null || icon === undefined) return ''
+  if (icon.type === 'emoji') return icon.emoji ?? ''
+  if (icon.type === 'icon') return icon.icon?.name ?? ''
+  return ''
+}
+
+/**
  * Get child page title.
  *
  * @example
@@ -602,8 +617,10 @@ export const BlockHelpers = {
   isTodoChecked,
   /** Get code block language */
   getCodeLanguage,
-  /** Get callout icon (emoji) */
+  /** Get callout icon (emoji or named icon) */
   getCalloutIcon,
+  /** Get paragraph icon (for tab paragraph blocks) */
+  getParagraphIcon,
   /** Get child page title */
   getChildPageTitle,
   /** Get child database title */

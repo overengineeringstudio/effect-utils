@@ -226,7 +226,48 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
 
 const NETLIFY_SITE = 'overeng-utils'
 
-// Deploy job — NOT a required status check (separate from CIJobName)
+// Non-required jobs (separate from CIJobName — not required status checks)
+const extraJobs: Record<string, any> = {
+  /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
+  'test-integration-notion': {
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    defaults: bashShellDefaults,
+    env: {
+      ...standardCIEnv,
+      NOTION_TOKEN: '${{ secrets.NOTION_TOKEN }}',
+    },
+    steps: [
+      ...baseSteps,
+      {
+        name: 'Notion integration tests',
+        shell: 'bash',
+        run: [
+          '# Skip if NOTION_TOKEN is not set (forks, etc.)',
+          'if [ -z "${NOTION_TOKEN:-}" ]; then',
+          '  echo "::warning::NOTION_TOKEN not set, skipping integration tests"',
+          '  exit 0',
+          'fi',
+          '',
+          '# Install deps via devenv, then run Notion integration tests',
+          runDevenvTasksBefore('pnpm:install'),
+          '',
+          'for pkg_name in @overeng/notion-effect-client @overeng/notion-cli; do',
+          '  echo "=== Integration tests: $pkg_name ==="',
+          '  pnpm --filter "$pkg_name" exec vitest run --include "src/**/*.integration.test.ts" || exit 1',
+          'done',
+        ].join('\n'),
+      },
+      savePnpmStoreStep(),
+      nixDiagnosticsSummaryStep,
+      nixDiagnosticsArtifactStep(),
+      failureReminderStep,
+    ],
+  },
+}
+
 const deployJobs: Record<string, any> = {
   'deploy-storybooks': {
     'runs-on': namespaceRunner({
@@ -274,6 +315,7 @@ export default ciWorkflow({
   },
   jobs: {
     ...jobs,
+    ...extraJobs,
     ...deployJobs,
     'notify-alignment': notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
