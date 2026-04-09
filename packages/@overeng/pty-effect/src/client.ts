@@ -151,9 +151,7 @@ export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
   PtyClient,
   {
     readonly spawnDaemon: (spec: PtyDaemonSpec) => Effect.Effect<void, PtyError>
-    readonly attach: (
-      spec: PtyAttachSpec,
-    ) => Effect.Effect<PtyClientSession, PtyError, Scope.Scope>
+    readonly attach: (spec: PtyAttachSpec) => Effect.Effect<PtyClientSession, PtyError, Scope.Scope>
     readonly peek: (input: {
       readonly name: PtyName
       readonly plain?: boolean
@@ -333,7 +331,12 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       Effect.runFork(
         Deferred.fail(
           exitDeferred,
-          new PtyError({ reason: 'ConnectFailed', method: 'attach.error', name: spec.name, cause: err }),
+          new PtyError({
+            reason: 'ConnectFailed',
+            method: 'attach.error',
+            name: spec.name,
+            cause: err,
+          }),
         ).pipe(Effect.andThen(Queue.shutdown(queue))),
       )
     })
@@ -386,7 +389,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       pipe(
         Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
         Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) ? Option.some(ss) : Option.none(),
+          matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
         ),
         Stream.runHead,
         Effect.flatMap(
@@ -447,12 +450,11 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       waitForText,
       waitForAbsent,
     } satisfies PtyClientSession
-  }).pipe(
-    Effect.withSpan('pty-client.attach', { attributes: { 'span.label': spec.name } }),
-  )
+  }).pipe(Effect.withSpan('pty-client.attach', { attributes: { 'span.label': spec.name } }))
 
 /* ───────────────────────────── layer ────────────────────────────── */
 
+/** Default in-process layer wrapping upstream `@myobie/pty/client` functions. */
 export const layer: Layer.Layer<PtyClient> = Layer.succeed(
   PtyClient,
   PtyClient.of({

@@ -37,8 +37,8 @@ export class PtyError extends Schema.TaggedError<PtyError>('@overeng/pty-effect/
     cause: Schema.optional(Schema.Defect),
   },
 ) {
-  get message(): string {
-    const parts = [this.reason]
+  override get message(): string {
+    const parts: string[] = [this.reason]
     if (this.name !== undefined) parts.push(`[${this.name}]`)
     parts.push(`(${this.method})`)
     if (this.cause instanceof Error) parts.push(`: ${this.cause.message}`)

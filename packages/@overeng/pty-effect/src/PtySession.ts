@@ -273,6 +273,4 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
       waitForAbsent,
     }
     return session
-  }).pipe(
-    Effect.withSpan('pty-session.make', { attributes: { 'span.label': spec._tag } }),
-  )
+  }).pipe(Effect.withSpan('pty-session.make', { attributes: { 'span.label': spec._tag } }))
