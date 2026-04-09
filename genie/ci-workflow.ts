@@ -1034,48 +1034,16 @@ export const vercelDeployJobs = (opts: {
 // =============================================================================
 
 /**
- * Deploy pre-built static content to Vercel via `vercel-static:deploy:<name>` devenv task.
- * Captures deploy URL (typically an alias URL) and exports to GITHUB_ENV + GITHUB_OUTPUT.
+ * Generate Vercel deploy jobs for static content (no `vercel build`, no git author step).
  *
- * Unlike `vercelDeployStep`, this does NOT run `vercel build` — the content is already built
- * by a prior task (e.g. storybook:build). No git author step is needed.
- */
-export const vercelStaticDeployStep = (project: { name: string; urlEnvKey: string }) => ({
-  id: 'deploy',
-  name: `Deploy ${project.name} static to Vercel`,
-  shell: 'bash' as const,
-  run: [
-    'if [ -z "${VERCEL_TOKEN:-}" ]; then',
-    '  echo "::error::VERCEL_TOKEN is not set"',
-    '  exit 1',
-    'fi',
-    'tmp_log="$(mktemp)"',
-    'if [ "${{ github.event_name }}" = "pull_request" ]; then',
-    `  ${runDevenvTasksBefore(`vercel-static:deploy:${project.name}`, '--show-output', '--input', 'type=pr', '--input', 'pr=${{ github.event.pull_request.number }}')} 2>&1 | tee "$tmp_log"`,
-    'else',
-    `  ${runDevenvTasksBefore(`vercel-static:deploy:${project.name}`, '--show-output', '--input', 'type=prod')} 2>&1 | tee "$tmp_log"`,
-    'fi',
-    'deploy_exit=${PIPESTATUS[0]}',
-    `url=$(grep -oE 'https://[^[:space:]"]+' "$tmp_log" | grep -E 'vercel\\.(app|com)' | tail -n 1 || true)`,
-    'if [ -n "$url" ]; then',
-    `  echo "${project.urlEnvKey}=$url" >> "$GITHUB_ENV"`,
-    '  echo "deploy_url=$url" >> "$GITHUB_OUTPUT"',
-    'fi',
-    'rm -f "$tmp_log"',
-    'if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi',
-  ].join('\n'),
-})
-
-type VercelStaticProject = { name: string; urlEnvKey: string; projectIdEnv: string }
-
-/**
- * Generate Vercel static deploy jobs (prebuilt output, no `vercel build`).
+ * Uses the same `vercel:deploy:<name>` task prefix as build-mode deploys —
+ * the unified `vercel.nix` module routes to static mode when `staticDir` is set.
  *
  * Returns a flat record of jobs (no comment job — use `mergeVercelDeployJobs`
  * to compose a unified comment across app + static deploys).
  */
 export const vercelStaticDeployJobs = (opts: {
-  projects: readonly VercelStaticProject[]
+  projects: readonly VercelProject[]
   runner: readonly string[]
   baseSteps: readonly Record<string, unknown>[]
   env: Record<string, string>
@@ -1101,7 +1069,7 @@ export const vercelStaticDeployJobs = (opts: {
         },
         steps: [
           ...opts.baseSteps,
-          vercelStaticDeployStep(project),
+          vercelDeployStep(project),
           ...(opts.extraSteps ?? []),
         ],
       },

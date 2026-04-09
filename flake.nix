@@ -153,7 +153,6 @@
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
           ts-effect-lsp = import ./nix/devenv-modules/tasks/shared/ts-effect-lsp.nix;
           vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
-          vercel-static = import ./nix/devenv-modules/tasks/shared/vercel-static.nix;
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
