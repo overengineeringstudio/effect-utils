@@ -31,11 +31,13 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': './src/mod.ts',
+      './client': './src/client.ts',
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': './dist/mod.js',
+        './client': './dist/client.js',
       },
     },
   } satisfies PackageJsonData,

@@ -1,5 +1,5 @@
 import { Session as UpstreamSession } from '@myobie/pty/testing'
-import { Cause, Effect, Option, Predicate, Schedule, Stream, pipe } from 'effect'
+import { Effect, Option, Predicate, Schedule, Stream, pipe } from 'effect'
 import type { Scope } from 'effect'
 
 import { PtyError } from './PtyError.ts'
@@ -75,7 +75,6 @@ const wrapSync = <A>(opts: WrapSyncOpts<A>) =>
         reason: opts.reason ?? 'WriteFailed',
         method: opts.method,
         cause,
-        description: Cause.pretty(Cause.die(cause)),
       }),
   })
 
@@ -93,7 +92,6 @@ const wrapPromise = <A>(opts: WrapPromiseOpts<A>) =>
         reason: opts.reason ?? 'WriteFailed',
         method: opts.method,
         cause,
-        description: Cause.pretty(Cause.die(cause)),
       }),
   })
 
@@ -229,8 +227,7 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
               Effect.fail(
                 new PtyError({
                   reason: 'Timeout',
-                  method: 'waitFor',
-                  description: opts.label,
+                  method: opts.label ?? 'waitFor',
                 }),
               ),
             onSome: Effect.succeed,
@@ -276,4 +273,4 @@ export const make = (spec: PtySpec): Effect.Effect<PtySession, PtyError, Scope.S
       waitForAbsent,
     }
     return session
-  })
+  }).pipe(Effect.withSpan('pty-session.make', { attributes: { 'span.label': spec._tag } }))
