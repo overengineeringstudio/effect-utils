@@ -27,12 +27,12 @@ const withIsolatedDir = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
     }
   })
 
-const decodeName = (s: string) => Schema.decodeUnknownSync(PtyName)(s)
+const decodeName = (s: string) => Schema.decodeUnknownSync(PtyName)(s) as PtyName
 
 /** Keep names short — macOS Unix sockets cap at 104 bytes including the
  *  parent directory. With `/var/folders/.../T/.../<name>.sock` we burn ~85
  *  chars before the name itself. */
-const uniqueName = (label: string): string =>
+const uniqueName = (label: string): PtyName =>
   decodeName(`t${label}${(Date.now() % 100000).toString(36)}`)
 
 describe('PtyClient', () => {
