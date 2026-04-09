@@ -993,7 +993,7 @@ export function generateApiCode(opts: GenerateApiCodeOptions): string {
     ` */`,
     `export const query = (options?: QueryOptions) =>`,
     `  NotionDatabases.queryStream({`,
-    `    databaseId: DATABASE_ID,`,
+    `    dataSourceId: DATABASE_ID,`,
     `    schema: ${pascalName}PageProperties,`,
     `    ...options,`,
     `  })`,

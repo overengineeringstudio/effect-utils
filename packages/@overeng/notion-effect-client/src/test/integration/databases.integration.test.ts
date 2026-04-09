@@ -25,7 +25,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
     Vitest.it.effect('queries all rows', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
         })
 
         expect(result.results.length).toBeGreaterThanOrEqual(3)
@@ -36,7 +36,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
     Vitest.it.effect('queries with filter', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
           filter: {
             property: 'Status',
             select: { equals: 'active' },
@@ -51,7 +51,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
     Vitest.it.effect('queries with sort', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
           sorts: [{ property: 'Priority', direction: 'ascending' }],
         })
 
@@ -62,7 +62,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
     Vitest.it.effect('queries with page size limit', () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
           pageSize: 1,
         })
 
@@ -77,7 +77,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
       Effect.gen(function* () {
         // First page
         const firstPage = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
           pageSize: 1,
         })
 
@@ -86,7 +86,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
 
         // Second page using cursor
         const secondPage = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
           pageSize: 1,
           startCursor: Option.getOrThrow(firstPage.nextCursor),
         })
@@ -104,7 +104,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
       () =>
         Effect.gen(function* () {
           const stream = NotionDatabases.queryStream({
-            databaseId: TEST_IDS.database,
+            dataSourceId: TEST_IDS.dataSource,
             pageSize: 1, // Force multiple pages
           })
 
@@ -124,7 +124,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionDatabases (integration)', () => 
     Vitest.it.effect('streams with filter', () =>
       Effect.gen(function* () {
         const stream = NotionDatabases.queryStream({
-          databaseId: TEST_IDS.database,
+          dataSourceId: TEST_IDS.dataSource,
           filter: {
             property: 'Done',
             checkbox: { equals: true },

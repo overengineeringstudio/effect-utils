@@ -36,6 +36,10 @@ export const PageParent = Schema.Union(
     database_id: NotionUUID,
   }),
   Schema.Struct({
+    type: Schema.Literal('data_source_id'),
+    data_source_id: NotionUUID,
+  }),
+  Schema.Struct({
     type: Schema.Literal('page_id'),
     page_id: NotionUUID,
   }),
@@ -158,7 +162,13 @@ export const NamedIcon = Schema.Struct({
 export type NamedIcon = typeof NamedIcon.Type
 
 /** Icon (emoji, custom emoji, named icon, external file, or Notion file) */
-export const Icon = Schema.Union(EmojiIcon, CustomEmojiIcon, NamedIcon, ExternalFile, NotionFile).annotations({
+export const Icon = Schema.Union(
+  EmojiIcon,
+  CustomEmojiIcon,
+  NamedIcon,
+  ExternalFile,
+  NotionFile,
+).annotations({
   identifier: 'Notion.Icon',
 })
 

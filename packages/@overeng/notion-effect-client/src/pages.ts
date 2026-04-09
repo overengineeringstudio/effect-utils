@@ -15,6 +15,7 @@ import { decodePage, type PageDecodeError, type TypedPage } from './typed-page.t
 /** Parent types for creating pages */
 export type PageParent =
   | { readonly type: 'database_id'; readonly database_id: string }
+  | { readonly type: 'data_source_id'; readonly data_source_id: string }
   | { readonly type: 'page_id'; readonly page_id: string }
 
 /** Base options for retrieving a page */

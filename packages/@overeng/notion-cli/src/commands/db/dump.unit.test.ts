@@ -135,7 +135,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
     () =>
       Effect.gen(function* () {
         const result = yield* NotionDatabases.query({
-          databaseId: TEST_IDS.dumpDatabase,
+          dataSourceId: TEST_IDS.dumpDataSource,
           pageSize: 5,
         })
 
@@ -163,7 +163,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('db dump - database queries', () => {
         // Fetch pages in batches of 3 from large database
         while (true) {
           const result = yield* NotionDatabases.query({
-            databaseId: TEST_IDS.largeDatabase,
+            dataSourceId: TEST_IDS.largeDataSource,
             pageSize: 3,
             ...(startCursor !== undefined ? { startCursor } : {}),
           })

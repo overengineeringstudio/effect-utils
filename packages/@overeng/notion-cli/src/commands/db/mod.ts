@@ -279,6 +279,10 @@ const dumpCommand = Command.make(
               // Introspect database for schema
               const dbInfo = yield* introspectDatabase(databaseId)
 
+              // Resolve data source ID for querying (API 2026-03-11 uses /data_sources/:id/query)
+              const db = yield* NotionDatabases.retrieve({ databaseId })
+              const dataSourceId = db.data_sources?.[0]?.id ?? databaseId
+
               // Determine output paths
               const outputPath = output
               const schemaPath = output.replace(/\.ndjson$/, '') + '.schema.ts'
@@ -386,7 +390,7 @@ export const DUMP_META = {
 
               while (true) {
                 const result = yield* NotionDatabases.query({
-                  databaseId,
+                  dataSourceId,
                   ...(combinedFilter !== undefined ? { filter: combinedFilter } : {}),
                   ...(startCursor !== undefined ? { startCursor } : {}),
                   pageSize: 100,
@@ -562,9 +566,10 @@ const infoCommand = Command.make(
                 return { name: propName, type: prop.type }
               })
 
-              // Get row count
+              // Get row count (queries go through data sources in API 2026-03-11)
+              const dataSourceId = db.data_sources?.[0]?.id ?? databaseId
               const result = yield* NotionDatabases.query({
-                databaseId,
+                dataSourceId,
                 pageSize: 1,
               })
 

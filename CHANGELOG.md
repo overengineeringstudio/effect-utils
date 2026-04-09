@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-client**: Add named icon variant to `CreatePageOptions` and `UpdatePageOptions` icon types
 - **@overeng/notion-effect-client**: Unify file upload API version with shared `NOTION_API_VERSION` constant
 - **@overeng/notion-effect-client**: Update search filter from `'database'` to `'data_source'` (API 2025-09-03+ change)
+- **@overeng/notion-effect-client**: Migrate database query from `/databases/:id/query` to `/data_sources/:id/query` (`databaseId` → `dataSourceId`)
+- **@overeng/notion-effect-schema**: Add `data_source_id` parent variant to `PageParent` schema
 
 ### Changed
 
