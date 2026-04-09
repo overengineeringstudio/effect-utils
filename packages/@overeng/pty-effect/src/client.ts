@@ -50,6 +50,14 @@ export const PtyDaemonSpec = Schema.Struct({
       cols: Schema.Number.pipe(Schema.int(), Schema.positive()),
     }),
   ),
+  /** Extra environment variables to set for the spawned daemon process.
+   *  Applied via `process.env` mutation before calling upstream `spawnDaemon`
+   *  (which inherits parent env) and restored after the call returns. This
+   *  avoids callers having to do the mutation themselves.
+   *
+   *  Common use: `{ PTY_SESSION_DIR: '/path/to/sessions' }` to route the
+   *  daemon's socket/pid/json files into a specific directory. */
+  env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
 })
 export type PtyDaemonSpec = typeof PtyDaemonSpec.Type
 
@@ -198,11 +206,26 @@ const validateNameOrFail = (name: string) =>
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
     yield* validateNameOrFail(spec.name)
-    yield* wrapPromise({
-      method: 'spawnDaemon',
-      reason: 'SpawnFailed',
-      thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
-    })
+
+    /** Upstream `spawnDaemon` reads env vars like `PTY_SESSION_DIR` from
+     *  `process.env` (the child inherits the parent's env). To support
+     *  caller-specified env overrides without leaking mutations, we
+     *  set → call → restore in a `try/finally` block. */
+    const envOverrides = spec.env !== undefined ? Object.entries(spec.env) : []
+    const saved = envOverrides.map(([k]) => [k, process.env[k]] as const)
+    for (const [k, v] of envOverrides) process.env[k] = v
+    try {
+      yield* wrapPromise({
+        method: 'spawnDaemon',
+        reason: 'SpawnFailed',
+        thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
+      })
+    } finally {
+      for (const [k, prev] of saved) {
+        if (prev === undefined) delete process.env[k]
+        else process.env[k] = prev
+      }
+    }
   })
 
 const peek = (input: { readonly name: string; readonly plain?: boolean }) =>
