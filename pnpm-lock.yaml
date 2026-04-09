@@ -1043,7 +1043,7 @@ importers:
     dependencies:
       '@myobie/pty':
         specifier: github:schickling/pty#schickling/2026-04-08-prepare-build
-        version: https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb
+        version: https://codeload.github.com/schickling/pty/tar.gz/48785789a2e8d9eeb81f45e7ccb20b390fe18214
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -2119,8 +2119,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb':
-    resolution: {tarball: https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb}
+  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/48785789a2e8d9eeb81f45e7ccb20b390fe18214':
+    resolution: {tarball: https://codeload.github.com/schickling/pty/tar.gz/48785789a2e8d9eeb81f45e7ccb20b390fe18214}
     version: 0.5.0
     hasBin: true
 
@@ -5916,7 +5916,7 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb':
+  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/48785789a2e8d9eeb81f45e7ccb20b390fe18214':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0
