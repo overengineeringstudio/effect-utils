@@ -20,6 +20,7 @@ import {
   listSessions as upstreamListSessions,
   peekScreen as upstreamPeekScreen,
   spawnDaemon as upstreamSpawnDaemon,
+  validateName,
 } from '@myobie/pty/client'
 import {
   Context,
@@ -224,8 +225,26 @@ const matches = (input: { readonly haystack: string; readonly needle: string | R
  *  value through to all pty-effect methods. */
 export const decodePtyName = Schema.decodeUnknown(PtyName)
 
+/** Runtime defense-in-depth: validates even branded names to produce clean
+ *  `BadName` errors when brands are bypassed via `@ts-expect-error` / casts. */
+const validateNameOrFail = (name: string) =>
+  Effect.try({
+    try: () => {
+      validateName(name)
+      return name
+    },
+    catch: (cause) =>
+      new PtyError({
+        reason: 'BadName',
+        method: 'validateName',
+        name,
+        cause,
+      }),
+  })
+
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
+    yield* validateNameOrFail(spec.name)
     const envOverrides = spec.env !== undefined ? Object.entries(spec.env) : []
     const saved = envOverrides.map(([k]) => [k, process.env[k]] as const)
     for (const [k, v] of envOverrides) process.env[k] = v
