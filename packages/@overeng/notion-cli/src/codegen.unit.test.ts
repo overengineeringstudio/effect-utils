@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { PropertySchema } from '@overeng/notion-effect-schema'
 
 import {
+  generateApiCode,
   generateSchemaCode,
   getAvailableTransforms,
   getDefaultTransform,
@@ -95,6 +96,31 @@ const makeProperty = (info: Omit<PropertyInfo, 'schema'>): PropertyInfo => {
 }
 
 describe('codegen', () => {
+  describe('generateApiCode', () => {
+    it('resolves the query target at runtime', () => {
+      const dbInfo: DatabaseInfo = {
+        id: 'test-db-id',
+        name: 'Test Database',
+        url: 'https://notion.so/test-db',
+        properties: (
+          [{ id: 'title-prop', name: 'Name', type: 'title' }] satisfies Array<
+            Omit<PropertyInfo, 'schema'>
+          >
+        ).map(makeProperty),
+      }
+
+      const code = generateApiCode({
+        dbInfo,
+        schemaName: 'TestDatabase',
+        schemaFileName: 'test-database.gen.ts',
+      })
+
+      expect(code).toContain(`import { Effect, Stream } from 'effect'`)
+      expect(code).toContain(`NotionDatabases.resolveQueryTarget({ databaseId: DATABASE_ID })`)
+      expect(code).toContain(`dataSourceId: queryTarget.dataSourceId`)
+    })
+  })
+
   describe('generateSchemaCode', () => {
     it('should generate basic schema for a simple database', () => {
       const dbInfo: DatabaseInfo = {

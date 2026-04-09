@@ -18,8 +18,11 @@ import { NotionConfigLive, NotionDatabases, NotionPages } from '@overeng/notion-
 
 const program = Effect.gen(function* () {
   // Query a database
-  const results = yield* NotionDatabases.query({
+  const { dataSourceId } = yield* NotionDatabases.resolveQueryTarget({
     databaseId: 'abc-123',
+  })
+  const results = yield* NotionDatabases.query({
+    dataSourceId,
   })
 
   // Retrieve a page
@@ -52,13 +55,14 @@ const db = yield * NotionDatabases.retrieve({ databaseId: '...' })
 const results =
   yield *
   NotionDatabases.query({
-    databaseId: '...',
+    dataSourceId: '...',
     filter: { property: 'Status', select: { equals: 'Done' } },
     sorts: [{ property: 'Created', direction: 'descending' }],
   })
 
 // Stream all pages with automatic pagination
-const allPages = yield * NotionDatabases.queryStream({ databaseId: '...' }).pipe(Stream.runCollect)
+const allPages =
+  yield * NotionDatabases.queryStream({ dataSourceId: '...' }).pipe(Stream.runCollect)
 
 // Query with typed schema decoding
 import { NotionSchema } from '@overeng/notion-effect-schema'
@@ -72,7 +76,7 @@ const TaskSchema = Schema.Struct({
 const typed =
   yield *
   NotionDatabases.query({
-    databaseId: '...',
+    dataSourceId: '...',
     schema: TaskSchema,
   })
 // typed.results[0].properties.Name is string

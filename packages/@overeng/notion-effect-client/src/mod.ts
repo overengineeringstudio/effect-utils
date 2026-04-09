@@ -38,12 +38,14 @@ export {
   NotionConfig,
 } from './config.ts'
 export type {
+  DatabaseQueryTarget,
   DatabaseFilter,
   DatabaseSort,
   QueryDatabaseOptions,
   QueryDatabaseOptionsBase,
   QueryDatabaseWithSchemaOptions,
   RetrieveDatabaseOptions,
+  ResolveQueryTargetOptions,
   TypedPaginatedResult,
 } from './databases.ts'
 // Custom emojis
@@ -139,8 +141,12 @@ export { NotionViews } from './views.ts'
  * import { NotionConfigLive, NotionDatabases } from '@overeng/notion-effect-client'
  *
  * const program = Effect.gen(function* () {
- *   const result = yield* NotionDatabases.query({
+ *   const { dataSourceId } = yield* NotionDatabases.resolveQueryTarget({
  *     databaseId: 'abc-123',
+ *   })
+ *
+ *   const result = yield* NotionDatabases.query({
+ *     dataSourceId,
  *   })
  *   return result
  * })
