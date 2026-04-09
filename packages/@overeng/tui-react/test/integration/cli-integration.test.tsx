@@ -297,10 +297,11 @@ describe('CLI Integration', () => {
       delete process.env[key]
     }
     try {
-      // In non-TTY, non-agent environment, detectOutputMode returns pipe (react + final)
+      // In non-TTY, non-agent environment with captured stdout (socket),
+      // detectOutputMode returns json (machine-readable)
       const mode = detectOutputMode()
-      expect(mode._tag).toBe('react')
-      expect(mode.timing).toBe('final') // pipe is final
+      expect(mode._tag).toBe('json')
+      expect(mode.timing).toBe('final')
     } finally {
       for (const key of agentVars) {
         if (savedEnv[key] !== undefined) process.env[key] = savedEnv[key]
