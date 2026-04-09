@@ -50,7 +50,11 @@ export type {
 export type { CustomEmoji } from './custom-emojis.ts'
 export { NotionCustomEmojis } from './custom-emojis.ts'
 // Data sources
-export type { RetrieveDataSourceOptions } from './data-sources.ts'
+export type {
+  CreateDataSourceOptions,
+  RetrieveDataSourceOptions,
+  UpdateDataSourceOptions,
+} from './data-sources.ts'
 export { NotionDataSources } from './data-sources.ts'
 // Services
 export { NotionDatabases } from './databases.ts'
@@ -77,6 +81,7 @@ export {
   getBlockRichText,
   getBlockUrl,
   getCalloutIcon,
+  getParagraphIcon,
   getChildDatabaseTitle,
   getChildPageTitle,
   getCodeLanguage,
@@ -111,7 +116,13 @@ export { PageDecodeError, type TypedPage } from './typed-page.ts'
 export type { ListUsersOptions, RetrieveUserOptions } from './users.ts'
 export { NotionUsers } from './users.ts'
 // Views
-export type { ListViewsOptions, RetrieveViewOptions } from './views.ts'
+export type {
+  CreateViewOptions,
+  DeleteViewOptions,
+  ListViewsOptions,
+  RetrieveViewOptions,
+  UpdateViewOptions,
+} from './views.ts'
 export { NotionViews } from './views.ts'
 
 // -----------------------------------------------------------------------------

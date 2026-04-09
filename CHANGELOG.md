@@ -13,9 +13,11 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-client**: Add `BlockInsertPosition` tagged union (`after_block`, `start`, `end`) for block insertion
 - **@overeng/notion-effect-schema**: Add full `DataSourceSchema` for `GET /data_sources/:id` (properties, parent, database_parent, etc.)
 - **@overeng/notion-effect-schema**: Add `PageMarkdown`, `Comment`, `CommentParent`, `View`, `ViewType` schemas
-- **@overeng/notion-effect-client**: Add `NotionDataSources` module with `retrieve()` for fetching data source details
+- **@overeng/notion-effect-schema**: Add `RelativeDate` schema type for query filter values (`today`, `tomorrow`, etc.)
+- **@overeng/notion-effect-client**: Add `NotionDataSources` module with `retrieve()`, `create()`, `update()`
 - **@overeng/notion-effect-client**: Add `NotionComments` module with `create()`, `list()`, `listStream()`
-- **@overeng/notion-effect-client**: Add `NotionViews` module with `retrieve()`, `list()`, `listStream()`
+- **@overeng/notion-effect-client**: Add `NotionViews` module with `retrieve()`, `list()`, `listStream()`, `create()`, `update()`, `delete()`
+- **@overeng/notion-effect-client**: Add `getParagraphIcon()` helper for tab paragraph block icons
 - **@overeng/notion-effect-client**: Add `NotionCustomEmojis` module with `list()` for workspace custom emojis
 - **@overeng/notion-effect-client**: Add `NotionPages.getMarkdown()` and `NotionPages.updateMarkdown()` for server-side markdown API
 - **@overeng/notion-effect-client**: Add `NotionPages.move()` for moving pages between parents

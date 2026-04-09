@@ -40,6 +40,8 @@ export {
   NOTION_DOCS_BASE,
   type NoticonColor,
   NoticonColor as NoticonColorSchema,
+  type RelativeDate,
+  RelativeDate as RelativeDateSchema,
   type NotionColor,
   NotionColor as NotionColorSchema,
   type NotionUUID,

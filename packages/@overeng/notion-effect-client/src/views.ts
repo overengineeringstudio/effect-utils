@@ -1,11 +1,11 @@
 import type { HttpClient } from '@effect/platform'
-import { Chunk, Effect, Option, Stream } from 'effect'
+import { Chunk, Effect, Option, Schema, Stream } from 'effect'
 
-import { type View, ViewSchema } from '@overeng/notion-effect-schema'
+import { type View, type ViewType, ViewSchema } from '@overeng/notion-effect-schema'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
-import { get } from './internal/http.ts'
+import { del, get, patch, post } from './internal/http.ts'
 import {
   PaginatedResponse,
   type PaginatedResult,
@@ -110,6 +110,105 @@ export const listStream = (
   )
 
 // -----------------------------------------------------------------------------
+// Write Operations
+// -----------------------------------------------------------------------------
+
+/** Options for creating a view */
+export interface CreateViewOptions {
+  /** Database ID */
+  readonly databaseId: string
+  /** Data source ID */
+  readonly dataSourceId: string
+  /** View name */
+  readonly name: string
+  /** View type */
+  readonly type: ViewType
+  /** View-specific configuration (passed through) */
+  readonly configuration?: unknown
+  /** Filter configuration */
+  readonly filter?: unknown
+  /** Sort configuration */
+  readonly sorts?: unknown
+}
+
+/** Options for updating a view */
+export interface UpdateViewOptions {
+  /** View ID to update */
+  readonly viewId: string
+  /** Update name */
+  readonly name?: string
+  /** Update configuration */
+  readonly configuration?: unknown
+  /** Update filter */
+  readonly filter?: unknown
+  /** Update sorts */
+  readonly sorts?: unknown
+}
+
+/** Options for deleting a view */
+export interface DeleteViewOptions {
+  /** View ID to delete */
+  readonly viewId: string
+}
+
+/** Delete response schema (minimal) */
+const DeleteViewResponseSchema = Schema.Struct({
+  object: Schema.Literal('view'),
+  id: Schema.String,
+})
+
+/**
+ * Create a new view for a database.
+ *
+ * @see https://developers.notion.com/reference/create-a-view
+ */
+export const create = Effect.fn('NotionViews.create')(function* (opts: CreateViewOptions) {
+  const body: Record<string, unknown> = {
+    database_id: opts.databaseId,
+    data_source_id: opts.dataSourceId,
+    name: opts.name,
+    type: opts.type,
+  }
+
+  if (opts.configuration !== undefined) body.configuration = opts.configuration
+  if (opts.filter !== undefined) body.filter = opts.filter
+  if (opts.sorts !== undefined) body.sorts = opts.sorts
+
+  return yield* post({
+    path: '/views',
+    body,
+    responseSchema: ViewSchema,
+  })
+})
+
+/**
+ * Update a view.
+ *
+ * @see https://developers.notion.com/reference/update-a-view
+ */
+export const update = Effect.fn('NotionViews.update')(function* (opts: UpdateViewOptions) {
+  const { viewId, ...body } = opts
+
+  return yield* patch({
+    path: `/views/${viewId}`,
+    body,
+    responseSchema: ViewSchema,
+  })
+})
+
+/**
+ * Delete a view.
+ *
+ * @see https://developers.notion.com/reference/delete-a-view
+ */
+export const deleteView = Effect.fn('NotionViews.delete')(function* (opts: DeleteViewOptions) {
+  return yield* del({
+    path: `/views/${opts.viewId}`,
+    responseSchema: DeleteViewResponseSchema,
+  })
+})
+
+// -----------------------------------------------------------------------------
 // Namespace Export
 // -----------------------------------------------------------------------------
 
@@ -118,4 +217,7 @@ export const NotionViews = {
   retrieve,
   list,
   listStream,
+  create,
+  update,
+  delete: deleteView,
 } as const
