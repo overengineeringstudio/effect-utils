@@ -19,8 +19,6 @@ export interface TypedPage<TProperties> {
   readonly url: string
   /** Public URL if shared */
   readonly publicUrl: string | null
-  /** Whether page is archived */
-  readonly archived: boolean
   /** Whether page is in trash */
   readonly inTrash: boolean
   /** Decoded properties according to provided schema */
@@ -69,7 +67,6 @@ export const decodePage = Effect.fnUntraced(function* <TProperties, I, R>(opts: 
     lastEditedTime: page.last_edited_time,
     url: page.url,
     publicUrl: page.public_url,
-    archived: page.archived,
     inTrash: page.in_trash,
     properties,
     _raw: page,

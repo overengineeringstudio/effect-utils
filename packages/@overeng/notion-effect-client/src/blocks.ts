@@ -38,14 +38,20 @@ export interface RetrieveBlockChildrenOptions extends PaginationOptions {
   readonly blockId: string
 }
 
+/** Position for inserting block children (replaces deprecated `after` parameter) */
+export type BlockInsertPosition =
+  | { readonly type: 'after_block'; readonly after_block: { readonly id: string } }
+  | { readonly type: 'start' }
+  | { readonly type: 'end' }
+
 /** Options for appending block children */
 export interface AppendBlockChildrenOptions {
   /** Block ID to append children to */
   readonly blockId: string
   /** Block objects to append */
   readonly children: readonly unknown[]
-  /** Append after this block ID (optional) */
-  readonly after?: string
+  /** Position to insert at (after or before a specific block) */
+  readonly position?: BlockInsertPosition
 }
 
 /** Options for updating a block */
@@ -154,8 +160,8 @@ export const append = Effect.fn('NotionBlocks.append')(function* (
     children: opts.children,
   }
 
-  if (opts.after !== undefined) {
-    body.after = opts.after
+  if (opts.position !== undefined) {
+    body.position = opts.position
   }
 
   return yield* patch({
@@ -209,6 +215,7 @@ const BLOCK_TYPES_WITH_CHILDREN: ReadonlySet<BlockType> = new Set([
   'table',
   'synced_block',
   'template',
+  'tab',
 ])
 
 /** Block with depth information for flat stream output */

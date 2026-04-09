@@ -21,7 +21,6 @@ const makeDatabase = (properties: Record<string, unknown>) =>
     cover: null,
     parent: { type: 'workspace', workspace: true },
     url: 'https://notion.so/db',
-    archived: false,
     in_trash: false,
     is_inline: false,
     public_url: null,

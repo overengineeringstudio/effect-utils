@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { docsPath, ISO8601DateTime, NotionUUID } from './common.ts'
+import { docsPath, ISO8601DateTime, NoticonColor, NotionUUID } from './common.ts'
 import { RichTextArray } from './rich-text.ts'
 import { PartialUser } from './users.ts'
 
@@ -34,6 +34,10 @@ export const PageParent = Schema.Union(
   Schema.Struct({
     type: Schema.Literal('database_id'),
     database_id: NotionUUID,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('data_source_id'),
+    data_source_id: NotionUUID,
   }),
   Schema.Struct({
     type: Schema.Literal('page_id'),
@@ -143,8 +147,28 @@ export const CustomEmojiIcon = Schema.Struct({
 
 export type CustomEmojiIcon = typeof CustomEmojiIcon.Type
 
-/** Icon (emoji, custom emoji, external file, or Notion file) */
-export const Icon = Schema.Union(EmojiIcon, CustomEmojiIcon, ExternalFile, NotionFile).annotations({
+/** Native Notion icon (noticon) with name and color */
+export const NamedIcon = Schema.Struct({
+  type: Schema.Literal('icon'),
+  icon: Schema.Struct({
+    name: Schema.String,
+    color: NoticonColor,
+  }),
+}).annotations({
+  identifier: 'Notion.NamedIcon',
+  [docsPath]: 'icon-object',
+})
+
+export type NamedIcon = typeof NamedIcon.Type
+
+/** Icon (emoji, custom emoji, named icon, external file, or Notion file) */
+export const Icon = Schema.Union(
+  EmojiIcon,
+  CustomEmojiIcon,
+  NamedIcon,
+  ExternalFile,
+  NotionFile,
+).annotations({
   identifier: 'Notion.Icon',
 })
 
@@ -184,9 +208,9 @@ export const DatabaseSchema = Schema.Struct({
   cover: Schema.NullOr(FileObject),
   parent: DatabaseParent,
   url: Schema.String,
-  archived: Schema.Boolean,
   in_trash: Schema.Boolean,
   is_inline: Schema.Boolean,
+  is_locked: Schema.optional(Schema.Boolean),
   public_url: Schema.NullOr(Schema.String),
   /** Data sources (collections) within the database */
   data_sources: Schema.optional(Schema.Array(DataSource)),
@@ -218,8 +242,8 @@ export const Page = Schema.Struct({
   icon: Schema.NullOr(Icon),
   cover: Schema.NullOr(FileObject),
   parent: PageParent,
-  archived: Schema.Boolean,
   in_trash: Schema.Boolean,
+  is_locked: Schema.optional(Schema.Boolean),
   url: Schema.String,
   public_url: Schema.NullOr(Schema.String),
   /** Page properties - structure depends on parent type */
@@ -242,6 +266,7 @@ export const BlockType = Schema.Literal(
   'heading_1',
   'heading_2',
   'heading_3',
+  'heading_4',
   'quote',
   'callout',
   'code',
@@ -266,6 +291,7 @@ export const BlockType = Schema.Literal(
   'divider',
   'table_of_contents',
   'breadcrumb',
+  'tab',
   // Advanced
   'synced_block',
   'child_page',
@@ -274,6 +300,7 @@ export const BlockType = Schema.Literal(
   'template',
   'link_preview',
   'link_to_page',
+  'meeting_notes',
   // System
   'unsupported',
 ).annotations({
@@ -294,7 +321,6 @@ const BlockBase = Schema.Struct({
   last_edited_time: ISO8601DateTime,
   last_edited_by: PartialUser,
   has_children: Schema.Boolean,
-  archived: Schema.Boolean,
   in_trash: Schema.Boolean,
 })
 

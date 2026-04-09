@@ -6,18 +6,13 @@
  * 2. Send the file data (POST /v1/file_uploads/{id}/send, multipart form-data)
  * 3. Reference the upload ID in a `pdf` or `file` block when creating/updating a page
  *
- * Requires `Notion-Version: 2026-03-11` (newer than the standard `2022-06-28`).
- *
  * @see https://developers.notion.com/reference/create-a-file-upload
  */
 
 import { Effect, Option, Redacted, Schema } from 'effect'
 
-import { NotionConfig } from './config.ts'
+import { NOTION_API_VERSION, NotionConfig } from './config.ts'
 import { NotionApiError } from './error.ts'
-
-/** API version required for file uploads (newer than the standard version) */
-const FILE_UPLOAD_API_VERSION = '2026-03-11'
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -79,7 +74,7 @@ export const upload = Effect.fn('NotionFiles.upload')(function* (opts: UploadFil
   const authToken = Redacted.value(notionConfig.authToken)
   const headers = {
     Authorization: `Bearer ${authToken}`,
-    'Notion-Version': FILE_UPLOAD_API_VERSION,
+    'Notion-Version': NOTION_API_VERSION,
   }
 
   // Step 1: Create file upload object

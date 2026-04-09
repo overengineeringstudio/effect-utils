@@ -2,7 +2,7 @@ import { Context } from 'effect'
 import type * as Redacted from 'effect/Redacted'
 
 /** Notion API version - hardcoded to match our schemas */
-export const NOTION_API_VERSION = '2022-06-28'
+export const NOTION_API_VERSION = '2026-03-11'
 
 /** Base URL for Notion API */
 export const NOTION_API_BASE_URL = 'https://api.notion.com/v1'

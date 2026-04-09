@@ -8,13 +8,13 @@ import { IntegrationTestLayer, SKIP_INTEGRATION } from './setup.ts'
 
 Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
   Vitest.describe('search', () => {
-    Vitest.it.effect('searches for pages and databases', () =>
+    Vitest.it.effect('searches for pages and data sources', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           query: 'Test',
         })
 
-        // Should find at least the test page and database
+        // Should find at least the test page and data source
         expect(result.results.length).toBeGreaterThanOrEqual(1)
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
@@ -33,16 +33,16 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
 
-    Vitest.it.effect('filters to databases only', () =>
+    Vitest.it.effect('filters to data sources only', () =>
       Effect.gen(function* () {
         const result = yield* NotionSearch.search({
           query: 'Test',
-          filter: { property: 'object', value: 'database' },
+          filter: { property: 'object', value: 'data_source' },
         })
 
-        // All results should be databases
+        // All results should be data sources
         for (const item of result.results) {
-          expect(item.object).toBe('database')
+          expect(item.object).toBe('data_source')
         }
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )
@@ -89,14 +89,14 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
     Vitest.it.effect('streams with filter', () =>
       Effect.gen(function* () {
         const stream = NotionSearch.searchStream({
-          filter: { property: 'object', value: 'database' },
+          filter: { property: 'object', value: 'data_source' },
           pageSize: 1,
         })
 
         const items = yield* Stream.runCollect(stream).pipe(Effect.map((chunk) => [...chunk]))
 
         for (const item of items) {
-          expect(item.object).toBe('database')
+          expect(item.object).toBe('data_source')
         }
       }).pipe(Effect.provide(IntegrationTestLayer)),
     )

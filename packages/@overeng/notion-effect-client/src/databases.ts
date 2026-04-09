@@ -34,10 +34,10 @@ export interface DatabaseSort {
   readonly direction: 'ascending' | 'descending'
 }
 
-/** Base options for querying a database */
+/** Base options for querying a data source */
 export interface QueryDatabaseOptionsBase extends PaginationOptions {
-  /** Database ID to query */
-  readonly databaseId: string
+  /** Data source ID to query (in API 2026-03-11, queries target data sources, not databases) */
+  readonly dataSourceId: string
   /** Filter to apply */
   readonly filter?: DatabaseFilter
   /** Sorts to apply */
@@ -111,14 +111,14 @@ const queryRaw = (
   Effect.gen(function* () {
     const body = buildQueryBody(opts)
     const response = yield* post({
-      path: `/databases/${opts.databaseId}/query`,
+      path: `/data_sources/${opts.dataSourceId}/query`,
       body,
       responseSchema: QueryDatabaseResponseSchema,
     })
     return toPaginatedResult(response)
   }).pipe(
     Effect.withSpan('NotionDatabases.query', {
-      attributes: { 'notion.database_id': opts.databaseId },
+      attributes: { 'notion.data_source_id': opts.dataSourceId },
     }),
   )
 
@@ -130,7 +130,7 @@ const queryRaw = (
  * @example
  * ```ts
  * // Without schema - returns raw Page objects
- * const raw = yield* NotionDatabases.query({ databaseId: 'abc123' })
+ * const raw = yield* NotionDatabases.query({ dataSourceId: 'abc123' })
  *
  * // With schema - returns typed pages with decoded properties
  * const TaskSchema = Schema.Struct({
@@ -138,13 +138,13 @@ const queryRaw = (
  *   Status: NotionSchema.select(),
  * })
  * const typed = yield* NotionDatabases.query({
- *   databaseId: 'abc123',
+ *   dataSourceId: 'abc123',
  *   schema: TaskSchema,
  * })
  * // typed.results[0].properties.Name is string
  * ```
  *
- * @see https://developers.notion.com/reference/post-database-query
+ * @see https://developers.notion.com/reference/post-data-source-query
  */
 export function query(
   opts: QueryDatabaseOptions,
@@ -191,7 +191,7 @@ export function query<TProperties, I, R>(
  * @example
  * ```ts
  * // Without schema - streams raw Page objects
- * const pages = yield* NotionDatabases.queryStream({ databaseId: 'abc123' })
+ * const pages = yield* NotionDatabases.queryStream({ dataSourceId: 'abc123' })
  *   .pipe(Stream.runCollect)
  *
  * // With schema - streams typed pages with decoded properties
@@ -200,12 +200,12 @@ export function query<TProperties, I, R>(
  *   Status: NotionSchema.select(),
  * })
  * const tasks = yield* NotionDatabases.queryStream({
- *   databaseId: 'abc123',
+ *   dataSourceId: 'abc123',
  *   schema: TaskSchema,
  * }).pipe(Stream.runCollect)
  * ```
  *
- * @see https://developers.notion.com/reference/post-database-query
+ * @see https://developers.notion.com/reference/post-data-source-query
  */
 export function queryStream(
   opts: Omit<QueryDatabaseOptions, 'startCursor'>,

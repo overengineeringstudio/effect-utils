@@ -127,6 +127,33 @@ export const SelectColor = Schema.Literal(
 
 export type SelectColor = typeof SelectColor.Type
 
+/**
+ * Color values for Notion named icons (noticons).
+ *
+ * Different from NotionColor — no backgrounds, no 'default', but includes 'lightgray'.
+ *
+ * @see https://developers.notion.com/reference/icon-object
+ */
+export const NoticonColor = Schema.Literal(
+  'gray',
+  'lightgray',
+  'brown',
+  'yellow',
+  'orange',
+  'green',
+  'blue',
+  'purple',
+  'pink',
+  'red',
+).annotations({
+  identifier: 'Notion.NoticonColor',
+  title: 'Noticon Color',
+  description: 'Color values used for native Notion icons (noticons).',
+  [docsPath]: 'icon-object',
+})
+
+export type NoticonColor = typeof NoticonColor.Type
+
 // -----------------------------------------------------------------------------
 // Errors
 // -----------------------------------------------------------------------------
