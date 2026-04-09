@@ -190,8 +190,7 @@ export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig exten
         target: 'esnext',
         rollupOptions: {
           ...typedConfig.build?.rollupOptions,
-          onwarn(warning, warn) {
-            // Suppress "use client" / "use server" directive warnings from bundled RSC-aware libraries
+          onwarn: (warning, warn) => {
             if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return
             warn(warning)
           },

@@ -27,6 +27,9 @@
 {
   packages ? [ ],
   installTask ? "pnpm:install",
+  # Additional install tasks that must complete before storybook builds
+  # (e.g. cross-repo workspace deps: [ "pnpm:install:effect-utils" ])
+  extraInstallTasks ? [ ],
 }:
 {
   lib,
@@ -51,7 +54,7 @@ let
         run_package_bin storybook storybook build
       '';
       cwd = pkg.path;
-      after = [ installTask ];
+      after = [ installTask ] ++ extraInstallTasks;
     };
   };
 
