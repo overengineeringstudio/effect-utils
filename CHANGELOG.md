@@ -6,7 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)
+- **@overeng/notion-effect-schema**: Add `NoticonColor` schema for named icon color palette
+- **@overeng/notion-effect-schema**: Add `heading_4`, `tab`, and `meeting_notes` block types to `BlockType`
+- **@overeng/notion-effect-schema**: Add optional `is_locked` field to `Page` and `DatabaseSchema`
+- **@overeng/notion-effect-client**: Add `BlockInsertPosition` tagged union (`after_block`, `start`, `end`) for block insertion
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
+
+### Changed
+
+- **@overeng/notion-effect-client**: Upgrade Notion API version from `2022-06-28` to `2026-03-11`
+- **@overeng/notion-effect-schema**: Remove `archived` field from `DatabaseSchema`, `Page`, and `Block` schemas (replaced by `in_trash` in API 2026-03-11)
+- **@overeng/notion-effect-client**: Replace `after` parameter with `position` object in `AppendBlockChildrenOptions`
+- **@overeng/notion-effect-client**: Replace `archived` with `in_trash` in `UpdatePageOptions` and `archive()` method
+- **@overeng/notion-effect-client**: Remove `archived` from `TypedPage` interface (use `inTrash` instead)
+- **@overeng/notion-effect-client**: Add named icon variant to `CreatePageOptions` and `UpdatePageOptions` icon types
+- **@overeng/notion-effect-client**: Unify file upload API version with shared `NOTION_API_VERSION` constant
+- **@overeng/notion-effect-client**: Update search filter from `'database'` to `'data_source'` (API 2025-09-03+ change)
 
 ### Changed
 

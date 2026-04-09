@@ -15,9 +15,9 @@ import {
 // Temporary schemas until Phase 3 (Core Object Schemas) is complete
 // -----------------------------------------------------------------------------
 
-/** Search result can be a page or database - allows any additional properties */
+/** Search result can be a page or data source */
 const SearchResultSchema = Schema.Struct({
-  object: Schema.Literal('page', 'database'),
+  object: Schema.Literal('page', 'data_source'),
   id: Schema.String,
 }).annotations({ identifier: 'SearchResult' })
 
@@ -30,10 +30,10 @@ const SearchResponseSchema = PaginatedResponse(SearchResultSchema)
 // Types
 // -----------------------------------------------------------------------------
 
-/** Filter for search (page or database only) */
+/** Filter for search (page or data_source) */
 export interface SearchFilter {
   readonly property: 'object'
-  readonly value: 'page' | 'database'
+  readonly value: 'page' | 'data_source'
 }
 
 /** Sort for search */

@@ -46,10 +46,8 @@ export interface CreatePageOptions {
   /** Page icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
-    | {
-        readonly type: 'external'
-        readonly external: { readonly url: string }
-      }
+    | { readonly type: 'external'; readonly external: { readonly url: string } }
+    | { readonly type: 'icon'; readonly icon: { readonly name: string; readonly color?: string } }
   /** Page cover image */
   readonly cover?: {
     readonly type: 'external'
@@ -63,12 +61,13 @@ export interface UpdatePageOptions {
   readonly pageId: string
   /** Properties to update (key is property name or id) */
   readonly properties?: Record<string, unknown>
-  /** Whether to archive the page */
-  readonly archived?: boolean
+  /** Whether the page is in trash */
+  readonly in_trash?: boolean
   /** Page icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
     | { readonly type: 'external'; readonly external: { readonly url: string } }
+    | { readonly type: 'icon'; readonly icon: { readonly name: string; readonly color?: string } }
     | null
   /** Page cover image */
   readonly cover?: {
@@ -185,8 +184,8 @@ export const update = Effect.fn('NotionPages.update')(function* (opts: UpdatePag
     body.properties = opts.properties
   }
 
-  if (opts.archived !== undefined) {
-    body.archived = opts.archived
+  if (opts.in_trash !== undefined) {
+    body.in_trash = opts.in_trash
   }
 
   if (opts.icon !== undefined) {
@@ -212,7 +211,7 @@ export const update = Effect.fn('NotionPages.update')(function* (opts: UpdatePag
 export const archive = Effect.fn('NotionPages.archive')(function* (opts: ArchivePageOptions) {
   return yield* patch({
     path: `/pages/${opts.pageId}`,
-    body: { archived: true },
+    body: { in_trash: true },
     responseSchema: PageSchema,
   })
 })

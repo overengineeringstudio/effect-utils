@@ -177,8 +177,13 @@ export const getCodeLanguage = (block: BlockWithData): string => {
  * ```
  */
 export const getCalloutIcon = (block: BlockWithData): string => {
-  const typeData = block[block.type] as { icon?: { emoji?: string } } | undefined
-  return typeData?.icon?.emoji ?? ''
+  const typeData = block[block.type] as
+    | { icon?: { type?: string; emoji?: string; icon?: { name?: string } } }
+    | undefined
+  const icon = typeData?.icon
+  if (icon?.type === 'emoji') return icon.emoji ?? ''
+  if (icon?.type === 'icon') return icon.icon?.name ?? ''
+  return icon?.emoji ?? ''
 }
 
 /**
@@ -269,6 +274,7 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
   heading_1: (block) => `# ${richTextToMd(getBlockRichText(block))}`,
   heading_2: (block) => `## ${richTextToMd(getBlockRichText(block))}`,
   heading_3: (block) => `### ${richTextToMd(getBlockRichText(block))}`,
+  heading_4: (block) => `#### ${richTextToMd(getBlockRichText(block))}`,
 
   bulleted_list_item: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
@@ -398,6 +404,8 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
     return `[Link to page](https://notion.so/${pageId.replace(/-/g, '')})`
   },
 
+  tab: (_, children) => children,
+  meeting_notes: (_, children) => children,
   unsupported: () => '',
 }
 // oxlint-enable overeng/named-args
@@ -744,7 +752,7 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
     const lines = raw.split('\n')
     let current: string[] = []
     for (const line of lines) {
-      const isBlockStart = /^#{1,3}\s|^-{3,}$|^- |^\d+\.\s/.test(line.trim())
+      const isBlockStart = /^#{1,4}\s|^-{3,}$|^- |^\d+\.\s/.test(line.trim())
       if (isBlockStart === true && current.length > 0) {
         paragraphs.push(current.join('\n'))
         current = [line]
@@ -764,9 +772,9 @@ export const markdownToBlocks = (markdown: string): Array<Record<string, unknown
       continue
     }
 
-    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/)
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/)
     if (headingMatch?.[1] !== undefined && headingMatch[2] !== undefined) {
-      const level = headingMatch[1].length as 1 | 2 | 3
+      const level = headingMatch[1].length as 1 | 2 | 3 | 4
       const type = `heading_${level}` as const
       blocks.push({
         type,
