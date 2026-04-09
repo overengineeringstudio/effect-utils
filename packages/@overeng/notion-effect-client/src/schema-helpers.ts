@@ -3,12 +3,19 @@ import * as SchemaAST from 'effect/SchemaAST'
 
 import type {
   DatabaseSchema,
+  DataSourceSchema,
   NumberFormat,
   NotionPropertyMeta,
   PropertySchema,
   RollupFunction,
   SelectOptionConfig,
 } from '@overeng/notion-effect-schema'
+
+/**
+ * Schema source for property helpers — accepts either a DatabaseSchema or DataSourceSchema.
+ * In API 2026-03-11, properties live on data sources rather than databases.
+ */
+type SchemaSource = DatabaseSchema | DataSourceSchema
 import {
   notionPropertyMeta,
   PropertySchema as PropertySchemaCodec,
@@ -70,7 +77,7 @@ const normalizeDatabasePropertyDefinition = (args: {
  * Parse raw database properties into typed PropertySchema array.
  * Unknown or invalid properties are filtered out.
  */
-export const getProperties = (args: { schema: DatabaseSchema }): PropertySchema[] => {
+export const getProperties = (args: { schema: SchemaSource }): PropertySchema[] => {
   const { schema } = args
   const rawProperties = schema.properties ?? {}
   const results: PropertySchema[] = []
@@ -102,7 +109,7 @@ export const getProperties = (args: { schema: DatabaseSchema }): PropertySchema[
  * Get a single property by name.
  */
 export const getProperty = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   name: string
 }): Option.Option<PropertySchema> => {
   const properties = getProperties({ schema: args.schema })
@@ -113,7 +120,7 @@ export const getProperty = (args: {
  * Get a property by name, filtered by type tag.
  */
 export const getPropertyByTag = <TTag extends PropertySchema['_tag']>(args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   name: string
   tag: TTag
 }): Option.Option<Extract<PropertySchema, { _tag: TTag }>> => {
@@ -125,14 +132,14 @@ export const getPropertyByTag = <TTag extends PropertySchema['_tag']>(args: {
   return Option.flatMap(prop, (p) => (hasTag(p) === true ? Option.some(p) : Option.none()))
 }
 
-const getDatabaseName = (schema: DatabaseSchema): string | undefined => {
+const getDatabaseName = (schema: SchemaSource): string | undefined => {
   const name = schema.title.map((t) => t.plain_text).join('')
   return name === '' ? undefined : name
 }
 
 /** Validates that database schema contains all required properties with correct types */
 export const validateProperties = Effect.fnUntraced(function* (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   databaseId: string
   required: readonly { name: string; tag: PropertySchema['_tag'] }[]
 }) {
@@ -221,7 +228,7 @@ export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePro
  * Get select options for a select property.
  */
 export const getSelectOptions = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
   const prop = getPropertyByTag({
@@ -236,7 +243,7 @@ export const getSelectOptions = (args: {
  * Get multi-select options for a multi_select property.
  */
 export const getMultiSelectOptions = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
   const prop = getPropertyByTag({
@@ -251,7 +258,7 @@ export const getMultiSelectOptions = (args: {
  * Get status options for a status property.
  */
 export const getStatusOptions = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
   const prop = getPropertyByTag({
@@ -266,7 +273,7 @@ export const getStatusOptions = (args: {
  * Get options for any select-like property (select, multi_select, or status).
  */
 export const getAnySelectOptions = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<readonly SelectOptionConfig[]> => {
   const prop = getProperty({ schema: args.schema, name: args.property })
@@ -302,7 +309,7 @@ export interface RelationTarget {
  * Get the target database for a relation property.
  */
 export const getRelationTarget = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<RelationTarget> => {
   const prop = getPropertyByTag({
@@ -325,7 +332,7 @@ export const getRelationTarget = (args: {
 
 /** Gets relation target or fails with SchemaMismatchError if property is missing */
 export const getRelationTargetOrFail = Effect.fnUntraced(function* (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   databaseId: string
   property: string
 }) {
@@ -353,7 +360,7 @@ export const getRelationTargetOrFail = Effect.fnUntraced(function* (args: {
  * Get the formula expression for a formula property.
  */
 export const getFormulaExpression = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<string> => {
   const prop = getPropertyByTag({
@@ -372,7 +379,7 @@ export const getFormulaExpression = (args: {
  * Get the number format for a number property.
  */
 export const getNumberFormat = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<NumberFormat> => {
   const prop = getPropertyByTag({
@@ -400,7 +407,7 @@ export interface RollupConfig {
  * Get the rollup configuration for a rollup property.
  */
 export const getRollupConfig = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<RollupConfig> => {
   const prop = getPropertyByTag({
@@ -425,7 +432,7 @@ export const getRollupConfig = (args: {
  * Get the unique ID prefix for a unique_id property.
  */
 export const getUniqueIdPrefix = (args: {
-  schema: DatabaseSchema
+  schema: SchemaSource
   property: string
 }): Option.Option<string | null> => {
   const prop = getPropertyByTag({

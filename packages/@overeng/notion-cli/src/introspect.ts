@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import { NotionDatabases, SchemaHelpers } from '@overeng/notion-effect-client'
+import { NotionDatabases, NotionDataSources, SchemaHelpers } from '@overeng/notion-effect-client'
 import type {
   NumberFormat,
   PropertySchema,
@@ -158,7 +158,14 @@ export const introspectDatabase = Effect.fnUntraced(function* (databaseId: strin
 
   const name = db.title.map((t) => t.plain_text).join('') || 'UnnamedDatabase'
 
-  const typedProperties = SchemaHelpers.getProperties({ schema: db })
+  // In API 2026-03-11, properties live on the data source, not the database
+  const firstDataSourceId = db.data_sources?.[0]?.id
+  const propertiesSource =
+    firstDataSourceId !== undefined
+      ? yield* NotionDataSources.retrieve({ dataSourceId: firstDataSourceId })
+      : db
+
+  const typedProperties = SchemaHelpers.getProperties({ schema: propertiesSource })
   const properties = typedProperties.map(toPropertyInfo)
 
   return {

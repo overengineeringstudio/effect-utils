@@ -42,6 +42,10 @@ export interface QueryDatabaseOptionsBase extends PaginationOptions {
   readonly filter?: DatabaseFilter
   /** Sorts to apply */
   readonly sorts?: readonly DatabaseSort[]
+  /** Limit which properties are returned (property IDs) */
+  readonly filterProperties?: readonly string[]
+  /** Include trashed items in results */
+  readonly inTrash?: boolean
 }
 
 /** Options for querying a database (without schema = raw Page results) */
@@ -101,7 +105,18 @@ const buildQueryBody = (opts: QueryDatabaseOptionsBase): Record<string, unknown>
   if (opts.sorts !== undefined) body.sorts = opts.sorts
   if (opts.pageSize !== undefined) body.page_size = opts.pageSize
   if (opts.startCursor !== undefined) body.start_cursor = opts.startCursor
+  if (opts.inTrash !== undefined) body.in_trash = opts.inTrash
   return body
+}
+
+/** Build query string params for filter_properties (must be query params, not body) */
+const buildQueryParams = (opts: QueryDatabaseOptionsBase): string => {
+  if (opts.filterProperties === undefined || opts.filterProperties.length === 0) return ''
+  const params = new URLSearchParams()
+  for (const prop of opts.filterProperties) {
+    params.append('filter_properties', prop)
+  }
+  return `?${params.toString()}`
 }
 
 /** Internal raw query - always returns raw pages, used by both query and queryStream */
@@ -110,8 +125,9 @@ const queryRaw = (
 ): Effect.Effect<PaginatedResult<Page>, NotionApiError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const body = buildQueryBody(opts)
+    const queryParams = buildQueryParams(opts)
     const response = yield* post({
-      path: `/data_sources/${opts.dataSourceId}/query`,
+      path: `/data_sources/${opts.dataSourceId}/query${queryParams}`,
       body,
       responseSchema: QueryDatabaseResponseSchema,
     })

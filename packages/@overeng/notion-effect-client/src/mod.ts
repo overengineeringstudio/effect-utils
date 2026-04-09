@@ -26,7 +26,10 @@ export type {
   RetrieveNestedOptions,
   UpdateBlockOptions,
 } from './blocks.ts'
-export { NotionBlocks } from './blocks.ts'
+export { type BlockInsertPosition, NotionBlocks } from './blocks.ts'
+// Comments
+export type { CommentParentInput, CreateCommentOptions, ListCommentsOptions } from './comments.ts'
+export { NotionComments } from './comments.ts'
 // Config
 export {
   NOTION_API_BASE_URL,
@@ -43,6 +46,12 @@ export type {
   RetrieveDatabaseOptions,
   TypedPaginatedResult,
 } from './databases.ts'
+// Custom emojis
+export type { CustomEmoji } from './custom-emojis.ts'
+export { NotionCustomEmojis } from './custom-emojis.ts'
+// Data sources
+export type { RetrieveDataSourceOptions } from './data-sources.ts'
+export { NotionDataSources } from './data-sources.ts'
 // Services
 export { NotionDatabases } from './databases.ts'
 // Error
@@ -81,10 +90,14 @@ export {
 export type {
   ArchivePageOptions,
   CreatePageOptions,
+  GetMarkdownOptions,
+  MarkdownContentUpdate,
+  MovePageOptions,
   PageParent,
   RetrievePageOptions,
   RetrievePageOptionsBase,
   RetrievePageWithSchemaOptions,
+  UpdateMarkdownOptions,
   UpdatePageOptions,
 } from './pages.ts'
 export { NotionPages } from './pages.ts'
@@ -97,6 +110,9 @@ export { NotionSearch } from './search.ts'
 export { PageDecodeError, type TypedPage } from './typed-page.ts'
 export type { ListUsersOptions, RetrieveUserOptions } from './users.ts'
 export { NotionUsers } from './users.ts'
+// Views
+export type { ListViewsOptions, RetrieveViewOptions } from './views.ts'
+export { NotionViews } from './views.ts'
 
 // -----------------------------------------------------------------------------
 // Layer

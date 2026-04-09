@@ -11,7 +11,7 @@ import { Effect, Layer, Option, Redacted, Schema } from 'effect'
 import React from 'react'
 
 import { EffectPath } from '@overeng/effect-path'
-import { NotionConfig, NotionDatabases } from '@overeng/notion-effect-client'
+import { NotionConfig, NotionDatabases, NotionDataSources } from '@overeng/notion-effect-client'
 import { run } from '@overeng/tui-react'
 import { outputOption as tuiOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 
@@ -346,7 +346,13 @@ const introspectCommand = Command.make(
             const program = Effect.gen(function* () {
               const db = yield* NotionDatabases.retrieve({ databaseId })
 
-              const properties = db.properties ?? {}
+              // In API 2026-03-11, properties live on the data source
+              const firstDataSourceId = db.data_sources?.[0]?.id
+              const properties =
+                firstDataSourceId !== undefined
+                  ? (yield* NotionDataSources.retrieve({ dataSourceId: firstDataSourceId }))
+                      .properties
+                  : (db.properties ?? {})
               const propertyList = Object.entries(properties).map(([propName, propValue]) => {
                 const prop = propValue as { type: string; [key: string]: unknown }
                 const result: {

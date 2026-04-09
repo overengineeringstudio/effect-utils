@@ -1,7 +1,12 @@
 import type { HttpClient } from '@effect/platform'
 import { Effect, type Schema } from 'effect'
 
-import { type Page, PageSchema } from '@overeng/notion-effect-schema'
+import {
+  type Page,
+  type PageMarkdown,
+  PageMarkdownSchema,
+  PageSchema,
+} from '@overeng/notion-effect-schema'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -42,8 +47,10 @@ export interface CreatePageOptions {
   readonly parent: PageParent
   /** Page properties (key is property name or id) */
   readonly properties: Record<string, unknown>
-  /** Page content as array of block objects */
+  /** Page content as array of block objects (mutually exclusive with markdown) */
   readonly children?: readonly unknown[]
+  /** Markdown content for the page (mutually exclusive with children) */
+  readonly markdown?: string
   /** Page icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
@@ -64,6 +71,10 @@ export interface UpdatePageOptions {
   readonly properties?: Record<string, unknown>
   /** Whether the page is in trash */
   readonly in_trash?: boolean
+  /** Whether the page is locked for editing */
+  readonly is_locked?: boolean
+  /** Clear all page content (used with templates) */
+  readonly erase_content?: boolean
   /** Page icon */
   readonly icon?:
     | { readonly type: 'emoji'; readonly emoji: string }
@@ -81,6 +92,43 @@ export interface UpdatePageOptions {
 export interface ArchivePageOptions {
   /** Page ID to archive */
   readonly pageId: string
+}
+
+/** Options for getting page markdown */
+export interface GetMarkdownOptions {
+  /** Page ID */
+  readonly pageId: string
+}
+
+/** Search-and-replace update for markdown content */
+export interface MarkdownContentUpdate {
+  readonly old_str: string
+  readonly new_str: string
+  readonly replace_all_matches?: boolean
+}
+
+/** Options for updating page markdown */
+export type UpdateMarkdownOptions = {
+  readonly pageId: string
+} & (
+  | {
+      readonly type: 'update_content'
+      readonly content_updates: readonly MarkdownContentUpdate[]
+      readonly allow_deleting_content?: boolean
+    }
+  | {
+      readonly type: 'replace_content'
+      readonly new_str: string
+      readonly allow_deleting_content?: boolean
+    }
+)
+
+/** Options for moving a page */
+export interface MovePageOptions {
+  /** Page ID to move */
+  readonly pageId: string
+  /** New parent */
+  readonly parent: PageParent
 }
 
 // -----------------------------------------------------------------------------
@@ -162,6 +210,10 @@ export const create = Effect.fn('NotionPages.create')(function* (opts: CreatePag
     body.children = opts.children
   }
 
+  if (opts.markdown !== undefined) {
+    body.markdown = opts.markdown
+  }
+
   if (opts.icon !== undefined) {
     body.icon = opts.icon
   }
@@ -187,6 +239,14 @@ export const update = Effect.fn('NotionPages.update')(function* (opts: UpdatePag
 
   if (opts.in_trash !== undefined) {
     body.in_trash = opts.in_trash
+  }
+
+  if (opts.is_locked !== undefined) {
+    body.is_locked = opts.is_locked
+  }
+
+  if (opts.erase_content !== undefined) {
+    body.erase_content = opts.erase_content
   }
 
   if (opts.icon !== undefined) {
@@ -217,6 +277,51 @@ export const archive = Effect.fn('NotionPages.archive')(function* (opts: Archive
   })
 })
 
+/**
+ * Get server-side markdown representation of a page.
+ *
+ * @see https://developers.notion.com/reference/get-page-markdown
+ */
+export const getMarkdown = Effect.fn('NotionPages.getMarkdown')(function* (
+  opts: GetMarkdownOptions,
+) {
+  return yield* get({
+    path: `/pages/${opts.pageId}/markdown`,
+    responseSchema: PageMarkdownSchema,
+  })
+})
+
+/**
+ * Update page content via markdown (search-and-replace or full replace).
+ *
+ * @see https://developers.notion.com/reference/patch-page-markdown
+ */
+export const updateMarkdown = Effect.fn('NotionPages.updateMarkdown')(function* (
+  opts: UpdateMarkdownOptions,
+) {
+  const { pageId, type, ...rest } = opts
+  const body = { type, [type]: rest }
+
+  return yield* patch({
+    path: `/pages/${pageId}/markdown`,
+    body,
+    responseSchema: PageMarkdownSchema,
+  })
+})
+
+/**
+ * Move a page to a new parent.
+ *
+ * @see https://developers.notion.com/reference/post-page-move
+ */
+export const move = Effect.fn('NotionPages.move')(function* (opts: MovePageOptions) {
+  return yield* post({
+    path: `/pages/${opts.pageId}/move`,
+    body: { parent: opts.parent },
+    responseSchema: PageSchema,
+  })
+})
+
 // -----------------------------------------------------------------------------
 // Namespace Export
 // -----------------------------------------------------------------------------
@@ -227,4 +332,7 @@ export const NotionPages = {
   create,
   update,
   archive,
+  getMarkdown,
+  updateMarkdown,
+  move,
 } as const
