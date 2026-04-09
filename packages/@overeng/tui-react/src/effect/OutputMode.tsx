@@ -27,13 +27,14 @@
  *
  * @example
  * ```typescript
- * import { OutputMode, tty, ci, json, detect } from '@overeng/tui-react'
+ * import { OutputMode, tty, ci, json } from '@overeng/tui-react'
+ * import { detectOutputMode } from '@overeng/tui-react/node'
  *
  * // Use a preset
  * const mode = tty
  *
  * // Auto-detect from environment
- * const mode = detect({ json: false, stream: false })
+ * const mode = detectOutputMode()
  *
  * // Check mode type
  * if (mode._tag === 'react') {

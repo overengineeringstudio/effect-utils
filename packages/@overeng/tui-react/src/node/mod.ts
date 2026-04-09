@@ -18,8 +18,7 @@
 
 // Node.js environment detection (requires node:fs)
 export {
-  isPiped,
-  isRedirectedToFile,
+  stdoutFdType,
   isAgentEnv,
   detectOutputMode,
   detectLayer,

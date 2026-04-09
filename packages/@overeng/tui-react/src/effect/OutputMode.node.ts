@@ -48,40 +48,25 @@ const isPipeModeVisual = (): boolean =>
   typeof process !== 'undefined' && process.env?.TUI_PIPE_MODE === 'visual'
 
 /**
- * Check if stdout is piped to another process (FIFO).
+ * Classify the stdout file descriptor type.
  *
- * Uses `fs.fstatSync(1).isFIFO()` to detect if stdout (fd 1) is a pipe/FIFO.
- * This is true when the command is piped to another process (e.g., `cmd | cat`).
+ * Uses a single `fs.fstatSync(1)` call to determine how stdout is connected:
+ * - `'pipe'` — FIFO (shell pipe, e.g. `cmd | cat`) or socket (Node.js `child_process` capture)
+ * - `'file'` — redirected to a regular file (e.g. `cmd > out.txt`)
+ * - `'other'` — anything else (e.g. `/dev/null`, block device)
  *
- * @returns `true` if stdout is a FIFO (pipe to process), `false` otherwise
+ * Note: Node.js `child_process.execFile`/`spawn` uses socketpairs for stdio on
+ * both macOS and Linux, so sockets must be treated as captured (machine) output.
  */
-export const isPiped = (): boolean => {
-  if (typeof process === 'undefined') return false
+export const stdoutFdType = (): 'pipe' | 'file' | 'other' => {
+  if (typeof process === 'undefined') return 'other'
   try {
     const stat = fs.fstatSync(1)
-    return stat.isFIFO()
+    if (stat.isFIFO() === true || stat.isSocket() === true) return 'pipe'
+    if (stat.isFile() === true) return 'file'
+    return 'other'
   } catch {
-    // If fstat fails (e.g., fd not available), assume not piped
-    return false
-  }
-}
-
-/**
- * Check if stdout is redirected to a file.
- *
- * Uses `fs.fstatSync(1).isFile()` to detect if stdout (fd 1) is a regular file.
- * This is true when the command output is redirected to a file (e.g., `cmd > file.txt`).
- *
- * @returns `true` if stdout is a file, `false` otherwise
- */
-export const isRedirectedToFile = (): boolean => {
-  if (typeof process === 'undefined') return false
-  try {
-    const stat = fs.fstatSync(1)
-    return stat.isFile()
-  } catch {
-    // If fstat fails (e.g., fd not available), assume not redirected
-    return false
+    return 'other'
   }
 }
 
@@ -126,7 +111,7 @@ export const isAgentEnv = (): boolean => {
  * 2. Agent environment detected → `json` (structured output for coding agents)
  * 3. TTY + not CI → `tty` (animated terminal)
  * 4. TTY + CI → `ci` (static terminal)
- * 5. Non-TTY + piped → `json` (machine-readable for downstream tools)
+ * 5. Non-TTY + captured (pipe/socket) → `json` (machine-readable for downstream tools)
  * 6. Non-TTY + file redirect → `pipe` (visual output for file storage)
  *
  * Respects `NO_COLOR`, `NO_UNICODE`, and `TUI_PIPE_MODE` environment variables.
@@ -147,7 +132,7 @@ export const detectOutputMode = (): OutputMode => {
   const agentEnv = isAgentEnv()
   const noColor = isNoColorSet()
   const noUnicode = isNoUnicodeSet()
-  const pipedEnv = isPiped()
+  const stdoutType = stdoutFdType()
   const forcePipeVisual = isPipeModeVisual()
 
   // Helper to apply noColor and noUnicode
@@ -174,19 +159,16 @@ export const detectOutputMode = (): OutputMode => {
     return withEnvOverrides(ciEnv === true ? ci : tty)
   }
 
-  // Non-TTY: distinguish between pipe and file redirect
-  // Piped to another process (cmd | cat) → JSON for machine consumption
+  // Non-TTY: distinguish between captured (pipe/socket) and file redirect
+  // Captured by another process (shell pipe or child_process) → JSON for machine consumption
   // Unless TUI_PIPE_MODE=visual is set
-  if (pipedEnv === true && forcePipeVisual === false) {
+  if (stdoutType === 'pipe' && forcePipeVisual === false) {
     return json
   }
 
   // File redirect or TUI_PIPE_MODE=visual → pipe mode (final React output)
   return withEnvOverrides(pipe)
 }
-
-/** @deprecated Use `detectOutputMode()` instead */
-export const detect = detectOutputMode
 
 /**
  * Layer that auto-detects mode from environment.

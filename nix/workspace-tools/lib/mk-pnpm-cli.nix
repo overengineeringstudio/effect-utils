@@ -736,8 +736,7 @@ let
             # Symlink targets resolve relative to the parent directory (.pnpm/),
             # so we go up: .pnpm + node_modules + installDir segments.
             upCount = installDirDepth + 2;
-            relPrefix = lib.concatStringsSep "/" (builtins.genList (_: "..") upCount)
-              + "/node_modules/.pnpm";
+            relPrefix = lib.concatStringsSep "/" (builtins.genList (_: "..") upCount) + "/node_modules/.pnpm";
           in
           ''
             ext_pnpm="workspace/${root.installDir}/node_modules/.pnpm"

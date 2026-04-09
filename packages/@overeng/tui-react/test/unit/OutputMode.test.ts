@@ -11,8 +11,7 @@ import {
   // Detection (Node-only)
   detectOutputMode,
   isAgentEnv,
-  isPiped,
-  isRedirectedToFile,
+  stdoutFdType,
 } from '../../src/effect/OutputMode.node.ts'
 import {
   OutputModeTag,
@@ -223,19 +222,10 @@ describe('isAgentEnv', () => {
   })
 })
 
-describe('isPiped and isRedirectedToFile', () => {
-  // Note: These functions depend on the actual stdout file descriptor state,
-  // so we can only test that they return boolean values and don't throw.
-  // The actual behavior varies based on how tests are run.
-
-  test('isPiped returns a boolean', () => {
-    const result = isPiped()
-    expect(typeof result).toBe('boolean')
-  })
-
-  test('isRedirectedToFile returns a boolean', () => {
-    const result = isRedirectedToFile()
-    expect(typeof result).toBe('boolean')
+describe('stdoutFdType', () => {
+  test('returns a valid fd type', () => {
+    const result = stdoutFdType()
+    expect(['pipe', 'file', 'other']).toContain(result)
   })
 })
 
@@ -272,11 +262,11 @@ describe('detectOutputMode', () => {
     }
   }
 
-  test('in non-TTY non-agent non-piped environment defaults to pipe mode', () => {
+  test('in non-TTY non-agent environment detects captured stdout', () => {
     clearEnv()
     try {
-      // Note: In test environment, we may or may not be piped depending on how tests run.
-      // This test verifies the mode is either 'react' (pipe) or 'json' (if actually piped)
+      // In test runners, stdout is typically a socket (captured by the test harness),
+      // which is now correctly detected as machine output (json)
       const mode = detectOutputMode()
       expect(['react', 'json']).toContain(mode._tag)
     } finally {
