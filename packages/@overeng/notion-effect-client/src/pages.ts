@@ -1,12 +1,7 @@
 import type { HttpClient } from '@effect/platform'
 import { Effect, type Schema } from 'effect'
 
-import {
-  type Page,
-  type PageMarkdown,
-  PageMarkdownSchema,
-  PageSchema,
-} from '@overeng/notion-effect-schema'
+import { type Page, PageMarkdownSchema, PageSchema } from '@overeng/notion-effect-schema'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
