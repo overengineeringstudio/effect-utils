@@ -41,8 +41,22 @@ let
       name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
     };
 
-  workspaceSourceRawRoots = lib.mapAttrs (_: coerceSourceRoot) workspaceSources;
-  workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
+  workspaceSourceSpecs = lib.mapAttrs (
+    _:
+    sourceRoot: {
+      sourcePath = coerceSourceRoot sourceRoot;
+      isDerived =
+        builtins.isAttrs sourceRoot
+        && builtins.hasAttr "outPath" sourceRoot
+        && (sourceRoot.type or null) == "derivation";
+    }
+  ) workspaceSources;
+  workspaceSourceRawRoots = lib.mapAttrs (_: spec: spec.sourcePath) workspaceSourceSpecs;
+  workspaceSourceRoots = lib.mapAttrs (
+    prefix:
+    spec:
+    if spec.isDerived then spec.sourcePath else normalizeSourceRoot prefix spec.sourcePath
+  ) workspaceSourceSpecs;
   workspaceSourcePrefixesByLengthAsc = lib.sort (
     left: right: lib.stringLength left < lib.stringLength right
   ) (builtins.attrNames workspaceSourceRoots);
@@ -65,6 +79,7 @@ let
       prefix = lib.findFirst matchesPrefix null workspaceSourcePrefixesByLengthDesc;
       sourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRawRoots.${prefix};
       fullSourceRoot = if prefix == null then workspaceRootPath else workspaceSourceRoots.${prefix};
+      sourceRootIsDerived = if prefix == null then false else workspaceSourceSpecs.${prefix}.isDerived;
       sourceRelPath =
         if prefix == null then
           relPath
@@ -77,7 +92,7 @@ let
     in
     {
       inherit prefix;
-      inherit sourceRoot fullSourceRoot sourceRelPath;
+      inherit sourceRoot fullSourceRoot sourceRelPath sourceRootIsDerived;
     };
 
   snapshotPath =
@@ -192,11 +207,14 @@ let
     map (
       item:
       let
+        prefixRootSupportsPureEvalInstallRootProbe =
+          item.resolved.prefix != null && !item.resolved.sourceRootIsDerived;
         prefixRootHasWorkspace =
-          item.resolved.prefix != null
+          prefixRootSupportsPureEvalInstallRootProbe
           && builtins.pathExists (item.resolved.sourceRoot + "/pnpm-workspace.yaml")
           && hasInstallRoot item.resolved.sourceRoot;
-        memberHasInstallRoot = hasInstallRoot item.sourcePath;
+        memberHasInstallRoot =
+          prefixRootSupportsPureEvalInstallRootProbe && hasInstallRoot item.sourcePath;
       in
       if item.resolved.prefix == null then
         null

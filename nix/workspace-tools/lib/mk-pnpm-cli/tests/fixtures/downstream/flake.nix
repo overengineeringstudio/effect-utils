@@ -26,6 +26,10 @@
           cp -R ${./fixture-workspace} "$out"
           chmod -R +w "$out"
         '';
+        derivedEffectUtilsRoot = pkgs.runCommand "mk-pnpm-cli-derived-effect-utils-root" { } ''
+          cp -R ${effectUtilsSource} "$out"
+          chmod -R +w "$out"
+        '';
         mkPnpmCliFactory = import "${effectUtilsSource}/nix/workspace-tools/lib/mk-pnpm-cli.nix";
         mkPnpmCli = mkPnpmCliFactory (
           {
@@ -72,6 +76,22 @@
             };
             "repos/effect-utils" = {
               hash = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+            };
+          };
+          smokeTestArgs = [ ];
+        };
+        pureEvalDerivedWorkspaceSourceFixture = mkPnpmCli {
+          name = "mk-pnpm-cli-pure-eval-derived-workspace-source-fixture";
+          binaryName = "mk-pnpm-cli-pure-eval-derived-workspace-source-fixture";
+          entry = "app/src/mod.ts";
+          packageDir = "app";
+          workspaceRoot = ./fixture-workspace;
+          workspaceSources = {
+            "repos/effect-utils" = derivedEffectUtilsRoot;
+          };
+          depsBuilds = {
+            "." = {
+              hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
             };
           };
           smokeTestArgs = [ ];
@@ -124,6 +144,21 @@
               expected='[".","repos/effect-utils"]'
               if [ "$actual" != "$expected" ]; then
                 echo "unexpected install roots for derived workspace root: $actual" >&2
+                exit 1
+              fi
+              printf '%s' "$actual" > "$out"
+            '';
+        checks.pure-eval-derived-workspace-source =
+          pkgs.runCommand "mk-pnpm-cli-pure-eval-derived-workspace-source" { }
+            ''
+              actual='${
+                builtins.toJSON (
+                  map (root: root.installDir) pureEvalDerivedWorkspaceSourceFixture.passthru.installRoots
+                )
+              }'
+              expected='["."]'
+              if [ "$actual" != "$expected" ]; then
+                echo "unexpected install roots for derived workspace source: $actual" >&2
                 exit 1
               fi
               printf '%s' "$actual" > "$out"
