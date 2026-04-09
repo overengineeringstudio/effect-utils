@@ -439,9 +439,9 @@ let
             paths
           else
             let
-              colonIdx = lib.stringLength (builtins.head (builtins.split ":" trimmed));
-              value = lib.trim (builtins.substring (colonIdx + 1) (lib.stringLength trimmed) trimmed);
-              isPatchPath = lib.hasSuffix ".patch" value;
+              match = builtins.match ".*: +(.*)" trimmed;
+              value = if match == null then "" else lib.trim (builtins.elemAt match 0);
+              isPatchPath = match != null && lib.hasSuffix ".patch" value;
             in
             if isPatchPath then
               collect {
