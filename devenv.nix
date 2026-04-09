@@ -350,6 +350,8 @@ in
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
     # Local task: Validate allPackages matches filesystem packages (effect-utils specific)
     ./nix/devenv-modules/tasks/local/workspace-check.nix
+    # Notion integration tests (requires NOTION_TOKEN)
+    ./nix/devenv-modules/tasks/local/notion-integration-test.nix
   ];
 
   packages = [

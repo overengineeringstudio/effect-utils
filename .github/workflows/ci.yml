@@ -2116,15 +2116,7 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Notion integration tests
-        shell: bash
         run: |
-          # Skip if NOTION_TOKEN is not set (forks, etc.)
-          if [ -z "${NOTION_TOKEN:-}" ]; then
-            echo "::warning::NOTION_TOKEN not set, skipping integration tests"
-            exit 0
-          fi
-
-          # Install deps via devenv, then run Notion integration tests
           __nix_gc_retry_helper=$(mktemp)
           cat > "$__nix_gc_retry_helper" <<'EOF'
           #!/usr/bin/env bash
@@ -2232,12 +2224,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run pnpm:install --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run pnpm:install --mode before'
-
-          for pkg_name in @overeng/notion-effect-client @overeng/notion-cli; do
-            echo "=== Integration tests: $pkg_name ==="
-            pnpm --filter "$pkg_name" exec vitest run --include "src/**/*.integration.test.ts" || exit 1
-          done
+          run_nix_gc_race_retry 'devenv tasks run test:notion-integration --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration --mode before'
       - name: Save pnpm home
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
