@@ -86,6 +86,11 @@ let
     # tests so cleanup refactors cannot silently drift the two code paths apart.
     source ${lib.escapeShellArg pnpmTaskHelpersScript}
   '';
+  ensureLocalPnpmHomeFn = ''
+    # Keep pnpm's hot GVS projection workspace-local by default so local tasks
+    # match CI and don't inherit stale global link state from unrelated repos.
+    ensure_local_pnpm_home_default ${lib.escapeShellArg config.devenv.root}
+  '';
 
   computeWorkspaceStateHash = ''
     compute_workspace_state_hash() {
@@ -145,6 +150,7 @@ let
       exec = trace.exec "pnpm:install" ''
         set -euo pipefail
         ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
         # manifests. The fingerprint also includes the active GVS projection
@@ -211,6 +217,7 @@ let
       status = trace.status "pnpm:install" "hash" ''
         set -euo pipefail
         ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
         hash_file="${cacheRoot}/install-state.hash"
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
@@ -237,6 +244,8 @@ let
       after = [ "genie:run" ] ++ updateAfter;
       exec = trace.exec "pnpm:update" ''
         set -euo pipefail
+        ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
         export npm_config_manage_package_manager_versions=false
         pnpm install --fix-lockfile --config.confirmModulesPurge=false
         echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
@@ -250,6 +259,7 @@ let
       exec = trace.exec "pnpm:clean" ''
         set -euo pipefail
         ${loadPnpmTaskHelpersFn}
+        ${ensureLocalPnpmHomeFn}
 
         purge_node_modules node_modules ${nodeModulesPaths}
 
@@ -277,6 +287,7 @@ in
   packages = cliGuard.fromTasks allTasks;
 
   enterShell = lib.mkIf globalCache ''
+    export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.pnpm-home}"
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_manage_package_manager_versions=false
   '';
