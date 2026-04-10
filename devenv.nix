@@ -247,6 +247,7 @@ in
         "workspace:check"
         "lint:nix"
       ];
+      checkAllTypecheckTask = "ts:check:strict";
     })
     (taskModules.clean { packages = allPackages; })
     # Repo-root pnpm install task

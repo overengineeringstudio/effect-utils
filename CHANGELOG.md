@@ -56,6 +56,15 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/tasks/shared/ts.nix**: Make `ts:check:strict` inherit repo-local `ts:check.after` dependencies
+  - Preserves consumer generators like `contentlayer:build` when strict typecheck is used as the CI gate
+  - Prevents downstream repos from regressing when they already extend `ts:check` with extra build prerequisites
+- **genie/external**: Export the shared `@effect-atom/atom` peer-version allowlist in megarepo pnpm policy
+  - Keeps downstream repos on `strictPeerDependencies: true` while allowing the Effect version ranges already used inside effect-utils itself
+  - Prevents consumer workspace installs from failing on the known pre-1.0 peer ranges declared by `@effect-atom/atom`
+- **genie/external**: Export the full shared patch registry to peer repos
+  - Adds the `node-pty@1.1.0` patch to `createPnpmPatchedDependencies()` / `pnpmPatchedDependencies()`
+  - Unblocks composed-root `pnpm-workspace.yaml` generation in downstream megarepos that import `@overeng/utils`
 - **@overeng/genie**: Use cwd-relative lock directory instead of shared `/tmp/genie-locks/` to fix `EACCES` errors in multi-user CI environments (#520)
 - **@overeng/tui-react**: Format timeline timestamps as human-readable durations (e.g. `6m 18s / 16m 21s`) instead of raw seconds (`377.9s / 980.6s`) in `TuiStoryPreview` (#472)
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML

@@ -7,7 +7,7 @@
 #     (inputs.effect-utils.devenvModules.tasks.ts { tsconfigFile = "tsconfig.dev.json"; })
 #   ];
 #
-# Provides: ts:check, ts:build-watch, ts:build, ts:emit, ts:clean
+# Provides: ts:check, ts:check:strict, ts:build-watch, ts:build, ts:emit, ts:clean
 #
 # Dependencies:
 #   - genie:run: config files must be generated before tsc can resolve paths
@@ -15,9 +15,14 @@
 #
 # Caching notes:
 #   TypeScript's incremental build (--build) uses .tsbuildinfo files to cache
-#   results. If you suspect stale cache issues (e.g., cross-package signature
-#   changes not detected), run `dt ts:clean` first to clear the cache.
-#   Ensure all packages are listed in tsconfig.all.json references.
+#   results. Use `ts:check` for fast local feedback and `ts:check:strict`
+#   when correctness matters more than incremental reuse, such as CI gates or
+#   reused automation workspaces that may see dependency-only type changes.
+#   `ts:check:strict` inherits the merged `ts:check.after` graph so repo-local
+#   generators also run in strict mode.
+#   `ts:clean` remains available as a heavier escape hatch when you suspect
+#   corrupted build metadata. Ensure all packages are listed in
+#   tsconfig.all.json references.
 #
 # tscBin:
 #   Path to the tsc binary. Defaults to "tsc".
@@ -34,10 +39,14 @@
   tsconfigFile ? "tsconfig.all.json",
   tscBin ? "tsc",
 }:
-{ lib, pkgs, ... }:
+{ lib, pkgs, config, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  inheritedCheckAfter = config.tasks."ts:check".after or [
+    "genie:run"
+    "pnpm:install"
+  ];
 
   # Script that runs tsc with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.
@@ -169,6 +178,12 @@ let
         "genie:run"
         "pnpm:install"
       ];
+    };
+    "ts:check:strict" = {
+      guard = tscBin;
+      description = "Type check the whole workspace without incremental reuse (tsc --build --force)";
+      exec = trace.exec "ts:check:strict" (tscWithDiagnostics "--build --force ${tsconfigFile}" "");
+      after = inheritedCheckAfter;
     };
     "ts:build" = {
       guard = tscBin;
