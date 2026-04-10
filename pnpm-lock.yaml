@@ -188,6 +188,7 @@ settings:
 packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
+  '@myobie/pty@0.5.0': a2e8c27ec6d6487d9f3c72c6def56e366d3afdd7ecdc2e20405ab79e66fe965e
   effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
   node-pty@1.1.0: 397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e
 
@@ -1043,7 +1044,7 @@ importers:
     dependencies:
       '@myobie/pty':
         specifier: github:schickling/pty#schickling/2026-04-08-prepare-build
-        version: https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb
+        version: https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb(patch_hash=a2e8c27ec6d6487d9f3c72c6def56e366d3afdd7ecdc2e20405ab79e66fe965e)
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -5916,7 +5917,7 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb':
+  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/3725304ad9829912a1b44e84d95ceb65cc6522bb(patch_hash=a2e8c27ec6d6487d9f3c72c6def56e366d3afdd7ecdc2e20405ab79e66fe965e)':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0
