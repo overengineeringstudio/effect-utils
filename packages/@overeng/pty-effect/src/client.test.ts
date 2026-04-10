@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -27,6 +28,19 @@ const withIsolatedDir = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
     }
   })
 
+const withTempDir = <A>(prefix: string, f: (dir: string) => A) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  try {
+    return f(dir)
+  } finally {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // best effort
+    }
+  }
+}
+
 const decodeName = (s: string) => Schema.decodeUnknownSync(PtyName)(s) as PtyName
 
 /** Keep names short — macOS Unix sockets cap at 104 bytes including the
@@ -36,6 +50,29 @@ const uniqueName = (label: string): PtyName =>
   decodeName(`t${label}${(Date.now() % 100000).toString(36)}`)
 
 describe('PtyClient', () => {
+  it('keeps @overeng/pty-effect/client compile-safe for Bun-built CLIs', () => {
+    withTempDir('pty-effect-bun-compile-', (dir) => {
+      const entryPath = path.join(dir, 'main.ts')
+      const outPath = path.join(dir, 'main')
+      const clientModulePath = new URL('./client.ts', import.meta.url).pathname
+
+      fs.writeFileSync(
+        entryPath,
+        [`import ${JSON.stringify(clientModulePath)}`, `console.log('client-module-ok')`, ''].join(
+          '\n',
+        ),
+      )
+
+      execFileSync('bun', ['build', entryPath, '--compile', '--outfile', outPath], {
+        cwd: dir,
+        stdio: 'pipe',
+      })
+
+      const stdout = execFileSync(outPath, [], { encoding: 'utf8' })
+      expect(stdout.trim()).toBe('client-module-ok')
+    })
+  })
+
   it.scopedLive('spawns a daemon, lists it, attaches, reads bytes, exits cleanly', () =>
     withIsolatedDir(
       Effect.gen(function* () {

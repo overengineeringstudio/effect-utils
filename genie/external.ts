@@ -148,7 +148,7 @@ export const catalog = defineCatalog({
   // Tracking: https://github.com/myobie/pty/blob/main/package.json (currently
   // shows 0.5.0 but only 0.4.1 is on npm). Pinning to a fork branch with
   // dist/ pre-committed so pnpm git-dep installs work without a build step.
-  '@myobie/pty': 'github:schickling/pty#schickling/2026-04-08-prepare-build',
+  '@myobie/pty': 'github:schickling/pty#ad76c4211b6a7707ba711366b2ff0eb3fbdaed27',
 
   // Type definitions
   '@types/react': '19.2.7',
@@ -260,10 +260,10 @@ export const commonPnpmPolicySettings = {
   allowBuilds: {
     '@parcel/watcher': true,
     '@myobie/pty': true,
-    'esbuild': true,
+    esbuild: true,
     'msgpackr-extract': true,
     'node-pty': true,
-    'sharp': true,
+    sharp: true,
     'unix-dgram': true,
   },
 }

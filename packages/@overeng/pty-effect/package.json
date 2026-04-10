@@ -15,7 +15,7 @@
     }
   },
   "dependencies": {
-    "@myobie/pty": "github:schickling/pty#schickling/2026-04-08-prepare-build"
+    "@myobie/pty": "github:schickling/pty#ad76c4211b6a7707ba711366b2ff0eb3fbdaed27"
   },
   "devDependencies": {
     "@effect/vitest": "0.29.0",
