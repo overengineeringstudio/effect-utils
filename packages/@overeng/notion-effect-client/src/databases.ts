@@ -118,9 +118,10 @@ export const resolveQueryTarget = Effect.fn('NotionDatabases.resolveQueryTarget'
   opts: ResolveQueryTargetOptions,
 ) {
   const database = yield* retrieve({ databaseId: opts.databaseId })
-  const dataSourceId = database.data_sources?.[0]?.id ?? database.id
+  const firstDataSourceId = database.data_sources?.[0]?.id
+  const dataSourceId = firstDataSourceId ?? database.id
 
-  if (dataSourceId === database.id) {
+  if (firstDataSourceId === undefined) {
     return {
       database,
       schemaSource: database,
