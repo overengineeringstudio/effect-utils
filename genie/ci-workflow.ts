@@ -1030,6 +1030,123 @@ export const vercelDeployJobs = (opts: {
 }
 
 // =============================================================================
+// Vercel Static Deploy Helpers
+// =============================================================================
+
+/**
+ * Generate Vercel deploy jobs for static content (no `vercel build`, no git author step).
+ *
+ * Uses the same `vercel:deploy:<name>` task prefix as build-mode deploys —
+ * the unified `vercel.nix` module routes to static mode when `staticDir` is set.
+ *
+ * Returns a flat record of jobs (no comment job — use `mergeVercelDeployJobs`
+ * to compose a unified comment across app + static deploys).
+ */
+export const vercelStaticDeployJobs = (opts: {
+  projects: readonly VercelProject[]
+  runner: readonly string[]
+  baseSteps: readonly Record<string, unknown>[]
+  env: Record<string, string>
+  extraSteps?: readonly Record<string, unknown>[]
+  deployCondition?: string
+}): Record<string, Record<string, unknown>> => {
+  const deployCondition = opts.deployCondition ?? '!cancelled()'
+
+  return Object.fromEntries(
+    opts.projects.map((project) => [
+      `deploy-${project.name}`,
+      {
+        if: deployCondition,
+        'runs-on': [...opts.runner],
+        defaults: bashShellDefaults,
+        outputs: {
+          deploy_url: '${{ steps.deploy.outputs.deploy_url }}',
+        },
+        env: {
+          ...opts.env,
+          [project.projectIdEnv]:
+            opts.env[project.projectIdEnv] ?? `\${{ secrets.${project.projectIdEnv} }}`,
+        },
+        steps: [
+          ...opts.baseSteps,
+          vercelDeployStep(project),
+          ...(opts.extraSteps ?? []),
+        ],
+      },
+    ]),
+  )
+}
+
+type DeploySource = {
+  /** Display name in the comment table */
+  label: string
+  /** GitHub Actions job name (e.g. `deploy-website`) */
+  jobName: string
+}
+
+/**
+ * Merge multiple deploy job records and generate a unified `post-deploy-comment` job.
+ *
+ * Accepts any number of job records (from `vercelDeployJobs`, `vercelStaticDeployJobs`, etc.)
+ * plus a flat list of deploy sources that maps job outputs to comment table rows.
+ *
+ * @example
+ * ```ts
+ * const appJobs = vercelDeployJobs({ ... })
+ * const sbJobs = vercelStaticDeployJobs({ ... })
+ * const allJobs = mergeVercelDeployJobs({
+ *   jobRecords: [appJobs, sbJobs],
+ *   sources: [
+ *     { label: 'website', jobName: 'deploy-website' },
+ *     { label: 'storybook-tv', jobName: 'deploy-storybook-tv' },
+ *   ],
+ * })
+ * ```
+ */
+export const mergeVercelDeployJobs = (opts: {
+  jobRecords: readonly Record<string, Record<string, unknown>>[]
+  sources: readonly DeploySource[]
+  commentTitle?: string
+}): Record<string, Record<string, unknown>> => {
+  const merged = Object.assign({}, ...opts.jobRecords) as Record<string, Record<string, unknown>>
+  // Remove any existing comment jobs from individual records
+  delete merged['post-deploy-comment']
+
+  const allJobNames = opts.sources.map((s) => s.jobName)
+
+  const commentJob = {
+    needs: allJobNames,
+    if: 'always() && !cancelled()',
+    permissions: deployCommentPermissions,
+    'runs-on': linuxX64Runner,
+    steps: [
+      deployCommentStep({
+        summaryTitle: opts.commentTitle ?? 'Deploy Preview',
+        tableHeaders: ['Target', 'URL'],
+        noRowsMessage: 'No deploy URLs detected.',
+        modeScript: deployModeScript,
+        rowsScript: [
+          'rows=""',
+          ...opts.sources.map(
+            (s) =>
+              `url="\${{ needs.${s.jobName}.outputs.deploy_url }}"
+if [ -n "$url" ]; then
+  rows="\${rows}| ${s.label} | $url |\\n"
+fi`,
+          ),
+        ].join('\n'),
+        commentTitle: opts.commentTitle ?? 'Deploy Preview',
+      }),
+    ],
+  }
+
+  return {
+    ...merged,
+    'post-deploy-comment': commentJob,
+  }
+}
+
+// =============================================================================
 // Netlify Deploy Helpers
 // =============================================================================
 

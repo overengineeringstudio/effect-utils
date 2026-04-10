@@ -188,6 +188,14 @@ export const createTuiStorybookConfig: CreateTuiStorybookConfig = <TConfig exten
       typedConfig.build = {
         ...typedConfig.build,
         target: 'esnext',
+        rollupOptions: {
+          ...typedConfig.build?.rollupOptions,
+          // eslint-disable-next-line overeng/named-args -- Rollup API callback signature
+          onwarn: (warning, warn) => {
+            if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return
+            warn(warning)
+          },
+        },
       }
 
       typedConfig.optimizeDeps = {
