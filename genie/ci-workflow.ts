@@ -41,9 +41,6 @@ export { RUNNER_PROFILES, type RunnerProfile }
 /** Self-hosted NixOS runner labels (x86_64-linux, e.g. dev3) */
 export const linuxX64Runner = ['sh-linux-x64', 'nix'] as const
 
-/** Backwards-compatible alias for older downstream workflow generators. */
-export const selfHostedRunner = linuxX64Runner
-
 /** Self-hosted NixOS runner labels (aarch64-linux, e.g. dev4) */
 export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
 

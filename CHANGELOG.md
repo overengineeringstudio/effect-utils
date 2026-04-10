@@ -62,8 +62,6 @@ All notable changes to this project will be documented in this file.
 - **genie/external**: Export the full shared patch registry to peer repos
   - Adds the `node-pty@1.1.0` patch to `createPnpmPatchedDependencies()` / `pnpmPatchedDependencies()`
   - Unblocks composed-root `pnpm-workspace.yaml` generation in downstream megarepos that import `@overeng/utils`
-- **genie/ci-workflow**: Restore the legacy `selfHostedRunner` export as an alias of `linuxX64Runner`
-  - Keeps older downstream workflow generators compatible while they migrate to the newer explicit runner constants
 - **@overeng/genie**: Use cwd-relative lock directory instead of shared `/tmp/genie-locks/` to fix `EACCES` errors in multi-user CI environments (#520)
 - **@overeng/tui-react**: Format timeline timestamps as human-readable durations (e.g. `6m 18s / 16m 21s`) instead of raw seconds (`377.9s / 980.6s`) in `TuiStoryPreview` (#472)
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML
