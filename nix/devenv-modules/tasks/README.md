@@ -42,6 +42,7 @@ imports = [
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
 - `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
+  - `ts:check:strict` inherits repo-local `ts:check.after` hooks so strict CI stays aligned with consumer generators
 - `bun.nix` - Bun tasks (legacy)
 - `context.nix` - Context directory tasks
 - `lint-genie.nix` - Genie lint tasks

@@ -56,6 +56,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/tasks/shared/ts.nix**: Make `ts:check:strict` inherit repo-local `ts:check.after` dependencies
+  - Preserves consumer generators like `contentlayer:build` when strict typecheck is used as the CI gate
+  - Prevents downstream repos from regressing when they already extend `ts:check` with extra build prerequisites
 - **genie/external**: Export the shared `@effect-atom/atom` peer-version allowlist in megarepo pnpm policy
   - Keeps downstream repos on `strictPeerDependencies: true` while allowing the Effect version ranges already used inside effect-utils itself
   - Prevents consumer workspace installs from failing on the known pre-1.0 peer ranges declared by `@effect-atom/atom`
