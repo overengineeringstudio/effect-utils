@@ -181,11 +181,14 @@ export const catalog = defineCatalog({
   '@storybook/react-vite': '10.2.3',
   'eslint-plugin-storybook': '10.2.3',
 
-  // xterm (terminal emulator for browser/testing)
-  '@xterm/xterm': '6.0.0',
+  // xterm (terminal emulator for browser/testing) — beta for Kitty keyboard protocol support
+  '@xterm/xterm': '6.1.0-beta.196',
   '@xterm/headless': '6.0.0',
-  '@xterm/addon-fit': '0.11.0',
-  '@xterm/addon-webgl': '0.19.0',
+  '@xterm/addon-fit': '0.12.0-beta.196',
+  '@xterm/addon-search': '0.17.0-beta.196',
+  '@xterm/addon-serialize': '0.15.0-beta.196',
+  '@xterm/addon-web-links': '0.13.0-beta.196',
+  '@xterm/addon-webgl': '0.20.0-beta.196',
 
   // Testing
   '@testing-library/react': '16.3.1',
