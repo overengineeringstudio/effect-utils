@@ -186,7 +186,7 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
 const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
   typecheck: job({
     name: 'Type check',
-    run: runDevenvTasksBefore('ts:check'),
+    run: runDevenvTasksBefore('ts:check:strict'),
   }),
   lint: job({
     name: 'Format + lint',

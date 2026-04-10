@@ -19,13 +19,16 @@
 #   # Without megarepo checks (for repos that skip members in CI):
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check { hasMegarepoCheck = false; }) ];
 #
+#   # With strict type checking in aggregate gates:
+#   imports = [ (inputs.effect-utils.devenvModules.tasks.check { checkAllTypecheckTask = "ts:check:strict"; }) ];
+#
 #   # With additional custom checks:
 #   imports = [ (inputs.effect-utils.devenvModules.tasks.check { extraChecks = [ "workspace:check" ]; }) ];
 #
 # Provides: check:quick, check:all
 #
 # check:quick - Fast local development (ts:check, mr:check*, lint, nix-fingerprint)
-# check:all   - Comprehensive pre-push validation (includes nix flake check)
+# check:all   - Comprehensive validation (defaults to ts:check, can opt into ts:check:strict)
 #               * mr:check included unless hasMegarepoCheck = false
 #
 # Note: Requires ts:check task to exist.
@@ -41,6 +44,8 @@
   hasLint ? true,
   hasNixCheck ? true,
   hasMegarepoCheck ? true,
+  checkQuickTypecheckTask ? "ts:check",
+  checkAllTypecheckTask ? checkQuickTypecheckTask,
   extraChecks ? [ ], # Additional check tasks to include (e.g., [ "workspace:check" ])
 }:
 { lib, ... }:
@@ -64,31 +69,25 @@ let
 in
 {
   tasks = {
-    # Quick: Fast feedback for development (genie, typecheck, lint, nix fingerprint only)
     "check:quick" = {
-      description = "Fast checks for development (ts:check${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
+      description = "Fast checks for development (${checkQuickTypecheckTask}${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
       exec = "true";
-      after = [
-        "ts:check"
-      ]
-      ++ megarepoTasks
-      ++ lintTask
-      ++ nixQuickTask
-      ++ extraChecks;
+      after = [ checkQuickTypecheckTask ]
+        ++ megarepoTasks
+        ++ lintTask
+        ++ nixQuickTask
+        ++ extraChecks;
     };
 
-    # All: Comprehensive pre-push validation (includes full nix flake check)
     "check:all" = {
-      description = "All checks (ts:check${extraDesc})";
+      description = "All checks (${checkAllTypecheckTask}${extraDesc})";
       exec = "true";
-      after = [
-        "ts:check"
-      ]
-      ++ megarepoTasks
-      ++ extraChecks
-      ++ lintTask
-      ++ nixFullTask
-      ++ testTasks;
+      after = [ checkAllTypecheckTask ]
+        ++ megarepoTasks
+        ++ extraChecks
+        ++ lintTask
+        ++ nixFullTask
+        ++ testTasks;
     };
   };
 }

@@ -26,7 +26,7 @@ imports = [
 
 ### Available Modules:
 
-- `check.nix` - Aggregate check tasks (check:quick, check:all)
+- `check.nix` - Aggregate check tasks (check:quick, check:all, configurable strict typecheck gate)
 - `clean.nix` - Clean tasks
 - `genie.nix` - Genie config generation tasks
 - `ts-effect-lsp.nix` - Effect LSP diagnostics via tsgo (`ts:effect-lsp`)
@@ -41,7 +41,7 @@ imports = [
 - `setup.nix` - Setup tasks
 - `test.nix` - Test tasks
 - `test-playwright.nix` - Playwright e2e tasks
-- `ts.nix` - TypeScript tasks
+- `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
 - `bun.nix` - Bun tasks (legacy)
 - `context.nix` - Context directory tasks
 - `lint-genie.nix` - Genie lint tasks
