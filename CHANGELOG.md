@@ -56,6 +56,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **genie/external**: Export the shared `@effect-atom/atom` peer-version allowlist in megarepo pnpm policy
+  - Keeps downstream repos on `strictPeerDependencies: true` while allowing the Effect version ranges already used inside effect-utils itself
+  - Prevents consumer workspace installs from failing on the known pre-1.0 peer ranges declared by `@effect-atom/atom`
 - **genie/external**: Export the full shared patch registry to peer repos
   - Adds the `node-pty@1.1.0` patch to `createPnpmPatchedDependencies()` / `pnpmPatchedDependencies()`
   - Unblocks composed-root `pnpm-workspace.yaml` generation in downstream megarepos that import `@overeng/utils`
