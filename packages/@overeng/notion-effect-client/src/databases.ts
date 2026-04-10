@@ -1,8 +1,12 @@
 import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Option, type Schema, Stream } from 'effect'
 
-import type { Page } from '@overeng/notion-effect-schema'
-import { DatabaseSchema, PageSchema } from '@overeng/notion-effect-schema'
+import type { DataSourceSchema, Page } from '@overeng/notion-effect-schema'
+import {
+  DataSourceSchema as DataSourceSchemaCodec,
+  DatabaseSchema,
+  PageSchema,
+} from '@overeng/notion-effect-schema'
 
 import type { NotionConfig } from './config.ts'
 import type { NotionApiError } from './error.ts'
@@ -70,6 +74,22 @@ export interface RetrieveDatabaseOptions {
   readonly databaseId: string
 }
 
+/** Options for resolving a database query target */
+export interface ResolveQueryTargetOptions {
+  /** Database ID to resolve */
+  readonly databaseId: string
+}
+
+/** Resolved target info for querying and schema validation */
+export interface DatabaseQueryTarget {
+  /** Retrieved database metadata */
+  readonly database: DatabaseSchema
+  /** Property schema source for validation/introspection */
+  readonly schemaSource: DatabaseSchema | DataSourceSchema
+  /** Data source ID used by query endpoints */
+  readonly dataSourceId: string
+}
+
 // -----------------------------------------------------------------------------
 // Service Implementation
 // -----------------------------------------------------------------------------
@@ -86,6 +106,39 @@ export const retrieve = Effect.fn('NotionDatabases.retrieve')(function* (
     path: `/databases/${opts.databaseId}`,
     responseSchema: DatabaseSchema,
   })
+})
+
+/**
+ * Resolve the query target for a database.
+ *
+ * In API 2026-03-11, queries and property schemas live on the first child data
+ * source rather than on the database itself.
+ */
+export const resolveQueryTarget = Effect.fn('NotionDatabases.resolveQueryTarget')(function* (
+  opts: ResolveQueryTargetOptions,
+) {
+  const database = yield* retrieve({ databaseId: opts.databaseId })
+  const firstDataSourceId = database.data_sources?.[0]?.id
+  const dataSourceId = firstDataSourceId ?? database.id
+
+  if (firstDataSourceId === undefined) {
+    return {
+      database,
+      schemaSource: database,
+      dataSourceId,
+    } satisfies DatabaseQueryTarget
+  }
+
+  const schemaSource = yield* get({
+    path: `/data_sources/${dataSourceId}`,
+    responseSchema: DataSourceSchemaCodec,
+  })
+
+  return {
+    database,
+    schemaSource,
+    dataSourceId,
+  } satisfies DatabaseQueryTarget
 })
 
 /** Result of a typed database query */
@@ -284,6 +337,7 @@ export function queryStream<TProperties, I, R>(
 /** Notion Databases API */
 export const NotionDatabases = {
   retrieve,
+  resolveQueryTarget,
   query,
   queryStream,
 } as const

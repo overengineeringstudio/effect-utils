@@ -10,16 +10,16 @@ import type {
   RollupFunction,
   SelectOptionConfig,
 } from '@overeng/notion-effect-schema'
+import {
+  notionPropertyMeta,
+  PropertySchema as PropertySchemaCodec,
+} from '@overeng/notion-effect-schema'
 
 /**
  * Schema source for property helpers — accepts either a DatabaseSchema or DataSourceSchema.
  * In API 2026-03-11, properties live on data sources rather than databases.
  */
 type SchemaSource = DatabaseSchema | DataSourceSchema
-import {
-  notionPropertyMeta,
-  PropertySchema as PropertySchemaCodec,
-} from '@overeng/notion-effect-schema'
 
 /** Error thrown when database schema doesn't match expected property types */
 export class SchemaMismatchError extends Schema.TaggedError<SchemaMismatchError>()(
@@ -209,11 +209,11 @@ export const validatePropertiesFromSchema = Effect.fn('SchemaHelpers.validatePro
   function* (args: {
     schema: Schema.Schema.AnyNoContext
     databaseId: string
-    databaseSchema: DatabaseSchema
+    schemaSource: SchemaSource
   }) {
     const required = yield* getRequiredPropertiesFromSchema(args.schema)
     return yield* validateProperties({
-      schema: args.databaseSchema,
+      schema: args.schemaSource,
       databaseId: args.databaseId,
       required,
     })

@@ -1,7 +1,12 @@
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
-import { DatabaseSchema } from '@overeng/notion-effect-schema'
+import {
+  DataSourceSchema,
+  DatabaseSchema,
+  NotionSchema,
+  notionPropertyMeta,
+} from '@overeng/notion-effect-schema'
 import { shouldNeverHappen } from '@overeng/utils'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
@@ -25,6 +30,27 @@ const makeDatabase = (properties: Record<string, unknown>) =>
     is_inline: false,
     public_url: null,
     properties,
+  })
+
+const makeDataSource = (properties: Record<string, unknown>) =>
+  Schema.decodeUnknownSync(DataSourceSchema)({
+    object: 'data_source',
+    id: 'data-source-id',
+    title: [],
+    description: [],
+    icon: null,
+    cover: null,
+    parent: { type: 'database_id', database_id: 'db-id' },
+    database_parent: { type: 'workspace', workspace: true },
+    properties,
+    is_inline: false,
+    in_trash: false,
+    url: 'https://notion.so/data-source',
+    public_url: null,
+    created_time: '2025-01-01T00:00:00.000Z',
+    created_by: { object: 'user', id: 'user-id' },
+    last_edited_time: '2025-01-01T00:00:00.000Z',
+    last_edited_by: { object: 'user', id: 'user-id' },
   })
 
 Vitest.describe('SchemaHelpers', () => {
@@ -105,6 +131,45 @@ Vitest.describe('SchemaHelpers', () => {
         if (result._tag === 'Left') {
           expect(result.left.missing.map((m) => m.name)).toEqual(['Amount'])
         }
+      }),
+    )
+  })
+
+  Vitest.describe('validatePropertiesFromSchema', () => {
+    Vitest.it.effect('accepts a data source schema as the validation source', () =>
+      Effect.gen(function* () {
+        const dataSource = makeDataSource({
+          Name: { id: 'prop-name', type: 'title', title: {} },
+          Amount: {
+            id: 'prop-amount',
+            type: 'number',
+            number: { format: 'number' },
+          },
+        })
+
+        yield* SchemaHelpers.validatePropertiesFromSchema({
+          schema: Schema.Struct({
+            Name: NotionSchema.title.annotations({
+              [notionPropertyMeta]: {
+                _tag: 'title',
+                id: 'prop-name',
+                name: 'Name',
+                description: null,
+              },
+            }),
+            Amount: NotionSchema.numberOption.annotations({
+              [notionPropertyMeta]: {
+                _tag: 'number',
+                id: 'prop-amount',
+                name: 'Amount',
+                description: null,
+                number: { format: 'number' },
+              },
+            }),
+          }),
+          databaseId: 'db-id',
+          schemaSource: dataSource,
+        })
       }),
     )
   })
