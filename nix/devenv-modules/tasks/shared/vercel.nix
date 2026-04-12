@@ -284,7 +284,7 @@ let
 
           mkdir -p "$work_dir/.vercel/output/static"
           echo '{"version": 3}' > "$work_dir/.vercel/output/config.json"
-          cp -r "$deploy_dir/"* "$work_dir/.vercel/output/static/"
+          cp -r "$deploy_dir"/. "$work_dir/.vercel/output/static/"
 
           echo "Deploying ${deployment.name} ($deploy_type) from $deploy_dir..."
 
