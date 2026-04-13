@@ -132,11 +132,15 @@ let
         fi
 
         deployed_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        deploy_metadata_json="$(${pkgs.jq}/bin/jq -cn --arg packageName '${pkg.name}' --arg rawDeployUrl "$raw_deploy_url" --arg finalUrl "$final_url" --arg deployedAtUtc "$deployed_at_utc" '{packageName: $packageName, rawDeployUrl: $rawDeployUrl, finalUrl: $finalUrl, deployedAtUtc: $deployedAtUtc}')"
         echo "Netlify deploy package: ${pkg.name}"
         echo "Netlify raw deploy URL: $raw_deploy_url"
         echo "Netlify deploy URL: $final_url"
         echo "Netlify deployed at UTC: $deployed_at_utc"
-        echo "NETLIFY_DEPLOY_METADATA: $(${pkgs.jq}/bin/jq -cn --arg packageName '${pkg.name}' --arg rawDeployUrl "$raw_deploy_url" --arg finalUrl "$final_url" --arg deployedAtUtc "$deployed_at_utc" '{packageName: $packageName, rawDeployUrl: $rawDeployUrl, finalUrl: $finalUrl, deployedAtUtc: $deployedAtUtc}')"
+        if [ -n "''${STORYBOOK_PREVIEW_METADATA_PATH:-}" ]; then
+          printf '%s\n' "$deploy_metadata_json" >> "$STORYBOOK_PREVIEW_METADATA_PATH"
+        fi
+        echo "NETLIFY_DEPLOY_METADATA: $deploy_metadata_json"
         rm -f "$deploy_json"
       '';
     };

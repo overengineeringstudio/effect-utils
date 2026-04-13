@@ -2451,7 +2451,10 @@ jobs:
         shell: bash
         run: |
           tmp_log="/tmp/netlify-storybook-deploy.log"
+          tmp_metadata="/tmp/netlify-storybook-deploy.ndjson"
           rm -f "$tmp_log"
+          rm -f "$tmp_metadata"
+          export STORYBOOK_PREVIEW_METADATA_PATH="$tmp_metadata"
           if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
             echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available)"
             exit 0
@@ -2682,6 +2685,7 @@ jobs:
         env:
           GH_TOKEN: '${{ github.token }}'
           GH_REPO: '${{ github.repository }}'
+          STORYBOOK_PREVIEW_METADATA_PATH: /tmp/netlify-storybook-deploy.ndjson
           STORYBOOK_PREVIEW_LOG_PATH: /tmp/netlify-storybook-deploy.log
         run: |
           site="overeng-utils"
@@ -2720,7 +2724,7 @@ jobs:
           const statePrefix = "<!-- deploy-preview-comment:state\n"
           const stateSuffix = "\n-->"
           const stateTag = 'storybook-preview-comment-state'
-          const schemaVersion = 2
+          const schemaVersion = 3
           const timeZone = 'Europe/Berlin'
           const maxCommits = 50
 
@@ -2782,6 +2786,7 @@ jobs:
               packageName: expectString(record.packageName, `${path}.packageName`),
               rawDeployUrl: expectUrl(record.url, `${path}.url`),
               finalUrl: expectUrl(record.url, `${path}.url`),
+              deployedAtUtc: undefined,
             }
           }
 
@@ -2792,6 +2797,18 @@ jobs:
               packageName: expectString(record.packageName, `${path}.packageName`),
               rawDeployUrl: expectUrl(record.rawDeployUrl, `${path}.rawDeployUrl`),
               finalUrl: expectUrl(record.finalUrl, `${path}.finalUrl`),
+              deployedAtUtc: undefined,
+            }
+          }
+
+          const validatePackageV3 = (value, path) => {
+            const record = expectObject(value, path)
+            expectExactKeys(record, ['packageName', 'rawDeployUrl', 'finalUrl', 'deployedAtUtc'], path)
+            return {
+              packageName: expectString(record.packageName, `${path}.packageName`),
+              rawDeployUrl: expectUrl(record.rawDeployUrl, `${path}.rawDeployUrl`),
+              finalUrl: expectUrl(record.finalUrl, `${path}.finalUrl`),
+              deployedAtUtc: expectIsoUtc(record.deployedAtUtc, `${path}.deployedAtUtc`),
             }
           }
 
@@ -2811,7 +2828,7 @@ jobs:
             const record = expectObject(value, 'state')
             expectExactKeys(record, ['_tag', 'schemaVersion', 'timeZone', 'packageOrder', 'commits'], 'state')
             if (record._tag !== stateTag) fail(`state._tag must be ${stateTag}`)
-            if (record.schemaVersion !== 1 && record.schemaVersion !== schemaVersion) fail(`state.schemaVersion must be 1 or ${schemaVersion}`)
+            if (![1, 2, schemaVersion].includes(record.schemaVersion)) fail(`state.schemaVersion must be 1, 2, or ${schemaVersion}`)
             if (record.timeZone !== timeZone) fail(`state.timeZone must be ${timeZone}`)
             const packageOrder = expectArray(record.packageOrder, "state.packageOrder").map((pkg, index) =>
               expectString(pkg, `state.packageOrder[${index}]`),
@@ -2821,9 +2838,16 @@ jobs:
               return {
                 ...validatedCommit,
                 packages: validatedCommit.packages.map((pkg, packageIndex) =>
-                  record.schemaVersion === 1
-                    ? validatePackageV1(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
-                    : validatePackageV2(pkg.value, `state.commits[${index}].packages[${packageIndex}]`),
+                  ((validatedPackage) => ({
+                    ...validatedPackage,
+                    deployedAtUtc: validatedPackage.deployedAtUtc ?? validatedCommit.deployedAtUtc,
+                  }))(
+                    record.schemaVersion === 1
+                      ? validatePackageV1(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
+                      : record.schemaVersion === 2
+                        ? validatePackageV2(pkg.value, `state.commits[${index}].packages[${packageIndex}]`)
+                        : validatePackageV3(pkg.value, `state.commits[${index}].packages[${packageIndex}]`),
+                  ),
                 ),
               }
             })
@@ -2861,21 +2885,16 @@ jobs:
               ? pkg.rawDeployUrl
               : `${pkg.rawDeployUrl}<br><sub>Alias: ${pkg.finalUrl}</sub>`
 
-          const logPath = expectString(process.env.STORYBOOK_PREVIEW_LOG_PATH, "STORYBOOK_PREVIEW_LOG_PATH")
+          const metadataPath = expectString(process.env.STORYBOOK_PREVIEW_METADATA_PATH, "STORYBOOK_PREVIEW_METADATA_PATH")
           const deployedAtUtc = expectIsoUtc(process.env.STORYBOOK_PREVIEW_DEPLOYED_AT_UTC, "STORYBOOK_PREVIEW_DEPLOYED_AT_UTC")
 
-          const currentPackages = existsSync(logPath)
-            ? readFileSync(logPath, "utf8")
+          const currentPackages = existsSync(metadataPath)
+            ? readFileSync(metadataPath, "utf8")
                 .split("\n")
-                .flatMap((line) => {
-                  const prefix = "NETLIFY_DEPLOY_METADATA: "
-                  const prefixIndex = line.indexOf(prefix)
-                  if (prefixIndex === -1) return []
-                  return [validatePackageV2(JSON.parse(line.slice(prefixIndex + prefix.length)), "currentPackages")]
-                })
+                .flatMap((line) => (line.trim().length === 0 ? [] : [validatePackageV3(JSON.parse(line), "currentPackages")]))
             : []
 
-          currentPackages.forEach((pkg, index) => validatePackageV2(pkg, `currentPackages[${index}]`))
+          currentPackages.forEach((pkg, index) => validatePackageV3(pkg, `currentPackages[${index}]`))
 
           if (currentPackages.length === 0) {
             writeFileSync(summaryPath, `## ${commentTitle}\n\n${noRowsMessage}\n`)
@@ -2917,7 +2936,7 @@ jobs:
           for (const commit of nextState.commits) {
             for (const pkg of commit.packages) {
               if (!latestByPackage.has(pkg.packageName)) {
-                latestByPackage.set(pkg.packageName, { ...pkg, deployedAtUtc: commit.deployedAtUtc })
+                latestByPackage.set(pkg.packageName, pkg)
               }
             }
           }
