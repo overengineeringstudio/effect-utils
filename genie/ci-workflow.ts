@@ -421,23 +421,30 @@ echo "Pinned devenv rev: $DEVENV_REV"`,
 } as const
 
 /**
- * Keep pnpm's hot mutable content isolated per job while still allowing cache reuse across runs.
+ * Keep pnpm's workspace-relative GVS projection isolated per job.
  *
- * In the pnpm 11 + GVS configuration we use today, the effective hot state lives
- * under `PNPM_HOME`, not `PNPM_STORE_DIR`. `PNPM_HOME` must stay
- * workspace-relative because the GVS links embed absolute paths and those need
- * to stay valid for relocatable artifacts like `vercel deploy --prebuilt`.
+ * `PNPM_HOME` must stay workspace-relative because pnpm 11 embeds absolute
+ * paths into the GVS links, and those need to stay valid for relocatable
+ * artifacts like `vercel deploy --prebuilt`.
  */
 export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 
 /**
- * Keep pnpm's auxiliary mutable store content isolated per job.
+ * Keep pnpm's tarball / package store isolated per job.
  *
- * We still wire `PNPM_STORE_DIR` explicitly for pnpm, but the primary CI cache
- * target is `PNPM_HOME` because that is where pnpm 11 GVS keeps the reusable
- * links and metadata.
+ * Unlike `PNPM_HOME`, this lives outside the workspace so jobs do not fight
+ * over mutable store state on shared runners.
  */
 export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
+
+/**
+ * Cache the full pnpm hot state, not just the GVS home projection.
+ *
+ * `PNPM_HOME` keeps the reusable GVS links / metadata while `PNPM_STORE_DIR`
+ * keeps the fetched package tarballs. Caching both avoids re-downloading the
+ * entire workspace on each CI job when the lockfile has not changed.
+ */
+export const jobLocalPnpmCachePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\n')
 
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
@@ -455,11 +462,8 @@ export const pnpmStoreSetupStep = {
 const pnpmStoreCachePrimaryKey = (keyPrefix: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
 
-const pnpmStoreCacheRestorePrefix = (keyPrefix: string) =>
-  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`
-
 /**
- * Restore the job-local pnpm home snapshot before any install work runs.
+ * Restore the job-local pnpm state snapshot before any install work runs.
  *
  * This is intentionally separate from the save step so a job can still publish
  * a freshly populated store even if the main task fails later. The trade-off is
@@ -472,28 +476,27 @@ export const restorePnpmStoreStep = (opts?: {
   path?: string
 }) => {
   const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
-  const path = opts?.path ?? jobLocalPnpmHome
+  const path = opts?.path ?? jobLocalPnpmCachePaths
 
   return {
     id: opts?.stepId ?? 'restore-pnpm-store',
-    name: 'Restore pnpm home',
+    name: 'Restore pnpm state',
     uses: 'actions/cache/restore@v4' as const,
     with: {
       path,
       // The fetched store contents are platform-specific, so the cache must
       // isolate both OS and CPU architecture to avoid cross-platform corruption.
       key: pnpmStoreCachePrimaryKey(keyPrefix),
-      'restore-keys': pnpmStoreCacheRestorePrefix(keyPrefix),
     },
   }
 }
 
 /**
- * Save the job-local pnpm home after the main task graph runs.
+ * Save the job-local pnpm state after the main task graph runs.
  *
- * We only upload when the restore step missed the exact key. A restore-key hit
- * still saves the new primary key so lockfile changes warm later runs, while an
- * exact hit skips the redundant upload.
+ * We only upload when the restore step missed the exact key. Exact-key reuse
+ * keeps CI deterministic across branches that happen to share a lockfile,
+ * without restoring stale fallback state from unrelated lockfile revisions.
  */
 export const savePnpmStoreStep = (opts?: {
   keyPrefix?: string
@@ -502,10 +505,10 @@ export const savePnpmStoreStep = (opts?: {
 }) => {
   const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
   const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-store'
-  const path = opts?.path ?? jobLocalPnpmHome
+  const path = opts?.path ?? jobLocalPnpmCachePaths
 
   return {
-    name: 'Save pnpm home',
+    name: 'Save pnpm state',
     if: `\${{ always() && !cancelled() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
     uses: 'actions/cache/save@v4' as const,
     with: {
