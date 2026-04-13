@@ -36,6 +36,7 @@ let
   lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
+  pnpmCommand = "${pkgs.nodejs}/bin/node ${pnpm}/libexec/pnpm/bin/pnpm.mjs";
   nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
     const fs = require("fs");
     const raw = fs.readFileSync(0, "utf8");
@@ -287,8 +288,8 @@ in
                     # staged tree first so pnpm validates against the exact
                     # install root we are about to materialize, then enforce
                     # that synthesized lockfile with a frozen install.
-                    pnpm install --lockfile-only --ignore-scripts
-                    pnpm install --frozen-lockfile --ignore-scripts
+                    ${pnpmCommand} install --lockfile-only --ignore-scripts
+                    ${pnpmCommand} install --frozen-lockfile --ignore-scripts
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
                   log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
