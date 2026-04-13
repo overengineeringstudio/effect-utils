@@ -48,6 +48,7 @@
 }:
 { lib, pkgs, ... }:
 let
+  deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   hasDeployments = deployments != [ ];
 
   # Shared env validation + input parsing (used by both modes)
@@ -60,29 +61,30 @@ let
     ''
       set -euo pipefail
 
-      if [ -z "''${VERCEL_TOKEN:-}" ]; then
-        echo "Error: VERCEL_TOKEN is not set." >&2
-        echo "Set it via: export VERCEL_TOKEN=\$(op read 'op://...')" >&2
-        exit 1
-      fi
-
-      org_id="''${${orgIdEnv}:-}"
-      if [ -z "$org_id" ]; then
-        echo "Error: ${orgIdEnv} is not set." >&2
-        exit 1
-      fi
-
-      project_id="''${${projectIdEnv}:-}"
-      if [ -z "$project_id" ]; then
-        echo "Error: ${projectIdEnv} is not set." >&2
-        exit 1
-      fi
-
-      export VERCEL_ORG_ID="$org_id"
-      export VERCEL_PROJECT_ID="$project_id"
-
-      input="''${DEVENV_TASK_INPUT:-"{}"}"
-      deploy_type="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.type // "preview"')"
+      ${deployTask.mkRequiredEnvCheck {
+        envName = "VERCEL_TOKEN";
+        errorMessage = "Error: VERCEL_TOKEN is not set.";
+        hint = "Set it via: export VERCEL_TOKEN=$(op read 'op://...')";
+      }}
+      ${deployTask.mkRequiredEnvCheck {
+        envName = orgIdEnv;
+        exportName = "VERCEL_ORG_ID";
+        localName = "org_id";
+      }}
+      ${deployTask.mkRequiredEnvCheck {
+        envName = projectIdEnv;
+        exportName = "VERCEL_PROJECT_ID";
+        localName = "project_id";
+      }}
+      ${deployTask.mkDeployTypeParser {
+        defaultType = "preview";
+        allowedTypes = [
+          "prod"
+          "pr"
+          "preview"
+        ];
+        providerLabel = "Vercel";
+      }}
     '';
 
   # Shared URL extraction + output (used by both modes)
@@ -101,26 +103,8 @@ let
         exit 1
       fi
 
+      raw_deploy_url="$deploy_url"
       final_url="$deploy_url"
-    '';
-
-  outputUrl =
-    deployment:
-    ''
-      deploy_key_suffix="$(printf '%s' '${deployment.name}' | tr '[:lower:]-' '[:upper:]_' | tr -cd 'A-Z0-9_')"
-      if [ -n "''${DEVENV_TASK_OUTPUT_FILE:-}" ]; then
-        ${pkgs.jq}/bin/jq -n \
-          --arg genericKey "VERCEL_DEPLOY_URL" \
-          --arg scopedKey "VERCEL_DEPLOY_URL_''${deploy_key_suffix}" \
-          --arg genericRawKey "VERCEL_RAW_DEPLOY_URL" \
-          --arg scopedRawKey "VERCEL_RAW_DEPLOY_URL_''${deploy_key_suffix}" \
-          --arg rawDeployUrl "$deploy_url" \
-          --arg finalDeployUrl "$final_url" \
-          '{devenv:{env:{($genericKey):$finalDeployUrl,($scopedKey):$finalDeployUrl,($genericRawKey):$rawDeployUrl,($scopedRawKey):$rawDeployUrl}}}' > "$DEVENV_TASK_OUTPUT_FILE"
-      fi
-    
-      echo "Vercel raw deploy URL: $deploy_url"
-      echo "Vercel deploy URL: $final_url"
     '';
 
   # ── Build mode ──────────────────────────────────────────────────────────
@@ -237,7 +221,11 @@ let
           esac
 
           ${sharedEpilogue deployment}
-          ${outputUrl deployment}
+          ${deployTask.mkDeployMetadataEmitter {
+            provider = "vercel";
+            providerLabel = "Vercel";
+            target = deployment.name;
+          }}
         '';
       };
     };
@@ -314,7 +302,11 @@ let
             final_url="https://''${alias_url}"
           fi
 
-          ${outputUrl deployment}
+          ${deployTask.mkDeployMetadataEmitter {
+            provider = "vercel";
+            providerLabel = "Vercel";
+            target = deployment.name;
+          }}
         '';
       };
     };

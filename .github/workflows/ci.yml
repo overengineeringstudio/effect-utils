@@ -2447,8 +2447,8 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
-      - name: Deploy storybooks to Netlify
-        id: deploy
+      - id: deploy
+        name: Deploy storybooks to Netlify
         shell: bash
         run: |
           tmp_log="/tmp/netlify-storybook-deploy.log"
@@ -2682,13 +2682,23 @@ jobs:
           import { readFileSync } from 'node:fs'
 
           const [logPath] = process.argv.slice(2)
-          const prefix = "NETLIFY_DEPLOY_METADATA: "
+          const prefixes = ["DEPLOY_TASK_METADATA: ", "NETLIFY_DEPLOY_METADATA: "]
           const packages = readFileSync(logPath, "utf8")
             .split("\n")
             .flatMap((line) => {
-              const prefixIndex = line.indexOf(prefix)
-              if (prefixIndex === -1) return []
-              return [JSON.parse(line.slice(prefixIndex + prefix.length))]
+              const prefix = prefixes.find((candidate) => line.includes(candidate))
+              if (!prefix) return []
+              const rawRecord = JSON.parse(line.slice(line.indexOf(prefix) + prefix.length))
+              if (rawRecord.provider === "netlify") {
+                return [{
+                  packageName: rawRecord.displayName ?? rawRecord.target,
+                  rawDeployUrl: rawRecord.rawDeployUrl,
+                  finalUrl: rawRecord.finalUrl,
+                  deployedAtUtc: rawRecord.deployedAtUtc,
+                }]
+              }
+              if ("packageName" in rawRecord) return [rawRecord]
+              return []
             })
           const dedupedPackages = [...new Map(packages.map((pkg) => [pkg.packageName, pkg])).values()]
           process.stdout.write(JSON.stringify(dedupedPackages))
@@ -2900,10 +2910,15 @@ jobs:
               : `${pkg.rawDeployUrl}<br><sub>Alias: ${pkg.finalUrl}</sub>`
 
           const currentPackagesJson = expectString(process.env.STORYBOOK_PREVIEW_PACKAGES_JSON, "STORYBOOK_PREVIEW_PACKAGES_JSON")
-          const deployedAtUtc = expectIsoUtc(process.env.STORYBOOK_PREVIEW_DEPLOYED_AT_UTC, "STORYBOOK_PREVIEW_DEPLOYED_AT_UTC")
+          const fallbackDeployedAtUtc = expectIsoUtc(process.env.STORYBOOK_PREVIEW_DEPLOYED_AT_UTC, "STORYBOOK_PREVIEW_DEPLOYED_AT_UTC")
 
           const currentPackages = expectArray(JSON.parse(currentPackagesJson), "currentPackages").map((pkg, index) =>
             validatePackageV3(pkg, `currentPackages[${index}]`),
+          )
+
+          const deployedAtUtc = currentPackages.reduce(
+            (latest, pkg) => (pkg.deployedAtUtc > latest ? pkg.deployedAtUtc : latest),
+            fallbackDeployedAtUtc,
           )
 
           currentPackages.forEach((pkg, index) => validatePackageV3(pkg, `currentPackages[${index}]`))

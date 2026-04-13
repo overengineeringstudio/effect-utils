@@ -33,6 +33,7 @@
 { lib, pkgs, ... }:
 let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
   hasPackages = packages != [ ];
 
@@ -45,11 +46,11 @@ let
       exec = ''
         set -euo pipefail
 
-        if [ -z "''${NETLIFY_AUTH_TOKEN:-}" ]; then
-          echo "Error: NETLIFY_AUTH_TOKEN is not set." >&2
-          echo "Set it via: export NETLIFY_AUTH_TOKEN=\$(op read 'op://...')" >&2
-          exit 1
-        fi
+        ${deployTask.mkRequiredEnvCheck {
+          envName = "NETLIFY_AUTH_TOKEN";
+          errorMessage = "Error: NETLIFY_AUTH_TOKEN is not set.";
+          hint = "Set it via: export NETLIFY_AUTH_TOKEN=$(op read 'op://...')";
+        }}
 
         deploy_dir="${pkg.path}/storybook-static"
         workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' "${pkg.path}/package.json")"
@@ -60,9 +61,15 @@ let
           exit 0
         fi
 
-        # Parse deploy context from DEVENV_TASK_INPUT (set by devenv --input flag)
-        input="''${DEVENV_TASK_INPUT:-"{}"}"
-        deploy_type="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.type // "draft"')"
+        ${deployTask.mkDeployTypeParser {
+          defaultType = "draft";
+          allowedTypes = [
+            "prod"
+            "pr"
+            "draft"
+          ];
+          providerLabel = "Netlify";
+        }}
         short_sha="$(${git} rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
         alias_flag=""
@@ -102,9 +109,9 @@ let
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
         # pnpm 11 requires explicit --allow-build for packages with native deps
-        deploy_log="$(mktemp)"
+        deploy_json="$(mktemp)"
         # shellcheck disable=SC2086
-        pnpm --package=netlify-cli dlx \
+        if ! pnpm --package=netlify-cli dlx \
           --allow-build=sharp \
           --allow-build=esbuild \
           --allow-build=unix-dgram \
@@ -115,30 +122,21 @@ let
           $filter_flag \
           --no-build \
           $alias_flag \
-          --message="$message" 2>&1 | tee "$deploy_log"
-
-        deploy_exit="''${PIPESTATUS[0]}"
-        if [ "$deploy_exit" -ne 0 ]; then
-          rm -f "$deploy_log"
-          exit "$deploy_exit"
-        fi
-
-        deploy_id="$(${pkgs.gnugrep}/bin/grep -Eo 'https://app.netlify.com/sites/[^[:space:]]+/deploys/[A-Za-z0-9]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's#.*/deploys/##' | tail -n 1 || true)"
-        logged_unique_url="$(${pkgs.gnugrep}/bin/grep -Eo 'Unique deploy URL:[[:space:]]+https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's/^Unique deploy URL:[[:space:]]+//' | tail -n 1 || true)"
-        logged_website_url="$(${pkgs.gnugrep}/bin/grep -Eo 'Website( Draft)? URL:[[:space:]]+https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's/^Website( Draft)? URL:[[:space:]]+//' | tail -n 1 || true)"
-
-        raw_deploy_url="$logged_unique_url"
-        if [ -z "$raw_deploy_url" ] && [ -n "$deploy_id" ]; then
-          raw_deploy_url="https://$deploy_id--${site}.netlify.app"
-        fi
-        if [ -z "$raw_deploy_url" ]; then
-          echo "Error: Could not determine unique Netlify deploy URL for ${pkg.name}" >&2
-          cat "$deploy_log" >&2
-          rm -f "$deploy_log"
+          --message="$message" \
+          --json > "$deploy_json"; then
+          rm -f "$deploy_json"
           exit 1
         fi
 
-        final_url="$logged_website_url"
+        raw_deploy_url="$(${pkgs.jq}/bin/jq -r '.deploy_ssl_url // .deploy_url // empty' "$deploy_json")"
+        if [ -z "$raw_deploy_url" ]; then
+          echo "Error: Could not determine unique Netlify deploy URL for ${pkg.name}" >&2
+          cat "$deploy_json" >&2
+          rm -f "$deploy_json"
+          exit 1
+        fi
+
+        final_url="$(${pkgs.jq}/bin/jq -r '.url // empty' "$deploy_json")"
         if [ -n "$alias_name" ]; then
           final_url="https://$alias_name--${site}.netlify.app"
         fi
@@ -146,14 +144,13 @@ let
           final_url="$raw_deploy_url"
         fi
 
-        deployed_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        deploy_metadata_json="$(${pkgs.jq}/bin/jq -cn --arg packageName '${pkg.name}' --arg rawDeployUrl "$raw_deploy_url" --arg finalUrl "$final_url" --arg deployedAtUtc "$deployed_at_utc" '{packageName: $packageName, rawDeployUrl: $rawDeployUrl, finalUrl: $finalUrl, deployedAtUtc: $deployedAtUtc}')"
-        echo "Netlify deploy package: ${pkg.name}"
-        echo "Netlify raw deploy URL: $raw_deploy_url"
-        echo "Netlify deploy URL: $final_url"
-        echo "Netlify deployed at UTC: $deployed_at_utc"
-        echo "NETLIFY_DEPLOY_METADATA: $deploy_metadata_json"
-        rm -f "$deploy_log"
+        ${deployTask.mkDeployMetadataEmitter {
+          provider = "netlify";
+          providerLabel = "Netlify";
+          target = pkg.name;
+          legacyMetadataPrefix = "NETLIFY_DEPLOY_METADATA";
+        }}
+        rm -f "$deploy_json"
       '';
     };
   };
