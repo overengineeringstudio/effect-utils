@@ -121,6 +121,7 @@ let
           netlify deploy \
           --dir="$deploy_dir" \
           --site="${siteId}" \
+          --auth="$NETLIFY_AUTH_TOKEN" \
           $filter_flag \
           --no-build \
           $alias_flag \
