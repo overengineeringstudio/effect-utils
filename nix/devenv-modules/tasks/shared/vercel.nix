@@ -112,10 +112,14 @@ let
         ${pkgs.jq}/bin/jq -n \
           --arg genericKey "VERCEL_DEPLOY_URL" \
           --arg scopedKey "VERCEL_DEPLOY_URL_''${deploy_key_suffix}" \
-          --arg deployUrl "$final_url" \
-          '{devenv:{env:{($genericKey):$deployUrl,($scopedKey):$deployUrl}}}' > "$DEVENV_TASK_OUTPUT_FILE"
+          --arg genericRawKey "VERCEL_RAW_DEPLOY_URL" \
+          --arg scopedRawKey "VERCEL_RAW_DEPLOY_URL_''${deploy_key_suffix}" \
+          --arg rawDeployUrl "$deploy_url" \
+          --arg finalDeployUrl "$final_url" \
+          '{devenv:{env:{($genericKey):$finalDeployUrl,($scopedKey):$finalDeployUrl,($genericRawKey):$rawDeployUrl,($scopedRawKey):$rawDeployUrl}}}' > "$DEVENV_TASK_OUTPUT_FILE"
       fi
-
+    
+      echo "Vercel raw deploy URL: $deploy_url"
       echo "Vercel deploy URL: $final_url"
     '';
 
