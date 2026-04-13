@@ -64,12 +64,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -293,11 +294,13 @@ jobs:
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
           run_nix_gc_race_retry 'devenv tasks run ts:check:strict --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run ts:check:strict --mode before'
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -392,12 +395,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -621,11 +625,13 @@ jobs:
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
           run_nix_gc_race_retry 'devenv tasks run lint:check --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run lint:check --mode before'
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -723,12 +729,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -952,11 +959,13 @@ jobs:
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
           run_nix_gc_race_retry 'devenv tasks run test:run --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:run --mode before'
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -1054,12 +1063,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1283,11 +1293,13 @@ jobs:
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
           run_nix_gc_race_retry 'devenv tasks run nix:check --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:check --mode before'
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -1528,12 +1540,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1674,11 +1687,13 @@ jobs:
               exit 1
             fi
           done
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -1773,12 +1788,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1896,11 +1912,13 @@ jobs:
         run: |
           bash genie/ci-scripts/nix-gc-race-retry.test.sh
           bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -1996,12 +2014,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -2225,11 +2244,13 @@ jobs:
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
           run_nix_gc_race_retry 'devenv tasks run test:notion-integration --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:notion-integration --mode before'
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
@@ -2328,12 +2349,13 @@ jobs:
           echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
           echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
       - id: restore-pnpm-store
-        name: Restore pnpm home
+        name: Restore pnpm state
         uses: actions/cache/restore@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
-          restore-keys: 'pnpm-home-${{ runner.os }}-${{ runner.arch }}-'
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -2727,11 +2749,13 @@ jobs:
             nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md --edit-last 2>/dev/null \
               || nix run nixpkgs#gh -- pr comment "${{ github.event.pull_request.number }}" --body-file /tmp/comment.md
           fi
-      - name: Save pnpm home
+      - name: Save pnpm state
         if: "${{ always() && !cancelled() && steps.restore-pnpm-store.outputs.cache-hit != 'true' }}"
         uses: actions/cache/save@v4
         with:
-          path: '${{ github.workspace }}/.pnpm-home'
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
           key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
