@@ -6,7 +6,8 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.netlify {
-#       site = "my-netlify-site";
+#       siteName = "my-netlify-site";
+#       siteId = "01234567-89ab-cdef-0123-456789abcdef";
 #       packages = [
 #         { path = "packages/@overeng/tui-react"; name = "tui-react"; }
 #         { path = "packages/@overeng/megarepo"; name = "megarepo"; }
@@ -27,7 +28,8 @@
 # NOTE: pkg.name must be a valid Netlify alias slug (lowercase, alphanumeric, hyphens only).
 {
   packages ? [ ],
-  site, # Required — Netlify site name (e.g. "overeng-utils")
+  siteName, # Required — Netlify site slug used for URL construction (e.g. "overeng-utils")
+  siteId, # Required — stable Netlify site ID used for CLI targeting
   buildTaskPrefix ? "storybook:build",
 }:
 { lib, pkgs, ... }:
@@ -118,7 +120,7 @@ let
           --allow-build=@parcel/watcher \
           netlify deploy \
           --dir="$deploy_dir" \
-          --site="${site}" \
+          --site="${siteId}" \
           $filter_flag \
           --no-build \
           $alias_flag \
@@ -136,7 +138,7 @@ let
 
         raw_deploy_url="$logged_unique_url"
         if [ -z "$raw_deploy_url" ] && [ -n "$deploy_id" ]; then
-          raw_deploy_url="https://$deploy_id--${site}.netlify.app"
+          raw_deploy_url="https://$deploy_id--${siteName}.netlify.app"
         fi
         if [ -z "$raw_deploy_url" ]; then
           echo "Error: Could not determine unique Netlify deploy URL for ${pkg.name}" >&2
@@ -147,7 +149,7 @@ let
 
         final_url="$logged_website_url"
         if [ -n "$alias_name" ]; then
-          final_url="https://$alias_name--${site}.netlify.app"
+          final_url="https://$alias_name--${siteName}.netlify.app"
         fi
         if [ -z "$final_url" ]; then
           final_url="$raw_deploy_url"
