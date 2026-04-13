@@ -112,6 +112,8 @@ let
 
         deploy_json_file="$(mktemp)"
         deploy_stderr_file="$(mktemp)"
+        auth_user_file="$(mktemp)"
+        auth_site_file="$(mktemp)"
         set +e
         # shellcheck disable=SC2086
         ${pkgs.bun}/bin/bunx netlify-cli deploy \
@@ -130,10 +132,36 @@ let
           cat "$deploy_stderr_file" >&2
         fi
         if [ "$deploy_exit" -ne 0 ]; then
+          if grep -q "Unauthorized: could not retrieve project" "$deploy_stderr_file"; then
+            echo "Netlify auth diagnostics for ${pkg.name}:" >&2
+            set +e
+            ${pkgs.bun}/bin/bunx netlify-cli api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
+            auth_user_exit="$?"
+            ${pkgs.bun}/bin/bunx netlify-cli api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
+            auth_site_exit="$?"
+            set -e
+
+            if [ "$auth_user_exit" -eq 0 ]; then
+              user_email="$(${pkgs.jq}/bin/jq -r '.email // .full_name // .slug // "unknown"' "$auth_user_file")"
+              user_slug="$(${pkgs.jq}/bin/jq -r '.slug // "unknown"' "$auth_user_file")"
+              echo "  getCurrentUser: ok (''${user_email}, slug=''${user_slug})" >&2
+            else
+              echo "  getCurrentUser: failed" >&2
+            fi
+
+            if [ "$auth_site_exit" -eq 0 ]; then
+              resolved_account_slug="$(${pkgs.jq}/bin/jq -r '.account_slug // "unknown"' "$auth_site_file")"
+              resolved_site_name="$(${pkgs.jq}/bin/jq -r '.name // "unknown"' "$auth_site_file")"
+              echo "  getSite(${siteId}): ok (site=''${resolved_site_name}, account=''${resolved_account_slug})" >&2
+            else
+              echo "  getSite(${siteId}): failed" >&2
+            fi
+          fi
+
           if [ -s "$deploy_json_file" ]; then
             cat "$deploy_json_file" >&2
           fi
-          rm -f "$deploy_json_file" "$deploy_stderr_file"
+          rm -f "$deploy_json_file" "$deploy_stderr_file" "$auth_user_file" "$auth_site_file"
           exit "$deploy_exit"
         fi
 
@@ -168,7 +196,7 @@ let
           target = pkg.name;
           legacyMetadataPrefix = "NETLIFY_DEPLOY_METADATA";
         }}
-        rm -f "$deploy_json_file" "$deploy_stderr_file"
+        rm -f "$deploy_json_file" "$deploy_stderr_file" "$auth_user_file" "$auth_site_file"
       '';
     };
   };

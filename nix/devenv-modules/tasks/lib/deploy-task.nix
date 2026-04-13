@@ -28,14 +28,15 @@ let
       localName ? envName,
     }:
     ''
+      local_name="${localName}"
       ${localName}="''${${envName}:-}"
-      if [ -z "$${localName}" ]; then
+      if [ -z "''${!local_name:-}" ]; then
         echo "${errorMessage}" >&2
         ${if hint == null then "" else ''echo "${hint}" >&2''}
         exit 1
       fi
 
-      export ${exportName}="$${localName}"
+      export ${exportName}="''${!local_name}"
     '';
 
   mkDeployMetadataEmitter =
