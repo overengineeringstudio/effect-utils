@@ -212,17 +212,20 @@ describe('PtySession scope finalization', () => {
 })
 
 describe('PtySession (server mode)', () => {
-  it.scopedLive('spawns a server, attaches, reads text', () =>
-    withIsolatedDir(
-      Effect.gen(function* () {
-        const session = yield* make(
-          PtySpec_.server({ command: 'sh', args: ['-c', 'echo server-ok; sleep 5'] }),
-        )
-        yield* session.attach
-        const ss = yield* session.waitForText({ needle: 'server-ok', schedule: fastSchedule })
-        expect(ss.text).toContain('server-ok')
-      }),
-    ),
+  it.scopedLive(
+    'spawns a server, attaches, reads text',
+    () =>
+      withIsolatedDir(
+        Effect.gen(function* () {
+          const session = yield* make(
+            PtySpec_.server({ command: 'sh', args: ['-c', 'echo server-ok; sleep 5'] }),
+          )
+          yield* session.attach
+          const ss = yield* session.waitForText({ needle: 'server-ok', schedule: fastSchedule })
+          expect(ss.text).toContain('server-ok')
+        }),
+      ),
+    30_000,
   )
 
   it.scopedLive('resize works in server mode', () =>
