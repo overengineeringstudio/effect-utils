@@ -262,7 +262,8 @@ in
       packages = packagesWithStorybook;
     })
     (taskModules.netlify {
-      site = "overeng-utils";
+      siteName = "overeng-utils";
+      siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
       packages = packagesWithStorybook;
     })
     (taskModules.lint-oxc {

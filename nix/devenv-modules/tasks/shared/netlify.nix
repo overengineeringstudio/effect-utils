@@ -6,7 +6,8 @@
 # Usage in devenv.nix:
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.netlify {
-#       site = "my-netlify-site";
+#       siteName = "my-netlify-site";
+#       siteId = "01234567-89ab-cdef-0123-456789abcdef";
 #       packages = [
 #         { path = "packages/@overeng/tui-react"; name = "tui-react"; }
 #         { path = "packages/@overeng/megarepo"; name = "megarepo"; }
@@ -27,12 +28,14 @@
 # NOTE: pkg.name must be a valid Netlify alias slug (lowercase, alphanumeric, hyphens only).
 {
   packages ? [ ],
-  site, # Required — Netlify site name (e.g. "overeng-utils")
+  siteName, # Required — Netlify site slug used for URL construction (e.g. "overeng-utils")
+  siteId, # Required — stable Netlify site ID used for CLI targeting
   buildTaskPrefix ? "storybook:build",
 }:
 { lib, pkgs, ... }:
 let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
   hasPackages = packages != [ ];
 
@@ -45,11 +48,11 @@ let
       exec = ''
         set -euo pipefail
 
-        if [ -z "''${NETLIFY_AUTH_TOKEN:-}" ]; then
-          echo "Error: NETLIFY_AUTH_TOKEN is not set." >&2
-          echo "Set it via: export NETLIFY_AUTH_TOKEN=\$(op read 'op://...')" >&2
-          exit 1
-        fi
+        ${deployTask.mkRequiredEnvCheck {
+          envName = "NETLIFY_AUTH_TOKEN";
+          errorMessage = "Error: NETLIFY_AUTH_TOKEN is not set.";
+          hint = "Set it via: export NETLIFY_AUTH_TOKEN=$(op read 'op://...')";
+        }}
 
         deploy_dir="${pkg.path}/storybook-static"
         workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' "${pkg.path}/package.json")"
@@ -60,17 +63,25 @@ let
           exit 0
         fi
 
-        # Parse deploy context from DEVENV_TASK_INPUT (set by devenv --input flag)
-        input="''${DEVENV_TASK_INPUT:-"{}"}"
-        deploy_type="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.type // "draft"')"
+        ${deployTask.mkDeployTypeParser {
+          defaultType = "draft";
+          allowedTypes = [
+            "prod"
+            "pr"
+            "draft"
+          ];
+          providerLabel = "Netlify";
+        }}
         short_sha="$(${git} rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
         alias_flag=""
+        alias_name=""
         filter_flag=""
         message="${pkg.name}"
 
         case "$deploy_type" in
           prod)
+            alias_name="${pkg.name}"
             alias_flag="--alias=${pkg.name}"
             message="${pkg.name} (prod, $short_sha)"
             ;;
@@ -80,7 +91,8 @@ let
               echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
               exit 1
             fi
-            alias_flag="--alias=${pkg.name}-pr-''${pr_number}"
+            alias_name="${pkg.name}-pr-''${pr_number}"
+            alias_flag="--alias=$alias_name"
             message="${pkg.name} (PR #''${pr_number}, $short_sha)"
             ;;
           draft)
@@ -98,20 +110,93 @@ let
 
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
-        # pnpm 11 requires explicit --allow-build for packages with native deps
+        deploy_json_file="$(mktemp)"
+        deploy_stderr_file="$(mktemp)"
+        auth_user_file="$(mktemp)"
+        auth_site_file="$(mktemp)"
+        set +e
         # shellcheck disable=SC2086
-        pnpm --package=netlify-cli dlx \
-          --allow-build=sharp \
-          --allow-build=esbuild \
-          --allow-build=unix-dgram \
-          --allow-build=@parcel/watcher \
-          netlify deploy \
+        ${pkgs.bun}/bin/bunx netlify-cli deploy \
           --dir="$deploy_dir" \
-          --site="${site}" \
+          --site="${siteId}" \
+          --auth="$NETLIFY_AUTH_TOKEN" \
           $filter_flag \
           --no-build \
           $alias_flag \
-          --message="$message"
+          --message="$message" \
+          --json >"$deploy_json_file" 2>"$deploy_stderr_file"
+        deploy_exit="$?"
+        set -e
+
+        if [ -s "$deploy_stderr_file" ]; then
+          cat "$deploy_stderr_file" >&2
+        fi
+        if [ "$deploy_exit" -ne 0 ]; then
+          if grep -q "Unauthorized: could not retrieve project" "$deploy_stderr_file"; then
+            echo "Netlify auth diagnostics for ${pkg.name}:" >&2
+            set +e
+            ${pkgs.bun}/bin/bunx netlify-cli api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
+            auth_user_exit="$?"
+            ${pkgs.bun}/bin/bunx netlify-cli api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
+            auth_site_exit="$?"
+            set -e
+
+            if [ "$auth_user_exit" -eq 0 ]; then
+              user_email="$(${pkgs.jq}/bin/jq -r '.email // .full_name // .slug // "unknown"' "$auth_user_file")"
+              user_slug="$(${pkgs.jq}/bin/jq -r '.slug // "unknown"' "$auth_user_file")"
+              echo "  getCurrentUser: ok (''${user_email}, slug=''${user_slug})" >&2
+            else
+              echo "  getCurrentUser: failed" >&2
+            fi
+
+            if [ "$auth_site_exit" -eq 0 ]; then
+              resolved_account_slug="$(${pkgs.jq}/bin/jq -r '.account_slug // "unknown"' "$auth_site_file")"
+              resolved_site_name="$(${pkgs.jq}/bin/jq -r '.name // "unknown"' "$auth_site_file")"
+              echo "  getSite(${siteId}): ok (site=''${resolved_site_name}, account=''${resolved_account_slug})" >&2
+            else
+              echo "  getSite(${siteId}): failed" >&2
+            fi
+          fi
+
+          if [ -s "$deploy_json_file" ]; then
+            cat "$deploy_json_file" >&2
+          fi
+          rm -f "$deploy_json_file" "$deploy_stderr_file" "$auth_user_file" "$auth_site_file"
+          exit "$deploy_exit"
+        fi
+
+        if ! ${pkgs.jq}/bin/jq -e '.deploy_id and .site_name and .deploy_url' "$deploy_json_file" >/dev/null; then
+          echo "Error: Netlify CLI did not return the expected deploy JSON for ${pkg.name}" >&2
+          cat "$deploy_json_file" >&2
+          rm -f "$deploy_json_file" "$deploy_stderr_file"
+          exit 1
+        fi
+
+        deploy_id="$(${pkgs.jq}/bin/jq -r '.deploy_id' "$deploy_json_file")"
+        resolved_site_name="$(${pkgs.jq}/bin/jq -r '.site_name' "$deploy_json_file")"
+        deploy_url_from_json="$(${pkgs.jq}/bin/jq -r '.deploy_url' "$deploy_json_file")"
+
+        if [ -z "$resolved_site_name" ] || [ "$resolved_site_name" = "null" ]; then
+          resolved_site_name="${siteName}"
+        fi
+
+        raw_deploy_url="https://$deploy_id--$resolved_site_name.netlify.app"
+        if [ -n "$alias_name" ]; then
+          final_url="https://$alias_name--${siteName}.netlify.app"
+        else
+          final_url="$deploy_url_from_json"
+        fi
+        if [ -z "$final_url" ] || [ "$final_url" = "null" ]; then
+          final_url="$raw_deploy_url"
+        fi
+
+        ${deployTask.mkDeployMetadataEmitter {
+          provider = "netlify";
+          providerLabel = "Netlify";
+          target = pkg.name;
+          legacyMetadataPrefix = "NETLIFY_DEPLOY_METADATA";
+        }}
+        rm -f "$deploy_json_file" "$deploy_stderr_file" "$auth_user_file" "$auth_site_file"
       '';
     };
   };

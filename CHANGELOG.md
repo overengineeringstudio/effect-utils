@@ -28,6 +28,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **genie/ci-workflow**: Unify Vercel CI job generation behind a single `vercelDeployJobs()` helper
+  - Removes the separate static-job and job-merge helpers now that task-level deploy mode is already unified in `vercel.nix`
+  - Lets consumers mix build-mode and static-mode deploys in one project list and attach per-project pre-deploy setup like Vercel git-author configuration
 - **@overeng/notion-effect-client**: Upgrade Notion API version from `2022-06-28` to `2026-03-11`
 - **@overeng/notion-effect-schema**: Remove `archived` field from `DatabaseSchema`, `Page`, and `Block` schemas (replaced by `in_trash` in API 2026-03-11)
 - **@overeng/notion-effect-client**: Replace `after` parameter with `position` object in `AppendBlockChildrenOptions`
@@ -43,6 +46,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **devenv/tasks/shared/vercel.nix**: Preserve dotfiles when packaging static prebuilt output for Vercel deploys
+  - Copies `staticDir/.` into `.vercel/output/static/` instead of globbing `staticDir/*`, so hidden assets and config files are not silently dropped
 - **@overeng/notion-cli**: Fix introspection pipeline to read properties from data source (API 2026-03-11 no longer returns properties on `GET /databases/:id`)
 
 ### Changed
