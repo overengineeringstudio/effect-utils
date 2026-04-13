@@ -12,10 +12,10 @@
  * // Create input handler
  * const input = yield* TerminalInput.create()
  *
- * // Read events
+ * // Read events and interrupt on Ctrl+C
  * yield* input.events.pipe(
  *   Stream.runForEach(event => {
- *     if (event._tag === 'Event.Key' && event.key === 'q') {
+ *     if (event._tag === 'Event.Key' && event.ctrl === true && event.key === 'c') {
  *       return Effect.interrupt
  *     }
  *     return Effect.log(`Key: ${event.key}`)
@@ -447,13 +447,6 @@ export interface TerminalInputOptions {
   rawMode?: boolean
 
   /**
-   * Whether to handle Ctrl+C (SIGINT).
-   * If true, Ctrl+C will publish an event instead of killing the process.
-   * @default false
-   */
-  handleCtrlC?: boolean
-
-  /**
    * Whether to listen for terminal resize events (SIGWINCH).
    * @default true
    */
@@ -510,7 +503,6 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
   const input: Readable = options.input ?? process.stdin
   const output = options.output ?? process.stdout
   const rawMode = options.rawMode ?? true
-  const handleCtrlC = options.handleCtrlC ?? false
   const handleResize = options.handleResize ?? true
 
   // Create event PubSub
@@ -561,13 +553,8 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
       dataHandler = (data: Buffer) => {
         const events = parseKeyInput(data)
         for (const event of events) {
-          // Handle Ctrl+C specially if not handling it ourselves
-          if (event.ctrl === true && event.key === 'c' && handleCtrlC === false) {
-            void Effect.runSync(cleanup)
-            process.exit(130) // Standard exit code for Ctrl+C
-          }
-
-          // Publish event - fire and forget for the sync callback
+          // Publish events synchronously and let the consuming Effect decide
+          // whether Ctrl+C should interrupt the current fiber.
           void Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
         }
       }
