@@ -2869,8 +2869,9 @@ jobs:
                 .split("\n")
                 .flatMap((line) => {
                   const prefix = "NETLIFY_DEPLOY_METADATA: "
-                  if (!line.startsWith(prefix)) return []
-                  return [validatePackageV2(JSON.parse(line.slice(prefix.length)), "currentPackages")]
+                  const prefixIndex = line.indexOf(prefix)
+                  if (prefixIndex === -1) return []
+                  return [validatePackageV2(JSON.parse(line.slice(prefixIndex + prefix.length)), "currentPackages")]
                 })
             : []
 
