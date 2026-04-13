@@ -9,6 +9,18 @@ const mockGenieContext: GenieContext = {
 }
 
 describe('jsonArtifact', () => {
+  it('serializes plain data without requiring a schema', () => {
+    const result = jsonArtifact({
+      data: {
+        vercelBuildProjects: [{ name: 'website', projectIdEnv: 'VERCEL_PROJECT_ID_WEBSITE' }],
+      },
+    })
+
+    expect(JSON.parse(result.stringify(mockGenieContext))).toEqual({
+      vercelBuildProjects: [{ name: 'website', projectIdEnv: 'VERCEL_PROJECT_ID_WEBSITE' }],
+    })
+  })
+
   it('keeps typed source data available to TypeScript consumers', () => {
     const DeploySurfaces = Schema.Struct({
       vercelBuildProjects: Schema.Array(
