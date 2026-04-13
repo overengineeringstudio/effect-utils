@@ -1,8 +1,15 @@
 # Vercel deploy tasks using local prebuilt artifacts
 #
+# Design policy:
+#   - Do not rely on Vercel CI / remote builds for these tasks.
+#   - Always build locally first, then upload prebuilt output with
+#     `vercel deploy --prebuilt`.
+#   - Vercel is used here as the deployment target / runtime host, not as the
+#     build executor.
+#
 # Supports two modes:
-#   - Build mode (default): pull → vercel build → deploy --prebuilt
-#   - Static mode (staticDir set): package static dir → deploy --prebuilt → alias
+#   - Build mode (default): local `vercel build` → deploy --prebuilt
+#   - Static mode (staticDir set): package local static dir → deploy --prebuilt → alias
 #
 # Deploy context is passed via DEVENV_TASK_INPUT (devenv --input flag).
 #
@@ -10,7 +17,7 @@
 #   imports = [
 #     (inputs.effect-utils.devenvModules.tasks.vercel {
 #       deployments = [
-#         # Build mode: Vercel pulls settings, builds, and deploys
+#         # Build mode: pull settings, build locally, deploy prebuilt output
 #         { name = "web"; cwd = "packages/web"; projectIdEnv = "VERCEL_PROJECT_ID_WEB"; }
 #         # Static mode: deploy pre-built directory with optional alias
 #         {
@@ -113,7 +120,8 @@ let
     '';
 
   # ── Build mode ──────────────────────────────────────────────────────────
-  # Pull Vercel project settings, run vercel build, deploy prebuilt output.
+  # Pull Vercel project settings, build locally, then deploy prebuilt output.
+  # This intentionally avoids Vercel-hosted CI/build execution.
 
   mkBuildDeployTask =
     deployment:
@@ -231,7 +239,8 @@ let
     };
 
   # ── Static mode ─────────────────────────────────────────────────────────
-  # Package a pre-built static directory as Build Output API v3, deploy, and alias.
+  # Package a local pre-built static directory as Build Output API v3, then
+  # deploy and alias it. This also avoids any Vercel-hosted build step.
 
   mkStaticDeployTask =
     deployment:
