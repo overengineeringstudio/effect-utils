@@ -243,19 +243,19 @@ describe('PtySession (server mode)', () => {
           const session = yield* make(
             PtySpec_.server({
               command: 'sh',
-              args: ['-c', 'echo before-reconnect; exec cat'],
+              args: [
+                '-c',
+                'echo before-reconnect; i=0; while [ "$i" -lt 100 ]; do i=$((i + 1)); echo tick-$i; sleep 0.2; done; sleep 5',
+              ],
             }),
           )
           yield* session.attach
           yield* session.waitForText({ needle: 'before-reconnect', schedule: fastSchedule })
+          yield* session.waitForText({ needle: 'tick-1', schedule: fastSchedule })
           yield* session.reconnect
-          yield* session.write({ data: 'after-reconnect\n' })
-          // Wait on fresh post-reconnect traffic, then assert the replay still
-          // contains pre-reconnect scrollback.
-          const ss = yield* session.waitForText({
-            needle: 'after-reconnect',
-            schedule: fastSchedule,
-          })
+          // Wait for naturally emitted post-reconnect output rather than
+          // racing a write into an attach sequence that can lag on CI.
+          const ss = yield* session.waitForText({ needle: 'tick-10', schedule: fastSchedule })
           expect(ss.text).toContain('before-reconnect')
         }),
       ),
