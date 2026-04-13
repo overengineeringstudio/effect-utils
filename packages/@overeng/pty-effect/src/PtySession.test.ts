@@ -252,7 +252,10 @@ describe('PtySession (server mode)', () => {
           yield* session.write({ data: 'after-reconnect\n' })
           // Wait on fresh post-reconnect traffic, then assert the replay still
           // contains pre-reconnect scrollback.
-          const ss = yield* session.waitForText({ needle: 'after-reconnect', schedule: fastSchedule })
+          const ss = yield* session.waitForText({
+            needle: 'after-reconnect',
+            schedule: fastSchedule,
+          })
           expect(ss.text).toContain('before-reconnect')
         }),
       ),
