@@ -1,5 +1,3 @@
-import { Schema } from 'effect'
-
 import { createGenieOutput } from '../core.ts'
 import type { GenieOutput, Strict } from '../mod.ts'
 
@@ -11,12 +9,12 @@ export type JsonArtifactDataArgs<TData> = {
   indentation?: number
 }
 
-/** Arguments for generating a JSON artifact through schema-backed encoding. */
-export type JsonArtifactSchemaArgs<TSchema extends Schema.Schema<any, any, never>> = {
-  /** Schema used to encode the emitted JSON representation. */
-  schema: TSchema
+/** Arguments for generating a JSON artifact through custom encoding. */
+export type JsonArtifactEncodedArgs<TData> = {
   /** Typed source-of-truth data kept available to TS consumers via `.data`. */
-  data: Schema.Schema.Type<TSchema>
+  data: TData
+  /** Optional encoder for callers that want a stricter serialized representation. */
+  encode: (data: TData) => unknown
   /** JSON indentation level. Defaults to 2. */
   indentation?: number
 }
@@ -24,27 +22,24 @@ export type JsonArtifactSchemaArgs<TSchema extends Schema.Schema<any, any, never
 /**
  * Creates a JSON artifact from typed data.
  *
- * If a schema is provided, the emitted file content is derived through
- * `Effect.Schema` encoding. Otherwise the data is stringified as-is.
+ * If an encoder is provided, the emitted file content is derived through it.
+ * Otherwise the data is stringified as-is.
  */
 export function jsonArtifact<const TData>(
   args: Strict<JsonArtifactDataArgs<TData>, JsonArtifactDataArgs<TData>>,
 ): GenieOutput<TData>
-export function jsonArtifact<const TSchema extends Schema.Schema<any, any, never>>(
-  args: Strict<JsonArtifactSchemaArgs<TSchema>, JsonArtifactSchemaArgs<TSchema>>,
-): GenieOutput<Schema.Schema.Type<TSchema>>
+export function jsonArtifact<const TData>(
+  args: Strict<JsonArtifactEncodedArgs<TData>, JsonArtifactEncodedArgs<TData>>,
+): GenieOutput<TData>
 export function jsonArtifact<const TData>(
   args:
     | Strict<JsonArtifactDataArgs<TData>, JsonArtifactDataArgs<TData>>
-    | Strict<
-        JsonArtifactSchemaArgs<Schema.Schema<any, any, never>>,
-        JsonArtifactSchemaArgs<Schema.Schema<any, any, never>>
-      >,
+    | Strict<JsonArtifactEncodedArgs<TData>, JsonArtifactEncodedArgs<TData>>,
 ): GenieOutput<TData> {
   return createGenieOutput({
     data: args.data,
     stringify: (_ctx) => {
-      const jsonValue = 'schema' in args ? Schema.encodeSync(args.schema)(args.data) : args.data
+      const jsonValue = 'encode' in args ? args.encode(args.data) : args.data
 
       return JSON.stringify(jsonValue, null, args.indentation ?? 2) + '\n'
     },

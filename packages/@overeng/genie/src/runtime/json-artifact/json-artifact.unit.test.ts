@@ -22,17 +22,7 @@ describe('jsonArtifact', () => {
   })
 
   it('keeps typed source data available to TypeScript consumers', () => {
-    const DeploySurfaces = Schema.Struct({
-      vercelBuildProjects: Schema.Array(
-        Schema.Struct({
-          name: Schema.String,
-          projectIdEnv: Schema.String,
-        }),
-      ),
-    })
-
     const result = jsonArtifact({
-      schema: DeploySurfaces,
       data: {
         vercelBuildProjects: [{ name: 'website', projectIdEnv: 'VERCEL_PROJECT_ID_WEBSITE' }],
       },
@@ -43,7 +33,7 @@ describe('jsonArtifact', () => {
     })
   })
 
-  it('serializes through the provided schema', () => {
+  it('serializes through the provided encoder', () => {
     const DeploySurfaces = Schema.Struct({
       vercelBuildProjects: Schema.Array(
         Schema.Struct({
@@ -60,11 +50,11 @@ describe('jsonArtifact', () => {
     })
 
     const result = jsonArtifact({
-      schema: DeploySurfaces,
       data: {
         vercelBuildProjects: [{ name: 'website', projectIdEnv: 'VERCEL_PROJECT_ID_WEBSITE' }],
         storybookProjects: [{ name: 'app', deployName: 'storybook-app' }],
       },
+      encode: Schema.encodeSync(DeploySurfaces),
     })
 
     expect(JSON.parse(result.stringify(mockGenieContext))).toEqual({
