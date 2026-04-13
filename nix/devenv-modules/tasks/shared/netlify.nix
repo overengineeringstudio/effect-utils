@@ -137,9 +137,6 @@ let
         echo "Netlify raw deploy URL: $raw_deploy_url"
         echo "Netlify deploy URL: $final_url"
         echo "Netlify deployed at UTC: $deployed_at_utc"
-        if [ -n "''${STORYBOOK_PREVIEW_METADATA_PATH:-}" ]; then
-          printf '%s\n' "$deploy_metadata_json" >> "$STORYBOOK_PREVIEW_METADATA_PATH"
-        fi
         echo "NETLIFY_DEPLOY_METADATA: $deploy_metadata_json"
         rm -f "$deploy_json"
       '';

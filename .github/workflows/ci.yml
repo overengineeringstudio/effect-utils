@@ -2448,13 +2448,11 @@ jobs:
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
       - name: Deploy storybooks to Netlify
+        id: deploy
         shell: bash
         run: |
           tmp_log="/tmp/netlify-storybook-deploy.log"
-          tmp_metadata="/tmp/netlify-storybook-deploy.ndjson"
           rm -f "$tmp_log"
-          rm -f "$tmp_metadata"
-          export STORYBOOK_PREVIEW_METADATA_PATH="$tmp_metadata"
           if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
             echo "::notice::Skipping Netlify deploy (NETLIFY_AUTH_TOKEN not available)"
             exit 0
@@ -2567,7 +2565,7 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --input type=prod --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=prod --mode before' 2>&1 | tee "$tmp_log"
+          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --show-output --input type=prod --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=prod --mode before' 2>&1 | tee "$tmp_log"
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             __nix_gc_retry_helper=$(mktemp)
           cat > "$__nix_gc_retry_helper" <<'EOF'
@@ -2676,17 +2674,33 @@ jobs:
           EOF
           . "$__nix_gc_retry_helper"
           rm -f "$__nix_gc_retry_helper"
-          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 2>&1 | tee "$tmp_log"
+          run_nix_gc_race_retry 'devenv tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 'if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" PNPM_HOME="${PNPM_HOME:-${{ github.workspace }}/.pnpm-home}" PNPM_STORE_DIR="${PNPM_STORE_DIR:-${{ runner.temp }}/pnpm-store/${{ github.job }}}" DT_PASSTHROUGH=1 "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:deploy --show-output --input type=pr --input pr=${{ github.event.pull_request.number }} --mode before' 2>&1 | tee "$tmp_log"
           fi
           deploy_exit=${PIPESTATUS[0]}
           if [ "$deploy_exit" -ne 0 ]; then exit "$deploy_exit"; fi
+          cat > /tmp/extract-netlify-preview-packages.mjs <<'EOF'
+          import { readFileSync } from 'node:fs'
+
+          const [logPath] = process.argv.slice(2)
+          const prefix = "NETLIFY_DEPLOY_METADATA: "
+          const packages = readFileSync(logPath, "utf8")
+            .split("\n")
+            .flatMap((line) => {
+              const prefixIndex = line.indexOf(prefix)
+              if (prefixIndex === -1) return []
+              return [JSON.parse(line.slice(prefixIndex + prefix.length))]
+            })
+          const dedupedPackages = [...new Map(packages.map((pkg) => [pkg.packageName, pkg])).values()]
+          process.stdout.write(JSON.stringify(dedupedPackages))
+          EOF
+          packages_json="$(node /tmp/extract-netlify-preview-packages.mjs "$tmp_log")"
+          printf 'packages_json<<__NETLIFY_PACKAGES__\n%s\n__NETLIFY_PACKAGES__\n' "$packages_json" >> "$GITHUB_OUTPUT"
       - name: Post storybook preview comment
         if: '${{ !cancelled() }}'
         env:
           GH_TOKEN: '${{ github.token }}'
           GH_REPO: '${{ github.repository }}'
-          STORYBOOK_PREVIEW_METADATA_PATH: /tmp/netlify-storybook-deploy.ndjson
-          STORYBOOK_PREVIEW_LOG_PATH: /tmp/netlify-storybook-deploy.log
+          STORYBOOK_PREVIEW_PACKAGES_JSON: '${{ steps.deploy.outputs.packages_json }}'
         run: |
           site="overeng-utils"
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -2885,14 +2899,12 @@ jobs:
               ? pkg.rawDeployUrl
               : `${pkg.rawDeployUrl}<br><sub>Alias: ${pkg.finalUrl}</sub>`
 
-          const metadataPath = expectString(process.env.STORYBOOK_PREVIEW_METADATA_PATH, "STORYBOOK_PREVIEW_METADATA_PATH")
+          const currentPackagesJson = expectString(process.env.STORYBOOK_PREVIEW_PACKAGES_JSON, "STORYBOOK_PREVIEW_PACKAGES_JSON")
           const deployedAtUtc = expectIsoUtc(process.env.STORYBOOK_PREVIEW_DEPLOYED_AT_UTC, "STORYBOOK_PREVIEW_DEPLOYED_AT_UTC")
 
-          const currentPackages = existsSync(metadataPath)
-            ? readFileSync(metadataPath, "utf8")
-                .split("\n")
-                .flatMap((line) => (line.trim().length === 0 ? [] : [validatePackageV3(JSON.parse(line), "currentPackages")]))
-            : []
+          const currentPackages = expectArray(JSON.parse(currentPackagesJson), "currentPackages").map((pkg, index) =>
+            validatePackageV3(pkg, `currentPackages[${index}]`),
+          )
 
           currentPackages.forEach((pkg, index) => validatePackageV3(pkg, `currentPackages[${index}]`))
 
