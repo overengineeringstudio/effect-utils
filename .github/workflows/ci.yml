@@ -70,7 +70,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -301,7 +301,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -401,7 +401,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -632,7 +632,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -735,7 +735,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -966,7 +966,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1069,7 +1069,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1300,7 +1300,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1546,7 +1546,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1694,7 +1694,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -1794,7 +1794,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -1919,7 +1919,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2020,7 +2020,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -2251,7 +2251,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash
@@ -2355,7 +2355,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Resolve devenv
         run: |
           if [ -z "${DEVENV_REV:-}" ]; then
@@ -2756,7 +2756,7 @@ jobs:
           path: |
             ${{ github.workspace }}/.pnpm-home
             ${{ runner.temp }}/pnpm-store/${{ github.job }}
-          key: "pnpm-home-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+          key: "pnpm-home-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
       - name: Nix diagnostics summary
         if: failure()
         shell: bash

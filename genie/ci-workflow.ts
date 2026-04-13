@@ -459,8 +459,14 @@ export const pnpmStoreSetupStep = {
   ].join('\n'),
 } as const
 
+/**
+ * Bump this when the cache contents change shape so exact cache hits cannot
+ * silently restore an older layout and then skip repopulating the new paths.
+ */
+const pnpmStoreCacheSchemaVersion = 'v2'
+
 const pnpmStoreCachePrimaryKey = (keyPrefix: string) =>
-  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
+  `${keyPrefix}-${pnpmStoreCacheSchemaVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
 
 /**
  * Restore the job-local pnpm state snapshot before any install work runs.
