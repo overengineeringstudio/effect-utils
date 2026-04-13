@@ -76,7 +76,9 @@ describe('ci workflow pnpm cache defaults', () => {
 
   it('only saves pnpm state after prior steps succeed', () => {
     expect(ciWorkflowSource).toContain("name: 'Save pnpm state'")
-    expect(ciWorkflowSource).toContain("if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`")
+    expect(ciWorkflowSource).toContain(
+      "if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`",
+    )
   })
 
   it('cold-builds pnpm deps artifacts by evicting cached outputs before the second build', () => {
