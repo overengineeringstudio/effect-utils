@@ -4,6 +4,14 @@ compute_hash() {
   sha256sum | awk '{print $1}'
 }
 
+ensure_local_pnpm_home_default() {
+  local workspace_root="$1"
+
+  if [ -z "${PNPM_HOME:-}" ]; then
+    export PNPM_HOME="${workspace_root}/.pnpm-home"
+  fi
+}
+
 emit_dir_state() {
   local dir="$1"
 
