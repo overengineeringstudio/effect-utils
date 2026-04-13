@@ -6,6 +6,9 @@ tsconfig.json linguist-generated=true
 **/tsconfig.json linguist-generated=true
 tsconfig.*.json linguist-generated=true
 .github/workflows/*.yml linguist-generated=true
+.oxlintrc.json linguist-generated=true
+.oxfmtrc.json linguist-generated=true
+pnpm-workspace.yaml linguist-generated=true
 
 # Lock files - collapse in GitHub PR diffs
 *.lock linguist-generated=true
