@@ -102,7 +102,7 @@ let
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
         # pnpm 11 requires explicit --allow-build for packages with native deps
-        deploy_json="$(mktemp)"
+        deploy_log="$(mktemp)"
         # shellcheck disable=SC2086
         pnpm --package=netlify-cli dlx \
           --allow-build=sharp \
@@ -115,20 +115,35 @@ let
           $filter_flag \
           --no-build \
           $alias_flag \
-          --message="$message" \
-          --json > "$deploy_json"
+          --message="$message" 2>&1 | tee "$deploy_log"
 
-        raw_deploy_url="$(${pkgs.jq}/bin/jq -r '.deploy_url // empty' "$deploy_json")"
+        deploy_exit="''${PIPESTATUS[0]}"
+        if [ "$deploy_exit" -ne 0 ]; then
+          rm -f "$deploy_log"
+          exit "$deploy_exit"
+        fi
+
+        deploy_id="$(${pkgs.gnugrep}/bin/grep -Eo 'https://app.netlify.com/sites/[^[:space:]]+/deploys/[A-Za-z0-9]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's#.*/deploys/##' | tail -n 1 || true)"
+        logged_unique_url="$(${pkgs.gnugrep}/bin/grep -Eo 'Unique deploy URL:[[:space:]]+https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's/^Unique deploy URL:[[:space:]]+//' | tail -n 1 || true)"
+        logged_website_url="$(${pkgs.gnugrep}/bin/grep -Eo 'Website( Draft)? URL:[[:space:]]+https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's/^Website( Draft)? URL:[[:space:]]+//' | tail -n 1 || true)"
+
+        raw_deploy_url="$logged_unique_url"
+        if [ -z "$raw_deploy_url" ] && [ -n "$deploy_id" ]; then
+          raw_deploy_url="https://$deploy_id--${site}.netlify.app"
+        fi
         if [ -z "$raw_deploy_url" ]; then
-          echo "Error: Netlify deploy did not return deploy_url for ${pkg.name}" >&2
-          cat "$deploy_json" >&2
-          rm -f "$deploy_json"
+          echo "Error: Could not determine unique Netlify deploy URL for ${pkg.name}" >&2
+          cat "$deploy_log" >&2
+          rm -f "$deploy_log"
           exit 1
         fi
 
-        final_url="$raw_deploy_url"
+        final_url="$logged_website_url"
         if [ -n "$alias_name" ]; then
           final_url="https://$alias_name--${site}.netlify.app"
+        fi
+        if [ -z "$final_url" ]; then
+          final_url="$raw_deploy_url"
         fi
 
         deployed_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -138,7 +153,7 @@ let
         echo "Netlify deploy URL: $final_url"
         echo "Netlify deployed at UTC: $deployed_at_utc"
         echo "NETLIFY_DEPLOY_METADATA: $deploy_metadata_json"
-        rm -f "$deploy_json"
+        rm -f "$deploy_log"
       '';
     };
   };
