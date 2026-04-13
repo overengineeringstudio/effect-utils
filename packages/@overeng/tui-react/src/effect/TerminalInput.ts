@@ -26,7 +26,6 @@
 
 import type { Readable } from 'node:stream'
 
-import type { Scope } from 'effect'
 import { Effect, PubSub, Runtime, Stream } from 'effect'
 
 import { type KeyEvent, keyEvent, resizeEvent, type InputEvent } from './events.ts'
@@ -505,110 +504,109 @@ export interface TerminalInput {
  * )
  * ```
  */
-export const createTerminalInput = (
+export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
   options: TerminalInputOptions = {},
-): Effect.Effect<TerminalInput, never, Scope.Scope> =>
-  Effect.gen(function* () {
-    const input: Readable = options.input ?? process.stdin
-    const output = options.output ?? process.stdout
-    const rawMode = options.rawMode ?? true
-    const handleCtrlC = options.handleCtrlC ?? false
-    const handleResize = options.handleResize ?? true
+) {
+  const input: Readable = options.input ?? process.stdin
+  const output = options.output ?? process.stdout
+  const rawMode = options.rawMode ?? true
+  const handleCtrlC = options.handleCtrlC ?? false
+  const handleResize = options.handleResize ?? true
 
-    // Create event PubSub
-    const pubsub = yield* PubSub.unbounded<InputEvent>()
-    const runtime = yield* Effect.runtime<never>()
+  // Create event PubSub
+  const pubsub = yield* PubSub.unbounded<InputEvent>()
+  const runtime = yield* Effect.runtime<never>()
 
-    // Track if raw mode was set
-    let didEnableRawMode = false
-    const isTTY = 'isTTY' in input && input.isTTY
-    const isRaw = 'isRaw' in input && input.isRaw === true
-    const setRawMode = 'setRawMode' in input ? (input.setRawMode as (mode: boolean) => void) : null
-    let dataHandler: ((data: Buffer) => void) | undefined
-    let resizeHandler: (() => void) | undefined
-    let cleanedUp = false
+  // Track if raw mode was set
+  let didEnableRawMode = false
+  const isTTY = 'isTTY' in input && input.isTTY
+  const isRaw = 'isRaw' in input && input.isRaw === true
+  const setRawMode = 'setRawMode' in input ? (input.setRawMode as (mode: boolean) => void) : null
+  let dataHandler: ((data: Buffer) => void) | undefined
+  let resizeHandler: (() => void) | undefined
+  let cleanedUp = false
 
-    const cleanup = (): void => {
-      if (cleanedUp === true) return
-      cleanedUp = true
+  const cleanup = Effect.sync(() => {
+    if (cleanedUp === true) return
+    cleanedUp = true
 
-      if (dataHandler !== undefined) {
-        input.off('data', dataHandler)
-        dataHandler = undefined
-      }
-
-      if ('pause' in input && typeof input.pause === 'function') {
-        input.pause()
-      }
-
-      if (resizeHandler !== undefined) {
-        process.off('SIGWINCH', resizeHandler)
-        resizeHandler = undefined
-      }
-
-      if (didEnableRawMode === true && setRawMode !== null) {
-        setRawMode(false)
-      }
+    if (dataHandler !== undefined) {
+      input.off('data', dataHandler)
+      dataHandler = undefined
     }
 
-    // Enable raw mode if TTY
-    if (rawMode === true && isTTY === true && setRawMode !== null && isRaw === false) {
-      didEnableRawMode = true
-      setRawMode(true)
+    if ('pause' in input && typeof input.pause === 'function') {
+      input.pause()
     }
 
-    // Set up data handler
-    dataHandler = (data: Buffer) => {
-      const events = parseKeyInput(data)
-      for (const event of events) {
-        // Handle Ctrl+C specially if not handling it ourselves
-        if (event.ctrl === true && event.key === 'c' && handleCtrlC === false) {
-          cleanup()
-          process.exit(130) // Standard exit code for Ctrl+C
-        }
-
-        // Publish event - fire and forget for the sync callback
-        void Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
-      }
+    if (resizeHandler !== undefined) {
+      process.off('SIGWINCH', resizeHandler)
+      resizeHandler = undefined
     }
 
-    // Start listening
-    input.on('data', dataHandler)
-
-    // Resume input stream (in case it was paused)
-    if ('resume' in input && typeof input.resume === 'function') {
-      input.resume()
-    }
-
-    // Cleanup listener on scope close
-    yield* Effect.addFinalizer(() => Effect.sync(cleanup))
-
-    // Set up resize handler if enabled
-    if (handleResize === true && output.isTTY === true) {
-      resizeHandler = () => {
-        const cols = output.columns ?? 80
-        const rows = output.rows ?? 24
-        void Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
-      }
-
-      // Listen for SIGWINCH (terminal resize signal)
-      process.on('SIGWINCH', resizeHandler)
-
-      // Publish initial resize event with current dimensions
-      const initialCols = output.columns ?? 80
-      const initialRows = output.rows ?? 24
-      yield* PubSub.publish(pubsub, resizeEvent({ cols: initialCols, rows: initialRows }))
-    }
-
-    // Create events stream from PubSub
-    const events = Stream.fromPubSub(pubsub)
-
-    return {
-      events,
-      pubsub,
-      isRawMode: didEnableRawMode,
+    if (didEnableRawMode === true && setRawMode !== null) {
+      setRawMode(false)
     }
   })
+
+  const resource = yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      // Enable raw mode if TTY
+      if (rawMode === true && isTTY === true && setRawMode !== null && isRaw === false) {
+        didEnableRawMode = true
+        setRawMode(true)
+      }
+
+      // Set up data handler
+      dataHandler = (data: Buffer) => {
+        const events = parseKeyInput(data)
+        for (const event of events) {
+          // Handle Ctrl+C specially if not handling it ourselves
+          if (event.ctrl === true && event.key === 'c' && handleCtrlC === false) {
+            void Effect.runSync(cleanup)
+            process.exit(130) // Standard exit code for Ctrl+C
+          }
+
+          // Publish event - fire and forget for the sync callback
+          void Runtime.runFork(runtime)(PubSub.publish(pubsub, event))
+        }
+      }
+
+      input.on('data', dataHandler)
+
+      // Resume input stream (in case it was paused)
+      if ('resume' in input && typeof input.resume === 'function') {
+        input.resume()
+      }
+
+      // Set up resize handler if enabled
+      if (handleResize === true && output.isTTY === true) {
+        resizeHandler = () => {
+          const cols = output.columns ?? 80
+          const rows = output.rows ?? 24
+          void Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
+        }
+
+        process.on('SIGWINCH', resizeHandler)
+      }
+
+      return {
+        events: Stream.fromPubSub(pubsub),
+        pubsub,
+        isRawMode: didEnableRawMode,
+      }
+    }),
+    () => cleanup,
+  )
+
+  if (handleResize === true && output.isTTY === true) {
+    const initialCols = output.columns ?? 80
+    const initialRows = output.rows ?? 24
+    yield* PubSub.publish(pubsub, resizeEvent({ cols: initialCols, rows: initialRows }))
+  }
+
+  return resource
+})
 
 /**
  * Check if the terminal supports raw mode input.
@@ -657,46 +655,45 @@ export interface TerminalResize {
  * )
  * ```
  */
-export const createTerminalResize = (
+export const createTerminalResize = Effect.fn('TerminalResize.create')(function* (
   output: NodeJS.WriteStream = process.stdout,
-): Effect.Effect<TerminalResize, never, Scope.Scope> =>
-  Effect.gen(function* () {
-    // Create PubSub for resize events
-    const pubsub = yield* PubSub.unbounded<{ cols: number; rows: number }>()
-    const runtime = yield* Effect.runtime<never>()
+) {
+  // Create PubSub for resize events
+  const pubsub = yield* PubSub.unbounded<{ cols: number; rows: number }>()
+  const runtime = yield* Effect.runtime<never>()
 
-    // Get dimensions helper
-    const getDimensions = (): { cols: number; rows: number } => ({
-      cols: output.columns ?? 80,
-      rows: output.rows ?? 24,
-    })
+  // Get dimensions helper
+  const getDimensions = (): { cols: number; rows: number } => ({
+    cols: output.columns ?? 80,
+    rows: output.rows ?? 24,
+  })
 
-    if (output.isTTY === true) {
-      // Set up resize handler
-      const resizeHandler = () => {
-        const dims = getDimensions()
-        void Runtime.runFork(runtime)(PubSub.publish(pubsub, dims))
-      }
+  if (output.isTTY === true) {
+    // Set up resize handler
+    const resizeHandler = () => {
+      const dims = getDimensions()
+      void Runtime.runFork(runtime)(PubSub.publish(pubsub, dims))
+    }
 
-      // Listen for SIGWINCH
-      process.on('SIGWINCH', resizeHandler)
-
-      // Cleanup on scope close
-      yield* Effect.addFinalizer(() =>
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        process.on('SIGWINCH', resizeHandler)
+      }),
+      () =>
         Effect.sync(() => {
           process.off('SIGWINCH', resizeHandler)
         }),
-      )
-    }
+    )
+  }
 
-    // Create events stream
-    const events = Stream.fromPubSub(pubsub)
+  // Create events stream
+  const events = Stream.fromPubSub(pubsub)
 
-    return {
-      events,
-      getDimensions,
-    }
-  })
+  return {
+    events,
+    getDimensions,
+  }
+})
 
 /**
  * Get the current terminal dimensions.
