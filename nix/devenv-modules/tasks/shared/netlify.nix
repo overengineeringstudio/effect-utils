@@ -110,16 +110,11 @@ let
 
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
-        # pnpm 11 requires explicit --allow-build for packages with native deps
         deploy_json_file="$(mktemp)"
         deploy_stderr_file="$(mktemp)"
+        set +e
         # shellcheck disable=SC2086
-        pnpm --package=netlify-cli dlx \
-          --allow-build=sharp \
-          --allow-build=esbuild \
-          --allow-build=unix-dgram \
-          --allow-build=@parcel/watcher \
-          netlify deploy \
+        ${pkgs.bun}/bin/bunx netlify-cli deploy \
           --dir="$deploy_dir" \
           --site="${siteId}" \
           --auth="$NETLIFY_AUTH_TOKEN" \
@@ -128,8 +123,9 @@ let
           $alias_flag \
           --message="$message" \
           --json >"$deploy_json_file" 2>"$deploy_stderr_file"
-
         deploy_exit="$?"
+        set -e
+
         if [ -s "$deploy_stderr_file" ]; then
           cat "$deploy_stderr_file" >&2
         fi
