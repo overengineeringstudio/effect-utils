@@ -520,29 +520,50 @@ export const createTerminalInput = (
     const runtime = yield* Effect.runtime<never>()
 
     // Track if raw mode was set
-    let wasRawMode = false
+    let didEnableRawMode = false
     const isTTY = 'isTTY' in input && input.isTTY
+    const isRaw = 'isRaw' in input && input.isRaw === true
     const setRawMode = 'setRawMode' in input ? (input.setRawMode as (mode: boolean) => void) : null
+    let dataHandler: ((data: Buffer) => void) | undefined
+    let resizeHandler: (() => void) | undefined
+    let cleanedUp = false
+
+    const cleanup = (): void => {
+      if (cleanedUp === true) return
+      cleanedUp = true
+
+      if (dataHandler !== undefined) {
+        input.off('data', dataHandler)
+        dataHandler = undefined
+      }
+
+      if ('pause' in input && typeof input.pause === 'function') {
+        input.pause()
+      }
+
+      if (resizeHandler !== undefined) {
+        process.off('SIGWINCH', resizeHandler)
+        resizeHandler = undefined
+      }
+
+      if (didEnableRawMode === true && setRawMode !== null) {
+        setRawMode(false)
+      }
+    }
 
     // Enable raw mode if TTY
-    if (rawMode === true && isTTY === true && setRawMode !== null) {
-      wasRawMode = true
+    if (rawMode === true && isTTY === true && setRawMode !== null && isRaw === false) {
+      didEnableRawMode = true
       setRawMode(true)
-
-      // Restore raw mode on cleanup
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          setRawMode(false)
-        }),
-      )
     }
 
     // Set up data handler
-    const dataHandler = (data: Buffer) => {
+    dataHandler = (data: Buffer) => {
       const events = parseKeyInput(data)
       for (const event of events) {
         // Handle Ctrl+C specially if not handling it ourselves
         if (event.ctrl === true && event.key === 'c' && handleCtrlC === false) {
+          cleanup()
           process.exit(130) // Standard exit code for Ctrl+C
         }
 
@@ -560,18 +581,11 @@ export const createTerminalInput = (
     }
 
     // Cleanup listener on scope close
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        input.off('data', dataHandler)
-        if ('pause' in input && typeof input.pause === 'function') {
-          input.pause()
-        }
-      }),
-    )
+    yield* Effect.addFinalizer(() => Effect.sync(cleanup))
 
     // Set up resize handler if enabled
     if (handleResize === true && output.isTTY === true) {
-      const resizeHandler = () => {
+      resizeHandler = () => {
         const cols = output.columns ?? 80
         const rows = output.rows ?? 24
         void Runtime.runFork(runtime)(PubSub.publish(pubsub, resizeEvent({ cols, rows })))
@@ -579,13 +593,6 @@ export const createTerminalInput = (
 
       // Listen for SIGWINCH (terminal resize signal)
       process.on('SIGWINCH', resizeHandler)
-
-      // Cleanup on scope close
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          process.off('SIGWINCH', resizeHandler)
-        }),
-      )
 
       // Publish initial resize event with current dimensions
       const initialCols = output.columns ?? 80
@@ -599,7 +606,7 @@ export const createTerminalInput = (
     return {
       events,
       pubsub,
-      isRawMode: wasRawMode,
+      isRawMode: didEnableRawMode,
     }
   })
 
