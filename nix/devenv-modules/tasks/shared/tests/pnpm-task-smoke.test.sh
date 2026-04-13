@@ -132,6 +132,7 @@ if [ "${1:-}" = "--version" ]; then
   exit 0
 fi
 if [ "${1:-}" = "install" ]; then
+  printf 'PNPM_HOME=%s\n' "${PNPM_HOME:-}" >> "${TEST_PNPM_LOG:?}"
   mkdir -p node_modules
   touch node_modules/.install-ok
   exit 0
@@ -233,7 +234,29 @@ echo "Test 3: status hits after install with same GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after install"
 )
 
-echo "Test 4: status misses after effective GVS path changes"
+echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  grep -qxF "PNPM_HOME=$workspace/.pnpm-home" "$tmpdir/pnpm.log"
+)
+
+echo "Test 5: status hits after install with the default GVS path"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 0 "$exit_code" "status should hit after default-PNPM_HOME install"
+)
+
+echo "Test 6: status misses after effective GVS path changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -245,11 +268,11 @@ echo "Test 4: status misses after effective GVS path changes"
   assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
 )
 
-echo "Test 5: exec invoked pnpm version and install"
+echo "Test 7: exec invoked pnpm version and install"
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 6: exec detaches stdin before probing pnpm version"
+echo "Test 8: exec detaches stdin before probing pnpm version"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -269,14 +292,14 @@ echo "Test 6: exec detaches stdin before probing pnpm version"
 )
 grep -qxF -- "--version" "$tmpdir/pnpm.log"
 
-echo "Test 7: generated test task runs vitest without pnpm exec"
+echo "Test 9: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 8: generated storybook task runs storybook without pnpm exec"
+echo "Test 10: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
