@@ -66,10 +66,10 @@ describe('createTerminalInput', () => {
     const input = new FakeTtyInput()
     input.isRaw = true
 
-    await Effect.runPromise(
+    const terminalInput = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          yield* createTerminalInput({
+          return yield* createTerminalInput({
             input: input as unknown as Readable,
             output: { isTTY: false } as never,
             handleResize: false,
@@ -80,5 +80,6 @@ describe('createTerminalInput', () => {
 
     expect(input.setRawMode).not.toHaveBeenCalled()
     expect(input.isRaw).toBe(true)
+    expect(terminalInput.isRawMode).toBe(true)
   })
 })

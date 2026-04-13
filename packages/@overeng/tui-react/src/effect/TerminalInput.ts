@@ -593,7 +593,7 @@ export const createTerminalInput = Effect.fn('TerminalInput.create')(function* (
       return {
         events: Stream.fromPubSub(pubsub),
         pubsub,
-        isRawMode: didEnableRawMode,
+        isRawMode: isRaw === true || didEnableRawMode,
       }
     }),
     () => cleanup,
