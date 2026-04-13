@@ -1,5 +1,8 @@
 { pkgs, lib ? pkgs.lib }:
 let
+  # All deploy tasks accept the same high-level input shape via DEVENV_TASK_INPUT.
+  # Provider modules still own their provider-specific behavior, but type parsing
+  # should stay identical so CI can treat "pr", "production", etc. uniformly.
   mkDeployTypeParser =
     {
       defaultType,
@@ -19,6 +22,13 @@ let
       esac
     '';
 
+  # Task wrappers may need to validate one env var, expose it under another
+  # name, or both. We resolve through a shell variable name on purpose so the
+  # generated script can support aliases like:
+  #   read SCHICKLING_NETLIFY_TOKEN
+  #   export NETLIFY_AUTH_TOKEN="$SCHICKLING_NETLIFY_TOKEN"
+  # The indirect expansion is also the piece that was previously broken and
+  # caused provider auth to disappear inside generated deploy wrappers.
   mkRequiredEnvCheck =
     {
       envName,
@@ -39,6 +49,15 @@ let
       export ${exportName}="''${!local_name}"
     '';
 
+  # Emit one strict metadata record that every deploy provider must satisfy.
+  # CI consumes this contract instead of scraping provider-specific log lines.
+  #
+  # We intentionally write both:
+  # - generic keys, so higher-level CI logic can stay provider-agnostic
+  # - provider-scoped keys, so existing tasks and ad-hoc debugging stay usable
+  #
+  # `raw_deploy_url` is the unique deploy artifact URL.
+  # `final_url` is the user-facing URL after aliasing, if any.
   mkDeployMetadataEmitter =
     {
       provider,
