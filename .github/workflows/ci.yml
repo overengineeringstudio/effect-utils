@@ -2720,7 +2720,6 @@ jobs:
           else
             exit 0
           fi
-          # Set Netlify branch-deploy suffix based on mode
           if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             commit_sha="${{ github.event.pull_request.head.sha }}"
