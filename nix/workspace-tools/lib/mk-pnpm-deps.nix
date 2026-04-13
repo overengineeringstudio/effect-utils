@@ -282,6 +282,12 @@ in
                   installStartedAt=$(timer_now)
                   (
                     cd "$install_root"
+                    # Filtered staged workspaces can differ from the repo's
+                    # committed workspace graph. Refresh the lockfile inside the
+                    # staged tree first so pnpm validates against the exact
+                    # install root we are about to materialize, then enforce
+                    # that synthesized lockfile with a frozen install.
+                    pnpm install --lockfile-only --ignore-scripts
                     pnpm install --frozen-lockfile --ignore-scripts
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"

@@ -632,6 +632,8 @@ export {
   bashShellDefaults,
   checkoutStep,
   cachixStep,
+  cachixBinaryCache,
+  devenvBinaryCache,
   pnpmStateSetupStep,
   restorePnpmStateStep,
   savePnpmStateStep,
@@ -639,6 +641,7 @@ export {
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
+  nixBinaryCachesExtraConf,
   nixDiagnosticsArtifactStep,
   runDevenvTasksBefore,
   validateNixStoreStep,
@@ -646,5 +649,6 @@ export {
   syncMegarepoWorkspaceStep,
   applyMegarepoLockStep,
   RUNNER_PROFILES,
+  type NixBinaryCache,
   type RunnerProfile,
 } from './ci-workflow.ts'
