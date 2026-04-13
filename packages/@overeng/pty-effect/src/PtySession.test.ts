@@ -33,6 +33,8 @@ const withIsolatedDir = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   })
 
 const fastSchedule = Schedule.spaced('20 millis')
+// TODO: Remove this skip and simplify the reconnect test once
+// https://github.com/overengineeringstudio/effect-utils/issues/557 is resolved.
 const SKIP_SERVER_RECONNECT_ON_LINUX_CI =
   process.env.CI === 'true' && process.platform === 'linux' && process.arch === 'x64'
 
