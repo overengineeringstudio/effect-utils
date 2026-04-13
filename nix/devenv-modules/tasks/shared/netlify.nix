@@ -66,11 +66,13 @@ let
         short_sha="$(${git} rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
         alias_flag=""
+        alias_name=""
         filter_flag=""
         message="${pkg.name}"
 
         case "$deploy_type" in
           prod)
+            alias_name="${pkg.name}"
             alias_flag="--alias=${pkg.name}"
             message="${pkg.name} (prod, $short_sha)"
             ;;
@@ -80,7 +82,8 @@ let
               echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
               exit 1
             fi
-            alias_flag="--alias=${pkg.name}-pr-''${pr_number}"
+            alias_name="${pkg.name}-pr-''${pr_number}"
+            alias_flag="--alias=$alias_name"
             message="${pkg.name} (PR #''${pr_number}, $short_sha)"
             ;;
           draft)
@@ -99,6 +102,7 @@ let
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
         # pnpm 11 requires explicit --allow-build for packages with native deps
+        deploy_json="$(mktemp)"
         # shellcheck disable=SC2086
         pnpm --package=netlify-cli dlx \
           --allow-build=sharp \
@@ -111,7 +115,29 @@ let
           $filter_flag \
           --no-build \
           $alias_flag \
-          --message="$message"
+          --message="$message" \
+          --json > "$deploy_json"
+
+        raw_deploy_url="$(${pkgs.jq}/bin/jq -r '.deploy_url // empty' "$deploy_json")"
+        if [ -z "$raw_deploy_url" ]; then
+          echo "Error: Netlify deploy did not return deploy_url for ${pkg.name}" >&2
+          cat "$deploy_json" >&2
+          rm -f "$deploy_json"
+          exit 1
+        fi
+
+        final_url="$raw_deploy_url"
+        if [ -n "$alias_name" ]; then
+          final_url="https://$alias_name--${site}.netlify.app"
+        fi
+
+        deployed_at_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "Netlify deploy package: ${pkg.name}"
+        echo "Netlify raw deploy URL: $raw_deploy_url"
+        echo "Netlify deploy URL: $final_url"
+        echo "Netlify deployed at UTC: $deployed_at_utc"
+        echo "NETLIFY_DEPLOY_METADATA: $(${pkgs.jq}/bin/jq -cn --arg packageName '${pkg.name}' --arg rawDeployUrl "$raw_deploy_url" --arg finalUrl "$final_url" --arg deployedAtUtc "$deployed_at_utc" '{packageName: $packageName, rawDeployUrl: $rawDeployUrl, finalUrl: $finalUrl, deployedAtUtc: $deployedAtUtc}')"
+        rm -f "$deploy_json"
       '';
     };
   };
