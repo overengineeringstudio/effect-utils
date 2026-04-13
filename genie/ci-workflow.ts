@@ -151,7 +151,7 @@ const withAppendedNixConfig = ({
 
 /**
  * Fall back to the standard CI pnpm paths when a workflow has not exported
- * them via `pnpmStoreSetupStep` yet. This keeps `runDevenvTasksBefore` safe for
+ * them via `pnpmStateSetupStep` yet. This keeps `runDevenvTasksBefore` safe for
  * downstream callers while effect-utils centralizes the preferred setup step.
  */
 const withCiPnpmState = (command: string) =>
@@ -440,10 +440,19 @@ export const jobLocalPnpmHome = '${{ github.workspace }}/.pnpm-home'
 export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }}'
 
 /**
+ * Canonical pnpm CI state surface for pnpm 11 + GVS on self-hosted runners.
+ *
+ * `PNPM_HOME` carries the hot reusable links and metadata, while the
+ * auxiliary mutable store content still lives under `PNPM_STORE_DIR`. The
+ * supported cache contract restores both together under one exact key.
+ */
+export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\n')
+
+/**
  * Export the canonical CI pnpm paths once so every later shell step shares the
  * same writable store and the same workspace-relative GVS projection.
  */
-export const pnpmStoreSetupStep = {
+export const pnpmStateSetupStep = {
   name: 'Isolate pnpm state',
   shell: 'bash',
   run: [
@@ -452,61 +461,56 @@ export const pnpmStoreSetupStep = {
   ].join('\n'),
 } as const
 
-const pnpmStoreCachePrimaryKey = (keyPrefix: string) =>
+const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
 
-const pnpmStoreCacheRestorePrefix = (keyPrefix: string) =>
-  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`
-
 /**
- * Restore the job-local pnpm home snapshot before any install work runs.
+ * Restore the job-local pnpm state snapshot before any install work runs.
  *
- * This is intentionally separate from the save step so a job can still publish
- * a freshly populated store even if the main task fails later. The trade-off is
- * slightly more workflow boilerplate in consumers, but it avoids cold-starting
- * every failing PR until one fully green run happens to save the cache.
+ * Live pnpm state must use exact-key semantics. Prefix fallback restore keys
+ * are not part of the supported contract for mutable pnpm state because they
+ * blur the authority boundary between the current lockfile graph and older
+ * warmed state.
  */
-export const restorePnpmStoreStep = (opts?: {
+export const restorePnpmStateStep = (opts?: {
   keyPrefix?: string
   stepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
-  const path = opts?.path ?? jobLocalPnpmHome
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'
+  const path = opts?.path ?? jobLocalPnpmStatePaths
 
   return {
-    id: opts?.stepId ?? 'restore-pnpm-store',
-    name: 'Restore pnpm home',
+    id: opts?.stepId ?? 'restore-pnpm-state',
+    name: 'Restore pnpm state',
     uses: 'actions/cache/restore@v4' as const,
     with: {
       path,
-      // The fetched store contents are platform-specific, so the cache must
+      // The fetched state contents are platform-specific, so the cache must
       // isolate both OS and CPU architecture to avoid cross-platform corruption.
-      key: pnpmStoreCachePrimaryKey(keyPrefix),
-      'restore-keys': pnpmStoreCacheRestorePrefix(keyPrefix),
+      key: pnpmStateCachePrimaryKey(keyPrefix),
     },
   }
 }
 
 /**
- * Save the job-local pnpm home after the main task graph runs.
+ * Save the job-local pnpm state after the main task graph runs.
  *
- * We only upload when the restore step missed the exact key. A restore-key hit
- * still saves the new primary key so lockfile changes warm later runs, while an
- * exact hit skips the redundant upload.
+ * Save only after prior steps succeeded. This avoids publishing partial or
+ * corrupt live state after a failed dependency preparation step.
  */
-export const savePnpmStoreStep = (opts?: {
+export const savePnpmStateStep = (opts?: {
   keyPrefix?: string
   restoreStepId?: string
   path?: string
 }) => {
-  const keyPrefix = opts?.keyPrefix ?? 'pnpm-home'
-  const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-store'
-  const path = opts?.path ?? jobLocalPnpmHome
+  const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'
+  const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-state'
+  const path = opts?.path ?? jobLocalPnpmStatePaths
 
   return {
-    name: 'Save pnpm home',
-    if: `\${{ always() && !cancelled() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
+    name: 'Save pnpm state',
+    if: `\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
     uses: 'actions/cache/save@v4' as const,
     with: {
       path,
@@ -514,7 +518,7 @@ export const savePnpmStoreStep = (opts?: {
       // not allow nesting `${{ ... }}` inside a fallback string of another
       // expression, so deriving the key once in TypeScript keeps the emitted
       // workflow expression valid.
-      key: pnpmStoreCachePrimaryKey(keyPrefix),
+      key: pnpmStateCachePrimaryKey(keyPrefix),
     },
   }
 }

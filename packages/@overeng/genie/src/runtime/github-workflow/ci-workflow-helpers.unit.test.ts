@@ -61,8 +61,24 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
-  it('defaults the split cache helpers to pnpm home instead of pnpm store', () => {
-    expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmHome')
+  it('defaults the pnpm state helpers to restoring both home and auxiliary store state', () => {
+    expect(ciWorkflowSource).toContain(
+      "export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\\n')",
+    )
+    expect(ciWorkflowSource).toContain('const path = opts?.path ?? jobLocalPnpmStatePaths')
+  })
+
+  it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
+    expect(ciWorkflowSource).toContain("const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'")
+    expect(ciWorkflowSource).toContain("name: 'Restore pnpm state'")
+    expect(ciWorkflowSource).not.toContain("'restore-keys':")
+  })
+
+  it('only saves pnpm state after prior steps succeed', () => {
+    expect(ciWorkflowSource).toContain("name: 'Save pnpm state'")
+    expect(ciWorkflowSource).toContain(
+      "if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`",
+    )
   })
 
   it('cold-builds pnpm deps artifacts by evicting cached outputs before the second build', () => {

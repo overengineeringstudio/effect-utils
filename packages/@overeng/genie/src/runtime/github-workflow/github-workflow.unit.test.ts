@@ -168,11 +168,11 @@ describe('GitHub expression validation', () => {
           'runs-on': 'ubuntu-latest',
           steps: [
             {
-              name: 'Save pnpm store',
+              name: 'Save pnpm state',
               uses: 'actions/cache/save@v4',
               with: {
-                key: "${{ steps.restore.outputs.cache-primary-key || 'pnpm-store-${{ runner.os }}' }}",
-                path: '/tmp/pnpm-store',
+                key: "${{ steps.restore.outputs.cache-primary-key || 'pnpm-state-v1-${{ runner.os }}' }}",
+                path: '/tmp/pnpm-state',
               },
             },
           ],
@@ -198,11 +198,11 @@ describe('GitHub expression validation', () => {
           'runs-on': 'ubuntu-latest',
           steps: [
             {
-              name: 'Restore pnpm store',
+              name: 'Restore pnpm state',
               uses: 'actions/cache/restore@v4',
               with: {
-                key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
-                path: '/tmp/pnpm-store',
+                key: "pnpm-state-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
+                path: '/tmp/pnpm-state',
               },
             },
           ],
@@ -222,10 +222,10 @@ describe('GitHub expression validation', () => {
           'runs-on': 'ubuntu-latest',
           steps: [
             {
-              name: 'Restore pnpm store',
+              name: 'Restore pnpm state',
               uses: 'actions/cache/restore@v4',
               with: {
-                key: "pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
+                key: "pnpm-state-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}",
                 path: '${{ runner.temp }}/pnpm-store/${{ github.job }}',
               },
             },
@@ -237,7 +237,7 @@ describe('GitHub expression validation', () => {
     const yaml = workflow.stringify(mockGenieContext)
 
     expect(yaml).toContain(
-      `key: "pnpm-store-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
+      `key: "pnpm-state-v1-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
     )
     expect(yaml).toContain(`path: '\${{ runner.temp }}/pnpm-store/\${{ github.job }}'`)
   })
