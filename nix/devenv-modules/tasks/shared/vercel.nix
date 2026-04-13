@@ -115,6 +115,7 @@ let
     deployment:
     let
       cwd = deployment.cwd or ".";
+      aliasPrefix = deployment.aliasPrefix or null;
       extraEnv = deployment.env or { };
       buildDeps = if buildTaskPrefix == null then [ ] else [ "${buildTaskPrefix}:${deployment.name}" ];
     in
@@ -132,14 +133,28 @@ let
             lib.mapAttrsToList (k: v: "export ${k}=${lib.escapeShellArg v}") extraEnv
           )}
 
+          alias_name=""
           case "$deploy_type" in
             prod)
               pull_env="production"
               build_flag="--prod"
+              ${lib.optionalString (aliasPrefix != null && aliasSuffix != null) ''
+                alias_name="${aliasPrefix}-${aliasSuffix}"
+              ''}
               ;;
             pr|preview)
               pull_env="preview"
               build_flag=""
+              ${lib.optionalString (aliasPrefix != null && aliasSuffix != null) ''
+                if [ "$deploy_type" = "pr" ]; then
+                  pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
+                  if [ -z "$pr_number" ]; then
+                    echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
+                    exit 1
+                  fi
+                  alias_name="${aliasPrefix}-pr-''${pr_number}-${aliasSuffix}"
+                fi
+              ''}
               ;;
             *)
               echo "Error: Unknown deploy type '$deploy_type'. Use: prod, pr, preview" >&2
@@ -221,6 +236,13 @@ let
           esac
 
           ${sharedEpilogue deployment}
+
+          if [ -n "$alias_name" ]; then
+            alias_url="''${alias_name}.vercel.app"
+            ${pkgs.bun}/bin/bunx vercel alias "$deploy_url" "$alias_url" --token "$VERCEL_TOKEN"
+            final_url="https://''${alias_url}"
+          fi
+
           ${deployTask.mkDeployMetadataEmitter {
             provider = "vercel";
             providerLabel = "Vercel";
