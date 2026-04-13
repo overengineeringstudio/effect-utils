@@ -55,7 +55,7 @@ describe('createTerminalInput', () => {
 
           const fiberExit = yield* fiber.await
           expect(Exit.isFailure(fiberExit)).toBe(true)
-          if (Exit.isFailure(fiberExit)) {
+          if (Exit.isFailure(fiberExit) === true) {
             expect(Cause.isInterruptedOnly(fiberExit.cause)).toBe(true)
           }
         }),
