@@ -70,6 +70,15 @@
               ;
             src = self;
           };
+          notion-cli = import (rootPath + "/packages/@overeng/notion-cli/nix/build.nix") {
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
+            src = self;
+          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -83,6 +92,11 @@
             dirty = true;
           };
           tui-stories = import (rootPath + "/packages/@overeng/tui-stories/nix/build.nix") {
+            inherit pkgs gitRev commitTs;
+            src = self;
+            dirty = true;
+          };
+          notion-cli = import (rootPath + "/packages/@overeng/notion-cli/nix/build.nix") {
             inherit pkgs gitRev commitTs;
             src = self;
             dirty = true;
@@ -103,6 +117,9 @@
           "megarepo-pnpm-deps" = cliPackages.megarepo.passthru.depsBuildsByInstallRoot.root;
           tui-stories-dirty = cliPackagesDirty.tui-stories;
           "tui-stories-pnpm-deps" = cliPackages.tui-stories.passthru.depsBuildsByInstallRoot.root;
+          notion-cli = cliPackages.notion-cli;
+          notion-cli-dirty = cliPackagesDirty.notion-cli;
+          "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
           "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
           oxlint-npm = oxlintNpm;
@@ -117,11 +134,13 @@
           genie = cliPackages.genie.outPath;
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
+          notion-cli = cliPackages.notion-cli.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
           tui-stories = cliPackagesDirty.tui-stories.outPath;
+          notion-cli = cliPackagesDirty.notion-cli.outPath;
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {
