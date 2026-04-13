@@ -109,9 +109,9 @@ let
         echo "Deploying ${pkg.name} ($deploy_type)..."
 
         # pnpm 11 requires explicit --allow-build for packages with native deps
-        deploy_json="$(mktemp)"
+        deploy_log="$(mktemp)"
         # shellcheck disable=SC2086
-        if ! pnpm --package=netlify-cli dlx \
+        pnpm --package=netlify-cli dlx \
           --allow-build=sharp \
           --allow-build=esbuild \
           --allow-build=unix-dgram \
@@ -122,21 +122,30 @@ let
           $filter_flag \
           --no-build \
           $alias_flag \
-          --message="$message" \
-          --json > "$deploy_json"; then
-          rm -f "$deploy_json"
-          exit 1
+          --message="$message" 2>&1 | tee "$deploy_log"
+
+        deploy_exit="''${PIPESTATUS[0]}"
+        if [ "$deploy_exit" -ne 0 ]; then
+          rm -f "$deploy_log"
+          exit "$deploy_exit"
         fi
 
-        raw_deploy_url="$(${pkgs.jq}/bin/jq -r '.deploy_ssl_url // .deploy_url // empty' "$deploy_json")"
+        deploy_id="$(${pkgs.gnugrep}/bin/grep -Eo 'https://app.netlify.com/sites/[^[:space:]]+/deploys/[A-Za-z0-9]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's#.*/deploys/##' | tail -n 1 || true)"
+        logged_unique_url="$(${pkgs.gnugrep}/bin/grep -Eo 'Unique deploy URL:[[:space:]]+https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's/^Unique deploy URL:[[:space:]]+//' | tail -n 1 || true)"
+        logged_website_url="$(${pkgs.gnugrep}/bin/grep -Eo 'Website( Draft)? URL:[[:space:]]+https://[^[:space:]]+' "$deploy_log" | ${pkgs.gnused}/bin/sed -E 's/^Website( Draft)? URL:[[:space:]]+//' | tail -n 1 || true)"
+
+        raw_deploy_url="$logged_unique_url"
+        if [ -z "$raw_deploy_url" ] && [ -n "$deploy_id" ]; then
+          raw_deploy_url="https://$deploy_id--${site}.netlify.app"
+        fi
         if [ -z "$raw_deploy_url" ]; then
           echo "Error: Could not determine unique Netlify deploy URL for ${pkg.name}" >&2
-          cat "$deploy_json" >&2
-          rm -f "$deploy_json"
+          cat "$deploy_log" >&2
+          rm -f "$deploy_log"
           exit 1
         fi
 
-        final_url="$(${pkgs.jq}/bin/jq -r '.url // empty' "$deploy_json")"
+        final_url="$logged_website_url"
         if [ -n "$alias_name" ]; then
           final_url="https://$alias_name--${site}.netlify.app"
         fi
@@ -150,7 +159,7 @@ let
           target = pkg.name;
           legacyMetadataPrefix = "NETLIFY_DEPLOY_METADATA";
         }}
-        rm -f "$deploy_json"
+        rm -f "$deploy_log"
       '';
     };
   };
