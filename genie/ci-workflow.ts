@@ -1674,9 +1674,9 @@ export const netlifyStorybookCommentStep = (site: string) => ({
     '  exit 0',
     'fi',
     'if [ -n "$comment_id" ]; then',
-    '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/comments/$comment_id" --method PATCH --input /tmp/storybook-preview-comment.md >/dev/null',
+    '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/comments/$comment_id" --method PATCH --field body="$(cat /tmp/storybook-preview-comment.md)" >/dev/null',
     'else',
-    '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --method POST --input /tmp/storybook-preview-comment.md >/dev/null',
+    '  nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat /tmp/storybook-preview-comment.md)" >/dev/null',
     'fi',
   ].join('\n'),
 })
