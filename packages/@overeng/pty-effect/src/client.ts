@@ -79,6 +79,10 @@ export interface PtyAttachSpec {
   readonly size: TerminalSize
 }
 
+export interface PtyClientLayerOptions {
+  readonly ptySessionDir?: string
+}
+
 /** Default polling schedule for `waitFor*` (50ms fixed). */
 export const defaultPollSchedule: Schedule.Schedule<unknown> = Schedule.spaced('50 millis')
 
@@ -199,6 +203,38 @@ const wrapSync = <A>(opts: {
       }),
   })
 
+let serializedEnvQueue = Promise.resolve()
+
+const withSerializedEnv = <A>(
+  env: Readonly<Record<string, string | undefined>>,
+  thunk: () => Promise<A> | A,
+): Promise<A> => {
+  const previous = serializedEnvQueue
+  let release!: () => void
+  serializedEnvQueue = new Promise<void>((resolve) => {
+    release = resolve
+  })
+
+  return previous.then(async () => {
+    const saved = Object.entries(env).map(([key]) => [key, process.env[key]] as const)
+
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+
+    try {
+      return await thunk()
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key]
+        else process.env[key] = value
+      }
+      release()
+    }
+  })
+}
+
 const buildSpawnOpts = (spec: PtyDaemonSpec): SpawnDaemonOptions => {
   const opts: SpawnDaemonOptions = {
     name: spec.name,
@@ -242,53 +278,62 @@ const validateNameOrFail = (name: string) =>
       }),
   })
 
-const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
-  Effect.gen(function* () {
-    yield* validateNameOrFail(spec.name)
-    const envOverrides = spec.env !== undefined ? Object.entries(spec.env) : []
-    const saved = envOverrides.map(([k]) => [k, process.env[k]] as const)
-    for (const [k, v] of envOverrides) process.env[k] = v
-    try {
+const spawnDaemon =
+  (options: PtyClientLayerOptions) =>
+  (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
+    Effect.gen(function* () {
+      yield* validateNameOrFail(spec.name)
       yield* wrapPromise({
         method: 'spawnDaemon',
         reason: 'SpawnFailed',
         name: spec.name,
-        thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
+        thunk: () =>
+          withSerializedEnv(
+            {
+              PTY_SESSION_DIR: options.ptySessionDir,
+              ...(spec.env ?? {}),
+            },
+            () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
+          ),
       })
-    } finally {
-      for (const [k, prev] of saved) {
-        if (prev === undefined) delete process.env[k]
-        else process.env[k] = prev
-      }
-    }
-  }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
+    }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
 
-const peek = (input: { readonly name: PtyName; readonly plain?: boolean }) =>
+const peek =
+  (options: PtyClientLayerOptions) =>
+  (input: { readonly name: PtyName; readonly plain?: boolean }) =>
+    wrapPromise({
+      method: 'peek',
+      reason: 'ConnectFailed',
+      name: input.name,
+      thunk: () =>
+        withSerializedEnv({ PTY_SESSION_DIR: options.ptySessionDir }, () =>
+          upstreamPeekScreen(
+            input.plain !== undefined
+              ? { name: input.name, plain: input.plain }
+              : { name: input.name },
+          ),
+        ),
+    }).pipe(Effect.withSpan('pty-client.peek', { attributes: { 'span.label': input.name } }))
+
+const list = (
+  options: PtyClientLayerOptions,
+): Effect.Effect<ReadonlyArray<SessionInfo>, PtyError> =>
   wrapPromise({
-    method: 'peek',
+    method: 'list',
     reason: 'ConnectFailed',
-    name: input.name,
     thunk: () =>
-      upstreamPeekScreen(
-        input.plain !== undefined ? { name: input.name, plain: input.plain } : { name: input.name },
-      ),
-  }).pipe(Effect.withSpan('pty-client.peek', { attributes: { 'span.label': input.name } }))
+      withSerializedEnv({ PTY_SESSION_DIR: options.ptySessionDir }, () => upstreamListSessions()),
+  }).pipe(Effect.withSpan('pty-client.list'))
 
-const list: Effect.Effect<ReadonlyArray<SessionInfo>, PtyError> = wrapPromise({
-  method: 'list',
-  reason: 'ConnectFailed',
-  thunk: () => upstreamListSessions(),
-}).pipe(Effect.withSpan('pty-client.list'))
-
-const exists = (input: { readonly name: PtyName }) =>
+const exists = (options: PtyClientLayerOptions) => (input: { readonly name: PtyName }) =>
   pipe(
-    list,
+    list(options),
     Effect.map((sessions) => sessions.some((s) => s.name === input.name)),
   ).pipe(Effect.withSpan('pty-client.exists', { attributes: { 'span.label': input.name } }))
 
-const kill = (input: { readonly name: PtyName }) =>
+const kill = (options: PtyClientLayerOptions) => (input: { readonly name: PtyName }) =>
   Effect.gen(function* () {
-    const sessions = yield* list
+    const sessions = yield* list(options)
     const session = sessions.find((s) => s.name === input.name)
     if (session === undefined || session.pid === null) {
       return yield* new PtyError({
@@ -319,172 +364,179 @@ const kill = (input: { readonly name: PtyName }) =>
  * require `Effect.runtime` plumbing through the event handlers — tracked
  * as a v2 improvement.
  */
-const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =>
-  Effect.gen(function* () {
-    const queue = yield* Queue.bounded<Uint8Array>(1024)
-    const exitDeferred = yield* Deferred.make<{ readonly code: number }, PtyError>()
-    const enc = new TextEncoder()
+const attach =
+  (options: PtyClientLayerOptions) =>
+  (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =>
+    Effect.gen(function* () {
+      const queue = yield* Queue.bounded<Uint8Array>(1024)
+      const exitDeferred = yield* Deferred.make<{ readonly code: number }, PtyError>()
+      const enc = new TextEncoder()
 
-    const opts: SessionConnectionOptions = {
-      name: spec.name,
-      rows: spec.size.rows,
-      cols: spec.size.cols,
-    }
-
-    const conn = yield* wrapSync({
-      method: 'attach.construct',
-      reason: 'ConnectFailed',
-      name: spec.name,
-      thunk: () => new SessionConnection(opts),
-    })
-
-    conn.on('data', (chunk: string) => {
-      Effect.runFork(Queue.offer(queue, enc.encode(chunk)))
-    })
-    conn.on('exit', (code: number) => {
-      Effect.runFork(
-        Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.shutdown(queue))),
-      )
-    })
-    conn.on('error', (err: Error) => {
-      Effect.runFork(
-        Deferred.fail(
-          exitDeferred,
-          new PtyError({
-            reason: 'ConnectFailed',
-            method: 'attach.error',
-            name: spec.name,
-            cause: err,
-          }),
-        ).pipe(Effect.andThen(Queue.shutdown(queue))),
-      )
-    })
-    conn.on('close', () => {
-      Effect.runFork(
-        Deferred.fail(
-          exitDeferred,
-          new PtyError({ reason: 'Closed', method: 'attach.close', name: spec.name }),
-        ).pipe(Effect.andThen(Queue.shutdown(queue))),
-      )
-    })
-
-    const initialScreen = yield* Effect.acquireRelease(
-      wrapPromise({
-        method: 'attach.connect',
-        reason: 'ConnectFailed',
+      const opts: SessionConnectionOptions = {
         name: spec.name,
-        thunk: () => conn.connect(),
-      }),
-      () => Effect.sync(() => conn.disconnect()),
-    )
+        rows: spec.size.rows,
+        cols: spec.size.cols,
+      }
 
-    const bytes: Stream.Stream<Uint8Array, PtyError> = Stream.fromQueue(queue)
+      let conn!: SessionConnection
 
-    const write: PtyClientSession['write'] = ({ data }) =>
-      wrapSync({ method: 'write', name: spec.name, thunk: () => conn.write(data) })
+      const initialScreen = yield* Effect.acquireRelease(
+        wrapPromise({
+          method: 'attach.connect',
+          reason: 'ConnectFailed',
+          name: spec.name,
+          thunk: () =>
+            withSerializedEnv({ PTY_SESSION_DIR: options.ptySessionDir }, async () => {
+              conn = new SessionConnection(opts)
 
-    const typeText: PtyClientSession['type'] = ({ text }) =>
-      wrapSync({ method: 'type', name: spec.name, thunk: () => conn.write(text) })
+              conn.on('data', (chunk: string) => {
+                Effect.runFork(Queue.offer(queue, enc.encode(chunk)))
+              })
+              conn.on('exit', (code: number) => {
+                Effect.runFork(
+                  Deferred.succeed(exitDeferred, { code }).pipe(
+                    Effect.andThen(Queue.shutdown(queue)),
+                  ),
+                )
+              })
+              conn.on('error', (err: Error) => {
+                Effect.runFork(
+                  Deferred.fail(
+                    exitDeferred,
+                    new PtyError({
+                      reason: 'ConnectFailed',
+                      method: 'attach.error',
+                      name: spec.name,
+                      cause: err,
+                    }),
+                  ).pipe(Effect.andThen(Queue.shutdown(queue))),
+                )
+              })
+              conn.on('close', () => {
+                Effect.runFork(
+                  Deferred.fail(
+                    exitDeferred,
+                    new PtyError({ reason: 'Closed', method: 'attach.close', name: spec.name }),
+                  ).pipe(Effect.andThen(Queue.shutdown(queue))),
+                )
+              })
 
-    const press: PtyClientSession['press'] = ({ key }) =>
-      wrapSync({ method: 'press', name: spec.name, thunk: () => conn.press(key) })
+              return await conn.connect()
+            }),
+        }),
+        () => Effect.sync(() => conn.disconnect()),
+      )
 
-    const resize: PtyClientSession['resize'] = ({ rows, cols }) =>
-      wrapSync({
-        method: 'resize',
-        reason: 'ResizeFailed',
+      const bytes: Stream.Stream<Uint8Array, PtyError> = Stream.fromQueue(queue)
+
+      const write: PtyClientSession['write'] = ({ data }) =>
+        wrapSync({ method: 'write', name: spec.name, thunk: () => conn.write(data) })
+
+      const typeText: PtyClientSession['type'] = ({ text }) =>
+        wrapSync({ method: 'type', name: spec.name, thunk: () => conn.write(text) })
+
+      const press: PtyClientSession['press'] = ({ key }) =>
+        wrapSync({ method: 'press', name: spec.name, thunk: () => conn.press(key) })
+
+      const resize: PtyClientSession['resize'] = ({ rows, cols }) =>
+        wrapSync({
+          method: 'resize',
+          reason: 'ResizeFailed',
+          name: spec.name,
+          thunk: () => conn.resize(rows, cols),
+        })
+
+      const screenshot: PtyClientSession['screenshot'] = Effect.gen(function* () {
+        const ansi = yield* peek(options)({ name: spec.name, plain: false })
+        const text = yield* peek(options)({ name: spec.name, plain: true })
+        const lines = text.split('\n')
+        return { lines, text, ansi } satisfies Screenshot
+      }).pipe(Effect.withSpan('pty-client.screenshot', { attributes: { 'span.label': spec.name } }))
+
+      const waitForText: PtyClientSession['waitForText'] = ({ needle, schedule }) =>
+        pipe(
+          Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
+          Stream.filterMap((ss) =>
+            matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
+          ),
+          Stream.runHead,
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new PtyError({
+                    reason: 'Timeout',
+                    method: `waitForText(${String(needle)})`,
+                    name: spec.name,
+                  }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          ),
+        ).pipe(
+          Effect.withSpan('pty-client.waitForText', {
+            attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
+          }),
+        )
+
+      const waitForAbsent: PtyClientSession['waitForAbsent'] = ({ needle, schedule }) =>
+        pipe(
+          Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
+          Stream.filterMap((ss) =>
+            matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
+          ),
+          Stream.runHead,
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new PtyError({
+                    reason: 'Timeout',
+                    method: `waitForAbsent(${String(needle)})`,
+                    name: spec.name,
+                  }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          ),
+        ).pipe(
+          Effect.withSpan('pty-client.waitForAbsent', {
+            attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
+          }),
+        )
+
+      return {
         name: spec.name,
-        thunk: () => conn.resize(rows, cols),
-      })
-
-    const screenshot: PtyClientSession['screenshot'] = Effect.gen(function* () {
-      const ansi = yield* peek({ name: spec.name, plain: false })
-      const text = yield* peek({ name: spec.name, plain: true })
-      const lines = text.split('\n')
-      return { lines, text, ansi } satisfies Screenshot
-    }).pipe(Effect.withSpan('pty-client.screenshot', { attributes: { 'span.label': spec.name } }))
-
-    const waitForText: PtyClientSession['waitForText'] = ({ needle, schedule }) =>
-      pipe(
-        Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
-        ),
-        Stream.runHead,
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new PtyError({
-                  reason: 'Timeout',
-                  method: `waitForText(${String(needle)})`,
-                  name: spec.name,
-                }),
-              ),
-            onSome: Effect.succeed,
-          }),
-        ),
-      ).pipe(
-        Effect.withSpan('pty-client.waitForText', {
-          attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
-        }),
-      )
-
-    const waitForAbsent: PtyClientSession['waitForAbsent'] = ({ needle, schedule }) =>
-      pipe(
-        Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
-        ),
-        Stream.runHead,
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new PtyError({
-                  reason: 'Timeout',
-                  method: `waitForAbsent(${String(needle)})`,
-                  name: spec.name,
-                }),
-              ),
-            onSome: Effect.succeed,
-          }),
-        ),
-      ).pipe(
-        Effect.withSpan('pty-client.waitForAbsent', {
-          attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
-        }),
-      )
-
-    return {
-      name: spec.name,
-      initialScreen,
-      bytes,
-      write,
-      type: typeText,
-      press,
-      resize,
-      screenshot,
-      exit: Deferred.await(exitDeferred),
-      waitForText,
-      waitForAbsent,
-    } satisfies PtyClientSession
-  }).pipe(Effect.withSpan('pty-client.attach', { attributes: { 'span.label': spec.name } }))
+        initialScreen,
+        bytes,
+        write,
+        type: typeText,
+        press,
+        resize,
+        screenshot,
+        exit: Deferred.await(exitDeferred),
+        waitForText,
+        waitForAbsent,
+      } satisfies PtyClientSession
+    }).pipe(Effect.withSpan('pty-client.attach', { attributes: { 'span.label': spec.name } }))
 
 /* ───────────────────────────── layer ────────────────────────────── */
 
-/** Default in-process layer wrapping upstream `@myobie/pty/client` functions. */
-export const layer: Layer.Layer<PtyClient> = Layer.succeed(
-  PtyClient,
+const makeClient = (options: PtyClientLayerOptions) =>
   PtyClient.of({
-    spawnDaemon,
-    attach,
-    peek,
-    list,
-    exists,
-    kill,
-  }),
-)
+    spawnDaemon: spawnDaemon(options),
+    attach: attach(options),
+    peek: peek(options),
+    list: list(options),
+    exists: exists(options),
+    kill: kill(options),
+  })
+
+export const makeLayer = (options: PtyClientLayerOptions = {}): Layer.Layer<PtyClient> =>
+  Layer.succeed(PtyClient, makeClient(options))
+
+/** Default in-process layer wrapping upstream `@myobie/pty/client` functions. */
+export const layer: Layer.Layer<PtyClient> = makeLayer()
 
 /* ───────────────────────── re-exports ────────────────────────────── */
 

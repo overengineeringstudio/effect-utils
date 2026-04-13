@@ -6,7 +6,7 @@ import * as path from 'node:path'
 import { describe, expect, it } from '@effect/vitest'
 import { Chunk, Effect, Schema, Stream } from 'effect'
 
-import { PtyClient, layer as ptyClientLayer } from './client.ts'
+import { makeLayer, PtyClient, layer as ptyClientLayer } from './client.ts'
 import { PtyName } from './PtySpec.ts'
 
 /** Per-test isolated `PTY_SESSION_DIR` so daemons can't collide. */
@@ -172,6 +172,35 @@ describe('PtyClient', () => {
         expect(result._tag).toBe('Left')
         if (result._tag === 'Left') expect(result.left.reason).toBe('BadName')
       }).pipe(Effect.provide(ptyClientLayer)),
+    ),
+  )
+
+  it.scopedLive('supports fixed session-dir layers without mutating the ambient env', () =>
+    withTempDir('pty-effect-client-layer-', (ptySessionDir) =>
+      withTempDir('pty-effect-client-ambient-', (ambientDir) =>
+        Effect.gen(function* () {
+          const previous = process.env.PTY_SESSION_DIR
+          process.env.PTY_SESSION_DIR = ambientDir
+
+          try {
+            const client = yield* PtyClient
+            const name = uniqueName('layer')
+
+            yield* client.spawnDaemon({
+              name,
+              command: 'sh',
+              args: ['-c', 'echo LAYER_TARGET && sleep 0.05'],
+            })
+
+            const sessions = yield* client.list
+            expect(sessions.some((session) => session.name === name)).toBe(true)
+            expect(process.env.PTY_SESSION_DIR).toBe(ambientDir)
+          } finally {
+            if (previous === undefined) delete process.env.PTY_SESSION_DIR
+            else process.env.PTY_SESSION_DIR = previous
+          }
+        }).pipe(Effect.provide(makeLayer({ ptySessionDir }))),
+      ),
     ),
   )
 })
