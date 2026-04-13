@@ -241,19 +241,18 @@ describe('PtySession (server mode)', () => {
       withIsolatedDir(
         Effect.gen(function* () {
           const session = yield* make(
-            /** sleep 60 — daemon must outlive both attach + reconnect on slow
-             *  CI runners. The default 5s left no headroom and the test
-             *  would time out waiting for reconnect. */
-            PtySpec_.server({ command: 'sh', args: ['-c', 'echo before-reconnect; sleep 60'] }),
+            PtySpec_.server({
+              command: 'sh',
+              args: ['-c', 'echo before-reconnect; exec cat'],
+            }),
           )
           yield* session.attach
           yield* session.waitForText({ needle: 'before-reconnect', schedule: fastSchedule })
           yield* session.reconnect
-          // After reconnect, scrollback replay should still contain the line.
-          const ss = yield* session.waitForText({
-            needle: 'before-reconnect',
-            schedule: fastSchedule,
-          })
+          yield* session.write({ data: 'after-reconnect\n' })
+          // Wait on fresh post-reconnect traffic, then assert the replay still
+          // contains pre-reconnect scrollback.
+          const ss = yield* session.waitForText({ needle: 'after-reconnect', schedule: fastSchedule })
           expect(ss.text).toContain('before-reconnect')
         }),
       ),
