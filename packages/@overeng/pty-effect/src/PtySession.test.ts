@@ -237,7 +237,7 @@ describe('PtySession (server mode)', () => {
     ),
   )
 
-  if (SKIP_SERVER_RECONNECT_ON_LINUX_CI) {
+  if (SKIP_SERVER_RECONNECT_ON_LINUX_CI === true) {
     it.skip('reconnect cycles the socket without losing scrollback', () => {})
   } else {
     it.scopedLive(
