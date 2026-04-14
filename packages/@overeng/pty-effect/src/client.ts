@@ -209,9 +209,9 @@ const resolveDaemonBin = () =>
   process.env.PTY_DAEMON_BIN ??
   path.join(path.dirname(require.resolve('@myobie/pty/client')), '..', 'bin', 'pty-daemon')
 
-const getDefaultRows = () => ((process.stdout as WriteStream | undefined)?.rows ?? 24)
+const getDefaultRows = () => (process.stdout as WriteStream | undefined)?.rows ?? 24
 
-const getDefaultCols = () => ((process.stdout as WriteStream | undefined)?.columns ?? 80)
+const getDefaultCols = () => (process.stdout as WriteStream | undefined)?.columns ?? 80
 
 const buildDaemonConfig = (spec: PtyDaemonSpec) => {
   const opts = {
@@ -310,7 +310,9 @@ const spawnDaemonEffect = (spec: PtyDaemonSpec) =>
           if (earlyExit === false) return
           const details = stderrOutput.trim()
           const msg = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
-          throw new Error(details.length > 0 ? `${msg}\n${details}` : `${msg} Is the command valid?`)
+          throw new Error(
+            details.length > 0 ? `${msg}\n${details}` : `${msg} Is the command valid?`,
+          )
         },
       }).pipe(Effect.ensuring(Effect.sync(cleanupListeners))),
     )
