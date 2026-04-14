@@ -245,6 +245,12 @@ in
                 export npm_config_manage_package_manager_versions=false
                 export NODE_ENV=development
                 export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
+                export PNPM_MJS=$(find ${lib.escapeShellArg (toString pnpm)} -type f \( -name pnpm.mjs -o -name pnpm.cjs \) | head -n 1)
+
+                if [ -z "$PNPM_MJS" ]; then
+                  echo "workspace-prep: FATAL - could not locate pnpm entrypoint under ${lib.escapeShellArg (toString pnpm)}"
+                  exit 1
+                fi
 
                 # pnpm 11 rejects `pnpm config set --global` for keys it considers
                 # workspace-only. Use env vars and .npmrc instead.
@@ -282,7 +288,7 @@ in
                   installStartedAt=$(timer_now)
                   (
                     cd "$install_root"
-                    pnpm install --frozen-lockfile --ignore-scripts
+                    node "$PNPM_MJS" install --frozen-lockfile --ignore-scripts
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
                   log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
