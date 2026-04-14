@@ -35,6 +35,7 @@ import {
   Option,
   Predicate,
   Queue,
+  Runtime,
   Schedule,
   Schema,
   Stream,
@@ -233,12 +234,34 @@ const isSocketNotReadyError = (cause: unknown) =>
   Predicate.hasProperty(cause, 'code') === true &&
   (cause as { readonly code?: unknown }).code === 'ENOENT'
 
-const waitForSocket = (opts: {
+const socketStartTimeout = (name: string) =>
+  new PtyError({
+    reason: 'Timeout',
+    method: 'waitForSocket',
+    name,
+    cause: `Timed out waiting for session "${name}" to start`,
+  })
+
+const daemonExitedEarly = (opts: {
+  readonly name: string
+  readonly code: number | null
+  readonly stderr: string
+}) =>
+  new PtyError({
+    reason: 'UnexpectedExit',
+    method: `spawnDaemon.waitForSocket: Daemon process exited immediately (code ${opts.code ?? 'unknown'})`,
+    name: opts.name,
+    ...(opts.stderr.length > 0 ? { cause: opts.stderr } : {}),
+  })
+
+const waitForSocket = Effect.fn('pty-client.waitForSocket')(function* (opts: {
   readonly name: string
   readonly timeoutMs: number
   readonly earlyCheck?: () => void
-}) =>
-  Effect.try({
+}) {
+  yield* Effect.annotateCurrentSpan({ 'span.label': opts.name })
+
+  return yield* Effect.try({
     try: () => {
       opts.earlyCheck?.()
       fs.statSync(getSocketPath(opts.name))
@@ -247,17 +270,22 @@ const waitForSocket = (opts: {
   }).pipe(
     Effect.retry({
       while: (cause) => cause === socketNotReady,
-      schedule: Schedule.spaced('50 millis'),
+      schedule: defaultPollSchedule,
     }),
     Effect.timeoutFail({
       duration: `${opts.timeoutMs} millis`,
-      onTimeout: () => new Error(`Timeout waiting for session "${opts.name}" to start`),
+      onTimeout: () => socketStartTimeout(opts.name),
     }),
     Effect.andThen(Effect.sleep('100 millis')),
   )
+})
 
-const spawnDaemonEffect = (spec: PtyDaemonSpec) =>
-  Effect.async<void, unknown>((resume, signal) => {
+const spawnDaemonEffect = Effect.fn('pty-client.spawnDaemonEffect')(function* (
+  spec: PtyDaemonSpec,
+) {
+  yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
+
+  return yield* Effect.async<void, unknown>((resume, signal) => {
     const child = spawnChild(resolveDaemonBin(), [], {
       detached: true,
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -308,47 +336,50 @@ const spawnDaemonEffect = (spec: PtyDaemonSpec) =>
         timeoutMs: 3_000,
         earlyCheck: () => {
           if (earlyExit === false) return
-          const details = stderrOutput.trim()
-          const msg = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
-          throw new Error(
-            details.length > 0 ? `${msg}\n${details}` : `${msg} Is the command valid?`,
-          )
+          throw daemonExitedEarly({
+            name: spec.name,
+            code: earlyExitCode,
+            stderr: stderrOutput.trim(),
+          })
         },
       }).pipe(Effect.ensuring(Effect.sync(cleanupListeners))),
     )
 
     return Effect.sync(onAbort)
   })
+})
 
-const connectSessionConnection = (conn: SessionConnection) =>
-  Effect.async<string, unknown>((resume, signal) => {
-    const onAbort = () => {
-      conn.disconnect()
-    }
+const connectSessionConnection = Effect.fn('pty-client.connectSessionConnection')(
+  (conn: SessionConnection) =>
+    Effect.async<string, unknown>((resume, signal) => {
+      const onAbort = () => {
+        conn.disconnect()
+      }
 
-    if (signal.aborted === true) {
-      onAbort()
-      resume(Effect.fail(signal.reason))
-      return
-    }
+      if (signal.aborted === true) {
+        onAbort()
+        resume(Effect.fail(signal.reason))
+        return
+      }
 
-    signal.addEventListener('abort', onAbort, { once: true })
-    conn.connect().then(
-      (screen) => {
+      signal.addEventListener('abort', onAbort, { once: true })
+      conn.connect().then(
+        (screen) => {
+          signal.removeEventListener('abort', onAbort)
+          resume(Effect.succeed(screen))
+        },
+        (cause) => {
+          signal.removeEventListener('abort', onAbort)
+          resume(Effect.fail(cause))
+        },
+      )
+
+      return Effect.sync(() => {
         signal.removeEventListener('abort', onAbort)
-        resume(Effect.succeed(screen))
-      },
-      (cause) => {
-        signal.removeEventListener('abort', onAbort)
-        resume(Effect.fail(cause))
-      },
-    )
-
-    return Effect.sync(() => {
-      signal.removeEventListener('abort', onAbort)
-      onAbort()
-    })
-  })
+        onAbort()
+      })
+    }),
+)
 
 /** Regex matching helper — clones RegExp to avoid stateful `lastIndex`. */
 const matches = (input: { readonly haystack: string; readonly needle: string | RegExp }) => {
@@ -364,7 +395,7 @@ export const decodePtyName = Schema.decodeUnknown(PtyName)
 
 /** Runtime defense-in-depth: validates even branded names to produce clean
  *  `BadName` errors when brands are bypassed via `@ts-expect-error` / casts. */
-const validateNameOrFail = (name: string) =>
+const validateNameOrFail = Effect.fn('pty-client.validateNameOrFail')((name: string) =>
   Effect.try({
     try: () => {
       validateName(name)
@@ -377,26 +408,33 @@ const validateNameOrFail = (name: string) =>
         name,
         cause,
       }),
-  })
+  }),
+)
 
-const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
-  Effect.gen(function* () {
-    yield* validateNameOrFail(spec.name)
-    yield* spawnDaemonEffect(spec).pipe(
-      Effect.mapError(
-        (cause) =>
-          new PtyError({
-            reason: 'SpawnFailed',
-            method: 'spawnDaemon',
-            name: spec.name,
-            cause,
-          }),
-      ),
-    )
-  }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
+const spawnDaemon: (spec: PtyDaemonSpec) => Effect.Effect<void, PtyError> = Effect.fn(
+  'pty-client.spawnDaemon',
+)(function* (spec: PtyDaemonSpec) {
+  yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
+  yield* validateNameOrFail(spec.name)
+  yield* spawnDaemonEffect(spec).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PtyError({
+          reason: 'SpawnFailed',
+          method: 'spawnDaemon',
+          name: spec.name,
+          cause,
+        }),
+    ),
+  )
+})
 
-const peek = (input: { readonly name: PtyName; readonly plain?: boolean }) =>
-  wrapPromise({
+const peek = Effect.fn('pty-client.peek')(function* (input: {
+  readonly name: PtyName
+  readonly plain?: boolean
+}) {
+  yield* Effect.annotateCurrentSpan({ 'span.label': input.name })
+  return yield* wrapPromise({
     method: 'peek',
     reason: 'ConnectFailed',
     name: input.name,
@@ -404,7 +442,8 @@ const peek = (input: { readonly name: PtyName; readonly plain?: boolean }) =>
       upstreamPeekScreen(
         input.plain !== undefined ? { name: input.name, plain: input.plain } : { name: input.name },
       ),
-  }).pipe(Effect.withSpan('pty-client.peek', { attributes: { 'span.label': input.name } }))
+  })
+})
 
 const list: Effect.Effect<ReadonlyArray<SessionInfo>, PtyError> = wrapPromise({
   method: 'list',
@@ -412,29 +451,29 @@ const list: Effect.Effect<ReadonlyArray<SessionInfo>, PtyError> = wrapPromise({
   thunk: () => upstreamListSessions(),
 }).pipe(Effect.withSpan('pty-client.list'))
 
-const exists = (input: { readonly name: PtyName }) =>
-  pipe(
-    list,
-    Effect.map((sessions) => sessions.some((s) => s.name === input.name)),
-  ).pipe(Effect.withSpan('pty-client.exists', { attributes: { 'span.label': input.name } }))
+const exists = Effect.fn('pty-client.exists')(function* (input: { readonly name: PtyName }) {
+  yield* Effect.annotateCurrentSpan({ 'span.label': input.name })
+  const sessions = yield* list
+  return sessions.some((s) => s.name === input.name)
+})
 
-const kill = (input: { readonly name: PtyName }) =>
-  Effect.gen(function* () {
-    const sessions = yield* list
-    const session = sessions.find((s) => s.name === input.name)
-    if (session === undefined || session.pid === null) {
-      return yield* new PtyError({
-        reason: 'ConnectFailed',
-        method: 'kill',
-        name: input.name,
-      })
-    }
-    yield* wrapSync({
+const kill = Effect.fn('pty-client.kill')(function* (input: { readonly name: PtyName }) {
+  yield* Effect.annotateCurrentSpan({ 'span.label': input.name })
+  const sessions = yield* list
+  const session = sessions.find((s) => s.name === input.name)
+  if (session === undefined || session.pid === null) {
+    return yield* new PtyError({
+      reason: 'ConnectFailed',
       method: 'kill',
       name: input.name,
-      thunk: () => process.kill(session.pid!, 'SIGTERM'),
     })
-  }).pipe(Effect.withSpan('pty-client.kill', { attributes: { 'span.label': input.name } }))
+  }
+  yield* wrapSync({
+    method: 'kill',
+    name: input.name,
+    thunk: () => process.kill(session.pid!, 'SIGTERM'),
+  })
+})
 
 /**
  * Build a `PtyClientSession` from a fresh `SessionConnection`.
@@ -444,17 +483,16 @@ const kill = (input: { readonly name: PtyName }) =>
  * The byte stream + exit Deferred are wired in `acquire`, before the
  * upstream `connect()` call resolves, so we never miss the initial frames.
  *
- * **Runtime caveat**: Event handlers (`conn.on(...)`) use `Effect.runFork`
- * with the global default runtime. If the consumer provides a custom
- * runtime (e.g. with different loggers, spans, or error handlers), these
- * fire-and-forget effects bypass it. Capturing the runtime properly would
- * require `Effect.runtime` plumbing through the event handlers — tracked
- * as a v2 improvement.
+ * Event handlers capture the current runtime so their fire-and-forget
+ * effects preserve the caller's fiber refs, spans, loggers, and runtime
+ * configuration instead of escaping to the global default runtime.
  */
-const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =>
-  Effect.gen(function* () {
+const attach: (spec: PtyAttachSpec) => Effect.Effect<PtyClientSession, PtyError, Scope.Scope> =
+  Effect.fn('pty-client.attach')(function* (spec: PtyAttachSpec) {
+    yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
     const queue = yield* Queue.bounded<Uint8Array>(1024)
     const exitDeferred = yield* Deferred.make<{ readonly code: number }, PtyError>()
+    const runtime = yield* Effect.runtime<Scope.Scope>()
     const enc = new TextEncoder()
 
     const opts: SessionConnectionOptions = {
@@ -470,16 +508,18 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       thunk: () => new SessionConnection(opts),
     })
 
+    const runAsync = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): void => {
+      void Runtime.runFork(runtime)(effect)
+    }
+
     conn.on('data', (chunk: string) => {
-      Effect.runFork(Queue.offer(queue, enc.encode(chunk)))
+      runAsync(Queue.offer(queue, enc.encode(chunk)))
     })
     conn.on('exit', (code: number) => {
-      Effect.runFork(
-        Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.shutdown(queue))),
-      )
+      runAsync(Deferred.succeed(exitDeferred, { code }).pipe(Effect.andThen(Queue.shutdown(queue))))
     })
     conn.on('error', (err: Error) => {
-      Effect.runFork(
+      runAsync(
         Deferred.fail(
           exitDeferred,
           new PtyError({
@@ -492,7 +532,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       )
     })
     conn.on('close', () => {
-      Effect.runFork(
+      runAsync(
         Deferred.fail(
           exitDeferred,
           new PtyError({ reason: 'Closed', method: 'attach.close', name: spec.name }),
@@ -517,22 +557,45 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
 
     const bytes: Stream.Stream<Uint8Array, PtyError> = Stream.fromQueue(queue)
 
-    const write: PtyClientSession['write'] = ({ data }) =>
-      wrapSync({ method: 'write', name: spec.name, thunk: () => conn.write(data) })
+    const write: PtyClientSession['write'] = Effect.fn('pty-client.write')(function* ({
+      data,
+    }: {
+      readonly data: string
+    }) {
+      yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
+      return yield* wrapSync({ method: 'write', name: spec.name, thunk: () => conn.write(data) })
+    })
 
-    const typeText: PtyClientSession['type'] = ({ text }) =>
-      wrapSync({ method: 'type', name: spec.name, thunk: () => conn.write(text) })
+    const typeText: PtyClientSession['type'] = Effect.fn('pty-client.type')(function* ({
+      text,
+    }: {
+      readonly text: string
+    }) {
+      yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
+      return yield* wrapSync({ method: 'type', name: spec.name, thunk: () => conn.write(text) })
+    })
 
-    const press: PtyClientSession['press'] = ({ key }) =>
-      wrapSync({ method: 'press', name: spec.name, thunk: () => conn.press(key) })
+    const press: PtyClientSession['press'] = Effect.fn('pty-client.press')(function* ({
+      key,
+    }: {
+      readonly key: string
+    }) {
+      yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
+      return yield* wrapSync({ method: 'press', name: spec.name, thunk: () => conn.press(key) })
+    })
 
-    const resize: PtyClientSession['resize'] = ({ rows, cols }) =>
-      wrapSync({
+    const resize: PtyClientSession['resize'] = Effect.fn('pty-client.resize')(function* ({
+      rows,
+      cols,
+    }: TerminalSize) {
+      yield* Effect.annotateCurrentSpan({ 'span.label': spec.name })
+      return yield* wrapSync({
         method: 'resize',
         reason: 'ResizeFailed',
         name: spec.name,
         thunk: () => conn.resize(rows, cols),
       })
+    })
 
     const screenshot: PtyClientSession['screenshot'] = Effect.gen(function* () {
       const ansi = yield* peek({ name: spec.name, plain: false })
@@ -541,57 +604,69 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       return { lines, text, ansi } satisfies Screenshot
     }).pipe(Effect.withSpan('pty-client.screenshot', { attributes: { 'span.label': spec.name } }))
 
-    const waitForText: PtyClientSession['waitForText'] = ({ needle, schedule }) =>
-      pipe(
-        Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
-        ),
-        Stream.runHead,
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new PtyError({
-                  reason: 'Timeout',
-                  method: `waitForText(${String(needle)})`,
-                  name: spec.name,
-                }),
-              ),
-            onSome: Effect.succeed,
-          }),
-        ),
-      ).pipe(
-        Effect.withSpan('pty-client.waitForText', {
-          attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
-        }),
-      )
+    const waitForText: PtyClientSession['waitForText'] = Effect.fn('pty-client.waitForText')(
+      function* ({
+        needle,
+        schedule,
+      }: {
+        readonly needle: string | RegExp
+        readonly schedule?: Schedule.Schedule<unknown>
+      }) {
+        yield* Effect.annotateCurrentSpan({ 'span.label': `${spec.name}: ${String(needle)}` })
+        return yield* pipe(
+          Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
+          Stream.filterMap((ss) =>
+            matches({ haystack: ss.text, needle }) === true ? Option.some(ss) : Option.none(),
+          ),
+          Stream.runHead,
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new PtyError({
+                    reason: 'Timeout',
+                    method: `waitForText(${String(needle)})`,
+                    name: spec.name,
+                  }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          ),
+        )
+      },
+    )
 
-    const waitForAbsent: PtyClientSession['waitForAbsent'] = ({ needle, schedule }) =>
-      pipe(
-        Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
-        Stream.filterMap((ss) =>
-          matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
-        ),
-        Stream.runHead,
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new PtyError({
-                  reason: 'Timeout',
-                  method: `waitForAbsent(${String(needle)})`,
-                  name: spec.name,
-                }),
-              ),
-            onSome: Effect.succeed,
-          }),
-        ),
-      ).pipe(
-        Effect.withSpan('pty-client.waitForAbsent', {
-          attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
-        }),
-      )
+    const waitForAbsent: PtyClientSession['waitForAbsent'] = Effect.fn('pty-client.waitForAbsent')(
+      function* ({
+        needle,
+        schedule,
+      }: {
+        readonly needle: string | RegExp
+        readonly schedule?: Schedule.Schedule<unknown>
+      }) {
+        yield* Effect.annotateCurrentSpan({ 'span.label': `${spec.name}: ${String(needle)}` })
+        return yield* pipe(
+          Stream.repeatEffectWithSchedule(screenshot, schedule ?? defaultPollSchedule),
+          Stream.filterMap((ss) =>
+            matches({ haystack: ss.text, needle }) === false ? Option.some(ss) : Option.none(),
+          ),
+          Stream.runHead,
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new PtyError({
+                    reason: 'Timeout',
+                    method: `waitForAbsent(${String(needle)})`,
+                    name: spec.name,
+                  }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          ),
+        )
+      },
+    )
 
     return {
       name: spec.name,
@@ -606,7 +681,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       waitForText,
       waitForAbsent,
     } satisfies PtyClientSession
-  }).pipe(Effect.withSpan('pty-client.attach', { attributes: { 'span.label': spec.name } }))
+  })
 
 /* ───────────────────────────── layer ────────────────────────────── */
 
