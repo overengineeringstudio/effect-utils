@@ -50,7 +50,10 @@ All notable changes to this project will be documented in this file.
 
 - **devenv/tasks/shared/vercel.nix**: Preserve dotfiles when packaging static prebuilt output for Vercel deploys
   - Copies `staticDir/.` into `.vercel/output/static/` instead of globbing `staticDir/*`, so hidden assets and config files are not silently dropped
+- **@overeng/notion-effect-client**: Raise user integration-test timeouts to tolerate current Notion API latency in CI
 - **@overeng/notion-cli**: Fix introspection pipeline to read properties from data source (API 2026-03-11 no longer returns properties on `GET /databases/:id`)
+- **@overeng/pty-effect**: Remove parent `process.env` mutation from daemon spawning, pass env per call, and add interruption/shutdown coverage for pending spawn and attach operations
+- **@overeng/pty-effect**: Align client lifecycles with Effect conventions by using `Effect.fn` spans, preserving the caller runtime in attach callbacks, and reporting expected startup failures as `PtyError`
 
 ### Changed
 

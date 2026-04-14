@@ -6,15 +6,21 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import { NotionUsers } from '../../users.ts'
 import { IntegrationTestLayer, SKIP_INTEGRATION } from './setup.ts'
 
+const USER_REQUEST_TIMEOUT = 30_000
+const USER_STREAM_TIMEOUT = 60_000
+
 Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
   Vitest.describe('me', () => {
-    Vitest.it.effect('fetches the bot user', () =>
-      Effect.gen(function* () {
-        const user = yield* NotionUsers.me()
+    Vitest.it.effect(
+      'fetches the bot user',
+      () =>
+        Effect.gen(function* () {
+          const user = yield* NotionUsers.me()
 
-        expect(user.object).toBe('user')
-        expect(user.id).toBeDefined()
-      }).pipe(Effect.provide(IntegrationTestLayer)),
+          expect(user.object).toBe('user')
+          expect(user.id).toBeDefined()
+        }).pipe(Effect.provide(IntegrationTestLayer)),
+      { timeout: USER_REQUEST_TIMEOUT },
     )
   })
 
@@ -28,7 +34,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
           expect(result.results.length).toBeGreaterThanOrEqual(1)
           expect(result.results[0]?.object).toBe('user')
         }).pipe(Effect.provide(IntegrationTestLayer)),
-      { timeout: 30000 },
+      { timeout: USER_REQUEST_TIMEOUT },
     )
 
     Vitest.it.effect(
@@ -39,7 +45,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
 
           expect(result.results.length).toBe(1)
         }).pipe(Effect.provide(IntegrationTestLayer)),
-      { timeout: 30000 },
+      { timeout: USER_REQUEST_TIMEOUT },
     )
   })
 
@@ -57,7 +63,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
             expect(item.object).toBe('user')
           }
         }).pipe(Effect.provide(IntegrationTestLayer)),
-      { timeout: 30000 },
+      { timeout: USER_STREAM_TIMEOUT },
     )
   })
 
@@ -75,7 +81,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
           expect(user.object).toBe('user')
           expect(user.id).toBe(bot.id)
         }).pipe(Effect.provide(IntegrationTestLayer)),
-      { timeout: 30000 },
+      { timeout: USER_REQUEST_TIMEOUT },
     )
   })
 })
