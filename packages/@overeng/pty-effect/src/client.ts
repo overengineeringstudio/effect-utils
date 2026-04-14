@@ -227,62 +227,37 @@ const buildDaemonConfig = (spec: PtyDaemonSpec) => {
   return opts
 }
 
+const socketNotReady = Symbol('socketNotReady')
+
+const isSocketNotReadyError = (cause: unknown) =>
+  Predicate.hasProperty(cause, 'code') === true &&
+  (cause as { readonly code?: unknown }).code === 'ENOENT'
+
 const waitForSocket = (opts: {
   readonly name: string
-  readonly signal: AbortSignal
   readonly timeoutMs: number
   readonly earlyCheck?: () => void
 }) =>
-  new Promise<void>((resolve, reject) => {
-    const start = Date.now()
-    let pollTimer: NodeJS.Timeout | undefined
-    let settleTimer: NodeJS.Timeout | undefined
-    let settled = false
+  Effect.try({
+    try: () => {
+      opts.earlyCheck?.()
+      fs.statSync(getSocketPath(opts.name))
+    },
+    catch: (cause) => (isSocketNotReadyError(cause) === true ? socketNotReady : cause),
+  }).pipe(
+    Effect.retry({
+      while: (cause) => cause === socketNotReady,
+      schedule: Schedule.spaced('50 millis'),
+    }),
+    Effect.timeoutFail({
+      duration: `${opts.timeoutMs} millis`,
+      onTimeout: () => new Error(`Timeout waiting for session "${opts.name}" to start`),
+    }),
+    Effect.andThen(Effect.sleep('100 millis')),
+  )
 
-    const finish = (effect: () => void) => {
-      if (settled === true) return
-      settled = true
-      if (pollTimer !== undefined) clearTimeout(pollTimer)
-      if (settleTimer !== undefined) clearTimeout(settleTimer)
-      opts.signal.removeEventListener('abort', onAbort)
-      effect()
-    }
-
-    const onAbort = () => finish(() => reject(opts.signal.reason))
-
-    const check = () => {
-      try {
-        opts.earlyCheck?.()
-      } catch (cause) {
-        finish(() => reject(cause))
-        return
-      }
-
-      if (Date.now() - start > opts.timeoutMs) {
-        finish(() => reject(new Error(`Timeout waiting for session "${opts.name}" to start`)))
-        return
-      }
-
-      try {
-        fs.statSync(getSocketPath(opts.name))
-        settleTimer = setTimeout(() => finish(resolve), 100)
-        return
-      } catch {
-        pollTimer = setTimeout(check, 50)
-      }
-    }
-
-    if (opts.signal.aborted === true) {
-      onAbort()
-      return
-    }
-
-    opts.signal.addEventListener('abort', onAbort, { once: true })
-    check()
-  })
-
-const spawnDaemonPromise = (spec: PtyDaemonSpec, signal: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
+const spawnDaemonEffect = (spec: PtyDaemonSpec) =>
+  Effect.async<void, unknown>((resume, signal) => {
     const child = spawnChild(resolveDaemonBin(), [], {
       detached: true,
       stdio: ['ignore', 'ignore', 'pipe'],
@@ -296,16 +271,6 @@ const spawnDaemonPromise = (spec: PtyDaemonSpec, signal: AbortSignal) =>
     let stderrOutput = ''
     let earlyExit = false
     let earlyExitCode: number | null = null
-    let settled = false
-
-    const finish = (effect: () => void) => {
-      if (settled === true) return
-      settled = true
-      signal.removeEventListener('abort', onAbort)
-      child.removeListener('exit', onExit)
-      child.stderr?.removeListener('data', onStderr)
-      effect()
-    }
 
     const onStderr = (data: Buffer) => {
       stderrOutput += data.toString()
@@ -316,18 +281,19 @@ const spawnDaemonPromise = (spec: PtyDaemonSpec, signal: AbortSignal) =>
       earlyExitCode = code
     }
 
+    const cleanupListeners = () => {
+      signal.removeEventListener('abort', onAbort)
+      child.removeListener('exit', onExit)
+      child.stderr?.removeListener('data', onStderr)
+    }
+
     const onAbort = () => {
+      cleanupListeners()
       try {
         child.kill('SIGTERM')
       } catch {
         // best effort: detached daemon might already be gone
       }
-    }
-
-    if (signal.aborted === true) {
-      onAbort()
-      finish(() => reject(signal.reason))
-      return
     }
 
     child.stderr?.on('data', onStderr)
@@ -336,48 +302,50 @@ const spawnDaemonPromise = (spec: PtyDaemonSpec, signal: AbortSignal) =>
     child.unref()
     signal.addEventListener('abort', onAbort, { once: true })
 
-    waitForSocket({
-      name: spec.name,
-      signal,
-      timeoutMs: 3_000,
-      earlyCheck: () => {
-        if (earlyExit === false) return
-        const details = stderrOutput.trim()
-        const msg = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
-        throw new Error(details.length > 0 ? `${msg}\n${details}` : `${msg} Is the command valid?`)
-      },
-    }).then(
-      () => finish(resolve),
-      (cause) => finish(() => reject(cause)),
+    resume(
+      waitForSocket({
+        name: spec.name,
+        timeoutMs: 3_000,
+        earlyCheck: () => {
+          if (earlyExit === false) return
+          const details = stderrOutput.trim()
+          const msg = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
+          throw new Error(details.length > 0 ? `${msg}\n${details}` : `${msg} Is the command valid?`)
+        },
+      }).pipe(Effect.ensuring(Effect.sync(cleanupListeners))),
     )
+
+    return Effect.sync(onAbort)
   })
 
-const connectSessionConnection = (opts: {
-  readonly conn: SessionConnection
-  readonly signal: AbortSignal
-}) =>
-  new Promise<string>((resolve, reject) => {
+const connectSessionConnection = (conn: SessionConnection) =>
+  Effect.async<string, unknown>((resume, signal) => {
     const onAbort = () => {
-      opts.conn.disconnect()
-      reject(opts.signal.reason)
+      conn.disconnect()
     }
 
-    if (opts.signal.aborted === true) {
+    if (signal.aborted === true) {
       onAbort()
+      resume(Effect.fail(signal.reason))
       return
     }
 
-    opts.signal.addEventListener('abort', onAbort, { once: true })
-    opts.conn.connect().then(
+    signal.addEventListener('abort', onAbort, { once: true })
+    conn.connect().then(
       (screen) => {
-        opts.signal.removeEventListener('abort', onAbort)
-        resolve(screen)
+        signal.removeEventListener('abort', onAbort)
+        resume(Effect.succeed(screen))
       },
       (cause) => {
-        opts.signal.removeEventListener('abort', onAbort)
-        reject(cause)
+        signal.removeEventListener('abort', onAbort)
+        resume(Effect.fail(cause))
       },
     )
+
+    return Effect.sync(() => {
+      signal.removeEventListener('abort', onAbort)
+      onAbort()
+    })
   })
 
 /** Regex matching helper — clones RegExp to avoid stateful `lastIndex`. */
@@ -412,12 +380,17 @@ const validateNameOrFail = (name: string) =>
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
     yield* validateNameOrFail(spec.name)
-    yield* wrapPromise({
-      method: 'spawnDaemon',
-      reason: 'SpawnFailed',
-      name: spec.name,
-      thunk: (signal) => spawnDaemonPromise(spec, signal),
-    })
+    yield* spawnDaemonEffect(spec).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PtyError({
+            reason: 'SpawnFailed',
+            method: 'spawnDaemon',
+            name: spec.name,
+            cause,
+          }),
+      ),
+    )
   }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
 
 const peek = (input: { readonly name: PtyName; readonly plain?: boolean }) =>
@@ -526,12 +499,17 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
     })
 
     const initialScreen = yield* Effect.acquireReleaseInterruptible(
-      wrapPromise({
-        method: 'attach.connect',
-        reason: 'ConnectFailed',
-        name: spec.name,
-        thunk: (signal) => connectSessionConnection({ conn, signal }),
-      }),
+      connectSessionConnection(conn).pipe(
+        Effect.mapError(
+          (cause) =>
+            new PtyError({
+              reason: 'ConnectFailed',
+              method: 'attach.connect',
+              name: spec.name,
+              cause,
+            }),
+        ),
+      ),
       () => Effect.sync(() => conn.disconnect()),
     )
 

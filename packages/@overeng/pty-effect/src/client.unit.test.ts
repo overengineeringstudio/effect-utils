@@ -65,6 +65,52 @@ describe('PtyClient interruption', () => {
     }
   })
 
+  it('fails fast when the daemon exits before creating its socket', async () => {
+    const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
+    const child = Object.assign(new EventEmitter(), {
+      stderr,
+      kill: vi.fn(),
+      unref: vi.fn(),
+      pid: 123,
+    })
+    const spawn = vi.fn(() => {
+      queueMicrotask(() => {
+        stderr.emit('data', Buffer.from('daemon boot failed'))
+        child.emit('exit', 127)
+      })
+      return child
+    })
+
+    vi.doMock('node:child_process', () => ({ spawn }))
+    vi.doMock('@myobie/pty/client', () => ({
+      SessionConnection: class extends EventEmitter {},
+      getSocketPath: vi.fn(() => '/definitely-missing-socket'),
+      listSessions: vi.fn(async () => []),
+      peekScreen: vi.fn(),
+      validateName: vi.fn(),
+    }))
+
+    const { PtyClient, layer } = await import('./client.ts')
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* PtyClient
+        return yield* client.spawnDaemon({
+          name: 'unit-early-exit' as never,
+          command: 'sh',
+          args: ['-c', 'exit 127'],
+        })
+      }).pipe(Effect.provide(layer), Effect.either),
+    )
+
+    expect(result._tag).toBe('Left')
+    if (result._tag === 'Left') {
+      expect(result.left.reason).toBe('SpawnFailed')
+      expect(result.left.message).toContain('Daemon process exited immediately')
+      expect(result.left.message).toContain('daemon boot failed')
+    }
+  })
+
   it('disconnects a pending attach when interrupted', async () => {
     const disconnect = vi.fn()
 
