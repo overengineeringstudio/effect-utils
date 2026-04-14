@@ -1056,13 +1056,42 @@ export const netlifyDeployStep = () => ({
 
 /**
  * Combined deploy comment step for Netlify storybook previews.
- * Discovers deployed storybooks by scanning for `storybook-static` build output
- * under `packages/@overeng/` and generates PR comments + job summaries with URLs.
+ * Posts PR comments + job summaries with preview URLs.
  *
- * @param site - Netlify site name (e.g. 'overeng-utils')
+ * When `packages` is provided, checks each package's `storybook-static` output directly.
+ * When omitted, falls back to scanning `packages/@overeng/＊/storybook-static` (effect-utils default).
+ *
+ * The `packages` shape matches the Nix `taskModules.netlify` / `taskModules.storybook` config:
+ * `{ path: "flakes/oi", name: "flakes-oi" }` where `name` is the Netlify deploy alias.
  */
-export const netlifyStorybookCommentStep = (site: string) =>
-  deployCommentStep({
+export const netlifyStorybookCommentStep = (
+  site: string,
+  opts?: { packages?: ReadonlyArray<{ path: string; name: string }> },
+) => {
+  const defaultGlobRows = [
+    'rows=""',
+    'for dir in packages/@overeng/*/storybook-static; do',
+    '  [ -d "$dir" ] || continue',
+    '  name="${dir#packages/@overeng/}"',
+    '  name="${name%/storybook-static}"',
+    '  url="https://${name}${suffix}--${site}.netlify.app"',
+    '  rows="${rows}| ${name} | ${url} |\\n"',
+    'done',
+  ].join('\n')
+
+  const explicitRows = (packages: ReadonlyArray<{ path: string; name: string }>) =>
+    [
+      'rows=""',
+      ...packages.map((pkg) =>
+        [
+          `if [ -d "${pkg.path}/storybook-static" ]; then`,
+          `  rows="\${rows}| ${pkg.name} | https://${pkg.name}\${suffix}--\${site}.netlify.app |\\n"`,
+          'fi',
+        ].join('\n'),
+      ),
+    ].join('\n')
+
+  return deployCommentStep({
     summaryTitle: 'Storybook Previews',
     tableHeaders: ['Package', 'URL'],
     noRowsMessage: 'No storybooks were deployed.',
@@ -1072,14 +1101,6 @@ export const netlifyStorybookCommentStep = (site: string) =>
       '# Set Netlify branch-deploy suffix based on mode',
       'if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi',
     ].join('\n'),
-    rowsScript: [
-      'rows=""',
-      'for dir in packages/@overeng/*/storybook-static; do',
-      '  [ -d "$dir" ] || continue',
-      '  name="${dir#packages/@overeng/}"',
-      '  name="${name%/storybook-static}"',
-      '  url="https://${name}${suffix}--${site}.netlify.app"',
-      '  rows="${rows}| ${name} | ${url} |\\n"',
-      'done',
-    ].join('\n'),
+    rowsScript: opts?.packages ? explicitRows(opts.packages) : defaultGlobRows,
   })
+}
