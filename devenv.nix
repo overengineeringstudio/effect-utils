@@ -75,6 +75,13 @@ let
       lockfile = "pnpm-lock.yaml";
       packageJson = "packages/@overeng/oxc-config/package.json";
     }
+    {
+      name = "notion-cli";
+      flakeRef = ".#notion-cli";
+      hashSource = "packages/@overeng/notion-cli/nix/build.nix";
+      lockfile = "pnpm-lock.yaml";
+      packageJson = "packages/@overeng/notion-cli/package.json";
+    }
   ];
 
   # Explicit workspace members for the repo-root pnpm workspace.

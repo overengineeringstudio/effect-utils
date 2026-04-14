@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
+
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)
 - **@overeng/notion-effect-schema**: Add `NoticonColor` schema for named icon color palette
 - **@overeng/notion-effect-schema**: Add `heading_4`, `tab`, and `meeting_notes` block types to `BlockType`
