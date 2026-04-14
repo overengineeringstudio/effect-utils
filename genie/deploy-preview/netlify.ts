@@ -45,7 +45,7 @@ export const netlifyDeployStep = (runDevenvTasksBefore: RunTasksBefore) => ({
       'process.stdout.write(JSON.stringify(dedupedPackages))',
     ].join('\n'),
     'EOF',
-    'packages_json="$(node /tmp/extract-netlify-preview-packages.mjs "$tmp_log")"',
+    'packages_json="$(nix run nixpkgs#bun -- /tmp/extract-netlify-preview-packages.mjs "$tmp_log")"',
     'printf \'packages_json<<__NETLIFY_PACKAGES__\\n%s\\n__NETLIFY_PACKAGES__\\n\' "$packages_json" >> "$GITHUB_OUTPUT"',
   ].join('\n'),
 })
@@ -348,7 +348,7 @@ export const netlifyStorybookCommentStep = (site: string, deployModeScript: stri
       'writeFileSync(commentIdPath, existingComment ? String(existingComment.id) : "")',
     ].join('\n'),
     'EOF',
-    'nix run nixpkgs#nodejs_24 -- /tmp/render-storybook-preview-comment.mjs "$comments_json" /tmp/storybook-preview-comment.md "$GITHUB_STEP_SUMMARY" /tmp/storybook-preview-comment-id.txt',
+    'nix run nixpkgs#bun -- /tmp/render-storybook-preview-comment.mjs "$comments_json" /tmp/storybook-preview-comment.md "$GITHUB_STEP_SUMMARY" /tmp/storybook-preview-comment-id.txt',
     'comment_id="$(cat /tmp/storybook-preview-comment-id.txt)"',
     'if [ ! -s /tmp/storybook-preview-comment.md ]; then',
     '  exit 0',
