@@ -12,14 +12,19 @@
  * process restarts (forge, dev shells, persistent agent runners).
  */
 
+import { spawn as spawnChild } from 'node:child_process'
+import * as fs from 'node:fs'
+import { createRequire } from 'node:module'
+import * as path from 'node:path'
+import type { WriteStream } from 'node:tty'
+
 import {
   type SessionConnectionOptions,
   type SessionInfo,
-  type SpawnDaemonOptions,
   SessionConnection,
+  getSocketPath,
   listSessions as upstreamListSessions,
   peekScreen as upstreamPeekScreen,
-  spawnDaemon as upstreamSpawnDaemon,
   validateName,
 } from '@myobie/pty/client'
 import {
@@ -63,9 +68,8 @@ export const PtyDaemonSpec = Schema.Struct({
       cols: Schema.Number.pipe(Schema.int(), Schema.positive()),
     }),
   ),
-  /** Extra environment variables to set for the spawned daemon process.
-   *  Applied via `process.env` mutation before calling upstream `spawnDaemon`
-   *  (which inherits parent env) and restored after the call returns. */
+  /** Extra environment variables to merge into the daemon process env.
+   *  Applied per call without mutating the parent `process.env`. */
   env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
 })
 export type PtyDaemonSpec = typeof PtyDaemonSpec.Type
@@ -169,7 +173,7 @@ const wrapPromise = <A>(opts: {
   readonly method: string
   readonly reason?: PtyError['reason']
   readonly name?: string
-  readonly thunk: () => Promise<A>
+  readonly thunk: (signal: AbortSignal) => Promise<A>
 }) =>
   Effect.tryPromise({
     try: opts.thunk,
@@ -199,19 +203,182 @@ const wrapSync = <A>(opts: {
       }),
   })
 
-const buildSpawnOpts = (spec: PtyDaemonSpec): SpawnDaemonOptions => {
-  const opts: SpawnDaemonOptions = {
+const require = createRequire(import.meta.url)
+
+const resolveDaemonBin = () =>
+  process.env.PTY_DAEMON_BIN ??
+  path.join(path.dirname(require.resolve('@myobie/pty/client')), '..', 'bin', 'pty-daemon')
+
+const getDefaultRows = () => ((process.stdout as WriteStream | undefined)?.rows ?? 24)
+
+const getDefaultCols = () => ((process.stdout as WriteStream | undefined)?.columns ?? 80)
+
+const buildDaemonConfig = (spec: PtyDaemonSpec) => {
+  const opts = {
     name: spec.name,
     command: spec.command,
     args: spec.args !== undefined ? [...spec.args] : [],
     displayCommand: spec.displayCommand ?? spec.command,
+    cwd: spec.cwd ?? process.cwd(),
+    rows: spec.size?.rows ?? getDefaultRows(),
+    cols: spec.size?.cols ?? getDefaultCols(),
+    ephemeral: spec.ephemeral ?? false,
   }
-  if (spec.cwd !== undefined) opts.cwd = spec.cwd
-  if (spec.ephemeral !== undefined) opts.ephemeral = spec.ephemeral
-  if (spec.size?.rows !== undefined) opts.rows = spec.size.rows
-  if (spec.size?.cols !== undefined) opts.cols = spec.size.cols
   return opts
 }
+
+const waitForSocket = (opts: {
+  readonly name: string
+  readonly signal: AbortSignal
+  readonly timeoutMs: number
+  readonly earlyCheck?: () => void
+}) =>
+  new Promise<void>((resolve, reject) => {
+    const start = Date.now()
+    let pollTimer: NodeJS.Timeout | undefined
+    let settleTimer: NodeJS.Timeout | undefined
+    let settled = false
+
+    const finish = (effect: () => void) => {
+      if (settled === true) return
+      settled = true
+      if (pollTimer !== undefined) clearTimeout(pollTimer)
+      if (settleTimer !== undefined) clearTimeout(settleTimer)
+      opts.signal.removeEventListener('abort', onAbort)
+      effect()
+    }
+
+    const onAbort = () => finish(() => reject(opts.signal.reason))
+
+    const check = () => {
+      try {
+        opts.earlyCheck?.()
+      } catch (cause) {
+        finish(() => reject(cause))
+        return
+      }
+
+      if (Date.now() - start > opts.timeoutMs) {
+        finish(() => reject(new Error(`Timeout waiting for session "${opts.name}" to start`)))
+        return
+      }
+
+      try {
+        fs.statSync(getSocketPath(opts.name))
+        settleTimer = setTimeout(() => finish(resolve), 100)
+        return
+      } catch {
+        pollTimer = setTimeout(check, 50)
+      }
+    }
+
+    if (opts.signal.aborted === true) {
+      onAbort()
+      return
+    }
+
+    opts.signal.addEventListener('abort', onAbort, { once: true })
+    check()
+  })
+
+const spawnDaemonPromise = (spec: PtyDaemonSpec, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const child = spawnChild(resolveDaemonBin(), [], {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'pipe'],
+      env: {
+        ...process.env,
+        ...spec.env,
+        PTY_SERVER_CONFIG: JSON.stringify(buildDaemonConfig(spec)),
+      },
+    })
+
+    let stderrOutput = ''
+    let earlyExit = false
+    let earlyExitCode: number | null = null
+    let settled = false
+
+    const finish = (effect: () => void) => {
+      if (settled === true) return
+      settled = true
+      signal.removeEventListener('abort', onAbort)
+      child.removeListener('exit', onExit)
+      child.stderr?.removeListener('data', onStderr)
+      effect()
+    }
+
+    const onStderr = (data: Buffer) => {
+      stderrOutput += data.toString()
+    }
+
+    const onExit = (code: number | null) => {
+      earlyExit = true
+      earlyExitCode = code
+    }
+
+    const onAbort = () => {
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // best effort: detached daemon might already be gone
+      }
+    }
+
+    if (signal.aborted === true) {
+      onAbort()
+      finish(() => reject(signal.reason))
+      return
+    }
+
+    child.stderr?.on('data', onStderr)
+    child.on('exit', onExit)
+    ;(child.stderr as { unref?: () => void } | null)?.unref?.()
+    child.unref()
+    signal.addEventListener('abort', onAbort, { once: true })
+
+    waitForSocket({
+      name: spec.name,
+      signal,
+      timeoutMs: 3_000,
+      earlyCheck: () => {
+        if (earlyExit === false) return
+        const details = stderrOutput.trim()
+        const msg = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
+        throw new Error(details.length > 0 ? `${msg}\n${details}` : `${msg} Is the command valid?`)
+      },
+    }).then(
+      () => finish(resolve),
+      (cause) => finish(() => reject(cause)),
+    )
+  })
+
+const connectSessionConnection = (opts: {
+  readonly conn: SessionConnection
+  readonly signal: AbortSignal
+}) =>
+  new Promise<string>((resolve, reject) => {
+    const onAbort = () => {
+      opts.conn.disconnect()
+      reject(opts.signal.reason)
+    }
+
+    if (opts.signal.aborted === true) {
+      onAbort()
+      return
+    }
+
+    opts.signal.addEventListener('abort', onAbort, { once: true })
+    opts.conn.connect().then(
+      (screen) => {
+        opts.signal.removeEventListener('abort', onAbort)
+        resolve(screen)
+      },
+      (cause) => {
+        opts.signal.removeEventListener('abort', onAbort)
+        reject(cause)
+      },
+    )
+  })
 
 /** Regex matching helper — clones RegExp to avoid stateful `lastIndex`. */
 const matches = (input: { readonly haystack: string; readonly needle: string | RegExp }) => {
@@ -245,22 +412,12 @@ const validateNameOrFail = (name: string) =>
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
     yield* validateNameOrFail(spec.name)
-    const envOverrides = spec.env !== undefined ? Object.entries(spec.env) : []
-    const saved = envOverrides.map(([k]) => [k, process.env[k]] as const)
-    for (const [k, v] of envOverrides) process.env[k] = v
-    try {
-      yield* wrapPromise({
-        method: 'spawnDaemon',
-        reason: 'SpawnFailed',
-        name: spec.name,
-        thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
-      })
-    } finally {
-      for (const [k, prev] of saved) {
-        if (prev === undefined) delete process.env[k]
-        else process.env[k] = prev
-      }
-    }
+    yield* wrapPromise({
+      method: 'spawnDaemon',
+      reason: 'SpawnFailed',
+      name: spec.name,
+      thunk: (signal) => spawnDaemonPromise(spec, signal),
+    })
   }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
 
 const peek = (input: { readonly name: PtyName; readonly plain?: boolean }) =>
@@ -368,12 +525,12 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
       )
     })
 
-    const initialScreen = yield* Effect.acquireRelease(
+    const initialScreen = yield* Effect.acquireReleaseInterruptible(
       wrapPromise({
         method: 'attach.connect',
         reason: 'ConnectFailed',
         name: spec.name,
-        thunk: () => conn.connect(),
+        thunk: (signal) => connectSessionConnection({ conn, signal }),
       }),
       () => Effect.sync(() => conn.disconnect()),
     )

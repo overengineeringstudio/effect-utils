@@ -157,6 +157,40 @@ describe('PtyClient', () => {
     ),
   )
 
+  it.scopedLive('passes env overrides to the daemon without mutating the parent env', () =>
+    withIsolatedDir(
+      Effect.gen(function* () {
+        const client = yield* PtyClient
+        const name = uniqueName('env')
+        const marker = `marker-${Date.now().toString(36)}`
+        const previous = process.env.PTY_EFFECT_TEST_VALUE
+
+        try {
+          delete process.env.PTY_EFFECT_TEST_VALUE
+
+          yield* client.spawnDaemon({
+            name,
+            command: 'sh',
+            args: ['-c', 'echo "ENV:$PTY_EFFECT_TEST_VALUE" && sleep 0.05'],
+            env: { PTY_EFFECT_TEST_VALUE: marker },
+          })
+
+          expect(process.env.PTY_EFFECT_TEST_VALUE).toBeUndefined()
+
+          const session = yield* client.attach({
+            name,
+            size: { rows: 24, cols: 80 },
+          })
+
+          expect(session.initialScreen).toContain(`ENV:${marker}`)
+        } finally {
+          if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
+          else process.env.PTY_EFFECT_TEST_VALUE = previous
+        }
+      }).pipe(Effect.provide(ptyClientLayer)),
+    ),
+  )
+
   it.scopedLive('rejects invalid session names with BadName', () =>
     withIsolatedDir(
       Effect.gen(function* () {
