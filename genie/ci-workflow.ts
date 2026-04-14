@@ -448,6 +448,9 @@ export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }
  */
 export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\n')
 
+/** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
+export const jobLocalCiDiagnosticsDir = '${{ runner.temp }}/ci-diagnostics/${{ github.job }}'
+
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
  * same writable store and the same workspace-relative GVS projection.
@@ -458,6 +461,117 @@ export const pnpmStateSetupStep = {
   run: [
     `echo "PNPM_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
     `echo "PNPM_HOME=${jobLocalPnpmHome}" >> "$GITHUB_ENV"`,
+  ].join('\n'),
+} as const
+
+/**
+ * Export the job-local CI diagnostics directory once so later steps can
+ * collect runner pressure snapshots and install logs in one place.
+ */
+export const ciDiagnosticsSetupStep = {
+  name: 'Prepare CI diagnostics',
+  shell: 'bash',
+  run: `mkdir -p "${jobLocalCiDiagnosticsDir}"
+echo "CI_DIAGNOSTICS_DIR=${jobLocalCiDiagnosticsDir}" >> "$GITHUB_ENV"`,
+} as const
+
+const runnerPressureSnapshotScript = [
+  'set -euo pipefail',
+  'mkdir -p "$CI_DIAGNOSTICS_DIR"',
+  'pressure_file="$CI_DIAGNOSTICS_DIR/runner-pressure.txt"',
+  '{',
+  '  echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"',
+  '  echo "runner_name=${RUNNER_NAME:-unknown}"',
+  '  echo "runner_os=${RUNNER_OS:-unknown}"',
+  '  echo "runner_arch=${RUNNER_ARCH:-unknown}"',
+  '  echo "github_job=${GITHUB_JOB:-unknown}"',
+  '  echo',
+  '  uptime',
+  '  echo',
+  '  free -h',
+  '  echo',
+  '  if [ -r /proc/pressure/memory ]; then',
+  '    cat /proc/pressure/memory',
+  '  fi',
+  '  echo',
+  '  df -h /',
+  '  echo',
+  '  ps -eo pid,ppid,user,%cpu,%mem,etime,stat,command --sort=-%cpu | head -15',
+  '} | tee "$pressure_file"',
+  'if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then',
+  '  {',
+  '    echo "### Runner pressure"',
+  '    echo ""',
+  '    echo "```text"',
+  '    tail -20 "$pressure_file"',
+  '    echo "```"',
+  '  } >> "$GITHUB_STEP_SUMMARY"',
+  'fi',
+].join('\n')
+
+/**
+ * Capture a quick runner pressure snapshot before the install starts.
+ *
+ * This does not fail the job. It gives the later failure summary and artifact
+ * enough context to tell whether pnpm timed out under host pressure.
+ */
+export const captureRunnerPressureStep = {
+  name: 'Capture runner pressure',
+  shell: 'bash',
+  run: runnerPressureSnapshotScript,
+} as const
+
+const pnpmInstallFailureSummaryScript = [
+  'classify_pnpm_failure() {',
+  '  local log_file="$1"',
+  '  local signature="unknown"',
+  '  local evidence=""',
+  '  if grep -Eq "ERR_PNPM_META_FETCH_FAIL|ERR_PNPM_FETCH_FAIL|Socket timeout|ECONNRESET|EAI_AGAIN" "$log_file"; then',
+  '    signature="registry/network fetch"',
+  '    evidence="$(grep -Em1 \x27ERR_PNPM_META_FETCH_FAIL|ERR_PNPM_FETCH_FAIL|Socket timeout|ECONNRESET|EAI_AGAIN\x27 "$log_file" || true)"',
+  '  elif grep -Eq "ERR_PNPM_WORKSPACE_PKG_NOT_FOUND" "$log_file"; then',
+  '    signature="workspace package mismatch"',
+  '    evidence="$(grep -Em1 \x27ERR_PNPM_WORKSPACE_PKG_NOT_FOUND\x27 "$log_file" || true)"',
+  '  fi',
+  '  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then',
+  '    {',
+  '      echo "### pnpm install failed"',
+  '      echo ""',
+  '      echo "- Classification: $signature"',
+  '      echo "- Evidence: \\`$evidence\\`"',
+  '      echo "- Log artifact: \\`$CI_DIAGNOSTICS_DIR/pnpm-install.log\\`"',
+  '      echo ""',
+  '      echo "```text"',
+  '      tail -80 "$log_file"',
+  '      echo "```"',
+  '    } >> "$GITHUB_STEP_SUMMARY"',
+  '  fi',
+  '  echo "::warning::pnpm install failed ($signature); see $CI_DIAGNOSTICS_DIR/pnpm-install.log"',
+  '}',
+].join('\n')
+
+/**
+ * Run the repo-root pnpm install while teeing the full log to the diagnostics
+ * directory and summarizing failures in the job output.
+ */
+export const pnpmInstallWithDiagnosticsStep = {
+  name: 'Install pnpm dependencies',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'mkdir -p "$CI_DIAGNOSTICS_DIR"',
+    'log_file="$CI_DIAGNOSTICS_DIR/pnpm-install.log"',
+    'set +e',
+    '(',
+    runDevenvTasksBefore('pnpm:install'),
+    ') 2>&1 | tee "$log_file"',
+    'rc=${PIPESTATUS[0]}',
+    'set -e',
+    'if [ "$rc" -ne 0 ]; then',
+    pnpmInstallFailureSummaryScript,
+    '  classify_pnpm_failure "$log_file"',
+    'fi',
+    'exit "$rc"',
   ].join('\n'),
 } as const
 
@@ -522,6 +636,22 @@ export const savePnpmStateStep = (opts?: {
     },
   }
 }
+
+/**
+ * Upload CI diagnostics captured during the pnpm install / runner-pressure
+ * steps as a single artifact on failure.
+ */
+export const ciDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?: number }) => ({
+  name: 'Upload CI diagnostics artifact',
+  if: opts?.if ?? "failure() && env.CI_DIAGNOSTICS_DIR != ''",
+  uses: 'actions/upload-artifact@v4' as const,
+  with: {
+    name: 'ci-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    path: '${{ env.CI_DIAGNOSTICS_DIR }}',
+    'if-no-files-found': 'ignore',
+    'retention-days': opts?.retentionDays ?? 14,
+  },
+})
 
 /**
  * Validate exported pnpm fixed-output derivations by realizing them (which
