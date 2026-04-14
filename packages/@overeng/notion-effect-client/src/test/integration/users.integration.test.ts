@@ -21,11 +21,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
           expect(user.object).toBe('user')
           expect(user.id).toBeDefined()
         }).pipe(Effect.provide(IntegrationTestLayer)),
-<<<<<<< HEAD
       { timeout: USER_REQUEST_TIMEOUT },
-=======
-      { timeout: 30000 },
->>>>>>> 34eac399f (fix: relax notion integration timeouts)
     )
   })
 
@@ -68,11 +64,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
             expect(item.object).toBe('user')
           }
         }).pipe(Effect.provide(IntegrationTestLayer)),
-<<<<<<< HEAD
       { timeout: USER_STREAM_TIMEOUT },
-=======
-      { timeout: 60000 },
->>>>>>> 34eac399f (fix: relax notion integration timeouts)
     )
   })
 
@@ -90,11 +82,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
           expect(user.object).toBe('user')
           expect(user.id).toBe(bot.id)
         }).pipe(Effect.provide(IntegrationTestLayer)),
-<<<<<<< HEAD
       { timeout: USER_RETRIEVE_TIMEOUT },
-=======
-      { timeout: 60000 },
->>>>>>> 34eac399f (fix: relax notion integration timeouts)
     )
   })
 })
