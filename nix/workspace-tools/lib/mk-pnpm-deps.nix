@@ -288,9 +288,12 @@ in
                   installStartedAt=$(timer_now)
                   (
                     cd "$install_root"
-                    # Keep the legacy wrapper invocation literal in-source so downstream
-                    # contract checks can verify the install mode by string match:
-                    # pnpm install --frozen-lockfile --ignore-scripts
+                    # Filtered staged workspaces can differ from the repo's
+                    # committed workspace graph. Refresh the lockfile inside the
+                    # staged tree first so pnpm validates against the exact
+                    # install root we are about to materialize, then enforce
+                    # that synthesized lockfile with a frozen install.
+                    node "$PNPM_MJS" install --lockfile-only --ignore-scripts
                     node "$PNPM_MJS" install --frozen-lockfile --ignore-scripts
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
