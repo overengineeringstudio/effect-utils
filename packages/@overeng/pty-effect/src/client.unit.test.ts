@@ -31,6 +31,7 @@ const makeClientMock = (overrides: Record<string, unknown> = {}) => ({
     uptimeSeconds: 1,
   })),
   readRecentEvents: vi.fn(() => []),
+  waitForSocket: vi.fn(async () => undefined),
   sendData: vi.fn(async () => undefined),
   spawnDaemon: vi.fn(async () => undefined),
   updateTags: vi.fn(() => undefined),
@@ -122,6 +123,103 @@ describe('PtyClient client wrapper', () => {
     } finally {
       if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
       else process.env.PTY_EFFECT_TEST_VALUE = previous
+    }
+  })
+
+  it('uses the PTY server module under node when running inside Bun', async () => {
+    const originalBun = process.versions.bun
+    const originalNodeBin = process.env.NODE_BIN
+    const waitForSocket = vi.fn(async (_name: string, _timeoutMs: number, earlyCheck?: () => void) => {
+      earlyCheck?.()
+    })
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4242,
+      stderr: Object.assign(new EventEmitter(), { unref: vi.fn() }),
+      unref: vi.fn(),
+    })
+    const spawn = vi.fn(() => child)
+
+    vi.doMock('@myobie/pty/client', () => makeClientMock({ waitForSocket }))
+    vi.doMock('node:child_process', () => ({ spawn }))
+
+    Object.defineProperty(process.versions, 'bun', {
+      configurable: true,
+      value: '1.2.0',
+    })
+    process.env.NODE_BIN = 'node-from-test'
+
+    try {
+      const { PtyClient, layer } = await import('./client.ts')
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* PtyClient
+          return yield* client.spawnDaemon({
+            name: 'unit-bun' as never,
+            command: 'sh',
+            args: ['-c', 'true'],
+            cwd: '/tmp',
+            displayCommand: 'shell test',
+            env: { PTY_EFFECT_TEST_VALUE: 'from-bun-test' },
+            tags: { owner: 'forge' },
+            size: { rows: 40, cols: 120 },
+          })
+        }).pipe(Effect.provide(layer)),
+      )
+
+      expect(result).toBeUndefined()
+      expect(spawn).toHaveBeenCalledTimes(1)
+      const firstCall = spawn.mock.calls.at(0) as ReadonlyArray<unknown> | undefined
+      expect(firstCall).toBeDefined()
+      if (firstCall === undefined) throw new Error('missing spawn call')
+      const command = firstCall[0]
+      const args = firstCall[1]
+      const options = firstCall[2]
+      if (typeof command !== 'string') throw new Error('expected spawn command')
+      if (!Array.isArray(args)) throw new Error('expected spawn args')
+      if (options === null || typeof options !== 'object') throw new Error('expected spawn options')
+      expect(command).toBe('node-from-test')
+      expect(args).toHaveLength(1)
+      const serverArg = args[0]
+      expect(serverArg).toBeDefined()
+      if (typeof serverArg !== 'string') throw new Error('expected server module path')
+      expect(serverArg).toContain('@myobie/pty')
+      const spawnOptions = options as {
+        readonly detached: boolean
+        readonly stdio: ReadonlyArray<string>
+        readonly env: Record<string, string>
+      }
+      expect(spawnOptions.detached).toBe(true)
+      expect(spawnOptions.stdio).toEqual(['ignore', 'ignore', 'pipe'])
+      expect(spawnOptions.env.PTY_EFFECT_TEST_VALUE).toBe('from-bun-test')
+      const rawConfig = spawnOptions.env.PTY_SERVER_CONFIG
+      expect(rawConfig).toBeDefined()
+      if (rawConfig === undefined) throw new Error('expected PTY_SERVER_CONFIG')
+      const config = JSON.parse(rawConfig)
+      expect(config).toEqual({
+        name: 'unit-bun',
+        command: 'sh',
+        args: ['-c', 'true'],
+        displayCommand: 'shell test',
+        cwd: '/tmp',
+        rows: 40,
+        cols: 120,
+        ephemeral: false,
+        tags: { owner: 'forge' },
+      })
+      expect(waitForSocket).toHaveBeenCalledWith('unit-bun', 3_000, expect.any(Function))
+    } finally {
+      vi.unmock('node:child_process')
+      if (originalBun === undefined) {
+        delete process.versions.bun
+      } else {
+        Object.defineProperty(process.versions, 'bun', {
+          configurable: true,
+          value: originalBun,
+        })
+      }
+      if (originalNodeBin === undefined) delete process.env.NODE_BIN
+      else process.env.NODE_BIN = originalNodeBin
     }
   })
 })

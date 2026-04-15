@@ -8,7 +8,8 @@
  * survive process restarts.
  */
 
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 
 import {
   type EventRecord,
@@ -30,6 +31,7 @@ import {
   spawnDaemon as upstreamSpawnDaemon,
   updateTags as upstreamUpdateTags,
   validateName,
+  waitForSocket as upstreamWaitForSocket,
 } from '@myobie/pty/client'
 import {
   Context,
@@ -55,6 +57,7 @@ import type { Screenshot } from './Screenshot.ts'
 /* ───────────────────────────── specs ────────────────────────────── */
 
 const PtyTags = Schema.Record({ key: Schema.String, value: Schema.String })
+const require = createRequire(import.meta.url)
 
 /**
  * Spec for spawning a daemon-mode pty session via `@myobie/pty/client`'s
@@ -313,42 +316,78 @@ const withEnvOverrides = <A, E, R>(
   }).pipe(Effect.flatMap((saved) => effect.pipe(Effect.ensuring(restore(saved)))))
 }
 
-const spawnDaemonViaCli = (spec: PtyDaemonSpec) =>
+const resolvePtyServerModulePath = () => require.resolve('@myobie/pty/server')
+
+const spawnDaemonViaNode = (spec: PtyDaemonSpec) =>
   wrapPromise({
     method: 'spawnDaemon',
     reason: 'SpawnFailed',
     name: spec.name,
-    thunk: () =>
-      new Promise<void>((resolve, reject) => {
-        const args = ['run', '-d', '--name', spec.name]
-        if (spec.ephemeral === true) {
-          args.push('--ephemeral')
-        }
-        if (spec.cwd !== undefined) {
-          args.push('--cwd', spec.cwd)
-        }
-        if (spec.tags !== undefined) {
-          for (const [key, value] of Object.entries(spec.tags)) {
-            args.push('--tag', `${key}=${value}`)
-          }
-        }
-        args.push('--', spec.command, ...(spec.args ?? []))
+    thunk: async () => {
+      const stdout = process.stdout
+      const rows = spec.size?.rows ?? stdout.rows ?? 24
+      const cols = spec.size?.cols ?? stdout.columns ?? 80
+      const serverModule = resolvePtyServerModulePath()
+      const config = JSON.stringify({
+        name: spec.name,
+        command: spec.command,
+        args: spec.args ?? [],
+        displayCommand: spec.displayCommand ?? spec.command,
+        cwd: spec.cwd ?? process.cwd(),
+        rows,
+        cols,
+        ephemeral: spec.ephemeral ?? false,
+        ...(spec.tags !== undefined && Object.keys(spec.tags).length > 0 ? { tags: spec.tags } : {}),
+      })
 
-        execFile(process.env['PTY_BIN'] ?? 'pty', args, {
-          env: spec.env !== undefined ? { ...process.env, ...spec.env } : process.env,
-        }, (error) => {
-          if (error) {
-            reject(error)
-            return
-          }
-          resolve()
+      const child = spawn(process.env['NODE_BIN'] ?? 'node', [serverModule], {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'pipe'],
+        env: {
+          ...process.env,
+          ...spec.env,
+          PTY_SERVER_CONFIG: config,
+        },
+      })
+
+      let stderrOutput = ''
+      let earlyExit = false
+      let earlyExitCode: number | null = null
+
+      child.stderr?.on('data', (data) => {
+        stderrOutput += data.toString()
+      })
+      child.on('exit', (code) => {
+        earlyExit = true
+        earlyExitCode = code
+      })
+
+      ;(child.stderr as { unref?: () => void } | null)?.unref?.()
+      child.unref()
+
+      try {
+        await upstreamWaitForSocket(spec.name, 3_000, () => {
+          if (earlyExit === false) return
+          const details = stderrOutput.trim()
+          const message = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
+          throw new Error(details.length > 0 ? `${message}\n${details}` : `${message} Is the command valid?`)
         })
-      }),
+      } catch (error) {
+        if (earlyExit === false && child.pid !== undefined) {
+          try {
+            process.kill(child.pid, 'SIGTERM')
+          } catch {
+            // best effort cleanup
+          }
+        }
+        throw error
+      }
+    },
   })
 
 const spawnDaemonCompat = (spec: PtyDaemonSpec) =>
   process.versions.bun !== undefined
-    ? spawnDaemonViaCli(spec)
+    ? spawnDaemonViaNode(spec)
     : withEnvOverrides(
         spec.env,
         wrapPromise({
@@ -415,7 +454,7 @@ const updateTags = (spec: PtyUpdateTagsSpec) =>
       method: 'updateTags',
       reason: 'WriteFailed',
       name: spec.name,
-      thunk: () => upstreamUpdateTags(spec.name, { ...(spec.tags ?? {}) }, spec.removals?.slice() ?? []),
+      thunk: () => upstreamUpdateTags(spec.name, { ...spec.tags }, spec.removals?.slice() ?? []),
     })
   }).pipe(Effect.withSpan('pty-client.updateTags', { attributes: { 'span.label': spec.name } }))
 
