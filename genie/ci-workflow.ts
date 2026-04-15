@@ -116,6 +116,37 @@ type NixConfigOptions = {
   extraLines?: readonly string[]
 }
 
+export type NixBinaryCache = {
+  readonly uri: string
+  readonly publicKey: string
+}
+
+export const devenvBinaryCache = {
+  uri: 'https://devenv.cachix.org',
+  publicKey: 'devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
+} as const satisfies NixBinaryCache
+
+/** Build a binary-cache descriptor for a Cachix cache. */
+export const cachixBinaryCache = (opts: {
+  name: string
+  publicKey: string
+}): NixBinaryCache => ({
+  uri: `https://${opts.name}.cachix.org`,
+  publicKey: opts.publicKey,
+})
+
+const dedupeBinaryCaches = (caches: readonly NixBinaryCache[]) =>
+  [...new Map(caches.map((cache) => [cache.uri, cache])).values()]
+
+/** Render `extra-conf` lines for one or more binary caches. */
+export const nixBinaryCachesExtraConf = (caches: readonly NixBinaryCache[]) => {
+  const resolvedCaches = dedupeBinaryCaches([devenvBinaryCache, ...caches])
+  return [
+    `extra-substituters = ${resolvedCaches.map((cache) => cache.uri).join(' ')}`,
+    `extra-trusted-public-keys = ${resolvedCaches.map((cache) => cache.publicKey).join(' ')}`,
+  ].join('\n')
+}
+
 const devenvBinRef = '"${DEVENV_BIN:?DEVENV_BIN not set}"'
 
 const resolveDevenvRevScript = `DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
@@ -372,12 +403,13 @@ export const appendGitHubAccessTokenToNixConfigStep = (opts: {
 
 /**
  * Install Nix via DeterminateSystems/determinate-nix-action@v3.
- * Includes devenv.cachix.org as extra substituter and github.com access-tokens
+ * Includes shared binary caches and github.com access-tokens
  * by default. On self-hosted where Nix is pre-installed, this action is a no-op
  * and extra-conf is silently skipped — the runner's nix wrapper handles
  * access-tokens there by reading GITHUB_TOKEN from the environment.
  */
 export const installNixStep = (opts?: {
+  binaryCaches?: readonly NixBinaryCache[]
   extraConf?: string
   githubAccessTokenExpression?: string
   summarize?: boolean
@@ -392,10 +424,9 @@ export const installNixStep = (opts?: {
        * @see https://github.com/cachix/devenv/issues/2364
        */
       'experimental-features = nix-command flakes',
-      /** Trust flake-level nixConfig (e.g. devenv's extra-substituters for devenv.cachix.org) */
+      /** Trust flake-level nixConfig (e.g. additional repo-local substituters) */
       'accept-flake-config = true',
-      'extra-substituters = https://devenv.cachix.org',
-      'extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=',
+      nixBinaryCachesExtraConf(opts?.binaryCaches ?? []),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
     ].join('\n'),

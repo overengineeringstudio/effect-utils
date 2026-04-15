@@ -8,6 +8,7 @@ import { IntegrationTestLayer, SKIP_INTEGRATION } from './setup.ts'
 
 const USER_REQUEST_TIMEOUT = 30_000
 const USER_STREAM_TIMEOUT = 60_000
+const USER_RETRIEVE_TIMEOUT = 60_000
 
 Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
   Vitest.describe('me', () => {
@@ -81,7 +82,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionUsers (integration)', () => {
           expect(user.object).toBe('user')
           expect(user.id).toBe(bot.id)
         }).pipe(Effect.provide(IntegrationTestLayer)),
-      { timeout: USER_REQUEST_TIMEOUT },
+      { timeout: USER_RETRIEVE_TIMEOUT },
     )
   })
 })

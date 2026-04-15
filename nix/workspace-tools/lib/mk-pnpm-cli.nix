@@ -264,7 +264,12 @@ let
     dir: !(lib.elem dir allExternallyOwnedDirs)
   ) workspaceClosureDirs;
 
-  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml stagedWorkspaceMembers (
+  # The aggregate root still needs every workspace member listed in its
+  # pnpm-workspace.yaml, even when some members are owned by nested install
+  # roots. Otherwise pnpm treats downstream link: deps into those external
+  # roots as opaque file links and materializes zero-byte placeholders in the
+  # aggregate root node_modules instead of workspace symlinks.
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml workspaceClosureDirs (
     workspaceSuffixLines rootPnpmWorkspaceYaml
   );
 
