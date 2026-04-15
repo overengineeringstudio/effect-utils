@@ -1001,10 +1001,43 @@ export const netlifyDeployStep = () => buildNetlifyDeployStep(runDevenvTasksBefo
 
 /**
  * Combined deploy comment step for Netlify storybook previews.
- * Discovers deployed storybooks by scanning for `storybook-static` build output
- * under `packages/@overeng/` and generates PR comments + job summaries with URLs.
  *
- * @param site - Netlify site name (e.g. 'overeng-utils')
+ * When `packages` is provided, constructs preview URLs directly from the known package list.
+ * This works regardless of whether the deploy task emits metadata markers, making it suitable
+ * for repos that pin an older effect-utils version for Nix while using the latest for genie.
+ *
+ * When omitted, uses the metadata-based approach that reads deploy output from the deploy step.
+ *
+ * The `packages` shape matches the Nix `taskModules.netlify` / `taskModules.storybook` config:
+ * `{ path: "flakes/oi", name: "flakes-oi" }` where `name` is the Netlify deploy alias.
  */
-export const netlifyStorybookCommentStep = (site: string) =>
-  buildNetlifyStorybookCommentStep(site, deployModeScript)
+export const netlifyStorybookCommentStep = (
+  site: string,
+  opts?: { packages?: ReadonlyArray<{ path: string; name: string }> },
+) => {
+  if (!opts?.packages) {
+    return buildNetlifyStorybookCommentStep(site, deployModeScript)
+  }
+
+  return deployCommentStep({
+    summaryTitle: 'Storybook Previews',
+    tableHeaders: ['Package', 'URL'],
+    noRowsMessage: 'No storybooks were deployed.',
+    modeScript: [
+      `site="${site}"`,
+      deployModeScript,
+      '# Set Netlify branch-deploy suffix based on mode',
+      'if [ "$label" = "prod" ]; then suffix=""; else suffix="-pr-${{ github.event.pull_request.number }}"; fi',
+    ].join('\n'),
+    rowsScript: [
+      'rows=""',
+      ...opts.packages.map((pkg) =>
+        [
+          `if [ -d "${pkg.path}/storybook-static" ]; then`,
+          `  rows="\${rows}| ${pkg.name} | https://${pkg.name}\${suffix}--\${site}.netlify.app |\\n"`,
+          'fi',
+        ].join('\n'),
+      ),
+    ].join('\n'),
+  })
+}
