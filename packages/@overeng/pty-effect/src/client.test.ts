@@ -205,7 +205,7 @@ describe('PtyClient', () => {
 
         const startEvents = yield* Effect.forkScoped(
           client.followEvents({}).pipe(
-            Stream.filter((event) => event.session === name),
+            Stream.filter((event) => event.session === name && event.type === 'session_start'),
             Stream.take(1),
             Stream.runCollect,
           ),
@@ -214,7 +214,7 @@ describe('PtyClient', () => {
         yield* client.spawnDaemon({
           name,
           command: 'sh',
-          args: ['-c', 'sleep 0.2'],
+          args: ['-c', 'sleep 2'],
           tags: {
             'forge.tab': 'tab-1',
             'forge.workspace': 'ws-1',

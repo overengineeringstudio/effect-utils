@@ -301,10 +301,13 @@ const decodeEvent =
         }),
     })
 
-const withEnvOverrides = <A, E, R>(
-  env: Readonly<Record<string, string>> | undefined,
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> => {
+const withEnvOverrides = <A, E, R>({
+  env,
+  effect,
+}: {
+  readonly env: Readonly<Record<string, string>> | undefined
+  readonly effect: Effect.Effect<A, E, R>
+}): Effect.Effect<A, E, R> => {
   const envOverrides = env !== undefined ? Object.entries(env) : []
   if (envOverrides.length === 0) return effect
 
@@ -401,15 +404,15 @@ const spawnDaemonViaNode = (spec: PtyDaemonSpec) =>
 const spawnDaemonCompat = (spec: PtyDaemonSpec) =>
   process.versions.bun !== undefined
     ? spawnDaemonViaNode(spec)
-    : withEnvOverrides(
-        spec.env,
-        wrapPromise({
+    : withEnvOverrides({
+        env: spec.env,
+        effect: wrapPromise({
           method: 'spawnDaemon',
           reason: 'SpawnFailed',
           name: spec.name,
           thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
         }),
-      )
+      })
 
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
