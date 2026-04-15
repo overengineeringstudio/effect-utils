@@ -141,6 +141,8 @@ build_and_smoke() {
 
   echo "Smoke: $bin_name --help"
   "$out/bin/$bin_name" --help >/dev/null
+
+  check_completions "$out" "$bin_name"
 }
 
 prepare_downstream_workspace() {
@@ -164,8 +166,29 @@ prepare_downstream_workspace() {
   copy_repo "$ROOT" "$WORKSPACE_REAL/repos/effect-utils"
 }
 
+check_completions() {
+  local out="$1"
+  local bin_name="$2"
+
+  echo "Check: $bin_name shell completions"
+  local fish_file="$out/share/fish/vendor_completions.d/${bin_name}.fish"
+  local bash_file="$out/share/bash-completion/completions/${bin_name}"
+  local zsh_file="$out/share/zsh/site-functions/_${bin_name}"
+  for f in "$fish_file" "$bash_file" "$zsh_file"; do
+    if [ ! -f "$f" ] && [ ! -L "$f" ]; then
+      echo "error: missing completion file: $f" >&2
+      exit 1
+    fi
+    if [ ! -s "$f" ]; then
+      echo "error: empty completion file: $f" >&2
+      exit 1
+    fi
+  done
+}
+
 run_downstream_regression() {
   local attr="$1"
+  local bin_name="${2:-}"
   local start
   start="$(date +%s)"
 
@@ -175,9 +198,14 @@ run_downstream_regression() {
     "path:$DOWNSTREAM_DIR#packages.$SYSTEM.$attr"
 
   echo "Build: downstream $attr (composed repos/effect-utils path)"
-  nix build --no-link --no-write-lock-file \
+  local out
+  out="$(nix build --no-link --no-write-lock-file --print-out-paths \
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
-    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.$attr"
+    "path:$DOWNSTREAM_DIR#packages.$SYSTEM.$attr")"
+
+  if [ -n "$bin_name" ]; then
+    check_completions "$out" "$bin_name"
+  fi
 
   if [ "$SKIP_DEVENV_SHELL" -eq 0 ]; then
     echo "Devenv: downstream shell with composed repos/effect-utils path"
@@ -231,9 +259,9 @@ fi
 if [ "$SKIP_DOWNSTREAM" -eq 0 ]; then
   prepare_downstream_workspace
   run_downstream_pure_eval_regression
-  run_downstream_regression "genie"
+  run_downstream_regression "genie" "genie"
   if [ "$SKIP_DOWNSTREAM_MEGAREPO" -eq 0 ]; then
-    run_downstream_regression "megarepo"
+    run_downstream_regression "megarepo" "mr"
   fi
   if [ "$SKIP_OXLINT" -eq 0 ]; then
     run_downstream_regression "oxlint-npm"
