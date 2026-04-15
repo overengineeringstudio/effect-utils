@@ -286,6 +286,14 @@ pkgs.stdenv.mkDerivation {
     mkdir -p "$out/bin"
     cp ".bun-build/${binaryName}" "$out/bin/${binaryName}"
 
+    # Generate shell completions (Effect CLI built-in support)
+    mkdir -p "$out/share/fish/vendor_completions.d"
+    mkdir -p "$out/share/bash-completion/completions"
+    mkdir -p "$out/share/zsh/site-functions"
+    $out/bin/${binaryName} --log-level none --completions fish > "$out/share/fish/vendor_completions.d/${binaryName}.fish" || true
+    $out/bin/${binaryName} --log-level none --completions bash > "$out/share/bash-completion/completions/${binaryName}" || true
+    $out/bin/${binaryName} --log-level none --completions zsh > "$out/share/zsh/site-functions/_${binaryName}" || true
+
     runHook postInstall
   '';
 }
