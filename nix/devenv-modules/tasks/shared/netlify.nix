@@ -55,6 +55,7 @@ let
         }}
 
         deploy_dir="${pkg.path}/storybook-static"
+        workspace_filter="$(${pkgs.jq}/bin/jq -r '.name // empty' "${pkg.path}/package.json")"
 
         if [ ! -d "$deploy_dir" ]; then
           echo "Skipping ${pkg.name}: no build output at $deploy_dir" >&2
@@ -114,6 +115,7 @@ let
         ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 deploy \
           --dir="$deploy_dir" \
           --auth="$NETLIFY_AUTH_TOKEN" \
+          --filter="$workspace_filter" \
           --no-build \
           $alias_flag \
           --message="$message" \
