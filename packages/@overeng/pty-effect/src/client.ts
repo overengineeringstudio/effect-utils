@@ -49,8 +49,8 @@ import {
   pipe,
 } from 'effect'
 
-import { decodePtyEvent, type PtyEvent } from './PtyEvent.ts'
 import { PtyError } from './PtyError.ts'
+import { decodePtyEvent, type PtyEvent } from './PtyEvent.ts'
 import { PtyName, type TerminalSize } from './PtySpec.ts'
 import type { Screenshot } from './Screenshot.ts'
 
@@ -96,30 +96,36 @@ export interface PtyAttachSpec {
   readonly size: TerminalSize
 }
 
+/** Lookup a daemon-backed PTY session by name. */
 export interface PtyGetSessionSpec {
   readonly name: PtyName
 }
 
+/** Send one or more data chunks to a PTY session. */
 export interface PtySendDataSpec {
   readonly name: PtyName
   readonly data: ReadonlyArray<string>
   readonly delayMs?: number
 }
 
+/** Request live process and terminal stats for a PTY session. */
 export interface PtyQueryStatsSpec {
   readonly name: PtyName
   readonly timeoutMs?: number
 }
 
+/** Read a bounded number of recent PTY lifecycle events. */
 export interface PtyReadRecentEventsSpec {
   readonly name: PtyName
   readonly count?: number
 }
 
+/** Follow appended PTY lifecycle events, optionally filtered by session name. */
 export interface PtyFollowEventsSpec {
   readonly names?: ReadonlyArray<PtyName>
 }
 
+/** Add, replace, or remove persisted PTY tags for a session. */
 export interface PtyUpdateTagsSpec {
   readonly name: PtyName
   readonly tags?: Readonly<Record<string, string>>
@@ -131,6 +137,7 @@ export const defaultPollSchedule: Schedule.Schedule<unknown> = Schedule.spaced('
 
 /* ──────────────────────── client session handle ─────────────────── */
 
+/** Live attachment handle for a daemon-backed PTY session. */
 export interface PtyClientSession {
   readonly name: PtyName
   /** Initial screen replay sent by the server right after attach. */
@@ -177,6 +184,7 @@ export interface PtyClientSession {
 
 /* ───────────────────────────── service ──────────────────────────── */
 
+/** Effect service wrapping the detached `@myobie/pty/client` API. */
 export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
   PtyClient,
   {
@@ -280,17 +288,18 @@ const validateNameOrFail = (name: string) =>
       }),
   })
 
-const decodeEvent = (opts: { readonly method: string; readonly name?: string }) => (event: EventRecord) =>
-  Effect.try({
-    try: () => decodePtyEvent(event),
-    catch: (cause) =>
-      new PtyError({
-        reason: 'ConnectFailed',
-        method: opts.method,
-        name: opts.name,
-        cause,
-      }),
-  })
+const decodeEvent =
+  (opts: { readonly method: string; readonly name?: string }) => (event: EventRecord) =>
+    Effect.try({
+      try: () => decodePtyEvent(event),
+      catch: (cause) =>
+        new PtyError({
+          reason: 'ConnectFailed',
+          method: opts.method,
+          name: opts.name,
+          cause,
+        }),
+    })
 
 const withEnvOverrides = <A, E, R>(
   env: Readonly<Record<string, string>> | undefined,
@@ -337,7 +346,9 @@ const spawnDaemonViaNode = (spec: PtyDaemonSpec) =>
         rows,
         cols,
         ephemeral: spec.ephemeral ?? false,
-        ...(spec.tags !== undefined && Object.keys(spec.tags).length > 0 ? { tags: spec.tags } : {}),
+        ...(spec.tags !== undefined && Object.keys(spec.tags).length > 0
+          ? { tags: spec.tags }
+          : {}),
       })
 
       const child = spawn(process.env['NODE_BIN'] ?? 'node', [serverModule], {
@@ -370,7 +381,9 @@ const spawnDaemonViaNode = (spec: PtyDaemonSpec) =>
           if (earlyExit === false) return
           const details = stderrOutput.trim()
           const message = `Daemon process exited immediately (code ${earlyExitCode ?? 'unknown'}).`
-          throw new Error(details.length > 0 ? `${message}\n${details}` : `${message} Is the command valid?`)
+          throw new Error(
+            details.length > 0 ? `${message}\n${details}` : `${message} Is the command valid?`,
+          )
         })
       } catch (error) {
         if (earlyExit === false && child.pid !== undefined) {
@@ -404,7 +417,11 @@ const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
     yield* spawnDaemonCompat(spec)
   }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
 
-const peek = (input: { readonly name: PtyName; readonly plain?: boolean; readonly full?: boolean }) =>
+const peek = (input: {
+  readonly name: PtyName
+  readonly plain?: boolean
+  readonly full?: boolean
+}) =>
   wrapPromise({
     method: 'peek',
     reason: 'ConnectFailed',
@@ -494,8 +511,13 @@ const readRecentEvents = (spec: PtyReadRecentEventsSpec) =>
       name: spec.name,
       thunk: () => upstreamReadRecentEvents(spec.name, spec.count),
     })
-    return yield* Effect.forEach(events, decodeEvent({ method: 'readRecentEvents', name: spec.name }))
-  }).pipe(Effect.withSpan('pty-client.readRecentEvents', { attributes: { 'span.label': spec.name } }))
+    return yield* Effect.forEach(
+      events,
+      decodeEvent({ method: 'readRecentEvents', name: spec.name }),
+    )
+  }).pipe(
+    Effect.withSpan('pty-client.readRecentEvents', { attributes: { 'span.label': spec.name } }),
+  )
 
 const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyError, Scope.Scope> =>
   Stream.asyncScoped<PtyEvent, PtyError>((emit) =>
@@ -716,6 +738,7 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
 
 /* ───────────────────────────── layer ────────────────────────────── */
 
+/** Default live layer for the detached PTY client wrapper. */
 export const layer: Layer.Layer<PtyClient> = Layer.succeed(
   PtyClient,
   PtyClient.of({

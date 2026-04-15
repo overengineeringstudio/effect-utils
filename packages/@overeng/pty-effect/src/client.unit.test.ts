@@ -129,9 +129,11 @@ describe('PtyClient client wrapper', () => {
   it('uses the PTY server module under node when running inside Bun', async () => {
     const originalBun = process.versions.bun
     const originalNodeBin = process.env.NODE_BIN
-    const waitForSocket = vi.fn(async (_name: string, _timeoutMs: number, earlyCheck?: () => void) => {
-      earlyCheck?.()
-    })
+    const waitForSocket = vi.fn(
+      async (_name: string, _timeoutMs: number, earlyCheck?: () => void) => {
+        earlyCheck?.()
+      },
+    )
     const child = Object.assign(new EventEmitter(), {
       pid: 4242,
       stderr: Object.assign(new EventEmitter(), { unref: vi.fn() }),
@@ -176,7 +178,7 @@ describe('PtyClient client wrapper', () => {
       const args = firstCall[1]
       const options = firstCall[2]
       if (typeof command !== 'string') throw new Error('expected spawn command')
-      if (!Array.isArray(args)) throw new Error('expected spawn args')
+      if (Array.isArray(args) === false) throw new Error('expected spawn args')
       if (options === null || typeof options !== 'object') throw new Error('expected spawn options')
       expect(command).toBe('node-from-test')
       expect(args).toHaveLength(1)

@@ -11,22 +11,25 @@ import { PtyName } from './PtySpec.ts'
 
 /** Per-test isolated `PTY_SESSION_DIR` so daemons can't collide. */
 const withIsolatedDir = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pty-effect-client-test-'))
-    const prev = process.env.PTY_SESSION_DIR
-    process.env.PTY_SESSION_DIR = dir
-    try {
-      return yield* eff
-    } finally {
-      if (prev === undefined) delete process.env.PTY_SESSION_DIR
-      else process.env.PTY_SESSION_DIR = prev
-      try {
-        fs.rmSync(dir, { recursive: true, force: true })
-      } catch {
-        // best effort
-      }
-    }
-  })
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pty-effect-client-test-'))
+      const prev = process.env.PTY_SESSION_DIR
+      process.env.PTY_SESSION_DIR = dir
+      return { dir, prev } as const
+    }),
+    () => eff,
+    ({ dir, prev }) =>
+      Effect.sync(() => {
+        if (prev === undefined) delete process.env.PTY_SESSION_DIR
+        else process.env.PTY_SESSION_DIR = prev
+        try {
+          fs.rmSync(dir, { recursive: true, force: true })
+        } catch {
+          // best effort
+        }
+      }),
+  )
 
 const withTempDir = <A>(prefix: string, f: (dir: string) => A) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -48,6 +51,16 @@ const decodeName = (s: string) => Schema.decodeUnknownSync(PtyName)(s) as PtyNam
  *  chars before the name itself. */
 const uniqueName = (label: string): PtyName =>
   decodeName(`t${label}${(Date.now() % 100000).toString(36)}`)
+
+const stdinEchoScript = [
+  "const readline = require('node:readline')",
+  "process.stdin.setEncoding('utf8')",
+  'const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity })',
+  'rl.on("line", (line) => {',
+  '  if (line === "status") process.stdout.write("SEND_OK\\\\n")',
+  '  if (line === "exit") process.exit(0)',
+  '})',
+].join('\n')
 
 describe('PtyClient', () => {
   it('keeps @overeng/pty-effect/client compile-safe for Bun-built CLIs', () => {
@@ -267,8 +280,8 @@ describe('PtyClient', () => {
 
         yield* client.spawnDaemon({
           name,
-          command: 'sh',
-          args: [],
+          command: 'node',
+          args: ['-e', stdinEchoScript],
         })
 
         const session = yield* client.attach({
@@ -283,8 +296,7 @@ describe('PtyClient', () => {
 
         yield* client.sendData({
           name,
-          data: ['printf "SEND_OK\\n"\r', 'exit\r'],
-          delayMs: 5,
+          data: ['status\rexit\r'],
         })
 
         const echoed = yield* session
