@@ -110,9 +110,9 @@ let
         auth_site_file="$(mktemp)"
         set +e
         # shellcheck disable=SC2086
+        NETLIFY_SITE_ID="${siteId}" \
         ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 deploy \
           --dir="$deploy_dir" \
-          --site="${siteId}" \
           --auth="$NETLIFY_AUTH_TOKEN" \
           --no-build \
           $alias_flag \

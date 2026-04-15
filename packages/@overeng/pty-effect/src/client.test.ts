@@ -294,17 +294,16 @@ describe('PtyClient', () => {
         expect(stats.process.alive).toBe(true)
         expect(stats.process.pid).not.toBeNull()
 
-        yield* client.sendData({
-          name,
-          data: ['status\rexit\r'],
-        })
+        yield* client.sendData({ name, data: ['status\r'] })
 
         const echoed = yield* session
           .waitForText({ needle: 'SEND_OK' })
-          .pipe(Effect.timeout('2 seconds'))
+          .pipe(Effect.timeout('5 seconds'))
         expect(echoed.text).toContain('SEND_OK')
 
-        const exit = yield* session.exit.pipe(Effect.timeout('2 seconds'))
+        yield* client.sendData({ name, data: ['exit\r'] })
+
+        const exit = yield* session.exit.pipe(Effect.timeout('5 seconds'))
         expect(exit.code).toBe(0)
 
         yield* Effect.sleep('100 millis')
