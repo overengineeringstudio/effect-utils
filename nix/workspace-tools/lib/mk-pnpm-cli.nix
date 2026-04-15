@@ -926,6 +926,14 @@ pkgs.stdenv.mkDerivation {
     installedBytes=$(du --apparent-size -sk "$out/bin/${binaryName}" 2>/dev/null | awk '{print $1 * 1024}')
     installedBytes=''${installedBytes:-0}
     echo "cli-build: phase=install cli=${binaryName} package=${packageDir} duration=$(install_timer_elapsed "$installStartedAt")s installed_size=$(install_format_bytes "$installedBytes")"
+
+    # Generate shell completions (Effect CLI built-in support)
+    mkdir -p "$out/share/fish/vendor_completions.d"
+    mkdir -p "$out/share/bash-completion/completions"
+    mkdir -p "$out/share/zsh/site-functions"
+    $out/bin/${binaryName} --log-level none --completions fish > "$out/share/fish/vendor_completions.d/${binaryName}.fish" || true
+    $out/bin/${binaryName} --log-level none --completions bash > "$out/share/bash-completion/completions/${binaryName}" || true
+    $out/bin/${binaryName} --log-level none --completions zsh > "$out/share/zsh/site-functions/_${binaryName}" || true
     runHook postInstall
   '';
 }

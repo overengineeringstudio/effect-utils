@@ -43,4 +43,12 @@ pkgs.runCommand "genie"
     makeWrapper ${unwrapped}/bin/genie $out/bin/genie \
       --suffix PATH : ${pkgs.oxfmt}/bin \
       --set GENIE_ACTIONLINT_BIN ${pkgs.actionlint}/bin/actionlint
+
+    # Propagate shell completions from the unwrapped derivation
+    for dir in share/fish/vendor_completions.d share/bash-completion/completions share/zsh/site-functions; do
+      if [ -d "${unwrapped}/$dir" ]; then
+        mkdir -p "$out/$dir"
+        ln -s "${unwrapped}/$dir"/* "$out/$dir/"
+      fi
+    done
   ''
