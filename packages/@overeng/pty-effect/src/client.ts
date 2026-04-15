@@ -8,6 +8,8 @@
  * survive process restarts.
  */
 
+import { execFile } from 'node:child_process'
+
 import {
   type EventRecord,
   type ProcessResources,
@@ -311,18 +313,56 @@ const withEnvOverrides = <A, E, R>(
   }).pipe(Effect.flatMap((saved) => effect.pipe(Effect.ensuring(restore(saved)))))
 }
 
+const spawnDaemonViaCli = (spec: PtyDaemonSpec) =>
+  wrapPromise({
+    method: 'spawnDaemon',
+    reason: 'SpawnFailed',
+    name: spec.name,
+    thunk: () =>
+      new Promise<void>((resolve, reject) => {
+        const args = ['run', '-d', '--name', spec.name]
+        if (spec.ephemeral === true) {
+          args.push('--ephemeral')
+        }
+        if (spec.cwd !== undefined) {
+          args.push('--cwd', spec.cwd)
+        }
+        if (spec.tags !== undefined) {
+          for (const [key, value] of Object.entries(spec.tags)) {
+            args.push('--tag', `${key}=${value}`)
+          }
+        }
+        args.push('--', spec.command, ...(spec.args ?? []))
+
+        execFile(process.env['PTY_BIN'] ?? 'pty', args, {
+          env: spec.env !== undefined ? { ...process.env, ...spec.env } : process.env,
+        }, (error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
+      }),
+  })
+
+const spawnDaemonCompat = (spec: PtyDaemonSpec) =>
+  process.versions.bun !== undefined
+    ? spawnDaemonViaCli(spec)
+    : withEnvOverrides(
+        spec.env,
+        wrapPromise({
+          method: 'spawnDaemon',
+          reason: 'SpawnFailed',
+          name: spec.name,
+          thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
+        }),
+      )
+
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
     yield* validateNameOrFail(spec.name)
-    yield* withEnvOverrides(
-      spec.env,
-      wrapPromise({
-        method: 'spawnDaemon',
-        reason: 'SpawnFailed',
-        name: spec.name,
-        thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
-      }),
-    )
+    yield* spawnDaemonCompat(spec)
   }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
 
 const peek = (input: { readonly name: PtyName; readonly plain?: boolean; readonly full?: boolean }) =>
@@ -359,7 +399,8 @@ const exists = (input: { readonly name: PtyName }) =>
   pipe(
     list,
     Effect.map((sessions) => sessions.some((session) => session.name === input.name)),
-  ).pipe(Effect.withSpan('pty-client.exists', { attributes: { 'span.label': input.name } }))
+    Effect.withSpan('pty-client.exists', { attributes: { 'span.label': input.name } }),
+  )
 
 const gc: Effect.Effect<ReadonlyArray<string>, PtyError> = wrapPromise({
   method: 'gc',
@@ -589,7 +630,6 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
             onSome: Effect.succeed,
           }),
         ),
-      ).pipe(
         Effect.withSpan('pty-client.waitForText', {
           attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
         }),
@@ -615,7 +655,6 @@ const attach = (spec: PtyAttachSpec): Effect.Effect<PtyClientSession, PtyError, 
             onSome: Effect.succeed,
           }),
         ),
-      ).pipe(
         Effect.withSpan('pty-client.waitForAbsent', {
           attributes: { 'span.label': `${spec.name}: ${String(needle)}` },
         }),
