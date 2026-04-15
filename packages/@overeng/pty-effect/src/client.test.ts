@@ -214,7 +214,7 @@ describe('PtyClient', () => {
         yield* client.spawnDaemon({
           name,
           command: 'sh',
-          args: ['-c', 'sleep 2'],
+          args: ['-c', 'sleep 0.5'],
           tags: {
             'forge.tab': 'tab-1',
             'forge.workspace': 'ws-1',

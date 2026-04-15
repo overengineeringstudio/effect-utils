@@ -110,7 +110,7 @@ let
         auth_site_file="$(mktemp)"
         set +e
         # shellcheck disable=SC2086
-        ${pkgs.bun}/bin/bunx netlify-cli@17.37.2 deploy \
+        ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 deploy \
           --dir="$deploy_dir" \
           --site="${siteId}" \
           --auth="$NETLIFY_AUTH_TOKEN" \
@@ -128,9 +128,9 @@ let
           if grep -q "Unauthorized: could not retrieve project" "$deploy_stderr_file"; then
             echo "Netlify auth diagnostics for ${pkg.name}:" >&2
             set +e
-            ${pkgs.bun}/bin/bunx netlify-cli@17.37.2 api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
+            ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
             auth_user_exit="$?"
-            ${pkgs.bun}/bin/bunx netlify-cli@17.37.2 api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
+            ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
             auth_site_exit="$?"
             set -e
 
