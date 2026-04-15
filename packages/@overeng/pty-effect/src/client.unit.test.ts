@@ -1,9 +1,44 @@
 import { EventEmitter } from 'node:events'
 
-import { Effect, Exit, Fiber } from 'effect'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-describe('PtyClient interruption', () => {
+const makeClientMock = (overrides: Record<string, unknown> = {}) => ({
+  EventFollower: class {
+    readonly start = vi.fn()
+    readonly stop = vi.fn()
+  },
+  SessionConnection: class extends EventEmitter {},
+  gc: vi.fn(async () => []),
+  getSession: vi.fn(async () => null),
+  listSessions: vi.fn(async () => []),
+  peekScreen: vi.fn(async () => ''),
+  queryStats: vi.fn(async () => ({
+    clients: { attached: 0, readOnly: 0, total: 0 },
+    createdAt: null,
+    daemon: { pid: 1, resources: null },
+    modes: { cursorHidden: false, kittyKeyboard: false, kittyKeyboardFlags: [], sgrMouse: false },
+    name: 'unit',
+    process: { alive: true, exitCode: null, pid: 1, resources: null },
+    terminal: {
+      cols: 80,
+      cursorX: 0,
+      cursorY: 0,
+      rows: 24,
+      scrollbackCapacity: 1_000,
+      scrollbackUsed: 0,
+    },
+    uptimeSeconds: 1,
+  })),
+  readRecentEvents: vi.fn(() => []),
+  sendData: vi.fn(async () => undefined),
+  spawnDaemon: vi.fn(async () => undefined),
+  updateTags: vi.fn(() => undefined),
+  validateName: vi.fn(),
+  ...overrides,
+})
+
+describe('PtyClient client wrapper', () => {
   beforeEach(() => {
     vi.resetModules()
   })
@@ -11,27 +46,15 @@ describe('PtyClient interruption', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unmock('@myobie/pty/client')
-    vi.unmock('node:child_process')
   })
 
-  it('kills a pending daemon spawn on interruption without mutating process.env', async () => {
-    const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
-    const child = Object.assign(new EventEmitter(), {
-      stderr,
-      kill: vi.fn(),
-      unref: vi.fn(),
-      pid: 123,
+  it('passes env overrides through upstream spawnDaemon and restores process.env on success', async () => {
+    let envInsideSpawn: string | undefined
+    const spawnDaemon = vi.fn(async () => {
+      envInsideSpawn = process.env.PTY_EFFECT_TEST_VALUE
     })
-    const spawn = vi.fn(() => child)
 
-    vi.doMock('node:child_process', () => ({ spawn }))
-    vi.doMock('@myobie/pty/client', () => ({
-      SessionConnection: class extends EventEmitter {},
-      getSocketPath: vi.fn(() => '/definitely-missing-socket'),
-      listSessions: vi.fn(async () => []),
-      peekScreen: vi.fn(),
-      validateName: vi.fn(),
-    }))
+    vi.doMock('@myobie/pty/client', () => makeClientMock({ spawnDaemon }))
 
     const { PtyClient, layer } = await import('./client.ts')
     const previous = process.env.PTY_EFFECT_TEST_VALUE
@@ -45,19 +68,15 @@ describe('PtyClient interruption', () => {
           return yield* client.spawnDaemon({
             name: 'unit-spawn' as never,
             command: 'sh',
-            args: ['-c', 'sleep 30'],
+            args: ['-c', 'true'],
             env: { PTY_EFFECT_TEST_VALUE: 'from-test' },
           })
-        }).pipe(Effect.provide(layer), Effect.timeout('50 millis'), Effect.exit),
+        }).pipe(Effect.provide(layer)),
       )
 
-      expect(Exit.isFailure(exit)).toBe(true)
-      expect(spawn).toHaveBeenCalledTimes(1)
-      const spawnCalls = spawn.mock.calls as unknown as Array<
-        readonly [string, ReadonlyArray<string>, { readonly env?: Record<string, string> }]
-      >
-      expect(spawnCalls[0]?.[2].env?.PTY_EFFECT_TEST_VALUE).toBe('from-test')
-      expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+      expect(exit).toBeUndefined()
+      expect(spawnDaemon).toHaveBeenCalledTimes(1)
+      expect(envInsideSpawn).toBe('from-test')
       expect(process.env.PTY_EFFECT_TEST_VALUE).toBeUndefined()
     } finally {
       if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
@@ -65,96 +84,44 @@ describe('PtyClient interruption', () => {
     }
   })
 
-  it('fails fast when the daemon exits before creating its socket', async () => {
-    const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
-    const child = Object.assign(new EventEmitter(), {
-      stderr,
-      kill: vi.fn(),
-      unref: vi.fn(),
-      pid: 123,
-    })
-    const spawn = vi.fn(() => {
-      queueMicrotask(() => {
-        stderr.emit('data', Buffer.from('daemon boot failed'))
-        child.emit('exit', 127)
-      })
-      return child
+  it('restores process.env when upstream spawnDaemon fails', async () => {
+    let envInsideSpawn: string | undefined
+    const spawnDaemon = vi.fn(async () => {
+      envInsideSpawn = process.env.PTY_EFFECT_TEST_VALUE
+      throw new Error('boom')
     })
 
-    vi.doMock('node:child_process', () => ({ spawn }))
-    vi.doMock('@myobie/pty/client', () => ({
-      SessionConnection: class extends EventEmitter {},
-      getSocketPath: vi.fn(() => '/definitely-missing-socket'),
-      listSessions: vi.fn(async () => []),
-      peekScreen: vi.fn(),
-      validateName: vi.fn(),
-    }))
+    vi.doMock('@myobie/pty/client', () => makeClientMock({ spawnDaemon }))
 
     const { PtyClient, layer } = await import('./client.ts')
+    const previous = process.env.PTY_EFFECT_TEST_VALUE
 
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const client = yield* PtyClient
-        return yield* client.spawnDaemon({
-          name: 'unit-early-exit' as never,
-          command: 'sh',
-          args: ['-c', 'exit 127'],
-        })
-      }).pipe(Effect.provide(layer), Effect.either),
-    )
+    try {
+      delete process.env.PTY_EFFECT_TEST_VALUE
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') {
-      expect(result.left.reason).toBe('SpawnFailed')
-      expect(result.left.message).toContain('Daemon process exited immediately')
-      expect(result.left.message).toContain('daemon boot failed')
-    }
-  })
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* PtyClient
+          return yield* client.spawnDaemon({
+            name: 'unit-spawn-failure' as never,
+            command: 'sh',
+            args: ['-c', 'false'],
+            env: { PTY_EFFECT_TEST_VALUE: 'from-test' },
+          })
+        }).pipe(Effect.provide(layer), Effect.either),
+      )
 
-  it('disconnects a pending attach when interrupted', async () => {
-    const disconnect = vi.fn()
-
-    class MockSessionConnection extends EventEmitter {
-      readonly connect = vi.fn(() => new Promise<string>(() => {}))
-      readonly disconnect = disconnect
-      readonly write = vi.fn()
-      readonly press = vi.fn()
-      readonly resize = vi.fn()
-
-      constructor(_: unknown) {
-        super()
+      expect(result._tag).toBe('Left')
+      if (result._tag === 'Left') {
+        expect(result.left.reason).toBe('SpawnFailed')
+        expect(result.left.message).toContain('boom')
       }
+      expect(spawnDaemon).toHaveBeenCalledTimes(1)
+      expect(envInsideSpawn).toBe('from-test')
+      expect(process.env.PTY_EFFECT_TEST_VALUE).toBeUndefined()
+    } finally {
+      if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
+      else process.env.PTY_EFFECT_TEST_VALUE = previous
     }
-
-    vi.doMock('@myobie/pty/client', () => ({
-      SessionConnection: MockSessionConnection,
-      getSocketPath: vi.fn(),
-      listSessions: vi.fn(async () => []),
-      peekScreen: vi.fn(),
-      validateName: vi.fn(),
-    }))
-
-    const { PtyClient, layer } = await import('./client.ts')
-
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
-          Effect.scoped(
-            Effect.gen(function* () {
-              const client = yield* PtyClient
-              return yield* client.attach({
-                name: 'unit-attach' as never,
-                size: { rows: 24, cols: 80 },
-              })
-            }).pipe(Effect.provide(layer)),
-          ),
-        )
-
-        yield* Effect.sleep('50 millis')
-        yield* Fiber.interrupt(fiber)
-      }),
-    )
-
-    expect(disconnect).toHaveBeenCalled()
   })
 })

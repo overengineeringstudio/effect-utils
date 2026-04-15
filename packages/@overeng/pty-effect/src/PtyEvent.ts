@@ -2,71 +2,102 @@ import { Schema } from 'effect'
 
 import { PtyName } from './PtySpec.ts'
 
-/**
- * Pty session events emitted by upstream's `EventFollower`.
- *
- * Status: defined for forward compatibility. `@myobie/pty` 0.4.1 does not
- * yet expose `EventFollower` via its package `exports` map. Once a future
- * upstream release re-exports it, `PtySession.events` will materialize as
- * `Stream<PtyEvent, PtyError>` using these schemas.
- *
- * TODO(myobie/pty#7): wire `events` once upstream ships `EventFollower`.
- * TODO(myobie/pty#6): blocked on `./client` subpath exposure.
- *
- * The shapes mirror upstream's `EventRecord` union one-to-one so that the
- * eventual wiring is a thin `Schema.decodeUnknown(PtyEvent)` over the
- * upstream payload — no field renames, no surprises.
- */
+const Tags = Schema.Record({ key: Schema.String, value: Schema.String })
 
 const Base = {
   session: PtyName,
-  /** ISO8601 timestamp emitted by upstream. */
   ts: Schema.String,
 }
 
-/** Terminal bell (BEL / `\x07`). */
-export class BellEvent extends Schema.TaggedClass<BellEvent>('@overeng/pty-effect/BellEvent')(
-  'Bell',
-  Base,
-) {}
-
-/** Window title change (OSC 0/1/2). */
-export class TitleChangeEvent extends Schema.TaggedClass<TitleChangeEvent>(
-  '@overeng/pty-effect/TitleChangeEvent',
-)('TitleChange', {
+export const BellEvent = Schema.Struct({
   ...Base,
+  type: Schema.Literal('bell'),
+})
+export type BellEvent = typeof BellEvent.Type
+
+export const TitleChangeEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('title_change'),
   value: Schema.String,
-}) {}
+})
+export type TitleChangeEvent = typeof TitleChangeEvent.Type
 
-/** OS-level notification request (OSC 9 / 99 / 777). */
-export class NotificationEvent extends Schema.TaggedClass<NotificationEvent>(
-  '@overeng/pty-effect/NotificationEvent',
-)('Notification', {
+export const NotificationEvent = Schema.Struct({
   ...Base,
+  type: Schema.Literal('notification'),
   title: Schema.optional(Schema.String),
   body: Schema.optional(Schema.String),
   source: Schema.optional(Schema.Literal('osc9', 'osc99', 'osc777')),
-}) {}
+})
+export type NotificationEvent = typeof NotificationEvent.Type
 
-/** Application requested window focus. */
-export class FocusRequestEvent extends Schema.TaggedClass<FocusRequestEvent>(
-  '@overeng/pty-effect/FocusRequestEvent',
-)('FocusRequest', Base) {}
-
-/** Cursor visibility toggled (DECTCEM). */
-export class CursorVisibleEvent extends Schema.TaggedClass<CursorVisibleEvent>(
-  '@overeng/pty-effect/CursorVisibleEvent',
-)('CursorVisible', {
+export const FocusRequestEvent = Schema.Struct({
   ...Base,
-  visible: Schema.Boolean,
-}) {}
+  type: Schema.Literal('focus_request'),
+})
+export type FocusRequestEvent = typeof FocusRequestEvent.Type
 
-/** Tagged union of all pty events. */
+export const CursorVisibleEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('cursor_visible'),
+})
+export type CursorVisibleEvent = typeof CursorVisibleEvent.Type
+
+export const SessionStartEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('session_start'),
+  tags: Schema.optional(Tags),
+})
+export type SessionStartEvent = typeof SessionStartEvent.Type
+
+export const SessionExitEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('session_exit'),
+  exitCode: Schema.Number.pipe(Schema.int()),
+})
+export type SessionExitEvent = typeof SessionExitEvent.Type
+
+export const SessionRestartEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('session_restart'),
+  restartCount: Schema.Number.pipe(Schema.int()),
+  backoffMs: Schema.Number.pipe(Schema.int()),
+})
+export type SessionRestartEvent = typeof SessionRestartEvent.Type
+
+export const SessionFailedEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('session_failed'),
+  restartCount: Schema.Number.pipe(Schema.int()),
+  reason: Schema.String,
+})
+export type SessionFailedEvent = typeof SessionFailedEvent.Type
+
+export const SupervisorStartEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('supervisor_start'),
+})
+export type SupervisorStartEvent = typeof SupervisorStartEvent.Type
+
+export const SupervisorStopEvent = Schema.Struct({
+  ...Base,
+  type: Schema.Literal('supervisor_stop'),
+})
+export type SupervisorStopEvent = typeof SupervisorStopEvent.Type
+
 export const PtyEvent = Schema.Union(
   BellEvent,
   TitleChangeEvent,
   NotificationEvent,
   FocusRequestEvent,
   CursorVisibleEvent,
+  SessionStartEvent,
+  SessionExitEvent,
+  SessionRestartEvent,
+  SessionFailedEvent,
+  SupervisorStartEvent,
+  SupervisorStopEvent,
 )
 export type PtyEvent = typeof PtyEvent.Type
+
+export const decodePtyEvent = Schema.decodeUnknownSync(PtyEvent)

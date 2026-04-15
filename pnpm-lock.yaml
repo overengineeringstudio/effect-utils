@@ -189,7 +189,6 @@ packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
   effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
-  node-pty@1.1.0: 397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e
 
 importers:
 
@@ -1042,8 +1041,8 @@ importers:
   packages/@overeng/pty-effect:
     dependencies:
       '@myobie/pty':
-        specifier: github:schickling/pty#ad76c4211b6a7707ba711366b2ff0eb3fbdaed27
-        version: https://codeload.github.com/schickling/pty/tar.gz/ad76c4211b6a7707ba711366b2ff0eb3fbdaed27
+        specifier: 0.8.0
+        version: 0.8.0
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -2119,9 +2118,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/ad76c4211b6a7707ba711366b2ff0eb3fbdaed27':
-    resolution: {tarball: https://codeload.github.com/schickling/pty/tar.gz/ad76c4211b6a7707ba711366b2ff0eb3fbdaed27}
-    version: 0.5.0
+  '@myobie/pty@0.8.0':
+    resolution: {integrity: sha512-4tOJrtD6o69Iw+SW1mRw3NA9wSRgs4TeITvoFv+jMfT2xW/Bx1OhX8BUMY8vFR0ApZTYyEliKdtzi1H9/meweg==}
     hasBin: true
 
   '@noble/hashes@1.7.1':
@@ -4833,6 +4831,10 @@ packages:
     resolution: {integrity: sha512-iOBWFgUX7caIZiuutICxVgX1SdxwAVFFKwt1EvMYYec/NWO5meOJ6K5uQxhrYBdQJne4KxiqZc+KptFOWFSI9w==}
     engines: {node: '>=18'}
 
+  smol-toml@1.6.1:
+    resolution: {integrity: sha512-dWUG8F5sIIARXih1DTaQAX4SsiTXhInKf1buxdY9DIg4ZYPZK5nGM1VRIYmEbDbsHt7USo99xSLFu5Q1IqTmsg==}
+    engines: {node: '>= 18'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -5916,12 +5918,13 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@https://codeload.github.com/schickling/pty/tar.gz/ad76c4211b6a7707ba711366b2ff0eb3fbdaed27':
+  '@myobie/pty@0.8.0':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0
       '@xterm/headless': 6.0.0
-      node-pty: 1.1.0(patch_hash=397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e)
+      node-pty: 1.1.0
+      smol-toml: 1.6.1
 
   '@noble/hashes@1.7.1': {}
 
@@ -8786,7 +8789,7 @@ snapshots:
       detect-libc: 2.1.2
     optional: true
 
-  node-pty@1.1.0(patch_hash=397f76e147dd0206f215159833bf64a3ea8061da2a283ecdf9b9923933a3477e):
+  node-pty@1.1.0:
     dependencies:
       node-addon-api: 7.1.1
 
@@ -9217,6 +9220,8 @@ snapshots:
     dependencies:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
+
+  smol-toml@1.6.1: {}
 
   source-map-js@1.2.1: {}
 

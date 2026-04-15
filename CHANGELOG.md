@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
-
+- **@overeng/pty-effect/client**: Add PTY client support for session tags, `getSession`, `gc`, `updateTags`, `sendData`, `queryStats`, `readRecentEvents`, and live event following
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)
 - **@overeng/notion-effect-schema**: Add `NoticonColor` schema for named icon color palette
 - **@overeng/notion-effect-schema**: Add `heading_4`, `tab`, and `meeting_notes` block types to `BlockType`
@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
 - **genie/ci-workflow**: Unify Vercel CI job generation behind a single `vercelDeployJobs()` helper
   - Removes the separate static-job and job-merge helpers now that task-level deploy mode is already unified in `vercel.nix`
   - Lets consumers mix build-mode and static-mode deploys in one project list and attach per-project pre-deploy setup like Vercel git-author configuration
+- **deps**: Upgrade `@myobie/pty` from the old git-pinned fork to the published `0.8.0` release line
 - **@overeng/notion-effect-client**: Upgrade Notion API version from `2022-06-28` to `2026-03-11`
 - **@overeng/notion-effect-schema**: Remove `archived` field from `DatabaseSchema`, `Page`, and `Block` schemas (replaced by `in_trash` in API 2026-03-11)
 - **@overeng/notion-effect-client**: Replace `after` parameter with `position` object in `AppendBlockChildrenOptions`
@@ -52,8 +53,7 @@ All notable changes to this project will be documented in this file.
   - Copies `staticDir/.` into `.vercel/output/static/` instead of globbing `staticDir/*`, so hidden assets and config files are not silently dropped
 - **@overeng/notion-effect-client**: Raise user integration-test timeouts to tolerate current Notion API latency in CI
 - **@overeng/notion-cli**: Fix introspection pipeline to read properties from data source (API 2026-03-11 no longer returns properties on `GET /databases/:id`)
-- **@overeng/pty-effect**: Remove parent `process.env` mutation from daemon spawning, pass env per call, and add interruption/shutdown coverage for pending spawn and attach operations
-- **@overeng/pty-effect**: Align client lifecycles with Effect conventions by using `Effect.fn` spans, preserving the caller runtime in attach callbacks, and reporting expected startup failures as `PtyError`
+- **@overeng/pty-effect/client**: Keep daemon spawning on PTY's published client API while updating the wrapper to the current session/tag/event surface and preserving attach runtime context
 
 ### Changed
 

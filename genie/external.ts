@@ -144,11 +144,7 @@ export const catalog = defineCatalog({
   'react-aria-components': '1.16.0',
 
   // PTY
-  // TODO: switch back to a published npm version once upstream publishes 0.5.0.
-  // Tracking: https://github.com/myobie/pty/blob/main/package.json (currently
-  // shows 0.5.0 but only 0.4.1 is on npm). Pinning to a fork branch with
-  // dist/ pre-committed so pnpm git-dep installs work without a build step.
-  '@myobie/pty': 'github:schickling/pty#ad76c4211b6a7707ba711366b2ff0eb3fbdaed27',
+  '@myobie/pty': '0.8.0',
 
   // Type definitions
   '@types/react': '19.2.7',
@@ -362,16 +358,6 @@ export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
     'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
-    /**
-     * `node-pty`'s prebuilt `spawn-helper` ships with mode 0644 and node-pty's
-     * own post-install never chmods it. Under pnpm GVS the upstream
-     * `@myobie/pty` workaround (relative-path chmod) silently no-ops because
-     * `node-pty` lives in a sibling content-addressed link, not a child of
-     * `@myobie/pty`. We patch node-pty itself so the chmod runs in the
-     * correct CWD via `__dirname`. Drop this patch when microsoft/node-pty
-     * upstreams the same fix.
-     */
-    'node-pty@1.1.0': './patches/node-pty@1.1.0.patch',
   },
 })
 
