@@ -1,18 +1,9 @@
 /**
  * `@overeng/pty-effect` — Effect-native wrapper around `@myobie/pty`.
  *
- * v0 wraps the `@myobie/pty/testing` `Session` API (the only subpath
- * actually exported by upstream 0.4.1). This covers spawn-mode and
- * server-mode pty sessions, multi-client attach/reattach, screenshots,
- * resize, and Schedule-driven `waitFor*` predicates.
- *
- * Future scope: when upstream re-exports `SessionConnection`, `spawnDaemon`,
- * and `EventFollower` via its package `exports` map, a `/client` subpath
- * will materialize the schemas already defined in `PtyEvent.ts`.
- *
- * Tracking upstream:
- * - https://github.com/myobie/pty/issues/6 (`/client` subpath exports)
- * - https://github.com/myobie/pty/issues/7 (`EventFollower` shipping)
+ * The root module wraps the `@myobie/pty/testing` surface for in-process
+ * PTY testing. Use the `/client` subpath for detached daemon sessions,
+ * session metadata/tags, stats, and event streaming.
  */
 export { PtyError } from './PtyError.ts'
 export { Key, NamedKey, key } from './PtyKey.ts'
@@ -25,6 +16,13 @@ export {
   NotificationEvent,
   FocusRequestEvent,
   CursorVisibleEvent,
+  SessionStartEvent,
+  SessionExitEvent,
+  SessionRestartEvent,
+  SessionFailedEvent,
+  SupervisorStartEvent,
+  SupervisorStopEvent,
+  decodePtyEvent,
 } from './PtyEvent.ts'
 export type { PtySession } from './PtySession.ts'
 export { make as makePtySession, defaultPollSchedule } from './PtySession.ts'

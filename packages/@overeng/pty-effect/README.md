@@ -5,15 +5,16 @@ spawning and driving pseudoterminal sessions inside Effect programs.
 
 ## Status
 
-v0. Wraps the `@myobie/pty/testing` `Session` API — the only subpath upstream
-0.4.1 actually exports. This covers spawn-mode and server-mode pty sessions,
-multi-client attach/reattach, screenshots, resize, and Schedule-driven
-`waitFor*` predicates.
+This package now has two layers:
 
-When upstream re-exports `SessionConnection`, `spawnDaemon`, and
-`EventFollower` via its package `exports` map, this package will materialize
-the schemas already defined in `PtyEvent.ts` as a `Stream<PtyEvent, PtyError>`
-on `PtySession`.
+- the root `@overeng/pty-effect` entrypoint wraps `@myobie/pty/testing` for
+  scope-bound PTY sessions in tests
+- the `@overeng/pty-effect/client` subpath wraps PTY's detached daemon client
+  API for long-lived sessions, tags/metadata, stats, and event streams
+
+Both track PTY's published `0.8.x` package surface. The `/client` wrapper keeps
+the Effect-first API while staying aligned with PTY session tags, session/event
+schemas, and daemon lifecycle semantics.
 
 Platform support: macOS and Linux. `@myobie/pty` is Unix-only.
 
@@ -155,9 +156,8 @@ isn't a footgun.
 
 This is a tradeoff against `@myobie/pty`'s native model, where daemons
 persist by default and clients freely attach/detach. If you want that
-behavior, use the upstream library directly — or wait for the
-`@overeng/pty-effect/client` subpath when upstream ships
-`SessionConnection`/`spawnDaemon` in its `exports` map.
+behavior, use the `/client` subpath, which exposes the detached PTY daemon
+surface through `PtyClient`.
 
 ### Why `Stream<Screenshot>`, not `Stream<Uint8Array>`
 
@@ -170,12 +170,13 @@ If/when we need raw bytes (e.g. for a pipe-to-disk recorder), it'll come
 from the future `/client` subpath, where `SessionConnection`'s `data` event
 gives us bytes directly.
 
-### Why no `EventFollower` stream yet
+### Bun compatibility
 
-`@myobie/pty` 0.4.1 documents `EventFollower` but does not export it. The
-schemas are pre-defined in `PtyEvent.ts` so the eventual wiring is a thin
-`Schema.decodeUnknown(PtyEvent)` over upstream payloads — no field renames,
-no surprises. Until then, the symbol is exported but unused.
+PTY's published `spawnDaemon` launches its detached server via
+`process.execPath`. That works in Node, but Bun-built CLIs need a Node-based
+launcher so the upstream PTY server still boots in a Node runtime with the
+native addon available. The `/client` wrapper handles that internally while
+preserving PTY's daemon config model instead of falling back to the CLI.
 
 ### Test isolation
 
@@ -186,9 +187,8 @@ across tests, processes, or developer machines. See
 
 ## Roadmap
 
-- `/client` subpath wrapping upstream's `SessionConnection`, `spawnDaemon`,
-  `peekScreen`, `queryStats`, `EventFollower` — once upstream ships them in
-  its `exports` map.
 - `Stream<PtyEvent, PtyError>` on `PtySession` (schemas already defined).
 - `Sink<void, string, never, PtyError>` for piping a `Stream` of input into
   a session.
+- Continue closing the small parity gap between the published PTY client API
+  and the Effect wrapper for stateless helpers such as socket/path utilities.

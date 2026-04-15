@@ -4,29 +4,32 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { describe, expect, it } from '@effect/vitest'
-import { Chunk, Effect, Schema, Stream } from 'effect'
+import { Chunk, Effect, Fiber, Schema, Stream } from 'effect'
 
 import { PtyClient, layer as ptyClientLayer } from './client.ts'
 import { PtyName } from './PtySpec.ts'
 
 /** Per-test isolated `PTY_SESSION_DIR` so daemons can't collide. */
 const withIsolatedDir = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pty-effect-client-test-'))
-    const prev = process.env.PTY_SESSION_DIR
-    process.env.PTY_SESSION_DIR = dir
-    try {
-      return yield* eff
-    } finally {
-      if (prev === undefined) delete process.env.PTY_SESSION_DIR
-      else process.env.PTY_SESSION_DIR = prev
-      try {
-        fs.rmSync(dir, { recursive: true, force: true })
-      } catch {
-        // best effort
-      }
-    }
-  })
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pty-effect-client-test-'))
+      const prev = process.env.PTY_SESSION_DIR
+      process.env.PTY_SESSION_DIR = dir
+      return { dir, prev } as const
+    }),
+    () => eff,
+    ({ dir, prev }) =>
+      Effect.sync(() => {
+        if (prev === undefined) delete process.env.PTY_SESSION_DIR
+        else process.env.PTY_SESSION_DIR = prev
+        try {
+          fs.rmSync(dir, { recursive: true, force: true })
+        } catch {
+          // best effort
+        }
+      }),
+  )
 
 const withTempDir = <A>(prefix: string, f: (dir: string) => A) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -48,6 +51,16 @@ const decodeName = (s: string) => Schema.decodeUnknownSync(PtyName)(s) as PtyNam
  *  chars before the name itself. */
 const uniqueName = (label: string): PtyName =>
   decodeName(`t${label}${(Date.now() % 100000).toString(36)}`)
+
+const stdinEchoScript = [
+  "const readline = require('node:readline')",
+  "process.stdin.setEncoding('utf8')",
+  'const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity })',
+  'rl.on("line", (line) => {',
+  '  if (line === "status") process.stdout.write("SEND_OK\\\\n")',
+  '  if (line === "exit") process.exit(0)',
+  '})',
+].join('\n')
 
 describe('PtyClient', () => {
   it('keeps @overeng/pty-effect/client compile-safe for Bun-built CLIs', () => {
@@ -79,7 +92,6 @@ describe('PtyClient', () => {
         const client = yield* PtyClient
         const name = uniqueName('roundtrip')
 
-        /** Spawn a short-lived `sh -c "echo HELLO; sleep 0.1"` daemon. */
         yield* client.spawnDaemon({
           name: decodeName(name),
           command: 'sh',
@@ -95,14 +107,11 @@ describe('PtyClient', () => {
           size: { rows: 24, cols: 80 },
         })
 
-        /** Initial screen replay should already contain our echo. */
         expect(session.initialScreen).toContain('HELLO_FROM_CLIENT')
 
-        /** Drain bytes until exit (timeboxed via Stream.take). */
         const collected = yield* session.bytes.pipe(Stream.take(8), Stream.runCollect)
         expect(Chunk.size(collected)).toBeGreaterThanOrEqual(0)
 
-        /** Exit Deferred resolves with the child's exit code. */
         const exit = yield* session.exit.pipe(Effect.timeout('2 seconds'))
         expect(exit.code).toBe(0)
       }).pipe(Effect.provide(ptyClientLayer)),
@@ -121,7 +130,6 @@ describe('PtyClient', () => {
           args: ['-c', 'sleep 1'],
         })
 
-        /** Attach in an inner scope, then let the scope close. */
         yield* Effect.scoped(
           Effect.gen(function* () {
             const s = yield* client.attach({ name, size: { rows: 24, cols: 80 } })
@@ -129,7 +137,6 @@ describe('PtyClient', () => {
           }),
         )
 
-        /** Daemon should still be in the list (we only detached, didn't kill). */
         const stillThere = yield* client.exists({ name })
         expect(stillThere).toBe(true)
       }).pipe(Effect.provide(ptyClientLayer)),
@@ -148,7 +155,6 @@ describe('PtyClient', () => {
           args: ['-c', 'echo PEEK_TARGET && sleep 0.5'],
         })
 
-        /** Give the daemon a beat to render the echo. */
         yield* Effect.sleep('100 millis')
 
         const screen = yield* client.peek({ name, plain: true })
@@ -187,6 +193,124 @@ describe('PtyClient', () => {
           if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
           else process.env.PTY_EFFECT_TEST_VALUE = previous
         }
+      }).pipe(Effect.provide(ptyClientLayer)),
+    ),
+  )
+
+  it.scopedLive('exposes get, tag mutation, gc, and live event following', () =>
+    withIsolatedDir(
+      Effect.gen(function* () {
+        const client = yield* PtyClient
+        const name = uniqueName('tags')
+
+        const startEvents = yield* Effect.forkScoped(
+          client.followEvents({}).pipe(
+            Stream.filter((event) => event.session === name && event.type === 'session_start'),
+            Stream.take(1),
+            Stream.runCollect,
+          ),
+        )
+
+        yield* client.spawnDaemon({
+          name,
+          command: 'sh',
+          args: ['-c', 'sleep 0.5'],
+          tags: {
+            'forge.tab': 'tab-1',
+            'forge.workspace': 'ws-1',
+          },
+        })
+
+        const initial = yield* client.get({ name })
+        expect(initial?.name).toBe(name)
+        expect(initial?.metadata?.tags).toEqual({
+          'forge.tab': 'tab-1',
+          'forge.workspace': 'ws-1',
+        })
+
+        yield* client.updateTags({
+          name,
+          tags: {
+            'forge.extra': '1',
+            'forge.tab': 'tab-2',
+          },
+          removals: ['forge.workspace'],
+        })
+
+        const updated = yield* client.get({ name })
+        expect(updated?.metadata?.tags).toEqual({
+          'forge.extra': '1',
+          'forge.tab': 'tab-2',
+        })
+
+        const seenStartEvents = yield* Fiber.join(startEvents)
+        const [startEvent] = Array.from(seenStartEvents)
+        expect(startEvent?.type).toBe('session_start')
+        if (startEvent?.type === 'session_start') {
+          expect(startEvent.tags).toEqual({
+            'forge.tab': 'tab-1',
+            'forge.workspace': 'ws-1',
+          })
+        }
+
+        const session = yield* client.attach({
+          name,
+          size: { rows: 24, cols: 80 },
+        })
+        const exit = yield* session.exit.pipe(Effect.timeout('2 seconds'))
+        expect(exit.code).toBe(0)
+
+        yield* Effect.sleep('100 millis')
+        const recent = yield* client.readRecentEvents({ name, count: 10 })
+        expect(recent.some((event) => event.type === 'session_start')).toBe(true)
+        expect(recent.some((event) => event.type === 'session_exit')).toBe(true)
+
+        const removed = yield* client.gc
+        expect(removed).toContain(name)
+        expect(yield* client.exists({ name })).toBe(false)
+      }).pipe(Effect.provide(ptyClientLayer)),
+    ),
+  )
+
+  it.scopedLive('supports sendData, queryStats, and recent event reads', () =>
+    withIsolatedDir(
+      Effect.gen(function* () {
+        const client = yield* PtyClient
+        const name = uniqueName('send')
+
+        yield* client.spawnDaemon({
+          name,
+          command: 'node',
+          args: ['-e', stdinEchoScript],
+        })
+
+        const session = yield* client.attach({
+          name,
+          size: { rows: 24, cols: 80 },
+        })
+
+        const stats = yield* client.queryStats({ name, timeoutMs: 1_000 })
+        expect(stats.name).toBe(name)
+        expect(stats.process.alive).toBe(true)
+        expect(stats.process.pid).not.toBeNull()
+
+        yield* client.sendData({ name, data: ['status\r'] })
+
+        const echoed = yield* session
+          .waitForText({ needle: 'SEND_OK' })
+          .pipe(Effect.timeout('5 seconds'))
+        expect(echoed.text).toContain('SEND_OK')
+
+        yield* client.sendData({ name, data: ['exit\r'] })
+
+        const exit = yield* session.exit.pipe(Effect.timeout('5 seconds'))
+        expect(exit.code).toBe(0)
+
+        yield* Effect.sleep('100 millis')
+        const recent = yield* client.readRecentEvents({ name, count: 10 })
+        const eventTypes = Array.from(recent, (event) => event.type)
+        expect(eventTypes).toContain('session_start')
+        expect(eventTypes).toContain('session_exit')
       }).pipe(Effect.provide(ptyClientLayer)),
     ),
   )

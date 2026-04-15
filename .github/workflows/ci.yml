@@ -2930,7 +2930,17 @@ jobs:
               ? pkg.rawDeployUrl
               : `${pkg.rawDeployUrl}<br><sub>Alias: ${pkg.finalUrl}</sub>`
 
-          const currentPackagesJson = expectString(process.env.STORYBOOK_PREVIEW_PACKAGES_JSON, "STORYBOOK_PREVIEW_PACKAGES_JSON")
+          const rawPackagesJson = process.env.STORYBOOK_PREVIEW_PACKAGES_JSON ?? ""
+          if (rawPackagesJson.length === 0) {
+            const msg = "STORYBOOK_PREVIEW_PACKAGES_JSON is empty — the deploy step likely failed before producing output. Check the deploy step logs above."
+            console.error(msg)
+            process.exitCode = 1
+            writeFileSync(summaryPath, `## Storybook Previews\n\n> **Deploy failed.** ${msg}\n`)
+            writeFileSync(commentBodyPath, '')
+            writeFileSync(commentIdPath, '')
+            process.exit(1)
+          }
+          const currentPackagesJson = rawPackagesJson
           const fallbackDeployedAtUtc = expectIsoUtc(process.env.STORYBOOK_PREVIEW_DEPLOYED_AT_UTC, "STORYBOOK_PREVIEW_DEPLOYED_AT_UTC")
 
           const currentPackages = expectArray(JSON.parse(currentPackagesJson), "currentPackages").map((pkg, index) =>
