@@ -36,6 +36,56 @@ let
   lib = pkgs.lib;
   pnpmPlatform = import ./pnpm-platform.nix;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
+  pruneLockfileScript = pkgs.writeText "prune-lockfile.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    const lockfilePath = "pnpm-lock.yaml";
+    const content = fs.readFileSync(lockfilePath, "utf8");
+    const lines = content.split("\n");
+    const output = [];
+    let inImporters = false;
+    let skipEntry = false;
+    let importerIndent = -1;
+
+    for (const line of lines) {
+      const trimmed = line.trimStart();
+      const indent = line.length - trimmed.length;
+
+      if (!inImporters) {
+        if (trimmed === "importers:") {
+          inImporters = true;
+          importerIndent = indent;
+        }
+        output.push(line);
+        continue;
+      }
+
+      if (trimmed.length === 0) {
+        if (!skipEntry) output.push(line);
+        continue;
+      }
+
+      if (indent <= importerIndent) {
+        inImporters = false;
+        skipEntry = false;
+        output.push(line);
+        continue;
+      }
+
+      if (indent === importerIndent + 2 && trimmed.endsWith(":")) {
+        const key = trimmed.slice(0, -1).replace(/^['"]|['"]$/g, "");
+        const dir = key === "." ? "." : key;
+        skipEntry = !fs.existsSync(path.join(dir, "package.json"));
+      }
+
+      if (!skipEntry) {
+        output.push(line);
+      }
+    }
+
+    fs.writeFileSync(lockfilePath, output.join("\n"));
+  '';
   nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
     const fs = require("fs");
     const raw = fs.readFileSync(0, "utf8");
@@ -288,9 +338,13 @@ in
                   installStartedAt=$(timer_now)
                   (
                     cd "$install_root"
-                    # Keep the legacy wrapper invocation literal in-source so downstream
-                    # contract checks can verify the install mode by string match:
-                    # pnpm install --frozen-lockfile --ignore-scripts
+
+                    # Prune lockfile importers that don't exist in the staged workspace.
+                    # The downstream lockfile may contain importers for packages outside
+                    # this workspace closure. Removing them keeps --frozen-lockfile happy
+                    # without needing --lockfile-only (which contacts the registry).
+                    node ${pruneLockfileScript}
+
                     node "$PNPM_MJS" install --frozen-lockfile --ignore-scripts
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
