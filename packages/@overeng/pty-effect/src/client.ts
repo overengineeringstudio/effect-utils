@@ -481,12 +481,14 @@ const updateTags = (spec: PtyUpdateTagsSpec) =>
  * Encode a DATA packet for the pty server protocol:
  * `[type: uint8(0)][length: uint32BE][payload: utf8]`
  *
- * Inlined from `@myobie/pty/dist/protocol.js` (MessageType.DATA = 0) to
- * avoid depending on the upstream `sendData` which resolves on `'close'`
- * (requires server to send FIN back). We resolve on `'finish'` instead —
- * our FIN is flushed to the OS kernel, which is sufficient for Unix domain
- * sockets and avoids hangs in Linux namespace CI containers where the
- * server-side `allowHalfOpen: false` automatic FIN is unreliable.
+ * TODO: Remove once https://github.com/myobie/pty/issues/18 is fixed upstream
+ * and we bump `@myobie/pty`. Then switch back to the upstream `sendData`.
+ *
+ * Workaround: inlined from `@myobie/pty` protocol to avoid the upstream
+ * `sendData` which resolves on `'close'` (requires server FIN). We resolve
+ * on `'finish'` instead — sufficient for Unix domain sockets, avoids hangs
+ * in Linux namespace CI containers where `allowHalfOpen: false` auto-FIN
+ * is unreliable.
  */
 const encodeDataPacket = (data: string): Buffer => {
   const payload = Buffer.from(data)
