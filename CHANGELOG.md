@@ -28,6 +28,10 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-client**: Add `filterProperties` and `inTrash` to data source query options
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
+### Fixed
+
+- **@overeng/pty-effect/client**: Fix flaky timeout in `followEvents` (#577) — `asyncScoped`'s setup ran lazily inside the forked consumer fiber, missing events fired before the fiber started. Replaced with `Stream.asyncPush` (setup still lazy, but `emit.single` is now correctly synchronous for `fs.watch` callbacks). Test updated to watch `session_exit` instead of `session_start`, since `EventFollower.watchFile` starts reading at the current end-of-file when a new session is discovered, making `session_start` unreachable via live following.
+
 ### Changed
 
 - **genie/ci-workflow**: Unify Vercel CI job generation behind a single `vercelDeployJobs()` helper
