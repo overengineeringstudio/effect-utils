@@ -76,7 +76,7 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
   }
 
   if (typeof value === 'string') {
-    if (isPureExpression(value)) return value
+    if (isPureExpression(value) === true) return value
     return quoteString({ str: value, indent })
   }
 
