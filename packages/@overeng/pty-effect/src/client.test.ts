@@ -235,16 +235,14 @@ describe('PtyClient', () => {
           'forge.tab': 'tab-2',
         })
 
-        // followEvents eagerly starts the fs watcher (our Effect<Stream> approach
-        // ensures start() is called here, in the parent, before forking).
-        // We watch for session_exit rather than session_start: EventFollower's
-        // dirWatcher sets file-watch offset to the current end-of-file on new
-        // session discovery, so session_start (already written at creation) is
-        // unreachable via live following. session_exit fires ~500ms later and is
-        // reliably caught. session_start tag verification uses readRecentEvents below.
-        const eventsStream = yield* client.followEvents({})
+        // Watch session_exit (fires ~500ms later when sleep 0.5 completes) rather
+        // than session_start: EventFollower.watchFile sets its read offset to the
+        // current file size on new-session discovery, so session_start (written at
+        // creation time) is skipped. session_exit is written after the offset is
+        // established and is reliably captured. session_start tag verification uses
+        // readRecentEvents below.
         const exitEvents = yield* Effect.forkScoped(
-          eventsStream.pipe(
+          client.followEvents({}).pipe(
             Stream.filter((event) => event.session === name && event.type === 'session_exit'),
             Stream.take(1),
             Stream.runCollect,
