@@ -20,7 +20,7 @@ let
     # Managed by `dt nix:hash:notion-cli` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-bSSUDQMULb2P16ySKqpQt//pCoR+7nHQ4YanmhTMPFE=";
+        hash = "sha256-OgrnAJl0LhdDyIP01drqowL3LC27ym73S/ZUWZ1ktNY=";
       };
     };
     inherit gitRev commitTs dirty;

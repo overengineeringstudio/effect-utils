@@ -23,7 +23,7 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-5sqSaNJOQJ4UJiUVYC4fl9DGwD/Bcutgi3TBXaKcCV8=";
+        hash = "sha256-CaG/bwEA4mrXGDKe+kMGydh1RLbUO5Dr2aKeEX28k6s=";
       };
     };
     smokeTestArgs = [ "--help" ];
