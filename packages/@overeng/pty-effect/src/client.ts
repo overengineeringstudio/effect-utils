@@ -38,6 +38,7 @@ import {
   Deferred,
   Effect,
   Layer,
+  Mailbox,
   Option,
   Predicate,
   Queue,
@@ -205,9 +206,14 @@ export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
     readonly readRecentEvents: (
       spec: PtyReadRecentEventsSpec,
     ) => Effect.Effect<ReadonlyArray<PtyEvent>, PtyError>
+    /**
+     * Eagerly starts an event follower and returns a stream of events.
+     * The follower is started synchronously when this Effect is yielded,
+     * so events fired after that point are captured without any race condition.
+     */
     readonly followEvents: (
       spec: PtyFollowEventsSpec,
-    ) => Stream.Stream<PtyEvent, PtyError, Scope.Scope>
+    ) => Effect.Effect<Stream.Stream<PtyEvent, never>, PtyError, Scope.Scope>
     readonly kill: (input: { readonly name: PtyName }) => Effect.Effect<void, PtyError>
   }
 >() {}
@@ -522,51 +528,46 @@ const readRecentEvents = (spec: PtyReadRecentEventsSpec) =>
     Effect.withSpan('pty-client.readRecentEvents', { attributes: { 'span.label': spec.name } }),
   )
 
-const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyError, Scope.Scope> =>
-  Stream.asyncScoped<PtyEvent, PtyError>((emit) =>
-    Effect.gen(function* () {
-      const scope = yield* Effect.scope
-      const names = spec.names !== undefined ? [...spec.names] : undefined
+/**
+ * Starts the EventFollower eagerly (synchronously) so no events are missed
+ * between this Effect completing and the returned Stream being consumed.
+ * Using Stream.asyncScoped would start the follower lazily (only when the
+ * stream is first pulled), which causes a race when forking stream consumers.
+ */
+const followEvents = (
+  spec: PtyFollowEventsSpec,
+): Effect.Effect<Stream.Stream<PtyEvent, never>, PtyError, Scope.Scope> =>
+  Effect.gen(function* () {
+    const scope = yield* Effect.scope
+    const names = spec.names !== undefined ? [...spec.names] : undefined
 
-      if (names !== undefined) {
-        for (const name of names) {
-          yield* validateNameOrFail(name)
-        }
+    if (names !== undefined) {
+      for (const name of names) {
+        yield* validateNameOrFail(name)
       }
+    }
 
-      const follower = new EventFollower(
-        names !== undefined
-          ? {
-              names,
-              onEvent: (event) => {
-                try {
-                  emit.single(decodePtyEvent(event))
-                } catch {
-                  // Ignore malformed lines from the append-only event log.
-                }
-              },
-            }
-          : {
-              onEvent: (event) => {
-                try {
-                  emit.single(decodePtyEvent(event))
-                } catch {
-                  // Ignore malformed lines from the append-only event log.
-                }
-              },
-            },
-      )
+    const mailbox = yield* Mailbox.make<PtyEvent>()
 
-      follower.start()
+    const onEvent = (event: EventRecord) => {
+      try {
+        mailbox.unsafeOffer(decodePtyEvent(event))
+      } catch {
+        // Ignore malformed lines from the append-only event log.
+      }
+    }
 
-      yield* Scope.addFinalizer(
-        scope,
-        Effect.sync(() => {
-          follower.stop()
-        }),
-      )
-    }).pipe(Effect.withSpan('pty-client.followEvents')),
-  )
+    const follower = new EventFollower(names !== undefined ? { names, onEvent } : { onEvent })
+
+    follower.start()
+
+    yield* Scope.addFinalizer(
+      scope,
+      Effect.sync(() => follower.stop()).pipe(Effect.andThen(mailbox.end)),
+    )
+
+    return Mailbox.toStream(mailbox)
+  }).pipe(Effect.withSpan('pty-client.followEvents'))
 
 const kill = (input: { readonly name: PtyName }) =>
   Effect.gen(function* () {
