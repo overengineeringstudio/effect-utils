@@ -10,6 +10,7 @@
 
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { createConnection } from 'node:net'
 
 import {
   type EventRecord,
@@ -27,11 +28,11 @@ import {
   peekScreen as upstreamPeekScreen,
   queryStats as upstreamQueryStats,
   readRecentEvents as upstreamReadRecentEvents,
-  sendData as upstreamSendData,
   spawnDaemon as upstreamSpawnDaemon,
   updateTags as upstreamUpdateTags,
   validateName,
   waitForSocket as upstreamWaitForSocket,
+  getSocketPath,
 } from '@myobie/pty/client'
 import {
   Context,
@@ -476,19 +477,53 @@ const updateTags = (spec: PtyUpdateTagsSpec) =>
     })
   }).pipe(Effect.withSpan('pty-client.updateTags', { attributes: { 'span.label': spec.name } }))
 
+/**
+ * Encode a DATA packet for the pty server protocol:
+ * `[type: uint8(0)][length: uint32BE][payload: utf8]`
+ *
+ * Inlined from `@myobie/pty/dist/protocol.js` (MessageType.DATA = 0) to
+ * avoid depending on the upstream `sendData` which resolves on `'close'`
+ * (requires server to send FIN back). We resolve on `'finish'` instead —
+ * our FIN is flushed to the OS kernel, which is sufficient for Unix domain
+ * sockets and avoids hangs in Linux namespace CI containers where the
+ * server-side `allowHalfOpen: false` automatic FIN is unreliable.
+ */
+const encodeDataPacket = (data: string): Buffer => {
+  const payload = Buffer.from(data)
+  const header = Buffer.alloc(5)
+  header.writeUInt8(0, 0)
+  header.writeUInt32BE(payload.length, 1)
+  return Buffer.concat([header, payload])
+}
+
 const sendData = (spec: PtySendDataSpec) =>
   Effect.gen(function* () {
     yield* validateNameOrFail(spec.name)
-    yield* wrapPromise({
-      method: 'sendData',
-      reason: 'WriteFailed',
-      name: spec.name,
-      thunk: () =>
-        upstreamSendData({
-          name: spec.name,
-          data: [...spec.data],
-          ...(spec.delayMs !== undefined ? { delayMs: spec.delayMs } : {}),
+    const socketPath = getSocketPath(spec.name)
+    yield* Effect.tryPromise({
+      try: () =>
+        new Promise<void>((resolve, reject) => {
+          const socket = createConnection(socketPath)
+          socket.on('connect', () => {
+            const writeNext = (i: number) => {
+              if (i >= spec.data.length) {
+                socket.end()
+                return
+              }
+              socket.write(encodeDataPacket(spec.data[i]!))
+              if (spec.delayMs !== undefined && i + 1 < spec.data.length) {
+                setTimeout(() => writeNext(i + 1), spec.delayMs)
+              } else {
+                writeNext(i + 1)
+              }
+            }
+            writeNext(0)
+          })
+          socket.on('finish', resolve)
+          socket.on('error', reject)
         }),
+      catch: (cause) =>
+        new PtyError({ reason: 'WriteFailed', method: 'sendData', name: spec.name, cause }),
     })
   }).pipe(Effect.withSpan('pty-client.sendData', { attributes: { 'span.label': spec.name } }))
 
