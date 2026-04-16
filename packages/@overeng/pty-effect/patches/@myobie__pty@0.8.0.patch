@@ -1,0 +1,13 @@
+diff --git a/dist/connection.js b/dist/connection.js
+index 6a91af51071cd21385870f51bebd016a7c2b7991..86e46daf8b3b4b18bcbdd62d673620888d05ccc7 100644
+--- a/dist/connection.js
++++ b/dist/connection.js
+@@ -131,7 +131,7 @@ export function sendData(options) {
+                 reject(new Error(`Connection error: ${err.message}`));
+             }
+         });
+-        socket.on("close", () => {
++        socket.on("finish", () => {
+             resolve();
+         });
+     });

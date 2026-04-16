@@ -9,6 +9,7 @@ import {
   catalog as externalCatalog,
   commonPnpmPolicySettings,
   defineCatalog,
+  ptyEffectPatches,
   utilsPatches,
 } from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
@@ -94,7 +95,7 @@ export const workspaceMember = ({
  * projections via `createPnpmPatchedDependencies` and internal workspaces
  * cannot drift.
  */
-export { utilsPatches }
+export { utilsPatches, ptyEffectPatches }
 
 /**
  * Common pnpm workspace data for effect-utils workspaces.
@@ -113,7 +114,7 @@ export { utilsPatches }
  */
 export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
-  patchedDependencies: utilsPatches,
+  patchedDependencies: { ...utilsPatches, ...ptyEffectPatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
     /** @effect-atom/atom@0.5.3 pins pre-1.0 Effect peer ranges that don't cover our versions */
