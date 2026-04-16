@@ -12,6 +12,21 @@ const INDENT = '  '
 /** Symbol for comment values that should render as YAML comments */
 export const COMMENT_KEY = '$comment'
 
+/**
+ * A string whose entire content is a single `${{ … }}` GitHub Actions expression.
+ * In block-style YAML (mapping values, sequence items) these can be emitted
+ * unquoted — GitHub evaluates the expression either way, and unquoted is the
+ * idiomatic style in workflow files.
+ *
+ * Flow sequences (inline `[a, b]` arrays) still need quoting because `{{` is
+ * ambiguous with YAML flow-mapping syntax — that path uses `quoteString`
+ * directly and is unaffected by this helper.
+ */
+const isPureExpression = (str: string): boolean => {
+  const trimmed = str.trim()
+  return trimmed.startsWith('${{') && trimmed.endsWith('}}') && trimmed.indexOf('${{', 3) === -1
+}
+
 const needsQuoting = (str: string): boolean => {
   if (str === '') return true
   if (str === 'true' || str === 'false' || str === 'null') return true
@@ -61,6 +76,7 @@ const stringifyValue = ({ value, indent }: { value: unknown; indent: number }): 
   }
 
   if (typeof value === 'string') {
+    if (isPureExpression(value)) return value
     return quoteString({ str: value, indent })
   }
 
