@@ -17,12 +17,12 @@ import notionCliPkg from './packages/@overeng/notion-cli/package.json.genie.ts'
 import notionEffectClientPkg from './packages/@overeng/notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from './packages/@overeng/notion-effect-schema/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
+import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
 import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
 import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
 import tuiStoriesPkg from './packages/@overeng/tui-stories/package.json.genie.ts'
 import utilsDevPkg from './packages/@overeng/utils-dev/package.json.genie.ts'
-import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 
 /** All package.json genie definitions that belong to the root pnpm workspace */
