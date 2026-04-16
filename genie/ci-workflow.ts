@@ -561,6 +561,12 @@ export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join
 /** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
 export const jobLocalCiDiagnosticsDir = '${{ runner.temp }}/ci-diagnostics/${{ github.job }}'
 
+/** Workspace-local cache root for mutable Nix client cache content on CI runners. */
+export const workspaceLocalNixCacheRoot = '${{ github.workspace }}/.ci-cache'
+
+/** Default Nix cache path restored/saved by the shared CI cache helpers. */
+export const workspaceLocalNixCachePath = `${workspaceLocalNixCacheRoot}/nix`
+
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
  * same writable store and the same workspace-relative GVS projection.
@@ -571,6 +577,19 @@ export const pnpmStateSetupStep = {
   run: [
     `echo "PNPM_STORE_DIR=${jobLocalPnpmStore}" >> "$GITHUB_ENV"`,
     `echo "PNPM_HOME=${jobLocalPnpmHome}" >> "$GITHUB_ENV"`,
+  ].join('\n'),
+} as const
+
+/**
+ * Export the canonical workspace-local Nix cache root so later steps share the
+ * same mutable client cache surface across one CI job.
+ */
+export const nixCacheSetupStep = {
+  name: 'Isolate nix cache',
+  shell: 'bash',
+  run: [
+    `mkdir -p "${workspaceLocalNixCachePath}"`,
+    `echo "XDG_CACHE_HOME=${workspaceLocalNixCacheRoot}" >> "$GITHUB_ENV"`,
   ].join('\n'),
 } as const
 
@@ -692,6 +711,63 @@ export const pnpmInstallWithDiagnosticsStep = {
     'exit "$rc"',
   ].join('\n'),
 } as const
+
+const nixCachePrimaryKey = (keyPrefix: string, hashFilesExpression: string) =>
+  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
+
+/**
+ * Restore the shared workspace-local Nix cache before expensive eval/build work.
+ *
+ * The default cache authority keys off the lockfiles that affect Nix inputs and
+ * repo composition. Consumers can override the key prefix or hash expression
+ * when a narrower surface is more appropriate.
+ */
+export const restoreNixCacheStep = (opts?: {
+  keyPrefix?: string
+  stepId?: string
+  path?: string
+  hashFilesExpression?: string
+}) => {
+  const keyPrefix = opts?.keyPrefix ?? 'nix-cache-v1'
+  const path = opts?.path ?? workspaceLocalNixCachePath
+  const hashFilesExpression =
+    opts?.hashFilesExpression ?? "${{ hashFiles('devenv.lock', 'flake.lock', 'megarepo.lock') }}"
+
+  return {
+    id: opts?.stepId ?? 'restore-nix-cache',
+    name: 'Restore nix cache',
+    uses: 'actions/cache/restore@v4' as const,
+    with: {
+      path,
+      key: nixCachePrimaryKey(keyPrefix, hashFilesExpression),
+      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
+    },
+  }
+}
+
+/**
+ * Save the shared workspace-local Nix cache after the main task graph runs.
+ *
+ * Reuses the primary key emitted by the restore step so the save path stays
+ * aligned with the exact cache authority evaluated earlier in the job.
+ */
+export const saveNixCacheStep = (opts?: {
+  restoreStepId?: string
+  path?: string
+}) => {
+  const restoreStepId = opts?.restoreStepId ?? 'restore-nix-cache'
+  const path = opts?.path ?? workspaceLocalNixCachePath
+
+  return {
+    name: 'Save nix cache',
+    if: `\${{ always() && steps.${restoreStepId}.outputs.cache-primary-key != '' }}`,
+    uses: 'actions/cache/save@v4' as const,
+    with: {
+      path,
+      key: `\${{ steps.${restoreStepId}.outputs.cache-primary-key }}`,
+    },
+  }
+}
 
 const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
