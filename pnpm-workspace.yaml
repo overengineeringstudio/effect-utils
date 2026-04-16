@@ -29,7 +29,6 @@ packages:
   - packages/@overeng/utils-dev
 
 patchedDependencies:
-  '@myobie/pty@0.8.0': packages/@overeng/pty-effect/patches/@myobie__pty@0.8.0.patch
   effect-distributed-lock@0.0.11: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
 
 allowUnusedPatches: true

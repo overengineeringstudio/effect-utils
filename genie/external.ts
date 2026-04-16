@@ -144,7 +144,7 @@ export const catalog = defineCatalog({
   'react-aria-components': '1.16.0',
 
   // PTY
-  '@myobie/pty': '0.8.0',
+  '@myobie/pty': 'github:myobie/pty#v0.9.0',
 
   // Type definitions
   '@types/react': '19.2.7',
@@ -361,16 +361,8 @@ export const utilsPatches = definePatchedDependencies({
   },
 })
 
-/** Temporary patch: resolve sendData on 'finish' instead of 'close' (myobie/pty#18) */
-export const ptyEffectPatches = definePatchedDependencies({
-  location: 'packages/@overeng/pty-effect',
-  patches: {
-    '@myobie/pty@0.8.0': './patches/@myobie__pty@0.8.0.patch',
-  },
-})
-
 /** Repo-root-relative registry used by downstream projection helpers. */
-const patches: PatchesRegistry = { ...utilsPatches, ...ptyEffectPatches }
+const patches: PatchesRegistry = { ...utilsPatches }
 
 /**
  * Parse a patch specifier into package name and version.

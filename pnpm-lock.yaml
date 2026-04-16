@@ -188,7 +188,6 @@ settings:
 packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
-  '@myobie/pty@0.8.0': 4e2023909d28dc266092cad4f930c7450ca80218b1adc181cd14092a757197bd
   effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
 
 importers:
@@ -1043,7 +1042,7 @@ importers:
     dependencies:
       '@myobie/pty':
         specifier: 0.8.0
-        version: 0.8.0(patch_hash=4e2023909d28dc266092cad4f930c7450ca80218b1adc181cd14092a757197bd)
+        version: 0.8.0
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -5919,7 +5918,7 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@0.8.0(patch_hash=4e2023909d28dc266092cad4f930c7450ca80218b1adc181cd14092a757197bd)':
+  '@myobie/pty@0.8.0':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0

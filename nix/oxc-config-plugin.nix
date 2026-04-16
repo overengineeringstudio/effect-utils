@@ -41,7 +41,6 @@ let
   # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
   patchesDirs = [
     "packages/@overeng/utils/patches"
-    "packages/@overeng/pty-effect/patches"
   ];
 
   rootPnpmWorkspaceYamlPath = srcPath + "/pnpm-workspace.yaml";
