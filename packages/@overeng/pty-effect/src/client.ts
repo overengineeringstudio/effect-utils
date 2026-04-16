@@ -539,11 +539,15 @@ const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyErr
         }
       }
 
-      const follower = new EventFollower(names !== undefined ? { names, onEvent } : { onEvent })
-
-      follower.start()
-
-      yield* Effect.addFinalizer(() => Effect.sync(() => follower.stop()))
+      const options = names !== undefined ? { names, onEvent } : { onEvent }
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const follower = new EventFollower(options)
+          follower.start()
+          return follower
+        }),
+        (follower) => Effect.sync(() => follower.stop()),
+      )
     }).pipe(Effect.withSpan('pty-client.followEvents')),
   )
 
