@@ -1063,14 +1063,19 @@ export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
   return {
     name: 'Sync megarepo dependencies',
     env: { MEGAREPO_STORE: jobLocalMegarepoStore },
-    run: `EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
+    run: `EU_REF=$(jq -r '.members["effect-utils"].ref' megarepo.lock)
+EU_REV=$(jq -r '.members["effect-utils"].commit' megarepo.lock)
+if [ -z "$EU_REF" ] || [ "$EU_REF" = "null" ]; then
+  echo '::error::megarepo.lock missing members["effect-utils"].ref'
+  exit 1
+fi
 if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
   echo '::error::megarepo.lock missing members["effect-utils"].commit'
   exit 1
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
