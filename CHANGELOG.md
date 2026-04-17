@@ -53,6 +53,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **genie/ci-workflow**: Add a shared step decorator for job-local private Cachix read auth
+  - Creates a per-step netrc file and appends `netrc-file` to `NIX_CONFIG` instead of relying on runner-global Determinate state
+  - Lets downstream repos decorate `devenv` and deploy run steps without exposing the Cachix token to unrelated actions
 - **devenv/tasks/shared/vercel.nix**: Preserve dotfiles when packaging static prebuilt output for Vercel deploys
   - Copies `staticDir/.` into `.vercel/output/static/` instead of globbing `staticDir/*`, so hidden assets and config files are not silently dropped
 - **@overeng/notion-effect-client**: Raise user integration-test timeouts to tolerate current Notion API latency in CI

@@ -410,6 +410,7 @@ export const vercelDeployJobs = (opts: {
   deployCommentPermissions: Record<string, string>
   bashShellDefaults: { run: { shell: string } }
   commentRunner: readonly string[]
+  deployStepDecorator?: (step: StepRecord, project: VercelProject) => StepRecord
 }) => {
   const deployCondition =
     opts.deployCondition ??
@@ -442,7 +443,10 @@ export const vercelDeployJobs = (opts: {
         steps: [
           ...opts.baseSteps,
           ...(project.stepsBeforeDeploy ?? []),
-          vercelDeployStep(project, opts.runDevenvTasksBefore),
+          opts.deployStepDecorator?.(
+            vercelDeployStep(project, opts.runDevenvTasksBefore),
+            project,
+          ) ?? vercelDeployStep(project, opts.runDevenvTasksBefore),
           ...(opts.extraSteps ?? []),
         ],
       },
