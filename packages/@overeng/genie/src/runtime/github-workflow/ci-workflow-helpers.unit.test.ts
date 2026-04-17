@@ -48,6 +48,12 @@ const coldFreshBuildSource = extractSourceBlock(
   '/**\n * Guard the pnpm dependency-prep contract against regressions that would',
 )
 
+const restorePnpmStateStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const restorePnpmStateStep = (opts?: {',
+  '/**\n * Save the job-local pnpm state after the main task graph runs.',
+)
+
 describe('ci workflow retry helpers', () => {
   it('sources the retry helper from a checked-in shell script', () => {
     expect(ciWorkflowSource).toContain('./ci-scripts/nix-gc-race-retry.sh')
@@ -73,9 +79,11 @@ describe('ci workflow pnpm cache defaults', () => {
   })
 
   it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
-    expect(ciWorkflowSource).toContain("const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'")
-    expect(ciWorkflowSource).toContain("name: 'Restore pnpm state'")
-    expect(ciWorkflowSource).not.toContain("'restore-keys':")
+    expect(restorePnpmStateStepSource).toContain(
+      "const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'",
+    )
+    expect(restorePnpmStateStepSource).toContain("name: 'Restore pnpm state'")
+    expect(restorePnpmStateStepSource).not.toContain("'restore-keys':")
   })
 
   it('only saves pnpm state after prior steps succeed', () => {
