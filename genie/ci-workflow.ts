@@ -127,16 +127,23 @@ export const devenvBinaryCache = {
 } as const satisfies NixBinaryCache
 
 /** Build a binary-cache descriptor for a Cachix cache. */
-export const cachixBinaryCache = (opts: {
-  name: string
-  publicKey: string
-}): NixBinaryCache => ({
+export const cachixBinaryCache = (opts: { name: string; publicKey: string }): NixBinaryCache => ({
   uri: `https://${opts.name}.cachix.org`,
   publicKey: opts.publicKey,
 })
 
-const dedupeBinaryCaches = (caches: readonly NixBinaryCache[]) =>
-  [...new Map(caches.map((cache) => [cache.uri, cache])).values()]
+const dedupeBinaryCaches = (caches: readonly NixBinaryCache[]) => [
+  ...new Map(caches.map((cache) => [cache.uri, cache])).values(),
+]
+
+const cachixHostsFromBinaryCaches = (caches: readonly NixBinaryCache[]) => [
+  ...new Set(
+    caches.flatMap((cache) => {
+      const host = new URL(cache.uri).host
+      return host.endsWith('.cachix.org') ? [host] : []
+    }),
+  ),
+]
 
 /** Render `extra-conf` lines for one or more binary caches. */
 export const nixBinaryCachesExtraConf = (caches: readonly NixBinaryCache[]) => {
@@ -377,6 +384,74 @@ export const withGitHubAccessTokenEnv = <
     ...githubAccessTokenEnv(tokenExpression),
   },
 })
+
+const withPrivateCachixReadAuthCommand = ({
+  command,
+  cacheHosts,
+}: {
+  command: string
+  cacheHosts: readonly string[]
+}) => {
+  if (cacheHosts.length === 0) {
+    return command
+  }
+
+  return [
+    'if [ -z "${CACHIX_AUTH_TOKEN:-}" ]; then',
+    '  echo "::error::CACHIX_AUTH_TOKEN is not set"',
+    '  exit 1',
+    'fi',
+    'cachix_netrc="$(mktemp "${RUNNER_TEMP:-/tmp}/cachix-netrc.XXXXXX")"',
+    'trap \'rm -f "$cachix_netrc"\' EXIT',
+    'chmod 600 "$cachix_netrc"',
+    `for host in ${cacheHosts.map(shellSingleQuote).join(' ')}; do`,
+    `  printf 'machine %s\\npassword %s\\n' "$host" "$CACHIX_AUTH_TOKEN" >> "$cachix_netrc"`,
+    'done',
+    'if [ -n "${NIX_CONFIG:-}" ]; then',
+    '  NIX_CONFIG_WITH_APPEND=$(printf \'%s\\n%s\' "$NIX_CONFIG" "netrc-file = $cachix_netrc")',
+    'else',
+    '  NIX_CONFIG_WITH_APPEND="netrc-file = $cachix_netrc"',
+    'fi',
+    'NIX_CONFIG="$NIX_CONFIG_WITH_APPEND"',
+    command,
+  ].join('\n')
+}
+
+/**
+ * Attach job-local Cachix read auth to a shell step.
+ *
+ * This keeps private cache pull auth local to the step instead of relying on
+ * host-global netrc state owned by the runner image.
+ */
+export const withPrivateCachixReadAuth = <
+  TStep extends {
+    run: string
+    env?: Record<string, string>
+  },
+>(
+  step: TStep,
+  opts: {
+    authTokenExpression: string
+    binaryCaches: readonly NixBinaryCache[]
+  },
+): TStep => {
+  const cacheHosts = cachixHostsFromBinaryCaches(opts.binaryCaches)
+  if (cacheHosts.length === 0) {
+    return step
+  }
+
+  return {
+    ...step,
+    env: {
+      ...step.env,
+      CACHIX_AUTH_TOKEN: opts.authTokenExpression,
+    },
+    run: withPrivateCachixReadAuthCommand({
+      command: step.run,
+      cacheHosts,
+    }),
+  }
+}
 
 /**
  * Append a GitHub access token line to NIX_CONFIG for later shell steps.
@@ -977,6 +1052,10 @@ export const vercelDeployJobs = (opts: {
   includeComment?: boolean
   commentTitle?: string
   noRowsMessage?: string
+  deployStepDecorator?: (
+    step: Record<string, unknown>,
+    project: VercelProject,
+  ) => Record<string, unknown>
 }): Record<string, Record<string, unknown>> => {
   return buildVercelDeployJobs({
     ...opts,

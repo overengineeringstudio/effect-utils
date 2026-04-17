@@ -10,6 +10,10 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const vercelDeploySource = readFileSync(
+  new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
+  'utf8',
+)
 const nixGcRaceRetryScriptSource = readFileSync(
   new URL(
     ['../../../../../../genie/ci-scripts', 'nix-gc-race-retry.sh'].join('/'),
@@ -134,6 +138,15 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain('export const withGitHubAccessTokenEnv')
   })
 
+  it('can wrap shell steps with job-local private Cachix read auth', () => {
+    expect(ciWorkflowSource).toContain('export const withPrivateCachixReadAuth')
+    expect(ciWorkflowSource).toContain('CACHIX_AUTH_TOKEN: opts.authTokenExpression')
+    expect(ciWorkflowSource).toContain(
+      'cachix_netrc="$(mktemp "${RUNNER_TEMP:-/tmp}/cachix-netrc.XXXXXX")"',
+    )
+    expect(ciWorkflowSource).toContain('netrc-file = $cachix_netrc')
+  })
+
   it('only appends GitHub access tokens to NIX_CONFIG through GITHUB_ENV', () => {
     expect(ciWorkflowSource).toContain('export const appendGitHubAccessTokenToNixConfigStep')
     expect(ciWorkflowSource).toContain('access-tokens = github.com=%s')
@@ -145,5 +158,12 @@ describe('ci workflow shared auth helpers', () => {
   it('pins the shared CI actions to the Node-24-safe majors', () => {
     expect(ciWorkflowSource).toContain("uses: 'actions/checkout@v6' as const")
     expect(ciWorkflowSource).toContain("uses: 'cachix/cachix-action@v17' as const")
+  })
+
+  it('lets Vercel deploy jobs decorate the deploy run step', () => {
+    expect(ciWorkflowSource).toContain('deployStepDecorator?: (')
+    expect(ciWorkflowSource).toContain('project: VercelProject')
+    expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
+    expect(vercelDeploySource).toContain('vercelDeployStep(project, opts.runDevenvTasksBefore)')
   })
 })
