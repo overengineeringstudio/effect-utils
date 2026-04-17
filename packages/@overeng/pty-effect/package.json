@@ -15,7 +15,7 @@
     }
   },
   "dependencies": {
-    "@myobie/pty": "github:myobie/pty#v0.9.0"
+    "@myobie/pty": "0.9.0"
   },
   "devDependencies": {
     "@effect/vitest": "0.29.0",

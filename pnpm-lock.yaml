@@ -1041,8 +1041,8 @@ importers:
   packages/@overeng/pty-effect:
     dependencies:
       '@myobie/pty':
-        specifier: 0.8.0
-        version: 0.8.0
+        specifier: 0.9.0
+        version: 0.9.0
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
@@ -2118,8 +2118,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@myobie/pty@0.8.0':
-    resolution: {integrity: sha512-4tOJrtD6o69Iw+SW1mRw3NA9wSRgs4TeITvoFv+jMfT2xW/Bx1OhX8BUMY8vFR0ApZTYyEliKdtzi1H9/meweg==}
+  '@myobie/pty@0.9.0':
+    resolution: {integrity: sha512-cND/hO2LficzvEkx4v2i+gSANw0VWmnWWQTawWr5MMcAb9ijDvnQoKzwO1VXF7cfYjNO3e1KURjuIgnl5k+JiA==}
     hasBin: true
 
   '@noble/hashes@1.7.1':
@@ -5918,7 +5918,7 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@myobie/pty@0.8.0':
+  '@myobie/pty@0.9.0':
     dependencies:
       '@preact/signals-core': 1.14.1
       '@xterm/addon-serialize': 0.14.0

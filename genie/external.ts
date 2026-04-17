@@ -144,7 +144,7 @@ export const catalog = defineCatalog({
   'react-aria-components': '1.16.0',
 
   // PTY
-  '@myobie/pty': 'github:myobie/pty#v0.9.0',
+  '@myobie/pty': '0.9.0',
 
   // Type definitions
   '@types/react': '19.2.7',
