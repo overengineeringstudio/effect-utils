@@ -145,6 +145,7 @@ describe('ci workflow shared auth helpers', () => {
       'cachix_netrc="$(mktemp "${RUNNER_TEMP:-/tmp}/cachix-netrc.XXXXXX")"',
     )
     expect(ciWorkflowSource).toContain('netrc-file = $cachix_netrc')
+    expect(ciWorkflowSource).toContain('export NIX_CONFIG="$NIX_CONFIG_WITH_APPEND"')
   })
 
   it('only appends GitHub access tokens to NIX_CONFIG through GITHUB_ENV', () => {

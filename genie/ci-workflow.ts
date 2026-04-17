@@ -412,7 +412,7 @@ const withPrivateCachixReadAuthCommand = ({
     'else',
     '  NIX_CONFIG_WITH_APPEND="netrc-file = $cachix_netrc"',
     'fi',
-    'NIX_CONFIG="$NIX_CONFIG_WITH_APPEND"',
+    'export NIX_CONFIG="$NIX_CONFIG_WITH_APPEND"',
     command,
   ].join('\n')
 }
