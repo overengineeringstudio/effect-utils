@@ -54,6 +54,12 @@ const restorePnpmStateStepSource = extractSourceBlock(
   '/**\n * Save the job-local pnpm state after the main task graph runs.',
 )
 
+const validateNixStoreStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const validateNixStoreStep = {',
+  '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
+)
+
 describe('ci workflow retry helpers', () => {
   it('sources the retry helper from a checked-in shell script', () => {
     expect(ciWorkflowSource).toContain('./ci-scripts/nix-gc-race-retry.sh')
@@ -118,6 +124,19 @@ describe('ci workflow pnpm cache defaults', () => {
   it('keeps the diagnostics summary portable', () => {
     expect(generatedWorkflowSource).toContain('head -n 120 "$markers_file"')
     expect(generatedWorkflowSource).not.toContain('sed -n "1,120p" "$markers_file"')
+  })
+
+  it('captures process snapshots without leaking full argv', () => {
+    expect(ciWorkflowSource).toContain('stat,comm --sort=-%cpu')
+    expect(ciWorkflowSource).toContain('stat,comm -r | head -15')
+    expect(ciWorkflowSource).not.toContain('stat,command --sort=-%cpu')
+    expect(ciWorkflowSource).not.toContain('stat,command -r | head -15')
+  })
+
+  it('purges nix eval cache from the active XDG cache root during repair', () => {
+    expect(validateNixStoreStepSource).toContain(
+      'rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
+    )
   })
 })
 

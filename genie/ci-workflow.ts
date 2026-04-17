@@ -638,10 +638,10 @@ const runnerPressureSnapshotScript = [
   '  df -h /',
   '  echo',
   '  if command -v ps >/dev/null 2>&1; then',
-  '    if ps -eo pid,ppid,user,%cpu,%mem,etime,stat,command --sort=-%cpu >/dev/null 2>&1; then',
-  '      ps -eo pid,ppid,user,%cpu,%mem,etime,stat,command --sort=-%cpu | head -15',
+  '    if ps -eo pid,ppid,user,%cpu,%mem,etime,stat,comm --sort=-%cpu >/dev/null 2>&1; then',
+  '      ps -eo pid,ppid,user,%cpu,%mem,etime,stat,comm --sort=-%cpu | head -15',
   '    else',
-  '      ps -axo pid,ppid,user,%cpu,%mem,etime,stat,command -r | head -15',
+  '      ps -axo pid,ppid,user,%cpu,%mem,etime,stat,comm -r | head -15',
   '    fi',
   '  else',
   '    echo "ps unavailable on runner"',
@@ -1128,7 +1128,7 @@ DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
   echo "::warning::devenv store path invalid, repairing targeted path..."
   nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
-  rm -rf ~/.cache/nix/eval-cache-*
+  rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*
   if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
     echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
     tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
