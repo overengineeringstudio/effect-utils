@@ -160,8 +160,8 @@ type Matrix = {
 
 type Strategy = {
   matrix?: Matrix | Expression
-  'fail-fast'?: boolean
-  'max-parallel'?: number
+  'fail-fast'?: boolean | Expression
+  'max-parallel'?: number | Expression
 }
 
 type Container = {
@@ -193,8 +193,8 @@ type StepBase = {
   name?: string
   if?: string
   env?: Record<string, string>
-  'continue-on-error'?: boolean
-  'timeout-minutes'?: number
+  'continue-on-error'?: boolean | Expression
+  'timeout-minutes'?: number | Expression
   'working-directory'?: string
 }
 
@@ -219,7 +219,7 @@ type Defaults = {
 
 type Concurrency = {
   group: string
-  'cancel-in-progress'?: boolean
+  'cancel-in-progress'?: boolean | Expression
 }
 
 type Job = {
@@ -234,9 +234,9 @@ type Job = {
   env?: Record<string, string>
   defaults?: Defaults
   steps: Step[]
-  'timeout-minutes'?: number
+  'timeout-minutes'?: number | Expression
   strategy?: Strategy
-  'continue-on-error'?: boolean
+  'continue-on-error'?: boolean | Expression
   container?: string | Container
   services?: Record<string, Service>
 }

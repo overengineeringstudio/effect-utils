@@ -213,6 +213,55 @@ describe('GitHub expression validation', () => {
     expect(issues.filter((i) => i.rule === 'github-workflow-expression-nesting')).toEqual([])
   })
 
+  it('emits pure expressions unquoted in block context', () => {
+    const workflow = githubWorkflow({
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      concurrency: {
+        group: '${{ github.workflow }}-${{ github.ref }}',
+        'cancel-in-progress': "${{ github.event_name != 'pull_request' }}",
+      },
+      jobs: {
+        build: {
+          'runs-on': 'ubuntu-latest',
+          if: "${{ github.event_name != 'schedule' }}",
+          'continue-on-error': '${{ matrix.experimental }}',
+          steps: [{ run: 'echo ok' }],
+          strategy: {
+            'fail-fast': '${{ !contains(github.ref, "main") }}',
+            'max-parallel': '${{ github.event_name == "push" && 2 || 4 }}',
+          },
+        },
+      },
+    })
+
+    const yaml = workflow.stringify(mockGenieContext)
+
+    expect(yaml).toContain("cancel-in-progress: ${{ github.event_name != 'pull_request' }}")
+    expect(yaml).toContain("if: ${{ github.event_name != 'schedule' }}")
+    expect(yaml).toContain('continue-on-error: ${{ matrix.experimental }}')
+    expect(yaml).toContain('fail-fast: ${{ !contains(github.ref, "main") }}')
+    expect(yaml).toContain('max-parallel: ${{ github.event_name == "push" && 2 || 4 }}')
+    // Embedded expressions (multiple ${{ in one string) stay quoted
+    expect(yaml).toContain("group: '${{ github.workflow }}-${{ github.ref }}'")
+  })
+
+  it('keeps expressions quoted in inline arrays', () => {
+    const workflow = githubWorkflow({
+      name: 'CI',
+      on: { push: { branches: ['main'] } },
+      jobs: {
+        build: {
+          'runs-on': ['${{ matrix.runner }}', 'nix'],
+          steps: [{ run: 'echo ok' }],
+        },
+      },
+    })
+
+    const yaml = workflow.stringify(mockGenieContext)
+    expect(yaml).toContain("runs-on: ['${{ matrix.runner }}', nix]")
+  })
+
   it('stringifies valid cache keys with multiple top-level expressions unchanged', () => {
     const workflow = githubWorkflow({
       name: 'CI',
