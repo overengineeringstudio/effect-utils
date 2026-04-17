@@ -832,6 +832,53 @@ export const savePnpmStateStep = (opts?: {
 }
 
 /**
+ * Shared self-hosted CI setup for repos that prepare a devenv workspace,
+ * restore warmed mutable state, and run `pnpm:install` before the main task.
+ *
+ * This composes the existing step atoms into one standard contract so
+ * downstream repos can delete local workflow glue instead of reassembling the
+ * same Nix/pnpm/diagnostics sequence by hand.
+ */
+export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
+  checkout?: Parameters<typeof checkoutStep>[0]
+  installNix?: Parameters<typeof installNixStep>[0]
+  restoreNixCache?: Parameters<typeof restoreNixCacheStep>[0]
+  applyMegarepoLock?: false | Parameters<typeof applyMegarepoLockStep>[0]
+  restorePnpmState?: Parameters<typeof restorePnpmStateStep>[0]
+  includeDiagnostics?: boolean
+}) =>
+  [
+    checkoutStep(opts?.checkout),
+    installNixStep(opts?.installNix),
+    preparePinnedDevenvStep,
+    nixCacheSetupStep,
+    restoreNixCacheStep(opts?.restoreNixCache),
+    validateNixStoreStep,
+    ...(opts?.applyMegarepoLock === false ? [] : [applyMegarepoLockStep(opts?.applyMegarepoLock)]),
+    pnpmStateSetupStep,
+    ...(opts?.includeDiagnostics === false
+      ? []
+      : [ciDiagnosticsSetupStep, captureRunnerPressureStep]),
+    restorePnpmStateStep(opts?.restorePnpmState),
+    pnpmInstallWithDiagnosticsStep,
+  ] as const
+
+/**
+ * Shared self-hosted CI tail for repos that save warmed mutable state and keep
+ * pnpm / runner diagnostics attached to the finished job.
+ */
+export const standardSelfHostedPnpmCiPostSteps = (opts?: {
+  savePnpmState?: Parameters<typeof savePnpmStateStep>[0]
+  saveNixCache?: Parameters<typeof saveNixCacheStep>[0]
+  includeDiagnosticsArtifact?: boolean
+}) =>
+  [
+    savePnpmStateStep(opts?.savePnpmState),
+    saveNixCacheStep(opts?.saveNixCache),
+    ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
+  ] as const
+
+/**
  * Upload CI diagnostics captured during the pnpm install / runner-pressure
  * steps as a single artifact on failure.
  */
