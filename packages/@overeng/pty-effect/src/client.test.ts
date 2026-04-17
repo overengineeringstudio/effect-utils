@@ -203,14 +203,6 @@ describe('PtyClient', () => {
         const client = yield* PtyClient
         const name = uniqueName('tags')
 
-        const startEvents = yield* Effect.forkScoped(
-          client.followEvents({}).pipe(
-            Stream.filter((event) => event.session === name && event.type === 'session_start'),
-            Stream.take(1),
-            Stream.runCollect,
-          ),
-        )
-
         yield* client.spawnDaemon({
           name,
           command: 'sh',
@@ -243,15 +235,19 @@ describe('PtyClient', () => {
           'forge.tab': 'tab-2',
         })
 
-        const seenStartEvents = yield* Fiber.join(startEvents)
-        const [startEvent] = Array.from(seenStartEvents)
-        expect(startEvent?.type).toBe('session_start')
-        if (startEvent?.type === 'session_start') {
-          expect(startEvent.tags).toEqual({
-            'forge.tab': 'tab-1',
-            'forge.workspace': 'ws-1',
-          })
-        }
+        // Watch session_exit (fires ~500ms later when sleep 0.5 completes) rather
+        // than session_start: EventFollower.watchFile sets its read offset to the
+        // current file size on new-session discovery, so session_start (written at
+        // creation time) is skipped. session_exit is written after the offset is
+        // established and is reliably captured. session_start tag verification uses
+        // readRecentEvents below.
+        const exitEvents = yield* Effect.forkScoped(
+          client.followEvents({}).pipe(
+            Stream.filter((event) => event.session === name && event.type === 'session_exit'),
+            Stream.take(1),
+            Stream.runCollect,
+          ),
+        )
 
         const session = yield* client.attach({
           name,
@@ -260,10 +256,21 @@ describe('PtyClient', () => {
         const exit = yield* session.exit.pipe(Effect.timeout('2 seconds'))
         expect(exit.code).toBe(0)
 
+        const seenExitEvents = yield* Fiber.join(exitEvents)
+        const [exitEvent] = Array.from(seenExitEvents)
+        expect(exitEvent?.type).toBe('session_exit')
+        if (exitEvent?.type === 'session_exit') {
+          expect(exitEvent.exitCode).toBe(0)
+        }
+
         yield* Effect.sleep('100 millis')
         const recent = yield* client.readRecentEvents({ name, count: 10 })
         expect(recent.some((event) => event.type === 'session_start')).toBe(true)
         expect(recent.some((event) => event.type === 'session_exit')).toBe(true)
+        const recentStart = recent.find((event) => event.type === 'session_start')
+        if (recentStart?.type === 'session_start') {
+          expect(recentStart.tags).toEqual({ 'forge.tab': 'tab-1', 'forge.workspace': 'ws-1' })
+        }
 
         const removed = yield* client.gc
         expect(removed).toContain(name)

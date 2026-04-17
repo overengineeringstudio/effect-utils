@@ -113,7 +113,7 @@ export { utilsPatches }
  */
 export const commonPnpmWorkspaceData = {
   ...commonPnpmPolicySettings,
-  patchedDependencies: utilsPatches,
+  patchedDependencies: { ...utilsPatches },
   allowUnusedPatches: true as const,
   peerDependencyRules: {
     /** @effect-atom/atom@0.5.3 pins pre-1.0 Effect peer ranges that don't cover our versions */

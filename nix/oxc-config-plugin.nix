@@ -28,7 +28,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-Y/wRyVmabmgbTmwRg1w6cl/45IlCIuJ9oN0RAilxYJA=";
+  pnpmDepsHash = "sha256-wxdmM3lxotQwP01THMYW5Y61b27CSI1JA3VvCVCeN1c=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -39,7 +39,9 @@ let
       builtins.toPath src;
 
   # Patches referenced in pnpm-workspace.yaml (shared across all workspaces)
-  patchesDir = "packages/@overeng/utils/patches";
+  patchesDirs = [
+    "packages/@overeng/utils/patches"
+  ];
 
   rootPnpmWorkspaceYamlPath = srcPath + "/pnpm-workspace.yaml";
   rootPnpmWorkspaceYaml = builtins.readFile rootPnpmWorkspaceYamlPath;
@@ -149,7 +151,7 @@ let
       ''
       + (if manifestOnly then copyFileCmd "${packageDir}/package.json" else copyDirCmd packageDir)
       + "\n"
-      + copyDirCmd patchesDir
+      + builtins.concatStringsSep "\n" (map copyDirCmd patchesDirs)
     );
 
   depsSrc = materializeWorkspace {
@@ -190,7 +192,7 @@ let
           "tsconfig.base.json"
         ]
         || hasPathPrefix relPath packageDir
-        || hasPathPrefix relPath patchesDir
+        || builtins.any (dir: hasPathPrefix relPath dir) patchesDirs
       );
   };
 

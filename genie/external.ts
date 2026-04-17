@@ -144,7 +144,7 @@ export const catalog = defineCatalog({
   'react-aria-components': '1.16.0',
 
   // PTY
-  '@myobie/pty': '0.8.0',
+  '@myobie/pty': '0.9.0',
 
   // Type definitions
   '@types/react': '19.2.7',
@@ -362,7 +362,7 @@ export const utilsPatches = definePatchedDependencies({
 })
 
 /** Repo-root-relative registry used by downstream projection helpers. */
-const patches: PatchesRegistry = utilsPatches
+const patches: PatchesRegistry = { ...utilsPatches }
 
 /**
  * Parse a patch specifier into package name and version.

@@ -44,10 +44,10 @@ import {
   Runtime,
   Schedule,
   Schema,
-  Scope,
   Stream,
   pipe,
 } from 'effect'
+import type { Scope } from 'effect'
 
 import { PtyError } from './PtyError.ts'
 import { decodePtyEvent, type PtyEvent } from './PtyEvent.ts'
@@ -205,9 +205,7 @@ export class PtyClient extends Context.Tag('@overeng/pty-effect/PtyClient')<
     readonly readRecentEvents: (
       spec: PtyReadRecentEventsSpec,
     ) => Effect.Effect<ReadonlyArray<PtyEvent>, PtyError>
-    readonly followEvents: (
-      spec: PtyFollowEventsSpec,
-    ) => Stream.Stream<PtyEvent, PtyError, Scope.Scope>
+    readonly followEvents: (spec: PtyFollowEventsSpec) => Stream.Stream<PtyEvent, PtyError>
     readonly kill: (input: { readonly name: PtyName }) => Effect.Effect<void, PtyError>
   }
 >() {}
@@ -522,10 +520,9 @@ const readRecentEvents = (spec: PtyReadRecentEventsSpec) =>
     Effect.withSpan('pty-client.readRecentEvents', { attributes: { 'span.label': spec.name } }),
   )
 
-const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyError, Scope.Scope> =>
-  Stream.asyncScoped<PtyEvent, PtyError>((emit) =>
+const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyError> =>
+  Stream.asyncPush<PtyEvent, PtyError>((emit) =>
     Effect.gen(function* () {
-      const scope = yield* Effect.scope
       const names = spec.names !== undefined ? [...spec.names] : undefined
 
       if (names !== undefined) {
@@ -534,36 +531,22 @@ const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyErr
         }
       }
 
-      const follower = new EventFollower(
-        names !== undefined
-          ? {
-              names,
-              onEvent: (event) => {
-                try {
-                  emit.single(decodePtyEvent(event))
-                } catch {
-                  // Ignore malformed lines from the append-only event log.
-                }
-              },
-            }
-          : {
-              onEvent: (event) => {
-                try {
-                  emit.single(decodePtyEvent(event))
-                } catch {
-                  // Ignore malformed lines from the append-only event log.
-                }
-              },
-            },
-      )
+      const onEvent = (event: EventRecord) => {
+        try {
+          emit.single(decodePtyEvent(event))
+        } catch {
+          // Ignore malformed lines from the append-only event log.
+        }
+      }
 
-      follower.start()
-
-      yield* Scope.addFinalizer(
-        scope,
+      const options = names !== undefined ? { names, onEvent } : { onEvent }
+      yield* Effect.acquireRelease(
         Effect.sync(() => {
-          follower.stop()
+          const follower = new EventFollower(options)
+          follower.start()
+          return follower
         }),
+        (follower) => Effect.sync(() => follower.stop()),
       )
     }).pipe(Effect.withSpan('pty-client.followEvents')),
   )

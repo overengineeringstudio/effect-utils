@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 
-import { Effect } from 'effect'
+import { Effect, Stream } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const makeClientMock = (overrides: Record<string, unknown> = {}) => ({
@@ -124,6 +124,53 @@ describe('PtyClient client wrapper', () => {
       if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
       else process.env.PTY_EFFECT_TEST_VALUE = previous
     }
+  })
+
+  it('starts and stops EventFollower within followEvents', async () => {
+    const start = vi.fn()
+    const stop = vi.fn()
+
+    vi.doMock('@myobie/pty/client', () =>
+      makeClientMock({
+        EventFollower: class {
+          constructor(options: { readonly onEvent: (event: unknown) => void }) {
+            this.options = options
+          }
+
+          readonly options
+          readonly start = () => {
+            start()
+            this.options.onEvent({
+              session: 'unit-follow',
+              ts: new Date().toISOString(),
+              type: 'session_exit',
+              exitCode: 0,
+            })
+          }
+          readonly stop = stop
+        },
+      }),
+    )
+
+    const { PtyClient, layer } = await import('./client.ts')
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* PtyClient
+        return yield* client.followEvents({}).pipe(Stream.take(1), Stream.runCollect)
+      }).pipe(Effect.provide(layer)),
+    )
+
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(Array.from(result)).toEqual([
+      {
+        session: 'unit-follow',
+        ts: expect.any(String),
+        type: 'session_exit',
+        exitCode: 0,
+      },
+    ])
   })
 
   it('uses the PTY server module under node when running inside Bun', async () => {
