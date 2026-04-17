@@ -60,6 +60,12 @@ const validateNixStoreStepSource = extractSourceBlock(
   '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
 )
 
+const applyMegarepoLockStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
+  '/**\n * Resolve the devenv binary and do a fast store-path validity check.',
+)
+
 describe('ci workflow retry helpers', () => {
   it('sources the retry helper from a checked-in shell script', () => {
     expect(ciWorkflowSource).toContain('./ci-scripts/nix-gc-race-retry.sh')
@@ -136,6 +142,15 @@ describe('ci workflow pnpm cache defaults', () => {
   it('purges nix eval cache from the active XDG cache root during repair', () => {
     expect(validateNixStoreStepSource).toContain(
       'rm -rf "${\'${XDG_CACHE_HOME:-$HOME/.cache}\'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
+    )
+  })
+
+  it('resolves the locked megarepo CLI through a git flake URL', () => {
+    expect(applyMegarepoLockStepSource).toContain(
+      'nix run "git+https://github.com/overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
+    )
+    expect(applyMegarepoLockStepSource).not.toContain(
+      'nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
     )
   })
 })

@@ -1075,7 +1075,7 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
-nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
+nix run "git+https://github.com/overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }
 }
