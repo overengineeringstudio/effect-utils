@@ -135,7 +135,7 @@ describe('ci workflow pnpm cache defaults', () => {
 
   it('purges nix eval cache from the active XDG cache root during repair', () => {
     expect(validateNixStoreStepSource).toContain(
-      'rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
+      'rm -rf "${\'${XDG_CACHE_HOME:-$HOME/.cache}\'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
     )
   })
 })

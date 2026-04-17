@@ -1128,7 +1128,7 @@ DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
   echo "::warning::devenv store path invalid, repairing targeted path..."
   nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
-  rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*
+  rm -rf "${'${XDG_CACHE_HOME:-$HOME/.cache}'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*
   if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
     echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
     tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
