@@ -398,7 +398,7 @@ let
     }:
     let
       srcPath = absoluteFileSourcePathFor relPath;
-      srcPathArg = lib.escapeShellArg (toString srcPath);
+      srcPathArg = builtins.toJSON (toString srcPath);
       relPathArg = lib.escapeShellArg relPath;
       maybeStripDevDependencies =
         if stripDevDependencies then
