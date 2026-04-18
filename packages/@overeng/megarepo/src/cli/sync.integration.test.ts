@@ -1040,6 +1040,90 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     }
   })
 
+const createPinnedFetchableLockedCommitFixture = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+
+    const sourceRepoPath = EffectPath.ops.join(
+      tmpDir,
+      EffectPath.unsafe.relativeDir('source-repo/'),
+    )
+    yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
+    yield* initGitRepo(sourceRepoPath)
+    yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
+      Effect.catchAll(() => Effect.void),
+    )
+
+    yield* fs.writeFileString(
+      EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
+      '# Locked commit\n',
+    )
+    yield* addCommit({ repoPath: sourceRepoPath, message: 'Locked commit' })
+    const lockedCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+
+    const remoteRepoPath = EffectPath.ops.join(
+      tmpDir,
+      EffectPath.unsafe.relativeDir('remote-repo.git/'),
+    )
+    yield* runGitCommand(tmpDir, 'init', '--bare', remoteRepoPath)
+    yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', remoteRepoPath)
+    yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main')
+
+    yield* fs.writeFileString(
+      EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
+      '# Current branch tip\n',
+    )
+    yield* addCommit({ repoPath: sourceRepoPath, message: 'Advance main' })
+    const currentCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
+    yield* runGitCommand(sourceRepoPath, 'push', 'origin', 'main')
+
+    const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+    const repoBasePath = EffectPath.ops.join(
+      storePath,
+      EffectPath.unsafe.relativeDir('github.com/test-owner/test-repo/'),
+    )
+    const bareRepoPath = EffectPath.ops.join(repoBasePath, EffectPath.unsafe.relativeDir('.bare/'))
+    yield* fs.makeDirectory(repoBasePath, { recursive: true })
+    yield* runGitCommand(
+      tmpDir,
+      'clone',
+      '--bare',
+      '--depth=1',
+      `file://${remoteRepoPath}`,
+      bareRepoPath,
+    )
+    yield* runGitCommand(
+      bareRepoPath,
+      'config',
+      'remote.origin.fetch',
+      '+refs/heads/*:refs/remotes/origin/*',
+    )
+    yield* runGitCommand(bareRepoPath, 'fetch', '--tags', '--prune', 'origin')
+
+    const { workspacePath } = yield* createWorkspaceWithLock({
+      members: {
+        'test-repo': 'test-owner/test-repo#main',
+      },
+      lockEntries: {
+        'test-repo': {
+          url: 'https://github.com/test-owner/test-repo',
+          ref: 'main',
+          commit: lockedCommit,
+          pinned: true,
+        },
+      },
+    })
+
+    return {
+      workspacePath,
+      storePath,
+      bareRepoPath,
+      lockedCommit,
+      currentCommit,
+    }
+  })
+
 /**
  * Per-test workspace fixture for nested megarepo lock tests.
  *
@@ -2265,6 +2349,53 @@ describe('mr fetch', () => {
           expect(memberResult.status).toBe('error')
           expect(memberResult.message).toContain(`'${staleCommit.slice(0, 8)}'`)
           expect(memberResult.message).toContain('not available locally or on the remote')
+        },
+        Effect.provide(NodeContext.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should fetch missing locked branch commits directly in mr fetch --apply mode',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { workspacePath, storePath, bareRepoPath, lockedCommit, currentCommit } =
+            yield* createPinnedFetchableLockedCommitFixture()
+
+          const result = yield* runFetchApplyCommand({
+            cwd: workspacePath,
+            args: ['--output', 'json'],
+            env: {
+              MEGAREPO_STORE: storePath.slice(0, -1),
+            },
+          })
+          const json = decodeSyncJsonOutput(result.stdout.trim())
+
+          expect(result.exitCode).toBe(0)
+          expect(json.results).toHaveLength(1)
+          const memberResult = json.results[0]!
+          expect(memberResult.status).not.toBe('error')
+          expect(['applied', 'synced', 'already_synced']).toContain(memberResult.status)
+          expect(memberResult.commit).toBe(lockedCommit)
+
+          const worktreePath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeDir('repos/test-repo/'),
+          )
+          expect(yield* fs.exists(worktreePath)).toBe(true)
+          const worktreeHead = yield* runGitCommand(worktreePath, 'rev-parse', 'HEAD')
+          expect(worktreeHead).toBe(lockedCommit)
+          expect(worktreeHead).not.toBe(currentCommit)
+
+          const hiddenCommitRef = `refs/megarepo/commits/${lockedCommit}`
+          const fetchedRef = yield* runGitCommand(
+            bareRepoPath,
+            'rev-parse',
+            '--verify',
+            `${hiddenCommitRef}^{object}`,
+          )
+          expect(fetchedRef).toBe(lockedCommit)
         },
         Effect.provide(NodeContext.layer),
         Effect.scoped,

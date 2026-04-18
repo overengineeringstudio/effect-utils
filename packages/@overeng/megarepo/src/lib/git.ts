@@ -430,6 +430,25 @@ export const fetchBare = (args: { repoPath: string; remote?: string }) =>
     }),
   )
 
+/** Fetch one commit into a hidden ref so apply mode can materialize behind-tip locked commits. */
+export const fetchBareCommit = (args: { repoPath: string; commit: string; remote?: string }) =>
+  Effect.gen(function* () {
+    const remote = args.remote ?? 'origin'
+    const hiddenRef = `refs/megarepo/commits/${args.commit}`
+    yield* runGitCommandWithRetry({
+      args: ['fetch', remote, `${args.commit}:${hiddenRef}`],
+      cwd: args.repoPath,
+    })
+  }).pipe(
+    Effect.withSpan('git/fetch-bare-commit', {
+      attributes: {
+        'span.label': args.commit,
+        repoPath: args.repoPath,
+        commit: args.commit,
+      },
+    }),
+  )
+
 /**
  * Get the default branch name from a remote
  * Uses `git ls-remote --symref` to query the remote's HEAD

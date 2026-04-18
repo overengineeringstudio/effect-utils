@@ -469,7 +469,19 @@ export const syncMember = <R = never>({
         const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
         if (commitExists === false) {
           yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.catchAll(() => Effect.void))
-          yield* Effect.annotateCurrentSpan('action', 'fetch-missing-commit')
+          const commitExistsAfterFetch = yield* Git.refExists({
+            repoPath: bareRepoPath,
+            ref: targetCommit,
+          })
+          if (commitExistsAfterFetch === false) {
+            yield* Git.fetchBareCommit({
+              repoPath: bareRepoPath,
+              commit: targetCommit,
+            }).pipe(Effect.catchAll(() => Effect.void))
+            yield* Effect.annotateCurrentSpan('action', 'fetch-missing-commit-direct')
+          } else {
+            yield* Effect.annotateCurrentSpan('action', 'fetch-missing-commit')
+          }
         } else {
           yield* Effect.annotateCurrentSpan('action', 'noop')
         }
