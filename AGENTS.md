@@ -34,13 +34,12 @@ Keep `CHANGELOG.md` updated:
 - Add entries under `[Unreleased]` when making changes
 - When cutting a release, move `[Unreleased]` entries to a new version section with the release date
 
-# Task Management (Beads)
+# Task Management
 
-This repo uses [beads](../overeng-beads-public) for task tracking via the megarepo setup.
+Use GitHub issues or an issue checklist for non-trivial work.
 
-- Create an **epic** for larger work items and correlate it with the PR
-- Create **follow-up beads** (or a follow-up epic for larger scope) for out-of-scope work discovered during implementation
-- Run `dt beads:push` before pushing to sync beads to Dolt remote
+- Link the issue in the PR when the repo workflow expects it
+- File follow-up GitHub issues for out-of-scope work discovered during implementation
 
 ## Landing the Plane (Session Completion)
 
@@ -54,7 +53,6 @@ This repo uses [beads](../overeng-beads-public) for task tracking via the megare
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   dt beads:push    # push beads changes to Dolt remote
    git push
    git status  # MUST show "up to date with origin"
    ```

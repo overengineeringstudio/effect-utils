@@ -40,7 +40,6 @@ let
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
-    beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
   mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
@@ -231,11 +230,6 @@ let
 in
 {
   imports = [
-    # Beads integration
-    (taskModules.beads {
-      beadsPrefix = "oep";
-      beadsRepoName = "overeng-beads-public";
-    })
     # `dt` (devenv tasks) wrapper script and shell completions
     ./nix/devenv-modules/dt.nix
     # Git hook: prevent commits on default branch + enforce linked worktrees
