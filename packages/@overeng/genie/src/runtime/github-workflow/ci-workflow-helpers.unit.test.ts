@@ -21,6 +21,13 @@ const nixGcRaceRetryScriptSource = readFileSync(
   ),
   'utf8',
 )
+const netlifyTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'netlify.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const extractSourceBlock = (source: string, startMarker: string, endMarker: string) => {
   const start = source.indexOf(startMarker)
@@ -201,6 +208,11 @@ describe('ci workflow shared auth helpers', () => {
   it('pins the shared CI actions to the Node-24-safe majors', () => {
     expect(ciWorkflowSource).toContain("uses: 'actions/checkout@v6' as const")
     expect(ciWorkflowSource).toContain("uses: 'cachix/cachix-action@v17' as const")
+  })
+
+  it('uses the Nix-provided Netlify CLI for parallel deploy safety', () => {
+    expect(netlifyTaskModuleSource).toContain('netlify = "${pkgs.netlify-cli}/bin/netlify";')
+    expect(netlifyTaskModuleSource).not.toContain('bunx netlify-cli@24.11.3')
   })
 
   it('lets Vercel deploy jobs decorate the deploy run step', () => {

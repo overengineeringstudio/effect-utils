@@ -37,6 +37,7 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
+  netlify = "${pkgs.netlify-cli}/bin/netlify";
   hasPackages = packages != [ ];
 
   mkDeployTask = pkg: {
@@ -112,7 +113,7 @@ let
         set +e
         # shellcheck disable=SC2086
         NETLIFY_SITE_ID="${siteId}" \
-        ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 deploy \
+        ${netlify} deploy \
           --dir="$deploy_dir" \
           --auth="$NETLIFY_AUTH_TOKEN" \
           --filter="$workspace_filter" \
@@ -130,9 +131,9 @@ let
           if grep -q "Unauthorized: could not retrieve project" "$deploy_stderr_file"; then
             echo "Netlify auth diagnostics for ${pkg.name}:" >&2
             set +e
-            ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
+            ${netlify} api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
             auth_user_exit="$?"
-            ${pkgs.bun}/bin/bunx netlify-cli@24.11.3 api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
+            ${netlify} api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
             auth_site_exit="$?"
             set -e
 
