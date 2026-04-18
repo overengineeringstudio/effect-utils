@@ -127,8 +127,6 @@
             inherit pkgs oxlintNpm;
           };
         };
-        };
-
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {
           genie = cliPackages.genie.outPath;
