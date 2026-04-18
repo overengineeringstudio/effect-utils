@@ -418,7 +418,7 @@ let
 
       ${maybeStripDevDependencies}
 
-      fs.writeFileSync(targetPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+      fs.writeFileSync(targetPath, JSON.stringify(packageJson, null, 2) + "\n");
       NODE
     '';
 
