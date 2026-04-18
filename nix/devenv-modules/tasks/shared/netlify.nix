@@ -28,12 +28,20 @@
 # NOTE: pkg.name must be a valid Netlify alias slug (lowercase, alphanumeric, hyphens only).
 {
   packages ? [ ],
-  siteName, # Required — Netlify site slug used for URL construction (e.g. "overeng-utils")
-  siteId, # Required — stable Netlify site ID used for CLI targeting
+  siteName ? null, # Preferred — Netlify site slug used for URL construction (e.g. "overeng-utils")
+  site ? null, # Legacy alias for siteName
+  siteId ? null, # Preferred — stable Netlify site ID used for CLI targeting
   buildTaskPrefix ? "storybook:build",
 }:
 { lib, pkgs, ... }:
 let
+  resolvedSiteName =
+    if siteName != null then
+      siteName
+    else if site != null then
+      site
+    else
+      throw "taskModules.netlify requires `siteName` (preferred) or legacy `site`";
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   deployTask = import ../lib/deploy-task.nix { inherit pkgs; };
   git = "${pkgs.git}/bin/git";
@@ -111,13 +119,20 @@ let
         auth_user_file="$(mktemp)"
         auth_site_file="$(mktemp)"
         set +e
+        site_target_args=()
+        if [ -n "${if siteId != null then siteId else ""}" ]; then
+          export NETLIFY_SITE_ID="${if siteId != null then siteId else ""}"
+        else
+          site_target_args+=("--site=${resolvedSiteName}")
+        fi
+
         # shellcheck disable=SC2086
-        NETLIFY_SITE_ID="${siteId}" \
         ${netlify} deploy \
           --dir="$deploy_dir" \
           --auth="$NETLIFY_AUTH_TOKEN" \
           --filter="$workspace_filter" \
           --no-build \
+          "''${site_target_args[@]}" \
           $alias_flag \
           --message="$message" \
           --json >"$deploy_json_file" 2>"$deploy_stderr_file"
@@ -133,8 +148,12 @@ let
             set +e
             ${netlify} api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
             auth_user_exit="$?"
-            ${netlify} api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${siteId}\"}" >"$auth_site_file" 2>/dev/null
-            auth_site_exit="$?"
+            if [ -n "${if siteId != null then siteId else ""}" ]; then
+              ${netlify} api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${if siteId != null then siteId else ""}\"}" >"$auth_site_file" 2>/dev/null
+              auth_site_exit="$?"
+            else
+              auth_site_exit=1
+            fi
             set -e
 
             if [ "$auth_user_exit" -eq 0 ]; then
@@ -148,9 +167,9 @@ let
             if [ "$auth_site_exit" -eq 0 ]; then
               resolved_account_slug="$(${pkgs.jq}/bin/jq -r '.account_slug // "unknown"' "$auth_site_file")"
               resolved_site_name="$(${pkgs.jq}/bin/jq -r '.name // "unknown"' "$auth_site_file")"
-              echo "  getSite(${siteId}): ok (site=''${resolved_site_name}, account=''${resolved_account_slug})" >&2
+              echo "  getSite(${if siteId != null then siteId else "site-id-unset"}): ok (site=''${resolved_site_name}, account=''${resolved_account_slug})" >&2
             else
-              echo "  getSite(${siteId}): failed" >&2
+              echo "  getSite: skipped or failed (no siteId configured)" >&2
             fi
           fi
 
@@ -173,12 +192,12 @@ let
         deploy_url_from_json="$(${pkgs.jq}/bin/jq -r '.deploy_url' "$deploy_json_file")"
 
         if [ -z "$resolved_site_name" ] || [ "$resolved_site_name" = "null" ]; then
-          resolved_site_name="${siteName}"
+          resolved_site_name="${resolvedSiteName}"
         fi
 
         raw_deploy_url="https://$deploy_id--$resolved_site_name.netlify.app"
         if [ -n "$alias_name" ]; then
-          final_url="https://$alias_name--${siteName}.netlify.app"
+          final_url="https://$alias_name--${resolvedSiteName}.netlify.app"
         else
           final_url="$deploy_url_from_json"
         fi
