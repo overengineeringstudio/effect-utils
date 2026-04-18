@@ -147,7 +147,7 @@ describe('ci workflow pnpm cache defaults', () => {
 
   it('resolves the locked megarepo CLI through a git flake URL', () => {
     expect(applyMegarepoLockStepSource).toContain(
-      'nix run "git+https://github.com/overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
+      'nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo"',
     )
     expect(applyMegarepoLockStepSource).not.toContain(
       'nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
