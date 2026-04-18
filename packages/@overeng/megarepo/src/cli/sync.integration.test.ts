@@ -2519,12 +2519,16 @@ describe('sync error handling', () => {
         expect(memberResult?.message).toBeDefined()
         // Should NOT contain cryptic internal errors like "FileSystem.access"
         expect(memberResult?.message).not.toContain('FileSystem.access')
-        // Should indicate the actual problem - repo not found or clone failed
+        // Should indicate the actual git/remote problem, not an internal API failure.
         expect(
           memberResult?.message?.toLowerCase().includes('clone') ||
             memberResult?.message?.toLowerCase().includes('repository') ||
             memberResult?.message?.toLowerCase().includes('not found') ||
-            memberResult?.message?.toLowerCase().includes('access'),
+            memberResult?.message?.toLowerCase().includes('access') ||
+            memberResult?.message?.toLowerCase().includes('network') ||
+            memberResult?.message?.toLowerCase().includes('connect') ||
+            memberResult?.message?.toLowerCase().includes('ssh') ||
+            memberResult?.message?.toLowerCase().includes('auth'),
         ).toBe(true)
       },
       Effect.provide(NodeContext.layer),

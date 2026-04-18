@@ -558,6 +558,15 @@ export const jobLocalPnpmStore = '${{ runner.temp }}/pnpm-store/${{ github.job }
  */
 export const jobLocalPnpmStatePaths = [jobLocalPnpmHome, jobLocalPnpmStore].join('\n')
 
+/** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
+export const jobLocalCiDiagnosticsDir = '${{ runner.temp }}/ci-diagnostics/${{ github.job }}'
+
+/** Workspace-local cache root for mutable Nix client cache content on CI runners. */
+export const workspaceLocalNixCacheRoot = '${{ github.workspace }}/.ci-cache'
+
+/** Default Nix cache path restored/saved by the shared CI cache helpers. */
+export const workspaceLocalNixCachePath = `${workspaceLocalNixCacheRoot}/nix`
+
 /**
  * Export the canonical CI pnpm paths once so every later shell step shares the
  * same writable store and the same workspace-relative GVS projection.
@@ -570,6 +579,204 @@ export const pnpmStateSetupStep = {
     `echo "PNPM_HOME=${jobLocalPnpmHome}" >> "$GITHUB_ENV"`,
   ].join('\n'),
 } as const
+
+/**
+ * Export the canonical workspace-local Nix cache root so later steps share the
+ * same mutable client cache surface across one CI job.
+ */
+export const nixCacheSetupStep = {
+  name: 'Isolate nix cache',
+  shell: 'bash',
+  run: [
+    `mkdir -p "${workspaceLocalNixCachePath}"`,
+    `echo "XDG_CACHE_HOME=${workspaceLocalNixCacheRoot}" >> "$GITHUB_ENV"`,
+  ].join('\n'),
+} as const
+
+/**
+ * Export the job-local CI diagnostics directory once so later steps can
+ * collect runner pressure snapshots and install logs in one place.
+ */
+export const ciDiagnosticsSetupStep = {
+  name: 'Prepare CI diagnostics',
+  shell: 'bash',
+  run: `mkdir -p "${jobLocalCiDiagnosticsDir}"
+echo "CI_DIAGNOSTICS_DIR=${jobLocalCiDiagnosticsDir}" >> "$GITHUB_ENV"`,
+} as const
+
+const runnerPressureSnapshotScript = [
+  'set -euo pipefail',
+  'mkdir -p "$CI_DIAGNOSTICS_DIR"',
+  'pressure_file="$CI_DIAGNOSTICS_DIR/runner-pressure.txt"',
+  '{',
+  '  echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"',
+  '  echo "runner_name=${RUNNER_NAME:-unknown}"',
+  '  echo "runner_os=${RUNNER_OS:-unknown}"',
+  '  echo "runner_arch=${RUNNER_ARCH:-unknown}"',
+  '  echo "github_job=${GITHUB_JOB:-unknown}"',
+  '  echo',
+  '  uptime',
+  '  echo',
+  '  if command -v free >/dev/null 2>&1; then',
+  '    free -h',
+  '  elif [ -r /proc/meminfo ]; then',
+  '    cat /proc/meminfo',
+  '  elif command -v vm_stat >/dev/null 2>&1; then',
+  '    vm_stat',
+  '    if command -v memory_pressure >/dev/null 2>&1; then',
+  '      echo',
+  '      memory_pressure || true',
+  '    fi',
+  '  else',
+  '    echo "memory stats unavailable on runner"',
+  '  fi',
+  '  echo',
+  '  if [ -r /proc/pressure/memory ]; then',
+  '    cat /proc/pressure/memory',
+  '  fi',
+  '  echo',
+  '  df -h /',
+  '  echo',
+  '  if command -v ps >/dev/null 2>&1; then',
+  '    if ps -eo pid,ppid,user,%cpu,%mem,etime,stat,comm --sort=-%cpu >/dev/null 2>&1; then',
+  '      ps -eo pid,ppid,user,%cpu,%mem,etime,stat,comm --sort=-%cpu | head -15',
+  '    else',
+  '      ps -axo pid,ppid,user,%cpu,%mem,etime,stat,comm -r | head -15',
+  '    fi',
+  '  else',
+  '    echo "ps unavailable on runner"',
+  '  fi',
+  '} | tee "$pressure_file"',
+  'if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then',
+  '  {',
+  '    echo "### Runner pressure"',
+  '    echo ""',
+  '    echo "```text"',
+  '    tail -20 "$pressure_file"',
+  '    echo "```"',
+  '  } >> "$GITHUB_STEP_SUMMARY"',
+  'fi',
+].join('\n')
+
+/**
+ * Capture a quick runner pressure snapshot before the install starts.
+ *
+ * This does not fail the job. It gives the later failure summary and artifact
+ * enough context to tell whether pnpm timed out under host pressure.
+ */
+export const captureRunnerPressureStep = {
+  name: 'Capture runner pressure',
+  shell: 'bash',
+  run: runnerPressureSnapshotScript,
+} as const
+
+const pnpmInstallFailureSummaryScript = [
+  'classify_pnpm_failure() {',
+  '  local log_file="$1"',
+  '  local signature="unknown"',
+  '  local evidence=""',
+  '  if grep -Eq "ERR_PNPM_META_FETCH_FAIL|ERR_PNPM_FETCH_FAIL|Socket timeout|ECONNRESET|EAI_AGAIN" "$log_file"; then',
+  '    signature="registry/network fetch"',
+  '    evidence="$(grep -Em1 \x27ERR_PNPM_META_FETCH_FAIL|ERR_PNPM_FETCH_FAIL|Socket timeout|ECONNRESET|EAI_AGAIN\x27 "$log_file" || true)"',
+  '  elif grep -Eq "ERR_PNPM_WORKSPACE_PKG_NOT_FOUND" "$log_file"; then',
+  '    signature="workspace package mismatch"',
+  '    evidence="$(grep -Em1 \x27ERR_PNPM_WORKSPACE_PKG_NOT_FOUND\x27 "$log_file" || true)"',
+  '  fi',
+  '  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then',
+  '    {',
+  '      echo "### pnpm install failed"',
+  '      echo ""',
+  '      echo "- Classification: $signature"',
+  '      echo "- Evidence: \\`$evidence\\`"',
+  '      echo "- Log artifact: \\`$CI_DIAGNOSTICS_DIR/pnpm-install.log\\`"',
+  '      echo ""',
+  '      echo "```text"',
+  '      tail -80 "$log_file"',
+  '      echo "```"',
+  '    } >> "$GITHUB_STEP_SUMMARY"',
+  '  fi',
+  '  echo "::warning::pnpm install failed ($signature); see $CI_DIAGNOSTICS_DIR/pnpm-install.log"',
+  '}',
+].join('\n')
+
+/**
+ * Run the repo-root pnpm install while teeing the full log to the diagnostics
+ * directory and summarizing failures in the job output.
+ */
+export const pnpmInstallWithDiagnosticsStep = {
+  name: 'Install pnpm dependencies',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'mkdir -p "$CI_DIAGNOSTICS_DIR"',
+    'log_file="$CI_DIAGNOSTICS_DIR/pnpm-install.log"',
+    'set +e',
+    '(',
+    runDevenvTasksBefore('pnpm:install'),
+    ') 2>&1 | tee "$log_file"',
+    'rc=${PIPESTATUS[0]}',
+    'set -e',
+    'if [ "$rc" -ne 0 ]; then',
+    pnpmInstallFailureSummaryScript,
+    '  classify_pnpm_failure "$log_file"',
+    'fi',
+    'exit "$rc"',
+  ].join('\n'),
+} as const
+
+const nixCachePrimaryKey = (keyPrefix: string, hashFilesExpression: string) =>
+  `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
+
+/**
+ * Restore the shared workspace-local Nix cache before expensive eval/build work.
+ *
+ * The default cache authority keys off the lockfiles that affect Nix inputs and
+ * repo composition. Consumers can override the key prefix or hash expression
+ * when a narrower surface is more appropriate.
+ */
+export const restoreNixCacheStep = (opts?: {
+  keyPrefix?: string
+  stepId?: string
+  path?: string
+  hashFilesExpression?: string
+}) => {
+  const keyPrefix = opts?.keyPrefix ?? 'nix-cache-v1'
+  const path = opts?.path ?? workspaceLocalNixCachePath
+  const hashFilesExpression =
+    opts?.hashFilesExpression ?? "${{ hashFiles('devenv.lock', 'flake.lock', 'megarepo.lock') }}"
+
+  return {
+    id: opts?.stepId ?? 'restore-nix-cache',
+    name: 'Restore nix cache',
+    uses: 'actions/cache/restore@v4' as const,
+    with: {
+      path,
+      key: nixCachePrimaryKey(keyPrefix, hashFilesExpression),
+      'restore-keys': `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-`,
+    },
+  }
+}
+
+/**
+ * Save the shared workspace-local Nix cache after the main task graph runs.
+ *
+ * Reuses the primary key emitted by the restore step so the save path stays
+ * aligned with the exact cache authority evaluated earlier in the job.
+ */
+export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string }) => {
+  const restoreStepId = opts?.restoreStepId ?? 'restore-nix-cache'
+  const path = opts?.path ?? workspaceLocalNixCachePath
+
+  return {
+    name: 'Save nix cache',
+    if: `\${{ always() && steps.${restoreStepId}.outputs.cache-primary-key != '' }}`,
+    uses: 'actions/cache/save@v4' as const,
+    with: {
+      path,
+      key: `\${{ steps.${restoreStepId}.outputs.cache-primary-key }}`,
+    },
+  }
+}
 
 const pnpmStateCachePrimaryKey = (keyPrefix: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${"${{ hashFiles('**/pnpm-lock.yaml') }}"}`
@@ -632,6 +839,68 @@ export const savePnpmStateStep = (opts?: {
     },
   }
 }
+
+/**
+ * Shared self-hosted CI setup for repos that prepare a devenv workspace,
+ * restore warmed mutable state, and run `pnpm:install` before the main task.
+ *
+ * This composes the existing step atoms into one standard contract so
+ * downstream repos can delete local workflow glue instead of reassembling the
+ * same Nix/pnpm/diagnostics sequence by hand.
+ */
+export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
+  checkout?: Parameters<typeof checkoutStep>[0]
+  installNix?: Parameters<typeof installNixStep>[0]
+  restoreNixCache?: Parameters<typeof restoreNixCacheStep>[0]
+  applyMegarepoLock?: false | Parameters<typeof applyMegarepoLockStep>[0]
+  restorePnpmState?: Parameters<typeof restorePnpmStateStep>[0]
+  includeDiagnostics?: boolean
+}) =>
+  [
+    checkoutStep(opts?.checkout),
+    installNixStep(opts?.installNix),
+    preparePinnedDevenvStep,
+    nixCacheSetupStep,
+    restoreNixCacheStep(opts?.restoreNixCache),
+    validateNixStoreStep,
+    ...(opts?.applyMegarepoLock === false ? [] : [applyMegarepoLockStep(opts?.applyMegarepoLock)]),
+    pnpmStateSetupStep,
+    ciDiagnosticsSetupStep,
+    ...(opts?.includeDiagnostics === false ? [] : [captureRunnerPressureStep]),
+    restorePnpmStateStep(opts?.restorePnpmState),
+    pnpmInstallWithDiagnosticsStep,
+  ] as const
+
+/**
+ * Shared self-hosted CI tail for repos that save warmed mutable state and keep
+ * pnpm / runner diagnostics attached to the finished job.
+ */
+export const standardSelfHostedPnpmCiPostSteps = (opts?: {
+  savePnpmState?: Parameters<typeof savePnpmStateStep>[0]
+  saveNixCache?: Parameters<typeof saveNixCacheStep>[0]
+  includeDiagnosticsArtifact?: boolean
+}) =>
+  [
+    savePnpmStateStep(opts?.savePnpmState),
+    saveNixCacheStep(opts?.saveNixCache),
+    ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
+  ] as const
+
+/**
+ * Upload CI diagnostics captured during the pnpm install / runner-pressure
+ * steps as a single artifact on failure.
+ */
+export const ciDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?: number }) => ({
+  name: 'Upload CI diagnostics artifact',
+  if: opts?.if ?? "failure() && env.CI_DIAGNOSTICS_DIR != ''",
+  uses: 'actions/upload-artifact@v4' as const,
+  with: {
+    name: 'ci-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+    path: '${{ env.CI_DIAGNOSTICS_DIR }}',
+    'if-no-files-found': 'ignore',
+    'retention-days': opts?.retentionDays ?? 14,
+  },
+})
 
 /**
  * Validate exported pnpm fixed-output derivations by realizing them (which
@@ -851,7 +1120,7 @@ DEVENV_BIN="$DEVENV_OUT/bin/devenv"
 if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
   echo "::warning::devenv store path invalid, repairing targeted path..."
   nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
-  rm -rf ~/.cache/nix/eval-cache-*
+  rm -rf "${'${XDG_CACHE_HOME:-$HOME/.cache}'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*
   if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
     echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
     tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true

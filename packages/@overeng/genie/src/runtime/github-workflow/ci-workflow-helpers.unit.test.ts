@@ -21,6 +21,13 @@ const nixGcRaceRetryScriptSource = readFileSync(
   ),
   'utf8',
 )
+const netlifyTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'netlify.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 const extractSourceBlock = (source: string, startMarker: string, endMarker: string) => {
   const start = source.indexOf(startMarker)
@@ -48,6 +55,24 @@ const coldFreshBuildSource = extractSourceBlock(
   '/**\n * Guard the pnpm dependency-prep contract against regressions that would',
 )
 
+const restorePnpmStateStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const restorePnpmStateStep = (opts?: {',
+  '/**\n * Save the job-local pnpm state after the main task graph runs.',
+)
+
+const validateNixStoreStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const validateNixStoreStep = {',
+  '/**\n * Upload diagnostics captured by `validateNixStoreStep` as a CI artifact.',
+)
+
+const applyMegarepoLockStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
+  '/**\n * Resolve the devenv binary and do a fast store-path validity check.',
+)
+
 describe('ci workflow retry helpers', () => {
   it('sources the retry helper from a checked-in shell script', () => {
     expect(ciWorkflowSource).toContain('./ci-scripts/nix-gc-race-retry.sh')
@@ -73,9 +98,11 @@ describe('ci workflow pnpm cache defaults', () => {
   })
 
   it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
-    expect(ciWorkflowSource).toContain("const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'")
-    expect(ciWorkflowSource).toContain("name: 'Restore pnpm state'")
-    expect(ciWorkflowSource).not.toContain("'restore-keys':")
+    expect(restorePnpmStateStepSource).toContain(
+      "const keyPrefix = opts?.keyPrefix ?? 'pnpm-state-v1'",
+    )
+    expect(restorePnpmStateStepSource).toContain("name: 'Restore pnpm state'")
+    expect(restorePnpmStateStepSource).not.toContain("'restore-keys':")
   })
 
   it('only saves pnpm state after prior steps succeed', () => {
@@ -110,6 +137,28 @@ describe('ci workflow pnpm cache defaults', () => {
   it('keeps the diagnostics summary portable', () => {
     expect(generatedWorkflowSource).toContain('head -n 120 "$markers_file"')
     expect(generatedWorkflowSource).not.toContain('sed -n "1,120p" "$markers_file"')
+  })
+
+  it('captures process snapshots without leaking full argv', () => {
+    expect(ciWorkflowSource).toContain('stat,comm --sort=-%cpu')
+    expect(ciWorkflowSource).toContain('stat,comm -r | head -15')
+    expect(ciWorkflowSource).not.toContain('stat,command --sort=-%cpu')
+    expect(ciWorkflowSource).not.toContain('stat,command -r | head -15')
+  })
+
+  it('purges nix eval cache from the active XDG cache root during repair', () => {
+    expect(validateNixStoreStepSource).toContain(
+      'rm -rf "${\'${XDG_CACHE_HOME:-$HOME/.cache}\'}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*',
+    )
+  })
+
+  it('resolves the locked megarepo CLI through a git flake URL', () => {
+    expect(applyMegarepoLockStepSource).toContain(
+      'nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo"',
+    )
+    expect(applyMegarepoLockStepSource).not.toContain(
+      'nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
+    )
   })
 })
 
@@ -159,6 +208,11 @@ describe('ci workflow shared auth helpers', () => {
   it('pins the shared CI actions to the Node-24-safe majors', () => {
     expect(ciWorkflowSource).toContain("uses: 'actions/checkout@v6' as const")
     expect(ciWorkflowSource).toContain("uses: 'cachix/cachix-action@v17' as const")
+  })
+
+  it('uses the Nix-provided Netlify CLI for parallel deploy safety', () => {
+    expect(netlifyTaskModuleSource).toContain('netlify = "${pkgs.netlify-cli}/bin/netlify";')
+    expect(netlifyTaskModuleSource).not.toContain('bunx netlify-cli@24.11.3')
   })
 
   it('lets Vercel deploy jobs decorate the deploy run step', () => {
