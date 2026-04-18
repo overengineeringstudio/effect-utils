@@ -105,7 +105,6 @@
       in
       {
         packages = cliPackages // {
-          beads = import ./nix/beads.nix { inherit pkgs; };
           cli-build-stamp = cliBuildStamp.package;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           genie-dirty = cliPackagesDirty.genie;
@@ -127,6 +126,7 @@
           oxlint-with-plugins = import ./nix/oxlint-with-plugins.nix {
             inherit pkgs oxlintNpm;
           };
+        };
         };
 
         # Direnv helper for comparing expected CLI outputs to PATH entries.
@@ -177,7 +177,6 @@
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
           nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
-          beads = import ./nix/devenv-modules/tasks/shared/beads.nix;
           # Prevent commits on default branch and optionally enforce worktree-only workflow
           worktree-guard = import ./nix/devenv-modules/tasks/shared/worktree-guard.nix;
           # Note: local/ directory contains effect-utils specific tasks (not exported)
@@ -234,9 +233,6 @@
           oxlintNpm,
         }:
         import ./nix/oxlint-with-plugins.nix { inherit pkgs oxlintNpm; };
-
-      # Usage: effectUtils.lib.mkBeads { inherit pkgs; }
-      lib.mkBeads = { pkgs }: import ./nix/beads.nix { inherit pkgs; };
 
       # Pinned pnpm for the entire megarepo ecosystem.
       # Usage: effectUtils.lib.mkPnpm { inherit pkgs; }
