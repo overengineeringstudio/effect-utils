@@ -391,6 +391,37 @@ let
     else
       "";
 
+  copyPackageJsonCmd =
+    {
+      relPath,
+      stripDevDependencies ? false,
+    }:
+    let
+      srcPath = absoluteFileSourcePathFor relPath;
+      srcPathArg = lib.escapeShellArg (toString srcPath);
+      relPathArg = lib.escapeShellArg relPath;
+      maybeStripDevDependencies =
+        if stripDevDependencies then
+          "delete packageJson.devDependencies;"
+        else
+          "";
+    in
+    ''
+      target_package_json=${relPathArg}
+      mkdir -p "$out/$(dirname "$target_package_json")"
+      TARGET_PACKAGE_JSON="$out/$target_package_json" ${pkgs.nodejs}/bin/node <<'NODE'
+      const fs = require("fs");
+
+      const packageJsonPath = ${srcPathArg};
+      const targetPath = process.env.TARGET_PACKAGE_JSON;
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+      ${maybeStripDevDependencies}
+
+      fs.writeFileSync(targetPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+      NODE
+    '';
+
   writeWorkspaceYamlCmd =
     installDir: workspaceYaml:
     let
@@ -495,13 +526,22 @@ let
     builtins.concatStringsSep "\n" (map copyOnePatch patchPaths);
 
   stageExternalInstallRootManifestOnlyCmd =
-    root:
+    {
+      root,
+      stripMemberDevDependencies ? false,
+    }:
     builtins.concatStringsSep "\n" (
       (map (file: copyFileCmd (installRootScopedPath root.installDir file)) rootWorkspaceFiles)
       ++ (map (
         file: copyOptionalFileCmd (installRootScopedPath root.installDir file)
       ) optionalRootWorkspaceFiles)
-      ++ (map (dir: copyFileCmd "${dir}/package.json") (
+      ++ (map (
+        dir:
+        copyPackageJsonCmd {
+          relPath = "${dir}/package.json";
+          stripDevDependencies = stripMemberDevDependencies;
+        }
+      ) (
         builtins.filter (dir: dir != root.installDir) root.memberDirs
       ))
       ++ [
@@ -534,7 +574,18 @@ let
       workspaceYamlContent = rootPnpmWorkspaceYaml;
       targetPrefix = "";
     }
-    + builtins.concatStringsSep "\n" (map stageExternalInstallRootManifestOnlyCmd externalInstallRoots)
+    # The aggregate root only needs external member identity/runtime metadata so
+    # pnpm preserves workspace links. Nested-root devDependencies stay owned by
+    # the nested install root and should not invalidate the aggregate lockfile.
+    + builtins.concatStringsSep "\n" (
+      map (
+        root:
+        stageExternalInstallRootManifestOnlyCmd {
+          inherit root;
+          stripMemberDevDependencies = true;
+        }
+      ) externalInstallRoots
+    )
   );
 
   # Each external install root gets its own manifest-only derivation and its
@@ -550,7 +601,7 @@ let
           set -euo pipefail
           mkdir -p "$out"
         ''
-        + stageExternalInstallRootManifestOnlyCmd root
+        + stageExternalInstallRootManifestOnlyCmd { inherit root; }
       );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
