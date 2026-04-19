@@ -1,4 +1,12 @@
-export { createNotionRoot, NotionReconciler, type Container } from './host-config.ts'
+export {
+  createNotionRoot,
+  NotionReconciler,
+  walkInstances,
+  blockChildren,
+  projectProps,
+  type Container,
+  type Instance,
+} from './host-config.ts'
 export { OpBuffer, type Op } from './op-buffer.ts'
 export {
   flattenRichText,
@@ -12,6 +20,16 @@ export { blockKey } from './keys.ts'
 export { NotionSyncError, CacheError } from './errors.ts'
 export { renderToNotion, collectOps, type SyncResult } from './render-to-notion.ts'
 export { sync } from './sync.ts'
+export {
+  buildCandidateTree,
+  candidateToCache,
+  diff,
+  stableStringify,
+  tallyDiff,
+  type CandidateNode,
+  type CandidateTree,
+  type DiffOp,
+} from './sync-diff.ts'
 export {
   UploadRegistryProvider,
   useNotionUpload,

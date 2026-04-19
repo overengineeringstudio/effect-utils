@@ -7,10 +7,11 @@ import type { BlockType } from '@overeng/notion-effect-schema'
 import { flattenRichText } from './flatten-rich-text.ts'
 import type { OpBuffer } from './op-buffer.ts'
 
-type Instance = {
+export type Instance = {
   type: BlockType | 'raw'
   props: Record<string, unknown>
   id: string | null
+  blockKey: string | undefined
   parent: Instance | null
   children: (Instance | TextInstance)[]
   rootContainer: Container
@@ -22,10 +23,14 @@ type TextInstance = {
   parent: Instance | null
 }
 
-/** Container driven by the reconciler. */
+/**
+ * Container driven by the reconciler. `topLevel` tracks root-level children in
+ * commit order so we can reconstruct the rendered tree shape after a commit.
+ */
 export type Container = {
   readonly rootId: string
   readonly buffer: OpBuffer
+  readonly topLevel: Instance[]
 }
 
 /**
@@ -95,6 +100,8 @@ const blockProps = (
   if (type === 'raw') {
     return { content: props.content }
   }
+  // `blockKey` is a renderer-level identity hint, never part of the
+  // projected Notion payload — exclude it from diff hashing.
   const p: Record<string, unknown> = {}
   if (TEXT_LEAF.has(type)) {
     p.rich_text = flattenRichText(props.children as ReactNode)
@@ -194,7 +201,15 @@ const hostConfig: any = {
     type: BlockType | 'raw',
     props: Record<string, unknown>,
     rootContainer: Container,
-  ): Instance => ({ type, props, id: null, parent: null, children: [], rootContainer }),
+  ): Instance => ({
+    type,
+    props,
+    id: null,
+    blockKey: typeof props.blockKey === 'string' ? props.blockKey : undefined,
+    parent: null,
+    children: [],
+    rootContainer,
+  }),
 
   createTextInstance: (text: string): TextInstance => ({ kind: 'text', text, parent: null }),
 
@@ -212,6 +227,7 @@ const hostConfig: any = {
       blockProps(child.type, child.props),
     )
     child.id = id
+    container.topLevel.push(child)
     commitChildren(child, container)
   },
 
@@ -266,6 +282,9 @@ const hostConfig: any = {
       beforeChild.id,
     )
     child.id = id
+    const idx = container.topLevel.indexOf(beforeChild)
+    if (idx >= 0) container.topLevel.splice(idx, 0, child)
+    else container.topLevel.push(child)
     commitChildren(child, container)
   },
 
@@ -278,6 +297,8 @@ const hostConfig: any = {
   removeChildFromContainer: (container: Container, child: Instance) => {
     if ('kind' in (child as unknown as { kind?: string })) return
     if (child.id != null) container.buffer.remove(child.id)
+    const idx = container.topLevel.indexOf(child)
+    if (idx >= 0) container.topLevel.splice(idx, 1)
   },
 
   commitUpdate: (
@@ -310,7 +331,7 @@ export const NotionReconciler = (ReactReconciler as unknown as (config: any) => 
  * drive a synchronous commit; ops are appended to the buffer.
  */
 export const createNotionRoot = (buffer: OpBuffer, rootId: string) => {
-  const container: Container = { rootId, buffer }
+  const container: Container = { rootId, buffer, topLevel: [] }
   const root = NotionReconciler.createContainer(
     container,
     1,
@@ -331,3 +352,17 @@ export const createNotionRoot = (buffer: OpBuffer, rootId: string) => {
     },
   }
 }
+
+/**
+ * Walk the committed instance tree under `container`. Text children are
+ * skipped — they've already been projected into the parent's `rich_text`.
+ */
+export const walkInstances = (container: Container): readonly Instance[] => container.topLevel
+
+/** Access a block instance's nested block children (non-text). */
+export const blockChildren = (inst: Instance): readonly Instance[] =>
+  inst.children.filter((c): c is Instance => !('kind' in c))
+
+/** Access the Notion block-payload projection for a given instance. */
+export const projectProps = (inst: Instance): Record<string, unknown> =>
+  blockProps(inst.type, inst.props)

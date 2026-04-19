@@ -1,0 +1,316 @@
+import type { ReactNode } from 'react'
+
+import type { BlockType } from '@overeng/notion-effect-schema'
+
+import type { CacheNode, CacheTree } from '../cache/types.ts'
+import {
+  blockChildren,
+  createNotionRoot,
+  projectProps,
+  walkInstances,
+  type Instance,
+} from './host-config.ts'
+import { OpBuffer } from './op-buffer.ts'
+
+/**
+ * Rendered-but-not-yet-synced block. `blockId` starts unset; the sync driver
+ * fills it either from the cache (for matched nodes) or from Notion API
+ * responses (for new inserts/appends).
+ */
+export interface CandidateNode {
+  readonly key: string
+  readonly type: BlockType
+  readonly props: Record<string, unknown>
+  readonly hash: string
+  blockId: string | undefined
+  readonly children: CandidateNode[]
+}
+
+export interface CandidateTree {
+  readonly rootId: string
+  readonly children: CandidateNode[]
+}
+
+/** Stable-keyed JSON stringify (object keys sorted recursively). */
+export const stableStringify = (value: unknown): string => {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const entries = Object.keys(value as Record<string, unknown>)
+    .toSorted()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`)
+  return `{${entries.join(',')}}`
+}
+
+/** djb2 hash of the stable-stringified projected block payload. */
+const hashProps = (props: Record<string, unknown>): string => {
+  const s = stableStringify(props)
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0
+  return h.toString(16)
+}
+
+const instanceKey = (inst: Instance, index: number): string =>
+  inst.blockKey !== undefined ? `k:${inst.blockKey}` : `p:${index}`
+
+const instanceToCandidate = (inst: Instance, index: number): CandidateNode => {
+  const props = projectProps(inst)
+  return {
+    key: instanceKey(inst, index),
+    type: inst.type as BlockType,
+    props,
+    hash: hashProps(props),
+    blockId: undefined,
+    children: blockChildren(inst).map(instanceToCandidate),
+  }
+}
+
+/**
+ * Render `element` through the reconciler and extract the resulting tree
+ * shape. The OpBuffer produced during this render is discarded — callers
+ * derive ops by diffing against the cache, not by replaying the buffer.
+ */
+export const buildCandidateTree = (element: ReactNode, rootId: string): CandidateTree => {
+  const buffer = new OpBuffer(rootId)
+  const root = createNotionRoot(buffer, rootId)
+  root.render(element)
+  return {
+    rootId,
+    children: walkInstances(root.container).map(instanceToCandidate),
+  }
+}
+
+/**
+ * Normalized op-plan. `tmpId`s are placeholder identifiers the diff uses to
+ * wire up `after`/parent relationships across inserts that chain; they are
+ * resolved to real Notion block ids when the plan is applied.
+ */
+export type DiffOp =
+  | {
+      readonly kind: 'append'
+      readonly parent: string // parent blockId OR tmpId
+      readonly tmpId: string
+      readonly type: BlockType
+      readonly props: Record<string, unknown>
+      readonly candidate: CandidateNode
+    }
+  | {
+      readonly kind: 'insert'
+      readonly parent: string
+      readonly tmpId: string
+      readonly afterId: string // preceding sibling blockId or tmpId, or '' for head
+      readonly type: BlockType
+      readonly props: Record<string, unknown>
+      readonly candidate: CandidateNode
+    }
+  | {
+      readonly kind: 'update'
+      readonly blockId: string
+      readonly type: BlockType
+      readonly props: Record<string, unknown>
+    }
+  | { readonly kind: 'remove'; readonly blockId: string }
+
+/** Per-diff counter for tmpIds — reset at the top of `diff()`. */
+let tmpCounter = 0
+const nextTmp = (): string => {
+  tmpCounter += 1
+  return `tmp-diff-${tmpCounter}`
+}
+
+/**
+ * Compute indices of cache children that stay (matched in order) using LCS on
+ * keys. Returns a Set of cache-indices that are retained.
+ */
+const retainedCacheIndices = (
+  cacheChildren: readonly CacheNode[],
+  candidateChildren: readonly CandidateNode[],
+): Set<number> => {
+  const m = cacheChildren.length
+  const n = candidateChildren.length
+  // dp[i][j] = LCS length matching cache[..i], candidate[..j]
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    Array.from<number>({ length: n + 1 }).fill(0),
+  )
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (cacheChildren[i - 1]!.key === candidateChildren[j - 1]!.key) {
+        dp[i]![j] = dp[i - 1]![j - 1]! + 1
+      } else {
+        dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!)
+      }
+    }
+  }
+  const retained = new Set<number>()
+  let i = m
+  let j = n
+  while (i > 0 && j > 0) {
+    if (cacheChildren[i - 1]!.key === candidateChildren[j - 1]!.key) {
+      retained.add(i - 1)
+      i -= 1
+      j -= 1
+    } else if (dp[i - 1]![j]! >= dp[i]![j - 1]!) {
+      i -= 1
+    } else {
+      j -= 1
+    }
+  }
+  return retained
+}
+
+const diffChildren = (
+  parentId: string, // blockId or tmpId of the parent
+  cacheChildren: readonly CacheNode[],
+  candidateChildren: CandidateNode[],
+  ops: DiffOp[],
+): void => {
+  // Identify which cache children survive (order-preserving LCS match).
+  const retainedCache = retainedCacheIndices(cacheChildren, candidateChildren)
+  const retainedKeys = new Set<string>()
+  for (const idx of retainedCache) retainedKeys.add(cacheChildren[idx]!.key)
+
+  const cacheByKey = new Map<string, CacheNode>()
+  for (const c of cacheChildren) cacheByKey.set(c.key, c)
+
+  // Precompute, for each candidate index, whether any later candidate is
+  // retained. A new candidate can safely become an `append` iff no retained
+  // candidate sits after it — otherwise Notion's server-side tail-append
+  // would place it in the wrong position.
+  const hasRetainedAfter = Array.from<boolean>({ length: candidateChildren.length }).fill(false)
+  {
+    let seen = false
+    for (let i = candidateChildren.length - 1; i >= 0; i--) {
+      hasRetainedAfter[i] = seen
+      if (retainedKeys.has(candidateChildren[i]!.key)) seen = true
+    }
+  }
+
+  // Emit inserts/updates in candidate order. `prevRef` anchors inserts.
+  let prevRef = ''
+  for (let i = 0; i < candidateChildren.length; i++) {
+    const cand = candidateChildren[i]!
+    if (retainedKeys.has(cand.key)) {
+      // Matched and in-order — reuse blockId.
+      const prior = cacheByKey.get(cand.key)!
+      cand.blockId = prior.blockId
+      if (prior.hash !== cand.hash) {
+        ops.push({
+          kind: 'update',
+          blockId: prior.blockId,
+          type: cand.type,
+          props: cand.props,
+        })
+      }
+      diffChildren(prior.blockId, prior.children, cand.children, ops)
+      prevRef = prior.blockId
+    } else {
+      // Either brand-new OR a reorder (key exists in cache but not retained).
+      // Both cases: emit insert/append of a new block; the stale one is
+      // removed below.
+      const tmpId = nextTmp()
+      if (!hasRetainedAfter[i]) {
+        // No retained sibling follows — plain tail append is correct.
+        ops.push({
+          kind: 'append',
+          parent: parentId,
+          tmpId,
+          type: cand.type,
+          props: cand.props,
+          candidate: cand,
+        })
+      } else {
+        ops.push({
+          kind: 'insert',
+          parent: parentId,
+          tmpId,
+          afterId: prevRef,
+          type: cand.type,
+          props: cand.props,
+          candidate: cand,
+        })
+      }
+      cand.blockId = tmpId
+      emitAppendsForNew(tmpId, cand.children, ops)
+      prevRef = tmpId
+    }
+  }
+
+  // Removes for cached children not retained (either deleted outright or
+  // reordered — Notion has no move API; reorder = remove + re-insert).
+  for (const c of cacheChildren) {
+    if (!retainedKeys.has(c.key)) {
+      ops.push({ kind: 'remove', blockId: c.blockId })
+    }
+  }
+}
+
+/**
+ * For a brand-new candidate subtree, emit append ops for all descendants in
+ * pre-order. Parent refs chain via tmpIds.
+ */
+const emitAppendsForNew = (parentId: string, children: CandidateNode[], ops: DiffOp[]): void => {
+  for (const cand of children) {
+    const tmpId = nextTmp()
+    ops.push({
+      kind: 'append',
+      parent: parentId,
+      tmpId,
+      type: cand.type,
+      props: cand.props,
+      candidate: cand,
+    })
+    cand.blockId = tmpId
+    emitAppendsForNew(tmpId, cand.children, ops)
+  }
+}
+
+/**
+ * Compute the minimum op plan to reconcile `cache` -> `candidate`. The
+ * returned ops are ordered so appends/inserts precede removes within a
+ * parent.
+ */
+export const diff = (cache: CacheTree, candidate: CandidateTree): DiffOp[] => {
+  tmpCounter = 0
+  const ops: DiffOp[] = []
+  diffChildren(candidate.rootId, cache.children, candidate.children, ops)
+  return ops
+}
+
+/**
+ * Convert a materialized CandidateTree into a CacheTree snapshot. All
+ * candidate `blockId`s must be resolved (no tmpIds) by the time this is
+ * called.
+ */
+const candidateNodeToCacheNode = (cand: CandidateNode): CacheNode => {
+  if (cand.blockId === undefined || cand.blockId.startsWith('tmp-')) {
+    // Defensive: should not happen after a successful apply.
+    throw new Error(`candidateToCache: unresolved blockId for key=${cand.key}`)
+  }
+  return {
+    key: cand.key,
+    blockId: cand.blockId,
+    hash: cand.hash,
+    children: cand.children.map(candidateNodeToCacheNode),
+  }
+}
+
+export const candidateToCache = (candidate: CandidateTree, schemaVersion: number): CacheTree => ({
+  schemaVersion,
+  rootId: candidate.rootId,
+  children: candidate.children.map(candidateNodeToCacheNode),
+})
+
+export const tallyDiff = (
+  ops: readonly DiffOp[],
+): { appends: number; updates: number; inserts: number; removes: number } => {
+  let appends = 0
+  let updates = 0
+  let inserts = 0
+  let removes = 0
+  for (const op of ops) {
+    if (op.kind === 'append') appends += 1
+    else if (op.kind === 'update') updates += 1
+    else if (op.kind === 'insert') inserts += 1
+    else removes += 1
+  }
+  return { appends, updates, inserts, removes }
+}
