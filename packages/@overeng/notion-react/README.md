@@ -159,6 +159,37 @@ the only error channel surfaced to callers. `SyncResult` carries a
 (`"cold-cache"`, `"schema-mismatch"`, …). See the
 [fallback table in spec.md](./context/vrs/spec.md#fallback-decision-table-r16).
 
+## Storybook preview (`@overeng/notion-react/web`)
+
+> **Preview surface — not a production Notion renderer.** DOM structure,
+> CSS hooks, and component props under `src/web/` may change without
+> deprecation. It exists so authors can iterate on block / inline
+> components visually in Storybook. It is **not** pixel-parity with
+> Notion, not an end-user renderer, and not an API-stable target. See
+> R21 + T05 in [`context/vrs/requirements.md`](./context/vrs/requirements.md).
+
+```bash
+pnpm --filter @overeng/notion-react storybook
+```
+
+The web mirrors share prop shapes with the Notion-host components via
+`src/components/props.ts` — drift between the two surfaces is a
+TypeScript error.
+
+### Non-goals
+
+Mirrors [`context/vrs/vision.md`](./context/vrs/vision.md) "What This Is Not":
+
+- Not a Notion editor
+- Not a collaborative renderer
+- Not a public-facing / SEO-friendly renderer
+- Not pixel-parity with Notion
+- Not an API-stable preview target (expect churn until v1.0)
+
+If you need a production Notion-styled web renderer, reach for
+`react-notion-x` or a dedicated package — don't depend on
+`@overeng/notion-react/web`.
+
 ## Further reading
 
 - Block + inline component reference: `src/components/`
