@@ -5,7 +5,7 @@ import ReactReconciler from 'react-reconciler'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
 import { flattenRichText } from './flatten-rich-text.ts'
-import { OpBuffer } from './op-buffer.ts'
+import type { OpBuffer } from './op-buffer.ts'
 
 type Instance = {
   type: BlockType | 'raw'
@@ -29,9 +29,15 @@ export type Container = {
 }
 
 /**
- * Block types whose body is a `rich_text[]` array derived from JSX children.
- * Children of these blocks are flattened via `flattenRichText` rather than
- * reconciled as fiber trees.
+ * Blocks whose JSX children are flattened to `rich_text[]`.
+ *
+ * `toggle` is intentionally excluded: its header text is provided via the
+ * `title` prop, and its `children` are nested blocks reconciled as fibers.
+ *
+ * For v0 other list-ish blocks (`bulleted_list_item`, `numbered_list_item`,
+ * `to_do`, `callout`, `quote`) also treat `children` as rich text; nesting
+ * further blocks inside them is not yet supported — it will be revisited
+ * together with the diffing algorithm.
  */
 const TEXT_LEAF = new Set<BlockType>([
   'paragraph',
@@ -45,16 +51,34 @@ const TEXT_LEAF = new Set<BlockType>([
   'bulleted_list_item',
   'numbered_list_item',
   'to_do',
-  'toggle',
   'table_row',
 ])
 
-const shallowEqual = (a: Record<string, unknown>, b: Record<string, unknown>): boolean => {
-  const ak = Object.keys(a)
-  const bk = Object.keys(b)
-  if (ak.length !== bk.length) return false
-  for (const k of ak) if (a[k] !== b[k]) return false
-  return true
+/**
+ * Structural equality for projected block-prop payloads. We need this (instead
+ * of reference equality) because `blockProps` re-builds arrays/objects on every
+ * render, so two semantically identical paragraphs would always appear to
+ * differ under `===`.
+ */
+const deepEqual = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true
+  if (a == null || b == null) return a === b
+  if (typeof a !== typeof b) return false
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false
+    return true
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const ao = a as Record<string, unknown>
+    const bo = b as Record<string, unknown>
+    const ak = Object.keys(ao)
+    const bk = Object.keys(bo)
+    if (ak.length !== bk.length) return false
+    for (const k of ak) if (!deepEqual(ao[k], bo[k])) return false
+    return true
+  }
+  return false
 }
 
 /**
@@ -64,7 +88,10 @@ const shallowEqual = (a: Record<string, unknown>, b: Record<string, unknown>): b
  * object but does NOT match the full Notion API schema for every block.
  * The sync driver is responsible for the final API body translation.
  */
-const blockProps = (type: BlockType | 'raw', props: Record<string, unknown>): Record<string, unknown> => {
+const blockProps = (
+  type: BlockType | 'raw',
+  props: Record<string, unknown>,
+): Record<string, unknown> => {
   if (type === 'raw') {
     return { content: props.content }
   }
@@ -77,7 +104,10 @@ const blockProps = (type: BlockType | 'raw', props: Record<string, unknown>): Re
   if (type === 'code' && typeof props.language === 'string') p.language = props.language
   if (type === 'callout' && typeof props.icon === 'string') p.icon = props.icon
   if (type === 'callout' && typeof props.color === 'string') p.color = props.color
-  if ((type === 'heading_1' || type === 'heading_2' || type === 'heading_3') && typeof props.toggleable === 'boolean') {
+  if (
+    (type === 'heading_1' || type === 'heading_2' || type === 'heading_3') &&
+    typeof props.toggleable === 'boolean'
+  ) {
     p.is_toggleable = props.toggleable
   }
   if (type === 'image' && typeof props.url === 'string') p.url = props.url
@@ -98,7 +128,11 @@ const commitChildren = (inst: Instance, container: Container): void => {
   for (const child of inst.children) {
     if ('kind' in child) continue
     if (child.id != null) continue
-    const id = container.buffer.append(inst.id, child.type as BlockType, blockProps(child.type, child.props))
+    const id = container.buffer.append(
+      inst.id,
+      child.type as BlockType,
+      blockProps(child.type, child.props),
+    )
     child.id = id
     commitChildren(child, container)
   }
@@ -172,7 +206,11 @@ const hostConfig: any = {
   finalizeInitialChildren: () => false,
 
   appendChildToContainer: (container: Container, child: Instance) => {
-    const id = container.buffer.append(container.rootId, child.type as BlockType, blockProps(child.type, child.props))
+    const id = container.buffer.append(
+      container.rootId,
+      child.type as BlockType,
+      blockProps(child.type, child.props),
+    )
     child.id = id
     commitChildren(child, container)
   },
@@ -188,14 +226,22 @@ const hostConfig: any = {
       child.parent = parent
       return
     }
-    const id = parent.rootContainer.buffer.append(parent.id, child.type as BlockType, blockProps(child.type, child.props))
+    const id = parent.rootContainer.buffer.append(
+      parent.id,
+      child.type as BlockType,
+      blockProps(child.type, child.props),
+    )
     child.id = id
     child.parent = parent
     parent.children.push(child)
     commitChildren(child, parent.rootContainer)
   },
 
-  insertBefore: (parent: Instance, child: Instance | TextInstance, beforeChild: Instance | TextInstance) => {
+  insertBefore: (
+    parent: Instance,
+    child: Instance | TextInstance,
+    beforeChild: Instance | TextInstance,
+  ) => {
     if ('kind' in child || 'kind' in beforeChild) return
     if (parent.id == null || beforeChild.id == null) return
     const id = parent.rootContainer.buffer.insertBefore(
@@ -243,7 +289,7 @@ const hostConfig: any = {
     instance.props = newProps
     const oldB = blockProps(type, oldProps)
     const newB = blockProps(type, newProps)
-    if (!shallowEqual(oldB, newB) && instance.id != null) {
+    if (!deepEqual(oldB, newB) && instance.id != null) {
       instance.rootContainer.buffer.update(instance.id, type as BlockType, newB)
     }
   },

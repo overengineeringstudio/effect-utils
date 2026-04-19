@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react'
-
 import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { ReactNode } from 'react'
 
 import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 
@@ -56,7 +55,9 @@ export const collectOps = (element: ReactNode, rootId: string): OpBuffer => {
 }
 
 /** Body payload for a block `append` op. */
-const appendBody = (op: Extract<Op, { kind: 'append' | 'insertBefore' }>): Record<string, unknown> => ({
+const appendBody = (
+  op: Extract<Op, { kind: 'append' | 'insertBefore' }>,
+): Record<string, unknown> => ({
   object: 'block',
   type: op.type,
   [op.type]: op.props,
@@ -110,13 +111,17 @@ export const renderToNotion = (
         }
         case 'update': {
           yield* NotionBlocks.update({ blockId: resolve(op.id), [op.type]: op.props }).pipe(
-            Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-update-failed', cause })),
+            Effect.mapError(
+              (cause) => new NotionSyncError({ reason: 'notion-update-failed', cause }),
+            ),
           )
           break
         }
         case 'remove': {
           yield* NotionBlocks.delete({ blockId: resolve(op.id) }).pipe(
-            Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-delete-failed', cause })),
+            Effect.mapError(
+              (cause) => new NotionSyncError({ reason: 'notion-delete-failed', cause }),
+            ),
           )
           break
         }

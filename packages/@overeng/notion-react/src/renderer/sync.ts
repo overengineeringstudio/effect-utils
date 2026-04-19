@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react'
-
 import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
+import type { ReactNode } from 'react'
 
 import type { NotionConfig } from '@overeng/notion-effect-client'
 
@@ -34,7 +33,6 @@ export const sync = (
       .pipe(Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })))
     return {
       ...result,
-      fallbackReason:
-        prior === undefined ? 'cold-cache' : 'delta-diff-not-implemented-v0',
+      fallbackReason: prior === undefined ? 'cold-cache' : 'delta-diff-not-implemented-v0',
     }
   })

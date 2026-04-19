@@ -1,6 +1,6 @@
-import { Effect, Schema } from 'effect'
+import { Schema, type Effect } from 'effect'
 
-import { CacheError } from '../renderer/errors.ts'
+import type { CacheError } from '../renderer/errors.ts'
 
 /** Current on-disk schema version. Bumping invalidates all cached trees. */
 export const CACHE_SCHEMA_VERSION = 1 as const

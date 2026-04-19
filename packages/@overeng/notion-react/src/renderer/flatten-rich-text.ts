@@ -51,20 +51,35 @@ export const INLINE_TAG = Symbol.for('@overeng/notion-react/inline')
 export type InlineTag =
   | { readonly kind: 'annotation'; readonly patch: Partial<Annotations> }
   | { readonly kind: 'link'; readonly url: string }
-  | { readonly kind: 'mention'; readonly mention: Record<string, unknown>; readonly plainText?: string }
+  | {
+      readonly kind: 'mention'
+      readonly mention: Record<string, unknown>
+      readonly plainText?: string
+    }
   | { readonly kind: 'equation'; readonly expression: string }
 
+/**
+ * Inline component brand. The tag may be a static value (e.g. Bold) or a
+ * function that derives the tag from the element's props (e.g. Link, Mention,
+ * InlineEquation).
+ */
 export type InlineComponent = ((props: { children?: ReactNode }) => ReactNode) & {
-  readonly [INLINE_TAG]: InlineTag
+  readonly [INLINE_TAG]: InlineTag | ((props: Record<string, unknown>) => InlineTag)
 }
 
 const isReactElement = (node: unknown): node is ReactElement<{ children?: ReactNode }> =>
-  typeof node === 'object' && node !== null && '$$typeof' in node && 'type' in node && 'props' in node
+  typeof node === 'object' &&
+  node !== null &&
+  '$$typeof' in node &&
+  'type' in node &&
+  'props' in node
 
 const getInlineTag = (el: ReactElement): InlineTag | undefined => {
   const type = el.type as unknown
   if (typeof type !== 'function') return undefined
-  return (type as Partial<InlineComponent>)[INLINE_TAG]
+  const raw = (type as Partial<InlineComponent>)[INLINE_TAG]
+  if (raw === undefined) return undefined
+  return typeof raw === 'function' ? raw(el.props as Record<string, unknown>) : raw
 }
 
 /**

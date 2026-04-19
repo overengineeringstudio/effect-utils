@@ -21,7 +21,8 @@ export const Paragraph = ({ children }: { readonly children?: ReactNode }) =>
   h('paragraph', null, children)
 
 type HeadingProps = { readonly children?: ReactNode; readonly toggleable?: boolean }
-const heading = (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
+const heading =
+  (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
   ({ children, toggleable }: HeadingProps) =>
     h(tag, toggleable === undefined ? null : { toggleable }, children)
 export const Heading1 = heading('heading_1')
@@ -34,14 +35,29 @@ export const BulletedListItem = ({ children }: { readonly children?: ReactNode }
 export const NumberedListItem = ({ children }: { readonly children?: ReactNode }) =>
   h('numbered_list_item', null, children)
 
-export const ToDo = ({ children, checked }: { readonly children?: ReactNode; readonly checked?: boolean }) =>
-  h('to_do', checked === undefined ? null : { checked }, children)
+export const ToDo = ({
+  children,
+  checked,
+}: {
+  readonly children?: ReactNode
+  readonly checked?: boolean
+}) => h('to_do', checked === undefined ? null : { checked }, children)
 
-export const Toggle = ({ children, title }: { readonly children?: ReactNode; readonly title?: string }) =>
-  h('toggle', title === undefined ? null : { title }, children)
+export const Toggle = ({
+  children,
+  title,
+}: {
+  readonly children?: ReactNode
+  readonly title?: string
+}) => h('toggle', title === undefined ? null : { title }, children)
 
-export const Code = ({ children, language }: { readonly children?: ReactNode; readonly language?: string }) =>
-  h('code', language === undefined ? null : { language }, children)
+export const Code = ({
+  children,
+  language,
+}: {
+  readonly children?: ReactNode
+  readonly language?: string
+}) => h('code', language === undefined ? null : { language }, children)
 
 export const Quote = ({ children }: { readonly children?: ReactNode }) => h('quote', null, children)
 
@@ -87,8 +103,7 @@ export const ColumnList = ({ children }: { readonly children?: ReactNode }) =>
   h('column_list', null, children)
 export const Column = ({ children }: { readonly children?: ReactNode }) =>
   h('column', null, children)
-export const LinkToPage = ({ pageId }: { readonly pageId: string }) =>
-  h('link_to_page', { pageId })
+export const LinkToPage = ({ pageId }: { readonly pageId: string }) => h('link_to_page', { pageId })
 export const TableOfContents = () => h('table_of_contents', null)
 export const ChildPage = ({ title }: { readonly title?: string }) =>
   h('child_page', title === undefined ? null : { title })

@@ -10,10 +10,28 @@ import type { BlockType } from '@overeng/notion-effect-schema'
  * subsequent `append` ops on the parent id.
  */
 export type Op =
-  | { readonly kind: 'append'; readonly parent: string; readonly id: string; readonly type: BlockType; readonly props: Record<string, unknown> }
-  | { readonly kind: 'insertBefore'; readonly parent: string; readonly id: string; readonly beforeId: string; readonly type: BlockType; readonly props: Record<string, unknown> }
+  | {
+      readonly kind: 'append'
+      readonly parent: string
+      readonly id: string
+      readonly type: BlockType
+      readonly props: Record<string, unknown>
+    }
+  | {
+      readonly kind: 'insertBefore'
+      readonly parent: string
+      readonly id: string
+      readonly beforeId: string
+      readonly type: BlockType
+      readonly props: Record<string, unknown>
+    }
   | { readonly kind: 'remove'; readonly id: string }
-  | { readonly kind: 'update'; readonly id: string; readonly type: BlockType; readonly props: Record<string, unknown> }
+  | {
+      readonly kind: 'update'
+      readonly id: string
+      readonly type: BlockType
+      readonly props: Record<string, unknown>
+    }
 
 /**
  * In-memory op buffer. Used by the reconciler as the host "container".
@@ -38,7 +56,12 @@ export class OpBuffer {
     return id
   }
 
-  insertBefore(parent: string, type: BlockType, props: Record<string, unknown>, beforeId: string): string {
+  insertBefore(
+    parent: string,
+    type: BlockType,
+    props: Record<string, unknown>,
+    beforeId: string,
+  ): string {
     const id = this.nextId()
     this.ops.push({ kind: 'insertBefore', parent, id, beforeId, type, props })
     return id
