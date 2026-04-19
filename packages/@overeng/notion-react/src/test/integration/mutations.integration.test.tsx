@@ -270,4 +270,109 @@ describe.skipIf(SKIP_INTEGRATION)('sync() mutation contract against live Notion'
       }),
     )
   }, 120_000)
+
+  it('stats text change → {updates: 1} on the top-level paragraph', async () => {
+    await withScratchPage('mutations-stats-change', (pageId) =>
+      Effect.gen(function* () {
+        const cache = InMemoryCache.make()
+        yield* sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+          pageId,
+          cache,
+        }).pipe(Effect.mapError((cause) => new Error(String(cause))))
+
+        // Only the stats line changes; sessions untouched.
+        const res = yield* sync(<DailyPage screenTime="5h 03m" apps={9} sessions={v1} />, {
+          pageId,
+          cache,
+        }).pipe(Effect.mapError((cause) => new Error(String(cause))))
+        expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+
+        const server = yield* readPageTree(pageId).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        )
+        const stats = server.find((b) => b.type === 'paragraph')
+        expect(stats).toBeDefined()
+        expect(plainText(stats!)).toBe('5h 03m · 9 apps')
+      }),
+    )
+  }, 120_000)
+
+  it('unkeyed mid-insert → degrades below min-ops but server state is still correct', async () => {
+    // Fixture variant: same DailyPage shape, but sessions render as unkeyed
+    // toggles. The diff falls back to positional matching, so inserting mid
+    // list can no longer be represented as a single tree insert. We assert
+    // the degradation is visible (>= 2 ops, not necessarily 2) and that
+    // the final server order still matches the rendered tree.
+    const UnkeyedDaily = ({ sessions }: { readonly sessions: readonly Session[] }) => (
+      <>
+        <Heading2>Stats</Heading2>
+        <Paragraph>unkeyed-stats</Paragraph>
+        {h('divider', null)}
+        <Heading2>Timeline</Heading2>
+        {sessions.map((s) => h('toggle', { title: s.title }, <Paragraph>{s.body}</Paragraph>))}
+      </>
+    )
+
+    await withScratchPage('mutations-unkeyed-insert-mid', (pageId) =>
+      Effect.gen(function* () {
+        const cache = InMemoryCache.make()
+        yield* sync(<UnkeyedDaily sessions={v1} />, { pageId, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        )
+
+        const v2: readonly Session[] = [
+          v1[0]!,
+          v1[1]!,
+          { id: 's2b', title: '10:30 Figma', body: 'design' },
+          v1[2]!,
+        ]
+        const res = yield* sync(<UnkeyedDaily sessions={v2} />, { pageId, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        )
+
+        const totalOps = res.appends + res.updates + res.inserts + res.removes
+        expect(totalOps).toBeGreaterThanOrEqual(2)
+        expect(res.removes).toBe(0) // positional match keeps old blocks, just rewrites tail.
+
+        const server = yield* readPageTree(pageId).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        )
+        const toggleTitles = server
+          .filter((b) => b.type === 'toggle')
+          .map((b) => {
+            const rt = (b.payload.rich_text ?? []) as readonly { plain_text?: string }[]
+            return rt[0]?.plain_text ?? ''
+          })
+        expect(toggleTitles).toEqual([
+          '09:00 Terminal',
+          '10:00 Browser',
+          '10:30 Figma',
+          '11:00 VSCode',
+        ])
+      }),
+    )
+  }, 120_000)
+
+  it('idempotency: repeated hot-cache resyncs stay at {0,0,0,0} with no fallback', async () => {
+    await withScratchPage('mutations-idempotency', (pageId) =>
+      Effect.gen(function* () {
+        const cache = InMemoryCache.make()
+        const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
+        const initial = yield* sync(tree, { pageId, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        )
+        expect(initial.fallbackReason).toBe('cold-cache')
+
+        // Three consecutive hot-cache resyncs must all be zero-op and must
+        // never regress to cold-cache (no fallback reason emitted).
+        for (let i = 0; i < 3; i++) {
+          const r = yield* sync(tree, { pageId, cache }).pipe(
+            Effect.mapError((cause) => new Error(String(cause))),
+          )
+          expect(r).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+          expect(r.fallbackReason).toBeUndefined()
+        }
+      }),
+    )
+  }, 180_000)
 })
