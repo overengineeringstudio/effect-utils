@@ -14,36 +14,23 @@
   max-width: 720px;
 }
 
-/* Toggleable headings are our abstraction (`<details><summary>` wrapping
-   an <h*>); upstream treats them as plain headings. */
-.notion-toggle-heading > summary {
-  cursor: pointer;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.notion-toggle-heading > summary,
-.notion-toggle > summary {
-  list-style: none;
-}
-.notion-toggle-heading > summary::-webkit-details-marker,
-.notion-toggle > summary::-webkit-details-marker {
-  display: none;
-}
-.notion-toggle-heading > summary::before,
-.notion-toggle > summary::before {
-  content: '▸';
-  color: var(--fg-color-3);
-  font-size: 0.8em;
-  transition: transform 120ms ease;
-  display: inline-block;
-}
-.notion-toggle-heading[open] > summary::before,
-.notion-toggle[open] > summary::before {
-  transform: rotate(90deg);
+/* Callout icon sizing — vendored CSS keys off `.notion-page-icon-inline`
+   inside `.notion-callout` but only when the parent is a real PageIcon.
+   We pass an emoji string so we need the box rules ourselves. */
+.notion-callout .notion-page-icon-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  font-size: 1.3em;
+  line-height: 1;
 }
 
-/* simple_table overflow wrapper — keeps wide tables scrollable. */
+/* simple_table overflow wrapper — keeps wide tables scrollable.
+   rnx wraps the table one level higher in their block tree; we don't
+   model that, so we keep this wrapper. */
 .notion-simple-table-wrap {
   overflow-x: auto;
   margin: 6px 0;
@@ -85,19 +72,13 @@
 }
 
 /* Stub blocks — upstream renders these via collection chrome we dropped. */
-.notion-toc {
-  color: var(--fg-color-3);
-  font-style: italic;
-  margin: 6px 0;
-}
 .notion-mention {
   color: var(--fg-color-3);
   background: var(--bg-color-1);
   padding: 0 4px;
   border-radius: 3px;
 }
-.notion-link-to-page,
-.notion-child-page {
+.notion-page-link {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
@@ -106,7 +87,6 @@
   padding: 2px 4px;
   border-radius: 3px;
 }
-.notion-link-to-page:hover,
-.notion-child-page:hover {
+.notion-page-link:hover {
   background: var(--bg-color-1);
 }

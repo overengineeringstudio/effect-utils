@@ -36,6 +36,10 @@ import type {
  * the app/Storybook root:
  *
  *     import '@overeng/notion-react/web/styles.css'
+ *
+ * DOM patterns mirror `react-notion-x@v7.10.0` (`packages/react-notion-x/src/
+ * block.tsx`) so the vendored CSS contract holds. See
+ * `context/notion-react-visual-parity/{analysis,design-decisions}.md`.
  */
 
 /**
@@ -52,44 +56,60 @@ export const Page = ({ children }: PageProps) => (
   </div>
 )
 
+// rnx renders `text` blocks as <div>, not <p> — keeps margin behavior consistent
+// with the rest of the block stack and matches the vendored CSS contract.
 export const Paragraph = ({ children }: ParagraphProps) => (
-  <p className="notion-text">{children}</p>
+  <div className="notion-text">{children}</div>
 )
 
 const headingClass = (level: 1 | 2 | 3 | 4) => `notion-h notion-h${level}`
 
-const Heading1Tag = ({ children }: { readonly children?: ReactNode }) => (
-  <h1 className={headingClass(1)}>{children}</h1>
-)
-const Heading2Tag = ({ children }: { readonly children?: ReactNode }) => (
-  <h2 className={headingClass(2)}>{children}</h2>
-)
-const Heading3Tag = ({ children }: { readonly children?: ReactNode }) => (
-  <h3 className={headingClass(3)}>{children}</h3>
-)
-const Heading4Tag = ({ children }: { readonly children?: ReactNode }) => (
-  <h4 className={headingClass(4)}>{children}</h4>
-)
+const HeadingTag = ({
+  level,
+  children,
+}: {
+  readonly level: 1 | 2 | 3 | 4
+  readonly children?: ReactNode
+}): ReactElement => {
+  const inner = <span className="notion-h-title">{children}</span>
+  switch (level) {
+    case 1:
+      return <h1 className={headingClass(1)}>{inner}</h1>
+    case 2:
+      return <h2 className={headingClass(2)}>{inner}</h2>
+    case 3:
+      return <h3 className={headingClass(3)}>{inner}</h3>
+    case 4:
+      return <h4 className={headingClass(4)}>{inner}</h4>
+  }
+}
 
-const withToggle =
-  (Tag: (p: { readonly children?: ReactNode }) => ReactElement, level: 1 | 2 | 3 | 4) =>
+/**
+ * Toggleable headings reuse the rnx `<details class="notion-toggle">` shape so
+ * vendored `.notion-toggle` styling applies. The header tag goes inside
+ * `<summary>`; nested children render in the body div, which rnx leaves
+ * unstyled aside from the indent rule `.notion-toggle > div { margin-left }`.
+ */
+const heading =
+  (level: 1 | 2 | 3 | 4) =>
   ({ children, toggleable }: HeadingProps) => {
     if (toggleable === true) {
       return (
-        <details className={`notion-toggle-heading notion-toggle-heading-${level}`}>
+        <details className="notion-toggle">
           <summary>
-            <Tag>{children}</Tag>
+            <HeadingTag level={level}>{children}</HeadingTag>
           </summary>
+          <div />
         </details>
       )
     }
-    return <Tag>{children}</Tag>
+    return <HeadingTag level={level}>{children}</HeadingTag>
   }
 
-export const Heading1 = withToggle(Heading1Tag, 1)
-export const Heading2 = withToggle(Heading2Tag, 2)
-export const Heading3 = withToggle(Heading3Tag, 3)
-export const Heading4 = withToggle(Heading4Tag, 4)
+export const Heading1 = heading(1)
+export const Heading2 = heading(2)
+export const Heading3 = heading(3)
+export const Heading4 = heading(4)
 
 export const BulletedListItem = ({ children }: BulletedListItemProps) => (
   <ul className="notion-list notion-list-disc">
@@ -103,19 +123,47 @@ export const NumberedListItem = ({ children }: NumberedListItemProps) => (
   </ol>
 )
 
-export const ToDo = ({ children, checked }: ToDoProps) => (
-  <div className={`notion-to-do${checked === true ? ' notion-to-do-checked' : ''}`}>
-    <div className="notion-to-do-item">
-      <input type="checkbox" checked={checked === true} readOnly aria-label="to-do" />
-      <div className="notion-to-do-body">{children}</div>
-    </div>
-  </div>
+/**
+ * SVG check icon copied from `react-notion-x/src/icons/check.tsx` (MIT,
+ * Travis Fischer). Inlined here — single use, avoids per-icon files.
+ */
+const CheckSvg = () => (
+  <svg viewBox="0 0 14 14">
+    <path d="M5.5 12L14 3.5 12.5 2l-7 7-4-4.003L0 6.499z" />
+  </svg>
 )
+
+/**
+ * To-do checkbox markup follows rnx (`block.tsx` case 'to_do' +
+ * `components/checkbox.tsx`): the strike-through lives on
+ * `.notion-to-do-body` so the checkbox stays visible.
+ */
+export const ToDo = ({ children, checked }: ToDoProps) => {
+  const isChecked = checked === true
+  return (
+    <div className="notion-to-do">
+      <div className="notion-to-do-item">
+        <span className="notion-property notion-property-checkbox">
+          {isChecked ? (
+            <div className="notion-property-checkbox-checked">
+              <CheckSvg />
+            </div>
+          ) : (
+            <div className="notion-property-checkbox-unchecked" />
+          )}
+        </span>
+        <div className={`notion-to-do-body${isChecked ? ' notion-to-do-checked' : ''}`}>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export const Toggle = ({ children, title }: ToggleProps) => (
   <details className="notion-toggle">
     <summary>{title ?? ''}</summary>
-    <div className="notion-toggle-body">{children}</div>
+    <div>{children}</div>
   </details>
 )
 
@@ -129,14 +177,16 @@ export const Quote = ({ children }: QuoteProps) => (
   <blockquote className="notion-quote">{children}</blockquote>
 )
 
+/**
+ * Callout follows rnx: `<div class="notion-callout">` (not `<aside>`),
+ * page-icon-inline class on the icon, `_co` color suffix to hit the
+ * vendored callout-background rules (distinct from text-color rules).
+ */
 export const Callout = ({ children, icon, color }: CalloutProps) => (
-  <aside
-    className={`notion-callout${color !== undefined ? ` notion-${color}` : ''}`}
-    role="note"
-  >
-    {icon !== undefined ? <span className="notion-callout-icon">{icon}</span> : null}
+  <div className={`notion-callout${color !== undefined ? ` notion-${color}_co` : ''}`}>
+    {icon !== undefined ? <div className="notion-page-icon-inline">{icon}</div> : null}
     <div className="notion-callout-text">{children}</div>
-  </aside>
+  </div>
 )
 
 export const Divider = () => <hr className="notion-hr" />
@@ -196,6 +246,8 @@ export const Equation = ({ expression }: EquationProps) => (
   </pre>
 )
 
+// Outer scroll-wrap is our addition (rnx wraps tables one level higher in
+// the block tree we don't model). Documented divergence in design-decisions.md.
 export const Table = ({ children }: TableProps) => (
   <div className="notion-simple-table-wrap">
     <table className="notion-simple-table">
@@ -212,25 +264,23 @@ export const ColumnList = ({ children }: ColumnListProps) => (
   <div className="notion-column-list">{children}</div>
 )
 
-export const Column = ({ children }: ColumnProps) => (
-  <div className="notion-column">{children}</div>
-)
+export const Column = ({ children }: ColumnProps) => <div className="notion-column">{children}</div>
 
 export const LinkToPage = ({ pageId }: LinkToPageProps) => (
-  <a className="notion-link-to-page" href={`#${pageId}`}>
+  <a className="notion-page-link" href={`#${pageId}`}>
     ↗ page {pageId}
   </a>
 )
 
 export const TableOfContents = () => (
-  <nav className="notion-toc" aria-label="table of contents">
+  <nav className="notion-table-of-contents" aria-label="table of contents">
     Table of contents
   </nav>
 )
 
 export const ChildPage = ({ title }: ChildPageProps) => (
-  <div className="notion-child-page">
-    <span className="notion-child-page-icon">📄</span>
+  <div className="notion-page-link">
+    <span className="notion-page-icon-inline">📄</span>
     <span>{title ?? 'Untitled'}</span>
   </div>
 )

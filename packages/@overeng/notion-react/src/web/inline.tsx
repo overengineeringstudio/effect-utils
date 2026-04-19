@@ -26,10 +26,10 @@ export const InlineCode = ({ children }: InlineAnnotationProps) => (
   <code className="notion-inline-code">{children}</code>
 )
 
-const colorClass = (value: string): string =>
-  value.endsWith('_background')
-    ? `notion-bg-${value.replace('_background', '')}`
-    : `notion-color-${value}`
+// Match rnx naming: `notion-{color}` for foreground, `notion-{color}_background`
+// (literal `_background` suffix) for background — this is what the vendored
+// CSS targets.
+const colorClass = (value: string): string => `notion-${value}`
 
 export const Color = ({ value, children }: ColorProps) => (
   <span className={colorClass(value)}>{children}</span>

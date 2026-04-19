@@ -12,6 +12,20 @@ Travis Fischer and contributors, licensed under the MIT License.
 See `PRUNING.md` for the derivative modifications we apply (pruned sections
 we do not render, rescoped `:root` tokens onto `.notion-page`).
 
+## DOM patterns and SVG icons in `blocks.tsx` / `inline.tsx`
+
+Component DOM structures (callout nesting, to-do checkbox markup,
+toggleable-header `<details>` wrapping, heading inner `notion-h-title`
+span, color-class naming) are modelled after react-notion-x's
+`packages/react-notion-x/src/block.tsx` and `components/checkbox.tsx`
+under the same MIT license. The inline `CheckSvg` in `blocks.tsx` is
+copied from `react-notion-x/src/icons/check.tsx`.
+
+Upstream version: `v7.10.0` (npm) / commit `c1b4260c`.
+
+See `context/notion-react-visual-parity/{analysis,design-decisions}.md`
+for the gap analysis and adoption rationale.
+
 ## Original license
 
 ```
