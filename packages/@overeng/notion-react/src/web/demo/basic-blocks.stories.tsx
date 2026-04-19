@@ -1,6 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import { Divider, Heading1, Heading2, Heading3, Page, Paragraph, Quote } from '../blocks.tsx'
+import {
+  Divider,
+  Heading1,
+  Heading2,
+  Heading3,
+  Heading4,
+  Page,
+  Paragraph,
+  Quote,
+} from '../blocks.tsx'
 import { Bold, InlineCode, Italic, Link, Strikethrough, Underline } from '../inline.tsx'
 
 const meta = {
@@ -27,6 +36,9 @@ export const Default: Story = {
         <InlineCode>h1</InlineCode>–<InlineCode>h4</InlineCode> tag.
       </Paragraph>
       <Heading3>Subsection heading</Heading3>
+      <Paragraph>h3 sits beneath h2 sections.</Paragraph>
+      <Heading4>Nested heading</Heading4>
+      <Paragraph>h4 is the deepest level supported by Notion's heading blocks.</Paragraph>
       <Paragraph>
         Inline annotations can nest:{' '}
         <Bold>

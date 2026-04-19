@@ -14,8 +14,8 @@ import { Italic } from '../inline.tsx'
 
 /**
  * Mirrors the Features index of the react-notion-x showcase
- * (https://react-notion-x-demo.transitivebullsh.it/). Each entry links
- * conceptually to a sibling story in this Demo/ category.
+ * (https://react-notion-x-demo.transitivebullsh.it/) and extends it with a
+ * third Modern column covering block types rnx does not yet showcase.
  */
 const meta = {
   title: 'Demo/00 — Features Index',
@@ -43,13 +43,28 @@ const advanced: readonly Feature[] = [
   { emoji: '🚧', label: 'Placeholders — v0.2 unsupported features' },
 ]
 
+const modern: readonly Feature[] = [
+  { emoji: '🗂', label: 'Tabs — modern Notion tab block' },
+  { emoji: '📐', label: 'Column widths — width_ratio control' },
+  { emoji: '🔁', label: 'Synced blocks — content shared across pages' },
+  { emoji: '📝', label: 'Meeting notes — read-only, server-driven' },
+  { emoji: '📎', label: 'File upload — Notion-hosted files' },
+  { emoji: '🪞', label: 'Link preview — rich external previews' },
+  { emoji: '🧭', label: 'Breadcrumb — page ancestry' },
+  { emoji: '🗄', label: 'Child DB page — embedded database views' },
+  { emoji: '🎨', label: 'Modern color palette — every Notion color + bg' },
+  { emoji: '🔠', label: 'All heading levels — h1 through h4' },
+]
+
 export const Default: Story = {
   render: () => (
     <Page>
       <Heading1>Features</Heading1>
       <Paragraph>
-        A tour of what the <Italic>@overeng/notion-react</Italic> web renderer can draw today. Each
-        row below links to a self-contained story exercising a single category.
+        <Italic>
+          A React renderer for Notion pages — a superset of react-notion-x, with first-class support
+          for modern Notion block types.
+        </Italic>
       </Paragraph>
       <Divider />
       <ColumnList>
@@ -64,6 +79,14 @@ export const Default: Story = {
         <Column>
           <Heading2>Advanced</Heading2>
           {advanced.map((f) => (
+            <BulletedListItem key={f.label}>
+              {f.emoji} {f.label}
+            </BulletedListItem>
+          ))}
+        </Column>
+        <Column>
+          <Heading2>Modern</Heading2>
+          {modern.map((f) => (
             <BulletedListItem key={f.label}>
               {f.emoji} {f.label}
             </BulletedListItem>
