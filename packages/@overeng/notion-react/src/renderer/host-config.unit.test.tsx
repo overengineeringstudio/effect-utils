@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { BulletedListItem, Heading1, Paragraph, Toggle } from '../components/blocks.tsx'
+import {
+  BulletedListItem,
+  Callout,
+  Heading1,
+  Paragraph,
+  Toggle,
+} from '../components/blocks.tsx'
 import { createNotionRoot } from './host-config.ts'
 import { OpBuffer } from './op-buffer.ts'
 
@@ -97,6 +103,21 @@ describe('host-config', () => {
         },
       },
     ])
+  })
+
+  it('projects Callout icon as structured emoji (Notion API shape)', () => {
+    const { buffer, root } = makeRoot()
+    root.render(
+      <Callout icon="💡" color="blue_background">
+        hi
+      </Callout>,
+    )
+    const op = buffer.ops[0]!
+    expect(op.kind).toBe('append')
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('callout')
+    expect(op.props.icon).toEqual({ type: 'emoji', emoji: '💡' })
+    expect(op.props.color).toBe('blue_background')
   })
 
   it('projects bulleted list item rich_text', () => {

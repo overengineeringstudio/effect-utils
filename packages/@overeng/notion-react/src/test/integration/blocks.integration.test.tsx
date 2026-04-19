@@ -308,7 +308,7 @@ describe.skipIf(SKIP_INTEGRATION)('per-block-type integration fixtures', () => {
     )
   }, 60_000)
 
-  it.skip('Callout with emoji icon + color (renderer emits raw strings; Notion expects structured icon + rich_text)', async () => {
+  it('Callout with emoji icon + color', async () => {
     await withScratch('callout', (pageId) =>
       Effect.gen(function* () {
         yield* renderToNotion(

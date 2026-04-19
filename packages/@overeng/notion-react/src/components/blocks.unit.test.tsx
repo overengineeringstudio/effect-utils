@@ -61,7 +61,7 @@ describe('block components', () => {
     )
     const op = ops[0]!
     if (op.kind !== 'append') throw new Error('expected append')
-    expect(op.props.icon).toBe('💡')
+    expect(op.props.icon).toEqual({ type: 'emoji', emoji: '💡' })
     expect(op.props.color).toBe('blue_background')
   })
 
