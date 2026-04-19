@@ -192,6 +192,21 @@ If you need a production Notion-styled web renderer, reach for
 
 ## Further reading
 
+For more, see [`docs/`](./docs/README.md) — audience-segmented guides for
+beginners, integrators, and contributors. Quick links:
+
+- [Getting Started](./docs/getting-started.md)
+- Concepts: [keys and identity](./docs/concepts/keys-and-identity.md),
+  [reconciler](./docs/concepts/reconciler.md),
+  [theming](./docs/concepts/theming.md)
+- [API overview](./docs/api.md) · [Cookbook](./docs/README.md#integrator--im-wiring-this-into-an-app) ·
+  [Migration](./docs/migration.md)
+- Contributors: [contributing](./docs/contributing.md) ·
+  [testing](./docs/testing.md) ·
+  [internals](./docs/internals/architecture.md)
+
+Source material:
+
 - Block + inline component reference: `src/components/`
 - Host-config + diff internals: `src/renderer/`
 - Design questions (open): [`spec.md#open-design-questions`](./context/vrs/spec.md#open-design-questions)
