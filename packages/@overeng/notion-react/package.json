@@ -6,14 +6,22 @@
   "exports": {
     ".": "./src/mod.ts",
     "./renderer": "./src/renderer/mod.ts",
-    "./test": "./src/test/integration/setup.ts"
+    "./test": "./src/test/integration/setup.ts",
+    "./web": "./src/web/mod.ts",
+    "./web/styles.css": "./src/web/styles.css"
   },
   "publishConfig": {
     "access": "public",
     "exports": {
       ".": "./dist/mod.js",
-      "./renderer": "./dist/renderer/mod.js"
+      "./renderer": "./dist/renderer/mod.js",
+      "./web": "./dist/web/mod.js",
+      "./web/styles.css": "./dist/web/styles.css"
     }
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6010",
+    "storybook:build": "storybook build"
   },
   "dependencies": {
     "@effect/cluster": "0.58.0",
@@ -32,25 +40,24 @@
   },
   "devDependencies": {
     "@effect/vitest": "0.29.0",
+    "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
+    "@storybook/react": "10.2.3",
+    "@storybook/react-vite": "10.2.3",
     "@types/node": "25.3.3",
     "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
     "@types/react-reconciler": "0.28.9",
     "effect": "3.21.0",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-reconciler": "0.33.0",
+    "storybook": "10.2.3",
     "typescript": "5.9.3",
+    "vite": "7.3.1",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "@effect/cluster": "^0.58.0",
-    "@effect/experimental": "^0.60.0",
-    "@effect/opentelemetry": "^0.63.0",
-    "@effect/platform": "^0.96.0",
-    "@effect/platform-node": "^0.106.0",
-    "@effect/rpc": "^0.75.0",
-    "@effect/workflow": "^0.18.0",
-    "@playwright/test": "^1.58.2",
     "effect": "^3.21.0",
     "react": "^19.2.3",
     "react-reconciler": "^0.33.0"
