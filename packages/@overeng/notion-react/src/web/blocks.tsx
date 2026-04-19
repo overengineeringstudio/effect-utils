@@ -41,10 +41,10 @@ import type {
 export const Page = ({ children }: PageProps) => <div className="notion-page">{children}</div>
 
 export const Paragraph = ({ children }: ParagraphProps) => (
-  <p className="notion-paragraph">{children}</p>
+  <p className="notion-text">{children}</p>
 )
 
-const headingClass = (level: 1 | 2 | 3 | 4) => `notion-heading notion-heading-${level}`
+const headingClass = (level: 1 | 2 | 3 | 4) => `notion-h notion-h${level}`
 
 const Heading1Tag = ({ children }: { readonly children?: ReactNode }) => (
   <h1 className={headingClass(1)}>{children}</h1>
@@ -80,21 +80,23 @@ export const Heading3 = withToggle(Heading3Tag, 3)
 export const Heading4 = withToggle(Heading4Tag, 4)
 
 export const BulletedListItem = ({ children }: BulletedListItemProps) => (
-  <ul className="notion-bulleted-list">
+  <ul className="notion-list notion-list-disc">
     <li>{children}</li>
   </ul>
 )
 
 export const NumberedListItem = ({ children }: NumberedListItemProps) => (
-  <ol className="notion-numbered-list">
+  <ol className="notion-list notion-list-numbered">
     <li>{children}</li>
   </ol>
 )
 
 export const ToDo = ({ children, checked }: ToDoProps) => (
-  <div className={`notion-todo${checked === true ? ' notion-todo-checked' : ''}`}>
-    <input type="checkbox" checked={checked === true} readOnly aria-label="to-do" />
-    <span>{children}</span>
+  <div className={`notion-to-do${checked === true ? ' notion-to-do-checked' : ''}`}>
+    <div className="notion-to-do-item">
+      <input type="checkbox" checked={checked === true} readOnly aria-label="to-do" />
+      <div className="notion-to-do-body">{children}</div>
+    </div>
   </div>
 )
 
@@ -117,15 +119,15 @@ export const Quote = ({ children }: QuoteProps) => (
 
 export const Callout = ({ children, icon, color }: CalloutProps) => (
   <aside
-    className={`notion-callout${color !== undefined ? ` notion-color-${color}` : ''}`}
+    className={`notion-callout${color !== undefined ? ` notion-${color}` : ''}`}
     role="note"
   >
     {icon !== undefined ? <span className="notion-callout-icon">{icon}</span> : null}
-    <div className="notion-callout-body">{children}</div>
+    <div className="notion-callout-text">{children}</div>
   </aside>
 )
 
-export const Divider = () => <hr className="notion-divider" />
+export const Divider = () => <hr className="notion-hr" />
 
 const mediaUrl = (p: MediaProps): string | undefined => p.url ?? p.src
 
@@ -177,21 +179,21 @@ export const Embed = ({ url }: EmbedProps) => (
 )
 
 export const Equation = ({ expression }: EquationProps) => (
-  <pre className="notion-block-equation">
+  <pre className="notion-equation-block">
     <code>{expression}</code>
   </pre>
 )
 
 export const Table = ({ children }: TableProps) => (
-  <div className="notion-table-wrap">
-    <table className="notion-table">
+  <div className="notion-simple-table-wrap">
+    <table className="notion-simple-table">
       <tbody>{children}</tbody>
     </table>
   </div>
 )
 
 export const TableRow = ({ children }: TableRowProps) => (
-  <tr className="notion-table-row">{children}</tr>
+  <tr className="notion-simple-table-row">{children}</tr>
 )
 
 export const ColumnList = ({ children }: ColumnListProps) => (

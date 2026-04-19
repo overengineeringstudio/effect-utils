@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react'
 import type { ReactNode } from 'react'
 
+import '../src/web/vendored-notion.css'
 import '../src/web/styles.css'
 
 /**
@@ -30,10 +31,16 @@ const PreviewBanner = () => (
   </div>
 )
 
+/**
+ * Wrap every story in `.notion-page` so (a) the vendored-notion.css design
+ * tokens (scoped under `.notion-page`) resolve, and (b) block-level
+ * selectors inherit the intended visual context. Individual stories can
+ * still compose `<Page>` explicitly — `.notion-page` nesting is harmless.
+ */
 const StorybookDecorator = ({ children }: { children: ReactNode }) => (
   <>
     <PreviewBanner />
-    {children}
+    <div className="notion-page">{children}</div>
   </>
 )
 
