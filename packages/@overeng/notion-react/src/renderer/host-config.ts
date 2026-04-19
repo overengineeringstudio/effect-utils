@@ -107,7 +107,12 @@ const blockProps = (
     p.rich_text = flattenRichText(props.children as ReactNode)
   }
   if (type === 'to_do' && typeof props.checked === 'boolean') p.checked = props.checked
-  if (type === 'toggle' && typeof props.title === 'string') p.title = props.title
+  if (type === 'toggle') {
+    // Notion requires `rich_text` for toggle; the component exposes a `title`
+    // string prop for ergonomics. Empty string still yields `[]` which Notion
+    // accepts as a valid (empty) rich_text array.
+    p.rich_text = flattenRichText(typeof props.title === 'string' ? props.title : '')
+  }
   if (type === 'code' && typeof props.language === 'string') p.language = props.language
   if (type === 'callout' && typeof props.icon === 'string') p.icon = props.icon
   if (type === 'callout' && typeof props.color === 'string') p.color = props.color

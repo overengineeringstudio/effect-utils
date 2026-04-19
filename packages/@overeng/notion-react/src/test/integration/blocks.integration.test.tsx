@@ -248,7 +248,7 @@ describe.skipIf(SKIP_INTEGRATION)('per-block-type integration fixtures', () => {
     )
   }, 60_000)
 
-  it.skip('Toggle with title + child paragraph (renderer emits `title` string; Notion expects rich_text)', async () => {
+  it('Toggle with title + child paragraph', async () => {
     await withScratch('toggle', (pageId) =>
       Effect.gen(function* () {
         yield* renderToNotion(

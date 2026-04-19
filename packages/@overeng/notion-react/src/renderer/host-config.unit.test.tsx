@@ -75,6 +75,30 @@ describe('host-config', () => {
     expect(after.map((o) => o.kind)).toEqual(['remove'])
   })
 
+  it('projects Toggle title as rich_text (Notion API shape)', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Toggle title="more" />)
+    const op = buffer.ops[0]!
+    expect(op.kind).toBe('append')
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('toggle')
+    expect(op.props).not.toHaveProperty('title')
+    expect(op.props.rich_text).toEqual([
+      {
+        type: 'text',
+        text: { content: 'more', link: null },
+        annotations: {
+          bold: false,
+          italic: false,
+          strikethrough: false,
+          underline: false,
+          code: false,
+          color: 'default',
+        },
+      },
+    ])
+  })
+
   it('projects bulleted list item rich_text', () => {
     const { buffer, root } = makeRoot()
     root.render(<BulletedListItem>first</BulletedListItem>)
