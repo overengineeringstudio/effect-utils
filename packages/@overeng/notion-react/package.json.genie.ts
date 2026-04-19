@@ -24,6 +24,7 @@ const workspaceDeps = catalog.compose({
       ...catalog.pick(
         ...peerDepNames,
         '@effect/vitest',
+        '@types/node',
         '@types/react',
         '@types/react-reconciler',
         'typescript',
