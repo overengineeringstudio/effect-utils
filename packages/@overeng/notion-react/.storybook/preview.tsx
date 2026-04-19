@@ -32,15 +32,21 @@ const PreviewBanner = () => (
 )
 
 /**
- * Wrap every story in `.notion-page` so (a) the vendored-notion.css design
- * tokens (scoped under `.notion-page`) resolve, and (b) block-level
- * selectors inherit the intended visual context. Individual stories can
- * still compose `<Page>` explicitly — `.notion-page` nesting is harmless.
+ * Mirror react-notion-x's root DOM so every vendored rule resolves:
+ * `.notion` applies font-family + color resets, `.notion-page` holds the
+ * design tokens, and `.notion-page-content` is the flex-column that makes
+ * inline-display blocks (e.g. `.notion-h`) stack vertically.
+ *
+ * Stories that compose `<Page>` explicitly nest harmlessly inside this wrapper.
  */
 const StorybookDecorator = ({ children }: { children: ReactNode }) => (
   <>
     <PreviewBanner />
-    <div className="notion-page">{children}</div>
+    <div className="notion notion-app">
+      <div className="notion-page">
+        <div className="notion-page-content">{children}</div>
+      </div>
+    </div>
   </>
 )
 

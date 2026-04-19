@@ -38,7 +38,19 @@ import type {
  *     import '@overeng/notion-react/web/styles.css'
  */
 
-export const Page = ({ children }: PageProps) => <div className="notion-page">{children}</div>
+/**
+ * Root wrapper mirrors react-notion-x's DOM structure.
+ * `.notion` applies font-family + color resets; `.notion-page` holds tokens;
+ * `.notion-page-content` is the flex-column that makes inline-display blocks
+ * (e.g. `.notion-h`) stack vertically.
+ */
+export const Page = ({ children }: PageProps) => (
+  <div className="notion notion-app">
+    <div className="notion-page">
+      <div className="notion-page-content">{children}</div>
+    </div>
+  </div>
+)
 
 export const Paragraph = ({ children }: ParagraphProps) => (
   <p className="notion-text">{children}</p>
