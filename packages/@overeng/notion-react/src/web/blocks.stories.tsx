@@ -75,10 +75,10 @@ export const NumberedList: Story = {
 export const ToDoList: Story = {
   render: () => (
     <Page>
-      <ToDo checked>Write the component library</ToDo>
-      <ToDo checked>Extract shared prop types</ToDo>
-      <ToDo>Ship Storybook preview</ToDo>
-      <ToDo>Document the public API</ToDo>
+      <ToDo checked>Finalize SKU matrix</ToDo>
+      <ToDo checked>Lock firmware v1.0.3</ToDo>
+      <ToDo>Confirm packaging backup supplier</ToDo>
+      <ToDo>Share press kit with wave-1 publications</ToDo>
     </Page>
   ),
 }
@@ -86,14 +86,14 @@ export const ToDoList: Story = {
 export const ToggleBlock: Story = {
   render: () => (
     <Page>
-      <Toggle title="Why a custom renderer?">
+      <Toggle title="Phase 1 — Manufacturing">
         <Paragraph>
-          react-notion-x requires synthesising an internal RecordMap. A custom DOM renderer lets us
-          reuse the same JSX we send to the reconciler with no translation step.
+          First production run of 5,000 units. QA pass-rate target 98%, packaging audit week of
+          April 22.
         </Paragraph>
       </Toggle>
-      <Toggle title="What's in v0.1?">
-        <Paragraph>Minimal visual defaults — not the full Notion design system.</Paragraph>
+      <Toggle title="Phase 2 — Marketing">
+        <Paragraph>Press kit, launch video, influencer seeding through May.</Paragraph>
       </Toggle>
     </Page>
   ),

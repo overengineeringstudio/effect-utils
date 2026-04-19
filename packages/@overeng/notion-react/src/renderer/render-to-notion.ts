@@ -3,11 +3,20 @@ import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 
 import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
+import type { BlockType } from '@overeng/notion-effect-schema'
 
 import { NotionSyncError } from './errors.ts'
 import { createNotionRoot } from './host-config.ts'
 import type { Op } from './op-buffer.ts'
 import { OpBuffer } from './op-buffer.ts'
+
+/**
+ * Block types that Notion's `blocks.children.append` endpoint refuses to
+ * accept without their descendants inlined in the same request. For these
+ * we collapse the op-buffer subtree into a single nested API body instead
+ * of issuing one call per block.
+ */
+export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>(['column_list'])
 
 /** Summary of the ops applied during a render/sync pass. */
 export type SyncResult = {
@@ -63,6 +72,58 @@ const appendBody = (
   [op.type]: op.props,
 })
 
+type AppendLikeOp = Extract<Op, { kind: 'append' | 'insertBefore' }>
+
+/**
+ * Group append/insertBefore ops by their parent (temp) id so an atomic
+ * container can reconstruct its descendant subtree without scanning the
+ * full op list for every node.
+ */
+export const indexChildren = (ops: readonly Op[]): ReadonlyMap<string, readonly AppendLikeOp[]> => {
+  const out = new Map<string, AppendLikeOp[]>()
+  for (const op of ops) {
+    if (op.kind !== 'append' && op.kind !== 'insertBefore') continue
+    const list = out.get(op.parent) ?? []
+    list.push(op)
+    out.set(op.parent, list)
+  }
+  return out
+}
+
+/**
+ * Build a nested `{object, type, <type>: {...props, children?}}` body for an
+ * atomic container. Descendant ops are spliced under the container's props
+ * via the `children` array, recursively.
+ */
+export const nestedBody = (
+  op: AppendLikeOp,
+  childrenIndex: ReadonlyMap<string, readonly AppendLikeOp[]>,
+): Record<string, unknown> => {
+  const kids = childrenIndex.get(op.id) ?? []
+  const payload: Record<string, unknown> = { ...op.props }
+  if (kids.length > 0) {
+    payload.children = kids.map((k) => nestedBody(k, childrenIndex))
+  }
+  return { object: 'block', type: op.type, [op.type]: payload }
+}
+
+/** Collect the ids of all transitive descendants of `rootId` from the children index. */
+const descendantIds = (
+  rootId: string,
+  childrenIndex: ReadonlyMap<string, readonly AppendLikeOp[]>,
+): ReadonlySet<string> => {
+  const seen = new Set<string>()
+  const walk = (parent: string): void => {
+    for (const kid of childrenIndex.get(parent) ?? []) {
+      if (seen.has(kid.id)) continue
+      seen.add(kid.id)
+      walk(kid.id)
+    }
+  }
+  walk(rootId)
+  return seen
+}
+
 /**
  * Render `element` to Notion in append-only mode. Assumes the target page
  * has no pre-existing children this renderer owns; suitable for first-time
@@ -79,13 +140,20 @@ export const renderToNotion = (
     const buffer = collectOps(element, opts.pageId)
     const idMap = new Map<string, string>()
     const resolve = (id: string): string => idMap.get(id) ?? id
+    const childrenIndex = indexChildren(buffer.ops)
+    // Temp ids of descendants under an atomic container we've already emitted;
+    // their individual append ops are skipped since they shipped inline.
+    const absorbed = new Set<string>()
 
     for (const op of buffer.ops) {
+      if ('id' in op && absorbed.has(op.id)) continue
       switch (op.kind) {
         case 'append': {
+          const atomic = ATOMIC_CONTAINERS.has(op.type)
+          const body = atomic ? nestedBody(op, childrenIndex) : appendBody(op)
           const res = yield* NotionBlocks.append({
             blockId: resolve(op.parent),
-            children: [appendBody(op)],
+            children: [body],
           }).pipe(
             Effect.mapError(
               (cause) => new NotionSyncError({ reason: 'notion-append-failed', cause }),
@@ -93,12 +161,15 @@ export const renderToNotion = (
           )
           const first = res.results[0] as { id?: string } | undefined
           if (first?.id !== undefined) idMap.set(op.id, first.id)
+          if (atomic) for (const d of descendantIds(op.id, childrenIndex)) absorbed.add(d)
           break
         }
         case 'insertBefore': {
+          const atomic = ATOMIC_CONTAINERS.has(op.type)
+          const body = atomic ? nestedBody(op, childrenIndex) : appendBody(op)
           const res = yield* NotionBlocks.append({
             blockId: resolve(op.parent),
-            children: [appendBody(op)],
+            children: [body],
             position: { type: 'after_block', after_block: { id: resolve(op.beforeId) } },
           }).pipe(
             Effect.mapError(
@@ -107,6 +178,7 @@ export const renderToNotion = (
           )
           const first = res.results[0] as { id?: string } | undefined
           if (first?.id !== undefined) idMap.set(op.id, first.id)
+          if (atomic) for (const d of descendantIds(op.id, childrenIndex)) absorbed.add(d)
           break
         }
         case 'update': {

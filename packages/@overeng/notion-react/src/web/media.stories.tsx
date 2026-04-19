@@ -56,19 +56,19 @@ export const TableBlock: Story = {
     <Page>
       <Table>
         <TableRow>
-          <td>App</td>
-          <td>Time</td>
-          <td>Category</td>
+          <td>Tier</td>
+          <td>Price</td>
+          <td>Highlight</td>
         </TableRow>
         <TableRow>
-          <td>VSCode</td>
-          <td>3h 12m</td>
-          <td>coding</td>
+          <td>Nimbus One</td>
+          <td>$89</td>
+          <td>Core dimming + app control</td>
         </TableRow>
         <TableRow>
-          <td>Chrome</td>
-          <td>1h 47m</td>
-          <td>browsing</td>
+          <td>Nimbus Plus</td>
+          <td>$129</td>
+          <td>Adds color temperature</td>
         </TableRow>
       </Table>
     </Page>

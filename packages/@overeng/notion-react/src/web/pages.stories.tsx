@@ -28,149 +28,143 @@ export default meta
 
 type Story = StoryObj
 
-export const DailyPage: Story = {
+export const LaunchOverview: Story = {
   render: () => (
     <Page>
-      <Heading1>Daily · 2026-04-19</Heading1>
-      <Callout icon="📊" color="gray_background">
-        <Bold>8h 41m</Bold> screen time · <Bold>3h 12m</Bold> coding · focus score{' '}
-        <Bold>74</Bold>
+      <Heading1>Q2 Launch · Nimbus Smart Lamp</Heading1>
+      <Callout icon="🎯" color="gray_background">
+        <Bold>Ship date:</Bold> June 3 · <Bold>Units:</Bold> 10,000 · <Bold>Markets:</Bold> US, EU
       </Callout>
-      <Heading2>Top apps</Heading2>
+      <Heading2>Pricing tiers</Heading2>
       <Table>
         <TableRow>
-          <td>App</td>
-          <td>Duration</td>
-          <td>Category</td>
+          <td>Tier</td>
+          <td>Price</td>
+          <td>Highlight</td>
         </TableRow>
         <TableRow>
-          <td>VSCode</td>
-          <td>3h 12m</td>
-          <td>coding</td>
+          <td>Nimbus One</td>
+          <td>$89</td>
+          <td>Core dimming + app control</td>
         </TableRow>
         <TableRow>
-          <td>Chrome</td>
-          <td>1h 47m</td>
-          <td>browsing</td>
+          <td>Nimbus Plus</td>
+          <td>$129</td>
+          <td>Adds color temperature</td>
         </TableRow>
         <TableRow>
-          <td>Slack</td>
-          <td>42m</td>
-          <td>comms</td>
+          <td>Nimbus Pro</td>
+          <td>$179</td>
+          <td>Full RGB + scenes</td>
         </TableRow>
       </Table>
-      <Heading2>Projects</Heading2>
-      <Toggle title="pixeltrail">
+      <Heading2>Phases</Heading2>
+      <Toggle title="Phase 1 — Manufacturing (April)">
         <Paragraph>
-          Focused on the Notion sync pipeline — fixed a <InlineCode>busy_timeout</InlineCode> race,
-          pushed incremental sync behind a flag.
+          First production run of <InlineCode>5,000</InlineCode> units. QA pass-rate target 98%.
         </Paragraph>
         <BulletedListItem>
-          PR <Link href="https://github.com/schickling/dotfiles/pull/663">#663</Link> ready for
-          review
+          Factory sign-off memo <Link href="https://example.com/memo">linked here</Link>
         </BulletedListItem>
-        <BulletedListItem>Tray adopts orphaned capture on restart</BulletedListItem>
+        <BulletedListItem>Firmware v1.0.3 locked</BulletedListItem>
       </Toggle>
-      <Toggle title="notion-react">
-        <Paragraph>Scaffolded package + reconciler + cache + integration harness.</Paragraph>
+      <Toggle title="Phase 2 — Marketing (May)">
+        <Paragraph>Press kit, launch video, influencer seeding.</Paragraph>
       </Toggle>
       <Heading2>Timeline</Heading2>
       <Paragraph>
-        09:12 · <Italic>planning</Italic> — sketched the web renderer approach.
+        April 10 · <Italic>planning</Italic> — finalized SKU matrix.
       </Paragraph>
       <Paragraph>
-        10:05 · <Italic>coding</Italic> — set up Storybook + composite stories.
+        April 19 · <Italic>review</Italic> — sign-off from{' '}
+        <Mention mention={{ user: { id: 'u1' } }} plainText="@priya" />.
       </Paragraph>
       <Paragraph>
-        14:22 · <Italic>review</Italic> — addressed PR feedback from{' '}
-        <Mention mention={{ user: { id: 'u1' } }} plainText="@reviewer" />.
+        May 02 · <Italic>marketing</Italic> — embargo lifts, press briefings begin.
       </Paragraph>
     </Page>
   ),
 }
 
-export const JournalEntry: Story = {
+export const TeamUpdate: Story = {
   render: () => (
     <Page>
-      <Heading1>Journal · Saturday, April 19 2026</Heading1>
+      <Heading1>Launch Update · Friday, April 19 2026</Heading1>
       <Paragraph>
-        Mostly a day for <Bold>deep work</Bold>. Shipped the first pass of the Notion web renderer
-        — components double as DOM previews now. Felt good to see the same JSX render both ways.
+        Manufacturing is <Bold>on track</Bold>. First 500 units cleared QA this morning with a 99%
+        pass rate — above target. Marketing kicks off next week.
       </Paragraph>
       <Heading3>Wins</Heading3>
-      <BulletedListItem>Dual-export prop types stay in sync by construction</BulletedListItem>
-      <BulletedListItem>Storybook scaffolded in under an hour using the shared config</BulletedListItem>
-      <Heading3>Frustrations</Heading3>
+      <BulletedListItem>QA pass rate above target (99% vs 98%)</BulletedListItem>
+      <BulletedListItem>Press kit approved by legal on the first pass</BulletedListItem>
+      <Heading3>Risks</Heading3>
       <BulletedListItem>
-        One edit silently reverted on disk — had to re-apply. Worth a follow-up investigation.
+        Packaging supplier is quoting two extra weeks — contingency plan in progress.
       </BulletedListItem>
-      <Heading3>Quote of the day</Heading3>
+      <Heading3>Quote of the week</Heading3>
       <Quote>
-        The best writing is <Italic>rewriting</Italic>.
+        The best launches are <Italic>boring</Italic> launches.
       </Quote>
       <Divider />
-      <Heading3>Tomorrow</Heading3>
-      <ToDo>Push the PR and request review</ToDo>
-      <ToDo>Draft a short walkthrough of the renderer API</ToDo>
-      <ToDo>Switch gears to the spec polish</ToDo>
+      <Heading3>Next</Heading3>
+      <ToDo>Confirm packaging backup supplier by Wednesday</ToDo>
+      <ToDo>Share press kit with wave-1 publications</ToDo>
+      <ToDo>Lock final pricing for Nimbus Plus</ToDo>
     </Page>
   ),
 }
 
-export const DecisionsSection: Story = {
+export const TradeoffsSection: Story = {
   render: () => (
     <Page>
-      <Heading1>Decisions</Heading1>
+      <Heading1>Tradeoffs</Heading1>
       <TableOfContents />
-      <Heading2>D-001 · Use a custom DOM renderer for Storybook</Heading2>
+      <Heading2>T-001 · Launch with three tiers instead of two</Heading2>
       <Paragraph>
-        <Bold>Status:</Bold> accepted · <Bold>Date:</Bold> 2026-04-19
+        <Bold>Status:</Bold> accepted · <Bold>Date:</Bold> 2026-04-12
       </Paragraph>
       <Heading3>Context</Heading3>
       <Paragraph>
-        We wanted Storybook to preview our Notion block components visually. Three options:
-        react-notion-x (requires RecordMap synthesis), a custom DOM renderer (mirror components),
-        or a hybrid.
+        Market research showed two distinct price-sensitive segments. A single mid-tier SKU would
+        have left both margin on the table and low-end volume uncaptured.
       </Paragraph>
       <Heading3>Decision</Heading3>
       <Callout icon="✅" color="green_background">
-        Custom DOM renderer under <InlineCode>src/web/</InlineCode>, shared prop types via{' '}
-        <InlineCode>components/props.ts</InlineCode>.
+        Ship <InlineCode>One</InlineCode>, <InlineCode>Plus</InlineCode>, and{' '}
+        <InlineCode>Pro</InlineCode> tiers at $89 / $129 / $179.
       </Callout>
       <Heading3>Consequences</Heading3>
-      <NumberedListItem>No upstream coupling to react-notion-x's internal RecordMap shape</NumberedListItem>
-      <NumberedListItem>Prop drift is a compile-time error, not a runtime one</NumberedListItem>
-      <NumberedListItem>We own the styling; fidelity grows with the design we need</NumberedListItem>
-      <Heading3>Code sketch</Heading3>
-      <Code language="tsx">{`import { Heading1, Paragraph, Page } from '@overeng/notion-react/web'
-import '@overeng/notion-react/web/styles.css'
-
-<Page>
-  <Heading1>Hello</Heading1>
-  <Paragraph>Rendered as DOM.</Paragraph>
-</Page>`}</Code>
+      <NumberedListItem>Three SKUs to manage in inventory and marketing</NumberedListItem>
+      <NumberedListItem>Clearer upsell path from One → Plus → Pro</NumberedListItem>
+      <NumberedListItem>Packaging cost up 4% due to per-SKU artwork</NumberedListItem>
+      <Heading3>Pricing snippet</Heading3>
+      <Code language="ts">{`const pricing = {
+  one: 89,
+  plus: 129,
+  pro: 179,
+} as const`}</Code>
       <Divider />
-      <Heading2>D-002 · Shared prop types live in components/props.ts</Heading2>
+      <Heading2>T-002 · Delay EU launch by two weeks</Heading2>
       <Paragraph>
-        Both the Notion-host and web surfaces import from the same module. A drift in one surface
-        becomes a type error in the other.
+        Regulatory review on the wireless module came back with minor labelling asks. Safer to batch
+        the fix than ship twice.
       </Paragraph>
       <ColumnList>
         <Column>
           <Heading3>Before</Heading3>
-          <Paragraph>Prop types were inlined per component, duplicated across surfaces.</Paragraph>
+          <Paragraph>Simultaneous US + EU launch on June 3.</Paragraph>
         </Column>
         <Column>
           <Heading3>After</Heading3>
           <Paragraph>
-            Single <InlineCode>props.ts</InlineCode> source of truth, referenced by both sides.
+            US on <InlineCode>June 3</InlineCode>, EU on <InlineCode>June 17</InlineCode>.
           </Paragraph>
         </Column>
       </ColumnList>
-      <Heading3>Supporting image</Heading3>
+      <Heading3>Product shot</Heading3>
       <Image
-        url="https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?w=800&q=80"
-        caption="two trees, one root (architecture reference)"
+        url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80"
+        caption="Nimbus Smart Lamp — studio reference"
       />
     </Page>
   ),

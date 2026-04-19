@@ -387,9 +387,9 @@ PR #3224) is the reference implementation pattern.
 ## Open design questions
 
 - **DQ1 Nested blocks inside TEXT_LEAF containers.** *Resolved for v0.1:*
-  `toggle` is already out of `TEXT_LEAF` and supports nested blocks
-  (covers pixeltrail Timeline sessions). `callout`/`quote`/list-item/
-  `to_do` remain rich-text-only until v0.2 (pixeltrail #62).
+  `toggle` is already out of `TEXT_LEAF` and supports nested children.
+  `callout`/`quote`/list-item/`to_do` remain rich-text-only until v0.2
+  (see issue #62).
 - **DQ2 `deepEqual` vs `hash` at diff time.** The diff currently trusts
   hash equality to imply structural equality. Safe under the current
   `stableStringify` but not audited for all prop shapes we may add

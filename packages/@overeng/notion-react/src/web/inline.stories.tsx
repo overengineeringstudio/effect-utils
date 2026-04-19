@@ -89,8 +89,8 @@ export const Mentions: Story = {
     <Page>
       <Paragraph>
         Page mention:{' '}
-        <Mention mention={{ page: { id: 'abc123' } }} plainText="@Daily 2026-04-19" />. User mention:{' '}
-        <Mention mention={{ user: { id: 'u1' } }} plainText="@alex" />. Date mention:{' '}
+        <Mention mention={{ page: { id: 'abc123' } }} plainText="@Launch Plan 2026-04-19" />. User
+        mention: <Mention mention={{ user: { id: 'u1' } }} plainText="@priya" />. Date mention:{' '}
         <Mention mention={{ date: { start: '2026-04-19' } }} plainText="@2026-04-19" />. Database
         mention: <Mention mention={{ database: { id: 'db-1' } }} />.
       </Paragraph>

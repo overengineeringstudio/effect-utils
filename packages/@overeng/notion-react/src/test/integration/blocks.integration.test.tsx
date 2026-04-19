@@ -415,7 +415,7 @@ describe.skipIf(SKIP_INTEGRATION)('per-block-type integration fixtures', () => {
     )
   }, 60_000)
 
-  it.skip('ColumnList + Column (two columns each with a paragraph) — Notion rejects staged column_list appends', async () => {
+  it('ColumnList + Column (two columns each with a paragraph)', async () => {
     await withScratch('columns', (pageId) =>
       Effect.gen(function* () {
         yield* renderToNotion(

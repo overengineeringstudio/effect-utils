@@ -34,23 +34,23 @@ import {
   FsCache,
 } from '@overeng/notion-react'
 
-const Page = ({ items }: { items: { id: string; title: string; body: string }[] }) => (
+const Page = ({ phases }: { phases: { id: string; title: string; body: string }[] }) => (
   <>
-    <Heading1>Daily</Heading1>
-    {items.map((s) => (
-      <Toggle key={s.id} blockKey={s.id} title={s.title}>
-        <Paragraph>{s.body}</Paragraph>
+    <Heading1>Q2 Launch Plan</Heading1>
+    {phases.map((p) => (
+      <Toggle key={p.id} blockKey={p.id} title={p.title}>
+        <Paragraph>{p.body}</Paragraph>
       </Toggle>
     ))}
   </>
 )
 
 // First-time append
-const program1 = renderToNotion(<Page items={items} />, { pageId: 'page-uuid' })
+const program1 = renderToNotion(<Page phases={phases} />, { pageId: 'page-uuid' })
 
 // Incremental, cache-backed
 const cache = FsCache.make('.notion-cache.json')
-const program2 = sync(<Page items={items} />, { pageId: 'page-uuid', cache })
+const program2 = sync(<Page phases={phases} />, { pageId: 'page-uuid', cache })
 ```
 
 Both entry points return
