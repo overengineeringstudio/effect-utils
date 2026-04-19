@@ -18,10 +18,13 @@
    an <h*>); upstream treats them as plain headings. */
 .notion-toggle-heading > summary {
   cursor: pointer;
-  list-style: none;
   display: flex;
   align-items: baseline;
   gap: 6px;
+}
+.notion-toggle-heading > summary,
+.notion-toggle > summary {
+  list-style: none;
 }
 .notion-toggle-heading > summary::-webkit-details-marker,
 .notion-toggle > summary::-webkit-details-marker {
