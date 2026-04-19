@@ -4,15 +4,41 @@ React component library and `react-reconciler`-based renderer that produces
 Notion blocks. Write Notion pages as JSX; the renderer translates to
 `NotionBlocks.append` / `update` / `delete` calls against the Notion API.
 
+Full design docs: [`context/vrs/vision.md`](./context/vrs/vision.md) ·
+[`requirements.md`](./context/vrs/requirements.md) ·
+[`spec.md`](./context/vrs/spec.md).
+
+## Why
+
+Notion pages are trees, but the Notion API is imperative:
+`blocks.append` / `blocks.update` / `blocks.delete` against block ids.
+Calling that surface directly forces every writer to either (a) wipe and
+re-append the page each run — visible churn, O(blocks) cost — or (b)
+hand-roll a keyed diff, a cache schema, and a kill-switch. This library
+is that shared, principled layer: JSX in, minimum Notion ops out.
+
+Success means re-rendering the same JSX is a no-op, a one-line change is
+a single `update`, and adding a new block type is one component + one
+projection.
+
+## Getting Started
+
 ```tsx
 import { Effect } from 'effect'
-import { Heading1, Paragraph, Toggle, renderToNotion, sync, FsCache } from '@overeng/notion-react'
+import {
+  Heading1,
+  Paragraph,
+  Toggle,
+  renderToNotion,
+  sync,
+  FsCache,
+} from '@overeng/notion-react'
 
 const Page = ({ items }: { items: { id: string; title: string; body: string }[] }) => (
   <>
     <Heading1>Daily</Heading1>
     {items.map((s) => (
-      <Toggle key={s.id} title={s.title}>
+      <Toggle key={s.id} blockKey={s.id} title={s.title}>
         <Paragraph>{s.body}</Paragraph>
       </Toggle>
     ))}
@@ -27,4 +53,114 @@ const cache = FsCache.make('.notion-cache.json')
 const program2 = sync(<Page items={items} />, { pageId: 'page-uuid', cache })
 ```
 
-Both entry points return `Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient>`.
+Both entry points return
+`Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient>`. Provide
+`NotionConfig` and an `HttpClient` via the Effect runtime of your choice.
+
+## Keys: `key` vs `blockKey`
+
+The library uses **two orthogonal key concepts**. They look similar but
+live on different sides of the renderer and solve different problems.
+
+| Concept          | Who reads it                | What it identifies                       | Lifetime          |
+|------------------|-----------------------------|-------------------------------------------|-------------------|
+| React `key`      | React (inside react-reconciler) | A sibling's fiber across renders         | Current render pass |
+| `blockKey` prop  | `@overeng/notion-react` diff | A Notion block across renders & processes | Persisted in cache |
+
+### React `key` — sibling reconciliation
+
+Exactly what you know from React-DOM. Stable across renders, unique
+among siblings, lets React match up fibers so component state and hook
+state survive re-renders. Required any time you render a list. If you
+omit it you get React's usual index-keyed matching plus the usual
+warnings.
+
+```tsx
+{items.map((item) => (
+  <Toggle key={item.id} title={item.title}>…</Toggle>
+))}
+```
+
+React `key` never reaches the Notion diff — it's stripped by React
+before the element reaches the host-config.
+
+### `blockKey` — Notion block identity
+
+`blockKey` is our host-level prop. It is what the reconciler's diff uses
+to match a rendered candidate block to a previously-synced Notion block
+stored in the cache. If `blockKey` matches between runs, the existing
+Notion block id is reused (update-in-place); if it doesn't match, the
+block is treated as brand new (insert) and the previous one (if any) is
+removed.
+
+```tsx
+<Toggle blockKey={item.id} title={item.title}>…</Toggle>
+```
+
+If you omit `blockKey`, siblings fall back to positional keys
+(`p:0`, `p:1`, …). That works when the list is append-only, but
+mid-sibling inserts degrade to a tail-reorder (remove + re-insert of
+every following block) because positional keys shift.
+
+Use `blockKey` whenever:
+
+- the collection can grow or shrink in the middle,
+- items can reorder,
+- the same tree is re-rendered across process restarts (cache survives,
+  so `blockKey` must too).
+
+### Do I need both?
+
+Usually yes — they're cheap and answer different questions:
+
+```tsx
+<Toggle key={item.id} blockKey={item.id} title={item.title}>…</Toggle>
+```
+
+Rule of thumb: **React `key` is for React, `blockKey` is for Notion.**
+Same identifier for both is fine and common. You can also namespace
+`blockKey`s across multiple renderers sharing one cache file via the
+`blockKey(businessId)` helper (returns `"b:<id>"`).
+
+### When it matters — minimum-op behaviour
+
+With stable `blockKey`s, the diff satisfies:
+
+- Resyncing identical JSX ⇒ 0 Notion ops
+- Changing one block's props ⇒ 1 `update`
+- Appending one sibling ⇒ 1 `append`
+- Removing one sibling ⇒ 1 `remove`
+- Inserting a sibling mid-list ⇒ 1 `insert`
+
+Without `blockKey` on a middle insert, the diff sees every later
+positional key as "changed" and falls back to remove + re-insert of the
+tail.
+
+## Cache
+
+Any backend that implements `NotionCache` works:
+
+```ts
+interface NotionCache {
+  readonly load: Effect<CacheTree | undefined, CacheError>
+  readonly save: (tree: CacheTree) => Effect<void, CacheError>
+}
+```
+
+Shipped: `FsCache` (atomic-rename JSON file), `InMemoryCache` (in-process,
+tests). SQLite / Redis / other backends can be added downstream without
+forking.
+
+## Errors
+
+`NotionSyncError` (tagged, with `reason: string` + optional `cause`) is
+the only error channel surfaced to callers. `SyncResult` carries a
+`fallbackReason` when the sync took a fallback path
+(`"cold-cache"`, `"schema-mismatch"`, …). See the
+[fallback table in spec.md](./context/vrs/spec.md#fallback-decision-table-r16).
+
+## Further reading
+
+- Block + inline component reference: `src/components/`
+- Host-config + diff internals: `src/renderer/`
+- Design questions (open): [`spec.md#open-design-questions`](./context/vrs/spec.md#open-design-questions)
