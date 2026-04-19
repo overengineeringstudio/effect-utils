@@ -55,6 +55,9 @@
       "path": "./packages/@overeng/notion-effect-schema"
     },
     {
+      "path": "./packages/@overeng/notion-react"
+    },
+    {
       "path": "./packages/@overeng/oxc-config"
     },
     {

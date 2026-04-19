@@ -19,6 +19,7 @@ export const internalPackages = [
   'notion-cli',
   'notion-effect-client',
   'notion-effect-schema',
+  'notion-react',
   'pty-effect',
   'tui-core',
   'tui-react',

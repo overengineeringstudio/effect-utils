@@ -1,0 +1,68 @@
+{
+  "name": "@overeng/notion-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./renderer": "./src/renderer/mod.ts",
+    "./test": "./src/test/integration/setup.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./renderer": "./dist/renderer/mod.js"
+    }
+  },
+  "dependencies": {
+    "@effect/cluster": "0.58.0",
+    "@effect/experimental": "0.60.0",
+    "@effect/opentelemetry": "0.63.0",
+    "@effect/platform": "0.96.0",
+    "@effect/platform-node": "0.106.0",
+    "@effect/rpc": "0.75.0",
+    "@effect/vitest": "0.29.0",
+    "@effect/workflow": "0.18.0",
+    "@overeng/notion-effect-client": "workspace:^",
+    "@overeng/notion-effect-schema": "workspace:^",
+    "@playwright/test": "1.58.2",
+    "effect": "3.21.0",
+    "vitest": "3.2.4"
+  },
+  "devDependencies": {
+    "@effect/vitest": "0.29.0",
+    "@overeng/utils-dev": "workspace:^",
+    "@types/react": "19.2.7",
+    "@types/react-reconciler": "0.28.9",
+    "effect": "3.21.0",
+    "react": "19.2.3",
+    "react-reconciler": "0.33.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  },
+  "peerDependencies": {
+    "@effect/cluster": "^0.58.0",
+    "@effect/experimental": "^0.60.0",
+    "@effect/opentelemetry": "^0.63.0",
+    "@effect/platform": "^0.96.0",
+    "@effect/platform-node": "^0.106.0",
+    "@effect/rpc": "^0.75.0",
+    "@effect/workflow": "^0.18.0",
+    "@playwright/test": "^1.58.2",
+    "effect": "^3.21.0",
+    "react": "^19.2.3",
+    "react-reconciler": "^0.33.0"
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/notion-effect-client",
+      "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/notion-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  }
+}
