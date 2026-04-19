@@ -346,7 +346,7 @@ describe.skipIf(SKIP_INTEGRATION)('per-block-type integration fixtures', () => {
     )
   }, 60_000)
 
-  it.skip('Image via external URL (renderer emits `{url}`; Notion expects `{type:external, external:{url}}`)', async () => {
+  it('Image via external URL', async () => {
     await withScratch('image', (pageId) =>
       Effect.gen(function* () {
         yield* renderToNotion(

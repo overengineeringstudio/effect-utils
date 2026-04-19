@@ -75,7 +75,8 @@ describe('block components', () => {
     const op = ops[0]!
     if (op.kind !== 'append') throw new Error('expected append')
     expect(op.type).toBe('image')
-    expect(op.props.url).toBe('https://x/p.png')
+    expect(op.props.type).toBe('external')
+    expect(op.props.external).toEqual({ url: 'https://x/p.png' })
   })
 
   it('renders bookmark', () => {

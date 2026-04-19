@@ -126,11 +126,20 @@ const blockProps = (
   ) {
     p.is_toggleable = props.toggleable
   }
-  if (type === 'image' && typeof props.url === 'string') p.url = props.url
-  if (type === 'video' && typeof props.url === 'string') p.url = props.url
-  if (type === 'audio' && typeof props.url === 'string') p.url = props.url
-  if (type === 'file' && typeof props.url === 'string') p.url = props.url
-  if (type === 'pdf' && typeof props.url === 'string') p.url = props.url
+  // File-like media blocks (image/video/audio/file/pdf) want the URL wrapped
+  // in an `{ type: 'external', external: { url } }` envelope. `bookmark` and
+  // `embed` expect the bare `url` field — different shape per Notion's schema.
+  if (
+    (type === 'image' ||
+      type === 'video' ||
+      type === 'audio' ||
+      type === 'file' ||
+      type === 'pdf') &&
+    typeof props.url === 'string'
+  ) {
+    p.type = 'external'
+    p.external = { url: props.url }
+  }
   if (type === 'bookmark' && typeof props.url === 'string') p.url = props.url
   if (type === 'embed' && typeof props.url === 'string') p.url = props.url
   if (type === 'equation' && typeof props.expression === 'string') p.expression = props.expression
