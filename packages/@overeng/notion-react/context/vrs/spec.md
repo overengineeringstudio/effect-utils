@@ -337,8 +337,10 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 | `NotionBlocks.update` returns 404/archived        | Emit structural rebuild of that subtree     | `"block-missing"`   |
 | Diff produces malformed op-plan (invariant break) | Abort; propagate `NotionSyncError`          | n/a (error)         |
 
-`page-id-drift` and `block-missing` are v0.2 additions; v0.1 implements
-`cold-cache` and `schema-mismatch`. Callers receive the reason on the
+v0.1 implements `cold-cache`, `schema-mismatch`, and `page-id-drift`
+(via a pre-flight `NotionBlocks.retrieve(cache.rootId)`). `block-missing`
+is a v0.2 addition — under v0.1, a 404 on a cache-referenced block
+propagates as a `NotionSyncError`. Callers receive the reason on the
 `SyncResult`.
 
 ## Upload coordination
@@ -384,25 +386,31 @@ PR #3224) is the reference implementation pattern.
 
 ## Open design questions
 
-- **DQ1 Nested blocks inside TEXT_LEAF containers.** Today `callout`,
-  `quote`, list-item variants, and `to_do` flatten their children as
-  rich text. Supporting nested blocks beneath them (pixeltrail #62)
-  requires either a dual-role child (rich-text span + nested block) or
-  a dedicated `<Body>` component that flips `shouldSetTextContent`.
-  Decision deferred to v0.2.
+- **DQ1 Nested blocks inside TEXT_LEAF containers.** *Resolved for v0.1:*
+  `toggle` is already out of `TEXT_LEAF` and supports nested blocks
+  (covers pixeltrail Timeline sessions). `callout`/`quote`/list-item/
+  `to_do` remain rich-text-only until v0.2 (pixeltrail #62).
 - **DQ2 `deepEqual` vs `hash` at diff time.** The diff currently trusts
   hash equality to imply structural equality. Safe under the current
   `stableStringify` but not audited for all prop shapes we may add
   (e.g. Buffers, Dates). Resolve by either switching to `deepEqual` or
   documenting a strict prop-type contract.
-- **DQ3 Page-id drift + archived-block detection.** Currently v0.1 does
-  not actively detect either — the cache is trusted. Plan: add a
-  pre-flight `HEAD`-style check (or a lazy 404-catching wrapper around
-  `applyDiff`) before v0.2 ships, and wire the `"page-id-drift"` /
-  `"block-missing"` fallbacks in the decision table above.
-- **DQ4 Op batching via `position.after_block`.** Notion allows
-  batching multiple block appends in a single API call
-  (`NotionBlocks.append` with >1 child). The current diff emits one
-  call per op; batching consecutive `append`s under the same parent is
-  a pure latency win at cost of id-mapping complexity. Experiment, then
-  fold into `applyDiff` if worth it.
+- **DQ3 Page-id drift + archived-block detection.** *Resolved for v0.1:*
+  on cache load, the sync driver issues a single
+  `NotionBlocks.retrieve(cache.rootId)` pre-flight. On 404/archived:
+  invalidate cache + cold-rebuild with `fallbackReason =
+  "page-id-drift"`. Adds ~1 API call per sync — negligible vs savings.
+  Finer-grained `"block-missing"` detection during `applyDiff` deferred
+  to v0.2.
+- **DQ4 Op batching via `position.after_block`.** *Deferred to v0.2.*
+  v0.1 op counts already meet the derisk targets; batched append adds
+  id-mapping and partial-success complexity. v0.2 experiment goal:
+  measure "mutation-suite API-call count with single-op appends" vs
+  "…with batched appends under a shared parent".
+- **DQ5 Upload-registry miss policy (R14).** *Resolved for v0.1:*
+  `useNotionUpload(hash, factory)` calls `factory()` synchronously on
+  miss and emits a `console.warn` one-liner documenting that callers
+  are expected to pre-resolve. Suspense in v0.2 removes the need.
+  Rationale: hard-erroring would block fallback paths during cache
+  invalidation; a warning communicates intent without forcing a
+  redesign.
