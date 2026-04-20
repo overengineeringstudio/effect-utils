@@ -27,6 +27,7 @@ import type {
   ToggleProps,
 } from '../components/props.ts'
 import { KatexRender } from './katex.tsx'
+import { ShikiRender } from './shiki.tsx'
 
 /**
  * DOM-rendered mirrors of `../components/blocks.tsx`.
@@ -291,9 +292,7 @@ export const Toggle = ({ children, title }: ToggleProps) => (
 )
 
 export const Code = ({ children, language }: CodeProps) => (
-  <pre className="notion-code" data-language={language ?? 'plain text'}>
-    <code>{children}</code>
-  </pre>
+  <ShikiRender language={language}>{children}</ShikiRender>
 )
 
 export const Quote = ({ children }: QuoteProps) => (

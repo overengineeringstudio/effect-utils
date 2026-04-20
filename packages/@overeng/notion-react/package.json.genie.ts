@@ -11,7 +11,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-reconciler'] as const
-const optionalPeerDepNames = ['katex'] as const
+const optionalPeerDepNames = ['katex', 'shiki'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-react' }),
@@ -71,6 +71,7 @@ export default packageJson(
     },
     peerDependenciesMeta: {
       katex: { optional: true },
+      shiki: { optional: true },
     },
     scripts: {
       storybook: 'storybook dev -p 6014',

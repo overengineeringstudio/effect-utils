@@ -58,6 +58,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-reconciler": "0.33.0",
+    "shiki": "4.0.2",
     "storybook": "10.2.3",
     "typescript": "5.9.3",
     "vite": "7.3.1",
@@ -67,10 +68,14 @@
     "effect": "^3.21.0",
     "katex": "^0.16.45",
     "react": "^19.2.3",
-    "react-reconciler": "^0.33.0"
+    "react-reconciler": "^0.33.0",
+    "shiki": "^4.0.2"
   },
   "peerDependenciesMeta": {
     "katex": {
+      "optional": true
+    },
+    "shiki": {
       "optional": true
     }
   },
