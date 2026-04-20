@@ -23,6 +23,7 @@ import {
   type DiffOp,
 } from './sync-diff.ts'
 import { SyncEvent, type SyncEventHandler } from './sync-events.ts'
+import { aggregateMetrics, type SyncMetrics } from './sync-metrics.ts'
 
 /**
  * Does this error indicate the target block is already in the desired
@@ -803,15 +804,37 @@ export const sync = (
     readonly cache: NotionCache
     readonly onEvent?: SyncEventHandler
     /**
+     * Higher-level observability hook. When provided, `sync()` installs a
+     * `SyncMetrics` aggregator over the event stream and invokes this
+     * callback exactly once — after `SyncEnd` — with the consolidated
+     * snapshot (actual vs theoretical op counts, OER, cache outcome,
+     * etc.). Combinable with `onEvent`: both fire independently.
+     */
+    readonly onMetrics?: (metrics: SyncMetrics) => void
+    /**
      * How to treat pre-existing live children on a cold-cache sync. See
      * {@link ColdBaseline}. Defaults to `'clean'` — the pixeltrail / general
      * single-writer sync contract.
      */
     readonly coldBaseline?: ColdBaseline
   },
-): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const onEvent = opts.onEvent
+): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> => {
+  /* Compose the user `onEvent` with an internal metrics aggregator iff
+     `onMetrics` was supplied. Fan-out is cheap: both handlers receive
+     every event. The aggregator's `getMetrics()` is called once after
+     SyncEnd (both the success and error tail-branch — see bottom of this
+     function / the tapError below). Hoisted out of the gen so the
+     tapError branch can reach `metricsAgg`. */
+  const userOnEvent = opts.onEvent
+  const metricsAgg = opts.onMetrics !== undefined ? aggregateMetrics() : undefined
+  const onEvent: SyncEventHandler | undefined =
+    userOnEvent !== undefined && metricsAgg !== undefined
+      ? (e) => {
+          userOnEvent(e)
+          metricsAgg.handler(e)
+        }
+      : (userOnEvent ?? metricsAgg?.handler)
+  return Effect.gen(function* () {
     const syncStartMs = onEvent !== undefined ? performance.now() : 0
     let opIdCounter = 0
     const o11y: O11yCtx = {
@@ -991,6 +1014,19 @@ export const sync = (
     }
 
     const plan = diff(diffBase, candidate)
+    if (onEvent !== undefined) {
+      const tally = tallyDiff(plan)
+      onEvent(
+        SyncEvent.PlanComputed({
+          pageId: opts.pageId,
+          appends: tally.appends,
+          inserts: tally.inserts,
+          updates: tally.updates,
+          removes: tally.removes,
+          at: Date.now(),
+        }),
+      )
+    }
     // Prior hashes indexed by server block id — for UpdateNoop detection
     // when diff emits an update whose hash already matches the cached one
     // (e.g. post-checkpoint retry, hash-stable reshuffle).
@@ -1074,21 +1110,29 @@ export const sync = (
         }),
       )
     }
+    if (opts.onMetrics !== undefined && metricsAgg !== undefined) {
+      opts.onMetrics(metricsAgg.getMetrics())
+    }
     return fallbackReason === undefined ? counts : { ...counts, fallbackReason }
   }).pipe(
     Effect.tapError(() =>
       Effect.sync(() => {
-        if (opts.onEvent !== undefined) {
-          opts.onEvent(
-            SyncEvent.SyncEnd({
-              pageId: opts.pageId,
-              durationMs: 0,
-              ok: false,
-              opCount: 0,
-              at: Date.now(),
-            }),
-          )
+        /* Fan out the failure SyncEnd to the composed `onEvent` (which
+           already multiplexes user handler + metrics aggregator), then
+           deliver the final `onMetrics` snapshot. ok === false is carried
+           into the metrics. */
+        const ev = SyncEvent.SyncEnd({
+          pageId: opts.pageId,
+          durationMs: 0,
+          ok: false,
+          opCount: 0,
+          at: Date.now(),
+        })
+        onEvent?.(ev)
+        if (opts.onMetrics !== undefined && metricsAgg !== undefined) {
+          opts.onMetrics(metricsAgg.getMetrics())
         }
       }),
     ),
   )
+}

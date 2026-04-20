@@ -85,6 +85,23 @@ export type SyncEvent = Data.TaggedEnum<{
     readonly reason: 'hash-equal' | 'other'
     readonly at: number
   }
+  /**
+   * Emitted once per sync, right after the diff plan is computed (and
+   * before any HTTP ops are issued). Carries the *theoretical minimum*
+   * op counts — i.e. what the diff algorithm decided is the smallest
+   * cache→candidate reconciliation. The downstream op-folding /
+   * batching / atomic-container rewriting may change the actual HTTP
+   * request count, but this event fixes the oracle against which Op
+   * Efficiency Ratio (OER) is measured.
+   */
+  PlanComputed: {
+    readonly pageId: string
+    readonly appends: number
+    readonly inserts: number
+    readonly updates: number
+    readonly removes: number
+    readonly at: number
+  }
 }>
 
 export const SyncEvent = Data.taggedEnum<SyncEvent>()

@@ -27,6 +27,13 @@ export {
 export { sync } from './sync.ts'
 export { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 export {
+  aggregateMetrics,
+  type MetricsAggregator,
+  type OerRatios,
+  type OpCounts,
+  type SyncMetrics,
+} from './sync-metrics.ts'
+export {
   buildCandidateTree,
   candidateToCache,
   diff,
