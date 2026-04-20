@@ -9,6 +9,8 @@ import {
   Quote,
   Raw,
   SyncedBlock,
+  Table,
+  TableRow,
   ToDo,
   Toggle,
 } from '../components/blocks.tsx'
@@ -212,6 +214,35 @@ describe('host-config', () => {
     if (op.kind !== 'append') return
     expect(op.type).toBe('synced_block')
     expect(op.props).toEqual({ synced_from: { type: 'block_id', block_id: 'abc123' } })
+  })
+
+  it('projects table flags + nested table_row cells (Notion API shape)', () => {
+    const { buffer, root } = makeRoot()
+    root.render(
+      <Table tableWidth={3} hasColumnHeader hasRowHeader={false}>
+        <TableRow cells={['Tier', 'Price', <Bold key="h">Highlight</Bold>]} />
+        <TableRow cells={['A', '$1', 'notes']} />
+      </Table>,
+    )
+    const kinds = buffer.ops.map((o) => ('type' in o ? o.type : o.kind))
+    expect(kinds).toEqual(['table', 'table_row', 'table_row'])
+    const table = buffer.ops[0]!
+    if (table.kind !== 'append') return
+    expect(table.props).toEqual({
+      table_width: 3,
+      has_column_header: true,
+      has_row_header: false,
+    })
+    const row0 = buffer.ops[1]!
+    if (row0.kind !== 'append') return
+    const cells = row0.props.cells as Array<
+      Array<{ text: { content: string }; annotations: { bold: boolean } }>
+    >
+    expect(cells).toHaveLength(3)
+    expect(cells[0]![0]!.text.content).toBe('Tier')
+    expect(cells[0]![0]!.annotations.bold).toBe(false)
+    expect(cells[2]![0]!.text.content).toBe('Highlight')
+    expect(cells[2]![0]!.annotations.bold).toBe(true)
   })
 
   it('keeps inline annotations in rich_text while nesting blocks', () => {

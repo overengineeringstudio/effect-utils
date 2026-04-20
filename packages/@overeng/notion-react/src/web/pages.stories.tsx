@@ -36,27 +36,11 @@ export const LaunchOverview: Story = {
         <Bold>Ship date:</Bold> June 3 · <Bold>Units:</Bold> 10,000 · <Bold>Markets:</Bold> US, EU
       </Callout>
       <Heading2>Pricing tiers</Heading2>
-      <Table>
-        <TableRow>
-          <td>Tier</td>
-          <td>Price</td>
-          <td>Highlight</td>
-        </TableRow>
-        <TableRow>
-          <td>Nimbus One</td>
-          <td>$89</td>
-          <td>Core dimming + app control</td>
-        </TableRow>
-        <TableRow>
-          <td>Nimbus Plus</td>
-          <td>$129</td>
-          <td>Adds color temperature</td>
-        </TableRow>
-        <TableRow>
-          <td>Nimbus Pro</td>
-          <td>$179</td>
-          <td>Full RGB + scenes</td>
-        </TableRow>
+      <Table tableWidth={3} hasColumnHeader>
+        <TableRow cells={['Tier', 'Price', 'Highlight']} />
+        <TableRow cells={['Nimbus One', '$89', 'Core dimming + app control']} />
+        <TableRow cells={['Nimbus Plus', '$129', 'Adds color temperature']} />
+        <TableRow cells={['Nimbus Pro', '$179', 'Full RGB + scenes']} />
       </Table>
       <Heading2>Phases</Heading2>
       <Toggle title="Phase 1 — Manufacturing (April)">

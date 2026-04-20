@@ -120,13 +120,29 @@ const HeadingTag = ({
   const anchorId = id === '' ? undefined : id
   switch (level) {
     case 1:
-      return <h1 id={anchorId} className={headingClass(1)}>{inner}</h1>
+      return (
+        <h1 id={anchorId} className={headingClass(1)}>
+          {inner}
+        </h1>
+      )
     case 2:
-      return <h2 id={anchorId} className={headingClass(2)}>{inner}</h2>
+      return (
+        <h2 id={anchorId} className={headingClass(2)}>
+          {inner}
+        </h2>
+      )
     case 3:
-      return <h3 id={anchorId} className={headingClass(3)}>{inner}</h3>
+      return (
+        <h3 id={anchorId} className={headingClass(3)}>
+          {inner}
+        </h3>
+      )
     case 4:
-      return <h4 id={anchorId} className={headingClass(4)}>{inner}</h4>
+      return (
+        <h4 id={anchorId} className={headingClass(4)}>
+          {inner}
+        </h4>
+      )
   }
 }
 
@@ -190,9 +206,7 @@ const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): R
       <Tag key={`group-${out.length}`} className={run.className}>
         {run.items.map((el, idx) => (
           // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
-          <li key={el.key ?? `li-${idx}`}>
-            {(el.props as { children?: ReactNode }).children}
-          </li>
+          <li key={el.key ?? `li-${idx}`}>{(el.props as { children?: ReactNode }).children}</li>
         ))}
       </Tag>,
     )
@@ -201,9 +215,10 @@ const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): R
   for (const child of items) {
     const kind = listItemKind(child)
     if (kind !== undefined && isValidElement(child)) {
-      const spec = kind === 'bulleted'
-        ? { tag: 'ul' as const, className: 'notion-list notion-list-disc' }
-        : { tag: 'ol' as const, className: 'notion-list notion-list-numbered' }
+      const spec =
+        kind === 'bulleted'
+          ? { tag: 'ul' as const, className: 'notion-list notion-list-disc' }
+          : { tag: 'ol' as const, className: 'notion-list notion-list-numbered' }
       if (run === undefined || run.tag !== spec.tag) {
         flush()
         run = { ...spec, items: [] }
@@ -211,7 +226,9 @@ const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): R
       run.items.push(child)
     } else if (isValidElement(child) && child.type === TableOfContents) {
       flush()
-      out.push(<RenderedTableOfContents key={child.key ?? `toc-${out.length}`} entries={headings} />)
+      out.push(
+        <RenderedTableOfContents key={child.key ?? `toc-${out.length}`} entries={headings} />,
+      )
     } else {
       flush()
       out.push(child)
@@ -371,8 +388,13 @@ export const Table = ({ children }: TableProps) => (
   </div>
 )
 
-export const TableRow = ({ children }: TableRowProps) => (
-  <tr className="notion-simple-table-row">{children}</tr>
+export const TableRow = ({ cells }: TableRowProps) => (
+  <tr className="notion-simple-table-row">
+    {cells.map((cell, i) => (
+      // eslint-disable-next-line @eslint-react/no-array-index-key
+      <td key={i}>{cell}</td>
+    ))}
+  </tr>
 )
 
 export const ColumnList = ({ children }: ColumnListProps) => (

@@ -23,7 +23,9 @@ import {
   Paragraph,
   Quote,
   Raw,
+  Table,
   TableOfContents,
+  TableRow,
   ToDo,
   Toggle,
 } from '../../../components/blocks.tsx'
@@ -660,6 +662,57 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
           )
           const tree = yield* readPageTree(pageId)
           expect(tree.find((b) => b.type === 'breadcrumb')).toBeDefined()
+        }),
+      )
+    },
+    DEFAULT_TIMEOUT,
+  )
+
+  // -----------------------------------------------------------------
+  // table + table_row (3 columns × 4 rows, column header)
+  // -----------------------------------------------------------------
+
+  it(
+    'table — 3×4 with column header + inline annotations in cells',
+    async () => {
+      await withScratchPage('table-3x4', (pageId) =>
+        Effect.gen(function* () {
+          yield* renderToNotion(
+            <Page>
+              <Table tableWidth={3} hasColumnHeader>
+                <TableRow cells={['Tier', 'Price', 'Notes']} />
+                <TableRow cells={['One', '$89', <Bold key="n1">core</Bold>]} />
+                <TableRow cells={['Plus', '$129', <Italic key="n2">adds temp</Italic>]} />
+                <TableRow cells={['Pro', '$179', 'full RGB']} />
+              </Table>
+            </Page>,
+            { pageId },
+          )
+          const tree = yield* readPageTree(pageId)
+          const table = tree.find((b) => b.type === 'table')
+          expect(table).toBeDefined()
+          const tablePayload = table!.payload as {
+            table_width: number
+            has_column_header: boolean
+            has_row_header: boolean
+          }
+          expect(tablePayload.table_width).toBe(3)
+          expect(tablePayload.has_column_header).toBe(true)
+          expect(tablePayload.has_row_header).toBe(false)
+          expect(table!.children).toHaveLength(4)
+          const firstRow = table!.children[0]!
+          expect(firstRow.type).toBe('table_row')
+          const cellText = (cell: readonly RichTextItem[]): string =>
+            cell.map((rt) => rt.plain_text ?? '').join('')
+          const firstCells = (firstRow.payload as { cells: RichTextItem[][] }).cells
+          expect(firstCells).toHaveLength(3)
+          expect(cellText(firstCells[0]!)).toBe('Tier')
+          expect(cellText(firstCells[1]!)).toBe('Price')
+          expect(cellText(firstCells[2]!)).toBe('Notes')
+          const secondRow = table!.children[1]!
+          const secondCells = (secondRow.payload as { cells: RichTextItem[][] }).cells
+          expect(cellText(secondCells[2]!)).toBe('core')
+          expect(secondCells[2]![0]!.annotations?.bold).toBe(true)
         }),
       )
     },

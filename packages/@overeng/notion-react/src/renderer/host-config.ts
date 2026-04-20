@@ -55,7 +55,6 @@ const TEXT_LEAF = new Set<BlockType>([
   'bulleted_list_item',
   'numbered_list_item',
   'to_do',
-  'table_row',
 ])
 
 /**
@@ -149,6 +148,17 @@ const blockProps = (
   if (type === 'equation' && typeof props.expression === 'string') p.expression = props.expression
   if (type === 'link_to_page' && typeof props.pageId === 'string') p.page_id = props.pageId
   if (type === 'child_page' && typeof props.title === 'string') p.title = props.title
+  if (type === 'table') {
+    if (typeof props.tableWidth === 'number') p.table_width = props.tableWidth
+    if (typeof props.hasColumnHeader === 'boolean') p.has_column_header = props.hasColumnHeader
+    if (typeof props.hasRowHeader === 'boolean') p.has_row_header = props.hasRowHeader
+  }
+  if (type === 'table_row' && Array.isArray(props.cells)) {
+    // Notion table_row body is `cells: rich_text[][]` — each cell is its own
+    // rich_text array. Flatten each cell independently; strings / tagged
+    // inlines are supported per flattenRichText.
+    p.cells = (props.cells as ReactNode[]).map((cell) => flattenRichText(cell))
+  }
   // Escape hatch: `<Raw type="..." content={{...}}>` (and its passthrough
   // wrappers like SyncedBlock / Template / LinkPreview / ChildDatabase /
   // Breadcrumb) forward a pre-shaped payload via `content`. If no type-

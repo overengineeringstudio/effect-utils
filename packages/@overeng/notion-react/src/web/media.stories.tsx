@@ -54,22 +54,10 @@ export const EquationBlock: Story = {
 export const TableBlock: Story = {
   render: () => (
     <Page>
-      <Table>
-        <TableRow>
-          <td>Tier</td>
-          <td>Price</td>
-          <td>Highlight</td>
-        </TableRow>
-        <TableRow>
-          <td>Nimbus One</td>
-          <td>$89</td>
-          <td>Core dimming + app control</td>
-        </TableRow>
-        <TableRow>
-          <td>Nimbus Plus</td>
-          <td>$129</td>
-          <td>Adds color temperature</td>
-        </TableRow>
+      <Table tableWidth={3} hasColumnHeader>
+        <TableRow cells={['Tier', 'Price', 'Highlight']} />
+        <TableRow cells={['Nimbus One', '$89', 'Core dimming + app control']} />
+        <TableRow cells={['Nimbus Plus', '$129', 'Adds color temperature']} />
       </Table>
     </Page>
   ),

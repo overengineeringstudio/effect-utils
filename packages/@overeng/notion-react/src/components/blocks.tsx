@@ -95,8 +95,14 @@ export const Embed = ({ url }: EmbedProps) => h('embed', { url })
 
 export const Equation = ({ expression }: EquationProps) => h('equation', { expression })
 
-export const Table = ({ children }: TableProps) => h('table', null, children)
-export const TableRow = ({ children }: TableRowProps) => h('table_row', null, children)
+export const Table = ({ children, tableWidth, hasColumnHeader, hasRowHeader }: TableProps) => {
+  const props: Record<string, unknown> = {}
+  if (tableWidth !== undefined) props.tableWidth = tableWidth
+  if (hasColumnHeader !== undefined) props.hasColumnHeader = hasColumnHeader
+  if (hasRowHeader !== undefined) props.hasRowHeader = hasRowHeader
+  return h('table', props, children)
+}
+export const TableRow = ({ cells }: TableRowProps) => h('table_row', { cells })
 export const ColumnList = ({ children }: ColumnListProps) => h('column_list', null, children)
 export const Column = ({ children }: ColumnProps) => h('column', null, children)
 export const LinkToPage = ({ pageId }: LinkToPageProps) => h('link_to_page', { pageId })

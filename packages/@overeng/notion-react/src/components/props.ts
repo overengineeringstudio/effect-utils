@@ -45,8 +45,12 @@ export type EmbedProps = { readonly url: string }
 
 export type EquationProps = { readonly expression: string }
 
-export type TableProps = Children
-export type TableRowProps = Children
+export type TableProps = Children & {
+  readonly tableWidth?: number
+  readonly hasColumnHeader?: boolean
+  readonly hasRowHeader?: boolean
+}
+export type TableRowProps = { readonly cells: readonly ReactNode[] }
 export type ColumnListProps = Children
 export type ColumnProps = Children
 
