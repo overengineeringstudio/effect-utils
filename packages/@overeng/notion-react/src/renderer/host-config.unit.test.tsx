@@ -7,6 +7,8 @@ import {
   NumberedListItem,
   Paragraph,
   Quote,
+  Raw,
+  SyncedBlock,
   ToDo,
   Toggle,
 } from '../components/blocks.tsx'
@@ -184,6 +186,33 @@ describe('host-config', () => {
       expect(nestedRt.map((r) => r.text.content).join('')).toBe('nested')
     },
   )
+
+  it('projects Raw content verbatim for arbitrary block types', () => {
+    const { buffer, root } = makeRoot()
+    root.render(
+      <Raw
+        type="tab"
+        content={{ title: [{ type: 'text', text: { content: 'Tab 1' } }], color: 'default' }}
+      />,
+    )
+    const op = buffer.ops[0]!
+    expect(op.kind).toBe('append')
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('tab')
+    expect(op.props).toEqual({
+      title: [{ type: 'text', text: { content: 'Tab 1' } }],
+      color: 'default',
+    })
+  })
+
+  it('projects SyncedBlock passthrough content verbatim', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<SyncedBlock content={{ synced_from: { type: 'block_id', block_id: 'abc123' } }} />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('synced_block')
+    expect(op.props).toEqual({ synced_from: { type: 'block_id', block_id: 'abc123' } })
+  })
 
   it('keeps inline annotations in rich_text while nesting blocks', () => {
     const { buffer, root } = makeRoot()

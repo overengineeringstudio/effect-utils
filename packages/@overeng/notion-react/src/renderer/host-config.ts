@@ -96,12 +96,17 @@ const blockProps = (
   type: BlockType | 'raw',
   props: Record<string, unknown>,
 ): Record<string, unknown> => {
-  if (type === 'raw') {
-    return { content: props.content }
-  }
   // `blockKey` is a renderer-level identity hint, never part of the
   // projected Notion payload — exclude it from diff hashing.
   const p: Record<string, unknown> = {}
+  if (type === 'raw') {
+    // Legacy sentinel — the canonical escape-hatch path is `<Raw type="...">`,
+    // which lands here with the actual block type, not 'raw'. Retained so the
+    // instance-type union stays exhaustive.
+    return typeof props.content === 'object' && props.content !== null
+      ? { ...(props.content as Record<string, unknown>) }
+      : {}
+  }
   if (TEXT_LEAF.has(type)) {
     p.rich_text = flattenRichText(props.children as ReactNode)
   }
@@ -144,6 +149,14 @@ const blockProps = (
   if (type === 'equation' && typeof props.expression === 'string') p.expression = props.expression
   if (type === 'link_to_page' && typeof props.pageId === 'string') p.page_id = props.pageId
   if (type === 'child_page' && typeof props.title === 'string') p.title = props.title
+  // Escape hatch: `<Raw type="..." content={{...}}>` (and its passthrough
+  // wrappers like SyncedBlock / Template / LinkPreview / ChildDatabase /
+  // Breadcrumb) forward a pre-shaped payload via `content`. If no type-
+  // specific handler contributed a projection, emit the content verbatim so
+  // Notion receives the expected `{[type]: {...content}}` body.
+  if (Object.keys(p).length === 0 && typeof props.content === 'object' && props.content !== null) {
+    return { ...(props.content as Record<string, unknown>) }
+  }
   return p
 }
 

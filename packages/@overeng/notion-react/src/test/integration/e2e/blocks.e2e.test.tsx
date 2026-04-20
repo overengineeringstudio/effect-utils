@@ -22,6 +22,7 @@ import {
   Page,
   Paragraph,
   Quote,
+  Raw,
   TableOfContents,
   ToDo,
   Toggle,
@@ -641,6 +642,29 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
   // upload registry is wired. Listed explicitly as `.skip` so the coverage
   // gap is visible in test output.
   // -----------------------------------------------------------------
+
+  // -----------------------------------------------------------------
+  // Raw escape hatch — arbitrary block types via <Raw type="..." content={...}>
+  // -----------------------------------------------------------------
+
+  it(
+    'raw — breadcrumb projection via bare <Raw>',
+    async () => {
+      await withScratchPage('raw-breadcrumb', (pageId) =>
+        Effect.gen(function* () {
+          yield* renderToNotion(
+            <Page>
+              <Raw type="breadcrumb" content={{}} />
+            </Page>,
+            { pageId },
+          )
+          const tree = yield* readPageTree(pageId)
+          expect(tree.find((b) => b.type === 'breadcrumb')).toBeDefined()
+        }),
+      )
+    },
+    DEFAULT_TIMEOUT,
+  )
 
   it.skip('video — external URL (requires file_upload API, v0.2)', () => {})
   it.skip('audio — external URL (requires file_upload API, v0.2)', () => {})
