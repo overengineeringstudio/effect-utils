@@ -739,23 +739,47 @@ const emptyCache = (rootId: string): CacheTree => ({
 
 /**
  * Build a cache-shaped base from the live top-level block ids on drift.
- * Uses synthetic keys (`drift:<blockId>`) that can't collide with candidate
- * keys, so `diff()` emits a `remove` for every live block and `append`s for
- * the candidate tree. Children/hash are empty — we don't know the live
- * subtree, and diff only needs top-level identity to decide remove vs
- * retain. The single recover pass fully re-seeds the cache.
+ *
+ * When a prior cache is available, this preserves entries whose blockIds are
+ * still live — their meaningful key/hash/children let `diff()` retain them
+ * against matching candidate keys. Live blockIds that are NOT in the prior
+ * cache get synthetic `drift:<blockId>` keys so `diff()` emits a `remove` for
+ * each (they're unowned leftovers).
+ *
+ * Without a prior (cold-clean path), every live id becomes a ghost entry so
+ * every live top-level block converts into an idempotent remove.
+ *
+ * Why this matters: the naive "all-ghost" base turns a 1-block out-of-band
+ * drift into a full page rebuild — N removes + N appends — which is O(minutes)
+ * on 500+ block pages. The hybrid base preserves locality: only the actual
+ * drift (blocks added/removed out-of-band) drives ops; the stable majority is
+ * retained via the normal LCS path.
  */
-const driftedBase = (rootId: string, liveIds: readonly string[]): CacheTree => ({
-  schemaVersion: CACHE_SCHEMA_VERSION,
-  rootId,
-  children: liveIds.map((blockId) => ({
-    key: `drift:${blockId}`,
-    blockId,
-    type: 'unknown',
-    hash: '',
-    children: [],
-  })),
-})
+const driftedBase = (
+  rootId: string,
+  liveIds: readonly string[],
+  prior: CacheTree | undefined,
+): CacheTree => {
+  const priorByBlockId = new Map<string, CacheNode>()
+  if (prior !== undefined) {
+    for (const c of prior.children) priorByBlockId.set(c.blockId, c)
+  }
+  return {
+    schemaVersion: CACHE_SCHEMA_VERSION,
+    rootId,
+    children: liveIds.map((blockId) => {
+      const priorNode = priorByBlockId.get(blockId)
+      if (priorNode !== undefined) return priorNode
+      return {
+        key: `drift:${blockId}`,
+        blockId,
+        type: 'unknown',
+        hash: '',
+        children: [],
+      }
+    }),
+  }
+}
 
 /**
  * Cache-backed incremental sync.
@@ -983,12 +1007,23 @@ export const sync = (
     const coldClean = useCold && coldBaseline === 'clean' && liveTopLevelIds.length > 0
     const diffBase: CacheTree = useCold
       ? coldClean
-        ? driftedBase(opts.pageId, liveTopLevelIds)
+        ? driftedBase(opts.pageId, liveTopLevelIds, undefined)
         : emptyCache(opts.pageId)
       : drifted
-        ? driftedBase(opts.pageId, liveTopLevelIds)
+        ? driftedBase(opts.pageId, liveTopLevelIds, prior)
         : prior
-    const workingBase: CacheTree = useCold || drifted ? emptyCache(opts.pageId) : prior
+    /* Working base mirrors diffBase for warm drift (no ghost leakage risk —
+       we only copy prior entries whose blockIds are still live server-side,
+       so they're real confirmed entries). For cold paths we stay empty. */
+    const workingBase: CacheTree = useCold
+      ? emptyCache(opts.pageId)
+      : drifted
+        ? {
+            schemaVersion: CACHE_SCHEMA_VERSION,
+            rootId: opts.pageId,
+            children: diffBase.children.filter((c) => !c.key.startsWith('drift:')),
+          }
+        : prior
     const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
       ? 'page-id-drift'
       : drifted

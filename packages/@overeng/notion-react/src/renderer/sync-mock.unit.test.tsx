@@ -399,13 +399,58 @@ describe('sync() against in-memory fake Notion', () => {
       }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
     )
     expect(res.fallbackReason).toBe('cache-drift')
-    // Drift rebuild: remove every still-live top-level block (so the page
-    // converges on the candidate tree, not just accumulates duplicates) and
-    // append the fresh candidate tree. `removes` equals the live top-level
-    // block count at drift time — here: original 6 top-level blocks minus
-    // the one archived out-of-band = 5.
-    expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0 })
-    expect(res.removes).toBeGreaterThan(0)
+    // Drift recovery is targeted: the hybrid `driftedBase` preserves prior
+    // cache entries for blocks that are still live, so only the actual drift
+    // (the one missing toggle) drives ops. The diff re-inserts one toggle
+    // (matching the candidate key whose block is missing) and leaves every
+    // other top-level block retained. There are zero updates; `removes` is
+    // zero because no prior-cache entry was orphaned (the archived toggle's
+    // key is still in the candidate, so it becomes a re-insert, not a
+    // remove).
+    expect(res).toMatchObject({ updates: 0 })
+    expect(res.appends + res.inserts).toBeLessThanOrEqual(2)
+    expect(res.appends + res.inserts).toBeGreaterThanOrEqual(1)
+  })
+
+  it('drift detection: LARGE warm page with 1-block drift → minimal ops (regression: #warm-sync-slow)', async () => {
+    // Regression test for: warm sync on 500+ block page hung >5 minutes
+    // because any ordered-sequence mismatch triggered a full rebuild
+    // (remove every live block, append every candidate block).
+    // Post-fix: hybrid drift base preserves prior cache entries for blocks
+    // still live, so diff emits only ops for the actual drift.
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // 20 toggle sessions is enough to make the blast radius obvious while
+    // keeping the test snappy. Old behavior: 20 removes + 40 appends (2 per
+    // session). New behavior: 0-2 ops for a 1-block drift.
+    const manySessions = Array.from({ length: 20 }, (_, i) => ({
+      app: `App${i}`,
+      minutes: 5 + i,
+    }))
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={20} sessions={manySessions} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    // Archive exactly one toggle out of band.
+    const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
+    firstToggle.archived = true
+
+    const res = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={20} sessions={manySessions} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('cache-drift')
+    // Total ops bounded by the drift magnitude, not by tree size. Old
+    // behavior emitted ~19 removes + ~22 appends; new behavior emits a
+    // small constant.
+    const totalOps = res.appends + res.inserts + res.updates + res.removes
+    expect(totalOps).toBeLessThanOrEqual(4)
   })
 
   // ---------------------------------------------------------------
