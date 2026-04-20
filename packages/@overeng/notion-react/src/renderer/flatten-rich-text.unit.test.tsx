@@ -232,4 +232,16 @@ describe('flattenRichText', () => {
     expect(out[1]!.annotations.bold).toBe(true)
     expect(out[3]!.annotations.code).toBe(true)
   })
+
+  it('recurses through React Fragments so nested text is preserved', () => {
+    // Regression: an untagged fragment used to short-circuit the walker,
+    // dropping every descendant (e.g. `<Paragraph><>hello</></Paragraph>`).
+    const out = flattenRichText(
+      <>
+        hi <Bold>there</Bold>
+      </>,
+    )
+    expect(out.map((i) => (i.type === 'text' ? i.text.content : ''))).toEqual(['hi ', 'there'])
+    expect(out[1]!.annotations.bold).toBe(true)
+  })
 })

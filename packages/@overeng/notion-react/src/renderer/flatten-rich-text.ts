@@ -155,11 +155,14 @@ export const flattenRichText = (children: ReactNode): RichTextItem[] => {
     if (!isReactElement(node)) return
     const tag = getInlineTag(node)
     if (tag === undefined) {
-      // Only inline-tagged components contribute to rich_text. Host elements
-      // (e.g. `<Paragraph>`) and untagged wrappers are treated as block
-      // children — reconciled as fibers instead of folded into rich_text.
-      // This is what keeps nested blocks under list-ish / text-leaf parents
-      // from being silently swallowed.
+      // Recurse through React Fragments (including keyed fragments) so
+      // patterns like `<Paragraph><>hello</></Paragraph>` don't silently
+      // drop the inner text. Fragments are symbol-typed, distinct from
+      // both host block elements (string-typed, e.g. `"paragraph"`) and
+      // block components (function-typed, e.g. `Paragraph`). Those two
+      // *must not* recurse into the current rich_text frame — they're
+      // reconciled as fibers instead.
+      if (typeof node.type === 'symbol') walk(node.props.children, ann, link)
       return
     }
     const kids = node.props.children
