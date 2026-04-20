@@ -20,7 +20,7 @@ let
     # Managed by `dt nix:hash:tui-stories` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-8chjRKBfaGB3APilT8qLCGxyM9BIYKNM6J5r9xUx/U0=";
+        hash = "sha256-0wphyY8vKztNn23RnjcWmmEIDDHY4yYeXYlp/1h8bCM=";
       };
     };
     inherit gitRev commitTs dirty;
