@@ -65,7 +65,14 @@
 
 /* Callout icon sizing — vendored CSS keys off `.notion-page-icon-inline`
    inside `.notion-callout` but only when the parent is a real PageIcon.
-   We pass an emoji string so we need the box rules ourselves. */
+   We pass an emoji string so we need the box rules ourselves.
+
+   Top-align icon + first text line so multi-line callouts don't float the
+   emoji half-way down the block (rnx's default `align-items: center` looks
+   wrong once the text wraps). */
+.notion-callout {
+  align-items: flex-start;
+}
 .notion-callout .notion-page-icon-inline {
   display: inline-flex;
   align-items: center;
@@ -74,7 +81,21 @@
   width: 24px;
   height: 24px;
   font-size: 1.3em;
-  line-height: 1;
+  line-height: 1.5;
+}
+
+/* green_background — react-notion-x's vendored CSS omits the green family
+   from both the `--notion-*_background_co` variables and the matching
+   `.notion-*_background_co` rules. Fill the gap so `<Callout
+   color="green_background">` actually gets a backdrop. */
+:root {
+  --notion-green_background_co: rgba(219, 237, 219, 0.3);
+}
+.dark-mode {
+  --notion-green_background_co: rgba(56, 76, 60, 0.3);
+}
+.notion-green_background_co {
+  background-color: var(--notion-green_background_co);
 }
 
 /* simple_table overflow wrapper — keeps wide tables scrollable.
