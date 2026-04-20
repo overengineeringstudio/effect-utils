@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 
 import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 
-import type { CacheTree, NotionCache } from '../cache/types.ts'
+import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
 import type { SyncResult } from './render-to-notion.ts'
@@ -34,6 +34,131 @@ const appendBody = (type: string, props: Record<string, unknown>): Record<string
   type,
   [type]: props,
 })
+
+/**
+ * Mutable working copy of the on-disk cache used for batch-level
+ * checkpointing (#102). After each successful API call we mutate this
+ * structure to reflect confirmed server state, then flush it to the
+ * cache backend using the backend's atomic write path (tmp + rename for
+ * `FsCache`).
+ *
+ * Invariant: every `WorkingNode` in the tree has a real server block id
+ * (never a `tmp-*` placeholder). Ops only mutate the working copy *after*
+ * their HTTP response resolves tmp ids to server ids.
+ */
+interface WorkingNode {
+  readonly key: string
+  readonly blockId: string
+  type: string
+  hash: string
+  children: WorkingNode[]
+}
+
+interface WorkingCache {
+  readonly rootId: string
+  readonly rootChildren: WorkingNode[]
+  /** blockId → node (or `undefined` sentinel for the root page itself). */
+  readonly byId: Map<string, WorkingNode | undefined>
+  /** parent-id → children array (lets ops target either root or a block). */
+  readonly childrenById: Map<string, WorkingNode[]>
+}
+
+const cacheNodeToWorking = (n: CacheNode): WorkingNode => ({
+  key: n.key,
+  blockId: n.blockId,
+  type: n.type,
+  hash: n.hash,
+  children: n.children.map(cacheNodeToWorking),
+})
+
+const workingToCacheNode = (n: WorkingNode): CacheNode => ({
+  key: n.key,
+  blockId: n.blockId,
+  type: n.type,
+  hash: n.hash,
+  children: n.children.map(workingToCacheNode),
+})
+
+const initWorkingCache = (base: CacheTree): WorkingCache => {
+  const rootChildren = base.children.map(cacheNodeToWorking)
+  const byId = new Map<string, WorkingNode | undefined>()
+  const childrenById = new Map<string, WorkingNode[]>()
+  byId.set(base.rootId, undefined) // sentinel — root page has no node record
+  childrenById.set(base.rootId, rootChildren)
+  const index = (node: WorkingNode): void => {
+    byId.set(node.blockId, node)
+    childrenById.set(node.blockId, node.children)
+    for (const c of node.children) index(c)
+  }
+  for (const c of rootChildren) index(c)
+  return { rootId: base.rootId, rootChildren, byId, childrenById }
+}
+
+const workingToCacheTree = (w: WorkingCache): CacheTree => ({
+  schemaVersion: CACHE_SCHEMA_VERSION,
+  rootId: w.rootId,
+  children: w.rootChildren.map(workingToCacheNode),
+})
+
+/**
+ * Add a newly-created block under `parentId` at an optional position. New
+ * blocks arrive without children (the sync driver emits descendant appends
+ * as subsequent ops).
+ */
+const workingAppend = (
+  w: WorkingCache,
+  parentId: string,
+  node: WorkingNode,
+  afterId: string | undefined,
+): void => {
+  const siblings = w.childrenById.get(parentId)
+  if (siblings === undefined) {
+    // Parent not in working cache — this happens when appending under a
+    // freshly-minted parent whose own creation batch has just landed.
+    // Register an empty children bucket and retry.
+    w.childrenById.set(parentId, [])
+    workingAppend(w, parentId, node, afterId)
+    return
+  }
+  if (afterId === undefined || afterId === '') {
+    siblings.push(node)
+  } else {
+    const idx = siblings.findIndex((s) => s.blockId === afterId)
+    if (idx >= 0) siblings.splice(idx + 1, 0, node)
+    else siblings.push(node)
+  }
+  w.byId.set(node.blockId, node)
+  // Register the new node's own (empty) children bucket so descendant
+  // appends can find it.
+  if (!w.childrenById.has(node.blockId)) w.childrenById.set(node.blockId, node.children)
+}
+
+const workingUpdate = (w: WorkingCache, blockId: string, type: string, hash: string): void => {
+  const node = w.byId.get(blockId)
+  if (node === undefined) return
+  node.type = type
+  node.hash = hash
+}
+
+const workingRemove = (w: WorkingCache, blockId: string): void => {
+  const node = w.byId.get(blockId)
+  if (node === undefined) return
+  // Detach from parent by walking every bucket; fast path rare — most
+  // syncs have small remove counts.
+  for (const bucket of w.childrenById.values()) {
+    const idx = bucket.indexOf(node)
+    if (idx >= 0) {
+      bucket.splice(idx, 1)
+      break
+    }
+  }
+  const drop = (n: WorkingNode): void => {
+    w.byId.delete(n.blockId)
+    w.childrenById.delete(n.blockId)
+    for (const c of n.children) drop(c)
+  }
+  drop(node)
+}
 
 /**
  * Notion's `append children` endpoint caps each request at 100 children.
@@ -71,6 +196,9 @@ const flushAppendRun = (
   run: readonly AppendLike[],
   idMap: Map<string, string>,
   resolve: (id: string) => string,
+  onBatch: (
+    committed: readonly { op: AppendLike; serverId: string; afterId: string | undefined }[],
+  ) => Effect.Effect<void, NotionSyncError>,
 ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     if (run.length === 0) return
@@ -102,17 +230,19 @@ const flushAppendRun = (
       )
       // Results are returned in the order submitted.
       const results = res.results as readonly { id?: string }[]
-      let lastId: string | undefined
+      const committed: { op: AppendLike; serverId: string; afterId: string | undefined }[] = []
+      let lastId: string | undefined = nextAfter
       for (let i = 0; i < batch.length; i++) {
         const serverId = results[i]?.id
-        if (serverId !== undefined) {
-          idMap.set(batch[i]!.tmpId, serverId)
-          lastId = serverId
-        }
+        if (serverId === undefined) continue
+        idMap.set(batch[i]!.tmpId, serverId)
+        committed.push({ op: batch[i]!, serverId, afterId: lastId })
+        lastId = serverId
       }
       // Anchor subsequent batches on the last-minted id so positional
       // semantics are preserved under concurrent modifications.
       nextAfter = lastId ?? nextAfter
+      yield* onBatch(committed)
     }
   })
 
@@ -121,10 +251,28 @@ const flushAppendRun = (
  * ops sharing a parent are coalesced into batched API calls (#101).
  * Accumulates tmp-id → real-id mappings into `idMap` as the server issues
  * ids for appended / inserted blocks.
+ *
+ * After each successful HTTP call (batched append, single update, single
+ * remove) invokes `checkpoint` with the op(s) just committed so the caller
+ * can persist a partial cache snapshot (#102). If a later op throws, the
+ * cache reflects server state up to the last successful checkpoint.
  */
 const applyDiff = (
   ops: readonly DiffOp[],
   idMap: Map<string, string>,
+  checkpoint: (
+    event:
+      | {
+          readonly kind: 'appended'
+          readonly committed: readonly {
+            op: AppendLike
+            serverId: string
+            afterId: string | undefined
+          }[]
+        }
+      | { readonly kind: 'updated'; readonly op: Extract<DiffOp, { kind: 'update' }> }
+      | { readonly kind: 'removed'; readonly op: Extract<DiffOp, { kind: 'remove' }> },
+  ) => Effect.Effect<void, NotionSyncError>,
 ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const resolve = (id: string): string => idMap.get(id) ?? id
@@ -142,7 +290,9 @@ const applyDiff = (
           if (!isAppendLike(next) || next.parent !== runParent) break
           i += 1
         }
-        yield* flushAppendRun(ops.slice(runStart, i) as AppendLike[], idMap, resolve)
+        yield* flushAppendRun(ops.slice(runStart, i) as AppendLike[], idMap, resolve, (committed) =>
+          checkpoint({ kind: 'appended', committed }),
+        )
         continue
       }
       switch (op.kind) {
@@ -152,6 +302,7 @@ const applyDiff = (
               (cause) => new NotionSyncError({ reason: 'notion-update-failed', cause }),
             ),
           )
+          yield* checkpoint({ kind: 'updated', op })
           break
         }
         case 'remove': {
@@ -160,6 +311,7 @@ const applyDiff = (
               (cause) => new NotionSyncError({ reason: 'notion-delete-failed', cause }),
             ),
           )
+          yield* checkpoint({ kind: 'removed', op })
           break
         }
       }
@@ -212,9 +364,49 @@ export const sync = (
 
     const plan = diff(base, candidate)
     const idMap = new Map<string, string>()
-    yield* applyDiff(plan, idMap)
+    // Working copy of the cache tree — updated after each successful op,
+    // flushed to the backend as a per-batch checkpoint (#102). On
+    // mid-sync failure the cache reflects server state up to the last
+    // checkpoint, so a retry diffs against a tree that already includes
+    // the blocks that actually landed.
+    const working = initWorkingCache(base)
+    const flushCheckpoint: Effect.Effect<void, NotionSyncError> = Effect.suspend(() =>
+      opts.cache
+        .save(workingToCacheTree(working))
+        .pipe(
+          Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
+        ),
+    )
+
+    const resolve = (id: string): string => idMap.get(id) ?? id
+    yield* applyDiff(plan, idMap, (event) =>
+      Effect.gen(function* () {
+        if (event.kind === 'appended') {
+          for (const { op, serverId, afterId } of event.committed) {
+            const parentId = resolve(op.parent)
+            const node: WorkingNode = {
+              key: op.candidate.key,
+              blockId: serverId,
+              type: op.type,
+              hash: op.candidate.hash,
+              children: [],
+            }
+            workingAppend(working, parentId, node, afterId)
+          }
+        } else if (event.kind === 'updated') {
+          workingUpdate(working, event.op.blockId, event.op.type, event.op.hash)
+        } else {
+          workingRemove(working, event.op.blockId)
+        }
+        yield* flushCheckpoint
+      }),
+    )
     resolveTreeIds(candidate, idMap)
 
+    // Final authoritative snapshot from the fully-resolved candidate.
+    // Semantically identical to the working copy after the last op, but
+    // also picks up any purely structural bookkeeping (e.g. hash of an
+    // updated node that matches the candidate hash byte-for-byte).
     const tree = candidateToCache(candidate, CACHE_SCHEMA_VERSION)
     yield* opts.cache
       .save(tree)

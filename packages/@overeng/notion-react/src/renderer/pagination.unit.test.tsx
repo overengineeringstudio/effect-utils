@@ -218,16 +218,13 @@ describe('pagination + batch boundaries', () => {
     })
   })
 
-  it('mid-batch failure: cache rolls back, server retains partial batch writes', async () => {
+  it('mid-batch failure: cache checkpoints successful batches (#102)', async () => {
     // With batched appends (#101), 150 paragraphs emit 2 API calls
-    // (100 + 50). Failing the 2nd batch leaves the first 100 on the
-    // server, but the sync driver still short-circuits before calling
-    // `cache.save`, so the cache stays empty.
-    //
-    // This pins the pre-checkpointing behaviour: partial-server with
-    // an empty cache means a retry will diff against an empty cache and
-    // duplicate the first 100 blocks. Addressed by batch-level cache
-    // checkpointing in #102.
+    // (100 + 50). When the 2nd batch fails, the 1st batch already landed
+    // server-side and the sync driver must have flushed a cache
+    // checkpoint after it. A subsequent retry therefore diffs against a
+    // cache that already carries the first 100 blocks (by key) and only
+    // re-appends the remaining 50.
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const paragraphs: ReactNode[] = []
@@ -249,9 +246,89 @@ describe('pagination + batch boundaries', () => {
     expect(Exit.isFailure(exit)).toBe(true)
     // Server state: first batch of 100 landed.
     expect(fake.childrenOf(ROOT)).toHaveLength(100)
-    // Cache state: untouched (no save on failure, pre-#102).
+    // Cache state: reflects the 100 committed blocks.
     const cached = await Effect.runPromise(cache.load)
-    expect(cached).toBeUndefined()
+    expect(cached).toBeDefined()
+    expect(cached!.children).toHaveLength(100)
+    for (let i = 0; i < 100; i++) {
+      expect(cached!.children[i]!.key).toBe(`k:p${i}`)
+      expect(cached!.children[i]!.blockId).not.toMatch(/^tmp-/)
+    }
+  })
+
+  it('idempotent resync: repeating a successful sync is a no-op (#102)', async () => {
+    // Sanity check that the checkpointing machinery does not introduce
+    // drift on the happy path — two consecutive successful syncs should
+    // leave the server with a single copy of every block.
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        {h('paragraph', { blockKey: 'a' }, 'A')}
+        {h('paragraph', { blockKey: 'b' }, 'B')}
+        {h('paragraph', { blockKey: 'c' }, 'C')}
+      </>
+    )
+    const first = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(first).toMatchObject({ appends: 3 })
+    const before = fake.requests.length
+    const second = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(second).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    const afterReqs = fake.requests.slice(before)
+    expect(afterReqs.filter((r) => r.path.includes('/children') && r.method === 'PATCH')).toEqual(
+      [],
+    )
+    expect(fake.childrenOf(ROOT)).toHaveLength(3)
+  })
+
+  it('checkpointed retry: second sync only appends the missing tail (#102)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const paragraphs: ReactNode[] = []
+    for (let i = 0; i < 150; i++) {
+      paragraphs.push(
+        <Fragment key={i}>{h('paragraph', { blockKey: `p${i}` }, `line ${i}`)}</Fragment>,
+      )
+    }
+    let batchCount = 0
+    fake.failOn((req) => {
+      if (req.method === 'PATCH' && req.path === `/v1/blocks/${ROOT}/children`) {
+        batchCount += 1
+        if (batchCount === 2) return new Error('fake-notion: simulated failure on 2nd batch')
+      }
+      return undefined
+    })
+    await runWithExit(fake, sync(<>{paragraphs}</>, { pageId: ROOT, cache }))
+    expect(fake.childrenOf(ROOT)).toHaveLength(100)
+
+    // Clear the failure hook and retry from the checkpointed cache.
+    fake.failOn(() => undefined)
+    const before = fake.requests.length
+    const res = await runWith(
+      fake,
+      sync(<>{paragraphs}</>, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Only the remaining 50 should be appended — the first 100 are
+    // retained from the checkpointed cache.
+    expect(res).toMatchObject({ appends: 50 })
+    const retryAppends = fake.requests
+      .slice(before)
+      .filter((r) => r.method === 'PATCH' && r.path === `/v1/blocks/${ROOT}/children`)
+    expect(retryAppends.length).toBe(1)
+    expect((retryAppends[0]!.body as { children: unknown[] }).children.length).toBe(50)
+    expect(fake.childrenOf(ROOT)).toHaveLength(150)
   })
 
   // Performance benchmarks need a different harness (timing reliability in

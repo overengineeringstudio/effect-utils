@@ -107,6 +107,10 @@ export type DiffOp =
       readonly blockId: string
       readonly type: BlockType
       readonly props: Record<string, unknown>
+      /** Post-update hash for the cache checkpoint (#102). */
+      readonly hash: string
+      /** New key (never changes on update; carried through for the cache). */
+      readonly key: string
     }
   | { readonly kind: 'remove'; readonly blockId: string }
 
@@ -247,6 +251,8 @@ const diffChildren = (
           blockId: prior.blockId,
           type: cand.type,
           props: cand.props,
+          hash: cand.hash,
+          key: cand.key,
         })
       }
       deferred.push({
