@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
-import { Heading2, Paragraph } from '../components/blocks.ts'
+import { Column, ColumnList, Heading2, Image, Paragraph } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
 import { sync } from './sync.ts'
@@ -354,6 +354,94 @@ describe('sync() against in-memory fake Notion', () => {
     // the one archived out-of-band = 5.
     expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0 })
     expect(res.removes).toBeGreaterThan(0)
+  })
+
+  // ---------------------------------------------------------------
+  // Atomic containers (column_list) — must ship full nested subtree
+  // in a single `appendChildren` call. Staged-append is rejected by
+  // Notion with validation_error; the fake mirrors this.
+  // ---------------------------------------------------------------
+  it('column_list → single appendChildren with nested column/image payload', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList>
+        <Column>
+          <Image url="https://example.com/a.png" />
+        </Column>
+        <Column>
+          <Image url="https://example.com/b.png" />
+        </Column>
+      </ColumnList>
+    )
+    const res = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // One diff op per rendered block: 1 column_list + 2 columns + 2 images = 5.
+    // All five get absorbed into a single atomic payload, but the diff-level
+    // tally still reflects the rendered shape.
+    expect(res.appends).toBe(5)
+    expect(res.updates + res.inserts + res.removes).toBe(0)
+
+    // Exactly one children-append for the column_list (+ nothing else).
+    // The notion-effect-client uses PATCH for `appendBlockChildren`.
+    const mutating = fake.requests.filter(
+      (r) => r.method === 'PATCH' && /\/blocks\/[^/]+\/children$/.test(r.path),
+    )
+    expect(mutating).toHaveLength(1)
+    const body = mutating[0]!.body as {
+      children: { type: string; column_list: { children: unknown[] } }[]
+    }
+    expect(body.children).toHaveLength(1)
+    expect(body.children[0]!.type).toBe('column_list')
+    expect(body.children[0]!.column_list.children).toHaveLength(2)
+
+    // Server tree shape.
+    const top = fake.childrenOf(ROOT)
+    expect(top.map((b) => b.type)).toEqual(['column_list'])
+    const cols = fake.childrenOf(top[0]!.id)
+    expect(cols.map((b) => b.type)).toEqual(['column', 'column'])
+    for (const c of cols) {
+      const kids = fake.childrenOf(c.id)
+      expect(kids.map((b) => b.type)).toEqual(['image'])
+    }
+  })
+
+  it('column_list resync is a true no-op (nested tmpIds resolved to server ids)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList>
+        <Column>
+          <Image url="https://example.com/a.png" />
+        </Column>
+        <Column>
+          <Image url="https://example.com/b.png" />
+        </Column>
+      </ColumnList>
+    )
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const before = fake.requests.length
+    const rerun = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // If nested tmpIds were not resolved, the persisted cache would carry
+    // `tmp-*` ids and the second sync would throw from candidateToCache.
+    expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(rerun.fallbackReason).toBeUndefined()
+    const newReqs = fake.requests.slice(before)
+    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
   })
 
   it('page-id-drift: cache written for a different pageId cold-starts', async () => {

@@ -132,16 +132,61 @@ export const createFakeNotion = (): FakeNotion => {
           | { type: 'start' }
           | { type: 'end' }
       }
+      // Notion validation: column_list and column require non-empty children
+      // inlined in the same request. Staged-append (create shell, then
+      // append descendants) is rejected by the real API with
+      // `validation_error`; mirror that here so drivers that naively emit
+      // one-op-per-block fail the same way against the fake.
+      const validateAtomic = (child: { type: string; [k: string]: unknown }): void => {
+        if (child.type === 'column_list') {
+          const cl = child.column_list as { children?: unknown[] } | undefined
+          if (cl?.children === undefined || cl.children.length < 2) {
+            throw new Error(
+              `fake-notion: column_list must be created with >=2 nested column children in the same request (validation_error)`,
+            )
+          }
+          for (const col of cl.children as { type: string }[]) validateAtomic(col)
+        }
+        if (child.type === 'column') {
+          const co = child.column as { children?: unknown[] } | undefined
+          if (co?.children === undefined || co.children.length < 1) {
+            throw new Error(
+              `fake-notion: column must be created with >=1 nested child in the same request (validation_error)`,
+            )
+          }
+          for (const nested of co.children as { type: string; [k: string]: unknown }[]) {
+            validateAtomic(nested)
+          }
+        }
+      }
+      for (const child of b.children) validateAtomic(child)
       const list = getChildList(parent)
-      const newBlocks: FakeBlock[] = b.children.map((child) => ({
-        id: mintId(),
-        type: child.type,
-        parent,
-        payload: (child[child.type] as Record<string, unknown>) ?? {},
-        archived: false,
-        children: [],
-      }))
-      for (const nb of newBlocks) blocks.set(nb.id, nb)
+      const mintNested = (
+        child: { type: string; [k: string]: unknown },
+        parentId: string,
+      ): FakeBlock => {
+        const payload = (child[child.type] as Record<string, unknown>) ?? {}
+        const { children: nestedChildren, ...rest } = payload as {
+          children?: { type: string; [k: string]: unknown }[]
+        } & Record<string, unknown>
+        const nb: FakeBlock = {
+          id: mintId(),
+          type: child.type,
+          parent: parentId,
+          payload: rest,
+          archived: false,
+          children: [],
+        }
+        blocks.set(nb.id, nb)
+        if (nestedChildren !== undefined) {
+          for (const c of nestedChildren) {
+            const child2 = mintNested(c, nb.id)
+            nb.children.push(child2.id)
+          }
+        }
+        return nb
+      }
+      const newBlocks: FakeBlock[] = b.children.map((child) => mintNested(child, parent))
 
       let insertAt = list.length
       if (b.position?.type === 'after_block') {
