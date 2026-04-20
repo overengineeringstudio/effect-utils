@@ -47,9 +47,10 @@ export const Paragraph = ({ children }: ParagraphProps) => h('paragraph', null, 
 
 const heading =
   (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
-  ({ children, toggleable, blockKey }: HeadingProps) => {
+  ({ children, toggleable, color, blockKey }: HeadingProps) => {
     const props: Record<string, unknown> = {}
     if (toggleable !== undefined) props.toggleable = toggleable
+    if (color !== undefined) props.color = color
     if (blockKey !== undefined) props.blockKey = blockKey
     return h(tag, Object.keys(props).length === 0 ? null : props, children)
   }

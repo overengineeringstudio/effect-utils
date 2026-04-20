@@ -31,6 +31,8 @@ export const Headings: Story = {
       <Heading3>Heading 3 — a subsection</Heading3>
       <Heading4>Heading 4 — an aside</Heading4>
       <Heading2 toggleable>Toggleable heading (click the ▸)</Heading2>
+      <Heading2 color="blue">Colored heading — blue</Heading2>
+      <Heading3 color="red_background">Colored heading — red background</Heading3>
     </Page>
   ),
 }

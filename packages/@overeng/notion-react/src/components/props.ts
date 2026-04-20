@@ -21,7 +21,40 @@ export type PageProps = Children
 
 export type ParagraphProps = Children
 
-export type HeadingProps = Children & BlockKey & { readonly toggleable?: boolean }
+/**
+ * Notion's block-level color enum. Foreground colors (e.g. `red`) tint the
+ * text; `_background` variants tint the block's background instead. `default`
+ * has no `_background` form in the Notion API. This union mirrors the 19 + 1
+ * values accepted on `callout.color`, `heading_*.color`, and other block
+ * color fields.
+ */
+export type NotionColor =
+  | 'default'
+  | 'gray'
+  | 'brown'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'blue'
+  | 'purple'
+  | 'pink'
+  | 'red'
+  | 'gray_background'
+  | 'brown_background'
+  | 'orange_background'
+  | 'yellow_background'
+  | 'green_background'
+  | 'blue_background'
+  | 'purple_background'
+  | 'pink_background'
+  | 'red_background'
+
+export type HeadingProps = Children &
+  BlockKey & {
+    readonly toggleable?: boolean
+    /** Notion block color. Projected verbatim onto the `heading_*` payload. */
+    readonly color?: NotionColor
+  }
 
 export type BulletedListItemProps = Children
 export type NumberedListItemProps = Children
@@ -44,7 +77,8 @@ export type CalloutIcon = string | { readonly external: string }
 export type CalloutProps = Children &
   BlockKey & {
     readonly icon?: CalloutIcon
-    readonly color?: string
+    /** Notion block color. Projected verbatim onto the `callout` payload. */
+    readonly color?: NotionColor
   }
 
 export type DividerProps = Record<string, never>

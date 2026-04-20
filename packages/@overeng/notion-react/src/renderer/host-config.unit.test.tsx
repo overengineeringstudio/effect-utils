@@ -122,6 +122,30 @@ describe('host-config', () => {
     ])
   })
 
+  it('projects Heading color onto the block payload', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Heading1 color="blue_background">Titled</Heading1>)
+    const op = buffer.ops[0]!
+    expect(op.kind).toBe('append')
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('heading_1')
+    expect(op.props.color).toBe('blue_background')
+  })
+
+  it('projects Heading toggleable + color together', () => {
+    const { buffer, root } = makeRoot()
+    root.render(
+      <Heading1 toggleable color="red">
+        x
+      </Heading1>,
+    )
+    const op = buffer.ops[0]!
+    expect(op.kind).toBe('append')
+    if (op.kind !== 'append') return
+    expect(op.props.is_toggleable).toBe(true)
+    expect(op.props.color).toBe('red')
+  })
+
   it('projects Callout icon as structured emoji (Notion API shape)', () => {
     const { buffer, root } = makeRoot()
     root.render(
