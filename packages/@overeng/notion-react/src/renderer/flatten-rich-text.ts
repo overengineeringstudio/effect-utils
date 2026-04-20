@@ -83,6 +83,53 @@ const getInlineTag = (el: ReactElement): InlineTag | undefined => {
 }
 
 /**
+ * Notion API hard-limits each `rich_text` `text` segment to 2000 characters.
+ * Longer content must be split into multiple items sharing the same annotation
+ * frame and link envelope. The value is JS code-unit based (matches Notion's
+ * validation), so we count UTF-16 code units here, not grapheme clusters.
+ */
+export const RICH_TEXT_MAX_LEN = 2000
+
+/**
+ * Split a string into chunks of ≤`max` UTF-16 code units. We avoid splitting
+ * a surrogate pair in half; for grapheme boundaries inside the BMP we use
+ * `Intl.Segmenter` when available and the break sits within the tail ≥64
+ * code units (cheap prefix, avoids scanning huge strings). Otherwise we
+ * fall back to a code-unit split with surrogate-safety.
+ *
+ * This is called per flat `text` emission, so it handles the giant-URL case
+ * too — any single run longer than `max` yields a contiguous chunk list.
+ */
+const splitIntoChunks = (s: string, max: number): string[] => {
+  if (s.length <= max) return [s]
+  const chunks: string[] = []
+  let i = 0
+  while (i < s.length) {
+    let end = Math.min(i + max, s.length)
+    // Avoid splitting a surrogate pair. If the break is between a high and
+    // low surrogate, pull back by one code unit.
+    if (end < s.length) {
+      const prev = s.charCodeAt(end - 1)
+      if (prev >= 0xd800 && prev <= 0xdbff) end -= 1
+    }
+    chunks.push(s.slice(i, end))
+    i = end
+  }
+  return chunks
+}
+
+const emitText = (
+  items: RichTextItem[],
+  content: string,
+  link: { url: string } | null,
+  ann: Annotations,
+): void => {
+  for (const chunk of splitIntoChunks(content, RICH_TEXT_MAX_LEN)) {
+    items.push({ type: 'text', text: { content: chunk, link }, annotations: ann })
+  }
+}
+
+/**
  * Walk a React node tree and flatten it into Notion `rich_text[]`.
  *
  * - Plain strings/numbers become `text` items carrying the current annotation frame.
@@ -90,13 +137,15 @@ const getInlineTag = (el: ReactElement): InlineTag | undefined => {
  * - Link wraps into `text.link`.
  * - Mention and Equation produce their respective leaves.
  * - Unknown element types are rendered as their (flattened) children.
+ * - Text content >`RICH_TEXT_MAX_LEN` is split into multiple `text` items that
+ *   share the annotation+link envelope (Notion API segment-length limit).
  */
 export const flattenRichText = (children: ReactNode): RichTextItem[] => {
   const items: RichTextItem[] = []
   const walk = (node: ReactNode, ann: Annotations, link: { url: string } | null): void => {
     if (node == null || node === false || node === true) return
     if (typeof node === 'string' || typeof node === 'number') {
-      items.push({ type: 'text', text: { content: String(node), link }, annotations: ann })
+      emitText(items, String(node), link, ann)
       return
     }
     if (Array.isArray(node)) {

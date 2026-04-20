@@ -161,6 +161,61 @@ describe('flattenRichText', () => {
     })
   })
 
+  // Notion's 2000-char-per-segment API limit: the flattener must chunk long
+  // content while preserving the surrounding annotation/link frame.
+  describe('2000-char chunking', () => {
+    it('2500-char bold splits into two bold segments (2000 + 500)', () => {
+      const out = flattenRichText(<Bold>{'a'.repeat(2500)}</Bold>)
+      expect(out).toHaveLength(2)
+      expect(out.every((i) => i.type === 'text' && i.annotations.bold)).toBe(true)
+      expect((out[0] as { text: { content: string } }).text.content).toHaveLength(2000)
+      expect((out[1] as { text: { content: string } }).text.content).toHaveLength(500)
+    })
+
+    it('exactly 2000 chars is NOT split', () => {
+      const out = flattenRichText('a'.repeat(2000))
+      expect(out).toHaveLength(1)
+      expect((out[0] as { text: { content: string } }).text.content).toHaveLength(2000)
+    })
+
+    it('4500 unstyled chars splits into three segments (2000 + 2000 + 500)', () => {
+      const out = flattenRichText('a'.repeat(4500))
+      expect(out).toHaveLength(3)
+      expect((out[0] as { text: { content: string } }).text.content).toHaveLength(2000)
+      expect((out[1] as { text: { content: string } }).text.content).toHaveLength(2000)
+      expect((out[2] as { text: { content: string } }).text.content).toHaveLength(500)
+    })
+
+    it('preserves link across chunk boundary (giant URL text)', () => {
+      const giant = 'x'.repeat(3000)
+      const out = flattenRichText(<Link href="https://example.com">{giant}</Link>)
+      expect(out).toHaveLength(2)
+      for (const item of out) {
+        expect(item).toMatchObject({
+          type: 'text',
+          text: { link: { url: 'https://example.com' } },
+        })
+      }
+      const joined = out.map((i) => (i.type === 'text' ? i.text.content : '')).join('')
+      expect(joined).toBe(giant)
+    })
+
+    it('does not split a surrogate pair (emoji at boundary round-trips)', () => {
+      // Construct a string where a 4-code-unit emoji sits on the 2000-code-
+      // unit boundary: 1998 'a' + emoji (2 code units at 1999–2000) + tail.
+      const emoji = '\uD83D\uDE00' // 😀
+      const s = 'a'.repeat(1998) + emoji + 'b'.repeat(500)
+      const out = flattenRichText(s)
+      // Join must equal input exactly and no chunk may end mid-surrogate.
+      const contents = out.map((i) => (i.type === 'text' ? i.text.content : ''))
+      expect(contents.join('')).toBe(s)
+      for (const c of contents) {
+        const last = c.charCodeAt(c.length - 1)
+        expect(last >= 0xd800 && last <= 0xdbff).toBe(false)
+      }
+    })
+  })
+
   it('mixes plain text and annotated children', () => {
     const out = flattenRichText(
       <Text>

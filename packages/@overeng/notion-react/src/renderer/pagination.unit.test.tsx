@@ -34,21 +34,21 @@ const runWithExit = <A,>(
   Effect.runPromise(eff.pipe(Effect.provide(fake.layer), Effect.exit))
 
 describe('pagination + batch boundaries', () => {
-  it('rich_text >2000 chars is emitted as a single segment (no renderer-side chunking)', () => {
+  it('rich_text >2000 chars is chunked into ≤2000-char segments (#100)', () => {
     // Notion's API limits each rich_text `text` segment to 2000 chars per
-    // entry. The renderer currently flattens a 2500-char string into a
-    // single rich_text item; it does NOT auto-chunk.
-    //
-    // XXX: Notion API limits rich_text per segment to 2000; renderer does
-    // not chunk. Tracked as follow-up for #95.
+    // entry. The renderer splits longer content into multiple segments that
+    // share the annotation/link envelope. See `flattenRichText` tests for
+    // annotation preservation across chunks.
     const long = 'a'.repeat(2500)
     const candidate = buildCandidateTree(<Paragraph>{long}</Paragraph>, ROOT)
     expect(candidate.children).toHaveLength(1)
     const rt = candidate.children[0]!.props.rich_text as {
       text: { content: string }
     }[]
-    expect(rt).toHaveLength(1)
-    expect(rt[0]!.text.content).toHaveLength(2500)
+    expect(rt).toHaveLength(2)
+    expect(rt[0]!.text.content).toHaveLength(2000)
+    expect(rt[1]!.text.content).toHaveLength(500)
+    expect(rt.map((r) => r.text.content).join('')).toBe(long)
   })
 
   it('>100 siblings append each flow through the API without renderer-side batching', async () => {
@@ -88,34 +88,20 @@ describe('pagination + batch boundaries', () => {
   describe('empty containers render cleanly', () => {
     it('empty Toggle projects as a single append with no nested children', () => {
       const candidate = buildCandidateTree(<Toggle title="t" />, ROOT)
-      const ops = diff(
-        { schemaVersion: 1, rootId: ROOT, children: [] },
-        candidate,
-      )
+      const ops = diff({ schemaVersion: 1, rootId: ROOT, children: [] }, candidate)
       expect(tallyDiff(ops)).toEqual({ appends: 1, updates: 0, inserts: 0, removes: 0 })
       expect(candidate.children[0]!.children).toHaveLength(0)
     })
 
     it('empty Column inside ColumnList → 2 appends (column_list + column)', () => {
-      const candidate = buildCandidateTree(
-        <ColumnList>
-          {h('column', null)}
-        </ColumnList>,
-        ROOT,
-      )
-      const ops = diff(
-        { schemaVersion: 1, rootId: ROOT, children: [] },
-        candidate,
-      )
+      const candidate = buildCandidateTree(<ColumnList>{h('column', null)}</ColumnList>, ROOT)
+      const ops = diff({ schemaVersion: 1, rootId: ROOT, children: [] }, candidate)
       expect(tallyDiff(ops)).toEqual({ appends: 2, updates: 0, inserts: 0, removes: 0 })
     })
 
     it('empty ColumnList (no columns) → 1 append, no children', () => {
       const candidate = buildCandidateTree(<ColumnList>{null}</ColumnList>, ROOT)
-      const ops = diff(
-        { schemaVersion: 1, rootId: ROOT, children: [] },
-        candidate,
-      )
+      const ops = diff({ schemaVersion: 1, rootId: ROOT, children: [] }, candidate)
       expect(tallyDiff(ops)).toEqual({ appends: 1, updates: 0, inserts: 0, removes: 0 })
       expect(candidate.children[0]!.children).toHaveLength(0)
     })
@@ -156,10 +142,7 @@ describe('pagination + batch boundaries', () => {
       return undefined
     })
 
-    const exit = await runWithExit(
-      fake,
-      sync(<>{paragraphs}</>, { pageId: ROOT, cache }),
-    )
+    const exit = await runWithExit(fake, sync(<>{paragraphs}</>, { pageId: ROOT, cache }))
     expect(Exit.isFailure(exit)).toBe(true)
     // Server state: first 50 appends landed.
     expect(fake.childrenOf(ROOT)).toHaveLength(50)
