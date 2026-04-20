@@ -28,6 +28,7 @@ or wrapping `NotionBlocks` at the consumer layer. The library should expose
 a first-class instrumentation surface instead.
 
 Non-goals:
+
 - This is about observing sync, not about changing sync semantics.
 - Not proposing a specific backend (Prometheus, Grafana, Notion block) —
   those are consumer concerns.
@@ -38,22 +39,22 @@ Non-goals:
 
 Per `sync()` invocation:
 
-| Dimension | Source | Purpose |
-|---|---|---|
-| Ops emitted (diff plan) | `tallyDiff(plan)` | How much work the reconciler decided was needed |
-| Ops issued (HTTP calls) | counted at API boundary | How much of that survived batching |
-| Ops per kind: `appendChildren`, `updateBlock`, `deleteBlock`, `retrieveChildren` | API boundary | Where cost concentrates |
-| Batching efficiency | `batch_size` per flush, `runs` per sync | How effective coalescing is (`#101`) |
-| Batch fill ratio | batch_size / APPEND_CHILDREN_MAX | Are we hitting the ceiling? |
-| Cache outcome | cold / hot / schema-mismatch / drift / page-id-drift | From existing `SyncFallbackReason` |
-| Drift probe cost | 1 retrieveChildren per hot-cache sync | Quantifies the pre-flight cost |
-| Candidate tree size | nodes, depth | Render size baseline — ops/block ratio only meaningful against this |
-| Cache tree size | nodes | Prior state baseline |
-| Latency wall clock | per op, per batch, per sync end-to-end | Time budget; pixeltrail R21 budget |
-| Op outcome | success / fail + `NotionSyncError.reason` | Error rate by kind |
-| Checkpoint flushes | count, cache size written | Cost of per-batch cache save (`#102`) |
-| ID-map resolution count | size of `idMap` | Implicit: blocks created |
-| Schema / page-id drift flags | existing flags | Correlate trend data to root causes |
+| Dimension                                                                        | Source                                               | Purpose                                                             |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------- |
+| Ops emitted (diff plan)                                                          | `tallyDiff(plan)`                                    | How much work the reconciler decided was needed                     |
+| Ops issued (HTTP calls)                                                          | counted at API boundary                              | How much of that survived batching                                  |
+| Ops per kind: `appendChildren`, `updateBlock`, `deleteBlock`, `retrieveChildren` | API boundary                                         | Where cost concentrates                                             |
+| Batching efficiency                                                              | `batch_size` per flush, `runs` per sync              | How effective coalescing is (`#101`)                                |
+| Batch fill ratio                                                                 | batch_size / APPEND_CHILDREN_MAX                     | Are we hitting the ceiling?                                         |
+| Cache outcome                                                                    | cold / hot / schema-mismatch / drift / page-id-drift | From existing `SyncFallbackReason`                                  |
+| Drift probe cost                                                                 | 1 retrieveChildren per hot-cache sync                | Quantifies the pre-flight cost                                      |
+| Candidate tree size                                                              | nodes, depth                                         | Render size baseline — ops/block ratio only meaningful against this |
+| Cache tree size                                                                  | nodes                                                | Prior state baseline                                                |
+| Latency wall clock                                                               | per op, per batch, per sync end-to-end               | Time budget; pixeltrail R21 budget                                  |
+| Op outcome                                                                       | success / fail + `NotionSyncError.reason`            | Error rate by kind                                                  |
+| Checkpoint flushes                                                               | count, cache size written                            | Cost of per-batch cache save (`#102`)                               |
+| ID-map resolution count                                                          | size of `idMap`                                      | Implicit: blocks created                                            |
+| Schema / page-id drift flags                                                     | existing flags                                       | Correlate trend data to root causes                                 |
 
 Derived ratios worth surfacing (but the library should not compute — let
 consumers derive):
@@ -72,12 +73,14 @@ metrics via `@effect/opentelemetry` Tracer/Metric. The library declares a
 tracer name (`@overeng/notion-react`) and consumers install a tracer layer.
 
 Pros:
+
 - Native to Effect idioms the library is already built on.
 - Spans come for free around `NotionBlocks.*` calls — wall-clock per op
   requires no extra code.
 - Consumers running Effect+OTEL (most of the target fleet) get zero-config.
 
 Cons:
+
 - Peer-dep coupling: adds `@effect/opentelemetry` to the dependency surface.
 - Consumers without OTEL pay eval cost even if they don't subscribe.
 - Metrics-style aggregation is opaque — hard to inspect a single sync's
@@ -90,10 +93,12 @@ to `trace.getTracer('@overeng/notion-react')` and `metrics.getMeter(...)`.
 Consumers wire their own SDK.
 
 Pros:
+
 - Universal; works outside Effect consumers too.
 - No Effect coupling beyond what the library already has.
 
 Cons:
+
 - Still requires a peer dep (soft if we gate on `globalThis`).
 - Duplicates work for Effect consumers who'd rather go through the Effect
   tracer layer (it adapts to OTEL under the hood anyway).
@@ -108,6 +113,7 @@ at each interesting point. Consumers choose: log, count, forward to OTEL,
 pipe to pixeltrail's own store.
 
 Pros:
+
 - Zero runtime deps, zero peer deps.
 - Zero overhead when `onEvent` is `undefined` (single truthy check per
   emission site — V8 inlines the branch).
@@ -117,6 +123,7 @@ Pros:
 - Tree-shakes cleanly if no `onEvent` is provided; no imports pulled in.
 
 Cons:
+
 - Consumers reinvent aggregation.
 - No built-in dashboards.
 - Synchronous callback — long-running consumer code would add sync latency.
@@ -136,12 +143,14 @@ Both adapters import the core event type but do not ship their deps as peer
 deps of the main entry — consumers opt in per sub-path.
 
 Pros:
+
 - Keeps the main library dep-free.
 - Gives Effect/OTEL users a one-liner.
 - Pixeltrail-style consumers (tally into sqlite) use the raw hook.
 - Each adapter is independently testable.
 
 Cons:
+
 - More surface area to document.
 - Must keep adapters in-repo and versioned with core to avoid drift.
 
@@ -185,25 +194,25 @@ export type SyncEvent = Data.TaggedEnum<{
     readonly probeDurationMs: number | undefined
   }
   OpIssued: {
-    readonly id: number           // sync-local monotonic counter
+    readonly id: number // sync-local monotonic counter
     readonly kind: 'appendChildren' | 'updateBlock' | 'deleteBlock' | 'retrieveChildren'
     readonly parentId: string | undefined
-    readonly batchSize: number    // 1 for non-batched kinds
+    readonly batchSize: number // 1 for non-batched kinds
   }
   OpSucceeded: {
     readonly id: number
     readonly durationMs: number
-    readonly resultCount: number  // # server blocks confirmed
+    readonly resultCount: number // # server blocks confirmed
   }
   OpFailed: {
     readonly id: number
     readonly durationMs: number
-    readonly reason: string       // NotionSyncError.reason
+    readonly reason: string // NotionSyncError.reason
   }
   BatchFlush: {
     readonly parentId: string
     readonly batchSize: number
-    readonly batchCapacity: number   // APPEND_CHILDREN_MAX
+    readonly batchCapacity: number // APPEND_CHILDREN_MAX
     readonly fillRatio: number
   }
   FallbackTriggered: {
@@ -219,6 +228,7 @@ export const SyncEvent = Data.taggedEnum<SyncEvent>()
 ```
 
 Notes:
+
 - Payloads are small scalar-heavy structs so the zero-overhead path is a
   cheap `if (onEvent === undefined) return` at the emit site.
 - `OpIssued.id` correlates `OpIssued` → `OpSucceeded`|`OpFailed` without a
@@ -226,7 +236,7 @@ Notes:
 - `BatchFlush` is emitted alongside `OpIssued` for `appendChildren` — they
   carry redundant `batchSize`, but having a distinct event lets consumers
   specialise on batching efficiency without parsing op events.
-- `CacheHit`/`CacheMiss` per-block is *not* included. The diff already
+- `CacheHit`/`CacheMiss` per-block is _not_ included. The diff already
   decides retention implicitly via the LCS match; per-node events would
   be noisy (N events per sync) for little added insight. `CacheOutcome`
   at the sync level is sufficient.
@@ -244,22 +254,25 @@ const tally = {
   maxBatchSize: 0,
   failures: 0 as number,
 }
-yield* sync(element, {
-  pageId,
-  cache,
-  onEvent: SyncEvent.$match({
-    OpIssued: ({ kind, batchSize }) => {
-      tally.httpOps++
-      tally.byKind[kind]++
-      if (kind === 'appendChildren') {
-        tally.totalBatchSize += batchSize
-        tally.maxBatchSize = Math.max(tally.maxBatchSize, batchSize)
-      }
-    },
-    OpFailed: () => { tally.failures++ },
-    // ... other events no-op
-  }),
-})
+yield *
+  sync(element, {
+    pageId,
+    cache,
+    onEvent: SyncEvent.$match({
+      OpIssued: ({ kind, batchSize }) => {
+        tally.httpOps++
+        tally.byKind[kind]++
+        if (kind === 'appendChildren') {
+          tally.totalBatchSize += batchSize
+          tally.maxBatchSize = Math.max(tally.maxBatchSize, batchSize)
+        }
+      },
+      OpFailed: () => {
+        tally.failures++
+      },
+      // ... other events no-op
+    }),
+  })
 // persist tally row in pixeltrail's sqlite for trending
 ```
 
