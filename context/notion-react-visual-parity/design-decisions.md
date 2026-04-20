@@ -30,6 +30,50 @@ context).
 
 ## Out of scope (track separately)
 
-- Bullet/numbered list grouping (one `<ul>` for adjacent items) — needs reconciler-level work, see #62.
-- Bookmark / embed / asset rich rendering.
+- Bookmark rich previews (title / description / thumbnail / favicon) — task #76.
 - Mention / equation richer renderers.
+
+## Round-2 decisions (umbrella #83 / effect-utils#589)
+
+### List grouping (rendering-time, not reconciler)
+
+`Page` and `Column` wrap their `children` in a `groupBlocks(children)`
+pass that walks the React children array and merges consecutive
+`BulletedListItem` / `NumberedListItem` into a single `<ul>` / `<ol>`.
+Identity is checked via component reference (`child.type ===
+BulletedListItem`). List items themselves still render a self-contained
+one-item list when used outside a grouping container — no API change.
+
+This sidesteps the reconciler-level grouping originally tracked by #62:
+the DOM preview is a pure-React view, so a React-level pass is
+sufficient.
+
+### TOC uses surrounding heading context
+
+`Page` collects sibling headings (via the same children-walking pass)
+into a `TocEntry[]` and passes it to `groupBlocks`, which swaps any
+`<TableOfContents/>` for a `RenderedTableOfContents` populated with
+anchor links. Heading blocks emit an `id` derived from slugified plain
+text so anchors resolve. TOC inside a `Column` receives an empty list
+— acceptable v0.1 limitation.
+
+### Checkbox CSS lives in our override, not vendored CSS
+
+react-notion-x prunes `.notion-property-checkbox*` from its vendored
+`styles.css`, so round-1's markup (already adopting rnx's shape) had
+no styling. The fix is CSS-only: add the 14px rounded-square rules to
+`web/styles.css`.
+
+### `.notion-column-list` styled in our override
+
+rnx styles `.notion-row` (their internal flex wrapper) but leaves
+`.notion-column-list` unstyled. Mirror `display: flex; gap: 1em;
+align-items: flex-start` plus sensible child flex rules in
+`web/styles.css`.
+
+### Bookmark adopts rnx `<a><div>...` shape
+
+Round-1 left the bookmark as a plain `<a class="notion-bookmark">`
+with text content — the vendored CSS expects a nested `<div>` with
+`.notion-bookmark-link` / `.notion-bookmark-link-text` to render as a
+bordered card. Mirror the nesting.

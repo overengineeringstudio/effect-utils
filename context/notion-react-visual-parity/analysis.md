@@ -41,7 +41,7 @@ their CSS rules either no-op or apply to the wrong element — the visible
 | mention | varies (date / user / page chips) | stub `<span class="notion-mention">@…</span>` | Stub OK for v0.1 |
 | inline equation | KaTeX `<span>` | `<code class="notion-equation">…</code>` | Acceptable divergence |
 
-## Top-5 highest-impact gaps (drives this PR)
+## Top-5 highest-impact gaps (drove round-1 PR)
 
 1. Toggleable headings drop children entirely (bug) and use a non-vendored class
 2. Custom `::before '▸'` chevron CSS replaces the native disclosure marker
@@ -52,3 +52,44 @@ their CSS rules either no-op or apply to the wrong element — the visible
    `<span class="notion-property-checkbox">…<CheckSvg/>…</span>` markup
 5. Inline color uses our own `notion-color-{c}` / `notion-bg-{c}` naming
    instead of rnx's `notion-{c}` / `notion-{c}_background`
+
+## Round-2 findings (umbrella #83 / effect-utils#589)
+
+Visual re-audit against Storybook `Demo/*` stories after round-1 landed.
+
+### Top divergences and root causes
+
+1. **Numbered lists triple-numbered (`1. 1. 1.`)**. Every `NumberedListItem`
+   emitted its own standalone `<ol>`, so the browser's `<ol>` counter reset
+   on every item.
+2. **`<TableOfContents/>` renders the literal string "Table of contents"**.
+   The component was a static stub with no awareness of sibling headings.
+3. **To-do checkboxes are invisible**. Round-1 adopted the rnx
+   `.notion-property-checkbox` markup (with inlined SVG), but rnx prunes
+   the corresponding CSS rules from their vendored `styles.css`. The boxes
+   had no border/fill so they rendered as 0×0 spans.
+4. **`.notion-column-list` is not flex**. The vendored rnx CSS styles
+   `.notion-row` (rnx's internal wrapper class) but omits
+   `.notion-column-list`, so Notion's column block stacked vertically.
+5. **Bookmarks were plain underlined links**, not rnx's bordered card
+   (`.notion-bookmark` expects `<a><div><div
+   class="notion-bookmark-link">…` markup).
+
+### Fixes
+
+| # | Fix | Commit |
+|---|---|---|
+| 1 | `groupBlocks` walks `Page`/`Column` children and merges consecutive `BulletedListItem` / `NumberedListItem` into one `<ul>` / `<ol>` | `b4bad817` |
+| 2 | `Page` collects sibling headings; `groupBlocks` replaces `<TableOfContents/>` with a nav list of anchor links indented by level. Headings emit `id` attrs derived from slugified plain text | `227a2c97` |
+| 3 | Add minimal `.notion-property-checkbox*` ruleset to `web/styles.css` (14px rounded square, Notion-blue filled on checked) | `097d5c60` |
+| 4 | Add `.notion-column-list { display: flex; gap: 1em }` + sensible `.notion-column` flex child rules to `web/styles.css` | `a87c3723` |
+| 5 | Bookmark emits rnx's `<a><div><div class="notion-bookmark-link"><div class="notion-bookmark-link-text"/>` markup | `0ba088e7` |
+
+### Remaining gaps (out of scope)
+
+- Bookmark rich previews (title / description / thumbnail / favicon) —
+  tracked by task #76.
+- Heading anchor icons (hover-reveal `#` link) — rnx keys on per-block
+  UUIDs we don't model. Cosmetic only.
+- Mention / inline-equation richer renderers.
+- KaTeX block rendering.
