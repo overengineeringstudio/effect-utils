@@ -120,7 +120,11 @@ const workingAppend = (
     workingAppend(w, parentId, node, afterId)
     return
   }
-  if (afterId === undefined || afterId === '') {
+  if (afterId === '') {
+    // Empty-string afterId is the head-insert marker threaded through from
+    // the diff (sync-diff.ts `prevRef = ''`). Must prepend, not tail-append.
+    siblings.unshift(node)
+  } else if (afterId === undefined) {
     siblings.push(node)
   } else {
     const idx = siblings.findIndex((s) => s.blockId === afterId)
@@ -204,21 +208,41 @@ const flushAppendRun = (
     if (run.length === 0) return
     const parentId = resolve(run[0]!.parent)
     const first = run[0]!
-    // `afterId` for the first batch; subsequent batches override with the
-    // last-minted id from the prior batch. Empty afterId ('' head marker
-    // or `append` kind) ⇒ no `position` envelope at all.
-    let nextAfter: string | undefined =
-      first.kind === 'insert' && first.afterId !== '' ? resolve(first.afterId) : undefined
+    // Batch position envelope. Three cases for the *first* batch:
+    //   - `append` kind, or `insert` with afterId unresolved → no envelope
+    //     (tail-append, matches Notion's default).
+    //   - `insert` with afterId === '' → `{ type: 'start' }` (head insert;
+    //     sync-diff uses empty-string as the head marker).
+    //   - `insert` with afterId !== '' → `{ type: 'after_block': ... }`.
+    // For subsequent batches we always anchor on the last-minted id of the
+    // prior batch so the run stays contiguous even under concurrent edits.
+    type BatchPosition =
+      | { readonly type: 'after_block'; readonly after_block: { readonly id: string } }
+      | { readonly type: 'start' }
+    let position: BatchPosition | undefined
+    // `afterId` threaded to `onBatch` for the in-memory working-cache update
+    // (see `workingAppend`). Empty string preserves the head-insert semantic
+    // end-to-end; undefined means plain tail-append.
+    let firstAfterId: string | undefined
+    if (first.kind === 'insert') {
+      if (first.afterId === '') {
+        position = { type: 'start' as const }
+        firstAfterId = ''
+      } else {
+        const resolved = resolve(first.afterId)
+        position = { type: 'after_block' as const, after_block: { id: resolved } }
+        firstAfterId = resolved
+      }
+    }
 
+    let batchAfterId = firstAfterId
     for (let start = 0; start < run.length; start += APPEND_CHILDREN_MAX) {
       const batch = run.slice(start, start + APPEND_CHILDREN_MAX)
       const children = batch.map((op) => appendBody(op.type, op.props))
       const res = yield* NotionBlocks.append({
         blockId: parentId,
         children,
-        ...(nextAfter !== undefined
-          ? { position: { type: 'after_block' as const, after_block: { id: nextAfter } } }
-          : {}),
+        ...(position !== undefined ? { position } : {}),
       }).pipe(
         Effect.mapError(
           (cause) =>
@@ -231,17 +255,23 @@ const flushAppendRun = (
       // Results are returned in the order submitted.
       const results = res.results as readonly { id?: string }[]
       const committed: { op: AppendLike; serverId: string; afterId: string | undefined }[] = []
-      let lastId: string | undefined = nextAfter
+      let lastId: string | undefined
       for (let i = 0; i < batch.length; i++) {
         const serverId = results[i]?.id
         if (serverId === undefined) continue
         idMap.set(batch[i]!.tmpId, serverId)
-        committed.push({ op: batch[i]!, serverId, afterId: lastId })
+        // First item of the batch inherits the batch-level anchor; every
+        // subsequent item chains off its predecessor's server id.
+        const opAfterId = i === 0 ? batchAfterId : lastId
+        committed.push({ op: batch[i]!, serverId, afterId: opAfterId })
         lastId = serverId
       }
       // Anchor subsequent batches on the last-minted id so positional
       // semantics are preserved under concurrent modifications.
-      nextAfter = lastId ?? nextAfter
+      if (lastId !== undefined) {
+        position = { type: 'after_block' as const, after_block: { id: lastId } }
+        batchAfterId = lastId
+      }
       yield* onBatch(committed)
     }
   })

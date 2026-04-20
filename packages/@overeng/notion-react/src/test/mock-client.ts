@@ -127,7 +127,10 @@ export const createFakeNotion = (): FakeNotion => {
       const parent = appendChildrenMatch[1]!
       const b = body as {
         children: { type: string; [k: string]: unknown }[]
-        position?: { type: 'after_block'; after_block: { id: string } }
+        position?:
+          | { type: 'after_block'; after_block: { id: string } }
+          | { type: 'start' }
+          | { type: 'end' }
       }
       const list = getChildList(parent)
       const newBlocks: FakeBlock[] = b.children.map((child) => ({
@@ -145,6 +148,8 @@ export const createFakeNotion = (): FakeNotion => {
         const afterId = b.position.after_block.id
         const idx = list.indexOf(afterId)
         insertAt = idx >= 0 ? idx + 1 : list.length
+      } else if (b.position?.type === 'start') {
+        insertAt = 0
       }
       list.splice(insertAt, 0, ...newBlocks.map((nb) => nb.id))
 

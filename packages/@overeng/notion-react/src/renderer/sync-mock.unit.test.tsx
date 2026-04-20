@@ -8,8 +8,8 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { Heading2, Paragraph } from '../components/blocks.tsx'
 import { h } from '../components/h.ts'
-import { sync } from './sync.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import { sync } from './sync.ts'
 
 /**
  * Driver-level contract tests for `sync()`.
@@ -212,12 +212,60 @@ describe('sync() against in-memory fake Notion', () => {
         }[]
         return rt[0]?.text?.content ?? ''
       })
-    expect(toggleTitles).toEqual([
-      '09:00 Terminal',
-      '10:00 Browser',
-      '10:30 Figma',
-      '11:00 VSCode',
-    ])
+    expect(toggleTitles).toEqual(['09:00 Terminal', '10:00 Browser', '10:30 Figma', '11:00 VSCode'])
+  })
+
+  it('insert session at head (afterId==="") → server + working cache both prepend', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+
+    /* New session sorts before every existing one → sync-diff emits an
+       insert with afterId==='' (the head marker). Previously the driver
+       dropped the `position` envelope and the block landed at the tail of
+       the parent, corrupting order; now it must use position:{type:'start'}. */
+    const v2: readonly Session[] = [{ id: 's0', title: '08:00 Email', body: 'inbox zero' }, ...v1]
+    const res = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.updates).toBe(0)
+    expect(res.removes).toBe(0)
+    expect(res.inserts).toBeGreaterThanOrEqual(1)
+
+    const toggleTitles = fake
+      .childrenOf(ROOT)
+      .filter((b) => b.type === 'toggle')
+      .map((b) => {
+        const rt = (b.payload.rich_text ?? []) as readonly {
+          text?: { content?: string }
+        }[]
+        return rt[0]?.text?.content ?? ''
+      })
+    expect(toggleTitles).toEqual(['08:00 Email', '09:00 Terminal', '10:00 Browser', '11:00 VSCode'])
+
+    /* Resync with the same tree must be a true no-op — if the working cache
+       placed the new toggle at the tail while the server placed it at head,
+       the next diff would see order drift and re-insert. */
+    const before = fake.requests.length
+    const rerun = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(fake.requests.length).toBe(before)
   })
 
   it('delete session → one DELETE', async () => {
