@@ -19,7 +19,7 @@ type BlockKey = { readonly blockKey?: string }
 
 export type PageProps = Children
 
-export type ParagraphProps = Children
+export type ParagraphProps = Children & BlockKey
 
 /**
  * Notion's block-level color enum. Foreground colors (e.g. `red`) tint the
@@ -56,16 +56,16 @@ export type HeadingProps = Children &
     readonly color?: NotionColor
   }
 
-export type BulletedListItemProps = Children
-export type NumberedListItemProps = Children
+export type BulletedListItemProps = Children & BlockKey
+export type NumberedListItemProps = Children & BlockKey
 
-export type ToDoProps = Children & { readonly checked?: boolean }
+export type ToDoProps = Children & BlockKey & { readonly checked?: boolean }
 
 export type ToggleProps = Children & BlockKey & { readonly title?: string }
 
-export type CodeProps = Children & { readonly language?: string }
+export type CodeProps = Children & BlockKey & { readonly language?: string }
 
-export type QuoteProps = Children
+export type QuoteProps = Children & BlockKey
 
 /**
  * Notion accepts two icon envelopes on callouts: a bare emoji or an external

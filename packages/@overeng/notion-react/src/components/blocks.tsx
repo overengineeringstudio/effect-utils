@@ -43,7 +43,16 @@ import type {
 
 export const Page = ({ children }: PageProps) => <>{children}</>
 
-export const Paragraph = ({ children }: ParagraphProps) => h('paragraph', null, children)
+/**
+ * Helper: emit a `blockKey`-only props bag when it's set, else `null`
+ * so unkeyed components continue to produce a clean `{}`-free payload.
+ * `blockKey` is a renderer identity hint, never projected to Notion.
+ */
+const keyedProps = (blockKey: string | undefined): Record<string, unknown> | null =>
+  blockKey === undefined ? null : { blockKey }
+
+export const Paragraph = ({ children, blockKey }: ParagraphProps) =>
+  h('paragraph', keyedProps(blockKey), children)
 
 const heading =
   (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
@@ -59,13 +68,17 @@ export const Heading2 = heading('heading_2')
 export const Heading3 = heading('heading_3')
 export const Heading4 = heading('heading_4')
 
-export const BulletedListItem = ({ children }: BulletedListItemProps) =>
-  h('bulleted_list_item', null, children)
-export const NumberedListItem = ({ children }: NumberedListItemProps) =>
-  h('numbered_list_item', null, children)
+export const BulletedListItem = ({ children, blockKey }: BulletedListItemProps) =>
+  h('bulleted_list_item', keyedProps(blockKey), children)
+export const NumberedListItem = ({ children, blockKey }: NumberedListItemProps) =>
+  h('numbered_list_item', keyedProps(blockKey), children)
 
-export const ToDo = ({ children, checked }: ToDoProps) =>
-  h('to_do', checked === undefined ? null : { checked }, children)
+export const ToDo = ({ children, checked, blockKey }: ToDoProps) => {
+  const props: Record<string, unknown> = {}
+  if (checked !== undefined) props.checked = checked
+  if (blockKey !== undefined) props.blockKey = blockKey
+  return h('to_do', Object.keys(props).length === 0 ? null : props, children)
+}
 
 export const Toggle = ({ children, title, blockKey }: ToggleProps) => {
   const props: Record<string, unknown> = {}
@@ -74,10 +87,15 @@ export const Toggle = ({ children, title, blockKey }: ToggleProps) => {
   return h('toggle', Object.keys(props).length === 0 ? null : props, children)
 }
 
-export const Code = ({ children, language }: CodeProps) =>
-  h('code', language === undefined ? null : { language }, children)
+export const Code = ({ children, language, blockKey }: CodeProps) => {
+  const props: Record<string, unknown> = {}
+  if (language !== undefined) props.language = language
+  if (blockKey !== undefined) props.blockKey = blockKey
+  return h('code', Object.keys(props).length === 0 ? null : props, children)
+}
 
-export const Quote = ({ children }: QuoteProps) => h('quote', null, children)
+export const Quote = ({ children, blockKey }: QuoteProps) =>
+  h('quote', keyedProps(blockKey), children)
 
 export const Callout = ({ children, icon, color, blockKey }: CalloutProps) => {
   const props: Record<string, unknown> = {}

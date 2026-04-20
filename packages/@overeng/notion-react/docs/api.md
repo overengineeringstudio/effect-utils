@@ -26,13 +26,13 @@ From `@overeng/notion-react` (Notion host) and
 | Component                                                    | Notion block type                                               | Notes                                                                               |
 | ------------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `Page`                                                       | (fragment)                                                      | Root container.                                                                     |
-| `Paragraph`                                                  | `paragraph`                                                     | Rich-text children.                                                                 |
-| `Heading1` / `Heading2` / `Heading3` / `Heading4`            | `heading_1..4`                                                  | `toggleable?`, `blockKey?`.                                                         |
-| `BulletedListItem` / `NumberedListItem`                      | `bulleted_list_item`, `numbered_list_item`                      | Rich-text children.                                                                 |
-| `ToDo`                                                       | `to_do`                                                         | `checked?`.                                                                         |
+| `Paragraph`                                                  | `paragraph`                                                     | Rich-text children, `blockKey?`.                                                    |
+| `Heading1` / `Heading2` / `Heading3` / `Heading4`            | `heading_1..4`                                                  | `toggleable?`, `color?`, `blockKey?`.                                               |
+| `BulletedListItem` / `NumberedListItem`                      | `bulleted_list_item`, `numbered_list_item`                      | Rich-text children, `blockKey?`.                                                    |
+| `ToDo`                                                       | `to_do`                                                         | `checked?`, `blockKey?`.                                                            |
 | `Toggle`                                                     | `toggle`                                                        | `title`, nested block children, `blockKey?`.                                        |
-| `Code`                                                       | `code`                                                          | `language?`.                                                                        |
-| `Quote`                                                      | `quote`                                                         | Rich-text children.                                                                 |
+| `Code`                                                       | `code`                                                          | `language?`, `blockKey?`.                                                           |
+| `Quote`                                                      | `quote`                                                         | Rich-text children, `blockKey?`.                                                    |
 | `Callout`                                                    | `callout`                                                       | `icon?` (string or `{ external: url }`), `color?`, `blockKey?`.                     |
 | `Divider`                                                    | `divider`                                                       |                                                                                     |
 | `Image` / `Video` / `Audio` / `File` / `Pdf`                 | `image` / `video` / `audio` / `file` / `pdf`                    | `url?` or `fileUploadId?`, `caption?`.                                              |
@@ -111,7 +111,7 @@ import { NotionSyncError, CacheError } from '@overeng/notion-react'
 
 | Error             | Reasons (so far)                                                                                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NotionSyncError` | `"notion-append-failed"`, `"notion-insert-failed"`, `"notion-update-failed"`, `"notion-delete-failed"`, `"cache-load-failed"`, `"cache-save-failed"` |
+| `NotionSyncError` | `"notion-append-failed"`, `"notion-insert-failed"`, `"notion-update-failed"`, `"notion-delete-failed"`, `"notion-retrieve-failed"`, `"cache-load-failed"`, `"cache-save-failed"` |
 | `CacheError`      | `"fs-cache-read-failed"`, `"fs-cache-parse-failed"`, `"fs-cache-write-failed"`                                                                       |
 
 Both are `Data.TaggedError` classes with `reason: string` and optional

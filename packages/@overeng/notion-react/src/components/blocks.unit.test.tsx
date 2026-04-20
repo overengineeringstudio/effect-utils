@@ -272,4 +272,26 @@ describe('blockKey on ergonomic components', () => {
     const tree = buildCandidateTree(<Toggle title="t">body</Toggle>, 'root')
     expect(tree.children[0]!.key).toBe('p:0')
   })
+
+  // Ergonomic wrappers that also need blockKey for real-world collections:
+  // daily-page renderers commonly produce lists of <Paragraph> / <ToDo> /
+  // <BulletedListItem> where a mid-list insert must not degrade to a tail
+  // remove+re-insert. Regression guard for the docs promise in
+  // `docs/getting-started.md#rendering-a-list`.
+  it.each([
+    ['Paragraph', () => <Paragraph blockKey="p-1">x</Paragraph>, 'paragraph'],
+    [
+      'BulletedListItem',
+      () => <BulletedListItem blockKey="b-1">x</BulletedListItem>,
+      'bulleted_list_item',
+    ],
+    ['ToDo', () => <ToDo blockKey="t-1">x</ToDo>, 'to_do'],
+    ['Code', () => <Code blockKey="c-1">x</Code>, 'code'],
+  ])('%s threads blockKey into the reconciler identity', (_name, factory, expectedType) => {
+    const tree = buildCandidateTree(factory(), 'root')
+    expect(tree.children).toHaveLength(1)
+    expect(tree.children[0]!.key).toMatch(/^k:/)
+    expect(tree.children[0]!.type).toBe(expectedType)
+    expect((tree.children[0]!.props as { blockKey?: unknown }).blockKey).toBeUndefined()
+  })
 })
