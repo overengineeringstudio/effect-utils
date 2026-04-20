@@ -49,6 +49,20 @@
   fill: currentColor;
 }
 
+/* Column list — vendored CSS targets `.notion-row` (rnx's own flex wrapper)
+   but omits `.notion-column-list`. Mirror the flex layout here. */
+.notion-column-list {
+  display: flex;
+  flex-direction: row;
+  gap: 1em;
+  align-items: flex-start;
+  width: 100%;
+}
+.notion-column-list > .notion-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* Callout icon sizing — vendored CSS keys off `.notion-page-icon-inline`
    inside `.notion-callout` but only when the parent is a real PageIcon.
    We pass an emoji string so we need the box rules ourselves. */
