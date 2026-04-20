@@ -93,7 +93,7 @@ describe('sync() against in-memory fake Notion', () => {
     }
   })
 
-  it('same-tree resync → {0,0,0,0}, no fallback, zero HTTP traffic', async () => {
+  it('same-tree resync → {0,0,0,0}, no fallback, only the drift-check GET', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
@@ -112,7 +112,9 @@ describe('sync() against in-memory fake Notion', () => {
     )
     expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
     expect(res.fallbackReason).toBeUndefined()
-    expect(fake.requests.length).toBe(before) // no follow-up requests.
+    // Pre-flight drift check (#105) issues exactly one GET; no mutating ops.
+    const newReqs = fake.requests.slice(before)
+    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
   })
 
   it('body change → exactly one PATCH to the nested paragraph', async () => {
@@ -140,9 +142,9 @@ describe('sync() against in-memory fake Notion', () => {
       }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
     )
     expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    // Pre-flight drift GET + one PATCH for the body change.
     const newReqs = fake.requests.slice(before)
-    expect(newReqs).toHaveLength(1)
-    expect(newReqs[0]!.method).toBe('PATCH')
+    expect(newReqs.map((r) => r.method)).toEqual(['GET', 'PATCH'])
   })
 
   it('append session → 2 new-block ops (toggle + nested paragraph)', async () => {
@@ -265,7 +267,8 @@ describe('sync() against in-memory fake Notion', () => {
       }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
     )
     expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
-    expect(fake.requests.length).toBe(before)
+    const rerunReqs = fake.requests.slice(before)
+    expect(rerunReqs.map((r) => r.method)).toEqual(['GET'])
   })
 
   it('delete session → one DELETE', async () => {
@@ -293,7 +296,7 @@ describe('sync() against in-memory fake Notion', () => {
     expect(newReqs.filter((r) => r.method === 'DELETE')).toHaveLength(1)
   })
 
-  it('idempotency: three consecutive hot-cache syncs emit no requests + no fallback', async () => {
+  it('idempotency: three consecutive hot-cache syncs emit no mutations + no fallback', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
@@ -316,6 +319,35 @@ describe('sync() against in-memory fake Notion', () => {
       expect(r).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
       expect(r.fallbackReason).toBeUndefined()
     }
-    expect(fake.requests.length).toBe(after)
+    // Exactly one drift-check GET per hot-cache resync, no mutations.
+    const methods = fake.requests.slice(after).map((r) => r.method)
+    expect(methods).toEqual(['GET', 'GET', 'GET'])
+  })
+
+  it('drift detection: out-of-band archive on a tracked block forces cache-drift rebuild', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+
+    // Simulate another client archiving one of the toggles out-of-band.
+    const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
+    firstToggle.archived = true
+
+    const res = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('cache-drift')
+    // Full rebuild: 10 fresh appends, no updates/removes.
+    expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0, removes: 0 })
   })
 })

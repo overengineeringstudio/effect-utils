@@ -1,5 +1,5 @@
 import type { HttpClient } from '@effect/platform'
-import { Effect } from 'effect'
+import { Chunk, Effect, Stream } from 'effect'
 import type { ReactNode } from 'react'
 
 import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
@@ -388,9 +388,46 @@ export const sync = (
     // hashes remain meaningful enough to avoid duplicate content. Migrations
     // that require a hard rebuild should bump the schema explicitly and
     // clear the cache out-of-band.
-    const base: CacheTree = prior === undefined ? emptyCache(opts.pageId) : prior
-    const fallbackReason =
-      prior === undefined ? 'cold-cache' : schemaMismatch ? 'schema-mismatch' : undefined
+
+    // Pre-flight drift detection (#105). When we have a usable prior cache,
+    // fetch the page's current top-level children and compare against the
+    // cache's expected block-id set. Any divergence (block archived out of
+    // band, added by another client, cache bitrot) means the diff would
+    // target stale ids — patching ghosts and leaving live content orphaned.
+    // Treat drift as a cold start: rebuild from scratch so server state
+    // converges on the rendered tree.
+    //
+    // Cost: one GET per sync in the hot-cache path. Kept shallow — nested
+    // children are verified lazily through the checkpoint round-trip since
+    // every mutation resolves to a real server id.
+    let drifted = false
+    if (prior !== undefined && !schemaMismatch) {
+      const liveChildren = yield* Stream.runCollect(
+        NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
+      ).pipe(
+        Effect.mapError(
+          (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
+        ),
+      )
+      const liveIds = new Set<string>()
+      for (const b of Chunk.toReadonlyArray(liveChildren)) {
+        if (b.in_trash !== true) liveIds.add(b.id)
+      }
+      const expectedIds = new Set(prior.children.map((c) => c.blockId))
+      if (liveIds.size !== expectedIds.size || [...expectedIds].some((id) => !liveIds.has(id))) {
+        drifted = true
+      }
+    }
+
+    const useCold = prior === undefined || drifted
+    const base: CacheTree = useCold ? emptyCache(opts.pageId) : prior
+    const fallbackReason = drifted
+      ? 'cache-drift'
+      : prior === undefined
+        ? 'cold-cache'
+        : schemaMismatch
+          ? 'schema-mismatch'
+          : undefined
 
     const plan = diff(base, candidate)
     const idMap = new Map<string, string>()
