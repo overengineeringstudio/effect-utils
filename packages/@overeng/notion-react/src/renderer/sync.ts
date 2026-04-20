@@ -7,7 +7,7 @@ import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
-import type { SyncResult } from './render-to-notion.ts'
+import type { SyncFallbackReason, SyncResult } from './render-to-notion.ts'
 import {
   buildCandidateTree,
   candidateToCache,
@@ -384,6 +384,11 @@ export const sync = (
     const candidate = buildCandidateTree(element, opts.pageId)
 
     const schemaMismatch = prior !== undefined && prior.schemaVersion !== CACHE_SCHEMA_VERSION
+    // Cache was written for a different page. Treat as a cold start: the prior
+    // tree references block ids that don't live under this pageId, so diffing
+    // would emit mutations against the wrong page. Common causes: shared cache
+    // file between scripts, or a pageId env var that moved.
+    const pageIdDrift = prior !== undefined && prior.rootId !== opts.pageId
     // On schema mismatch we still diff against the stale tree — keys and
     // hashes remain meaningful enough to avoid duplicate content. Migrations
     // that require a hard rebuild should bump the schema explicitly and
@@ -401,7 +406,7 @@ export const sync = (
     // children are verified lazily through the checkpoint round-trip since
     // every mutation resolves to a real server id.
     let drifted = false
-    if (prior !== undefined && !schemaMismatch) {
+    if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
       const liveChildren = yield* Stream.runCollect(
         NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
       ).pipe(
@@ -419,15 +424,17 @@ export const sync = (
       }
     }
 
-    const useCold = prior === undefined || drifted
+    const useCold = prior === undefined || drifted || pageIdDrift
     const base: CacheTree = useCold ? emptyCache(opts.pageId) : prior
-    const fallbackReason = drifted
-      ? 'cache-drift'
-      : prior === undefined
-        ? 'cold-cache'
-        : schemaMismatch
-          ? 'schema-mismatch'
-          : undefined
+    const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
+      ? 'page-id-drift'
+      : drifted
+        ? 'cache-drift'
+        : prior === undefined
+          ? 'cold-cache'
+          : schemaMismatch
+            ? 'schema-mismatch'
+            : undefined
 
     const plan = diff(base, candidate)
     const idMap = new Map<string, string>()

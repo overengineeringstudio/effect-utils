@@ -350,4 +350,31 @@ describe('sync() against in-memory fake Notion', () => {
     // Full rebuild: 10 fresh appends, no updates/removes.
     expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0, removes: 0 })
   })
+
+  it('page-id-drift: cache written for a different pageId cold-starts', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const OTHER = '00000000-0000-4000-8000-000000000002'
+    // Populate the cache against `ROOT`.
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    // Re-use the same cache for a different pageId. Must not diff against the
+    // stale ROOT tree — that would target wrong-page ids. Expect cold start.
+    const res = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: OTHER,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('page-id-drift')
+    expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0, removes: 0 })
+    // All mutations target OTHER, not ROOT.
+    expect(fake.childrenOf(OTHER).length).toBeGreaterThan(0)
+  })
 })

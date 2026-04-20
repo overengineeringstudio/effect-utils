@@ -97,10 +97,17 @@ type SyncResult = {
 }
 ```
 
-`fallbackReason` is set when the cache was cold (`"cold-cache"`),
-mismatched the schema version (`"schema-mismatch"`), or pointed at a
-different page (`"page-id-drift"`). Unset means the warm path ran
-cleanly.
+`fallbackReason` is set when the warm-path diff was bypassed:
+
+- `"cold-cache"` — no prior snapshot (first run).
+- `"schema-mismatch"` — on-disk schema version predates the current
+  `CACHE_SCHEMA_VERSION`.
+- `"cache-drift"` — another client archived or added top-level blocks
+  out of band; detected by a pre-flight `blocks.children` fetch.
+- `"page-id-drift"` — the cache was written for a different `pageId`
+  (e.g. shared cache file between scripts); renderer cold-starts.
+
+Unset means the warm path ran cleanly.
 
 ## Rendering a list
 

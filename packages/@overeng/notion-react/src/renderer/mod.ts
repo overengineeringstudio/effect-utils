@@ -18,7 +18,12 @@ export {
 } from './flatten-rich-text.ts'
 export { blockKey } from './keys.ts'
 export { NotionSyncError, CacheError } from './errors.ts'
-export { renderToNotion, collectOps, type SyncResult } from './render-to-notion.ts'
+export {
+  renderToNotion,
+  collectOps,
+  type SyncResult,
+  type SyncFallbackReason,
+} from './render-to-notion.ts'
 export { sync } from './sync.ts'
 export {
   buildCandidateTree,

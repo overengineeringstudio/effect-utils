@@ -18,13 +18,29 @@ import { OpBuffer } from './op-buffer.ts'
  */
 export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>(['column_list'])
 
+/**
+ * Reason the warm-path diff was bypassed. Unset on a clean incremental sync.
+ *
+ * - `cold-cache`: no prior snapshot; full append.
+ * - `schema-mismatch`: on-disk schema is not the current
+ *   `CACHE_SCHEMA_VERSION`; the renderer still diffs, but downstream
+ *   consumers may want to clear the cache explicitly.
+ * - `cache-drift`: the live page's top-level children diverged from the
+ *   cached tree (another client archived/added blocks out-of-band); the
+ *   renderer rebuilds from scratch to reconverge.
+ * - `page-id-drift`: the cache was written against a different pageId
+ *   than the one passed to `sync`; diffing would target ids on the wrong
+ *   page, so we cold-start.
+ */
+export type SyncFallbackReason = 'cold-cache' | 'schema-mismatch' | 'cache-drift' | 'page-id-drift'
+
 /** Summary of the ops applied during a render/sync pass. */
 export type SyncResult = {
   readonly appends: number
   readonly updates: number
   readonly removes: number
   readonly inserts: number
-  readonly fallbackReason?: string
+  readonly fallbackReason?: SyncFallbackReason
 }
 
 const tally = (ops: readonly Op[]): Omit<SyncResult, 'fallbackReason'> => {
