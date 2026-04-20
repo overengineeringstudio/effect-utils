@@ -3,7 +3,16 @@ import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { InMemoryCache } from '../../../cache/in-memory-cache.ts'
-import { Image, Page, Paragraph } from '../../../components/blocks.tsx'
+import {
+  BulletedListItem,
+  Callout,
+  Column,
+  ColumnList,
+  Image,
+  Page,
+  Paragraph,
+  Toggle,
+} from '../../../components/blocks.tsx'
 import { h } from '../../../components/h.ts'
 import { renderToNotion } from '../../../renderer/render-to-notion.ts'
 import { sync } from '../../../renderer/sync.ts'
@@ -212,6 +221,72 @@ describe.skipIf(SKIP_E2E)('e2e edge cases', () => {
           if (result._tag === 'Left') {
             expect(result.left._tag).toBe('NotionSyncError')
           }
+        }),
+      )
+    },
+    TIMEOUT,
+  )
+
+  // ---------------------------------------------------------------------
+  // 9. Deep nesting (C3) — column_list > column > toggle > callout >
+  //     bulleted_list_item > paragraph (5 levels under the page). Exercises
+  //     the diff/apply pipeline at depths the rest of the suite does not.
+  // ---------------------------------------------------------------------
+  it(
+    'deep-nesting 5 levels: column_list > column > toggle > callout > list > paragraph',
+    async () => {
+      await withScratchPage('edge-deep-nesting', (pageId) =>
+        Effect.gen(function* () {
+          const cache = InMemoryCache.make()
+          const tree = (innerText: string): ReactNode => (
+            <Page>
+              <ColumnList>
+                <Column>
+                  <Toggle title="outer toggle">
+                    <Callout icon="💡" color="blue_background">
+                      <BulletedListItem>
+                        <Paragraph>{innerText}</Paragraph>
+                      </BulletedListItem>
+                    </Callout>
+                  </Toggle>
+                </Column>
+                <Column>
+                  <Paragraph>right side</Paragraph>
+                </Column>
+              </ColumnList>
+            </Page>
+          )
+
+          // Cold sync: every block appended.
+          const cold = yield* sync(tree('v1'), { pageId, cache }).pipe(
+            Effect.mapError((cause) => new Error(String(cause))),
+          )
+          expect(cold.updates).toBe(0)
+          expect(cold.removes).toBe(0)
+          // Verify the structure round-trips through the deep-nesting path.
+          const server = yield* readPageTree(pageId).pipe(
+            Effect.mapError((cause) => new Error(String(cause))),
+          )
+          const colList = server.find((b) => b.type === 'column_list')
+          expect(colList).toBeDefined()
+          const cols = colList!.children.filter((c) => c.type === 'column')
+          expect(cols).toHaveLength(2)
+          const toggle = cols[0]!.children.find((c) => c.type === 'toggle')
+          expect(toggle).toBeDefined()
+          const callout = toggle!.children.find((c) => c.type === 'callout')
+          expect(callout).toBeDefined()
+          const li = callout!.children.find((c) => c.type === 'bulleted_list_item')
+          expect(li).toBeDefined()
+          const innerP = li!.children.find((c) => c.type === 'paragraph')
+          expect(innerP).toBeDefined()
+          expect(firstPlainText(innerP!)).toBe('v1')
+
+          // Update at depth 5: only the innermost paragraph body changes.
+          // Diff should yield exactly one `update` op at the inner paragraph.
+          const warm = yield* sync(tree('v2'), { pageId, cache }).pipe(
+            Effect.mapError((cause) => new Error(String(cause))),
+          )
+          expect(warm).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
         }),
       )
     },

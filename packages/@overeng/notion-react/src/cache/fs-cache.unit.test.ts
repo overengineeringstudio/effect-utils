@@ -57,4 +57,39 @@ describe('FsCache', () => {
     const cache = FsCache.make(file)
     await expect(Effect.runPromise(cache.load)).rejects.toThrow()
   })
+
+  // C4: a v1 (pre-`type`-on-CacheNode) blob on disk must invalidate. The
+  // current schema is v2; loading a v1 blob returns undefined and the next
+  // sync re-seeds the cache at the current schema version with `type`
+  // populated on every node.
+  it('invalidates a pre-bump v1 cache blob (no `type` on nodes)', async () => {
+    const file = path.join(dir, 'c.json')
+    const v1Blob = {
+      schemaVersion: 1,
+      rootId: 'root-1',
+      children: [{ key: 'b:hello', blockId: 'blk-1', hash: 'h1', children: [] }],
+    }
+    await fs.writeFile(file, JSON.stringify(v1Blob), 'utf8')
+    const cache = FsCache.make(file)
+    const out = await Effect.runPromise(cache.load)
+    expect(out).toBeUndefined()
+  })
+
+  it('re-seeds at current schema version after a v1 invalidation', async () => {
+    const file = path.join(dir, 'c.json')
+    await fs.writeFile(
+      file,
+      JSON.stringify({ schemaVersion: 1, rootId: 'root-1', children: [] }),
+      'utf8',
+    )
+    const cache = FsCache.make(file)
+    expect(await Effect.runPromise(cache.load)).toBeUndefined()
+    // Save a fresh tree at the current schema and round-trip it back.
+    const fresh = sampleTree()
+    await Effect.runPromise(cache.save(fresh))
+    const loaded = await Effect.runPromise(cache.load)
+    expect(loaded).toEqual(fresh)
+    expect(loaded?.schemaVersion).toBe(CACHE_SCHEMA_VERSION)
+    expect(loaded?.children[0]?.type).toBe('paragraph')
+  })
 })
