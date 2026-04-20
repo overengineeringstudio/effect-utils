@@ -217,17 +217,11 @@ describe('heading toggleable variants', () => {
     expect(op.props.is_toggleable).toBe(true)
   })
 
-  /**
-   * heading_4 accepts the `toggleable` prop at the component surface but the
-   * renderer's `blockProps` only projects `is_toggleable` for h1/h2/h3 today.
-   * We pin that behavior here so any change surfaces as a deliberate test
-   * update rather than a silent drift.
-   */
-  it('heading_4 toggleable is NOT projected (h4 unsupported by Notion)', () => {
+  it('heading_4 toggleable projects is_toggleable: true', () => {
     const ops = collect(<Heading4 toggleable>x</Heading4>)
     const op = ops[0]!
     if (op.kind !== 'append') throw new Error('expected append')
     expect(op.type).toBe('heading_4')
-    expect(op.props.is_toggleable).toBeUndefined()
+    expect(op.props.is_toggleable).toBe(true)
   })
 })

@@ -134,7 +134,10 @@ const blockProps = (
   }
   if (type === 'callout' && typeof props.color === 'string') p.color = props.color
   if (
-    (type === 'heading_1' || type === 'heading_2' || type === 'heading_3') &&
+    (type === 'heading_1' ||
+      type === 'heading_2' ||
+      type === 'heading_3' ||
+      type === 'heading_4') &&
     typeof props.toggleable === 'boolean'
   ) {
     p.is_toggleable = props.toggleable

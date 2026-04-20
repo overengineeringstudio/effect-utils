@@ -186,6 +186,29 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
   )
 
   it(
+    'heading_4 toggleable projects is_toggleable on the wire',
+    async () => {
+      await withScratchPage('heading4-toggleable', (pageId) =>
+        Effect.gen(function* () {
+          yield* renderToNotion(
+            <Page>
+              <Heading4 toggleable>h4 toggle</Heading4>
+            </Page>,
+            { pageId },
+          )
+          const tree = yield* readPageTree(pageId)
+          // Notion may downshift heading_4 to heading_3 on the wire; accept
+          // either and assert the toggleable flag survived the round-trip.
+          const h = tree.find((b) => b.type === 'heading_4' || b.type === 'heading_3')
+          expect(h).toBeDefined()
+          expect(h!.payload.is_toggleable).toBe(true)
+        }),
+      )
+    },
+    DEFAULT_TIMEOUT,
+  )
+
+  it(
     'heading_2 toggleable with nested paragraph',
     async () => {
       await withScratchPage('heading-toggleable', (pageId) =>
