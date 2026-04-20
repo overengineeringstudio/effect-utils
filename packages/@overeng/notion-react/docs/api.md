@@ -109,10 +109,10 @@ import {
 import { NotionSyncError, CacheError } from '@overeng/notion-react'
 ```
 
-| Error             | Reasons (so far)                                                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Error             | Reasons (so far)                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NotionSyncError` | `"notion-append-failed"`, `"notion-insert-failed"`, `"notion-update-failed"`, `"notion-delete-failed"`, `"notion-retrieve-failed"`, `"cache-load-failed"`, `"cache-save-failed"` |
-| `CacheError`      | `"fs-cache-read-failed"`, `"fs-cache-parse-failed"`, `"fs-cache-write-failed"`                                                                       |
+| `CacheError`      | `"fs-cache-read-failed"`, `"fs-cache-parse-failed"`, `"fs-cache-write-failed"`                                                                                                   |
 
 Both are `Data.TaggedError` classes with `reason: string` and optional
 `cause: unknown`.
