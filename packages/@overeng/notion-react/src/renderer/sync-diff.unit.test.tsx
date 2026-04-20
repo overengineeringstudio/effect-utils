@@ -318,10 +318,7 @@ describe('sync-diff', () => {
     })
 
     it('code language change → {updates: 1}', () => {
-      const v1 = buildCandidateTree(
-        h('code', { blockKey: 'k', language: 'typescript' }, 'x'),
-        ROOT,
-      )
+      const v1 = buildCandidateTree(h('code', { blockKey: 'k', language: 'typescript' }, 'x'), ROOT)
       const cache = fakeApply(v1, diff(empty(), v1))
       const v2 = buildCandidateTree(h('code', { blockKey: 'k', language: 'python' }, 'x'), ROOT)
       const ops = diff(cache, v2)

@@ -3,10 +3,10 @@
 The library uses two orthogonal key concepts. They look similar but
 live on different sides of the renderer and answer different questions.
 
-| Concept         | Who reads it                    | What it identifies                         | Lifetime            |
-| --------------- | ------------------------------- | ------------------------------------------ | ------------------- |
-| React `key`     | React (inside react-reconciler) | A sibling fiber across renders             | Current render pass |
-| `blockKey` prop | `@overeng/notion-react` diff    | A Notion block across renders & processes  | Persisted in cache  |
+| Concept         | Who reads it                    | What it identifies                        | Lifetime            |
+| --------------- | ------------------------------- | ----------------------------------------- | ------------------- |
+| React `key`     | React (inside react-reconciler) | A sibling fiber across renders            | Current render pass |
+| `blockKey` prop | `@overeng/notion-react` diff    | A Notion block across renders & processes | Persisted in cache  |
 
 React's `key` never reaches the Notion diff — React strips it before
 the element reaches the host-config. `blockKey` never reaches Notion —
@@ -20,9 +20,13 @@ can match fibers across renders and preserve component/hook state.
 Omitting it gets you React's usual index-based matching plus a warning.
 
 ```tsx
-{items.map((item) => (
-  <Toggle key={item.id} title={item.title}>…</Toggle>
-))}
+{
+  items.map((item) => (
+    <Toggle key={item.id} title={item.title}>
+      …
+    </Toggle>
+  ))
+}
 ```
 
 ## `blockKey` — Notion block identity
@@ -35,7 +39,9 @@ treated as new (append or insert) and any orphaned cache entry is
 removed.
 
 ```tsx
-<Toggle blockKey={item.id} title={item.title}>…</Toggle>
+<Toggle blockKey={item.id} title={item.title}>
+  …
+</Toggle>
 ```
 
 Without `blockKey`, siblings fall back to positional keys (`p:0`,
@@ -74,19 +80,21 @@ blockKey('task-42') // "b:task-42"
 
 ## Which key do I set?
 
-| Situation                                                | React `key` | `blockKey`  |
-| -------------------------------------------------------- | :---------: | :---------: |
-| Static tree, no lists                                    |             |             |
-| List rendered fresh each run; append-only                |     Y       |             |
-| List that can reorder / grow in the middle               |     Y       |      Y      |
-| Same tree re-rendered across process restarts (warm cache) |   Y       |      Y      |
-| Multiple renderers sharing one cache file                |     Y       | `blockKey(id)` |
+| Situation                                                  | React `key` |   `blockKey`   |
+| ---------------------------------------------------------- | :---------: | :------------: |
+| Static tree, no lists                                      |             |                |
+| List rendered fresh each run; append-only                  |      Y      |                |
+| List that can reorder / grow in the middle                 |      Y      |       Y        |
+| Same tree re-rendered across process restarts (warm cache) |      Y      |       Y        |
+| Multiple renderers sharing one cache file                  |      Y      | `blockKey(id)` |
 
 Rule of thumb: React `key` is for React, `blockKey` is for Notion.
 Using the same identifier for both is fine and common.
 
 ```tsx
-<Toggle key={item.id} blockKey={item.id} title={item.title}>…</Toggle>
+<Toggle key={item.id} blockKey={item.id} title={item.title}>
+  …
+</Toggle>
 ```
 
 ## Which components accept `blockKey`?
@@ -107,14 +115,14 @@ This set is a v0.1 pragmatic cut — future versions will widen
 With stable `blockKey`s, the diff produces the minimum Notion op for
 each mutation class:
 
-| Change                                          | Result             |
-| ----------------------------------------------- | ------------------ |
-| Re-render identical JSX                         | 0 ops              |
-| One block's props change                        | 1 `update`         |
-| Append one sibling to the tail                  | 1 `append`         |
-| Insert one sibling mid-list                     | 1 `insert`         |
-| Remove one sibling                              | 1 `remove`         |
-| Move one sibling (reorder within a parent)      | 1 `insert` + 1 `remove` |
+| Change                                     | Result                  |
+| ------------------------------------------ | ----------------------- |
+| Re-render identical JSX                    | 0 ops                   |
+| One block's props change                   | 1 `update`              |
+| Append one sibling to the tail             | 1 `append`              |
+| Insert one sibling mid-list                | 1 `insert`              |
+| Remove one sibling                         | 1 `remove`              |
+| Move one sibling (reorder within a parent) | 1 `insert` + 1 `remove` |
 
 Notion has no block-move API (see
 [A05](../../context/vrs/requirements.md)), so a move is always a pair.

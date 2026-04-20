@@ -51,10 +51,10 @@ The full pipeline in one call:
 
 ## `renderToNotion` vs `sync`
 
-| Entry point      | Use when                              | Cache? | Op model                  |
-| ---------------- | ------------------------------------- | ------ | ------------------------- |
-| `renderToNotion` | First-time append to an empty page    | none   | Replay OpBuffer directly  |
-| `sync`           | Any subsequent render                 | yes    | Diff CandidateTree vs CacheTree |
+| Entry point      | Use when                           | Cache? | Op model                        |
+| ---------------- | ---------------------------------- | ------ | ------------------------------- |
+| `renderToNotion` | First-time append to an empty page | none   | Replay OpBuffer directly        |
+| `sync`           | Any subsequent render              | yes    | Diff CandidateTree vs CacheTree |
 
 `renderToNotion` is append-only. It trusts the OpBuffer the reconciler
 built during render and issues `append` / `insertBefore` ops in emit
@@ -115,11 +115,11 @@ content outside the synced subtree.
 `SyncResult.fallbackReason` is set when the driver took a non-standard
 path:
 
-| Condition                                             | `fallbackReason`     | Behaviour                                 |
-| ----------------------------------------------------- | -------------------- | ----------------------------------------- |
-| No prior cache (cold start)                           | `"cold-cache"`       | Diff against an empty tree                |
-| `schemaVersion` mismatch                              | `"schema-mismatch"`  | Diff against stale tree; keys still match |
-| `rootId` in cache does not match `opts.pageId`        | `"page-id-drift"`    | Diff against an empty tree                |
+| Condition                                      | `fallbackReason`    | Behaviour                                 |
+| ---------------------------------------------- | ------------------- | ----------------------------------------- |
+| No prior cache (cold start)                    | `"cold-cache"`      | Diff against an empty tree                |
+| `schemaVersion` mismatch                       | `"schema-mismatch"` | Diff against stale tree; keys still match |
+| `rootId` in cache does not match `opts.pageId` | `"page-id-drift"`   | Diff against an empty tree                |
 
 Undefined means the warm path ran cleanly. A Notion API error
 propagates as a tagged `NotionSyncError` — no fallback.

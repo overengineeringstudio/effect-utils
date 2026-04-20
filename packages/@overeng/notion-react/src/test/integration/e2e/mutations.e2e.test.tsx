@@ -173,7 +173,10 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           yield* runE(
             sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          const v2: readonly Phase[] = [...v1, { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' }]
+          const v2: readonly Phase[] = [
+            ...v1,
+            { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' },
+          ]
           const res = yield* runE(
             sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
@@ -217,7 +220,12 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
 
           const server = yield* runE(readPageTree(pageId))
           const titles = server.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
-          expect(titles).toEqual(['Phase 1 — Manufacturing', 'Phase 2 — Marketing', 'Phase 2.5 — PR push', 'Phase 3 — Retail rollout'])
+          expect(titles).toEqual([
+            'Phase 1 — Manufacturing',
+            'Phase 2 — Marketing',
+            'Phase 2.5 — PR push',
+            'Phase 3 — Retail rollout',
+          ])
         }),
       )
     },
@@ -282,7 +290,11 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
 
           const server = yield* runE(readPageTree(pageId))
           const titles = server.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
-          expect(titles).toEqual(['Phase 1 — Manufacturing', 'Phase 3 — Retail rollout', 'Phase 4 — Post-launch review'])
+          expect(titles).toEqual([
+            'Phase 1 — Manufacturing',
+            'Phase 3 — Retail rollout',
+            'Phase 4 — Post-launch review',
+          ])
           const p1 = findToggleByTitle(server, 'Phase 1 — Manufacturing')!
           expect(firstPlainText(p1.children[0]!)).toBe('first batch complete')
         }),
@@ -386,7 +398,10 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
 
           // Now resync with a different phase list that adds p4 and
           // keeps p3. Cache still has p3; render has p3+p4.
-          const v2: readonly Phase[] = [...v1, { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' }]
+          const v2: readonly Phase[] = [
+            ...v1,
+            { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' },
+          ]
           const res = yield* runE(
             sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
@@ -397,7 +412,11 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           const server2 = yield* runE(readPageTree(pageId))
           const titles = server2.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
           // p3 stays archived (sync didn't resurrect it); p4 present.
-          expect(titles).toEqual(['Phase 1 — Manufacturing', 'Phase 2 — Marketing', 'Phase 4 — Post-launch review'])
+          expect(titles).toEqual([
+            'Phase 1 — Manufacturing',
+            'Phase 2 — Marketing',
+            'Phase 4 — Post-launch review',
+          ])
         }),
       )
     },

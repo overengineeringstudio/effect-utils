@@ -16,17 +16,17 @@ those versions manually — lockfile and scripts assume them.
 
 All common tasks run under `packages/@overeng/notion-react/`:
 
-| Task                              | Command                                                     |
-| --------------------------------- | ----------------------------------------------------------- |
-| Unit tests (watch)                | `pnpm vitest`                                               |
-| Unit tests (one-off)              | `CI=1 pnpm vitest run`                                      |
-| Mock-client integration tests     | `pnpm --filter @overeng/notion-react test:integration`      |
-| Live E2E (real Notion)            | `pnpm --filter @overeng/notion-react test:integration:e2e`  |
-| Storybook dev server              | `pnpm --filter @overeng/notion-react storybook`             |
-| Storybook static build            | `pnpm --filter @overeng/notion-react storybook:build`       |
-| Type-check                        | `tsc --build --watch tsconfig.all.json` (from repo root)    |
-| Lint                              | `oxlint`                                                    |
-| Format check / fix                | `oxfmt --check` / `oxfmt`                                   |
+| Task                          | Command                                                    |
+| ----------------------------- | ---------------------------------------------------------- |
+| Unit tests (watch)            | `pnpm vitest`                                              |
+| Unit tests (one-off)          | `CI=1 pnpm vitest run`                                     |
+| Mock-client integration tests | `pnpm --filter @overeng/notion-react test:integration`     |
+| Live E2E (real Notion)        | `pnpm --filter @overeng/notion-react test:integration:e2e` |
+| Storybook dev server          | `pnpm --filter @overeng/notion-react storybook`            |
+| Storybook static build        | `pnpm --filter @overeng/notion-react storybook:build`      |
+| Type-check                    | `tsc --build --watch tsconfig.all.json` (from repo root)   |
+| Lint                          | `oxlint`                                                   |
+| Format check / fix            | `oxfmt --check` / `oxfmt`                                  |
 
 Live E2E requires `NOTION_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` —
 see [Testing](./testing.md#pointing-at-a-different-notion-workspace).
@@ -99,7 +99,7 @@ lives where and why.
 ## Commit / PR conventions
 
 - Conventional commits: `feat(notion-react): …`, `fix(notion-react):
-  …`, `docs(notion-react): …`, etc. The scope is always the package
+…`, `docs(notion-react): …`, etc. The scope is always the package
   name.
 - Reference GitHub issues in the body (`Fixes #123` or
   `Tracks #123`).

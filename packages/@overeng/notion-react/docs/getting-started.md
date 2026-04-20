@@ -9,7 +9,7 @@ Notion page from a React tree.
 - Node 20+ or Bun 1.1+.
 - A Notion integration token (`secret_*`) with access to a parent page.
   Create one at https://www.notion.so/my-integrations and add it to the
-  target page via *Share → Invite → your integration*.
+  target page via _Share → Invite → your integration_.
 - The parent page's UUID (the 32-hex segment of the page URL).
 
 ## Install
@@ -110,7 +110,9 @@ Stable identity across renders requires `blockKey`:
 const Tasks = ({ tasks }: { tasks: { id: string; title: string }[] }) => (
   <>
     {tasks.map((t) => (
-      <Paragraph key={t.id} blockKey={t.id}>{t.title}</Paragraph>
+      <Paragraph key={t.id} blockKey={t.id}>
+        {t.title}
+      </Paragraph>
     ))}
   </>
 )

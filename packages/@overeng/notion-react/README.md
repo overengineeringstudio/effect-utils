@@ -32,14 +32,7 @@ projection.
 
 ```tsx
 import { Effect } from 'effect'
-import {
-  Heading1,
-  Paragraph,
-  Toggle,
-  renderToNotion,
-  sync,
-  FsCache,
-} from '@overeng/notion-react'
+import { Heading1, Paragraph, Toggle, renderToNotion, sync, FsCache } from '@overeng/notion-react'
 
 const Page = ({ phases }: { phases: { id: string; title: string; body: string }[] }) => (
   <>
@@ -69,10 +62,10 @@ Both entry points return
 The library uses **two orthogonal key concepts**. They look similar but
 live on different sides of the renderer and solve different problems.
 
-| Concept          | Who reads it                | What it identifies                       | Lifetime          |
-|------------------|-----------------------------|-------------------------------------------|-------------------|
-| React `key`      | React (inside react-reconciler) | A sibling's fiber across renders         | Current render pass |
-| `blockKey` prop  | `@overeng/notion-react` diff | A Notion block across renders & processes | Persisted in cache |
+| Concept         | Who reads it                    | What it identifies                        | Lifetime            |
+| --------------- | ------------------------------- | ----------------------------------------- | ------------------- |
+| React `key`     | React (inside react-reconciler) | A sibling's fiber across renders          | Current render pass |
+| `blockKey` prop | `@overeng/notion-react` diff    | A Notion block across renders & processes | Persisted in cache  |
 
 ### React `key` — sibling reconciliation
 
@@ -83,9 +76,13 @@ omit it you get React's usual index-keyed matching plus the usual
 warnings.
 
 ```tsx
-{items.map((item) => (
-  <Toggle key={item.id} title={item.title}>…</Toggle>
-))}
+{
+  items.map((item) => (
+    <Toggle key={item.id} title={item.title}>
+      …
+    </Toggle>
+  ))
+}
 ```
 
 React `key` never reaches the Notion diff — it's stripped by React
@@ -101,7 +98,9 @@ block is treated as brand new (insert) and the previous one (if any) is
 removed.
 
 ```tsx
-<Toggle blockKey={item.id} title={item.title}>…</Toggle>
+<Toggle blockKey={item.id} title={item.title}>
+  …
+</Toggle>
 ```
 
 If you omit `blockKey`, siblings fall back to positional keys
@@ -121,7 +120,9 @@ Use `blockKey` whenever:
 Usually yes — they're cheap and answer different questions:
 
 ```tsx
-<Toggle key={item.id} blockKey={item.id} title={item.title}>…</Toggle>
+<Toggle key={item.id} blockKey={item.id} title={item.title}>
+  …
+</Toggle>
 ```
 
 Rule of thumb: **React `key` is for React, `blockKey` is for Notion.**

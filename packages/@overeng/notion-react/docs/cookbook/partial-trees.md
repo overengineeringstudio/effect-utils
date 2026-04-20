@@ -40,10 +40,15 @@ could masquerade as a match.
 const todayCache = FsCache.make('.notion-cache/today.json')
 const archiveCache = FsCache.make('.notion-cache/archive.json')
 
-await Effect.runPromise(Effect.all([
-  sync(<Today entries={today} />, { pageId: todayBlockId, cache: todayCache }),
-  sync(<Archive entries={archive} />, { pageId: archiveBlockId, cache: archiveCache }),
-], { concurrency: 'unbounded' }))
+await Effect.runPromise(
+  Effect.all(
+    [
+      sync(<Today entries={today} />, { pageId: todayBlockId, cache: todayCache }),
+      sync(<Archive entries={archive} />, { pageId: archiveBlockId, cache: archiveCache }),
+    ],
+    { concurrency: 'unbounded' },
+  ),
+)
 ```
 
 If you must share a cache, namespace keys with the `blockKey` helper:
@@ -78,7 +83,7 @@ Typical patterns:
 
 - **Don't render the container itself in the JSX.** If `pageId` is a
   toggle's id, do not also render a `<Toggle>` inside your tree — the
-  library reconciles the toggle's *children*, not the toggle itself.
+  library reconciles the toggle's _children_, not the toggle itself.
   Rendering the toggle inside the tree creates a second, nested
   toggle.
 - **Watch out for cache drift.** Moving or archiving the container

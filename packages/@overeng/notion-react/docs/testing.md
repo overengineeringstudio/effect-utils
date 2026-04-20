@@ -6,11 +6,11 @@ falsify your change, and escalate only when it cannot.
 
 ## Three layers
 
-| Layer              | Location                            | Network   | Cost  | When to run                                                  |
-| ------------------ | ----------------------------------- | --------- | ----- | ------------------------------------------------------------ |
-| Unit               | `src/**/*.unit.test.tsx`            | none      | <1s   | every change; default `pnpm test` target                     |
-| Mock-client        | `src/test/integration/*.test.tsx`   | none      | ~s    | renderer or diff changes that do not touch wire projection   |
-| Live E2E (Notion)  | `src/test/integration/e2e/*.tsx`    | real API  | 5-7 m | wire-projection, new block types, mutation ordering, caches  |
+| Layer             | Location                          | Network  | Cost  | When to run                                                 |
+| ----------------- | --------------------------------- | -------- | ----- | ----------------------------------------------------------- |
+| Unit              | `src/**/*.unit.test.tsx`          | none     | <1s   | every change; default `pnpm test` target                    |
+| Mock-client       | `src/test/integration/*.test.tsx` | none     | ~s    | renderer or diff changes that do not touch wire projection  |
+| Live E2E (Notion) | `src/test/integration/e2e/*.tsx`  | real API | 5-7 m | wire-projection, new block types, mutation ordering, caches |
 
 ### Unit (`vitest`)
 
@@ -95,16 +95,16 @@ Missing either env var silently skips the whole E2E suite via
 
 ## Decision table: "I changed X → run layer Y"
 
-| Change surface                                    | Unit | Mock | E2E |
-| ------------------------------------------------- | :--: | :--: | :-: |
-| Component prop wiring or JSX shape                |  Y   |      |     |
-| `flattenRichText` / inline annotation logic       |  Y   |  Y   |  Y  |
-| `buildCandidateTree` / `diff` / key matching      |  Y   |  Y   |     |
-| Host-config projection (block payload shape)      |  Y   |      |  Y  |
-| `sync()` ordering, idMap, or cache interaction    |  Y   |  Y   |  Y  |
+| Change surface                                       | Unit | Mock | E2E |
+| ---------------------------------------------------- | :--: | :--: | :-: |
+| Component prop wiring or JSX shape                   |  Y   |      |     |
+| `flattenRichText` / inline annotation logic          |  Y   |  Y   |  Y  |
+| `buildCandidateTree` / `diff` / key matching         |  Y   |  Y   |     |
+| Host-config projection (block payload shape)         |  Y   |      |  Y  |
+| `sync()` ordering, idMap, or cache interaction       |  Y   |  Y   |  Y  |
 | Notion API adapter (`@overeng/notion-effect-client`) |      |      |  Y  |
-| New block type                                    |  Y   |  Y   |  Y  |
-| Error type / failure channel                      |  Y   |  Y   |     |
+| New block type                                       |  Y   |  Y   |  Y  |
+| Error type / failure channel                         |  Y   |  Y   |     |
 
 ## Pointing at a different Notion workspace
 

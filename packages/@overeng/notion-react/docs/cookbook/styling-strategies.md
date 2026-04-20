@@ -12,13 +12,13 @@ how to extend them.
 
 ## Decision table
 
-| I want to…                                                           | Import                                                     |
-| -------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Render the web preview with Notion-faithful defaults                 | `@overeng/notion-react/web/styles.css`                     |
-| …and also render equations                                           | + `@overeng/notion-react/web/katex.css`                    |
-| Ship my own design system; opt out of Notion styles                  | Nothing. Import the components, write your own CSS.        |
-| Layer my overrides on top of the package defaults                    | `@overeng/notion-react/web/styles.css`, then my own CSS    |
-| Only use the Notion renderer (no web preview)                        | Nothing — CSS is web-preview only.                         |
+| I want to…                                           | Import                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------- |
+| Render the web preview with Notion-faithful defaults | `@overeng/notion-react/web/styles.css`                  |
+| …and also render equations                           | + `@overeng/notion-react/web/katex.css`                 |
+| Ship my own design system; opt out of Notion styles  | Nothing. Import the components, write your own CSS.     |
+| Layer my overrides on top of the package defaults    | `@overeng/notion-react/web/styles.css`, then my own CSS |
+| Only use the Notion renderer (no web preview)        | Nothing — CSS is web-preview only.                      |
 
 ## Why two files
 

@@ -64,7 +64,8 @@ export const Colors: Story = {
         .map((c) => (
           <Paragraph key={`${c}_bg`}>
             <Color value={`${c}_background`}>
-              The quick brown fox jumps over the lazy dog. <InlineCode>{`${c}_background`}</InlineCode>
+              The quick brown fox jumps over the lazy dog.{' '}
+              <InlineCode>{`${c}_background`}</InlineCode>
             </Color>
           </Paragraph>
         ))}
@@ -76,9 +77,8 @@ export const Links: Story = {
   render: () => (
     <Page>
       <Paragraph>
-        Plain link:{' '}
-        <Link href="https://notion.so">notion.so</Link>. Inline inside a sentence — visit{' '}
-        <Link href="https://github.com">GitHub</Link> to see more.
+        Plain link: <Link href="https://notion.so">notion.so</Link>. Inline inside a sentence —
+        visit <Link href="https://github.com">GitHub</Link> to see more.
       </Paragraph>
     </Page>
   ),

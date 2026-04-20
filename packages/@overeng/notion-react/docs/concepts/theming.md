@@ -10,10 +10,10 @@ them. The web renderer exists for local iteration in Storybook and is
 
 The web renderer ships two stylesheets:
 
-| File                                 | What it contains                                       |
-| ------------------------------------ | ------------------------------------------------------ |
-| `@overeng/notion-react/web/styles.css` | Pruned Notion base styles + overrides (see below)    |
-| `@overeng/notion-react/web/katex.css`  | KaTeX styles, loaded only if you render equations    |
+| File                                   | What it contains                                  |
+| -------------------------------------- | ------------------------------------------------- |
+| `@overeng/notion-react/web/styles.css` | Pruned Notion base styles + overrides (see below) |
+| `@overeng/notion-react/web/katex.css`  | KaTeX styles, loaded only if you render equations |
 
 `styles.css` re-exports a pruned derivative of react-notion-x's
 `styles.css` (vendored into `src/web/vendored-notion.css`) and layers
@@ -33,7 +33,7 @@ Every `<Page>` from `@overeng/notion-react/web` emits a root
 `<div class="notion-page">`. All styles are scoped under that class so
 the CSS doesn't leak into the surrounding document.
 
-Consumers of `vendored-notion.css` who render blocks *without* a
+Consumers of `vendored-notion.css` who render blocks _without_ a
 `.notion-page` wrapper will see unstyled output — this is intentional.
 The upstream stylesheet puts design tokens on `:root`, which would
 bleed into any document that imports it; we rescope them to
@@ -47,7 +47,7 @@ after the package's stylesheet:
 ```css
 /* your-app.css */
 .notion-page {
-  --notion-font: "Inter", system-ui, sans-serif;
+  --notion-font: 'Inter', system-ui, sans-serif;
   max-width: 960px;
 }
 

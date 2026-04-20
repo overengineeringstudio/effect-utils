@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  Column,
-  ColumnList,
-  Page,
-  Paragraph,
-} from '../components/blocks.tsx'
+import { Column, ColumnList, Page, Paragraph } from '../components/blocks.tsx'
 import { createNotionRoot } from './host-config.ts'
 import { OpBuffer } from './op-buffer.ts'
 import { ATOMIC_CONTAINERS, indexChildren, nestedBody } from './render-to-notion.ts'

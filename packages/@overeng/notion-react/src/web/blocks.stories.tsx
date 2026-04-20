@@ -129,7 +129,9 @@ export const QuoteBlock: Story = {
 export const CalloutBlock: Story = {
   render: () => (
     <Page>
-      <Callout icon="💡">Tip: wrap every page in a `Page` so the notion-page scope applies.</Callout>
+      <Callout icon="💡">
+        Tip: wrap every page in a `Page` so the notion-page scope applies.
+      </Callout>
       <Callout icon="✅" color="green_background">
         Success: the web renderer shares prop types with the Notion host.
       </Callout>

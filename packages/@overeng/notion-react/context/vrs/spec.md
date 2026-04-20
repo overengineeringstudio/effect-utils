@@ -111,7 +111,7 @@ freeform `content` payload for block types the library doesn't yet model.
 ### Inline components (R02)
 
 Inline components are tagged with a non-enumerable `INLINE_TAG` symbol
-(`src/components/inline.tsx`). They are *not* rendered as host nodes;
+(`src/components/inline.tsx`). They are _not_ rendered as host nodes;
 during `shouldSetTextContent`-gated leaves, the block's `children` are
 walked by `flattenRichText` (see below) to produce a single
 `rich_text[]` array. Types: annotations (`Bold`, `Italic`, `Underline`,
@@ -138,8 +138,8 @@ See `src/renderer/host-config.ts`.
 type Instance = {
   type: BlockType | 'raw'
   props: Record<string, unknown>
-  id: string | null          // tmp id from OpBuffer (or null pre-commit)
-  blockKey: string | undefined  // from props.blockKey
+  id: string | null // tmp id from OpBuffer (or null pre-commit)
+  blockKey: string | undefined // from props.blockKey
   parent: Instance | null
   children: (Instance | TextInstance)[]
   rootContainer: Container
@@ -152,18 +152,18 @@ type Container = { rootId: string; buffer: OpBuffer; topLevel: Instance[] }
 
 Mutation host (`supportsMutation: true`). Key entries:
 
-| Entry                                                | Role                                                    |
-|------------------------------------------------------|----------------------------------------------------------|
-| `createInstance(type, props, rootContainer)`         | Allocate an `Instance`                                   |
-| `createTextInstance(text)`                           | Allocate a `TextInstance`                                |
-| `shouldSetTextContent(type, props)`                  | Return true for leaf text blocks (see `TEXT_LEAF` set)   |
-| `appendInitialChild` / `appendChild` / `appendChildToContainer` | Mount a child; emit append op if parent has an id |
-| `insertBefore` / `insertInContainerBefore`           | Mount + reorder; emit `insertBefore` op                  |
-| `removeChild` / `removeChildFromContainer`           | Detach; emit `remove` op if child has an id              |
-| `commitUpdate(instance, type, oldProps, newProps)`   | R19 shape: project both prop sets, `deepEqual`, emit `update` only on change |
-| `commitTextUpdate`                                   | Update in-memory text; no op (text is re-projected via `blockProps`) |
-| `maySuspendCommit` / `preloadInstance` / `startSuspendingCommit` / etc. | React 19 Suspense stubs (no-op for v0.1) |
-| `clearContainer`                                     | No-op (sync driver owns the container lifecycle)         |
+| Entry                                                                   | Role                                                                         |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `createInstance(type, props, rootContainer)`                            | Allocate an `Instance`                                                       |
+| `createTextInstance(text)`                                              | Allocate a `TextInstance`                                                    |
+| `shouldSetTextContent(type, props)`                                     | Return true for leaf text blocks (see `TEXT_LEAF` set)                       |
+| `appendInitialChild` / `appendChild` / `appendChildToContainer`         | Mount a child; emit append op if parent has an id                            |
+| `insertBefore` / `insertInContainerBefore`                              | Mount + reorder; emit `insertBefore` op                                      |
+| `removeChild` / `removeChildFromContainer`                              | Detach; emit `remove` op if child has an id                                  |
+| `commitUpdate(instance, type, oldProps, newProps)`                      | R19 shape: project both prop sets, `deepEqual`, emit `update` only on change |
+| `commitTextUpdate`                                                      | Update in-memory text; no op (text is re-projected via `blockProps`)         |
+| `maySuspendCommit` / `preloadInstance` / `startSuspendingCommit` / etc. | React 19 Suspense stubs (no-op for v0.1)                                     |
+| `clearContainer`                                                        | No-op (sync driver owns the container lifecycle)                             |
 
 The host-config signature follows React 19
 (`react-dom-bindings/src/client/ReactFiberConfigDOM.js`). The derisk
@@ -175,7 +175,7 @@ exactly and is op-optimal on the benchmark scenarios.
 
 `TEXT_LEAF` blocks (`paragraph`, `heading_*`, `quote`, `callout`, `code`,
 list-item variants, `to_do`, `table_row`) treat their React children as
-rich text (R02). Their children are *not* reconciled as fiber children
+rich text (R02). Their children are _not_ reconciled as fiber children
 for v0.1 — this implies that block-nested blocks inside a callout /
 list-item / to-do are out of scope for v0.1 and tracked as a follow-up
 (v0.2, pixeltrail issue #62). `toggle` is the exception: its header is
@@ -203,7 +203,7 @@ parent).
 
 The buffer is used in two ways:
 
-1. **`renderToNotion` (append-only cold start):** The buffer's ops *are*
+1. **`renderToNotion` (append-only cold start):** The buffer's ops _are_
    the plan; applied in order, tmp-ids resolved as Notion returns real
    ids.
 2. **`sync` (incremental):** The buffer is populated by the reconciler
@@ -215,11 +215,11 @@ The buffer is used in two ways:
 
 ```ts
 interface CandidateNode {
-  key: string       // `k:<blockKey>` or positional `p:<index>`
+  key: string // `k:<blockKey>` or positional `p:<index>`
   type: BlockType
-  props: Record<string, unknown>  // output of blockProps()
-  hash: string                     // djb2 of stableStringify(props)
-  blockId: string | undefined      // unset until resolved
+  props: Record<string, unknown> // output of blockProps()
+  hash: string // djb2 of stableStringify(props)
+  blockId: string | undefined // unset until resolved
   children: CandidateNode[]
 }
 
@@ -258,7 +258,7 @@ for namespacing).
 of the projected block props (`stableStringify`). Hash collisions are
 extremely unlikely in practice but never load-bearing — on hash-equal
 but `deepEqual`-unequal nodes, the diff would issue no op, and this is
-acceptable since equal hashes imply the caller's projection *is* the
+acceptable since equal hashes imply the caller's projection _is_ the
 same Notion payload by construction. (If this ever changes, switch to
 direct `deepEqual` at diff time.)
 
@@ -329,13 +329,13 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 
 ## Fallback decision table (R16)
 
-| Trigger                                           | Behaviour                                   | `fallbackReason`    |
-|---------------------------------------------------|---------------------------------------------|---------------------|
-| No cache file                                     | Cold diff against empty tree                | `"cold-cache"`      |
-| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`    | Diff against stale tree, still reuses keys  | `"schema-mismatch"` |
-| Cache `rootId !== opts.pageId`                    | Cold diff against empty tree                | `"page-id-drift"`   |
-| `NotionBlocks.update` returns 404/archived        | Emit structural rebuild of that subtree     | `"block-missing"`   |
-| Diff produces malformed op-plan (invariant break) | Abort; propagate `NotionSyncError`          | n/a (error)         |
+| Trigger                                           | Behaviour                                  | `fallbackReason`    |
+| ------------------------------------------------- | ------------------------------------------ | ------------------- |
+| No cache file                                     | Cold diff against empty tree               | `"cold-cache"`      |
+| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`    | Diff against stale tree, still reuses keys | `"schema-mismatch"` |
+| Cache `rootId !== opts.pageId`                    | Cold diff against empty tree               | `"page-id-drift"`   |
+| `NotionBlocks.update` returns 404/archived        | Emit structural rebuild of that subtree    | `"block-missing"`   |
+| Diff produces malformed op-plan (invariant break) | Abort; propagate `NotionSyncError`         | n/a (error)         |
 
 v0.1 implements `cold-cache`, `schema-mismatch`, and `page-id-drift`
 (via a pre-flight `NotionBlocks.retrieve(cache.rootId)`). `block-missing`
@@ -386,7 +386,7 @@ PR #3224) is the reference implementation pattern.
 
 ## Open design questions
 
-- **DQ1 Nested blocks inside TEXT_LEAF containers.** *Resolved for v0.1:*
+- **DQ1 Nested blocks inside TEXT_LEAF containers.** _Resolved for v0.1:_
   `toggle` is already out of `TEXT_LEAF` and supports nested children.
   `callout`/`quote`/list-item/`to_do` remain rich-text-only until v0.2
   (see issue #62).
@@ -395,19 +395,19 @@ PR #3224) is the reference implementation pattern.
   `stableStringify` but not audited for all prop shapes we may add
   (e.g. Buffers, Dates). Resolve by either switching to `deepEqual` or
   documenting a strict prop-type contract.
-- **DQ3 Page-id drift + archived-block detection.** *Resolved for v0.1:*
+- **DQ3 Page-id drift + archived-block detection.** _Resolved for v0.1:_
   on cache load, the sync driver issues a single
   `NotionBlocks.retrieve(cache.rootId)` pre-flight. On 404/archived:
   invalidate cache + cold-rebuild with `fallbackReason =
-  "page-id-drift"`. Adds ~1 API call per sync — negligible vs savings.
+"page-id-drift"`. Adds ~1 API call per sync — negligible vs savings.
   Finer-grained `"block-missing"` detection during `applyDiff` deferred
   to v0.2.
-- **DQ4 Op batching via `position.after_block`.** *Deferred to v0.2.*
+- **DQ4 Op batching via `position.after_block`.** _Deferred to v0.2._
   v0.1 op counts already meet the derisk targets; batched append adds
   id-mapping and partial-success complexity. v0.2 experiment goal:
   measure "mutation-suite API-call count with single-op appends" vs
   "…with batched appends under a shared parent".
-- **DQ5 Upload-registry miss policy (R14).** *Resolved for v0.1:*
+- **DQ5 Upload-registry miss policy (R14).** _Resolved for v0.1:_
   `useNotionUpload(hash, factory)` calls `factory()` synchronously on
   miss and emits a `console.warn` one-liner documenting that callers
   are expected to pre-resolve. Suspense in v0.2 removes the need.

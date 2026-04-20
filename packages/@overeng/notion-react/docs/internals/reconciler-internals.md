@@ -11,18 +11,18 @@ page and the spec disagree, the spec wins.
 `src/renderer/host-config.ts` implements a `react-reconciler` host
 config targeting React 19. Key entries:
 
-| Entry                                                | Role                                                                 |
-| ---------------------------------------------------- | -------------------------------------------------------------------- |
-| `supportsMutation: true`                             | Mutation host — the reconciler calls `appendChild` / `insertBefore` / `removeChild` / `commitUpdate` directly |
-| `createInstance(type, props, rootContainer)`         | Allocate an `Instance`; pluck `blockKey` from props                   |
-| `createTextInstance(text)`                           | Allocate a `TextInstance` (absorbed into rich-text at projection time) |
-| `shouldSetTextContent`                               | Always `false` — we always build fiber children so rich-text projection can read them directly |
-| `appendInitialChild` / `appendChild` / `appendChildToContainer` | Mount a child; emit an `append` op if the parent has an id |
-| `insertBefore` / `insertInContainerBefore`           | Mount + reorder; emit `insertBefore` op                              |
-| `removeChild` / `removeChildFromContainer`           | Detach; emit `remove` op if child has an id                          |
-| `commitUpdate(instance, type, old, new)`             | React 19 shape: project both prop sets, `deepEqual`, emit `update` only on difference |
-| `maySuspendCommit` / `preloadInstance` / `startSuspendingCommit` / `NotPendingTransition` / `HostTransitionContext` | Suspense stubs — no-op for v0.1; carry the shape needed for the v0.2 upload path |
-| `clearContainer`                                     | No-op — the sync driver owns the container lifecycle                 |
+| Entry                                                                                                               | Role                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `supportsMutation: true`                                                                                            | Mutation host — the reconciler calls `appendChild` / `insertBefore` / `removeChild` / `commitUpdate` directly |
+| `createInstance(type, props, rootContainer)`                                                                        | Allocate an `Instance`; pluck `blockKey` from props                                                           |
+| `createTextInstance(text)`                                                                                          | Allocate a `TextInstance` (absorbed into rich-text at projection time)                                        |
+| `shouldSetTextContent`                                                                                              | Always `false` — we always build fiber children so rich-text projection can read them directly                |
+| `appendInitialChild` / `appendChild` / `appendChildToContainer`                                                     | Mount a child; emit an `append` op if the parent has an id                                                    |
+| `insertBefore` / `insertInContainerBefore`                                                                          | Mount + reorder; emit `insertBefore` op                                                                       |
+| `removeChild` / `removeChildFromContainer`                                                                          | Detach; emit `remove` op if child has an id                                                                   |
+| `commitUpdate(instance, type, old, new)`                                                                            | React 19 shape: project both prop sets, `deepEqual`, emit `update` only on difference                         |
+| `maySuspendCommit` / `preloadInstance` / `startSuspendingCommit` / `NotPendingTransition` / `HostTransitionContext` | Suspense stubs — no-op for v0.1; carry the shape needed for the v0.2 upload path                              |
+| `clearContainer`                                                                                                    | No-op — the sync driver owns the container lifecycle                                                          |
 
 The React 19 host-config signature follows
 `react-dom-bindings/src/client/ReactFiberConfigDOM.js`. An earlier
@@ -37,8 +37,8 @@ host-config is op-optimal on the benchmark scenarios.
 type Instance = {
   type: BlockType | 'raw'
   props: Record<string, unknown>
-  id: string | null              // tmp id from OpBuffer (or null pre-commit)
-  blockKey: string | undefined   // from props.blockKey; stripped from projection
+  id: string | null // tmp id from OpBuffer (or null pre-commit)
+  blockKey: string | undefined // from props.blockKey; stripped from projection
   parent: Instance | null
   children: (Instance | TextInstance)[]
   rootContainer: Container
@@ -98,7 +98,7 @@ Two consumers:
 `src/renderer/sync-diff.ts`. For each parent, `diffChildren`:
 
 1. **LCS over `(key, type)`.** The cache-indices in the longest
-   common subsequence are "retained" — same key *and* same block type.
+   common subsequence are "retained" — same key _and_ same block type.
    Type equality is part of the match predicate because Notion
    rejects block-type changes via `update`; a same-key type change
    materializes as remove + insert, not as a single `update`.
@@ -167,7 +167,7 @@ export const CACHE_SCHEMA_VERSION = 2 as const
 export interface CacheNode {
   readonly key: string
   readonly blockId: string
-  readonly type: string   // needed for same-key type-change detection
+  readonly type: string // needed for same-key type-change detection
   readonly hash: string
   readonly children: readonly CacheNode[]
 }

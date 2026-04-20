@@ -12,13 +12,15 @@ prop is forwarded verbatim as the block's type-tagged payload:
 
 ```tsx
 import { Raw } from '@overeng/notion-react'
-
-<Raw
+;<Raw
   type="synced_block"
   content={{
     synced_from: null,
     children: [
-      { type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: 'Source.' } }] } },
+      {
+        type: 'paragraph',
+        paragraph: { rich_text: [{ type: 'text', text: { content: 'Source.' } }] },
+      },
     ],
   }}
 />
@@ -39,13 +41,13 @@ Five thin wrappers exist for block types the library supports but
 hasn't grown an ergonomic API for yet. They all forward to `<Raw>`
 internally:
 
-| Wrapper         | Block type       | Use when                                   |
-| --------------- | ---------------- | ------------------------------------------ |
-| `<Template>`    | `template`       | Emitting a template placeholder            |
-| `<LinkPreview>` | `link_preview`   | Embedding a link-preview card              |
-| `<SyncedBlock>` | `synced_block`   | Creating or referencing a synced block     |
-| `<ChildDatabase>` | `child_database` | Emitting a database-as-child reference   |
-| `<Breadcrumb>`  | `breadcrumb`     | Rendering a breadcrumb block               |
+| Wrapper           | Block type       | Use when                               |
+| ----------------- | ---------------- | -------------------------------------- |
+| `<Template>`      | `template`       | Emitting a template placeholder        |
+| `<LinkPreview>`   | `link_preview`   | Embedding a link-preview card          |
+| `<SyncedBlock>`   | `synced_block`   | Creating or referencing a synced block |
+| `<ChildDatabase>` | `child_database` | Emitting a database-as-child reference |
+| `<Breadcrumb>`    | `breadcrumb`     | Rendering a breadcrumb block           |
 
 Each accepts `content: unknown` and forwards it to `<Raw>`.
 
@@ -64,10 +66,7 @@ type CallbackCalloutProps = {
 
 /** A Notion link_preview pointing at a GitHub PR, say. */
 export const PRPreview = ({ label, url }: CallbackCalloutProps) => (
-  <Raw
-    type="link_preview"
-    content={{ url }}
-  />
+  <Raw type="link_preview" content={{ url }} />
 )
 ```
 
