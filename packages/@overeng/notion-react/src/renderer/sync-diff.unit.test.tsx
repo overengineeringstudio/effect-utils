@@ -292,6 +292,63 @@ describe('sync-diff', () => {
     })
   })
 
+  describe('prop-only updates', () => {
+    // Changing a non-text prop on a block with a stable blockKey should diff
+    // to exactly one `update` op — no remove+insert. This validates that
+    // `blockProps` contributes the prop into the hash so the diff notices
+    // the change without the key treatment being perturbed.
+    //
+    // None of the ergonomic block components expose `blockKey` directly
+    // (it's a renderer-level identity hint), so we drop to the `h()` helper
+    // and pass `blockKey` alongside the block's own props.
+    it('callout color change → {updates: 1}', () => {
+      const v1 = buildCandidateTree(h('callout', { blockKey: 'c', color: 'red' }, 'x'), ROOT)
+      const cache = fakeApply(v1, diff(empty(), v1))
+      const v2 = buildCandidateTree(h('callout', { blockKey: 'c', color: 'blue' }, 'x'), ROOT)
+      const ops = diff(cache, v2)
+      expect(tallyDiff(ops)).toEqual({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    })
+
+    it('to_do checked toggle → {updates: 1}', () => {
+      const v1 = buildCandidateTree(h('to_do', { blockKey: 't', checked: false }, 'x'), ROOT)
+      const cache = fakeApply(v1, diff(empty(), v1))
+      const v2 = buildCandidateTree(h('to_do', { blockKey: 't', checked: true }, 'x'), ROOT)
+      const ops = diff(cache, v2)
+      expect(tallyDiff(ops)).toEqual({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    })
+
+    it('code language change → {updates: 1}', () => {
+      const v1 = buildCandidateTree(
+        h('code', { blockKey: 'k', language: 'typescript' }, 'x'),
+        ROOT,
+      )
+      const cache = fakeApply(v1, diff(empty(), v1))
+      const v2 = buildCandidateTree(h('code', { blockKey: 'k', language: 'python' }, 'x'), ROOT)
+      const ops = diff(cache, v2)
+      expect(tallyDiff(ops)).toEqual({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    })
+
+    // NOTE: `caption` is not a first-class prop on media components and is
+    // not projected by `blockProps` (see host-config.ts). The closest
+    // diffable non-text prop on media blocks is `url`, which IS projected
+    // into the hash via the `{type:'external', external:{url}}` envelope.
+    // We pin behaviour on `url` change here — if/when a proper `caption`
+    // projection lands, a dedicated case should be added.
+    it('image url change → {updates: 1}', () => {
+      const v1 = buildCandidateTree(
+        h('image', { blockKey: 'i', url: 'https://example.com/a.png' }),
+        ROOT,
+      )
+      const cache = fakeApply(v1, diff(empty(), v1))
+      const v2 = buildCandidateTree(
+        h('image', { blockKey: 'i', url: 'https://example.com/b.png' }),
+        ROOT,
+      )
+      const ops = diff(cache, v2)
+      expect(tallyDiff(ops)).toEqual({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    })
+  })
+
   describe('derisk-report 6-scenario table', () => {
     // Mirrors /tmp/pixeltrail-react-derisk/index.tsx verbatim. The report's
     // "ops" column counts total ops; we split into appends/updates/inserts/
