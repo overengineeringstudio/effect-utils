@@ -304,9 +304,16 @@ export const Quote = ({ children }: QuoteProps) => (
  * page-icon-inline class on the icon, `_co` color suffix to hit the
  * vendored callout-background rules (distinct from text-color rules).
  */
+const renderCalloutIcon = (icon: NonNullable<CalloutProps['icon']>): ReactNode => {
+  if (typeof icon === 'string') return icon
+  return <img src={icon.external} alt="" className="notion-page-icon-image" />
+}
+
 export const Callout = ({ children, icon, color }: CalloutProps) => (
   <div className={`notion-callout${color !== undefined ? ` notion-${color}_co` : ''}`}>
-    {icon !== undefined ? <div className="notion-page-icon-inline">{icon}</div> : null}
+    {icon !== undefined ? (
+      <div className="notion-page-icon-inline">{renderCalloutIcon(icon)}</div>
+    ) : null}
     <div className="notion-callout-text">{children}</div>
   </div>
 )

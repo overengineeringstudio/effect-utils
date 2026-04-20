@@ -117,10 +117,20 @@ const blockProps = (
     p.rich_text = flattenRichText(typeof props.title === 'string' ? props.title : '')
   }
   if (type === 'code' && typeof props.language === 'string') p.language = props.language
-  if (type === 'callout' && typeof props.icon === 'string') {
-    // Notion wants `icon: { type: 'emoji', emoji }` — the component accepts
-    // a bare emoji string for ergonomics.
-    p.icon = { type: 'emoji', emoji: props.icon }
+  if (type === 'callout' && props.icon !== undefined) {
+    // Notion accepts `{ type: 'emoji', emoji }` or `{ type: 'external',
+    // external: { url } }`. The component takes a bare string (emoji) or
+    // `{ external: url }` for ergonomics and we project accordingly.
+    const icon = props.icon
+    if (typeof icon === 'string') {
+      p.icon = { type: 'emoji', emoji: icon }
+    } else if (
+      typeof icon === 'object' &&
+      icon !== null &&
+      typeof (icon as { external?: unknown }).external === 'string'
+    ) {
+      p.icon = { type: 'external', external: { url: (icon as { external: string }).external } }
+    }
   }
   if (type === 'callout' && typeof props.color === 'string') p.color = props.color
   if (

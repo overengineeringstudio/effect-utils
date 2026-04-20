@@ -151,18 +151,14 @@ describe('callout icon variants', () => {
     expect(op.props.icon).toEqual({ type: 'emoji', emoji: '🔔' })
   })
 
-  /**
-   * The current CalloutProps type declares `icon?: string`, so only bare
-   * emoji strings are supported. An external-file-URL icon variant is not
-   * exposed by the component API today; we lock in the status quo with a
-   * parity test for a second emoji and document the gap here so future
-   * widening of the prop shape keeps this case in scope.
-   */
-  it('projects a second emoji (parity; external-url variant not exposed by API)', () => {
-    const ops = collect(<Callout icon="💡">x</Callout>)
+  it('projects external-url icon as { type: "external", external: { url } }', () => {
+    const ops = collect(<Callout icon={{ external: 'https://x/icon.png' }}>x</Callout>)
     const op = ops[0]!
     if (op.kind !== 'append') throw new Error('expected append')
-    expect(op.props.icon).toEqual({ type: 'emoji', emoji: '💡' })
+    expect(op.props.icon).toEqual({
+      type: 'external',
+      external: { url: 'https://x/icon.png' },
+    })
   })
 })
 

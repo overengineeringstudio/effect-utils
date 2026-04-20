@@ -27,8 +27,15 @@ export type CodeProps = Children & { readonly language?: string }
 
 export type QuoteProps = Children
 
+/**
+ * Notion accepts two icon envelopes on callouts: a bare emoji or an external
+ * file URL. The component surface mirrors this: pass a string for the emoji
+ * case, or `{ external: url }` for the external-image case.
+ */
+export type CalloutIcon = string | { readonly external: string }
+
 export type CalloutProps = Children & {
-  readonly icon?: string
+  readonly icon?: CalloutIcon
   readonly color?: string
 }
 
