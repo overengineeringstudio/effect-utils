@@ -51,7 +51,7 @@ export default packageJson(
     exports: {
       '.': './src/mod.ts',
       './renderer': './src/renderer/mod.ts',
-      './test': './src/test/integration/setup.ts',
+      './test': './src/test/integration/e2e/helpers.ts',
       './web': './src/web/mod.ts',
       './web/styles.css': './src/web/styles.css',
     },

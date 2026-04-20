@@ -20,13 +20,18 @@ export const SKIP_E2E = !process.env.NOTION_TOKEN || !process.env.NOTION_TEST_PA
 /** Parent page under which each test creates a scratch child page. */
 export const TEST_PARENT_PAGE_ID = process.env.NOTION_TEST_PARENT_PAGE_ID ?? ''
 
-const assertEnv = (): void => {
-  if (!process.env.NOTION_TOKEN) {
+/**
+ * Throw a clear error when credentials are missing. Exported so edge-case
+ * tests can exercise the error paths directly; `withScratchPage` calls it
+ * before every test body.
+ */
+export const assertEnv = (env: NodeJS.ProcessEnv = process.env): void => {
+  if (!env.NOTION_TOKEN) {
     throw new Error(
       'NOTION_TOKEN is not set. See packages/@overeng/notion-react/.envrc.local for the expected value.',
     )
   }
-  if (!process.env.NOTION_TEST_PARENT_PAGE_ID) {
+  if (!env.NOTION_TEST_PARENT_PAGE_ID) {
     throw new Error(
       'NOTION_TEST_PARENT_PAGE_ID is not set. Expected the id of a Notion page shared with the test integration.',
     )
@@ -127,13 +132,41 @@ export interface ReadBlockNode {
  * Recursively read a page's block tree. Bounded depth keeps runaway
  * recursion contained if the fixture is unexpectedly deep.
  */
+/**
+ * Retry schedule for the `has_children: true && results.length === 0` paradox
+ * that occasionally surfaces under API load — Notion briefly serves an empty
+ * page for children that are indexed but not yet visible to a reader. Bounded
+ * so a genuine empty tree never hangs the suite.
+ */
+const childrenSettleSchedule = Schedule.exponential(Duration.millis(500), 1.5).pipe(
+  Schedule.compose(Schedule.recurs(4)),
+)
+
+const retrieveChildrenSettled = (
+  blockId: string,
+  expectChildren: boolean,
+): Effect.Effect<{ results: ReadonlyArray<unknown> }, unknown, E2EEnv> =>
+  NotionBlocks.retrieveChildren({ blockId }).pipe(
+    Effect.flatMap((res) =>
+      expectChildren && res.results.length === 0
+        ? Effect.fail(new Error(`children-not-yet-visible:${blockId}`))
+        : Effect.succeed(res),
+    ),
+    Effect.retry(childrenSettleSchedule),
+    // If the paradox never resolves within the budget, fall through with an
+    // empty list rather than erroring — callers can still assert a readable
+    // tree and see the mismatch as a test failure instead of a flake.
+    Effect.catchAll(() => NotionBlocks.retrieveChildren({ blockId })),
+  )
+
 export const readPageTree = (
   pageId: string,
   maxDepth = 8,
+  expectChildren = false,
 ): Effect.Effect<readonly ReadBlockNode[], unknown, E2EEnv> =>
   Effect.gen(function* () {
     if (maxDepth < 0) return [] as readonly ReadBlockNode[]
-    const res = yield* NotionBlocks.retrieveChildren({ blockId: pageId })
+    const res = yield* retrieveChildrenSettled(pageId, expectChildren)
     const out: ReadBlockNode[] = []
     for (const raw of res.results) {
       const block = raw as {
@@ -143,7 +176,7 @@ export const readPageTree = (
         [k: string]: unknown
       }
       const payload = (block[block.type] as Record<string, unknown>) ?? {}
-      const children = block.has_children ? yield* readPageTree(block.id, maxDepth - 1) : []
+      const children = block.has_children ? yield* readPageTree(block.id, maxDepth - 1, true) : []
       out.push({ id: block.id, type: block.type, payload, children })
     }
     return out
