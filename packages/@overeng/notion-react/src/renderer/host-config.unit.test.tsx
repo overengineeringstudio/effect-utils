@@ -4,8 +4,10 @@ import {
   BulletedListItem,
   Callout,
   Heading1,
+  Image,
   NumberedListItem,
   Paragraph,
+  Pdf,
   Quote,
   Raw,
   SyncedBlock,
@@ -13,6 +15,7 @@ import {
   TableRow,
   ToDo,
   Toggle,
+  Video,
 } from '../components/blocks.tsx'
 import { Bold } from '../components/inline.tsx'
 import { createNotionRoot } from './host-config.ts'
@@ -214,6 +217,44 @@ describe('host-config', () => {
     if (op.kind !== 'append') return
     expect(op.type).toBe('synced_block')
     expect(op.props).toEqual({ synced_from: { type: 'block_id', block_id: 'abc123' } })
+  })
+
+  it('projects media external URL + caption (rich_text)', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Image url="https://example.com/x.png" caption={<Bold>alt copy</Bold>} />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('image')
+    expect(op.props.type).toBe('external')
+    expect(op.props.external).toEqual({ url: 'https://example.com/x.png' })
+    const cap = op.props.caption as Array<{
+      text: { content: string }
+      annotations: { bold: boolean }
+    }>
+    expect(cap).toHaveLength(1)
+    expect(cap[0]!.text.content).toBe('alt copy')
+    expect(cap[0]!.annotations.bold).toBe(true)
+  })
+
+  it('projects media file_upload envelope when fileUploadId is given', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Video fileUploadId="upload_123" caption="demo" />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('video')
+    expect(op.props.type).toBe('file_upload')
+    expect(op.props.file_upload).toEqual({ id: 'upload_123' })
+    expect(op.props).not.toHaveProperty('external')
+  })
+
+  it('prefers fileUploadId over url when both are provided', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Pdf url="https://example.com/a.pdf" fileUploadId="up_1" />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.props.type).toBe('file_upload')
+    expect(op.props.file_upload).toEqual({ id: 'up_1' })
+    expect(op.props).not.toHaveProperty('external')
   })
 
   it('projects table flags + nested table_row cells (Notion API shape)', () => {

@@ -459,6 +459,37 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
     DEFAULT_TIMEOUT,
   )
 
+  it(
+    'image — external URL + caption',
+    async () => {
+      await withScratchPage('image-caption', (pageId) =>
+        Effect.gen(function* () {
+          yield* renderToNotion(
+            <Page>
+              <Image
+                url="https://www.notion.so/images/logo-ios.png"
+                caption={
+                  <>
+                    figure <Italic>one</Italic>
+                  </>
+                }
+              />
+            </Page>,
+            { pageId },
+          )
+          const tree = yield* readPageTree(pageId)
+          expect(tree[0]!.type).toBe('image')
+          const payload = tree[0]!.payload as { caption?: readonly RichTextItem[] }
+          const cap = payload.caption ?? []
+          expect(cap.map((rt) => rt.plain_text ?? '').join('')).toBe('figure one')
+          const italicPart = cap[1]
+          expect(italicPart?.annotations?.italic).toBe(true)
+        }),
+      )
+    },
+    DEFAULT_TIMEOUT,
+  )
+
   // -----------------------------------------------------------------
   // bookmark + embed
   // -----------------------------------------------------------------

@@ -82,7 +82,11 @@ export const Divider = () => h('divider', null)
 const mediaUrl = (p: MediaProps): string | undefined => p.url ?? p.src
 const media = (tag: string) => (props: MediaProps) => {
   const url = mediaUrl(props)
-  return h(tag, url === undefined ? null : { url })
+  const bag: Record<string, unknown> = {}
+  if (url !== undefined) bag.url = url
+  if (props.fileUploadId !== undefined) bag.fileUploadId = props.fileUploadId
+  if (props.caption !== undefined) bag.caption = props.caption
+  return h(tag, Object.keys(bag).length === 0 ? null : bag)
 }
 export const Image = media('image')
 export const Video = media('video')

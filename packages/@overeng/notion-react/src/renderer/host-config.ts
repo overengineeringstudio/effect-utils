@@ -129,19 +129,29 @@ const blockProps = (
   ) {
     p.is_toggleable = props.toggleable
   }
-  // File-like media blocks (image/video/audio/file/pdf) want the URL wrapped
-  // in an `{ type: 'external', external: { url } }` envelope. `bookmark` and
-  // `embed` expect the bare `url` field — different shape per Notion's schema.
+  // File-like media blocks (image/video/audio/file/pdf) carry one of two
+  // source envelopes per Notion's schema:
+  //   external: { url }                       — link to public URL
+  //   file_upload: { id }                     — internal uploaded ref
+  // Plus an optional `caption: rich_text[]`. `bookmark` and `embed` instead
+  // take a bare `url` field.
   if (
-    (type === 'image' ||
-      type === 'video' ||
-      type === 'audio' ||
-      type === 'file' ||
-      type === 'pdf') &&
-    typeof props.url === 'string'
+    type === 'image' ||
+    type === 'video' ||
+    type === 'audio' ||
+    type === 'file' ||
+    type === 'pdf'
   ) {
-    p.type = 'external'
-    p.external = { url: props.url }
+    if (typeof props.fileUploadId === 'string') {
+      p.type = 'file_upload'
+      p.file_upload = { id: props.fileUploadId }
+    } else if (typeof props.url === 'string') {
+      p.type = 'external'
+      p.external = { url: props.url }
+    }
+    if (props.caption !== undefined) {
+      p.caption = flattenRichText(props.caption as ReactNode)
+    }
   }
   if (type === 'bookmark' && typeof props.url === 'string') p.url = props.url
   if (type === 'embed' && typeof props.url === 'string') p.url = props.url

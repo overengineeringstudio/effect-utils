@@ -37,6 +37,7 @@ export type DividerProps = Record<string, never>
 export type MediaProps = {
   readonly url?: string
   readonly src?: string
+  readonly fileUploadId?: string
   readonly caption?: ReactNode
 }
 

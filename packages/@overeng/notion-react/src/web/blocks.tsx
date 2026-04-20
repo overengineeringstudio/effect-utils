@@ -329,12 +329,14 @@ export const Image = (props: MediaProps) => {
 export const Video = (props: MediaProps) => (
   <figure className="notion-media notion-video">
     <video src={mediaUrl(props)} controls />
+    {props.caption !== undefined ? <figcaption>{props.caption}</figcaption> : null}
   </figure>
 )
 
 export const Audio = (props: MediaProps) => (
   <figure className="notion-media notion-audio">
     <audio src={mediaUrl(props)} controls />
+    {props.caption !== undefined ? <figcaption>{props.caption}</figcaption> : null}
   </figure>
 )
 
