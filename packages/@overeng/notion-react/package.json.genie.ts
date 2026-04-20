@@ -11,6 +11,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-reconciler'] as const
+const optionalPeerDepNames = ['katex'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-react' }),
@@ -23,9 +24,11 @@ const workspaceDeps = catalog.compose({
     external: {
       ...catalog.pick(
         ...peerDepNames,
+        ...optionalPeerDepNames,
         '@effect/vitest',
         '@storybook/react',
         '@storybook/react-vite',
+        '@types/katex',
         '@types/node',
         '@types/react',
         '@types/react-dom',
@@ -39,7 +42,7 @@ const workspaceDeps = catalog.compose({
     },
   },
   peerDependencies: {
-    external: catalog.pick(...peerDepNames),
+    external: catalog.pick(...peerDepNames, ...optionalPeerDepNames),
   },
   mode: 'install',
 })
@@ -54,6 +57,7 @@ export default packageJson(
       './test': './src/test/integration/e2e/helpers.ts',
       './web': './src/web/mod.ts',
       './web/styles.css': './src/web/styles.css',
+      './web/katex.css': './src/web/katex.css',
     },
     publishConfig: {
       access: 'public',
@@ -62,7 +66,11 @@ export default packageJson(
         './renderer': './dist/renderer/mod.js',
         './web': './dist/web/mod.js',
         './web/styles.css': './dist/web/styles.css',
+        './web/katex.css': './dist/web/katex.css',
       },
+    },
+    peerDependenciesMeta: {
+      katex: { optional: true },
     },
     scripts: {
       storybook: 'storybook dev -p 6014',

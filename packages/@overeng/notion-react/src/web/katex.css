@@ -1,0 +1,13 @@
+/**
+ * KaTeX stylesheet — side-effect import.
+ *
+ * Consumers who render `<Equation>` / `<InlineEquation>` must import this
+ * file once alongside `styles.css`:
+ *
+ *   import '@overeng/notion-react/web/styles.css'
+ *   import '@overeng/notion-react/web/katex.css'
+ *
+ * Kept as a separate entrypoint so apps that don't render math don't pay
+ * the ~70kb CSS cost. Mirrors the optional `katex` peer dep in package.json.
+ */
+@import 'katex/dist/katex.min.css';

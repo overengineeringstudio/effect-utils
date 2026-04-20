@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import '../src/web/vendored-notion.css'
 import '../src/web/styles.css'
+import '../src/web/katex.css'
 
 /**
  * Per R21 + T05 in `context/vrs/requirements.md`, the web renderer under

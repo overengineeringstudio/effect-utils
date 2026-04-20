@@ -143,6 +143,10 @@ export const catalog = defineCatalog({
   'react-dom': '19.2.3',
   'react-aria-components': '1.16.0',
 
+  // Notion rendering (optional peer deps)
+  katex: '0.16.45',
+  shiki: '4.0.2',
+
   // PTY
   '@myobie/pty': '0.9.0',
 
@@ -153,6 +157,7 @@ export const catalog = defineCatalog({
   '@types/bun': '1.3.10',
   '@types/eslint': '9.6.1',
   '@types/is-dom': '1.1.2',
+  '@types/katex': '0.16.8',
 
   // Build tools
   typescript: '5.9.3',

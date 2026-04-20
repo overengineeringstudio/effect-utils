@@ -26,6 +26,7 @@ import type {
   ToDoProps,
   ToggleProps,
 } from '../components/props.ts'
+import { KatexRender } from './katex.tsx'
 
 /**
  * DOM-rendered mirrors of `../components/blocks.tsx`.
@@ -375,9 +376,7 @@ export const Embed = ({ url }: EmbedProps) => (
 )
 
 export const Equation = ({ expression }: EquationProps) => (
-  <pre className="notion-equation-block">
-    <code>{expression}</code>
-  </pre>
+  <KatexRender expression={expression} displayMode={true} />
 )
 
 // Outer scroll-wrap is our addition (rnx wraps tables one level higher in

@@ -8,6 +8,7 @@ import type {
   MentionProps,
   TextProps,
 } from '../components/props.ts'
+import { KatexRender } from './katex.tsx'
 
 /**
  * DOM-rendered mirrors of the inline components in `../components/inline.tsx`.
@@ -56,5 +57,5 @@ export const Mention = (props: MentionProps) => (
 )
 
 export const InlineEquation = ({ expression }: InlineEquationProps) => (
-  <code className="notion-equation">{expression}</code>
+  <KatexRender expression={expression} displayMode={false} />
 )

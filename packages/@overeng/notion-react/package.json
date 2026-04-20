@@ -8,6 +8,7 @@
     "./renderer": "./src/renderer/mod.ts",
     "./test": "./src/test/integration/e2e/helpers.ts",
     "./web": "./src/web/mod.ts",
+    "./web/katex.css": "./src/web/katex.css",
     "./web/styles.css": "./src/web/styles.css"
   },
   "publishConfig": {
@@ -16,7 +17,8 @@
       ".": "./dist/mod.js",
       "./renderer": "./dist/renderer/mod.js",
       "./web": "./dist/web/mod.js",
-      "./web/styles.css": "./dist/web/styles.css"
+      "./web/styles.css": "./dist/web/styles.css",
+      "./web/katex.css": "./dist/web/katex.css"
     }
   },
   "scripts": {
@@ -46,11 +48,13 @@
     "@overeng/utils-dev": "workspace:^",
     "@storybook/react": "10.2.3",
     "@storybook/react-vite": "10.2.3",
+    "@types/katex": "0.16.8",
     "@types/node": "25.3.3",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@types/react-reconciler": "0.28.9",
     "effect": "3.21.0",
+    "katex": "0.16.45",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-reconciler": "0.33.0",
@@ -61,8 +65,14 @@
   },
   "peerDependencies": {
     "effect": "^3.21.0",
+    "katex": "^0.16.45",
     "react": "^19.2.3",
     "react-reconciler": "^0.33.0"
+  },
+  "peerDependenciesMeta": {
+    "katex": {
+      "optional": true
+    }
   },
   "$genie": {
     "source": "package.json.genie.ts",
