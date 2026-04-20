@@ -11,7 +11,7 @@ import type {
 import { KatexRender } from './katex.tsx'
 
 /**
- * DOM-rendered mirrors of the inline components in `../components/inline.tsx`.
+ * DOM-rendered mirrors of the inline components in `../components/inline.ts`.
  *
  * Prop shapes are shared via `../components/props.ts` so the Notion-host and
  * web variants cannot drift silently.

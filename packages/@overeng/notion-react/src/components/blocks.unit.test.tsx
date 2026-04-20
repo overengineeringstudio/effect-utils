@@ -19,7 +19,7 @@ import {
   TableOfContents,
   ToDo,
   Toggle,
-} from './blocks.tsx'
+} from './blocks.ts'
 
 const collect = (element: React.ReactNode) => {
   const buffer = new OpBuffer('root')

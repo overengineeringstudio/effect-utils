@@ -41,9 +41,12 @@ export type Op =
  */
 export class OpBuffer {
   readonly ops: Op[] = []
+  readonly rootId: string
   private idCounter = 0
 
-  constructor(readonly rootId: string) {}
+  constructor(rootId: string) {
+    this.rootId = rootId
+  }
 
   private nextId(): string {
     this.idCounter += 1

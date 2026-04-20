@@ -12,7 +12,7 @@ import {
   Page,
   Paragraph,
   Toggle,
-} from '../../../components/blocks.tsx'
+} from '../../../components/blocks.ts'
 import { h } from '../../../components/h.ts'
 import { renderToNotion } from '../../../renderer/render-to-notion.ts'
 import { sync } from '../../../renderer/sync.ts'

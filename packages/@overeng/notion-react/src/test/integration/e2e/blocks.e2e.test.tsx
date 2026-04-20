@@ -28,8 +28,8 @@ import {
   TableRow,
   ToDo,
   Toggle,
-} from '../../../components/blocks.tsx'
-import { Bold, InlineEquation, Italic, Link } from '../../../components/inline.tsx'
+} from '../../../components/blocks.ts'
+import { Bold, InlineEquation, Italic, Link } from '../../../components/inline.ts'
 import { renderToNotion } from '../../../renderer/render-to-notion.ts'
 import {
   concatPlainText,

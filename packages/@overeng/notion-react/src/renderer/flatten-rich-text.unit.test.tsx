@@ -11,7 +11,7 @@ import {
   Strikethrough,
   Text,
   Underline,
-} from '../components/inline.tsx'
+} from '../components/inline.ts'
 import { flattenRichText } from './flatten-rich-text.ts'
 
 describe('flattenRichText', () => {

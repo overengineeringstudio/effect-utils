@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react'
+import { Fragment, createElement, type ReactNode } from 'react'
 
 import { INLINE_TAG, type InlineComponent, type InlineTag } from '../renderer/flatten-rich-text.ts'
+
+const frag = (children: ReactNode): ReactNode => createElement(Fragment, null, children)
 
 const tag = <TProps extends { readonly children?: ReactNode }>(
   render: (props: TProps) => ReactNode,
@@ -12,49 +14,46 @@ const tag = <TProps extends { readonly children?: ReactNode }>(
 }
 
 /** Inline annotation: emits children wrapped in a bold annotation. */
-export const Bold = tag<{ readonly children?: ReactNode }>(({ children }) => <>{children}</>, {
+export const Bold = tag<{ readonly children?: ReactNode }>(({ children }) => frag(children), {
   kind: 'annotation',
   patch: { bold: true },
 })
-export const Italic = tag<{ readonly children?: ReactNode }>(({ children }) => <>{children}</>, {
+export const Italic = tag<{ readonly children?: ReactNode }>(({ children }) => frag(children), {
   kind: 'annotation',
   patch: { italic: true },
 })
 export const Strikethrough = tag<{ readonly children?: ReactNode }>(
-  ({ children }) => <>{children}</>,
+  ({ children }) => frag(children),
   {
     kind: 'annotation',
     patch: { strikethrough: true },
   },
 )
-export const Underline = tag<{ readonly children?: ReactNode }>(({ children }) => <>{children}</>, {
+export const Underline = tag<{ readonly children?: ReactNode }>(({ children }) => frag(children), {
   kind: 'annotation',
   patch: { underline: true },
 })
-export const InlineCode = tag<{ readonly children?: ReactNode }>(
-  ({ children }) => <>{children}</>,
-  {
-    kind: 'annotation',
-    patch: { code: true },
-  },
-)
+export const InlineCode = tag<{ readonly children?: ReactNode }>(({ children }) => frag(children), {
+  kind: 'annotation',
+  patch: { code: true },
+})
 
 /** Apply a Notion color (or *_background color) to the wrapped content. */
 export const Color = tag<{ readonly value: string; readonly children?: ReactNode }>(
-  ({ children }) => <>{children}</>,
+  ({ children }) => frag(children),
   (props) => ({ kind: 'annotation', patch: { color: props.value } }),
 )
 
 /** Inline text wrapper. Equivalent to raw text children but explicit. */
 /** Inline passthrough wrapper: recurses into children with no annotation patch. */
-export const Text = tag<{ readonly children?: ReactNode }>(({ children }) => <>{children}</>, {
+export const Text = tag<{ readonly children?: ReactNode }>(({ children }) => frag(children), {
   kind: 'annotation',
   patch: {},
 })
 
 /** Inline hyperlink; nested text inherits the `href`. */
 export const Link = tag<{ readonly href: string; readonly children?: ReactNode }>(
-  ({ children }) => <>{children}</>,
+  ({ children }) => frag(children),
   (props) => ({ kind: 'link', url: props.href }),
 )
 

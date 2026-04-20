@@ -30,7 +30,7 @@ import { KatexRender } from './katex.tsx'
 import { ShikiRender } from './shiki.tsx'
 
 /**
- * DOM-rendered mirrors of `../components/blocks.tsx`.
+ * DOM-rendered mirrors of `../components/blocks.ts`.
  *
  * Prop shapes are shared via `../components/props.ts` so any drift between the
  * Notion-host output and the web preview surfaces as a type error.

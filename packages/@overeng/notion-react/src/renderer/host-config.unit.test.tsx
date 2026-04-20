@@ -22,8 +22,8 @@ import {
   ToDo,
   Toggle,
   Video,
-} from '../components/blocks.tsx'
-import { Bold } from '../components/inline.tsx'
+} from '../components/blocks.ts'
+import { Bold } from '../components/inline.ts'
 import { createNotionRoot } from './host-config.ts'
 import { OpBuffer } from './op-buffer.ts'
 

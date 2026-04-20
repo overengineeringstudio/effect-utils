@@ -10,8 +10,8 @@ import {
   Paragraph,
   ToDo,
   Toggle,
-} from '../../../components/blocks.tsx'
-import { Bold, Italic, Link } from '../../../components/inline.tsx'
+} from '../../../components/blocks.ts'
+import { Bold, Italic, Link } from '../../../components/inline.ts'
 import { renderToNotion } from '../../../renderer/render-to-notion.ts'
 import {
   firstPlainText,

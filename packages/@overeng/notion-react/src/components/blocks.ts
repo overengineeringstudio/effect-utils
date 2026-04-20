@@ -1,3 +1,5 @@
+import { Fragment, createElement, type ReactElement } from 'react'
+
 import { h } from './h.ts'
 import type {
   BookmarkProps,
@@ -39,9 +41,14 @@ import type {
  *
  * Prop shapes live in `./props.ts` and are shared with the DOM mirrors in
  * `../web/blocks.tsx` so drift between the two surfaces is a type error.
+ *
+ * Note: this file is `.ts` (no JSX literals) so that Node's
+ * `--experimental-strip-types` can consume `src/mod.ts` directly for
+ * source-level dogfooding.
  */
 
-export const Page = ({ children }: PageProps) => <>{children}</>
+export const Page = ({ children }: PageProps): ReactElement =>
+  createElement(Fragment, null, children)
 
 /**
  * Helper: emit a `blockKey`-only props bag when it's set, else `null`
@@ -155,16 +162,10 @@ export const Raw = <TType extends string>({ type, content }: RawProps<TType>) =>
 
 // Stubbed 1:1 components that currently pipe through `Raw`.
 // TODO: replace each with a schema-driven ergonomic wrapper.
-export const Template = ({ content }: PassthroughProps) => <Raw type="template" content={content} />
-export const LinkPreview = ({ content }: PassthroughProps) => (
-  <Raw type="link_preview" content={content} />
-)
-export const SyncedBlock = ({ content }: PassthroughProps) => (
-  <Raw type="synced_block" content={content} />
-)
-export const ChildDatabase = ({ content }: PassthroughProps) => (
-  <Raw type="child_database" content={content} />
-)
-export const Breadcrumb = ({ content = {} }: BreadcrumbProps) => (
-  <Raw type="breadcrumb" content={content} />
-)
+export const Template = ({ content }: PassthroughProps) => Raw({ type: 'template', content })
+export const LinkPreview = ({ content }: PassthroughProps) => Raw({ type: 'link_preview', content })
+export const SyncedBlock = ({ content }: PassthroughProps) => Raw({ type: 'synced_block', content })
+export const ChildDatabase = ({ content }: PassthroughProps) =>
+  Raw({ type: 'child_database', content })
+export const Breadcrumb = ({ content = {} }: BreadcrumbProps) =>
+  Raw({ type: 'breadcrumb', content })

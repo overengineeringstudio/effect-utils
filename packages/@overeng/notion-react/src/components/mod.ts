@@ -1,3 +1,3 @@
-export * from './blocks.tsx'
-export * from './inline.tsx'
+export * from './blocks.ts'
+export * from './inline.ts'
 export type * from './props.ts'

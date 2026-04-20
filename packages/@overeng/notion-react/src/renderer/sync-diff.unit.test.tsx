@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
-import { Heading2, Paragraph, Toggle } from '../components/blocks.tsx'
+import { Heading2, Paragraph, Toggle } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import {
   buildCandidateTree,

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
-import { Heading2, Paragraph } from '../components/blocks.tsx'
+import { Heading2, Paragraph } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
 import { sync } from './sync.ts'
