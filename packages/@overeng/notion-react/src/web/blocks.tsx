@@ -1,3 +1,4 @@
+import { Children, isValidElement } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 import type {
@@ -51,7 +52,7 @@ import type {
 export const Page = ({ children }: PageProps) => (
   <div className="notion notion-app">
     <div className="notion-page">
-      <div className="notion-page-content">{children}</div>
+      <div className="notion-page-content">{groupBlocks(children)}</div>
     </div>
   </div>
 )
@@ -111,6 +112,11 @@ export const Heading2 = heading(2)
 export const Heading3 = heading(3)
 export const Heading4 = heading(4)
 
+/**
+ * List items render as plain `<li>` and are grouped into a single `<ul>` / `<ol>`
+ * by `groupBlocks` (applied in `Page` / `Column`). Standalone usage outside a
+ * grouping container falls back to a self-contained one-item list.
+ */
 export const BulletedListItem = ({ children }: BulletedListItemProps) => (
   <ul className="notion-list notion-list-disc">
     <li>{children}</li>
@@ -122,6 +128,57 @@ export const NumberedListItem = ({ children }: NumberedListItemProps) => (
     <li>{children}</li>
   </ol>
 )
+
+/**
+ * Walk children and merge consecutive `BulletedListItem` / `NumberedListItem`
+ * elements into a single `<ul>` / `<ol>`, preventing rnx's numbered-list
+ * triple-numbering (umbrella #83 / effect-utils#589).
+ */
+const groupBlocks = (children: ReactNode): ReactNode => {
+  const items = Children.toArray(children)
+  const out: ReactNode[] = []
+  let run: { tag: 'ul' | 'ol'; className: string; items: ReactElement[] } | undefined
+  const flush = () => {
+    if (run === undefined) return
+    const Tag = run.tag
+    out.push(
+      <Tag key={`group-${out.length}`} className={run.className}>
+        {run.items.map((el, idx) => (
+          // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
+          <li key={el.key ?? `li-${idx}`}>
+            {(el.props as { children?: ReactNode }).children}
+          </li>
+        ))}
+      </Tag>,
+    )
+    run = undefined
+  }
+  for (const child of items) {
+    const kind = listItemKind(child)
+    if (kind !== undefined && isValidElement(child)) {
+      const spec = kind === 'bulleted'
+        ? { tag: 'ul' as const, className: 'notion-list notion-list-disc' }
+        : { tag: 'ol' as const, className: 'notion-list notion-list-numbered' }
+      if (run === undefined || run.tag !== spec.tag) {
+        flush()
+        run = { ...spec, items: [] }
+      }
+      run.items.push(child)
+    } else {
+      flush()
+      out.push(child)
+    }
+  }
+  flush()
+  return out
+}
+
+const listItemKind = (child: ReactNode): 'bulleted' | 'numbered' | undefined => {
+  if (!isValidElement(child)) return undefined
+  if (child.type === BulletedListItem) return 'bulleted'
+  if (child.type === NumberedListItem) return 'numbered'
+  return undefined
+}
 
 /**
  * SVG check icon copied from `react-notion-x/src/icons/check.tsx` (MIT,
@@ -264,7 +321,9 @@ export const ColumnList = ({ children }: ColumnListProps) => (
   <div className="notion-column-list">{children}</div>
 )
 
-export const Column = ({ children }: ColumnProps) => <div className="notion-column">{children}</div>
+export const Column = ({ children }: ColumnProps) => (
+  <div className="notion-column">{groupBlocks(children)}</div>
+)
 
 export const LinkToPage = ({ pageId }: LinkToPageProps) => (
   <a className="notion-page-link" href={`#${pageId}`}>
