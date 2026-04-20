@@ -47,6 +47,34 @@ export interface FakeRequest {
   readonly body?: unknown
 }
 
+/**
+ * Mock-side sentinel that mirrors Notion's error envelope. Throwing one
+ * inside `handle` surfaces to the HTTP layer as a real non-2xx response so
+ * `parseErrorResponse` in notion-effect-client produces a proper
+ * `NotionApiError` with `status` / `code` / `message` (instead of a
+ * service-unavailable HttpClientError wrapping a stringified JS error).
+ *
+ * Tests asserting the archived-block idempotency contract depend on this
+ * shape: the real API returns HTTP 400 with
+ * `{ object: 'error', code: 'validation_error', message: "Can't edit block that is archived..." }`
+ * and the sync driver's catch matches on `code === 'validation_error'` plus
+ * the message body.
+ */
+export class FakeNotionResponseError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'FakeNotionResponseError'
+  }
+}
+
+const respErr = (status: number, code: string, message: string): never => {
+  throw new FakeNotionResponseError(status, code, message)
+}
+
 const FAKE_USER_ID = '00000000-0000-4000-8000-00000000beef'
 const FAKE_USER = { object: 'user', id: FAKE_USER_ID } as const
 
@@ -251,35 +279,45 @@ export const createFakeNotion = (): FakeNotion => {
     if (blockOpMatch !== null && req.method === 'PATCH') {
       const id = blockOpMatch[1]!
       const b = blocks.get(id)
-      if (b === undefined) throw new Error(`fake-notion: unknown block ${id}`)
+      if (b === undefined) {
+        respErr(404, 'object_not_found', `Could not find block with ID: ${id}.`)
+      }
       // Mirror Notion: edits against archived blocks are rejected with a
-      // validation_error. Dogfood v4 tripped this when a poisoned cache
-      // re-issued archives against already-archived blocks.
-      if (b.archived) {
-        throw new Error(
-          `fake-notion: Can't edit block that is archived. You must unarchive the block before editing. (validation_error)`,
+      // validation_error. Dogfood v4/v5 tripped this when a poisoned cache
+      // re-issued archives against already-archived blocks. The sync driver
+      // now catches this shape and treats it as idempotent success on
+      // delete; update still propagates it as a hard failure.
+      if (b!.archived) {
+        respErr(
+          400,
+          'validation_error',
+          "Can't edit block that is archived. You must unarchive the block before editing.",
         )
       }
       const patch = body as Record<string, unknown>
-      const typePatch = patch[b.type] as Record<string, unknown> | undefined
-      if (typePatch !== undefined) b.payload = { ...b.payload, ...typePatch }
-      return toBlockResponse(b, b.parent)
+      const typePatch = patch[b!.type] as Record<string, unknown> | undefined
+      if (typePatch !== undefined) b!.payload = { ...b!.payload, ...typePatch }
+      return toBlockResponse(b!, b!.parent)
     }
 
     if (blockOpMatch !== null && req.method === 'DELETE') {
       const id = blockOpMatch[1]!
       const b = blocks.get(id)
-      if (b === undefined) throw new Error(`fake-notion: unknown block ${id}`)
-      if (b.archived) {
-        throw new Error(
-          `fake-notion: Can't edit block that is archived. You must unarchive the block before editing. (validation_error)`,
+      if (b === undefined) {
+        respErr(404, 'object_not_found', `Could not find block with ID: ${id}.`)
+      }
+      if (b!.archived) {
+        respErr(
+          400,
+          'validation_error',
+          "Can't edit block that is archived. You must unarchive the block before editing.",
         )
       }
-      b.archived = true
-      const parentList = getChildList(b.parent)
+      b!.archived = true
+      const parentList = getChildList(b!.parent)
       const idx = parentList.indexOf(id)
       if (idx >= 0) parentList.splice(idx, 1)
-      return toBlockResponse(b, b.parent)
+      return toBlockResponse(b!, b!.parent)
     }
 
     throw new Error(`fake-notion: unhandled ${req.method} ${path}`)
@@ -304,14 +342,37 @@ export const createFakeNotion = (): FakeNotion => {
   const httpClient = HttpClient.make((request) =>
     Effect.sync(() => {
       const parsed = decodeBody(request.body)
-      const responseBody = handle(request, parsed)
-      return HttpClientResponse.fromWeb(
-        request,
-        new Response(JSON.stringify(responseBody), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      )
+      try {
+        const responseBody = handle(request, parsed)
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(JSON.stringify(responseBody), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      } catch (err) {
+        if (err instanceof FakeNotionResponseError) {
+          // Emit the real Notion error envelope so the client's
+          // `parseErrorResponse` decodes a proper `NotionApiError` with the
+          // right `status` / `code` / `message` — the shape sync's
+          // idempotency guard matches on.
+          const body = {
+            object: 'error' as const,
+            status: err.status,
+            code: err.code,
+            message: err.message,
+          }
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(JSON.stringify(body), {
+              status: err.status,
+              headers: { 'content-type': 'application/json' },
+            }),
+          )
+        }
+        throw err
+      }
     }),
   )
 

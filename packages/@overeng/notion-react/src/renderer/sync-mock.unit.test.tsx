@@ -20,9 +20,11 @@ import { h } from '../components/h.ts'
 import {
   createFakeNotion,
   type FakeBlock,
+  FakeNotionResponseError,
   type FakeNotion,
   type FakeRequest,
 } from '../test/mock-client.ts'
+import type { SyncEvent } from './sync-events.ts'
 import { sync } from './sync.ts'
 
 /**
@@ -906,8 +908,12 @@ describe('sync() against in-memory fake Notion', () => {
     const toggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
     toggle.archived = true
     // Direct HTTP probe against the archived block — both PATCH and DELETE
-    // must reject with Notion's archived-block error shape.
-    const probe = (method: 'PATCH' | 'DELETE'): Promise<unknown> =>
+    // must respond with Notion's archived-block error envelope (HTTP 400 +
+    // `code: 'validation_error'`). The real Notion client surfaces this as
+    // a `NotionApiError`; here we just check the raw HTTP shape.
+    const probe = (
+      method: 'PATCH' | 'DELETE',
+    ): Promise<{ readonly status: number; readonly body: Record<string, unknown> }> =>
       runWith(
         fake,
         Effect.gen(function* () {
@@ -919,11 +925,261 @@ describe('sync() against in-memory fake Notion', () => {
                   HttpClientRequest.bodyText('{"toggle":{}}', 'application/json'),
                 )
               : HttpClientRequest.del(url)
-          return yield* http.execute(req)
+          const res = yield* http.execute(req)
+          const body = (yield* res.json) as Record<string, unknown>
+          return { status: res.status, body }
         }),
       )
-    await expect(probe('PATCH')).rejects.toThrow(/archived/i)
-    await expect(probe('DELETE')).rejects.toThrow(/archived/i)
+    for (const m of ['PATCH', 'DELETE'] as const) {
+      const { status, body } = await probe(m)
+      expect(status).toBe(400)
+      expect(body).toMatchObject({
+        object: 'error',
+        code: 'validation_error',
+        message: expect.stringMatching(/archived/i),
+      })
+    }
+  })
+
+  // -----------------------------------------------------------------
+  // pixeltrail dogfood v5 — idempotent delete + clean cold baseline.
+  //
+  // v5 symptom: warm sync's drift-recovery computed 13 deletes; Notion had
+  // already archived the first target out of band → 400 validation_error
+  // `Can't edit block that is archived` → sync aborted with 5 blocks still
+  // alive on the page. Root: the live page accumulated leftover blocks
+  // across runs (cold sync never cleaned them), plus a prior warm sync had
+  // archived some blocks that the cache still believed live. Both issues
+  // fixed here: cold-baseline sweep (Fix B) + idempotent delete (Fix A).
+  // -----------------------------------------------------------------
+  it('fix A: delete against an already-archived block → idempotent success (no abort)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // Seed two paragraphs.
+    await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>p1</Paragraph>
+          <Paragraph>p2</Paragraph>
+        </>,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    // Unkeyed Paragraphs are positional; removing the last one in the
+    // candidate tree causes a DELETE of the trailing cached block.
+    const cached = fake.childrenOf(ROOT)
+    const doomedId = cached[cached.length - 1]!.id
+    // Simulate the dogfood v5 race: retrieve reports the block as live,
+    // but the subsequent DELETE discovers Notion already archived it
+    // (prior aborted sync's partial commit, another writer, etc.).
+    // `failOn` injects the archived-block error envelope for that DELETE
+    // while leaving the GET response untouched.
+    fake.failOn((req) =>
+      req.method === 'DELETE' && req.path === `/v1/blocks/${doomedId}`
+        ? new FakeNotionResponseError(
+            400,
+            'validation_error',
+            "Can't edit block that is archived. You must unarchive the block before editing.",
+          )
+        : undefined,
+    )
+    // Render a shorter tree: diff emits a delete for the trailing block.
+    // The sync must absorb the 400 as idempotent success.
+    const events: SyncEvent[] = []
+    const res = await runWith(
+      fake,
+      sync(<Paragraph>p2</Paragraph>, {
+        pageId: ROOT,
+        cache,
+        onEvent: (e) => events.push(e),
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    // No fallback needed — retrieve still reports both as live, so the
+    // diff is computed against the warm cache normally.
+    expect(res).toMatchObject({ removes: 1 })
+    const deleteSuccesses = events.filter(
+      (e): e is Extract<SyncEvent, { _tag: 'OpSucceeded' }> =>
+        e._tag === 'OpSucceeded' && e.kind === 'delete',
+    )
+    expect(deleteSuccesses.length).toBe(1)
+    expect(deleteSuccesses[0]!.note).toBe('already-archived')
+    // No OpFailed delete events surfaced — idempotency absorbed the 400.
+    expect(
+      events.filter((e) => e._tag === 'OpFailed' && (e as { kind: string }).kind === 'delete'),
+    ).toEqual([])
+  })
+
+  it('fix B: cold-baseline clean → pre-existing live children are archived before appending', async () => {
+    const fake = createFakeNotion()
+    // Seed the live page from a different sync run (cache discarded
+    // afterwards — simulates the pre-v5 state where cold syncs left
+    // orphaned blocks behind).
+    await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>leftover-1</Paragraph>
+          <Paragraph>leftover-2</Paragraph>
+          <Paragraph>leftover-3</Paragraph>
+          <Paragraph>leftover-4</Paragraph>
+          <Paragraph>leftover-5</Paragraph>
+        </>,
+        { pageId: ROOT, cache: InMemoryCache.make() },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const seeded = fake.childrenOf(ROOT)
+    expect(seeded.length).toBe(5)
+    const seededIds = new Set(seeded.map((b) => b.id))
+
+    // Cold sync with a fresh cache and `coldBaseline: 'clean'` (default):
+    // every seeded block must be archived, then the new tree appended.
+    const cache = InMemoryCache.make()
+    const res = await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>fresh-1</Paragraph>
+          <Paragraph>fresh-2</Paragraph>
+        </>,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('cold-cache')
+    expect(res).toMatchObject({ appends: 2, removes: 5 })
+
+    // All seeded blocks are archived; only the fresh ones are live.
+    for (const id of seededIds) {
+      expect(fake.blocks.get(id)?.archived).toBe(true)
+    }
+    const liveAfter = fake.childrenOf(ROOT)
+    expect(liveAfter.length).toBe(2)
+    expect(liveAfter.every((b) => !seededIds.has(b.id))).toBe(true)
+
+    // Follow-up warm sync is a true no-op against a clean baseline.
+    const before = fake.requests.length
+    const warm = await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>fresh-1</Paragraph>
+          <Paragraph>fresh-2</Paragraph>
+        </>,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    const warmReqs = fake.requests.slice(before)
+    expect(warmReqs.every((r) => r.method === 'GET')).toBe(true)
+  })
+
+  it('fix B: coldBaseline "merge" → preserves existing children on cold sync', async () => {
+    const fake = createFakeNotion()
+    await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>leftover-1</Paragraph>
+          <Paragraph>leftover-2</Paragraph>
+        </>,
+        { pageId: ROOT, cache: InMemoryCache.make() },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const seededIds = new Set(fake.childrenOf(ROOT).map((b) => b.id))
+    const cache = InMemoryCache.make()
+    const res = await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>fresh-1</Paragraph>
+        </>,
+        { pageId: ROOT, cache, coldBaseline: 'merge' },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('cold-cache')
+    // Merge semantics: no removes on cold; leftovers remain alive. They
+    // *will* show up as cache-drift on the next warm sync (consumer's
+    // choice — documented on the `coldBaseline` option).
+    expect(res).toMatchObject({ removes: 0 })
+    for (const id of seededIds) {
+      expect(fake.blocks.get(id)?.archived).toBe(false)
+    }
+    expect(fake.childrenOf(ROOT).length).toBe(3)
+  })
+
+  it('fix A+B: dogfood-v5 full reproduction — cold + race-archive + warm converges', async () => {
+    const fake = createFakeNotion()
+    // Step 1: pre-existing live blocks from a prior run without cache.
+    await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>r0-a</Paragraph>
+          <Paragraph>r0-b</Paragraph>
+          <Paragraph>r0-c</Paragraph>
+        </>,
+        { pageId: ROOT, cache: InMemoryCache.make() },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    // Step 2: cold sync against fresh cache — Fix B archives all 3
+    // leftovers, then appends 4 fresh blocks.
+    const cache = InMemoryCache.make()
+    const coldRes = await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>r1-a</Paragraph>
+          <Paragraph>r1-b</Paragraph>
+          <Paragraph>r1-c</Paragraph>
+          <Paragraph>r1-d</Paragraph>
+        </>,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(coldRes).toMatchObject({ fallbackReason: 'cold-cache', removes: 3, appends: 4 })
+    const live = fake.childrenOf(ROOT)
+    expect(live.length).toBe(4)
+    // Step 3: race simulation — next warm sync will attempt to delete two
+    // cached blocks (we'll render a smaller tree), but Notion has already
+    // archived them out of band. Retrieve still reports them as live. The
+    // DELETE call must be absorbed as idempotent.
+    // Positional-key diff on 4→2 candidate drops the trailing two blocks.
+    // Both doomed ids get failOn'd so both DELETEs hit the archived path.
+    const racedIds = new Set([live[2]!.id, live[3]!.id])
+    fake.failOn((req) =>
+      req.method === 'DELETE' && racedIds.has(req.path.split('/').pop()!)
+        ? new FakeNotionResponseError(
+            400,
+            'validation_error',
+            "Can't edit block that is archived. You must unarchive the block before editing.",
+          )
+        : undefined,
+    )
+    // Step 4: warm sync with a reduced tree of 2 blocks. Diff emits 2
+    // removes (the first and third cached blocks) and 0 appends (the
+    // surviving r1-b, r1-d match by positional key). Both removes hit
+    // already-archived blocks; Fix A absorbs both; sync converges.
+    const events: SyncEvent[] = []
+    const warm = await runWith(
+      fake,
+      sync(
+        <>
+          <Paragraph>r1-b</Paragraph>
+          <Paragraph>r1-d</Paragraph>
+        </>,
+        { pageId: ROOT, cache, onEvent: (e) => events.push(e) },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(warm.removes).toBe(2)
+    const deleteSuccesses = events.filter(
+      (e): e is Extract<SyncEvent, { _tag: 'OpSucceeded' }> =>
+        e._tag === 'OpSucceeded' && e.kind === 'delete',
+    )
+    expect(deleteSuccesses.length).toBe(2)
+    expect(deleteSuccesses.every((e) => e.note === 'already-archived')).toBe(true)
+    expect(
+      events.filter((e) => e._tag === 'OpFailed' && (e as { kind: string }).kind === 'delete'),
+    ).toEqual([])
   })
 
   it('page-id-drift: cache written for a different pageId cold-starts', async () => {

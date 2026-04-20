@@ -46,6 +46,14 @@ export type SyncEvent = Data.TaggedEnum<{
     readonly durationMs: number
     /** For `append`: number of children committed in this call. Otherwise 1. */
     readonly resultCount: number
+    /**
+     * Optional sub-classifier for the success. Today:
+     *   - `'already-archived'` — `delete` op hit a block Notion had already
+     *     archived / deleted. Treated as idempotent success: the desired end
+     *     state ("gone") already holds. No cache mutation needed beyond the
+     *     normal remove checkpoint.
+     */
+    readonly note?: 'already-archived'
     readonly at: number
   }
   OpFailed: {

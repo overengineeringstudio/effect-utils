@@ -2,7 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { Chunk, Effect, Stream } from 'effect'
 import type { ReactNode } from 'react'
 
-import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
+import { NotionApiError, NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
@@ -23,6 +23,21 @@ import {
   type DiffOp,
 } from './sync-diff.ts'
 import { SyncEvent, type SyncEventHandler } from './sync-events.ts'
+
+/**
+ * Does this error indicate the target block is already in the desired
+ * "gone" state? Matches Notion's archived-block validation_error and the
+ * 404 object_not_found shape. Used to treat deletes as idempotent (dogfood
+ * v5: a warm sync's drift-recovery emitted deletes against blocks that had
+ * already been archived out of band, and the first 400 response aborted
+ * the entire sync mid-batch).
+ */
+const isAlreadyGoneError = (err: unknown): boolean => {
+  if (!(err instanceof NotionApiError)) return false
+  if (err.code === 'object_not_found') return true
+  if (err.code === 'validation_error' && /archived/i.test(err.message)) return true
+  return false
+}
 
 /** Resolve every tmp-id reference in `tree` using the provided id map. */
 const resolveTreeIds = (tree: CandidateTree, idMap: ReadonlyMap<string, string>): void => {
@@ -665,24 +680,32 @@ const applyDiff = (
           if (o11y.onEvent !== undefined) {
             o11y.onEvent(SyncEvent.OpIssued({ id: opId, kind: 'delete', at: Date.now() }))
           }
-          yield* NotionBlocks.delete({ blockId: op.blockId }).pipe(
-            Effect.tapError((cause) =>
-              Effect.sync(() => {
-                if (o11y.onEvent !== undefined) {
-                  o11y.onEvent(
-                    SyncEvent.OpFailed({
-                      id: opId,
-                      kind: 'delete',
-                      durationMs: performance.now() - t0,
-                      error: String(cause),
-                      at: Date.now(),
-                    }),
-                  )
-                }
-              }),
-            ),
-            Effect.mapError(
-              (cause) => new NotionSyncError({ reason: 'notion-delete-failed', cause }),
+          // Idempotent delete: if Notion reports the block is already
+          // archived or doesn't exist, the desired end state ("gone")
+          // already holds. Treat as success with a `note` so observers can
+          // distinguish from a real delete (pixeltrail dogfood v5).
+          const alreadyGone = yield* NotionBlocks.delete({ blockId: op.blockId }).pipe(
+            Effect.map(() => false),
+            Effect.catchAll((cause) =>
+              isAlreadyGoneError(cause)
+                ? Effect.succeed(true)
+                : Effect.sync(() => {
+                    if (o11y.onEvent !== undefined) {
+                      o11y.onEvent(
+                        SyncEvent.OpFailed({
+                          id: opId,
+                          kind: 'delete',
+                          durationMs: performance.now() - t0,
+                          error: String(cause),
+                          at: Date.now(),
+                        }),
+                      )
+                    }
+                  }).pipe(
+                    Effect.flatMap(() =>
+                      Effect.fail(new NotionSyncError({ reason: 'notion-delete-failed', cause })),
+                    ),
+                  ),
             ),
           )
           o11y.opCount.n += 1
@@ -693,6 +716,7 @@ const applyDiff = (
                 kind: 'delete',
                 durationMs: performance.now() - t0,
                 resultCount: 1,
+                ...(alreadyGone ? { note: 'already-archived' as const } : {}),
                 at: Date.now(),
               }),
             )
@@ -750,12 +774,40 @@ const driftedBase = (rootId: string, liveIds: readonly string[]): CacheTree => (
  * Notion has no "move" API, so reorders always materialize as
  * `{inserts, removes}` pairs — this is documented behaviour, not a fallback.
  */
+/**
+ * Cold-sync baseline strategy.
+ *
+ * `'clean'` (default): when the sync takes a cold-cache fallback (no prior
+ * cache, schema-incompatible cache, or page-id drift), first archive every
+ * live top-level child of the page so the subsequent append plan lands
+ * against an empty baseline that matches the cache intent. Prevents
+ * leftover blocks — written by a prior run against a different cache, or
+ * by a different consumer — from leaking into the next warm sync's
+ * drift-recovery path (pixeltrail dogfood v5: warm sync saw 13 stale blocks,
+ * issued deletes against them, and the first 400-response-on-archive aborted
+ * the entire batch).
+ *
+ * `'merge'`: preserve any existing children of the live page. The
+ * candidate tree is appended on top; subsequent warm syncs will classify
+ * the unowned blocks as drift and re-emit removes for them (now idempotent
+ * via `isAlreadyGoneError`, so convergence eventually happens — but the
+ * first warm sync will do extra work). Choose this when the target page is
+ * shared with non-sync writers whose content must be preserved.
+ */
+export type ColdBaseline = 'clean' | 'merge'
+
 export const sync = (
   element: ReactNode,
   opts: {
     readonly pageId: string
     readonly cache: NotionCache
     readonly onEvent?: SyncEventHandler
+    /**
+     * How to treat pre-existing live children on a cold-cache sync. See
+     * {@link ColdBaseline}. Defaults to `'clean'` — the pixeltrail / general
+     * single-writer sync contract.
+     */
+    readonly coldBaseline?: ColdBaseline
   },
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
@@ -784,6 +836,8 @@ export const sync = (
       )
     }
 
+    const coldBaseline: ColdBaseline = opts.coldBaseline ?? 'clean'
+
     const schemaMismatch = prior !== undefined && prior.schemaVersion !== CACHE_SCHEMA_VERSION
     // Cache was written for a different page. Treat as a cold start: the prior
     // tree references block ids that don't live under this pageId, so diffing
@@ -806,9 +860,22 @@ export const sync = (
     // Cost: one GET per sync in the hot-cache path. Kept shallow — nested
     // children are verified lazily through the checkpoint round-trip since
     // every mutation resolves to a real server id.
+    // Pre-computed so the retrieve decision below can see it. `useCold` also
+    // covers `schemaMismatch` implicitly — we diff against the stale tree in
+    // that case, so the cold-baseline sweep doesn't apply there (see below).
+    const useColdPath = prior === undefined || pageIdDrift
+
     let drifted = false
     let liveTopLevelIds: readonly string[] = []
-    if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
+    // Retrieve live top-level ids when either (a) we have a warm cache and
+    // want drift detection, or (b) we're taking the cold path with
+    // `coldBaseline === 'clean'` and need the live ids to synthesize a
+    // drift-style base so every leftover block converts into an idempotent
+    // remove (Fix B — pixeltrail dogfood v5).
+    const wantsLiveRetrieve =
+      (prior !== undefined && !schemaMismatch && !pageIdDrift) ||
+      (useColdPath && coldBaseline === 'clean')
+    if (wantsLiveRetrieve) {
       const retrieveOpId = o11y.nextOpId()
       const t0 = onEvent !== undefined ? performance.now() : 0
       if (onEvent !== undefined) {
@@ -853,16 +920,20 @@ export const sync = (
         if (b.in_trash !== true) liveIds.push(b.id)
       }
       liveTopLevelIds = liveIds
-      const expectedIds = prior.children.map((c) => c.blockId)
-      // Ordered sequence equality — out-of-band reorders leave the block-id
-      // set intact but scramble order, and we must rebuild to converge.
-      if (liveIds.length !== expectedIds.length) {
-        drifted = true
-      } else {
-        for (let k = 0; k < expectedIds.length; k++) {
-          if (liveIds[k] !== expectedIds[k]) {
-            drifted = true
-            break
+      // Drift detection only applies to the warm-cache path; the cold path
+      // always cleans pre-existing children when `coldBaseline === 'clean'`.
+      if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
+        const expectedIds = prior.children.map((c) => c.blockId)
+        // Ordered sequence equality — out-of-band reorders leave the block-id
+        // set intact but scramble order, and we must rebuild to converge.
+        if (liveIds.length !== expectedIds.length) {
+          drifted = true
+        } else {
+          for (let k = 0; k < expectedIds.length; k++) {
+            if (liveIds[k] !== expectedIds[k]) {
+              drifted = true
+              break
+            }
           }
         }
       }
@@ -874,18 +945,23 @@ export const sync = (
     // removes for the orphaned blocks and appends for the candidate tree —
     // otherwise a drifted page would get duplicated content (old blocks
     // remain, new copies append) and never converge.
-    const useCold = prior === undefined || pageIdDrift
-    // `diffBase` feeds the diff algorithm; on drift it carries synthetic
-    // `drift:*` ghost entries so every live top-level block becomes a remove
-    // op. `workingBase` seeds the in-memory working cache that is checkpointed
-    // to disk — it must NEVER contain ghost entries, or a mid-sync failure
-    // will leak them into the persisted cache and poison the next warm sync
-    // (dogfood v4: ghosts drove 111 deletes against already-archived blocks).
-    // For drift, start the working cache empty: ops confirmed against Notion
-    // populate it via `workingAppend`; pending removes target ghost blockIds
-    // that are absent from `working.byId`, which is a safe no-op.
+    const useCold = useColdPath
+    // `diffBase` feeds the diff algorithm; on drift (or cold-clean with
+    // pre-existing live blocks) it carries synthetic `drift:*` ghost entries
+    // so every live top-level block becomes a remove op. `workingBase` seeds
+    // the in-memory working cache that is checkpointed to disk — it must
+    // NEVER contain ghost entries, or a mid-sync failure will leak them
+    // into the persisted cache and poison the next warm sync (dogfood v4:
+    // ghosts drove 111 deletes against already-archived blocks). For
+    // drift / cold-clean, start the working cache empty: ops confirmed
+    // against Notion populate it via `workingAppend`; pending removes
+    // target ghost blockIds that are absent from `working.byId`, which is
+    // a safe no-op.
+    const coldClean = useCold && coldBaseline === 'clean' && liveTopLevelIds.length > 0
     const diffBase: CacheTree = useCold
-      ? emptyCache(opts.pageId)
+      ? coldClean
+        ? driftedBase(opts.pageId, liveTopLevelIds)
+        : emptyCache(opts.pageId)
       : drifted
         ? driftedBase(opts.pageId, liveTopLevelIds)
         : prior
