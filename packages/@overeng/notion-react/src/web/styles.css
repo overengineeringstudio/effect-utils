@@ -14,6 +14,41 @@
   max-width: 720px;
 }
 
+/* To-do checkbox — react-notion-x pruned these from its vendored CSS, so
+   we add the minimal ruleset here. Shape: a 14px square with a subtle
+   border; the checked variant fills with Notion blue and shows the
+   inlined SVG check (`currentColor`). */
+.notion-property-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+.notion-property-checkbox-unchecked,
+.notion-property-checkbox-checked {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.notion-property-checkbox-unchecked {
+  border: 1.2px solid rgba(55, 53, 47, 0.45);
+  background: transparent;
+}
+.notion-property-checkbox-checked {
+  background: rgb(46, 170, 220);
+  color: #fff;
+}
+.notion-property-checkbox-checked svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
 /* Callout icon sizing — vendored CSS keys off `.notion-page-icon-inline`
    inside `.notion-callout` but only when the parent is a real PageIcon.
    We pass an emoji string so we need the box rules ourselves. */
