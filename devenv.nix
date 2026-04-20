@@ -231,6 +231,11 @@ let
       name = "tui-stories";
       port = 6013;
     }
+    {
+      path = "packages/@overeng/notion-react";
+      name = "notion-react";
+      port = 6014;
+    }
   ];
 in
 {

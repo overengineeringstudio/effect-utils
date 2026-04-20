@@ -65,7 +65,7 @@ export default packageJson(
       },
     },
     scripts: {
-      storybook: 'storybook dev -p 6010',
+      storybook: 'storybook dev -p 6014',
       'storybook:build': 'storybook build',
       // Integration + e2e tests hit the live Notion API. Both require
       // `NOTION_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` (tests skip silently

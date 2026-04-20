@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "storybook": "storybook dev -p 6010",
+    "storybook": "storybook dev -p 6014",
     "storybook:build": "storybook build",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:integration:e2e": "vitest run --config vitest.integration.config.ts e2e"
