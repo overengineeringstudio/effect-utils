@@ -243,6 +243,55 @@ describe('sync-diff', () => {
     expect(tallyDiff(ops)).toEqual({ appends: 0, updates: 0, inserts: 0, removes: 0 })
   })
 
+  describe('sibling blockKey collision (C1)', () => {
+    it('throws when candidate has duplicate sibling blockKeys', () => {
+      const candidate = buildCandidateTree(
+        <>
+          {h('paragraph', kb('dup'), 'one')}
+          {h('paragraph', kb('dup'), 'two')}
+        </>,
+        ROOT,
+      )
+      expect(() => diff(empty(), candidate)).toThrow(
+        /duplicate blockKey 'k:dup' among siblings under parent .* — blockKey must be unique among siblings/,
+      )
+    })
+
+    it('throws when cache has duplicate sibling blockKeys', () => {
+      const cache: CacheTree = {
+        schemaVersion: CACHE_SCHEMA_VERSION,
+        rootId: ROOT,
+        children: [
+          { key: 'k:dup', blockId: 'blk-1', type: 'paragraph', hash: 'h1', children: [] },
+          { key: 'k:dup', blockId: 'blk-2', type: 'paragraph', hash: 'h2', children: [] },
+        ],
+      }
+      const candidate = buildCandidateTree(<>{h('paragraph', kb('dup'), 'x')}</>, ROOT)
+      expect(() => diff(cache, candidate)).toThrow(/duplicate blockKey 'k:dup'/)
+    })
+  })
+
+  describe('same-key type change (C2)', () => {
+    it('emits remove + insert (NOT update) when a retained key changes block type', () => {
+      const v1 = buildCandidateTree(<>{h('paragraph', kb('x'), 'v1')}</>, ROOT)
+      const cache = fakeApply(v1, diff(empty(), v1))
+      const priorBlockId = cache.children[0]!.blockId
+
+      const v2 = buildCandidateTree(<>{h('heading_2', kb('x'), 'v1')}</>, ROOT)
+      const ops = diff(cache, v2)
+
+      // No `update` — Notion rejects type changes via update.
+      expect(ops.find((o) => o.kind === 'update')).toBeUndefined()
+      // The old paragraph block is removed.
+      expect(ops.find((o) => o.kind === 'remove' && o.blockId === priorBlockId)).toBeDefined()
+      // A new heading block is appended (no later retained sibling).
+      const newBlock = ops.find(
+        (o) => (o.kind === 'append' || o.kind === 'insert') && o.type === 'heading_2',
+      )
+      expect(newBlock).toBeDefined()
+    })
+  })
+
   describe('derisk-report 6-scenario table', () => {
     // Mirrors /tmp/pixeltrail-react-derisk/index.tsx verbatim. The report's
     // "ops" column counts total ops; we split into appends/updates/inserts/

@@ -119,7 +119,13 @@ const nextTmp = (): string => {
 
 /**
  * Compute indices of cache children that stay (matched in order) using LCS on
- * keys. Returns a Set of cache-indices that are retained.
+ * (key, type) pairs. Returns a Set of cache-indices that are retained.
+ *
+ * Type equality is part of the match predicate because Notion does not allow
+ * changing a block's type via `update` — a same-key type change has to
+ * materialize as remove + insert. Folding the type check into LCS keeps the
+ * `hasRetainedAfter` precomputation correct (a type-changed node is treated
+ * as unretained, exactly like a brand-new key).
  */
 const retainedCacheIndices = (
   cacheChildren: readonly CacheNode[],
@@ -131,9 +137,12 @@ const retainedCacheIndices = (
   const dp: number[][] = Array.from({ length: m + 1 }, () =>
     Array.from<number>({ length: n + 1 }).fill(0),
   )
+  const matches = (ci: number, cj: number): boolean =>
+    cacheChildren[ci]!.key === candidateChildren[cj]!.key &&
+    cacheChildren[ci]!.type === candidateChildren[cj]!.type
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      if (cacheChildren[i - 1]!.key === candidateChildren[j - 1]!.key) {
+      if (matches(i - 1, j - 1)) {
         dp[i]![j] = dp[i - 1]![j - 1]! + 1
       } else {
         dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!)
@@ -144,7 +153,7 @@ const retainedCacheIndices = (
   let i = m
   let j = n
   while (i > 0 && j > 0) {
-    if (cacheChildren[i - 1]!.key === candidateChildren[j - 1]!.key) {
+    if (matches(i - 1, j - 1)) {
       retained.add(i - 1)
       i -= 1
       j -= 1
@@ -157,12 +166,39 @@ const retainedCacheIndices = (
   return retained
 }
 
+/**
+ * Throw if any sibling key appears more than once. Notion-react requires
+ * `blockKey` to be unique among siblings — otherwise the LCS match and the
+ * by-key map below would silently collapse duplicates and produce an
+ * incoherent diff.
+ */
+const assertUniqueKeys = (
+  parentId: string,
+  cacheChildren: readonly { key: string }[],
+  candidateChildren: readonly { key: string }[],
+): void => {
+  const check = (children: readonly { key: string }[], source: 'cache' | 'candidate'): void => {
+    const seen = new Set<string>()
+    for (const c of children) {
+      if (seen.has(c.key)) {
+        throw new Error(
+          `duplicate blockKey '${c.key}' among siblings under parent ${parentId} (${source}) — blockKey must be unique among siblings`,
+        )
+      }
+      seen.add(c.key)
+    }
+  }
+  check(cacheChildren, 'cache')
+  check(candidateChildren, 'candidate')
+}
+
 const diffChildren = (
   parentId: string, // blockId or tmpId of the parent
   cacheChildren: readonly CacheNode[],
   candidateChildren: CandidateNode[],
   ops: DiffOp[],
 ): void => {
+  assertUniqueKeys(parentId, cacheChildren, candidateChildren)
   // Identify which cache children survive (order-preserving LCS match).
   const retainedCache = retainedCacheIndices(cacheChildren, candidateChildren)
   const retainedKeys = new Set<string>()
@@ -288,6 +324,7 @@ const candidateNodeToCacheNode = (cand: CandidateNode): CacheNode => {
   return {
     key: cand.key,
     blockId: cand.blockId,
+    type: cand.type,
     hash: cand.hash,
     children: cand.children.map(candidateNodeToCacheNode),
   }
