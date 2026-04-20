@@ -32,8 +32,8 @@ Legend: `C` = creatable via `PATCH /blocks/:id/children`, `R` = readable, `C*` =
 - `breadcrumb` — C, R — (empty)
 - `tab` — C, R — children (paragraphs with icons) [newer block]
 - `synced_block` — C, R — synced_from ({block_id} | null for original), children
-- `child_page` — C* (via pages.create), R — title
-- `child_database` — C* (via databases.create), R — title
+- `child_page` — C\* (via pages.create), R — title
+- `child_database` — C\* (via databases.create), R — title
 - `equation` — C, R — expression
 - `template` — C- (creation deprecated 2023-03-27), R — rich_text, children
 - `link_preview` — C-, R — url

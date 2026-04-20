@@ -11,44 +11,44 @@ Surfaces audited:
 
 Legend: ✅ = first-class coverage. ❌(Raw) = generic `Raw` passthrough covers it (renders a `<div class="notion-raw">` debug box; round-trips unchanged via the renderer's raw escape hatch). ❌ = missing entirely.
 
-| block_type             | schema | client | react host   | react web    | css          | e2e |
-|------------------------|--------|--------|--------------|--------------|--------------|-----|
-| paragraph              | ✅     | ✅     | ✅           | ✅           | ✅ (.notion-text) | ✅  |
-| heading_1              | ✅     | ✅     | ✅           | ✅           | ✅           | ✅  |
-| heading_2              | ✅     | ✅     | ✅           | ✅           | ✅           | ✅  |
-| heading_3              | ✅     | ✅     | ✅           | ✅           | ✅           | ✅  |
-| heading_4              | ✅     | ✅     | ✅           | ✅           | ✅           | ❌  |
-| quote                  | ✅     | ✅     | ✅           | ✅           | ✅           | ✅  |
-| callout                | ✅     | ✅     | ✅ (icon string only; no external/custom_emoji icons) | ✅ | ✅ | ✅ |
-| code                   | ✅     | ✅     | ✅ (no caption) | ✅ (no caption) | ✅       | ✅  |
-| bulleted_list_item     | ✅     | ✅     | ✅ (no nested children; no color) | ✅ | ✅       | ✅  |
-| numbered_list_item     | ✅     | ✅     | ✅ (no nested children; no color) | ✅ | ✅       | ✅  |
-| to_do                  | ✅     | ✅     | ✅ (no nested children; no color) | ✅ | ✅       | ✅  |
-| toggle                 | ✅     | ✅     | ✅ (title-only; nested children not reconciled — see host-config comment) | ✅ | ✅ | ✅ |
-| image                  | ✅     | ✅     | ✅ (external only; no file_upload; no caption in host) | ✅ (caption supported in web) | ✅ | ✅ |
-| video                  | ✅     | ✅     | ✅ (external only) | ✅      | ✅           | ❌  |
-| audio                  | ✅     | ✅     | ✅ (external only) | ✅      | ✅           | ❌  |
-| file                   | ✅     | ✅     | ✅ (external only) | ✅      | ✅           | ❌  |
-| pdf                    | ✅     | ✅     | ✅ (external only) | ✅      | ✅           | ❌  |
-| embed                  | ✅     | ✅     | ✅ (no caption) | ✅          | ✅           | ✅  |
-| bookmark               | ✅     | ✅     | ✅ (no caption) | ✅          | ✅           | ✅  |
-| table                  | ✅     | ✅     | ✅ (no table_width / has_*_header props) | ✅ | ✅        | ❌  |
-| table_row              | ✅     | ✅     | ✅ (rich_text treated as children, not `cells: rich_text[][]`) | ✅ | ✅ | ❌ |
-| column_list            | ✅     | ✅     | ✅           | ✅           | ✅           | ✅  |
-| column                 | ✅     | ✅     | ✅ (no width_ratio) | ✅      | ✅           | ✅  |
-| divider                | ✅     | ✅     | ✅           | ✅           | ✅           | ✅  |
-| table_of_contents      | ✅     | ✅     | ✅ (no color) | ✅           | ✅ (.notion-toc) | ✅  |
-| breadcrumb             | ✅     | ✅     | ❌(Raw)       | ❌(Raw)       | ❌(Raw)       | ❌  |
-| tab                    | ✅     | ✅     | ❌           | ❌           | ❌           | ❌  |
-| synced_block           | ✅     | ✅     | ❌(Raw)       | ❌(Raw)       | ❌(Raw)       | ❌  |
-| child_page             | ✅     | ✅     | ✅ (read-only; creation via pages.create) | ✅ | ✅       | ❌  |
-| child_database         | ✅     | ✅     | ❌(Raw)       | ❌(Raw)       | ❌(Raw)       | ❌  |
-| equation               | ✅     | ✅     | ✅           | ✅           | ✅ (.notion-equation-block) | ✅ |
-| template               | ✅     | ✅     | ❌(Raw, read-only) | ❌(Raw) | ❌(Raw)       | ❌  |
-| link_preview           | ✅     | ✅     | ❌(Raw, read-only) | ❌(Raw) | ❌(Raw)       | ❌  |
-| link_to_page           | ✅     | ✅     | ✅ (page_id only; no database_id/comment_id) | ✅ | ✅     | ✅  |
-| meeting_notes          | ✅     | ✅     | ❌           | ❌           | ❌           | ❌  |
-| unsupported            | ✅     | ✅     | ❌(Raw, read-only) | ❌(Raw) | ❌(Raw)       | ❌  |
+| block_type         | schema | client | react host                                                                | react web                     | css                         | e2e |
+| ------------------ | ------ | ------ | ------------------------------------------------------------------------- | ----------------------------- | --------------------------- | --- |
+| paragraph          | ✅     | ✅     | ✅                                                                        | ✅                            | ✅ (.notion-text)           | ✅  |
+| heading_1          | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ✅  |
+| heading_2          | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ✅  |
+| heading_3          | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ✅  |
+| heading_4          | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ❌  |
+| quote              | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ✅  |
+| callout            | ✅     | ✅     | ✅ (icon string only; no external/custom_emoji icons)                     | ✅                            | ✅                          | ✅  |
+| code               | ✅     | ✅     | ✅ (no caption)                                                           | ✅ (no caption)               | ✅                          | ✅  |
+| bulleted_list_item | ✅     | ✅     | ✅ (no nested children; no color)                                         | ✅                            | ✅                          | ✅  |
+| numbered_list_item | ✅     | ✅     | ✅ (no nested children; no color)                                         | ✅                            | ✅                          | ✅  |
+| to_do              | ✅     | ✅     | ✅ (no nested children; no color)                                         | ✅                            | ✅                          | ✅  |
+| toggle             | ✅     | ✅     | ✅ (title-only; nested children not reconciled — see host-config comment) | ✅                            | ✅                          | ✅  |
+| image              | ✅     | ✅     | ✅ (external only; no file_upload; no caption in host)                    | ✅ (caption supported in web) | ✅                          | ✅  |
+| video              | ✅     | ✅     | ✅ (external only)                                                        | ✅                            | ✅                          | ❌  |
+| audio              | ✅     | ✅     | ✅ (external only)                                                        | ✅                            | ✅                          | ❌  |
+| file               | ✅     | ✅     | ✅ (external only)                                                        | ✅                            | ✅                          | ❌  |
+| pdf                | ✅     | ✅     | ✅ (external only)                                                        | ✅                            | ✅                          | ❌  |
+| embed              | ✅     | ✅     | ✅ (no caption)                                                           | ✅                            | ✅                          | ✅  |
+| bookmark           | ✅     | ✅     | ✅ (no caption)                                                           | ✅                            | ✅                          | ✅  |
+| table              | ✅     | ✅     | ✅ (no table*width / has*\*\_header props)                                | ✅                            | ✅                          | ❌  |
+| table_row          | ✅     | ✅     | ✅ (rich_text treated as children, not `cells: rich_text[][]`)            | ✅                            | ✅                          | ❌  |
+| column_list        | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ✅  |
+| column             | ✅     | ✅     | ✅ (no width_ratio)                                                       | ✅                            | ✅                          | ✅  |
+| divider            | ✅     | ✅     | ✅                                                                        | ✅                            | ✅                          | ✅  |
+| table_of_contents  | ✅     | ✅     | ✅ (no color)                                                             | ✅                            | ✅ (.notion-toc)            | ✅  |
+| breadcrumb         | ✅     | ✅     | ❌(Raw)                                                                   | ❌(Raw)                       | ❌(Raw)                     | ❌  |
+| tab                | ✅     | ✅     | ❌                                                                        | ❌                            | ❌                          | ❌  |
+| synced_block       | ✅     | ✅     | ❌(Raw)                                                                   | ❌(Raw)                       | ❌(Raw)                     | ❌  |
+| child_page         | ✅     | ✅     | ✅ (read-only; creation via pages.create)                                 | ✅                            | ✅                          | ❌  |
+| child_database     | ✅     | ✅     | ❌(Raw)                                                                   | ❌(Raw)                       | ❌(Raw)                     | ❌  |
+| equation           | ✅     | ✅     | ✅                                                                        | ✅                            | ✅ (.notion-equation-block) | ✅  |
+| template           | ✅     | ✅     | ❌(Raw, read-only)                                                        | ❌(Raw)                       | ❌(Raw)                     | ❌  |
+| link_preview       | ✅     | ✅     | ❌(Raw, read-only)                                                        | ❌(Raw)                       | ❌(Raw)                     | ❌  |
+| link_to_page       | ✅     | ✅     | ✅ (page_id only; no database_id/comment_id)                              | ✅                            | ✅                          | ✅  |
+| meeting_notes      | ✅     | ✅     | ❌                                                                        | ❌                            | ❌                          | ❌  |
+| unsupported        | ✅     | ✅     | ❌(Raw, read-only)                                                        | ❌(Raw)                       | ❌(Raw)                     | ❌  |
 
 ## Rich-text / nesting caveats
 
