@@ -49,13 +49,56 @@ import type {
  * `.notion-page-content` is the flex-column that makes inline-display blocks
  * (e.g. `.notion-h`) stack vertically.
  */
-export const Page = ({ children }: PageProps) => (
-  <div className="notion notion-app">
-    <div className="notion-page">
-      <div className="notion-page-content">{groupBlocks(children)}</div>
+export const Page = ({ children }: PageProps) => {
+  const headings = collectHeadings(children)
+  return (
+    <div className="notion notion-app">
+      <div className="notion-page">
+        <div className="notion-page-content">{groupBlocks(children, headings)}</div>
+      </div>
     </div>
-  </div>
-)
+  )
+}
+
+type TocEntry = { readonly id: string; readonly title: string; readonly level: 1 | 2 | 3 | 4 }
+
+const headingLevelOf = (type: unknown): 1 | 2 | 3 | 4 | undefined => {
+  if (type === Heading1) return 1
+  if (type === Heading2) return 2
+  if (type === Heading3) return 3
+  if (type === Heading4) return 4
+  return undefined
+}
+
+const slugify = (text: string): string =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+const childrenToPlainText = (node: ReactNode): string => {
+  if (node === null || node === undefined || node === false || node === true) return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(childrenToPlainText).join('')
+  if (isValidElement(node)) {
+    const props = node.props as { children?: ReactNode }
+    return childrenToPlainText(props.children)
+  }
+  return ''
+}
+
+const collectHeadings = (children: ReactNode): readonly TocEntry[] => {
+  const out: TocEntry[] = []
+  for (const child of Children.toArray(children)) {
+    if (!isValidElement(child)) continue
+    const level = headingLevelOf(child.type)
+    if (level === undefined) continue
+    const title = childrenToPlainText((child.props as { children?: ReactNode }).children).trim()
+    if (title === '') continue
+    out.push({ id: slugify(title), title, level })
+  }
+  return out
+}
 
 // rnx renders `text` blocks as <div>, not <p> — keeps margin behavior consistent
 // with the rest of the block stack and matches the vendored CSS contract.
@@ -73,15 +116,17 @@ const HeadingTag = ({
   readonly children?: ReactNode
 }): ReactElement => {
   const inner = <span className="notion-h-title">{children}</span>
+  const id = slugify(childrenToPlainText(children).trim())
+  const anchorId = id === '' ? undefined : id
   switch (level) {
     case 1:
-      return <h1 className={headingClass(1)}>{inner}</h1>
+      return <h1 id={anchorId} className={headingClass(1)}>{inner}</h1>
     case 2:
-      return <h2 className={headingClass(2)}>{inner}</h2>
+      return <h2 id={anchorId} className={headingClass(2)}>{inner}</h2>
     case 3:
-      return <h3 className={headingClass(3)}>{inner}</h3>
+      return <h3 id={anchorId} className={headingClass(3)}>{inner}</h3>
     case 4:
-      return <h4 className={headingClass(4)}>{inner}</h4>
+      return <h4 id={anchorId} className={headingClass(4)}>{inner}</h4>
   }
 }
 
@@ -134,7 +179,7 @@ export const NumberedListItem = ({ children }: NumberedListItemProps) => (
  * elements into a single `<ul>` / `<ol>`, preventing rnx's numbered-list
  * triple-numbering (umbrella #83 / effect-utils#589).
  */
-const groupBlocks = (children: ReactNode): ReactNode => {
+const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): ReactNode => {
   const items = Children.toArray(children)
   const out: ReactNode[] = []
   let run: { tag: 'ul' | 'ol'; className: string; items: ReactElement[] } | undefined
@@ -164,6 +209,9 @@ const groupBlocks = (children: ReactNode): ReactNode => {
         run = { ...spec, items: [] }
       }
       run.items.push(child)
+    } else if (isValidElement(child) && child.type === TableOfContents) {
+      flush()
+      out.push(<RenderedTableOfContents key={child.key ?? `toc-${out.length}`} entries={headings} />)
     } else {
       flush()
       out.push(child)
@@ -331,11 +379,35 @@ export const LinkToPage = ({ pageId }: LinkToPageProps) => (
   </a>
 )
 
+/**
+ * Marker component. The real render happens in `groupBlocks`, which walks
+ * sibling blocks to collect headings and replaces any `<TableOfContents/>`
+ * with a `RenderedTableOfContents` populated from the surrounding context.
+ */
 export const TableOfContents = () => (
-  <nav className="notion-table-of-contents" aria-label="table of contents">
-    Table of contents
-  </nav>
+  <nav className="notion-table-of-contents" aria-label="table of contents" />
 )
+
+const RenderedTableOfContents = ({ entries }: { readonly entries: readonly TocEntry[] }) => {
+  if (entries.length === 0) {
+    return <nav className="notion-table-of-contents" aria-label="table of contents" />
+  }
+  const minLevel = Math.min(...entries.map((e) => e.level))
+  return (
+    <nav className="notion-table-of-contents" aria-label="table of contents">
+      {entries.map((e) => (
+        <a
+          key={e.id}
+          className="notion-table-of-contents-item"
+          href={`#${e.id}`}
+          style={{ paddingLeft: `${(e.level - minLevel) * 24 + 6}px` }}
+        >
+          <span className="notion-table-of-contents-item-body">{e.title}</span>
+        </a>
+      ))}
+    </nav>
+  )
+}
 
 export const ChildPage = ({ title }: ChildPageProps) => (
   <div className="notion-page-link">
