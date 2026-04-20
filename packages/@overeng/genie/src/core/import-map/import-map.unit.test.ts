@@ -427,10 +427,7 @@ export default packageJson({
           ),
           '',
         )
-        yield* writeFile(
-          path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'),
-          '',
-        )
+        yield* writeFile(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'), '')
 
         const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
         yield* writeFile(importerPath, '')
@@ -489,10 +486,7 @@ export default packageJson({
         process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
           'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
         })
-        yield* writeFile(
-          path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'),
-          '',
-        )
+        yield* writeFile(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'), '')
         const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
         yield* writeFile(importerPath, '')
 
@@ -540,10 +534,7 @@ export default packageJson({
           ),
           '',
         )
-        yield* writeFile(
-          path.join(tempDir, 'override-effect-utils', 'genie', 'external.ts'),
-          '',
-        )
+        yield* writeFile(path.join(tempDir, 'override-effect-utils', 'genie', 'external.ts'), '')
         const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
         yield* writeFile(importerPath, '')
 
@@ -639,10 +630,7 @@ import { baz } from './local.ts'`
         })
         const filePath = path.join(tempDir, 'src', 'file.ts')
         yield* writeFile(filePath, '')
-        yield* writeFile(
-          path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'),
-          '',
-        )
+        yield* writeFile(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'), '')
 
         const sourceCode = `import { packageJson } from '#mr/effect-utils/genie/external.ts'`
         const result = yield* resolveImportMapsInSource({
