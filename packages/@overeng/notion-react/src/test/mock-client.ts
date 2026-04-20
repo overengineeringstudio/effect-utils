@@ -252,6 +252,14 @@ export const createFakeNotion = (): FakeNotion => {
       const id = blockOpMatch[1]!
       const b = blocks.get(id)
       if (b === undefined) throw new Error(`fake-notion: unknown block ${id}`)
+      // Mirror Notion: edits against archived blocks are rejected with a
+      // validation_error. Dogfood v4 tripped this when a poisoned cache
+      // re-issued archives against already-archived blocks.
+      if (b.archived) {
+        throw new Error(
+          `fake-notion: Can't edit block that is archived. You must unarchive the block before editing. (validation_error)`,
+        )
+      }
       const patch = body as Record<string, unknown>
       const typePatch = patch[b.type] as Record<string, unknown> | undefined
       if (typePatch !== undefined) b.payload = { ...b.payload, ...typePatch }
@@ -262,6 +270,11 @@ export const createFakeNotion = (): FakeNotion => {
       const id = blockOpMatch[1]!
       const b = blocks.get(id)
       if (b === undefined) throw new Error(`fake-notion: unknown block ${id}`)
+      if (b.archived) {
+        throw new Error(
+          `fake-notion: Can't edit block that is archived. You must unarchive the block before editing. (validation_error)`,
+        )
+      }
       b.archived = true
       const parentList = getChildList(b.parent)
       const idx = parentList.indexOf(id)

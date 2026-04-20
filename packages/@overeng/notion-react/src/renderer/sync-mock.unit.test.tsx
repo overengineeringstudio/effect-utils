@@ -1,4 +1,4 @@
-import type { HttpClient } from '@effect/platform'
+import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect } from 'effect'
 import { Fragment, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
+import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import {
   Column,
   ColumnList,
@@ -74,6 +75,42 @@ const runWith = <A,>(
   fake: FakeNotion,
   eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
+
+/** Spy wrapper over `InMemoryCache` that exposes every persisted snapshot. */
+const spyCache = (): {
+  readonly cache: NotionCache
+  readonly snapshots: readonly CacheTree[]
+  readonly current: () => CacheTree | undefined
+} => {
+  const underlying = InMemoryCache.make()
+  const snapshots: CacheTree[] = []
+  let latest: CacheTree | undefined
+  const cache: NotionCache = {
+    load: underlying.load,
+    save: (tree) =>
+      Effect.gen(function* () {
+        snapshots.push(tree)
+        latest = tree
+        yield* underlying.save(tree)
+      }),
+  }
+  return { cache, snapshots, current: () => latest }
+}
+
+const flattenCache = (tree: CacheTree): readonly CacheNode[] => {
+  const out: CacheNode[] = []
+  const walk = (n: CacheNode): void => {
+    out.push(n)
+    for (const c of n.children) walk(c)
+  }
+  for (const c of tree.children) walk(c)
+  return out
+}
+
+const hasGhostEntries = (tree: CacheTree): boolean =>
+  flattenCache(tree).some(
+    (n) => n.key.startsWith('drift:') || (n.type === 'unknown' && n.hash === ''),
+  )
 
 describe('sync() against in-memory fake Notion', () => {
   it('cold cache → appends only, ids wired through', async () => {
@@ -719,6 +756,174 @@ describe('sync() against in-memory fake Notion', () => {
         ),
       ),
     ).rejects.toThrow(/nested level/i)
+  })
+
+  // -----------------------------------------------------------------
+  // Fallback-path cache hygiene (pixeltrail dogfood v4).
+  //
+  // Every fallback reason (cold-cache / cache-drift / page-id-drift)
+  // must persist a cache containing ONLY real typed/hashed entries —
+  // zero `drift:*` ghost entries and zero `type:'unknown'` rows. A
+  // poisoned cache drives the next warm sync to issue deletes against
+  // already-archived blocks (Notion rejects with "Can't edit block that
+  // is archived"), breaking convergence.
+  // -----------------------------------------------------------------
+  it('cold → warm: warm resync emits zero mutating ops against mock Notion (dogfood v4)', async () => {
+    const fake = createFakeNotion()
+    const { cache } = spyCache()
+    const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
+    const cold = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(cold.fallbackReason).toBe('cold-cache')
+    const before = fake.requests.length
+    const warm = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    const warmReqs = fake.requests.slice(before)
+    // Only the drift-check GET; no PATCH / DELETE / POST.
+    expect(warmReqs.map((r) => r.method)).toEqual(['GET'])
+  })
+
+  it('cold-cache: persisted cache has zero ghost entries', async () => {
+    const fake = createFakeNotion()
+    const spy = spyCache()
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache: spy.cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const final = spy.current()!
+    expect(final.children.length).toBeGreaterThan(0)
+    expect(hasGhostEntries(final)).toBe(false)
+    // Every persisted checkpoint — not just the final save — must be clean.
+    for (const snap of spy.snapshots) expect(hasGhostEntries(snap)).toBe(false)
+  })
+
+  it('cache-drift: persisted cache has zero ghost entries even after drift rebuild', async () => {
+    const fake = createFakeNotion()
+    const spy = spyCache()
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache: spy.cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    // Force drift: archive a toggle out-of-band, then re-sync.
+    const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
+    firstToggle.archived = true
+    const res = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache: spy.cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('cache-drift')
+    const final = spy.current()!
+    expect(hasGhostEntries(final)).toBe(false)
+    for (const snap of spy.snapshots) expect(hasGhostEntries(snap)).toBe(false)
+  })
+
+  it('cache-drift → warm: subsequent warm sync is a true no-op (no deletes on archived blocks)', async () => {
+    const fake = createFakeNotion()
+    const spy = spyCache()
+    const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Out-of-band archive forces a cache-drift rebuild next sync.
+    const firstToggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
+    firstToggle.archived = true
+    const drifted = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(drifted.fallbackReason).toBe('cache-drift')
+    const before = fake.requests.length
+    // Next warm sync must not re-delete the already-archived block and must
+    // not touch any other live block.
+    const warm = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(warm).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    const warmReqs = fake.requests.slice(before)
+    expect(warmReqs.every((r) => r.method === 'GET')).toBe(true)
+  })
+
+  it('page-id-drift: persisted cache has zero ghost entries', async () => {
+    const fake = createFakeNotion()
+    const spy = spyCache()
+    const OTHER = '00000000-0000-4000-8000-000000000002'
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache: spy.cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const res = await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: OTHER,
+        cache: spy.cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res.fallbackReason).toBe('page-id-drift')
+    const final = spy.current()!
+    expect(hasGhostEntries(final)).toBe(false)
+    for (const snap of spy.snapshots) expect(hasGhostEntries(snap)).toBe(false)
+  })
+
+  it('fake Notion: update/delete against archived block fails with validation_error shape', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runWith(
+      fake,
+      sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const toggle = fake.childrenOf(ROOT).find((b) => b.type === 'toggle')!
+    toggle.archived = true
+    // Direct HTTP probe against the archived block — both PATCH and DELETE
+    // must reject with Notion's archived-block error shape.
+    const probe = (method: 'PATCH' | 'DELETE'): Promise<unknown> =>
+      runWith(
+        fake,
+        Effect.gen(function* () {
+          const http = yield* HttpClient.HttpClient
+          const url = `https://api.notion.com/v1/blocks/${toggle.id}`
+          const req =
+            method === 'PATCH'
+              ? HttpClientRequest.patch(url).pipe(
+                  HttpClientRequest.bodyText('{"toggle":{}}', 'application/json'),
+                )
+              : HttpClientRequest.del(url)
+          return yield* http.execute(req)
+        }),
+      )
+    await expect(probe('PATCH')).rejects.toThrow(/archived/i)
+    await expect(probe('DELETE')).rejects.toThrow(/archived/i)
   })
 
   it('page-id-drift: cache written for a different pageId cold-starts', async () => {

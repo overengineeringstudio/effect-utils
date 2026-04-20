@@ -77,13 +77,27 @@ const cacheNodeToWorking = (n: CacheNode): WorkingNode => ({
   children: n.children.map(cacheNodeToWorking),
 })
 
-const workingToCacheNode = (n: WorkingNode): CacheNode => ({
-  key: n.key,
-  blockId: n.blockId,
-  type: n.type,
-  hash: n.hash,
-  children: n.children.map(workingToCacheNode),
-})
+const workingToCacheNode = (n: WorkingNode): CacheNode => {
+  // Defensive: `drift:*` synthetic keys are an in-memory artefact of
+  // `driftedBase`. They must never escape to disk — a persisted ghost with
+  // `type:'unknown'` / empty hash would drive a poisoned remove op on the
+  // next sync (dogfood v4 failure mode). The fallback path initializes the
+  // working cache empty for drifted syncs, so reaching this branch means a
+  // regression in that wiring.
+  if (n.key.startsWith('drift:') || (n.type === 'unknown' && n.hash === '')) {
+    throw new Error(
+      `notion-react: ghost entry leaked into working cache (key=${n.key}, blockId=${n.blockId}). ` +
+        `Drift placeholders must not be checkpointed.`,
+    )
+  }
+  return {
+    key: n.key,
+    blockId: n.blockId,
+    type: n.type,
+    hash: n.hash,
+    children: n.children.map(workingToCacheNode),
+  }
+}
 
 const initWorkingCache = (base: CacheTree): WorkingCache => {
   const rootChildren = base.children.map(cacheNodeToWorking)
@@ -861,11 +875,21 @@ export const sync = (
     // otherwise a drifted page would get duplicated content (old blocks
     // remain, new copies append) and never converge.
     const useCold = prior === undefined || pageIdDrift
-    const base: CacheTree = useCold
+    // `diffBase` feeds the diff algorithm; on drift it carries synthetic
+    // `drift:*` ghost entries so every live top-level block becomes a remove
+    // op. `workingBase` seeds the in-memory working cache that is checkpointed
+    // to disk — it must NEVER contain ghost entries, or a mid-sync failure
+    // will leak them into the persisted cache and poison the next warm sync
+    // (dogfood v4: ghosts drove 111 deletes against already-archived blocks).
+    // For drift, start the working cache empty: ops confirmed against Notion
+    // populate it via `workingAppend`; pending removes target ghost blockIds
+    // that are absent from `working.byId`, which is a safe no-op.
+    const diffBase: CacheTree = useCold
       ? emptyCache(opts.pageId)
       : drifted
         ? driftedBase(opts.pageId, liveTopLevelIds)
         : prior
+    const workingBase: CacheTree = useCold || drifted ? emptyCache(opts.pageId) : prior
     const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
       ? 'page-id-drift'
       : drifted
@@ -890,7 +914,7 @@ export const sync = (
       }
     }
 
-    const plan = diff(base, candidate)
+    const plan = diff(diffBase, candidate)
     // Prior hashes indexed by server block id — for UpdateNoop detection
     // when diff emits an update whose hash already matches the cached one
     // (e.g. post-checkpoint retry, hash-stable reshuffle).
@@ -908,7 +932,7 @@ export const sync = (
     // mid-sync failure the cache reflects server state up to the last
     // checkpoint, so a retry diffs against a tree that already includes
     // the blocks that actually landed.
-    const working = initWorkingCache(base)
+    const working = initWorkingCache(workingBase)
     const flushCheckpoint: Effect.Effect<void, NotionSyncError> = Effect.suspend(() =>
       opts.cache.save(workingToCacheTree(working)).pipe(
         Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
