@@ -21,8 +21,8 @@ import {
 /**
  * End-to-end mutation scenarios exercising `sync()` against live Notion.
  *
- * The fixture mirrors a pixeltrail-shaped timeline page: a stats heading /
- * paragraph, a divider, a timeline heading, and a list of session toggles
+ * The fixture mirrors a Q2 Launch Plan overview page: a metrics heading /
+ * paragraph, a divider, a phases heading, and a list of phase toggles
  * each containing one body paragraph. Toggles carry `blockKey={id}` so
  * mid-list inserts can be represented as single insert ops (not tail
  * rewrites).
@@ -31,32 +31,32 @@ import {
  * state is per-test (no shared cache across `withScratchPage` calls).
  */
 
-type Session = { readonly id: string; readonly title: string; readonly body: string }
+type Phase = { readonly id: string; readonly title: string; readonly body: string }
 
-const DailyPage = ({
-  screenTime,
-  apps,
-  sessions,
+const LaunchOverview = ({
+  budget,
+  milestones,
+  phases,
 }: {
-  readonly screenTime: string
-  readonly apps: number
-  readonly sessions: readonly Session[]
+  readonly budget: string
+  readonly milestones: number
+  readonly phases: readonly Phase[]
 }): ReactNode => (
   <>
-    <Heading2>Stats</Heading2>
-    <Paragraph>{`${screenTime} · ${apps} apps`}</Paragraph>
+    <Heading2>Metrics</Heading2>
+    <Paragraph>{`${budget} · ${milestones} milestones`}</Paragraph>
     {h('divider', null)}
-    <Heading2>Timeline</Heading2>
-    {sessions.map((s) =>
-      h('toggle', { key: s.id, blockKey: s.id, title: s.title }, <Paragraph>{s.body}</Paragraph>),
+    <Heading2>Phases</Heading2>
+    {phases.map((p) =>
+      h('toggle', { key: p.id, blockKey: p.id, title: p.title }, <Paragraph>{p.body}</Paragraph>),
     )}
   </>
 )
 
-const v1: readonly Session[] = [
-  { id: 's1', title: '09:00 Terminal', body: '30 min focused' },
-  { id: 's2', title: '10:00 Browser', body: 'research' },
-  { id: 's3', title: '11:00 VSCode', body: 'coding session' },
+const v1: readonly Phase[] = [
+  { id: 'p1', title: 'Phase 1 — Manufacturing', body: 'first batch in production' },
+  { id: 'p2', title: 'Phase 2 — Marketing', body: 'campaign kickoff' },
+  { id: 'p3', title: 'Phase 3 — Retail rollout', body: 'flagship stores live' },
 ]
 
 /** Static top-level blocks: h2, p, divider, h2 = 4. Plus N toggles + N paragraphs = 2N children. */
@@ -91,7 +91,7 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
           expect(res.appends).toBe(totalBlockCount(v1.length))
           expect(res.updates).toBe(0)
@@ -119,7 +119,7 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
       await withScratchPage('mut-noop-resync', (pageId) =>
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
-          const tree = <DailyPage screenTime="4h 12m" apps={7} sessions={v1} />
+          const tree = <LaunchOverview budget="$4.2M" milestones={7} phases={v1} />
           yield* runE(sync(tree, { pageId, cache }))
           const res = yield* runE(sync(tree, { pageId, cache }))
           expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
@@ -140,21 +140,21 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          const v2: readonly Session[] = [
-            { id: 's1', title: '09:00 Terminal', body: '45 min focused' },
+          const v2: readonly Phase[] = [
+            { id: 'p1', title: 'Phase 1 — Manufacturing', body: 'first batch complete' },
             v1[1]!,
             v1[2]!,
           ]
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
           expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
 
           const server = yield* runE(readPageTree(pageId))
-          const toggle = findToggleByTitle(server, '09:00 Terminal')
-          expect(firstPlainText(toggle!.children[0]!)).toBe('45 min focused')
+          const toggle = findToggleByTitle(server, 'Phase 1 — Manufacturing')
+          expect(firstPlainText(toggle!.children[0]!)).toBe('first batch complete')
         }),
       )
     },
@@ -162,28 +162,28 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
   )
 
   // ---------------------------------------------------------------------
-  // 4. Append a session — {inserts|appends totalling 2} (toggle + nested paragraph)
+  // 4. Append a phase — {inserts|appends totalling 2} (toggle + nested paragraph)
   // ---------------------------------------------------------------------
   it(
-    'append session → 2 ops (toggle + nested paragraph)',
+    'append phase → 2 ops (toggle + nested paragraph)',
     async () => {
       await withScratchPage('mut-append-tail', (pageId) =>
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          const v2: readonly Session[] = [...v1, { id: 's4', title: '12:00 Slack', body: 'chat' }]
+          const v2: readonly Phase[] = [...v1, { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' }]
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
           expect(res.updates).toBe(0)
           expect(res.removes).toBe(0)
           expect(res.appends + res.inserts).toBe(2)
 
           const server = yield* runE(readPageTree(pageId))
-          const toggle = findToggleByTitle(server, '12:00 Slack')
-          expect(firstPlainText(toggle!.children[0]!)).toBe('chat')
+          const toggle = findToggleByTitle(server, 'Phase 4 — Post-launch review')
+          expect(firstPlainText(toggle!.children[0]!)).toBe('debrief')
         }),
       )
     },
@@ -200,16 +200,16 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          const v2: readonly Session[] = [
+          const v2: readonly Phase[] = [
             v1[0]!,
             v1[1]!,
-            { id: 's2b', title: '10:30 Figma', body: 'design' },
+            { id: 'p2b', title: 'Phase 2.5 — PR push', body: 'press tour' },
             v1[2]!,
           ]
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
           expect(res.updates).toBe(0)
           expect(res.removes).toBe(0)
@@ -217,7 +217,7 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
 
           const server = yield* runE(readPageTree(pageId))
           const titles = server.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
-          expect(titles).toEqual(['09:00 Terminal', '10:00 Browser', '10:30 Figma', '11:00 VSCode'])
+          expect(titles).toEqual(['Phase 1 — Manufacturing', 'Phase 2 — Marketing', 'Phase 2.5 — PR push', 'Phase 3 — Retail rollout'])
         }),
       )
     },
@@ -225,27 +225,27 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
   )
 
   // ---------------------------------------------------------------------
-  // 6. Delete a session — {removes: 1}
+  // 6. Delete a phase — {removes: 1}
   // ---------------------------------------------------------------------
   it(
-    'delete session → {removes: 1}',
+    'delete phase → {removes: 1}',
     async () => {
       await withScratchPage('mut-delete', (pageId) =>
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          const v2: readonly Session[] = v1.filter((s) => s.id !== 's2')
+          const v2: readonly Phase[] = v1.filter((p) => p.id !== 'p2')
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
           expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 1 })
 
           const server = yield* runE(readPageTree(pageId))
-          expect(findToggleByTitle(server, '10:00 Browser')).toBeUndefined()
-          expect(findToggleByTitle(server, '09:00 Terminal')).toBeDefined()
-          expect(findToggleByTitle(server, '11:00 VSCode')).toBeDefined()
+          expect(findToggleByTitle(server, 'Phase 2 — Marketing')).toBeUndefined()
+          expect(findToggleByTitle(server, 'Phase 1 — Manufacturing')).toBeDefined()
+          expect(findToggleByTitle(server, 'Phase 3 — Retail rollout')).toBeDefined()
         }),
       )
     },
@@ -262,19 +262,19 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
-          const v2: readonly Session[] = [
-            // s1: updated body
-            { id: 's1', title: '09:00 Terminal', body: '45 min focused' },
-            // s2 removed
-            // s3 kept as-is
+          const v2: readonly Phase[] = [
+            // p1: updated body
+            { id: 'p1', title: 'Phase 1 — Manufacturing', body: 'first batch complete' },
+            // p2 removed
+            // p3 kept as-is
             v1[2]!,
-            // new s4 appended
-            { id: 's4', title: '12:00 Slack', body: 'chat' },
+            // new p4 appended
+            { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' },
           ]
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
           expect(res.updates).toBe(1)
           expect(res.removes).toBe(1)
@@ -282,9 +282,9 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
 
           const server = yield* runE(readPageTree(pageId))
           const titles = server.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
-          expect(titles).toEqual(['09:00 Terminal', '11:00 VSCode', '12:00 Slack'])
-          const s1 = findToggleByTitle(server, '09:00 Terminal')!
-          expect(firstPlainText(s1.children[0]!)).toBe('45 min focused')
+          expect(titles).toEqual(['Phase 1 — Manufacturing', 'Phase 3 — Retail rollout', 'Phase 4 — Post-launch review'])
+          const p1 = findToggleByTitle(server, 'Phase 1 — Manufacturing')!
+          expect(firstPlainText(p1.children[0]!)).toBe('first batch complete')
         }),
       )
     },
@@ -306,24 +306,24 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
 
-          // Find the s2 toggle on the server and archive it out-of-band.
+          // Find the p2 toggle on the server and archive it out-of-band.
           const server1 = yield* runE(readPageTree(pageId))
-          const s2 = findToggleByTitle(server1, '10:00 Browser')!
-          yield* runE(NotionBlocks.delete({ blockId: s2.id }))
+          const p2 = findToggleByTitle(server1, 'Phase 2 — Marketing')!
+          yield* runE(NotionBlocks.delete({ blockId: p2.id }))
 
-          // Re-render the same tree; cache still thinks s2 is present.
+          // Re-render the same tree; cache still thinks p2 is present.
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
           // Documented behaviour: identical tree → zero ops; drift is not
           // detected without an explicit reconcile.
           expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
 
           const server2 = yield* runE(readPageTree(pageId))
-          expect(findToggleByTitle(server2, '10:00 Browser')).toBeUndefined()
+          expect(findToggleByTitle(server2, 'Phase 2 — Marketing')).toBeUndefined()
         }),
       )
     },
@@ -340,25 +340,25 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
 
           const server1 = yield* runE(readPageTree(pageId))
-          const s1 = findToggleByTitle(server1, '09:00 Terminal')!
-          const childParagraph = s1.children[0]!
+          const p1 = findToggleByTitle(server1, 'Phase 1 — Manufacturing')!
+          const childParagraph = p1.children[0]!
           yield* runE(NotionBlocks.delete({ blockId: childParagraph.id }))
 
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
           // Same: no drift detection → no ops.
           expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
 
           const server2 = yield* runE(readPageTree(pageId))
-          const s1After = findToggleByTitle(server2, '09:00 Terminal')!
+          const p1After = findToggleByTitle(server2, 'Phase 1 — Manufacturing')!
           // Notion treats child archive as a cascade target; the toggle
           // still exists but has no children.
-          expect(s1After.children).toHaveLength(0)
+          expect(p1After.children).toHaveLength(0)
         }),
       )
     },
@@ -366,7 +366,7 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
   )
 
   // ---------------------------------------------------------------------
-  // 10. Archived mid-sync — another process archives a session between
+  // 10. Archived mid-sync — another process archives a phase between
   //     renders.
   // ---------------------------------------------------------------------
   it(
@@ -376,28 +376,28 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
 
-          // Another process archives s3.
+          // Another process archives p3.
           const server1 = yield* runE(readPageTree(pageId))
-          const s3 = findToggleByTitle(server1, '11:00 VSCode')!
-          yield* runE(NotionBlocks.delete({ blockId: s3.id }))
+          const p3 = findToggleByTitle(server1, 'Phase 3 — Retail rollout')!
+          yield* runE(NotionBlocks.delete({ blockId: p3.id }))
 
-          // Now resync with a different session list that adds s4 and
-          // keeps s3. Cache still has s3; render has s3+s4.
-          const v2: readonly Session[] = [...v1, { id: 's4', title: '12:00 Slack', body: 'chat' }]
+          // Now resync with a different phase list that adds p4 and
+          // keeps p3. Cache still has p3; render has p3+p4.
+          const v2: readonly Phase[] = [...v1, { id: 'p4', title: 'Phase 4 — Post-launch review', body: 'debrief' }]
           const res = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
-          // s4 is a new tail toggle (+ paragraph) = 2 ops. s3 appears
+          // p4 is a new tail toggle (+ paragraph) = 2 ops. p3 appears
           // unchanged from the cache's perspective.
           expect(res.appends + res.inserts).toBe(2)
 
           const server2 = yield* runE(readPageTree(pageId))
           const titles = server2.filter((b) => b.type === 'toggle').map((b) => firstPlainText(b))
-          // s3 stays archived (sync didn't resurrect it); s4 present.
-          expect(titles).toEqual(['09:00 Terminal', '10:00 Browser', '12:00 Slack'])
+          // p3 stays archived (sync didn't resurrect it); p4 present.
+          expect(titles).toEqual(['Phase 1 — Manufacturing', 'Phase 2 — Marketing', 'Phase 4 — Post-launch review'])
         }),
       )
     },
@@ -486,12 +486,12 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
         Effect.gen(function* () {
           const cache = InMemoryCache.make()
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
 
           const server1 = yield* runE(readPageTree(pageId))
-          const s1 = findToggleByTitle(server1, '09:00 Terminal')!
-          const paragraph = s1.children[0]!
+          const p1 = findToggleByTitle(server1, 'Phase 1 — Manufacturing')!
+          const paragraph = p1.children[0]!
           // User edits the paragraph text on Notion.
           yield* runE(
             NotionBlocks.update({
@@ -507,29 +507,29 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
           // Documented behaviour: the manual edit is NOT overwritten
           // because the cache + render agree.
           const resync = yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v1} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v1} />, { pageId, cache }),
           )
           expect(resync).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
 
           const server2 = yield* runE(readPageTree(pageId))
-          const s1After = findToggleByTitle(server2, '09:00 Terminal')!
+          const p1After = findToggleByTitle(server2, 'Phase 1 — Manufacturing')!
           // The user edit survives until the rendered tree disagrees.
-          expect(firstPlainText(s1After.children[0]!)).toBe('user edit')
+          expect(firstPlainText(p1After.children[0]!)).toBe('user edit')
 
           // Now render with a different body. The diff sees the cached old
           // body vs the new rendered body → emits an update, clobbering
           // the user's edit with the rendered content.
-          const v2: readonly Session[] = [
-            { id: 's1', title: '09:00 Terminal', body: 'app-authored' },
+          const v2: readonly Phase[] = [
+            { id: 'p1', title: 'Phase 1 — Manufacturing', body: 'app-authored' },
             v1[1]!,
             v1[2]!,
           ]
           yield* runE(
-            sync(<DailyPage screenTime="4h 12m" apps={7} sessions={v2} />, { pageId, cache }),
+            sync(<LaunchOverview budget="$4.2M" milestones={7} phases={v2} />, { pageId, cache }),
           )
           const server3 = yield* runE(readPageTree(pageId))
-          const s1Final = findToggleByTitle(server3, '09:00 Terminal')!
-          expect(firstPlainText(s1Final.children[0]!)).toBe('app-authored')
+          const p1Final = findToggleByTitle(server3, 'Phase 1 — Manufacturing')!
+          expect(firstPlainText(p1Final.children[0]!)).toBe('app-authored')
         }),
       )
     },
