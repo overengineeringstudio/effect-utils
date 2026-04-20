@@ -60,8 +60,9 @@ import {
  *   video / file / pdf / audio.
  *
  * The media types `video` / `audio` / `file` / `pdf` require uploaded
- * (internal) file refs on create via the file_upload API; their tests are
- * marked `it.skip` and will be exercised once the upload pipeline lands.
+ * (internal) file refs on create via the file_upload API. Their
+ * projection is covered by unit tests in host-config.unit.test.tsx;
+ * live E2E awaits a future commit that owns the upload pipeline.
  */
 
 const DEFAULT_TIMEOUT = 60_000
@@ -670,10 +671,18 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
   )
 
   // -----------------------------------------------------------------
-  // video / file / pdf / audio — external URLs are rejected by Notion for
-  // most media types on create (requires upload). Covered in v0.2 once the
-  // upload registry is wired. Listed explicitly as `.skip` so the coverage
-  // gap is visible in test output.
+  // video / audio / file / pdf — Notion rejects external URLs on create
+  // for these media types; they require the file_upload API.
+  //
+  // file_upload envelope *projection* is covered by unit tests in
+  // renderer/host-config.unit.test.tsx (see the "projects media
+  // file_upload envelope" and "prefers fileUploadId over url" cases).
+  //
+  // Live file_upload E2E would require a full upload pipeline
+  // (POST /v1/file_uploads → multipart send → reference the id), which
+  // belongs in its own future commit alongside the upload workflow
+  // itself. No stub tests here — they would silently pass without
+  // exercising anything, which is worse than acknowledged absence.
   // -----------------------------------------------------------------
 
   // -----------------------------------------------------------------
@@ -749,11 +758,6 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
     },
     DEFAULT_TIMEOUT,
   )
-
-  it.skip('video — external URL (requires file_upload API, v0.2)', () => {})
-  it.skip('audio — external URL (requires file_upload API, v0.2)', () => {})
-  it.skip('file — external URL (requires file_upload API, v0.2)', () => {})
-  it.skip('pdf — external URL (requires file_upload API, v0.2)', () => {})
 
   // -----------------------------------------------------------------
   // Deep / mixed content — smoke test covering a multi-block page with
