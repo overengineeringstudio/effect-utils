@@ -7,7 +7,12 @@ import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
-import { ATOMIC_CONTAINERS, type SyncFallbackReason, type SyncResult } from './render-to-notion.ts'
+import {
+  ATOMIC_CONTAINERS,
+  MAX_CHILDREN_PER_APPEND,
+  type SyncFallbackReason,
+  type SyncResult,
+} from './render-to-notion.ts'
 import {
   buildCandidateTree,
   candidateToCache,
@@ -169,8 +174,17 @@ const workingRemove = (w: WorkingCache, blockId: string): void => {
  * Notion's `append children` endpoint caps each request at 100 children.
  * Consecutive appends/inserts sharing a parent are coalesced into batched
  * API calls bounded by this limit.
+ *
+ * The same 100-cap applies to any nested `children` array inside a create
+ * body (e.g. a `table` block shipped with rows inlined as
+ * `table.children`). See `foldAtomicContainers` for how we split oversized
+ * atomic containers across a create + follow-up appends.
+ *
+ * Ref: https://developers.notion.com/reference/patch-block-children — "The
+ * array of block children passed in must have a length of less than or
+ * equal to 100."
  */
-export const APPEND_CHILDREN_MAX = 100
+export const APPEND_CHILDREN_MAX = MAX_CHILDREN_PER_APPEND
 
 type AppendLike = Extract<DiffOp, { kind: 'append' | 'insert' }>
 
@@ -382,24 +396,46 @@ const foldAtomicContainers = (
   const absorbed = new Map<string, AbsorbedSubtree>()
   const absorbedTmpIds = new Set<string>()
 
-  /** Build the nested Notion API body for `op`, recursively folding descendants. */
+  /**
+   * Build the nested Notion API body for `op`, recursively folding
+   * descendants. Children are capped at `MAX_CHILDREN_PER_APPEND` per
+   * level (Notion's validation limit on `table.children` and every other
+   * nested `children` array). Overflow at the top-level atomic container
+   * is left in the plan as plain append ops — they get batched normally
+   * against the container's server id once it's resolved via `idMap`. At
+   * deeper levels (e.g. a `column` with >100 direct children inside a
+   * column_list), we surface loudly: that shape is rare and would require
+   * per-level chunking logic not implemented here.
+   */
   const buildNestedBody = (
     op: AppendLike,
     descendants: { tmpId: string; depth: number }[],
     depth: number,
+    isTopLevelContainer: boolean,
   ): Record<string, unknown> => {
     const kids = childrenByParent.get(op.tmpId) ?? []
     const payload: Record<string, unknown> = { ...op.props }
     if (kids.length > 0) {
-      payload.children = kids.map((k) => {
+      const inlineCount = isTopLevelContainer
+        ? Math.min(kids.length, MAX_CHILDREN_PER_APPEND)
+        : kids.length
+      if (!isTopLevelContainer && kids.length > MAX_CHILDREN_PER_APPEND) {
+        throw new Error(
+          `notion-react: atomic container nested level (depth ${depth}, type ${op.type}) has ${kids.length} direct children, exceeds Notion's ${MAX_CHILDREN_PER_APPEND}-per-level cap. Nested-level chunking is not implemented — flatten the structure or file a bug.`,
+        )
+      }
+      payload.children = kids.slice(0, inlineCount).map((k) => {
         descendants.push({ tmpId: k.tmpId, depth })
         absorbedTmpIds.add(k.tmpId)
         return {
           object: 'block',
           type: k.type,
-          [k.type]: buildNestedBody(k, descendants, depth + 1),
+          [k.type]: buildNestedBody(k, descendants, depth + 1, false),
         }
       })
+      // Overflow kids (kids.slice(inlineCount)) stay in the top-level op
+      // list — they're append ops with parent=container.tmpId, and the
+      // main flushAppendRun pipeline already batches at 100 per call.
     }
     return payload
   }
@@ -415,7 +451,7 @@ const foldAtomicContainers = (
     }
     if (isAppendLike(op) && ATOMIC_CONTAINERS.has(op.type)) {
       const descendants: { tmpId: string; depth: number }[] = []
-      const foldedProps = buildNestedBody(op, descendants, 1)
+      const foldedProps = buildNestedBody(op, descendants, 1, true)
       absorbed.set(op.tmpId, { containerTmpId: op.tmpId, descendants })
       // Replace the op with a version whose `props` carry nested children.
       // The op's `candidate` still references the full subtree — fine: the

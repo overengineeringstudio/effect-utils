@@ -16,6 +16,16 @@ import { OpBuffer } from './op-buffer.ts'
  * we collapse the op-buffer subtree into a single nested API body instead
  * of issuing one call per block.
  */
+/**
+ * Notion's per-request children cap. Applies both to
+ * `blocks.children.append` (`children.length ≤ 100`) and to any nested
+ * `children` array inside a create body — most notably `table.children`
+ * when a `table` block is created with rows inlined.
+ *
+ * Ref: https://developers.notion.com/reference/patch-block-children
+ */
+export const MAX_CHILDREN_PER_APPEND = 100
+
 export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>([
   'column_list',
   // `table` has the same staged-append prohibition as `column_list`: Notion
@@ -119,33 +129,63 @@ export const indexChildren = (ops: readonly Op[]): ReadonlyMap<string, readonly 
  * Build a nested `{object, type, <type>: {...props, children?}}` body for an
  * atomic container. Descendant ops are spliced under the container's props
  * via the `children` array, recursively.
+ *
+ * Top-level direct children are capped at `MAX_CHILDREN_PER_APPEND` (Notion
+ * rejects bodies with any `children` array longer than 100). Overflow at the
+ * top level is deferred to follow-up `appendBlockChildren` calls issued by
+ * `renderToNotion` against the container's server id once it's resolved.
+ * Overflow at deeper levels throws — that shape would silently drop content.
  */
 export const nestedBody = (
   op: AppendLikeOp,
   childrenIndex: ReadonlyMap<string, readonly AppendLikeOp[]>,
+): Record<string, unknown> => buildNestedBody(op, childrenIndex, true, 0)
+
+const buildNestedBody = (
+  op: AppendLikeOp,
+  childrenIndex: ReadonlyMap<string, readonly AppendLikeOp[]>,
+  isTopLevel: boolean,
+  depth: number,
 ): Record<string, unknown> => {
   const kids = childrenIndex.get(op.id) ?? []
   const payload: Record<string, unknown> = { ...op.props }
   if (kids.length > 0) {
-    payload.children = kids.map((k) => nestedBody(k, childrenIndex))
+    if (!isTopLevel && kids.length > MAX_CHILDREN_PER_APPEND) {
+      throw new Error(
+        `notion-react: atomic container nested level (depth ${depth}, type ${op.type}) has ${kids.length} direct children, exceeds Notion's ${MAX_CHILDREN_PER_APPEND}-per-level cap. Nested-level chunking is not implemented.`,
+      )
+    }
+    const inlineCount = isTopLevel ? Math.min(kids.length, MAX_CHILDREN_PER_APPEND) : kids.length
+    payload.children = kids
+      .slice(0, inlineCount)
+      .map((k) => buildNestedBody(k, childrenIndex, false, depth + 1))
   }
   return { object: 'block', type: op.type, [op.type]: payload }
 }
 
-/** Collect the ids of all transitive descendants of `rootId` from the children index. */
-const descendantIds = (
+/**
+ * Collect ids of descendants inlined under an atomic container. Mirrors the
+ * top-level cap in `nestedBody`: the first `MAX_CHILDREN_PER_APPEND`
+ * top-level kids and all of their transitive descendants are absorbed;
+ * overflow top-level kids stay as free-standing `append` ops.
+ */
+const absorbedDescendantIds = (
   rootId: string,
   childrenIndex: ReadonlyMap<string, readonly AppendLikeOp[]>,
 ): ReadonlySet<string> => {
   const seen = new Set<string>()
-  const walk = (parent: string): void => {
+  const walkAll = (parent: string): void => {
     for (const kid of childrenIndex.get(parent) ?? []) {
       if (seen.has(kid.id)) continue
       seen.add(kid.id)
-      walk(kid.id)
+      walkAll(kid.id)
     }
   }
-  walk(rootId)
+  const topKids = childrenIndex.get(rootId) ?? []
+  for (const k of topKids.slice(0, MAX_CHILDREN_PER_APPEND)) {
+    seen.add(k.id)
+    walkAll(k.id)
+  }
   return seen
 }
 
@@ -170,6 +210,51 @@ export const renderToNotion = (
     // their individual append ops are skipped since they shipped inline.
     const absorbed = new Set<string>()
 
+    /**
+     * Ship overflow rows (those beyond the atomic container's inline cap) as
+     * follow-up `appendBlockChildren` calls against the container's server
+     * id. Each call carries up to `MAX_CHILDREN_PER_APPEND` children and
+     * records server ids back into `idMap`.
+     */
+    const flushOverflow = (
+      containerTmpId: string,
+    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+      Effect.gen(function* () {
+        const topKids = childrenIndex.get(containerTmpId) ?? []
+        const overflow = topKids.slice(MAX_CHILDREN_PER_APPEND)
+        if (overflow.length === 0) return
+        const parentServerId = resolve(containerTmpId)
+        for (let i = 0; i < overflow.length; i += MAX_CHILDREN_PER_APPEND) {
+          const batch = overflow.slice(i, i + MAX_CHILDREN_PER_APPEND)
+          const res = yield* NotionBlocks.append({
+            blockId: parentServerId,
+            children: batch.map((k) =>
+              ATOMIC_CONTAINERS.has(k.type) ? nestedBody(k, childrenIndex) : appendBody(k),
+            ),
+          }).pipe(
+            Effect.mapError(
+              (cause) => new NotionSyncError({ reason: 'notion-append-failed', cause }),
+            ),
+          )
+          const results = res.results as readonly { id?: string }[]
+          for (let j = 0; j < batch.length; j++) {
+            const serverId = results[j]?.id
+            if (serverId !== undefined) {
+              idMap.set(batch[j]!.id, serverId)
+              // The overflow row's own descendants (if any) are handled by
+              // its own absorbed-set registration below, so when the main
+              // loop reaches them they'll already be marked absorbed.
+              for (const d of absorbedDescendantIds(batch[j]!.id, childrenIndex)) {
+                absorbed.add(d)
+              }
+            }
+          }
+          // Mark the overflow row itself as absorbed so the outer loop
+          // skips re-issuing a plain append for it.
+          for (const k of batch) absorbed.add(k.id)
+        }
+      })
+
     for (const op of buffer.ops) {
       if ('id' in op && absorbed.has(op.id)) continue
       switch (op.kind) {
@@ -186,7 +271,11 @@ export const renderToNotion = (
           )
           const first = res.results[0] as { id?: string } | undefined
           if (first?.id !== undefined) idMap.set(op.id, first.id)
-          if (atomic) for (const d of descendantIds(op.id, childrenIndex)) absorbed.add(d)
+          if (atomic) {
+            for (const d of absorbedDescendantIds(op.id, childrenIndex)) absorbed.add(d)
+            // Flush overflow after the container's server id is known.
+            yield* flushOverflow(op.id)
+          }
           break
         }
         case 'insertBefore': {
@@ -203,7 +292,10 @@ export const renderToNotion = (
           )
           const first = res.results[0] as { id?: string } | undefined
           if (first?.id !== undefined) idMap.set(op.id, first.id)
-          if (atomic) for (const d of descendantIds(op.id, childrenIndex)) absorbed.add(d)
+          if (atomic) {
+            for (const d of absorbedDescendantIds(op.id, childrenIndex)) absorbed.add(d)
+            yield* flushOverflow(op.id)
+          }
           break
         }
         case 'update': {

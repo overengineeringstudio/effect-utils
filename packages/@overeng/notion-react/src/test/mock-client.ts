@@ -137,7 +137,27 @@ export const createFakeNotion = (): FakeNotion => {
       // append descendants) is rejected by the real API with
       // `validation_error`; mirror that here so drivers that naively emit
       // one-op-per-block fail the same way against the fake.
+      //
+      // Additional cap: every nested `children` array (including the
+      // top-level batch) must have length ≤ 100. Mirrors Notion's
+      // `body.children[N].table.children.length should be ≤ 100` and the
+      // equivalent validation on the top-level `children` param.
+      // Ref: https://developers.notion.com/reference/patch-block-children
+      const MAX_CHILDREN = 100
+      if (b.children.length > MAX_CHILDREN) {
+        throw new Error(
+          `fake-notion: body.children.length should be ≤ ${MAX_CHILDREN}, instead was ${b.children.length} (validation_error)`,
+        )
+      }
       const validateAtomic = (child: { type: string; [k: string]: unknown }): void => {
+        // Enforce the ≤100 cap on every container's nested children array.
+        const nestedPayload = child[child.type] as { children?: unknown[] } | undefined
+        const nestedChildren = nestedPayload?.children
+        if (nestedChildren !== undefined && nestedChildren.length > MAX_CHILDREN) {
+          throw new Error(
+            `fake-notion: body.children[N].${child.type}.children.length should be ≤ ${MAX_CHILDREN}, instead was ${nestedChildren.length} (validation_error)`,
+          )
+        }
         if (child.type === 'column_list') {
           const cl = child.column_list as { children?: unknown[] } | undefined
           if (cl?.children === undefined || cl.children.length < 2) {

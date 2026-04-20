@@ -16,7 +16,12 @@ import {
   TableRow,
 } from '../components/blocks.ts'
 import { h } from '../components/h.ts'
-import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
+import {
+  createFakeNotion,
+  type FakeBlock,
+  type FakeNotion,
+  type FakeRequest,
+} from '../test/mock-client.ts'
 import { sync } from './sync.ts'
 
 /**
@@ -553,6 +558,167 @@ describe('sync() against in-memory fake Notion', () => {
     // Second column has a paragraph.
     const rightKids = fake.childrenOf(cols[1]!.id)
     expect(rightKids.map((b) => b.type)).toEqual(['paragraph'])
+  })
+
+  // ---------------------------------------------------------------
+  // Large-table chunking — Notion caps `table.children` at 100 per
+  // request (same 100-cap as top-level append children). Tables with
+  // more rows ship the first 100 inline with the table create, then
+  // issue follow-up appendBlockChildren calls in 100-row batches.
+  // Pixeltrail dogfood v3 found 139-row activity tables hitting this.
+  // ---------------------------------------------------------------
+  const rowsOf = (n: number): ReactNode[] =>
+    Array.from({ length: n }, (_, i) => <TableRow key={`r${i}`} cells={[String(i)]} />)
+
+  const mutatingAppends = (fake: FakeNotion): readonly FakeRequest[] =>
+    fake.requests.filter(
+      (r) =>
+        (r.method === 'PATCH' || r.method === 'POST') && /\/blocks\/[^/]+\/children$/.test(r.path),
+    )
+
+  it('table with exactly 100 rows → single appendChildren (at-cap, no follow-up)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = <Table tableWidth={1}>{rowsOf(100)}</Table>
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const mutating = mutatingAppends(fake)
+    expect(mutating).toHaveLength(1)
+    const body = mutating[0]!.body as {
+      children: { table: { children: unknown[] } }[]
+    }
+    expect(body.children[0]!.table.children).toHaveLength(100)
+  })
+
+  it('table with 101 rows → 2 PATCHes (100 inline + 1 follow-up append)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = <Table tableWidth={1}>{rowsOf(101)}</Table>
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const mutating = mutatingAppends(fake)
+    expect(mutating).toHaveLength(2)
+    const createBody = mutating[0]!.body as { children: { table: { children: unknown[] } }[] }
+    expect(createBody.children[0]!.table.children).toHaveLength(100)
+    const overflowBody = mutating[1]!.body as { children: { type: string }[] }
+    expect(overflowBody.children).toHaveLength(1)
+    expect(overflowBody.children[0]!.type).toBe('table_row')
+
+    // Server has all 101 rows in the right order.
+    const top = fake.childrenOf(ROOT)
+    expect(top.map((b) => b.type)).toEqual(['table'])
+    const rows = fake.childrenOf(top[0]!.id)
+    expect(rows).toHaveLength(101)
+    // Row content preserved end-to-end: the i-th row carries cell text "i".
+    // Cells are rich_text[][] after host-config projection.
+    const firstCellText = (b: FakeBlock): string => {
+      const cells = b.payload.cells as readonly (readonly { text?: { content?: string } }[])[]
+      return cells[0]?.[0]?.text?.content ?? ''
+    }
+    expect(rows.map(firstCellText)).toEqual(Array.from({ length: 101 }, (_, i) => String(i)))
+  })
+
+  it('table with 150 rows → 2 PATCHes (100 inline + 50 follow-up)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = <Table tableWidth={1}>{rowsOf(150)}</Table>
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const mutating = mutatingAppends(fake)
+    expect(mutating).toHaveLength(2)
+    const createBody = mutating[0]!.body as { children: { table: { children: unknown[] } }[] }
+    expect(createBody.children[0]!.table.children).toHaveLength(100)
+    const overflowBody = mutating[1]!.body as { children: unknown[] }
+    expect(overflowBody.children).toHaveLength(50)
+
+    const top = fake.childrenOf(ROOT)
+    const rows = fake.childrenOf(top[0]!.id)
+    expect(rows).toHaveLength(150)
+  })
+
+  it('table with 250 rows → 3 PATCHes (100 + 100 + 50)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = <Table tableWidth={1}>{rowsOf(250)}</Table>
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const mutating = mutatingAppends(fake)
+    expect(mutating).toHaveLength(3)
+    const sizes = mutating.map((r) => {
+      const body = r.body as { children: { type: string; table?: { children?: unknown[] } }[] }
+      return body.children[0]!.type === 'table'
+        ? body.children[0]!.table!.children!.length
+        : body.children.length
+    })
+    expect(sizes).toEqual([100, 100, 50])
+  })
+
+  it('chunked table → warm resync is a no-op (all row tmpIds resolved)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = <Table tableWidth={1}>{rowsOf(150)}</Table>
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const before = fake.requests.length
+    const rerun = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(rerun.fallbackReason).toBeUndefined()
+    const newReqs = fake.requests.slice(before)
+    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+  })
+
+  it('nested atomic overflow (table with 150 rows inside column_list > column) — throws clearly', async () => {
+    // A big table nested inside an atomic column_list payload cannot be
+    // chunked with the current implementation: the table isn't the
+    // top-level atomic container, so its rows would have to ship inline
+    // with the column_list create — and that exceeds Notion's 100-per-level
+    // cap. Surface loudly rather than dropping rows silently. If this
+    // shape becomes common, extend chunking to nested levels.
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList>
+        <Column>
+          <Table tableWidth={1}>{rowsOf(150)}</Table>
+        </Column>
+        <Column>
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    await expect(
+      runWith(
+        fake,
+        sync(tree, { pageId: ROOT, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      ),
+    ).rejects.toThrow(/nested level/i)
   })
 
   it('page-id-drift: cache written for a different pageId cold-starts', async () => {
