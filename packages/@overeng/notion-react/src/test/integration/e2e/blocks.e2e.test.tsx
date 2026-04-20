@@ -26,7 +26,7 @@ import {
   ToDo,
   Toggle,
 } from '../../../components/blocks.tsx'
-import { Bold, Italic, Link } from '../../../components/inline.tsx'
+import { Bold, InlineEquation, Italic, Link } from '../../../components/inline.tsx'
 import { renderToNotion } from '../../../renderer/render-to-notion.ts'
 import {
   concatPlainText,
@@ -56,10 +56,9 @@ import {
  *   column_list + column, link_to_page, table_of_contents, breadcrumb,
  *   video / file / pdf / audio.
  *
- * Tests that currently fail due to a known renderer-projection gap are
- * marked `it.skip` with an inline TODO referencing the underlying bug;
- * they will flip green automatically once the renderer is fixed. See the
- * Stage-1 report for the issues tracking these gaps.
+ * The media types `video` / `audio` / `file` / `pdf` require uploaded
+ * (internal) file refs on create via the file_upload API; their tests are
+ * marked `it.skip` and will be exercised once the upload pipeline lands.
  */
 
 const DEFAULT_TIMEOUT = 60_000
@@ -119,19 +118,15 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
     DEFAULT_TIMEOUT,
   )
 
-  // TODO(renderer): `<Equation>` nested inside a `<Paragraph>` is silently
-  // dropped during rich-text flattening instead of producing an inline
-  // equation rich_text item (`{ type: 'equation', equation: {expression} }`).
-  // The resulting page contains only a bare paragraph. Tracked for v0.2.
-  it.skip(
-    'paragraph — equation inline',
+  it(
+    'paragraph — inline equation (<InlineEquation>)',
     async () => {
-      await withScratchPage('paragraph-equation-inline', (pageId) =>
+      await withScratchPage('paragraph-inline-equation', (pageId) =>
         Effect.gen(function* () {
           yield* renderToNotion(
             <Page>
               <Paragraph>
-                inline: <Equation expression="x^2 + y^2" />
+                inline: <InlineEquation expression="x^2 + y^2" />
               </Paragraph>
             </Page>,
             { pageId },
@@ -308,10 +303,7 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
     DEFAULT_TIMEOUT,
   )
 
-  // TODO(renderer): Toggle `title` prop should flatten to `{toggle:
-  // {rich_text: [...]}}`; currently renderer emits `{toggle: {title: string}}`
-  // which Notion silently drops the title for. See Stage-1 bug report.
-  it.skip(
+  it(
     'toggle — title becomes rich_text[] header',
     async () => {
       await withScratchPage('toggle-title', (pageId) =>
@@ -386,10 +378,7 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
   // callout — color + icon variants
   // -----------------------------------------------------------------
 
-  // TODO(renderer): Callout renderer emits `{callout: {icon: string, color:
-  // string}}`; Notion expects `{icon: {type: 'emoji', emoji: string}}` and
-  // `rich_text` instead of a string icon. Tracked as a bug.
-  it.skip(
+  it(
     'callout — emoji icon + colored background',
     async () => {
       await withScratchPage('callout-icon-color', (pageId) =>
@@ -445,9 +434,7 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
   // image — external URL
   // -----------------------------------------------------------------
 
-  // TODO(renderer): `Image` renderer emits `{image: {url}}`; Notion expects
-  // `{image: {type: 'external', external: {url}}}` for creation. Tracked.
-  it.skip(
+  it(
     'image — external URL',
     async () => {
       await withScratchPage('image-external', (pageId) =>
@@ -541,10 +528,7 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
   // column_list + column
   // -----------------------------------------------------------------
 
-  // TODO(renderer): Notion rejects empty column_list / column appends. The
-  // API requires an inline payload containing all columns + children in one
-  // request; the current renderer issues separate append ops per level.
-  it.skip(
+  it(
     'column_list + column (2 columns, each with a paragraph)',
     async () => {
       await withScratchPage('columns', (pageId) =>
