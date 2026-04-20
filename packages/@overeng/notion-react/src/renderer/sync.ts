@@ -7,7 +7,7 @@ import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
-import type { SyncFallbackReason, SyncResult } from './render-to-notion.ts'
+import { ATOMIC_CONTAINERS, type SyncFallbackReason, type SyncResult } from './render-to-notion.ts'
 import {
   buildCandidateTree,
   candidateToCache,
@@ -17,6 +17,7 @@ import {
   type CandidateTree,
   type DiffOp,
 } from './sync-diff.ts'
+import { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 
 /** Resolve every tmp-id reference in `tree` using the provided id map. */
 const resolveTreeIds = (tree: CandidateTree, idMap: ReadonlyMap<string, string>): void => {
@@ -196,13 +197,21 @@ const isAppendLike = (op: DiffOp): op is AppendLike => op.kind === 'append' || o
  * Each successful batch resolves the tmpId → server id for every block
  * it created, in order.
  */
+/** Minimal o11y context threaded through applyDiff. Nothing allocated when `onEvent` is undefined. */
+interface O11yCtx {
+  readonly onEvent: SyncEventHandler | undefined
+  nextOpId: () => number
+  opCount: { n: number }
+}
+
 const flushAppendRun = (
   run: readonly AppendLike[],
   idMap: Map<string, string>,
   resolve: (id: string) => string,
   onBatch: (
     committed: readonly { op: AppendLike; serverId: string; afterId: string | undefined }[],
-  ) => Effect.Effect<void, NotionSyncError>,
+  ) => Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient>,
+  o11y: O11yCtx,
 ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     if (run.length === 0) return
@@ -239,11 +248,31 @@ const flushAppendRun = (
     for (let start = 0; start < run.length; start += APPEND_CHILDREN_MAX) {
       const batch = run.slice(start, start + APPEND_CHILDREN_MAX)
       const children = batch.map((op) => appendBody(op.type, op.props))
+      const opId = o11y.nextOpId()
+      const t0 = o11y.onEvent !== undefined ? performance.now() : 0
+      if (o11y.onEvent !== undefined) {
+        o11y.onEvent(SyncEvent.OpIssued({ id: opId, kind: 'append', at: Date.now() }))
+      }
       const res = yield* NotionBlocks.append({
         blockId: parentId,
         children,
         ...(position !== undefined ? { position } : {}),
       }).pipe(
+        Effect.tapError((cause) =>
+          Effect.sync(() => {
+            if (o11y.onEvent !== undefined) {
+              o11y.onEvent(
+                SyncEvent.OpFailed({
+                  id: opId,
+                  kind: 'append',
+                  durationMs: performance.now() - t0,
+                  error: String(cause),
+                  at: Date.now(),
+                }),
+              )
+            }
+          }),
+        ),
         Effect.mapError(
           (cause) =>
             new NotionSyncError({
@@ -252,6 +281,21 @@ const flushAppendRun = (
             }),
         ),
       )
+      o11y.opCount.n += 1
+      if (o11y.onEvent !== undefined) {
+        o11y.onEvent(
+          SyncEvent.OpSucceeded({
+            id: opId,
+            kind: 'append',
+            durationMs: performance.now() - t0,
+            resultCount: (res.results as readonly unknown[]).length,
+            at: Date.now(),
+          }),
+        )
+        o11y.onEvent(
+          SyncEvent.BatchFlush({ issued: batch.length, batched: batch.length, at: Date.now() }),
+        )
+      }
       // Results are returned in the order submitted.
       const results = res.results as readonly { id?: string }[]
       const committed: { op: AppendLike; serverId: string; afterId: string | undefined }[] = []
@@ -287,8 +331,152 @@ const flushAppendRun = (
  * can persist a partial cache snapshot (#102). If a later op throws, the
  * cache reflects server state up to the last successful checkpoint.
  */
-const applyDiff = (
+/**
+ * Atomic-container preprocessing.
+ *
+ * Notion rejects creating a `column_list` (and other "atomic" containers like
+ * `column`) via staged-append: the parent must be created with all its
+ * required children inlined in the same request. The diff plan, however,
+ * emits one append per block (column_list first, then its columns, then
+ * their content). That single-op flow hits a validation error from the API
+ * on the first call because a column_list without columns is invalid.
+ *
+ * This pass folds every descendant `append` op of an atomic container into
+ * the container op's `props.children` as a nested Notion block-body array.
+ * The absorbed ops are removed from the resulting plan. After the atomic
+ * op's API call succeeds, the caller issues a recursive children retrieval
+ * to map absorbed tmpIds → server-minted ids.
+ *
+ * Only newly-created subtrees are folded (append ops reachable through the
+ * tmpId graph). Inserts anchored on existing blocks carry server ids and
+ * are treated as independent API calls. Updates and removes are left
+ * untouched.
+ */
+interface AbsorbedSubtree {
+  /** The atomic container op whose body now carries the nested payload. */
+  readonly containerTmpId: string
+  /**
+   * Absorbed descendants in the exact order they appear under the container,
+   * depth-first, matching the shape of `props.children` shipped to Notion.
+   * Used to map nested tmpIds → server ids after the atomic append returns.
+   */
+  readonly descendants: readonly { readonly tmpId: string; readonly depth: number }[]
+}
+
+const foldAtomicContainers = (
   ops: readonly DiffOp[],
+): { plan: DiffOp[]; absorbed: Map<string, AbsorbedSubtree> } => {
+  // Build parent→children index over append ops only (tmpId graph). Insert
+  // ops are also newly-created, but they anchor on a server id via afterId;
+  // they still become children of their `parent` in the new tree. So we
+  // include both `append` and `insert` in the child index, keyed by parent
+  // tmpId.
+  const childrenByParent = new Map<string, AppendLike[]>()
+  for (const op of ops) {
+    if (!isAppendLike(op)) continue
+    const list = childrenByParent.get(op.parent)
+    if (list === undefined) childrenByParent.set(op.parent, [op])
+    else list.push(op)
+  }
+
+  const absorbed = new Map<string, AbsorbedSubtree>()
+  const absorbedTmpIds = new Set<string>()
+
+  /** Build the nested Notion API body for `op`, recursively folding descendants. */
+  const buildNestedBody = (
+    op: AppendLike,
+    descendants: { tmpId: string; depth: number }[],
+    depth: number,
+  ): Record<string, unknown> => {
+    const kids = childrenByParent.get(op.tmpId) ?? []
+    const payload: Record<string, unknown> = { ...op.props }
+    if (kids.length > 0) {
+      payload.children = kids.map((k) => {
+        descendants.push({ tmpId: k.tmpId, depth })
+        absorbedTmpIds.add(k.tmpId)
+        return {
+          object: 'block',
+          type: k.type,
+          [k.type]: buildNestedBody(k, descendants, depth + 1),
+        }
+      })
+    }
+    return payload
+  }
+
+  const plan: DiffOp[] = []
+  for (const op of ops) {
+    if (isAppendLike(op) && ATOMIC_CONTAINERS.has(op.type)) {
+      const descendants: { tmpId: string; depth: number }[] = []
+      const foldedProps = buildNestedBody(op, descendants, 1)
+      absorbed.set(op.tmpId, { containerTmpId: op.tmpId, descendants })
+      // Replace the op with a version whose `props` carry nested children.
+      // The op's `candidate` still references the full subtree — fine: the
+      // working-cache checkpoint only records the top-level block, and final
+      // `resolveTreeIds` fills nested blockIds after the retrieve pass.
+      if (op.kind === 'append') {
+        plan.push({ ...op, props: foldedProps })
+      } else {
+        plan.push({ ...op, props: foldedProps })
+      }
+    } else if (isAppendLike(op) && absorbedTmpIds.has(op.tmpId)) {
+      // Subsumed into an ancestor atomic container. Skip.
+      continue
+    } else {
+      plan.push(op)
+    }
+  }
+  return { plan, absorbed }
+}
+
+/**
+ * Resolve tmpIds of an atomic container's absorbed descendants by walking
+ * the container's live child tree on Notion. Traversal order mirrors
+ * `buildNestedBody`: depth-first, children in submission order. Mutates
+ * `idMap` in place.
+ */
+const resolveAbsorbedTmpIds = (
+  containerServerId: string,
+  descendants: readonly { readonly tmpId: string; readonly depth: number }[],
+  idMap: Map<string, string>,
+): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    if (descendants.length === 0) return
+    // Retrieve the full subtree by DFS. Order: for each child of a given
+    // parent, consume descendants[cursor] (which corresponds to that child
+    // at the current depth), advance, then recurse into its children.
+    let cursor = 0
+    const walk = (
+      parentId: string,
+      depth: number,
+    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+      Effect.gen(function* () {
+        const live = yield* Stream.runCollect(
+          NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
+        ).pipe(
+          Effect.mapError(
+            (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
+          ),
+        )
+        for (const child of Chunk.toReadonlyArray(live)) {
+          if (cursor >= descendants.length) return
+          const expected = descendants[cursor]!
+          if (expected.depth !== depth) return
+          idMap.set(expected.tmpId, child.id)
+          cursor += 1
+          // Recurse if there's a following descendant at greater depth —
+          // means this node has absorbed grandchildren.
+          const next = descendants[cursor]
+          if (next !== undefined && next.depth > depth) {
+            yield* walk(child.id, depth + 1)
+          }
+        }
+      })
+    yield* walk(containerServerId, 1)
+  })
+
+const applyDiff = (
+  rawOps: readonly DiffOp[],
   idMap: Map<string, string>,
   checkpoint: (
     event:
@@ -303,9 +491,12 @@ const applyDiff = (
       | { readonly kind: 'updated'; readonly op: Extract<DiffOp, { kind: 'update' }> }
       | { readonly kind: 'removed'; readonly op: Extract<DiffOp, { kind: 'remove' }> },
   ) => Effect.Effect<void, NotionSyncError>,
+  o11y: O11yCtx,
+  priorHashById: ReadonlyMap<string, string>,
 ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const resolve = (id: string): string => idMap.get(id) ?? id
+    const { plan: ops, absorbed } = foldAtomicContainers(rawOps)
     let i = 0
     while (i < ops.length) {
       const op = ops[i]!
@@ -333,27 +524,130 @@ const applyDiff = (
           prevTmpId = next.tmpId
           i += 1
         }
-        yield* flushAppendRun(ops.slice(runStart, i) as AppendLike[], idMap, resolve, (committed) =>
-          checkpoint({ kind: 'appended', committed }),
+        yield* flushAppendRun(
+          ops.slice(runStart, i) as AppendLike[],
+          idMap,
+          resolve,
+          (committed) =>
+            Effect.gen(function* () {
+              // Resolve absorbed descendant tmpIds for any atomic containers
+              // in the committed batch. Must run before the checkpoint so the
+              // working cache sees the same idMap the candidate tree is about
+              // to be rewritten with (resolveTreeIds in sync()).
+              for (const c of committed) {
+                const sub = absorbed.get(c.op.tmpId)
+                if (sub !== undefined) {
+                  yield* resolveAbsorbedTmpIds(c.serverId, sub.descendants, idMap)
+                }
+              }
+              yield* checkpoint({ kind: 'appended', committed })
+            }),
+          o11y,
         )
         continue
       }
       switch (op.kind) {
         case 'update': {
+          // Elide updates whose post-update hash already matches the prior
+          // cached hash — e.g. re-synced after a checkpoint that already
+          // landed this update, or a hash-stable field reshuffle. Surfaces
+          // as UpdateNoop so consumers can measure hash churn.
+          const priorHash = priorHashById.get(op.blockId)
+          if (priorHash !== undefined && priorHash === op.hash) {
+            if (o11y.onEvent !== undefined) {
+              o11y.onEvent(
+                SyncEvent.UpdateNoop({
+                  id: o11y.nextOpId(),
+                  blockId: op.blockId,
+                  reason: 'hash-equal',
+                  at: Date.now(),
+                }),
+              )
+            }
+            yield* checkpoint({ kind: 'updated', op })
+            i += 1
+            break
+          }
+          const opId = o11y.nextOpId()
+          const t0 = o11y.onEvent !== undefined ? performance.now() : 0
+          if (o11y.onEvent !== undefined) {
+            o11y.onEvent(SyncEvent.OpIssued({ id: opId, kind: 'update', at: Date.now() }))
+          }
           yield* NotionBlocks.update({ blockId: op.blockId, [op.type]: op.props }).pipe(
+            Effect.tapError((cause) =>
+              Effect.sync(() => {
+                if (o11y.onEvent !== undefined) {
+                  o11y.onEvent(
+                    SyncEvent.OpFailed({
+                      id: opId,
+                      kind: 'update',
+                      durationMs: performance.now() - t0,
+                      error: String(cause),
+                      at: Date.now(),
+                    }),
+                  )
+                }
+              }),
+            ),
             Effect.mapError(
               (cause) => new NotionSyncError({ reason: 'notion-update-failed', cause }),
             ),
           )
+          o11y.opCount.n += 1
+          if (o11y.onEvent !== undefined) {
+            o11y.onEvent(
+              SyncEvent.OpSucceeded({
+                id: opId,
+                kind: 'update',
+                durationMs: performance.now() - t0,
+                resultCount: 1,
+                at: Date.now(),
+              }),
+            )
+            o11y.onEvent(SyncEvent.BatchFlush({ issued: 1, batched: 1, at: Date.now() }))
+          }
           yield* checkpoint({ kind: 'updated', op })
           break
         }
         case 'remove': {
+          const opId = o11y.nextOpId()
+          const t0 = o11y.onEvent !== undefined ? performance.now() : 0
+          if (o11y.onEvent !== undefined) {
+            o11y.onEvent(SyncEvent.OpIssued({ id: opId, kind: 'delete', at: Date.now() }))
+          }
           yield* NotionBlocks.delete({ blockId: op.blockId }).pipe(
+            Effect.tapError((cause) =>
+              Effect.sync(() => {
+                if (o11y.onEvent !== undefined) {
+                  o11y.onEvent(
+                    SyncEvent.OpFailed({
+                      id: opId,
+                      kind: 'delete',
+                      durationMs: performance.now() - t0,
+                      error: String(cause),
+                      at: Date.now(),
+                    }),
+                  )
+                }
+              }),
+            ),
             Effect.mapError(
               (cause) => new NotionSyncError({ reason: 'notion-delete-failed', cause }),
             ),
           )
+          o11y.opCount.n += 1
+          if (o11y.onEvent !== undefined) {
+            o11y.onEvent(
+              SyncEvent.OpSucceeded({
+                id: opId,
+                kind: 'delete',
+                durationMs: performance.now() - t0,
+                resultCount: 1,
+                at: Date.now(),
+              }),
+            )
+            o11y.onEvent(SyncEvent.BatchFlush({ issued: 1, batched: 1, at: Date.now() }))
+          }
           yield* checkpoint({ kind: 'removed', op })
           break
         }
@@ -408,13 +702,37 @@ const driftedBase = (rootId: string, liveIds: readonly string[]): CacheTree => (
  */
 export const sync = (
   element: ReactNode,
-  opts: { readonly pageId: string; readonly cache: NotionCache },
+  opts: {
+    readonly pageId: string
+    readonly cache: NotionCache
+    readonly onEvent?: SyncEventHandler
+  },
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
+    const onEvent = opts.onEvent
+    const syncStartMs = onEvent !== undefined ? performance.now() : 0
+    let opIdCounter = 0
+    const o11y: O11yCtx = {
+      onEvent,
+      nextOpId: () => {
+        opIdCounter += 1
+        return opIdCounter
+      },
+      opCount: { n: 0 },
+    }
     const prior = yield* opts.cache.load.pipe(
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
     )
     const candidate = buildCandidateTree(element, opts.pageId)
+    if (onEvent !== undefined) {
+      onEvent(
+        SyncEvent.SyncStart({
+          pageId: opts.pageId,
+          rootBlockCount: candidate.children.length,
+          at: Date.now(),
+        }),
+      )
+    }
 
     const schemaMismatch = prior !== undefined && prior.schemaVersion !== CACHE_SCHEMA_VERSION
     // Cache was written for a different page. Treat as a cold start: the prior
@@ -441,13 +759,45 @@ export const sync = (
     let drifted = false
     let liveTopLevelIds: readonly string[] = []
     if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
+      const retrieveOpId = o11y.nextOpId()
+      const t0 = onEvent !== undefined ? performance.now() : 0
+      if (onEvent !== undefined) {
+        onEvent(SyncEvent.OpIssued({ id: retrieveOpId, kind: 'retrieve', at: Date.now() }))
+      }
       const liveChildren = yield* Stream.runCollect(
         NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
       ).pipe(
+        Effect.tapError((cause) =>
+          Effect.sync(() => {
+            if (onEvent !== undefined) {
+              onEvent(
+                SyncEvent.OpFailed({
+                  id: retrieveOpId,
+                  kind: 'retrieve',
+                  durationMs: performance.now() - t0,
+                  error: String(cause),
+                  at: Date.now(),
+                }),
+              )
+            }
+          }),
+        ),
         Effect.mapError(
           (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
         ),
       )
+      o11y.opCount.n += 1
+      if (onEvent !== undefined) {
+        onEvent(
+          SyncEvent.OpSucceeded({
+            id: retrieveOpId,
+            kind: 'retrieve',
+            durationMs: performance.now() - t0,
+            resultCount: Chunk.size(liveChildren),
+            at: Date.now(),
+          }),
+        )
+      }
       const liveIds: string[] = []
       for (const b of Chunk.toReadonlyArray(liveChildren)) {
         if (b.in_trash !== true) liveIds.push(b.id)
@@ -490,7 +840,32 @@ export const sync = (
             ? 'schema-mismatch'
             : undefined
 
+    if (onEvent !== undefined) {
+      const cacheKind: 'hit' | 'miss' | 'drift' | 'page-id-drift' = pageIdDrift
+        ? 'page-id-drift'
+        : drifted
+          ? 'drift'
+          : prior === undefined || schemaMismatch
+            ? 'miss'
+            : 'hit'
+      onEvent(SyncEvent.CacheOutcome({ kind: cacheKind, pageId: opts.pageId, at: Date.now() }))
+      if (fallbackReason !== undefined) {
+        onEvent(SyncEvent.FallbackTriggered({ reason: fallbackReason, at: Date.now() }))
+      }
+    }
+
     const plan = diff(base, candidate)
+    // Prior hashes indexed by server block id — for UpdateNoop detection
+    // when diff emits an update whose hash already matches the cached one
+    // (e.g. post-checkpoint retry, hash-stable reshuffle).
+    const priorHashById = new Map<string, string>()
+    const indexHash = (n: CacheNode): void => {
+      priorHashById.set(n.blockId, n.hash)
+      for (const c of n.children) indexHash(c)
+    }
+    if (prior !== undefined && !pageIdDrift && !drifted) {
+      for (const c of prior.children) indexHash(c)
+    }
     const idMap = new Map<string, string>()
     // Working copy of the cache tree — updated after each successful op,
     // flushed to the backend as a per-batch checkpoint (#102). On
@@ -499,35 +874,45 @@ export const sync = (
     // the blocks that actually landed.
     const working = initWorkingCache(base)
     const flushCheckpoint: Effect.Effect<void, NotionSyncError> = Effect.suspend(() =>
-      opts.cache
-        .save(workingToCacheTree(working))
-        .pipe(
-          Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
+      opts.cache.save(workingToCacheTree(working)).pipe(
+        Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (onEvent !== undefined) {
+              onEvent(SyncEvent.CheckpointWritten({ pageId: opts.pageId, at: Date.now() }))
+            }
+          }),
         ),
+      ),
     )
 
     const resolve = (id: string): string => idMap.get(id) ?? id
-    yield* applyDiff(plan, idMap, (event) =>
-      Effect.gen(function* () {
-        if (event.kind === 'appended') {
-          for (const { op, serverId, afterId } of event.committed) {
-            const parentId = resolve(op.parent)
-            const node: WorkingNode = {
-              key: op.candidate.key,
-              blockId: serverId,
-              type: op.type,
-              hash: op.candidate.hash,
-              children: [],
+    yield* applyDiff(
+      plan,
+      idMap,
+      (event) =>
+        Effect.gen(function* () {
+          if (event.kind === 'appended') {
+            for (const { op, serverId, afterId } of event.committed) {
+              const parentId = resolve(op.parent)
+              const node: WorkingNode = {
+                key: op.candidate.key,
+                blockId: serverId,
+                type: op.type,
+                hash: op.candidate.hash,
+                children: [],
+              }
+              workingAppend(working, parentId, node, afterId)
             }
-            workingAppend(working, parentId, node, afterId)
+          } else if (event.kind === 'updated') {
+            workingUpdate(working, event.op.blockId, event.op.type, event.op.hash)
+          } else {
+            workingRemove(working, event.op.blockId)
           }
-        } else if (event.kind === 'updated') {
-          workingUpdate(working, event.op.blockId, event.op.type, event.op.hash)
-        } else {
-          workingRemove(working, event.op.blockId)
-        }
-        yield* flushCheckpoint
-      }),
+          yield* flushCheckpoint
+        }),
+      o11y,
+      priorHashById,
     )
     resolveTreeIds(candidate, idMap)
 
@@ -541,5 +926,33 @@ export const sync = (
       .pipe(Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })))
 
     const counts = tallyDiff(plan)
+    if (onEvent !== undefined) {
+      onEvent(
+        SyncEvent.SyncEnd({
+          pageId: opts.pageId,
+          durationMs: performance.now() - syncStartMs,
+          ok: true,
+          opCount: o11y.opCount.n,
+          ...(fallbackReason !== undefined ? { fallbackReason } : {}),
+          at: Date.now(),
+        }),
+      )
+    }
     return fallbackReason === undefined ? counts : { ...counts, fallbackReason }
-  })
+  }).pipe(
+    Effect.tapError(() =>
+      Effect.sync(() => {
+        if (opts.onEvent !== undefined) {
+          opts.onEvent(
+            SyncEvent.SyncEnd({
+              pageId: opts.pageId,
+              durationMs: 0,
+              ok: false,
+              opCount: 0,
+              at: Date.now(),
+            }),
+          )
+        }
+      }),
+    ),
+  )

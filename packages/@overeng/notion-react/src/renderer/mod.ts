@@ -25,6 +25,7 @@ export {
   type SyncFallbackReason,
 } from './render-to-notion.ts'
 export { sync } from './sync.ts'
+export { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 export {
   buildCandidateTree,
   candidateToCache,
