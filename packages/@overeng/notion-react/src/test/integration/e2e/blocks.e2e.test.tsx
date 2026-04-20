@@ -684,3 +684,106 @@ describe.skipIf(SKIP_E2E)('v0.1 block round-trip (e2e)', () => {
     DEFAULT_TIMEOUT,
   )
 })
+
+/**
+ * Nested-block children under list-ish / text-leaf parents. Notion's API
+ * accepts `children: Block[]` on these types; the renderer must route block
+ * children as fibers (not fold them into parent `rich_text`).
+ */
+describe.skipIf(SKIP_E2E)('nested block children under list-ish / text-leaf parents (e2e)', () => {
+  const cases = [
+    {
+      label: 'bulleted_list_item',
+      tree: (
+        <Page>
+          <BulletedListItem>
+            parent
+            <Paragraph>child</Paragraph>
+          </BulletedListItem>
+        </Page>
+      ),
+      parentType: 'bulleted_list_item',
+    },
+    {
+      label: 'numbered_list_item',
+      tree: (
+        <Page>
+          <NumberedListItem>
+            parent
+            <Paragraph>child</Paragraph>
+          </NumberedListItem>
+        </Page>
+      ),
+      parentType: 'numbered_list_item',
+    },
+    {
+      label: 'to_do',
+      tree: (
+        <Page>
+          <ToDo>
+            parent
+            <Paragraph>child</Paragraph>
+          </ToDo>
+        </Page>
+      ),
+      parentType: 'to_do',
+    },
+    {
+      label: 'callout',
+      tree: (
+        <Page>
+          <Callout icon="💡">
+            parent
+            <Paragraph>child</Paragraph>
+          </Callout>
+        </Page>
+      ),
+      parentType: 'callout',
+    },
+    {
+      label: 'quote',
+      tree: (
+        <Page>
+          <Quote>
+            parent
+            <Paragraph>child</Paragraph>
+          </Quote>
+        </Page>
+      ),
+      parentType: 'quote',
+    },
+    {
+      label: 'paragraph',
+      tree: (
+        <Page>
+          <Paragraph>
+            parent
+            <Paragraph>child</Paragraph>
+          </Paragraph>
+        </Page>
+      ),
+      parentType: 'paragraph',
+    },
+  ] as const
+
+  for (const { label, tree, parentType } of cases) {
+    it(
+      `${label} — nested paragraph lands as block child (not rich_text)`,
+      async () => {
+        await withScratchPage(`nested-${label}`, (pageId) =>
+          Effect.gen(function* () {
+            yield* renderToNotion(tree, { pageId })
+            const read = yield* readPageTree(pageId)
+            const parent = read.find((b) => b.type === parentType)
+            expect(parent, `expected parent ${parentType} on page`).toBeDefined()
+            expect(firstPlainText(parent!)).toBe('parent')
+            const child = parent!.children.find((c) => c.type === 'paragraph')
+            expect(child, `expected nested paragraph under ${parentType}`).toBeDefined()
+            expect(firstPlainText(child!)).toBe('child')
+          }),
+        )
+      },
+      DEFAULT_TIMEOUT,
+    )
+  }
+})

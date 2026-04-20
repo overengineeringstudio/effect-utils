@@ -105,11 +105,15 @@ export const flattenRichText = (children: ReactNode): RichTextItem[] => {
     }
     if (!isReactElement(node)) return
     const tag = getInlineTag(node)
-    const kids = node.props.children
     if (tag === undefined) {
-      walk(kids, ann, link)
+      // Only inline-tagged components contribute to rich_text. Host elements
+      // (e.g. `<Paragraph>`) and untagged wrappers are treated as block
+      // children — reconciled as fibers instead of folded into rich_text.
+      // This is what keeps nested blocks under list-ish / text-leaf parents
+      // from being silently swallowed.
       return
     }
+    const kids = node.props.children
     switch (tag.kind) {
       case 'annotation': {
         walk(kids, { ...ann, ...tag.patch }, link)

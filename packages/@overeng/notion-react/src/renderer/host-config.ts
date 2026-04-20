@@ -34,15 +34,14 @@ export type Container = {
 }
 
 /**
- * Blocks whose JSX children are flattened to `rich_text[]`.
+ * Blocks whose JSX children contribute a `rich_text[]` projection to the
+ * parent's payload. Inline text/annotation/link/mention/equation children are
+ * flattened into `rich_text`; any JSX host elements nested under the same
+ * parent (e.g. a `<Paragraph>` under a `<BulletedListItem>`) are reconciled
+ * as block-child fibers instead of being folded into rich_text.
  *
- * `toggle` is intentionally excluded: its header text is provided via the
- * `title` prop, and its `children` are nested blocks reconciled as fibers.
- *
- * For v0 other list-ish blocks (`bulleted_list_item`, `numbered_list_item`,
- * `to_do`, `callout`, `quote`) also treat `children` as rich text; nesting
- * further blocks inside them is not yet supported — it will be revisited
- * together with the diffing algorithm.
+ * `toggle` is excluded: its header text comes from the `title` prop, so its
+ * JSX children are purely nested blocks.
  */
 const TEXT_LEAF = new Set<BlockType>([
   'paragraph',
@@ -210,10 +209,12 @@ const hostConfig: any = {
   resetAfterCommit: () => {},
   getPublicInstance: (i: Instance) => i,
 
-  // Rich-text leaves project `children` to a rich_text[] via blockProps, so
-  // React must NOT recurse into fibers for their children.
-  shouldSetTextContent: (type: BlockType | 'raw', _props: Record<string, unknown>) =>
-    type !== 'raw' && TEXT_LEAF.has(type as BlockType),
+  // Always create fibers for children. Rich-text projection reads `props.children`
+  // directly (see `blockProps`), so inline text/annotation elements are flattened
+  // from the JSX tree. Host-element children (nested blocks under list-ish /
+  // text-leaf parents) then reconcile as proper child fibers rather than being
+  // absorbed into the parent's rich_text.
+  shouldSetTextContent: () => false,
 
   createInstance: (
     type: BlockType | 'raw',

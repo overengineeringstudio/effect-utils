@@ -46,7 +46,11 @@ export const Color = tag<{ readonly value: string; readonly children?: ReactNode
 )
 
 /** Inline text wrapper. Equivalent to raw text children but explicit. */
-export const Text = ({ children }: { readonly children?: ReactNode }) => <>{children}</>
+/** Inline passthrough wrapper: recurses into children with no annotation patch. */
+export const Text = tag<{ readonly children?: ReactNode }>(({ children }) => <>{children}</>, {
+  kind: 'annotation',
+  patch: {},
+})
 
 /** Inline hyperlink; nested text inherits the `href`. */
 export const Link = tag<{ readonly href: string; readonly children?: ReactNode }>(

@@ -4,9 +4,13 @@ import {
   BulletedListItem,
   Callout,
   Heading1,
+  NumberedListItem,
   Paragraph,
+  Quote,
+  ToDo,
   Toggle,
 } from '../components/blocks.tsx'
+import { Bold } from '../components/inline.tsx'
 import { createNotionRoot } from './host-config.ts'
 import { OpBuffer } from './op-buffer.ts'
 
@@ -128,5 +132,80 @@ describe('host-config', () => {
     if (op.kind !== 'append') return
     expect(op.type).toBe('bulleted_list_item')
     expect(Array.isArray(op.props.rich_text)).toBe(true)
+  })
+
+  it.each([
+    [
+      'bulleted_list_item',
+      <BulletedListItem key="b">
+        top<Paragraph>nested</Paragraph>
+      </BulletedListItem>,
+    ],
+    [
+      'numbered_list_item',
+      <NumberedListItem key="n">
+        top<Paragraph>nested</Paragraph>
+      </NumberedListItem>,
+    ],
+    [
+      'to_do',
+      <ToDo key="t" checked={false}>
+        top<Paragraph>nested</Paragraph>
+      </ToDo>,
+    ],
+    [
+      'callout',
+      <Callout key="c" icon="💡">
+        top<Paragraph>nested</Paragraph>
+      </Callout>,
+    ],
+    [
+      'quote',
+      <Quote key="q">
+        top<Paragraph>nested</Paragraph>
+      </Quote>,
+    ],
+  ])(
+    'nests a paragraph under %s without folding its text into parent rich_text',
+    (type, element) => {
+      const { buffer, root } = makeRoot()
+      root.render(element)
+      // Expect parent append + nested paragraph append.
+      expect(buffer.ops.map((o) => ('type' in o ? o.type : o.kind))).toEqual([type, 'paragraph'])
+      const parent = buffer.ops[0]!
+      expect(parent.kind).toBe('append')
+      if (parent.kind !== 'append') return
+      // Parent's rich_text carries only "top" — not the nested paragraph's text.
+      const rt = parent.props.rich_text as Array<{ text: { content: string } }>
+      expect(rt.map((r) => r.text.content).join('')).toBe('top')
+      const nested = buffer.ops[1]!
+      if (nested.kind !== 'append') return
+      const nestedRt = nested.props.rich_text as Array<{ text: { content: string } }>
+      expect(nestedRt.map((r) => r.text.content).join('')).toBe('nested')
+    },
+  )
+
+  it('keeps inline annotations in rich_text while nesting blocks', () => {
+    const { buffer, root } = makeRoot()
+    root.render(
+      <BulletedListItem>
+        hi <Bold>there</Bold>
+        <Paragraph>child</Paragraph>
+      </BulletedListItem>,
+    )
+    expect(buffer.ops.map((o) => ('type' in o ? o.type : o.kind))).toEqual([
+      'bulleted_list_item',
+      'paragraph',
+    ])
+    const parent = buffer.ops[0]!
+    if (parent.kind !== 'append') return
+    const rt = parent.props.rich_text as Array<{
+      text: { content: string }
+      annotations: { bold: boolean }
+    }>
+    expect(rt.map((r) => [r.text.content, r.annotations.bold])).toEqual([
+      ['hi ', false],
+      ['there', true],
+    ])
   })
 })
