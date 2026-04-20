@@ -1057,6 +1057,8 @@ ${args.join(' ')}`,
  */
 export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
   const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
+  const skipCsv = opts?.skip?.join(',') ?? ''
+  const quotedSkipCsv = shellSingleQuote(skipCsv)
   return {
     name: 'Sync megarepo dependencies',
     env: { MEGAREPO_STORE: jobLocalMegarepoStore },
@@ -1067,6 +1069,9 @@ if [ -z "$EU_REV" ] || [ "$EU_REV" = "null" ]; then
 fi
 mkdir -p "$MEGAREPO_STORE"
 echo "Using job-local megarepo store: $MEGAREPO_STORE"
+if [ -n "${'${GITHUB_ENV:-}'}" ]; then
+  printf 'MEGAREPO_SKIP_MEMBERS=%s\n' ${quotedSkipCsv} >> "$GITHUB_ENV"
+fi
 nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --all${skipArgs !== '' ? ` ${skipArgs}` : ''}`,
     shell: 'bash',
   }

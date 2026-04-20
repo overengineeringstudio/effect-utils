@@ -160,6 +160,11 @@ describe('ci workflow pnpm cache defaults', () => {
       'nix run "github:overengineeringstudio/effect-utils?ref=$EU_REF&rev=$EU_REV#megarepo"',
     )
   })
+
+  it('exports skipped megarepo members for downstream lock-based checks', () => {
+    expect(applyMegarepoLockStepSource).toContain('MEGAREPO_SKIP_MEMBERS')
+    expect(applyMegarepoLockStepSource).toContain(`printf 'MEGAREPO_SKIP_MEMBERS=%s\\n'`)
+  })
 })
 
 describe('ci workflow shared auth helpers', () => {

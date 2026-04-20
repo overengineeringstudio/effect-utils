@@ -3,6 +3,7 @@
 # Uses the `mr` CLI for megarepo operations.
 #
 # Tasks:
+# - mr:bootstrap - Materialize the minimal lock-based members needed for local tooling
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
 # - mr:apply - Apply megarepo.lock exactly (mr apply)
@@ -13,18 +14,28 @@
 # - syncAll: Whether to use `--all` (recursive nested sync). Default: true.
 #   Set to false in CI where root members are already synced and nested sync
 #   may fail due to credential scoping or version mismatches.
+# - bootstrapMembers: Minimal members that must exist before tooling like genie
+#   can evaluate. Uses lock-based `mr apply --only ...` and never fetches remote
+#   refs. Default: [ ] (task becomes a no-op)
+# - checkSkipMembers: Members that `mr:check` should ignore when a repo
+#   intentionally does a partial lock apply (for example CI skipping a sensitive
+#   or heavyweight member). Default: [ ]
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
 #   tasks."mr:fetch-apply".after = [ "pnpm:install:megarepo" ];
 {
   syncAll ? true,
+  bootstrapMembers ? [ ],
+  checkSkipMembers ? [ ],
 }:
 { lib, pkgs, ... }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   jq = "${pkgs.jq}/bin/jq";
+  bootstrapOnlyArgs = lib.concatMapStringsSep " " (member: "--only ${lib.escapeShellArg member}") bootstrapMembers;
+  staticCheckSkipCsv = lib.concatStringsSep "," checkSkipMembers;
 
   # Single-pass jq script that compares megarepo.lock member commits against
   # a Nix lock file (devenv.lock or flake.lock). Handles multiple inputs
@@ -62,7 +73,67 @@ let
     return 0
   '';
 
+  loadCheckSkipMembersScript = ''
+    _mr_skip_csv=${lib.escapeShellArg staticCheckSkipCsv}
+    if [ -n "''${MEGAREPO_SKIP_MEMBERS:-}" ]; then
+      if [ -n "$_mr_skip_csv" ]; then
+        _mr_skip_csv="$_mr_skip_csv,''${MEGAREPO_SKIP_MEMBERS}"
+      else
+        _mr_skip_csv="''${MEGAREPO_SKIP_MEMBERS}"
+      fi
+    fi
+
+    should_skip_member() {
+      local member="$1"
+      if [ -z "$_mr_skip_csv" ]; then
+        return 1
+      fi
+
+      case ",$_mr_skip_csv," in
+        *,"$member",*) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+  '';
+
   tasks = {
+    "mr:bootstrap" = {
+      guard = "mr";
+      description = "Materialize bootstrap members from megarepo.lock";
+      exec = trace.exec "mr:bootstrap" ''
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+          exit 0
+        fi
+
+        if [ "${toString (builtins.length bootstrapMembers)}" -eq 0 ]; then
+          exit 0
+        fi
+
+        mr apply ${bootstrapOnlyArgs}
+      '';
+      status = trace.status "mr:bootstrap" "path" ''
+        if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+          exit 0
+        fi
+
+        if [ "${toString (builtins.length bootstrapMembers)}" -eq 0 ]; then
+          exit 0
+        fi
+
+        if [ ! -d ./repos ]; then
+          exit 1
+        fi
+
+        ${lib.concatMapStringsSep "\n" (member: ''
+          if [ ! -L "./repos/${member}" ] && [ ! -d "./repos/${member}" ]; then
+            exit 1
+          fi
+        '') bootstrapMembers}
+
+        exit 0
+      '';
+    };
+
     "mr:fetch-apply" = {
       guard = "mr";
       description = "Fetch latest refs and apply to workspace";
@@ -118,7 +189,7 @@ let
     "mr:check" = {
       guard = "mr";
       description = "Verify megarepo setup is complete";
-      after = [ "mr:fetch-apply" ];
+      after = [ "mr:apply" ];
       # Check that repos dir exists and all members have symlinks
       status = trace.status "mr:check" "path" ''
         set -o pipefail
@@ -131,9 +202,14 @@ let
           exit 1
         fi
 
+        ${loadCheckSkipMembersScript}
+
         # Verify all configured members have symlinks in repos/
         members=$(mr ls --output json | ${jq} -r 'select(._tag == "Success") | .value.members[].name') || exit 1
         for member in $members; do
+          if should_skip_member "$member"; then
+            continue
+          fi
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             exit 1
           fi
@@ -149,14 +225,19 @@ let
 
         if [ ! -d ./repos ]; then
           echo "[devenv] Missing repos/ directory." >&2
-          echo "[devenv] Fix: devenv tasks run mr:fetch-apply" >&2
+          echo "[devenv] Fix: devenv tasks run mr:apply" >&2
           exit 1
         fi
+
+        ${loadCheckSkipMembersScript}
 
         # Check for missing member symlinks
         missing=""
         members=$(mr ls --output json | ${jq} -r 'select(._tag == "Success") | .value.members[].name') || exit 1
         for member in $members; do
+          if should_skip_member "$member"; then
+            continue
+          fi
           if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
             missing="$missing $member"
           fi
@@ -164,7 +245,7 @@ let
 
         if [ -n "$missing" ]; then
           echo "[devenv] Missing member symlinks:$missing" >&2
-          echo "[devenv] Fix: devenv tasks run mr:fetch-apply" >&2
+          echo "[devenv] Fix: devenv tasks run mr:apply" >&2
           exit 1
         fi
       '';
@@ -172,7 +253,6 @@ let
 
     "mr:lock-sync-check" = {
       description = "Verify Nix lock files match megarepo.lock revisions";
-      after = [ "mr:fetch-apply" ];
       status = trace.status "mr:lock-sync-check" "binary" ''
         if [ ! -f ./megarepo.lock ]; then
           exit 0
@@ -226,7 +306,7 @@ let
         if [ "$failed" -eq 1 ]; then
           echo ""
           echo "Lock files out of sync with megarepo.lock."
-          echo "Fix: dt mr:fetch-apply"
+          echo "Fix: dt mr:apply"
           exit 1
         fi
       '';
@@ -242,4 +322,13 @@ in
   ++ cliGuard.fromTasks tasks;
 
   tasks = cliGuard.stripGuards tasks;
+}
+// lib.optionalAttrs (bootstrapMembers != [ ]) {
+  # Repos that source-import genie helpers from bootstrap members should not
+  # attempt to run genie before those members exist in repos/.
+  tasks."genie:run".after = lib.mkAfter [ "mr:bootstrap" ];
+  tasks."genie:watch".after = lib.mkAfter [ "mr:bootstrap" ];
+  tasks."genie:check".after = lib.mkAfter [ "mr:bootstrap" ];
+  tasks."lint:check:genie".after = lib.mkAfter [ "mr:bootstrap" ];
+  tasks."lint:check:genie:coverage".after = lib.mkAfter [ "mr:bootstrap" ];
 }
