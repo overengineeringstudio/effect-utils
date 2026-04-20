@@ -22,6 +22,13 @@ export interface FakeNotion {
   readonly requests: readonly FakeRequest[]
   /** Tree rooted at `pageId` built from the live `blocks` map. */
   readonly childrenOf: (parentId: string) => readonly FakeBlock[]
+  /**
+   * Install a failure hook that runs before each handled request. Return a
+   * non-undefined value from the hook to throw (simulate an API error);
+   * return undefined to proceed normally. Used by tests that exercise
+   * mid-batch failure paths.
+   */
+  readonly failOn: (hook: (req: FakeRequest) => Error | undefined) => void
 }
 
 export interface FakeBlock {
@@ -100,10 +107,18 @@ export const createFakeNotion = (): FakeNotion => {
     return list
   }
 
+  let failureHook: ((req: FakeRequest) => Error | undefined) | undefined
+
   const handle = (req: HttpClientRequest.HttpClientRequest, body: unknown): unknown => {
     const url = new URL(req.url)
     const path = url.pathname
-    requests.push({ method: req.method, path, body })
+    const fakeReq: FakeRequest = { method: req.method, path, body }
+    requests.push(fakeReq)
+
+    if (failureHook !== undefined) {
+      const err = failureHook(fakeReq)
+      if (err !== undefined) throw err
+    }
 
     const appendChildrenMatch = path.match(/^\/v1\/blocks\/([^/]+)\/children$/)
     const blockOpMatch = path.match(/^\/v1\/blocks\/([^/]+)$/)
@@ -220,5 +235,8 @@ export const createFakeNotion = (): FakeNotion => {
       return requests
     },
     childrenOf: (id) => childrenOf(id),
+    failOn: (hook) => {
+      failureHook = hook
+    },
   }
 }
