@@ -158,6 +158,20 @@ export const createFakeNotion = (): FakeNotion => {
             validateAtomic(nested)
           }
         }
+        if (child.type === 'table') {
+          // Notion rejects `table` creates without nested `table_row` children
+          // inlined — same contract as column_list. Error surfaces as
+          // `body.children[n].table.children should be defined`.
+          const tb = child.table as { children?: unknown[] } | undefined
+          if (tb?.children === undefined || tb.children.length < 1) {
+            throw new Error(
+              `fake-notion: table must be created with >=1 nested table_row child in the same request (validation_error)`,
+            )
+          }
+          for (const row of tb.children as { type: string; [k: string]: unknown }[]) {
+            validateAtomic(row)
+          }
+        }
       }
       for (const child of b.children) validateAtomic(child)
       const list = getChildList(parent)

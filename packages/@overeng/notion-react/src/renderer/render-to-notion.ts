@@ -16,7 +16,16 @@ import { OpBuffer } from './op-buffer.ts'
  * we collapse the op-buffer subtree into a single nested API body instead
  * of issuing one call per block.
  */
-export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>(['column_list'])
+export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>([
+  'column_list',
+  // `table` has the same staged-append prohibition as `column_list`: Notion
+  // rejects a bare `table` append with `body.children[n].table.children
+  // should be defined`. Rows must ship inlined in the same request. Row
+  // cells are projected via `TableRow.cells` into the `table_row` props by
+  // host-config, so `table_row` itself has no child-append ops to fold and
+  // stays out of this set.
+  'table',
+])
 
 /**
  * Reason the warm-path diff was bypassed. Unset on a clean incremental sync.

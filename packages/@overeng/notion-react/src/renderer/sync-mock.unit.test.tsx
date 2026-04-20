@@ -6,7 +6,15 @@ import { describe, expect, it } from 'vitest'
 import type { NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
-import { Column, ColumnList, Heading2, Image, Paragraph } from '../components/blocks.ts'
+import {
+  Column,
+  ColumnList,
+  Heading2,
+  Image,
+  Paragraph,
+  Table,
+  TableRow,
+} from '../components/blocks.ts'
 import { h } from '../components/h.ts'
 import { createFakeNotion, type FakeNotion } from '../test/mock-client.ts'
 import { sync } from './sync.ts'
@@ -442,6 +450,109 @@ describe('sync() against in-memory fake Notion', () => {
     expect(rerun.fallbackReason).toBeUndefined()
     const newReqs = fake.requests.slice(before)
     expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+  })
+
+  // ---------------------------------------------------------------
+  // Atomic container: `table` — same staged-append prohibition as
+  // column_list. Rows must ship inlined; cells travel inside each
+  // table_row's props (rich_text[][]), not as nested blocks.
+  // ---------------------------------------------------------------
+  it('table → single appendChildren with nested table_row children + cells as props', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Table tableWidth={2}>
+        <TableRow cells={['A', 'B']} />
+        <TableRow cells={['C', 'D']} />
+      </Table>
+    )
+    const res = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // 1 table + 2 table_rows = 3 diff-level appends, all folded into one call.
+    expect(res.appends).toBe(3)
+    expect(res.updates + res.inserts + res.removes).toBe(0)
+
+    const mutating = fake.requests.filter(
+      (r) => r.method === 'PATCH' && /\/blocks\/[^/]+\/children$/.test(r.path),
+    )
+    expect(mutating).toHaveLength(1)
+    const body = mutating[0]!.body as {
+      children: {
+        type: string
+        table: {
+          table_width?: number
+          children: { type: string; table_row: { cells: unknown[][] } }[]
+        }
+      }[]
+    }
+    expect(body.children).toHaveLength(1)
+    expect(body.children[0]!.type).toBe('table')
+    expect(body.children[0]!.table.table_width).toBe(2)
+    expect(body.children[0]!.table.children).toHaveLength(2)
+    // Cells are inlined into table_row props, not projected as blocks.
+    expect(body.children[0]!.table.children[0]!.type).toBe('table_row')
+    expect(body.children[0]!.table.children[0]!.table_row.cells).toHaveLength(2)
+
+    // Warm re-sync is a no-op (nested table_row tmpIds resolved to server ids).
+    const before = fake.requests.length
+    const rerun = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(rerun).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(rerun.fallbackReason).toBeUndefined()
+    const newReqs = fake.requests.slice(before)
+    expect(newReqs.map((r) => r.method)).toEqual(['GET'])
+  })
+
+  it('mixed atomic nesting: ColumnList with a table inside a column', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <ColumnList>
+        <Column>
+          <Table>
+            <TableRow cells={['A']} />
+          </Table>
+        </Column>
+        <Column>
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>
+    )
+    const res = await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // 1 column_list + 2 columns + 1 table + 1 table_row + 1 paragraph = 6.
+    expect(res.appends).toBe(6)
+    // Everything folds into one PATCH on the page.
+    const mutating = fake.requests.filter(
+      (r) => r.method === 'PATCH' && /\/blocks\/[^/]+\/children$/.test(r.path),
+    )
+    expect(mutating).toHaveLength(1)
+
+    // Server tree shape: ROOT > column_list > [column, column].
+    const top = fake.childrenOf(ROOT)
+    expect(top.map((b) => b.type)).toEqual(['column_list'])
+    const cols = fake.childrenOf(top[0]!.id)
+    expect(cols.map((b) => b.type)).toEqual(['column', 'column'])
+    // First column has a table with one row.
+    const leftKids = fake.childrenOf(cols[0]!.id)
+    expect(leftKids.map((b) => b.type)).toEqual(['table'])
+    const rows = fake.childrenOf(leftKids[0]!.id)
+    expect(rows.map((b) => b.type)).toEqual(['table_row'])
+    // Second column has a paragraph.
+    const rightKids = fake.childrenOf(cols[1]!.id)
+    expect(rightKids.map((b) => b.type)).toEqual(['paragraph'])
   })
 
   it('page-id-drift: cache written for a different pageId cold-starts', async () => {

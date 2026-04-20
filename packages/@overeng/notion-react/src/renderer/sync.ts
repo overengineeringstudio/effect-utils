@@ -406,6 +406,13 @@ const foldAtomicContainers = (
 
   const plan: DiffOp[] = []
   for (const op of ops) {
+    if (isAppendLike(op) && absorbedTmpIds.has(op.tmpId)) {
+      // Already folded into an ancestor atomic container's nested payload
+      // (e.g. a `table` nested inside a `column_list > column`). Must be
+      // checked before the atomic-container branch so nested atomic
+      // containers don't get re-folded as their own top-level API call.
+      continue
+    }
     if (isAppendLike(op) && ATOMIC_CONTAINERS.has(op.type)) {
       const descendants: { tmpId: string; depth: number }[] = []
       const foldedProps = buildNestedBody(op, descendants, 1)
@@ -414,14 +421,7 @@ const foldAtomicContainers = (
       // The op's `candidate` still references the full subtree — fine: the
       // working-cache checkpoint only records the top-level block, and final
       // `resolveTreeIds` fills nested blockIds after the retrieve pass.
-      if (op.kind === 'append') {
-        plan.push({ ...op, props: foldedProps })
-      } else {
-        plan.push({ ...op, props: foldedProps })
-      }
-    } else if (isAppendLike(op) && absorbedTmpIds.has(op.tmpId)) {
-      // Subsumed into an ancestor atomic container. Skip.
-      continue
+      plan.push({ ...op, props: foldedProps })
     } else {
       plan.push(op)
     }

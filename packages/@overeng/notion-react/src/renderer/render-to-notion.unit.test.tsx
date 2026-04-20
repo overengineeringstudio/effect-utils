@@ -10,6 +10,10 @@ describe('render-to-notion atomic-container handling', () => {
     expect(ATOMIC_CONTAINERS.has('column_list')).toBe(true)
   })
 
+  it('marks table as atomic (rows must ship inlined, same contract as column_list)', () => {
+    expect(ATOMIC_CONTAINERS.has('table')).toBe(true)
+  })
+
   it('builds a nested body for ColumnList+Column+Paragraph so a single API call carries the full tree', () => {
     const buffer = new OpBuffer('root')
     const root = createNotionRoot(buffer, 'root')
