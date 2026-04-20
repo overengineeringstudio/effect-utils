@@ -347,8 +347,13 @@ describe('sync() against in-memory fake Notion', () => {
       }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
     )
     expect(res.fallbackReason).toBe('cache-drift')
-    // Full rebuild: 10 fresh appends, no updates/removes.
-    expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0, removes: 0 })
+    // Drift rebuild: remove every still-live top-level block (so the page
+    // converges on the candidate tree, not just accumulates duplicates) and
+    // append the fresh candidate tree. `removes` equals the live top-level
+    // block count at drift time — here: original 6 top-level blocks minus
+    // the one archived out-of-band = 5.
+    expect(res).toMatchObject({ appends: 10, updates: 0, inserts: 0 })
+    expect(res.removes).toBeGreaterThan(0)
   })
 
   it('page-id-drift: cache written for a different pageId cold-starts', async () => {

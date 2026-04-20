@@ -310,14 +310,27 @@ const applyDiff = (
     while (i < ops.length) {
       const op = ops[i]!
       if (isAppendLike(op)) {
-        // Coalesce consecutive append/insert ops with the same parent
-        // (comparing unresolved parent ids — tmp or real — since the
-        // resolution is stable within a diff plan).
+        // Coalesce consecutive append/insert ops with the same parent into a
+        // single API call — but only when the ops chain contiguously, i.e.
+        // each op's `afterId` references the previous op's tmpId. Breaking
+        // the run on a non-chained `insert.afterId` preserves sibling order
+        // when a single sync has multiple distinct insertion points under
+        // the same parent (e.g. diff of `[A,B,C]` → `[A,X,B,Y,C]` emits
+        // `insert X after A` and `insert Y after B`; those must land in
+        // separate batches or Y ends up adjacent to X).
         const runStart = i
         const runParent = op.parent
+        let prevTmpId = op.tmpId
+        i += 1
         while (i < ops.length) {
           const next = ops[i]!
           if (!isAppendLike(next) || next.parent !== runParent) break
+          // An `insert` continues the run only when its afterId chains off
+          // the previous op's tmpId. `append` never has an afterId; it
+          // continues the run unconditionally (consecutive tail-appends
+          // batch naturally).
+          if (next.kind === 'insert' && next.afterId !== prevTmpId) break
+          prevTmpId = next.tmpId
           i += 1
         }
         yield* flushAppendRun(ops.slice(runStart, i) as AppendLike[], idMap, resolve, (committed) =>
@@ -353,6 +366,26 @@ const emptyCache = (rootId: string): CacheTree => ({
   schemaVersion: CACHE_SCHEMA_VERSION,
   rootId,
   children: [],
+})
+
+/**
+ * Build a cache-shaped base from the live top-level block ids on drift.
+ * Uses synthetic keys (`drift:<blockId>`) that can't collide with candidate
+ * keys, so `diff()` emits a `remove` for every live block and `append`s for
+ * the candidate tree. Children/hash are empty — we don't know the live
+ * subtree, and diff only needs top-level identity to decide remove vs
+ * retain. The single recover pass fully re-seeds the cache.
+ */
+const driftedBase = (rootId: string, liveIds: readonly string[]): CacheTree => ({
+  schemaVersion: CACHE_SCHEMA_VERSION,
+  rootId,
+  children: liveIds.map((blockId) => ({
+    key: `drift:${blockId}`,
+    blockId,
+    type: 'unknown',
+    hash: '',
+    children: [],
+  })),
 })
 
 /**
@@ -406,6 +439,7 @@ export const sync = (
     // children are verified lazily through the checkpoint round-trip since
     // every mutation resolves to a real server id.
     let drifted = false
+    let liveTopLevelIds: readonly string[] = []
     if (prior !== undefined && !schemaMismatch && !pageIdDrift) {
       const liveChildren = yield* Stream.runCollect(
         NotionBlocks.retrieveChildrenStream({ blockId: opts.pageId }),
@@ -414,18 +448,38 @@ export const sync = (
           (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
         ),
       )
-      const liveIds = new Set<string>()
+      const liveIds: string[] = []
       for (const b of Chunk.toReadonlyArray(liveChildren)) {
-        if (b.in_trash !== true) liveIds.add(b.id)
+        if (b.in_trash !== true) liveIds.push(b.id)
       }
-      const expectedIds = new Set(prior.children.map((c) => c.blockId))
-      if (liveIds.size !== expectedIds.size || [...expectedIds].some((id) => !liveIds.has(id))) {
+      liveTopLevelIds = liveIds
+      const expectedIds = prior.children.map((c) => c.blockId)
+      // Ordered sequence equality — out-of-band reorders leave the block-id
+      // set intact but scramble order, and we must rebuild to converge.
+      if (liveIds.length !== expectedIds.length) {
         drifted = true
+      } else {
+        for (let k = 0; k < expectedIds.length; k++) {
+          if (liveIds[k] !== expectedIds[k]) {
+            drifted = true
+            break
+          }
+        }
       }
     }
 
-    const useCold = prior === undefined || drifted || pageIdDrift
-    const base: CacheTree = useCold ? emptyCache(opts.pageId) : prior
+    // Cold start when either there's no prior cache or the prior cache is
+    // for a different page (pageIdDrift). On `drifted` we keep a synthesized
+    // base built from the *actual* live top-level ids so the diff emits
+    // removes for the orphaned blocks and appends for the candidate tree —
+    // otherwise a drifted page would get duplicated content (old blocks
+    // remain, new copies append) and never converge.
+    const useCold = prior === undefined || pageIdDrift
+    const base: CacheTree = useCold
+      ? emptyCache(opts.pageId)
+      : drifted
+        ? driftedBase(opts.pageId, liveTopLevelIds)
+        : prior
     const fallbackReason: SyncFallbackReason | undefined = pageIdDrift
       ? 'page-id-drift'
       : drifted
