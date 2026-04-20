@@ -403,8 +403,13 @@ export const ColumnList = ({ children }: ColumnListProps) => (
   <div className="notion-column-list">{children}</div>
 )
 
-export const Column = ({ children }: ColumnProps) => (
-  <div className="notion-column">{groupBlocks(children)}</div>
+export const Column = ({ children, widthRatio }: ColumnProps) => (
+  <div
+    className="notion-column"
+    style={widthRatio === undefined ? undefined : { flexGrow: widthRatio, flexBasis: 0 }}
+  >
+    {groupBlocks(children)}
+  </div>
 )
 
 export const LinkToPage = ({ pageId }: LinkToPageProps) => (

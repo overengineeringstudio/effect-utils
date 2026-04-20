@@ -53,7 +53,7 @@ export type TableProps = Children & {
 }
 export type TableRowProps = { readonly cells: readonly ReactNode[] }
 export type ColumnListProps = Children
-export type ColumnProps = Children
+export type ColumnProps = Children & { readonly widthRatio?: number }
 
 export type LinkToPageProps = { readonly pageId: string }
 export type TableOfContentsProps = Record<string, never>

@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  Breadcrumb,
   BulletedListItem,
   Callout,
+  ChildDatabase,
+  ChildPage,
+  Column,
+  ColumnList,
   Heading1,
   Image,
+  LinkToPage,
   NumberedListItem,
   Paragraph,
   Pdf,
@@ -284,6 +290,62 @@ describe('host-config', () => {
     expect(cells[0]![0]!.annotations.bold).toBe(false)
     expect(cells[2]![0]!.text.content).toBe('Highlight')
     expect(cells[2]![0]!.annotations.bold).toBe(true)
+  })
+
+  it('projects Column widthRatio as Notion width_ratio', () => {
+    const { buffer, root } = makeRoot()
+    root.render(
+      <ColumnList>
+        <Column widthRatio={2}>
+          <Paragraph>left</Paragraph>
+        </Column>
+        <Column widthRatio={1}>
+          <Paragraph>right</Paragraph>
+        </Column>
+      </ColumnList>,
+    )
+    const cols = buffer.ops.filter((o) => 'type' in o && o.type === 'column')
+    expect(cols).toHaveLength(2)
+    const [c0, c1] = cols
+    if (c0?.kind !== 'append' || c1?.kind !== 'append') return
+    expect(c0.props.width_ratio).toBe(2)
+    expect(c1.props.width_ratio).toBe(1)
+  })
+
+  it('projects LinkToPage pageId as Notion page_id', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<LinkToPage pageId="abc-123" />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('link_to_page')
+    expect(op.props).toEqual({ page_id: 'abc-123' })
+  })
+
+  it('projects ChildPage title verbatim', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<ChildPage title="Notes" />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('child_page')
+    expect(op.props).toEqual({ title: 'Notes' })
+  })
+
+  it('projects Breadcrumb as an empty payload', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Breadcrumb />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('breadcrumb')
+    expect(op.props).toEqual({})
+  })
+
+  it('projects ChildDatabase passthrough content verbatim', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<ChildDatabase content={{ title: 'Tasks' }} />)
+    const op = buffer.ops[0]!
+    if (op.kind !== 'append') return
+    expect(op.type).toBe('child_database')
+    expect(op.props).toEqual({ title: 'Tasks' })
   })
 
   it('keeps inline annotations in rich_text while nesting blocks', () => {

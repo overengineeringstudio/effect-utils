@@ -163,6 +163,9 @@ const blockProps = (
     if (typeof props.hasColumnHeader === 'boolean') p.has_column_header = props.hasColumnHeader
     if (typeof props.hasRowHeader === 'boolean') p.has_row_header = props.hasRowHeader
   }
+  if (type === 'column' && typeof props.widthRatio === 'number') {
+    p.width_ratio = props.widthRatio
+  }
   if (type === 'table_row' && Array.isArray(props.cells)) {
     // Notion table_row body is `cells: rich_text[][]` — each cell is its own
     // rich_text array. Flatten each cell independently; strings / tagged

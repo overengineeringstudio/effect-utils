@@ -108,7 +108,8 @@ export const Table = ({ children, tableWidth, hasColumnHeader, hasRowHeader }: T
 }
 export const TableRow = ({ cells }: TableRowProps) => h('table_row', { cells })
 export const ColumnList = ({ children }: ColumnListProps) => h('column_list', null, children)
-export const Column = ({ children }: ColumnProps) => h('column', null, children)
+export const Column = ({ children, widthRatio }: ColumnProps) =>
+  h('column', widthRatio === undefined ? null : { widthRatio }, children)
 export const LinkToPage = ({ pageId }: LinkToPageProps) => h('link_to_page', { pageId })
 export const TableOfContents = () => h('table_of_contents', null)
 export const ChildPage = ({ title }: ChildPageProps) =>
