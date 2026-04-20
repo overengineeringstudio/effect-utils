@@ -8,6 +8,13 @@ Full design docs: [`context/vrs/vision.md`](./context/vrs/vision.md) ·
 [`requirements.md`](./context/vrs/requirements.md) ·
 [`spec.md`](./context/vrs/spec.md).
 
+## Scope
+
+This library renders React → Notion **blocks**. Notion **databases**
+(creating/updating DBs, rows, schema, views) are out of scope — use
+[`@overeng/notion-effect-client`](../notion-effect-client) directly for
+database operations.
+
 ## Why
 
 Notion pages are trees, but the Notion API is imperative:
@@ -135,6 +142,14 @@ With stable `blockKey`s, the diff satisfies:
 Without `blockKey` on a middle insert, the diff sees every later
 positional key as "changed" and falls back to remove + re-insert of the
 tail.
+
+## Manual-edit semantics
+
+The React tree is the source of truth. When a user edits a synced block
+directly in Notion, the next `sync()` overwrites that edit with the
+tree's projection — this is by design, not a bug. If you need content
+that tolerates manual edits, keep it outside the synced region (e.g.
+below the last block the library manages, or on a separate page).
 
 ## Cache
 

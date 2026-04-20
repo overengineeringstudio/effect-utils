@@ -15,18 +15,33 @@ falsify your change, and escalate only when it cannot.
 ### Unit (`vitest`)
 
 Covers `flattenRichText`, `buildCandidateTree` / `diff` / `tallyDiff`, the
-reconciler host-config, and each block component's prop wiring. No
-network, no Notion types at runtime — pure reducer-style assertions.
+reconciler host-config, each block component's prop wiring, and the
+`FsCache` schema / round-trip. No network, no Notion types at runtime —
+pure reducer-style assertions.
+
+Current coverage: ~105 tests across 6 files (`src/**/*.unit.test.ts{,x}`,
+excluding the mock-client driver test below).
 
 ```sh
+CI=1 pnpm vitest run             # from packages/@overeng/notion-react/
+# or
 pnpm --filter @overeng/notion-react test
 ```
 
 ### Mock-client integration
 
 Runs the full reconciler ↔ diff ↔ client loop with a Notion client that
-records calls but does not hit the network. Good for asserting the
-sequence of `append`/`update`/`delete` ops without paying for latency.
+records calls but does not hit the network. Asserts the ordered sequence
+of `append`/`update`/`delete` ops and the `FsCache` round-trip without
+paying for latency.
+
+Key fixtures:
+
+- `src/test/mock-client.ts` — in-memory `NotionBlocks` that records ops
+  and mirrors server state
+- `src/renderer/sync-mock.unit.test.tsx` — driver for the full `sync()`
+  loop (7 tests: cold append, no-op resync, update, mid-insert, delete,
+  cache drift, nested children)
 
 ```sh
 pnpm --filter @overeng/notion-react test:integration
@@ -34,7 +49,9 @@ pnpm --filter @overeng/notion-react test:integration
 
 ### Live E2E
 
-Drives the renderer against a real Notion workspace. Each test creates
+Drives the renderer round-trip against a real Notion workspace
+(`src/test/integration/e2e/*.e2e.test.tsx` — blocks, mutations,
+edge-cases, prop-projection). Each test creates
 its own short-lived scratch subpage under `NOTION_TEST_PARENT_PAGE_ID`,
 performs the operation, reads the server back, and archives the scratch
 page on teardown — even on failure. The harness serializes tests onto
