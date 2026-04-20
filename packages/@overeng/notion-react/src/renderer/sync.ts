@@ -36,9 +36,91 @@ const appendBody = (type: string, props: Record<string, unknown>): Record<string
 })
 
 /**
- * Apply a pre-computed diff plan against Notion. Accumulates tmp-id →
- * real-id mappings into `idMap` as the server issues ids for appended /
- * inserted blocks.
+ * Notion's `append children` endpoint caps each request at 100 children.
+ * Consecutive appends/inserts sharing a parent are coalesced into batched
+ * API calls bounded by this limit.
+ */
+export const APPEND_CHILDREN_MAX = 100
+
+type AppendLike = Extract<DiffOp, { kind: 'append' | 'insert' }>
+
+const isAppendLike = (op: DiffOp): op is AppendLike => op.kind === 'append' || op.kind === 'insert'
+
+/**
+ * Flush a run of consecutive append/insert ops against the same parent in
+ * `≤APPEND_CHILDREN_MAX`-sized batches. Positional semantics:
+ *
+ * - If the run starts with an `insert` carrying an `afterId`, the first
+ *   batch is issued with `position: after_block = afterId`. Subsequent
+ *   batches append to the tail of the previous batch's last block —
+ *   which (because Notion appends in order) is the same as appending
+ *   normally to the parent, since the batch just landed at the tail.
+ *
+ *   Concretely we *explicitly* thread `after_block` from batch N to
+ *   batch N+1 using the last minted id of batch N. This keeps the
+ *   insertion point stable even if someone else is concurrently
+ *   appending to the same parent.
+ *
+ * - If the run starts with an `append` (no `afterId`), every batch is a
+ *   plain tail-append.
+ *
+ * Each successful batch resolves the tmpId → server id for every block
+ * it created, in order.
+ */
+const flushAppendRun = (
+  run: readonly AppendLike[],
+  idMap: Map<string, string>,
+  resolve: (id: string) => string,
+): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    if (run.length === 0) return
+    const parentId = resolve(run[0]!.parent)
+    const first = run[0]!
+    // `afterId` for the first batch; subsequent batches override with the
+    // last-minted id from the prior batch. Empty afterId ('' head marker
+    // or `append` kind) ⇒ no `position` envelope at all.
+    let nextAfter: string | undefined =
+      first.kind === 'insert' && first.afterId !== '' ? resolve(first.afterId) : undefined
+
+    for (let start = 0; start < run.length; start += APPEND_CHILDREN_MAX) {
+      const batch = run.slice(start, start + APPEND_CHILDREN_MAX)
+      const children = batch.map((op) => appendBody(op.type, op.props))
+      const res = yield* NotionBlocks.append({
+        blockId: parentId,
+        children,
+        ...(nextAfter !== undefined
+          ? { position: { type: 'after_block' as const, after_block: { id: nextAfter } } }
+          : {}),
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NotionSyncError({
+              reason: first.kind === 'insert' ? 'notion-insert-failed' : 'notion-append-failed',
+              cause,
+            }),
+        ),
+      )
+      // Results are returned in the order submitted.
+      const results = res.results as readonly { id?: string }[]
+      let lastId: string | undefined
+      for (let i = 0; i < batch.length; i++) {
+        const serverId = results[i]?.id
+        if (serverId !== undefined) {
+          idMap.set(batch[i]!.tmpId, serverId)
+          lastId = serverId
+        }
+      }
+      // Anchor subsequent batches on the last-minted id so positional
+      // semantics are preserved under concurrent modifications.
+      nextAfter = lastId ?? nextAfter
+    }
+  })
+
+/**
+ * Apply a pre-computed diff plan against Notion. Consecutive append/insert
+ * ops sharing a parent are coalesced into batched API calls (#101).
+ * Accumulates tmp-id → real-id mappings into `idMap` as the server issues
+ * ids for appended / inserted blocks.
  */
 const applyDiff = (
   ops: readonly DiffOp[],
@@ -46,39 +128,24 @@ const applyDiff = (
 ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const resolve = (id: string): string => idMap.get(id) ?? id
-    for (const op of ops) {
+    let i = 0
+    while (i < ops.length) {
+      const op = ops[i]!
+      if (isAppendLike(op)) {
+        // Coalesce consecutive append/insert ops with the same parent
+        // (comparing unresolved parent ids — tmp or real — since the
+        // resolution is stable within a diff plan).
+        const runStart = i
+        const runParent = op.parent
+        while (i < ops.length) {
+          const next = ops[i]!
+          if (!isAppendLike(next) || next.parent !== runParent) break
+          i += 1
+        }
+        yield* flushAppendRun(ops.slice(runStart, i) as AppendLike[], idMap, resolve)
+        continue
+      }
       switch (op.kind) {
-        case 'append': {
-          const res = yield* NotionBlocks.append({
-            blockId: resolve(op.parent),
-            children: [appendBody(op.type, op.props)],
-          }).pipe(
-            Effect.mapError(
-              (cause) => new NotionSyncError({ reason: 'notion-append-failed', cause }),
-            ),
-          )
-          const first = res.results[0] as { id?: string } | undefined
-          if (first?.id !== undefined) idMap.set(op.tmpId, first.id)
-          break
-        }
-        case 'insert': {
-          const parentId = resolve(op.parent)
-          const afterId = op.afterId === '' ? undefined : resolve(op.afterId)
-          const res = yield* NotionBlocks.append({
-            blockId: parentId,
-            children: [appendBody(op.type, op.props)],
-            ...(afterId !== undefined
-              ? { position: { type: 'after_block' as const, after_block: { id: afterId } } }
-              : {}),
-          }).pipe(
-            Effect.mapError(
-              (cause) => new NotionSyncError({ reason: 'notion-insert-failed', cause }),
-            ),
-          )
-          const first = res.results[0] as { id?: string } | undefined
-          if (first?.id !== undefined) idMap.set(op.tmpId, first.id)
-          break
-        }
         case 'update': {
           yield* NotionBlocks.update({ blockId: op.blockId, [op.type]: op.props }).pipe(
             Effect.mapError(
@@ -96,6 +163,7 @@ const applyDiff = (
           break
         }
       }
+      i += 1
     }
   })
 

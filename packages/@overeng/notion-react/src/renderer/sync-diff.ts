@@ -221,6 +221,19 @@ const diffChildren = (
   }
 
   // Emit inserts/updates in candidate order. `prevRef` anchors inserts.
+  // We defer brand-new subtrees and retained-child recursions until after
+  // the main loop so that the top-level sibling ops form a contiguous run
+  // (parent-grouped) that the sync driver can coalesce into batched API
+  // calls — #101.
+  type Deferred =
+    | { readonly kind: 'new-subtree'; readonly parent: string; readonly children: CandidateNode[] }
+    | {
+        readonly kind: 'retained-recurse'
+        readonly blockId: string
+        readonly cache: readonly CacheNode[]
+        readonly candidate: CandidateNode[]
+      }
+  const deferred: Deferred[] = []
   let prevRef = ''
   for (let i = 0; i < candidateChildren.length; i++) {
     const cand = candidateChildren[i]!
@@ -236,7 +249,12 @@ const diffChildren = (
           props: cand.props,
         })
       }
-      diffChildren(prior.blockId, prior.children, cand.children, ops)
+      deferred.push({
+        kind: 'retained-recurse',
+        blockId: prior.blockId,
+        cache: prior.children,
+        candidate: cand.children,
+      })
       prevRef = prior.blockId
     } else {
       // Either brand-new OR a reorder (key exists in cache but not retained).
@@ -265,8 +283,19 @@ const diffChildren = (
         })
       }
       cand.blockId = tmpId
-      emitAppendsForNew(tmpId, cand.children, ops)
+      if (cand.children.length > 0) {
+        deferred.push({ kind: 'new-subtree', parent: tmpId, children: cand.children })
+      }
       prevRef = tmpId
+    }
+  }
+  // Drain deferred subtrees after the current parent's sibling run so the
+  // sync driver sees a single coalesce-able append-run per parent.
+  for (const d of deferred) {
+    if (d.kind === 'new-subtree') {
+      emitAppendsForNew(d.parent, d.children, ops)
+    } else {
+      diffChildren(d.blockId, d.cache, d.candidate, ops)
     }
   }
 
@@ -280,8 +309,15 @@ const diffChildren = (
 }
 
 /**
- * For a brand-new candidate subtree, emit append ops for all descendants in
- * pre-order. Parent refs chain via tmpIds.
+ * For a brand-new candidate subtree, emit append ops in level-order (BFS):
+ * all direct children first (so they form a single contiguous sibling run
+ * that can be batched by the sync driver), then recurse into each child's
+ * own subtree. Parent refs chain via tmpIds that are assigned *before*
+ * recursion.
+ *
+ * This ordering is what lets the sync driver coalesce N sibling appends
+ * under a common parent into ⌈N/100⌉ API calls (#101) even when the
+ * siblings themselves have children.
  */
 const emitAppendsForNew = (parentId: string, children: CandidateNode[], ops: DiffOp[]): void => {
   for (const cand of children) {
@@ -295,7 +331,9 @@ const emitAppendsForNew = (parentId: string, children: CandidateNode[], ops: Dif
       candidate: cand,
     })
     cand.blockId = tmpId
-    emitAppendsForNew(tmpId, cand.children, ops)
+  }
+  for (const cand of children) {
+    if (cand.children.length > 0) emitAppendsForNew(cand.blockId!, cand.children, ops)
   }
 }
 

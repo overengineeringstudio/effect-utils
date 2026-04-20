@@ -51,14 +51,10 @@ describe('pagination + batch boundaries', () => {
     expect(rt.map((r) => r.text.content).join('')).toBe(long)
   })
 
-  it('>100 siblings append each flow through the API without renderer-side batching', async () => {
-    // Notion caps `append` at 100 children per request; the current sync
-    // driver issues one API call per op, so 150 candidate siblings
-    // materialize as 150 separate POSTs. Assert the per-op shape and the
-    // resulting server state.
-    //
-    // XXX: Renderer does not coalesce consecutive appends under the same
-    // parent into batched API requests. Tracked as follow-up for #95.
+  it('>100 siblings → 2 batched append API calls (100 + 50) (#101)', async () => {
+    // Notion caps `append children` at 100 per request. The sync driver
+    // coalesces consecutive sibling appends/inserts into ≤100-child
+    // batches, so 150 candidate siblings materialize as 2 PATCH calls.
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const paragraphs: ReactNode[] = []
@@ -74,15 +70,130 @@ describe('pagination + batch boundaries', () => {
       ),
     )
     expect(res).toMatchObject({ appends: 150, updates: 0, inserts: 0, removes: 0 })
-    // `NotionBlocks.append` issues PATCH against `/v1/blocks/{id}/children`
-    // (the Notion API actually accepts either POST or PATCH for append; the
-    // Effect client uses PATCH). The mock client stubs both.
     const appendReqs = fake.requests.filter(
       (r) => r.method === 'PATCH' && r.path === `/v1/blocks/${ROOT}/children`,
     )
-    expect(appendReqs.length).toBeGreaterThanOrEqual(2)
-    expect(appendReqs.length).toBe(150)
+    expect(appendReqs.length).toBe(2)
+    const childCounts = appendReqs.map((r) => (r.body as { children: unknown[] }).children.length)
+    expect(childCounts).toEqual([100, 50])
     expect(fake.childrenOf(ROOT)).toHaveLength(150)
+  })
+
+  it('append-run broken by an update emits 3 API calls (50 append + 1 update + 50 append) (#101)', async () => {
+    // Seed the cache with a single retained block sandwiched between
+    // new siblings: candidate = [p0..p49, retained, p50..p99]. The
+    // retained middle block forces the sync driver to flush the first
+    // append run, issue an `update` (as a no-op since hash matches, this
+    // is constructed so hashes differ), then flush the second run.
+    const fake = createFakeNotion()
+    // Pre-populate server state + cache so the middle block is retained
+    // but its props change (forcing an update op).
+    const seedParent = ROOT
+    // Simulate the retained middle block being present server-side and
+    // captured in the cache via an initial sync.
+    const seedTree = h('paragraph', { blockKey: 'mid' }, 'old')
+    await runWith(
+      fake,
+      sync(seedTree, { pageId: seedParent, cache: InMemoryCache.make() }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Build a cache that mirrors the server state after the seed sync.
+    const midId = fake.childrenOf(ROOT)[0]!.id
+    const seedCache = InMemoryCache.make({
+      schemaVersion: 2,
+      rootId: ROOT,
+      children: [
+        {
+          key: 'k:mid',
+          blockId: midId,
+          type: 'paragraph',
+          // Intentionally bogus hash to force an update op on re-sync.
+          hash: 'stale',
+          children: [],
+        },
+      ],
+    })
+    // Clear the request log before the measured sync.
+    const before = fake.requests.length
+    const pre: ReactNode[] = []
+    const post: ReactNode[] = []
+    for (let i = 0; i < 50; i++) {
+      pre.push(<Fragment key={`a${i}`}>{h('paragraph', { blockKey: `a${i}` }, `a${i}`)}</Fragment>)
+      post.push(<Fragment key={`b${i}`}>{h('paragraph', { blockKey: `b${i}` }, `b${i}`)}</Fragment>)
+    }
+    await runWith(
+      fake,
+      sync(
+        <>
+          {pre}
+          {h('paragraph', { blockKey: 'mid' }, 'new')}
+          {post}
+        </>,
+        { pageId: ROOT, cache: seedCache },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const newReqs = fake.requests.slice(before)
+    const appendReqs = newReqs.filter(
+      (r) => r.method === 'PATCH' && r.path === `/v1/blocks/${ROOT}/children`,
+    )
+    const updateReqs = newReqs.filter(
+      (r) => r.method === 'PATCH' && r.path === `/v1/blocks/${midId}`,
+    )
+    // The first 50 (a*) are inserts (retained 'mid' follows), the last 50
+    // (b*) are appends — two separate runs split by the update of 'mid'.
+    expect(appendReqs.length).toBe(2)
+    expect(updateReqs.length).toBe(1)
+    const childCounts = appendReqs.map((r) => (r.body as { children: unknown[] }).children.length)
+    expect(childCounts).toEqual([50, 50])
+  })
+
+  it('150 siblings across 3 parents → 3 API calls (50 each) (#101)', () => {
+    // Three Toggle parents each containing 50 new paragraph children.
+    // Batching must not cross parent boundaries — each Toggle gets its
+    // own single append call (50 ≤ 100).
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const toggles: ReactNode[] = []
+    for (let t = 0; t < 3; t++) {
+      const kids: ReactNode[] = []
+      for (let i = 0; i < 50; i++) {
+        kids.push(
+          <Fragment key={`t${t}-p${i}`}>
+            {h('paragraph', { blockKey: `t${t}-p${i}` }, `x`)}
+          </Fragment>,
+        )
+      }
+      toggles.push(
+        <Toggle key={`t${t}`} blockKey={`t${t}`} title={`t${t}`}>
+          {kids}
+        </Toggle>,
+      )
+    }
+    return runWith(
+      fake,
+      sync(<>{toggles}</>, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    ).then(() => {
+      // 1 call appending the 3 Toggle parents to ROOT (batch of 3) +
+      // 1 call per Toggle appending its 50 children.
+      const rootAppends = fake.requests.filter(
+        (r) => r.method === 'PATCH' && r.path === `/v1/blocks/${ROOT}/children`,
+      )
+      expect(rootAppends.length).toBe(1)
+      expect((rootAppends[0]!.body as { children: unknown[] }).children.length).toBe(3)
+      // Collect all child-append calls (to the 3 freshly-minted Toggle ids).
+      const toggleIds = fake.childrenOf(ROOT).map((b) => b.id)
+      expect(toggleIds).toHaveLength(3)
+      for (const tid of toggleIds) {
+        const reqs = fake.requests.filter(
+          (r) => r.method === 'PATCH' && r.path === `/v1/blocks/${tid}/children`,
+        )
+        expect(reqs.length).toBe(1)
+        expect((reqs[0]!.body as { children: unknown[] }).children.length).toBe(50)
+      }
+    })
   })
 
   describe('empty containers render cleanly', () => {
@@ -107,46 +218,38 @@ describe('pagination + batch boundaries', () => {
     })
   })
 
-  it('mid-batch failure: cache rolls back, server retains partial writes', async () => {
-    // The sync driver runs all ops inside a single Effect.gen; the first
-    // failing API call short-circuits the whole Effect, so `cache.save`
-    // never runs.
+  it('mid-batch failure: cache rolls back, server retains partial batch writes', async () => {
+    // With batched appends (#101), 150 paragraphs emit 2 API calls
+    // (100 + 50). Failing the 2nd batch leaves the first 100 on the
+    // server, but the sync driver still short-circuits before calling
+    // `cache.save`, so the cache stays empty.
     //
-    // Concretely: server-side the mock retains the first 50 appended
-    // blocks (partial persistence on the upstream), but our local cache
-    // stays whatever it was BEFORE the failed sync (empty here). This is
-    // the "all-or-nothing from the cache's perspective" behaviour and the
-    // most important signal for v0.1 — a subsequent retry will diff
-    // against an empty cache and attempt to re-append all 100 blocks,
-    // duplicating the 50 already on the server.
-    //
-    // XXX: Partial-server / empty-cache on failure means retries
-    // duplicate server state. Tracked as follow-up for #95.
+    // This pins the pre-checkpointing behaviour: partial-server with
+    // an empty cache means a retry will diff against an empty cache and
+    // duplicate the first 100 blocks. Addressed by batch-level cache
+    // checkpointing in #102.
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const paragraphs: ReactNode[] = []
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 150; i++) {
       paragraphs.push(
         <Fragment key={i}>{h('paragraph', { blockKey: `p${i}` }, `line ${i}`)}</Fragment>,
       )
     }
-    // Count only POST append requests so the boundary is unambiguous —
-    // the handler records *all* requests, and the 51st POST is the one
-    // we want to fail.
-    let appendCount = 0
+    let batchCount = 0
     fake.failOn((req) => {
       if (req.method === 'PATCH' && req.path === `/v1/blocks/${ROOT}/children`) {
-        appendCount += 1
-        if (appendCount === 51) return new Error('fake-notion: simulated upstream failure at op 51')
+        batchCount += 1
+        if (batchCount === 2) return new Error('fake-notion: simulated failure on 2nd batch')
       }
       return undefined
     })
 
     const exit = await runWithExit(fake, sync(<>{paragraphs}</>, { pageId: ROOT, cache }))
     expect(Exit.isFailure(exit)).toBe(true)
-    // Server state: first 50 appends landed.
-    expect(fake.childrenOf(ROOT)).toHaveLength(50)
-    // Cache state: untouched (no save on failure).
+    // Server state: first batch of 100 landed.
+    expect(fake.childrenOf(ROOT)).toHaveLength(100)
+    // Cache state: untouched (no save on failure, pre-#102).
     const cached = await Effect.runPromise(cache.load)
     expect(cached).toBeUndefined()
   })
