@@ -10,18 +10,25 @@ import type { ReactNode } from 'react'
 
 type Children = { readonly children?: ReactNode }
 
+/**
+ * Renderer-level identity hint. When provided on a block-producing component,
+ * the reconciler uses it for stable diffing across renders instead of falling
+ * back to positional keys. Never projected to the Notion payload.
+ */
+type BlockKey = { readonly blockKey?: string }
+
 export type PageProps = Children
 
 export type ParagraphProps = Children
 
-export type HeadingProps = Children & { readonly toggleable?: boolean }
+export type HeadingProps = Children & BlockKey & { readonly toggleable?: boolean }
 
 export type BulletedListItemProps = Children
 export type NumberedListItemProps = Children
 
 export type ToDoProps = Children & { readonly checked?: boolean }
 
-export type ToggleProps = Children & { readonly title?: string }
+export type ToggleProps = Children & BlockKey & { readonly title?: string }
 
 export type CodeProps = Children & { readonly language?: string }
 
@@ -34,10 +41,11 @@ export type QuoteProps = Children
  */
 export type CalloutIcon = string | { readonly external: string }
 
-export type CalloutProps = Children & {
-  readonly icon?: CalloutIcon
-  readonly color?: string
-}
+export type CalloutProps = Children &
+  BlockKey & {
+    readonly icon?: CalloutIcon
+    readonly color?: string
+  }
 
 export type DividerProps = Record<string, never>
 

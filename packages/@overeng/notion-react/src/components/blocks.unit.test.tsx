@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createNotionRoot } from '../renderer/host-config.ts'
 import { OpBuffer } from '../renderer/op-buffer.ts'
+import { buildCandidateTree } from '../renderer/sync-diff.ts'
 import {
   Bookmark,
   BulletedListItem,
@@ -10,12 +11,14 @@ import {
   Divider,
   Equation,
   Heading1,
+  Heading2,
   Heading3,
   Heading4,
   Image,
   Paragraph,
-  ToDo,
   TableOfContents,
+  ToDo,
+  Toggle,
 } from './blocks.tsx'
 
 const collect = (element: React.ReactNode) => {
@@ -223,5 +226,50 @@ describe('heading toggleable variants', () => {
     if (op.kind !== 'append') throw new Error('expected append')
     expect(op.type).toBe('heading_4')
     expect(op.props.is_toggleable).toBe(true)
+  })
+})
+
+/**
+ * `blockKey` is the reconciler's identity hint. It must land as `k:<key>` in
+ * the candidate-tree keyspace (used by sync-diff's LCS) and must NOT appear
+ * in the projected Notion payload. These tests cover the ergonomic components
+ * that historically forced authors to drop to `h(...)` to supply a blockKey.
+ */
+describe('blockKey on ergonomic components', () => {
+  it('Toggle threads blockKey into the reconciler identity', () => {
+    const tree = buildCandidateTree(
+      <Toggle blockKey="foo" title="t">
+        <Paragraph>body</Paragraph>
+      </Toggle>,
+      'root',
+    )
+    expect(tree.children).toHaveLength(1)
+    expect(tree.children[0]!.key).toBe('k:foo')
+    expect(tree.children[0]!.type).toBe('toggle')
+    expect((tree.children[0]!.props as { blockKey?: unknown }).blockKey).toBeUndefined()
+  })
+
+  it('Heading2 threads blockKey into the reconciler identity', () => {
+    const tree = buildCandidateTree(<Heading2 blockKey="bar">t</Heading2>, 'root')
+    expect(tree.children[0]!.key).toBe('k:bar')
+    expect(tree.children[0]!.type).toBe('heading_2')
+    expect((tree.children[0]!.props as { blockKey?: unknown }).blockKey).toBeUndefined()
+  })
+
+  it('Callout threads blockKey into the reconciler identity', () => {
+    const tree = buildCandidateTree(
+      <Callout blockKey="baz" icon="💡">
+        note
+      </Callout>,
+      'root',
+    )
+    expect(tree.children[0]!.key).toBe('k:baz')
+    expect(tree.children[0]!.type).toBe('callout')
+    expect((tree.children[0]!.props as { blockKey?: unknown }).blockKey).toBeUndefined()
+  })
+
+  it('omitting blockKey falls back to positional key', () => {
+    const tree = buildCandidateTree(<Toggle title="t">body</Toggle>, 'root')
+    expect(tree.children[0]!.key).toBe('p:0')
   })
 })

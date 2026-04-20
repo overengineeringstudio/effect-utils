@@ -47,8 +47,12 @@ export const Paragraph = ({ children }: ParagraphProps) => h('paragraph', null, 
 
 const heading =
   (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
-  ({ children, toggleable }: HeadingProps) =>
-    h(tag, toggleable === undefined ? null : { toggleable }, children)
+  ({ children, toggleable, blockKey }: HeadingProps) => {
+    const props: Record<string, unknown> = {}
+    if (toggleable !== undefined) props.toggleable = toggleable
+    if (blockKey !== undefined) props.blockKey = blockKey
+    return h(tag, Object.keys(props).length === 0 ? null : props, children)
+  }
 export const Heading1 = heading('heading_1')
 export const Heading2 = heading('heading_2')
 export const Heading3 = heading('heading_3')
@@ -62,18 +66,23 @@ export const NumberedListItem = ({ children }: NumberedListItemProps) =>
 export const ToDo = ({ children, checked }: ToDoProps) =>
   h('to_do', checked === undefined ? null : { checked }, children)
 
-export const Toggle = ({ children, title }: ToggleProps) =>
-  h('toggle', title === undefined ? null : { title }, children)
+export const Toggle = ({ children, title, blockKey }: ToggleProps) => {
+  const props: Record<string, unknown> = {}
+  if (title !== undefined) props.title = title
+  if (blockKey !== undefined) props.blockKey = blockKey
+  return h('toggle', Object.keys(props).length === 0 ? null : props, children)
+}
 
 export const Code = ({ children, language }: CodeProps) =>
   h('code', language === undefined ? null : { language }, children)
 
 export const Quote = ({ children }: QuoteProps) => h('quote', null, children)
 
-export const Callout = ({ children, icon, color }: CalloutProps) => {
+export const Callout = ({ children, icon, color, blockKey }: CalloutProps) => {
   const props: Record<string, unknown> = {}
   if (icon !== undefined) props.icon = icon
   if (color !== undefined) props.color = color
+  if (blockKey !== undefined) props.blockKey = blockKey
   return h('callout', props, children)
 }
 
