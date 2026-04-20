@@ -10,6 +10,8 @@ import {
   Divider,
   Equation,
   Heading1,
+  Heading3,
+  Heading4,
   Image,
   Paragraph,
   ToDo,
@@ -99,5 +101,137 @@ describe('block components', () => {
   it('renders bulleted_list_item with nested children', () => {
     const ops = collect(<BulletedListItem>item</BulletedListItem>)
     expect(ops[0]!.kind === 'append' && ops[0]!.type).toBe('bulleted_list_item')
+  })
+})
+
+/**
+ * Prop-variation matrix. The Callout component takes `color` as a single
+ * string field: Notion encodes both foreground colors and background variants
+ * into one enum (e.g. `"red"` vs `"red_background"`). The 10 named colors
+ * plus 9 background variants (default has no `_background` form in Notion)
+ * yield 19 distinct values; we assert each round-trips through `blockProps`.
+ */
+const NOTION_CALLOUT_COLORS = [
+  'default',
+  'gray',
+  'brown',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'purple',
+  'pink',
+  'red',
+  'gray_background',
+  'brown_background',
+  'orange_background',
+  'yellow_background',
+  'green_background',
+  'blue_background',
+  'purple_background',
+  'pink_background',
+  'red_background',
+] as const
+
+describe('callout color variants', () => {
+  it.each(NOTION_CALLOUT_COLORS)('projects color=%s verbatim', (color) => {
+    const ops = collect(<Callout color={color}>x</Callout>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('callout')
+    expect(op.props.color).toBe(color)
+  })
+})
+
+describe('callout icon variants', () => {
+  it('projects emoji icon as { type: "emoji", emoji }', () => {
+    const ops = collect(<Callout icon="🔔">x</Callout>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.props.icon).toEqual({ type: 'emoji', emoji: '🔔' })
+  })
+
+  /**
+   * The current CalloutProps type declares `icon?: string`, so only bare
+   * emoji strings are supported. An external-file-URL icon variant is not
+   * exposed by the component API today; we lock in the status quo with a
+   * parity test for a second emoji and document the gap here so future
+   * widening of the prop shape keeps this case in scope.
+   */
+  it('projects a second emoji (parity; external-url variant not exposed by API)', () => {
+    const ops = collect(<Callout icon="💡">x</Callout>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.props.icon).toEqual({ type: 'emoji', emoji: '💡' })
+  })
+})
+
+/**
+ * Representative code languages across major families. `@overeng/notion-effect-schema`
+ * does not currently export a language enum, so we sample 20 rather than
+ * iterating the full ~60 Notion supports.
+ */
+const CODE_LANGUAGES = [
+  'typescript',
+  'javascript',
+  'python',
+  'rust',
+  'go',
+  'java',
+  'c',
+  'c++',
+  'c#',
+  'ruby',
+  'php',
+  'swift',
+  'kotlin',
+  'sql',
+  'bash',
+  'shell',
+  'yaml',
+  'json',
+  'markdown',
+  'plain text',
+] as const
+
+describe('code block language variants', () => {
+  it.each(CODE_LANGUAGES)('projects language=%s verbatim', (language) => {
+    const ops = collect(<Code language={language}>x</Code>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('code')
+    expect(op.props.language).toBe(language)
+  })
+})
+
+describe('heading toggleable variants', () => {
+  it('heading_1 toggleable projects is_toggleable: true', () => {
+    const ops = collect(<Heading1 toggleable>x</Heading1>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('heading_1')
+    expect(op.props.is_toggleable).toBe(true)
+  })
+
+  it('heading_3 toggleable projects is_toggleable: true', () => {
+    const ops = collect(<Heading3 toggleable>x</Heading3>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('heading_3')
+    expect(op.props.is_toggleable).toBe(true)
+  })
+
+  /**
+   * heading_4 accepts the `toggleable` prop at the component surface but the
+   * renderer's `blockProps` only projects `is_toggleable` for h1/h2/h3 today.
+   * We pin that behavior here so any change surfaces as a deliberate test
+   * update rather than a silent drift.
+   */
+  it('heading_4 toggleable is NOT projected (h4 unsupported by Notion)', () => {
+    const ops = collect(<Heading4 toggleable>x</Heading4>)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('heading_4')
+    expect(op.props.is_toggleable).toBeUndefined()
   })
 })
