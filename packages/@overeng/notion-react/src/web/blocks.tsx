@@ -333,9 +333,19 @@ export const Pdf = (props: MediaProps) => (
   </a>
 )
 
+/**
+ * Bookmark follows rnx DOM: `<a class="notion-bookmark"><div><div
+ * class="notion-bookmark-link"><div class="notion-bookmark-link-text"/>
+ * </div></div></a>`. Rich previews (title, description, thumbnail) are
+ * tracked by task #76 and render as placeholders until then.
+ */
 export const Bookmark = ({ url }: BookmarkProps) => (
   <a className="notion-bookmark" href={url} target="_blank" rel="noreferrer noopener">
-    {url}
+    <div>
+      <div className="notion-bookmark-link">
+        <div className="notion-bookmark-link-text">{url}</div>
+      </div>
+    </div>
   </a>
 )
 
