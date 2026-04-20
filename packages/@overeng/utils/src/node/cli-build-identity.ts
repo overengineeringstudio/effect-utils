@@ -1,0 +1,199 @@
+/**
+ * Local stamp: set via CLI_BUILD_STAMP env var when entering a dev shell.
+ * Used for source-based CLI builds (running TypeScript directly).
+ */
+export interface LocalStamp {
+  type: 'local'
+  rev: string
+  ts: number
+  dirty: boolean
+}
+
+/**
+ * Nix stamp: embedded in the binary at Nix build time.
+ * Contains version info and commit timestamp for reproducible builds.
+ */
+export interface NixStamp {
+  type: 'nix'
+  version: string
+  rev: string
+  commitTs: number
+  dirty: boolean
+  buildTs?: number
+}
+
+/** Discriminated union of build stamp types used to resolve CLI version strings. */
+export type CliStamp = LocalStamp | NixStamp
+
+export type CliBuildSourceKind = 'package' | 'local' | 'nix'
+
+export interface CliBuildIdentity {
+  readonly baseVersion: string
+  readonly machineVersion: string
+  readonly displayVersion: string
+  readonly sourceKind: CliBuildSourceKind
+  readonly rev?: string
+  readonly dirty: boolean
+  readonly commitTs?: number
+  readonly buildTs?: number
+}
+
+/**
+ * Format a Unix timestamp as a human-readable relative time.
+ * Uses medium formatting: "5 min ago", "2 hours ago", "3 days ago", "Jan 15"
+ */
+const formatRelativeTime = (ts: number): string => {
+  const now = Math.floor(Date.now() / 1000)
+  const diffSeconds = now - ts
+
+  if (diffSeconds < 60) {
+    return 'just now'
+  }
+
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min ago`
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`
+  }
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) {
+    return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`
+  }
+
+  if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7)
+    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`
+  }
+
+  const date = new Date(ts * 1000)
+  const month = date.toLocaleString('en-US', { month: 'short' })
+  const day = date.getDate()
+  return `${month} ${day}`
+}
+
+/** Parse a JSON string as a CliStamp (LocalStamp or NixStamp). */
+const parseStamp = (stamp: string): CliStamp | undefined => {
+  try {
+    const parsed = JSON.parse(stamp)
+    if (typeof parsed !== 'object' || parsed === null) {
+      return undefined
+    }
+
+    if (parsed.type === 'local') {
+      if (
+        typeof parsed.rev === 'string' &&
+        typeof parsed.ts === 'number' &&
+        typeof parsed.dirty === 'boolean'
+      ) {
+        return parsed as LocalStamp
+      }
+    } else if (parsed.type === 'nix') {
+      if (
+        typeof parsed.version === 'string' &&
+        typeof parsed.rev === 'string' &&
+        typeof parsed.commitTs === 'number' &&
+        typeof parsed.dirty === 'boolean'
+      ) {
+        return parsed as NixStamp
+      }
+    }
+  } catch {
+    return undefined
+  }
+
+  return undefined
+}
+
+const renderLocalVersion = ({
+  baseVersion,
+  stamp,
+}: {
+  baseVersion: string
+  stamp: LocalStamp
+}): string => {
+  const timeAgo = formatRelativeTime(stamp.ts)
+  const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
+  return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
+}
+
+const renderNixVersion = (stamp: NixStamp): string => {
+  const revAlreadyHasDirty = stamp.rev.endsWith('-dirty')
+  const dirtySuffix = stamp.dirty === true && revAlreadyHasDirty === false ? '-dirty' : ''
+  const versionStr = `${stamp.version}+${stamp.rev}${dirtySuffix}`
+  const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
+
+  if (stamp.buildTs !== undefined) {
+    const timeAgo = formatRelativeTime(stamp.buildTs)
+    return `${versionStr} — built ${timeAgo}${dirtyNote}`
+  }
+
+  const timeAgo = formatRelativeTime(stamp.commitTs)
+  return `${versionStr} — committed ${timeAgo}${dirtyNote}`
+}
+
+const toMachineVersion = ({
+  baseVersion,
+  stamp,
+}: {
+  baseVersion: string
+  stamp: CliStamp
+}): string => {
+  if (stamp.type === 'nix') {
+    const revAlreadyHasDirty = stamp.rev.endsWith('-dirty')
+    const dirtySuffix = stamp.dirty === true && revAlreadyHasDirty === false ? '-dirty' : ''
+    return `${stamp.version}+${stamp.rev}${dirtySuffix}`
+  }
+
+  return `${baseVersion}+local.${stamp.rev}${stamp.dirty === true ? '.dirty' : ''}`
+}
+
+export const resolveCliBuildIdentity = (options: {
+  baseVersion: string
+  buildStamp: string
+  runtimeStampEnvVar?: string
+}): CliBuildIdentity => {
+  const { baseVersion, buildStamp, runtimeStampEnvVar = 'CLI_BUILD_STAMP' } = options
+
+  const nixStamp = parseStamp(buildStamp)
+  if (nixStamp?.type === 'nix') {
+    return {
+      baseVersion,
+      machineVersion: toMachineVersion({ baseVersion, stamp: nixStamp }),
+      displayVersion: renderNixVersion(nixStamp),
+      sourceKind: 'nix',
+      rev: nixStamp.rev,
+      dirty: nixStamp.dirty,
+      commitTs: nixStamp.commitTs,
+      ...(nixStamp.buildTs !== undefined ? { buildTs: nixStamp.buildTs } : {}),
+    }
+  }
+
+  const runtimeStampRaw = process.env[runtimeStampEnvVar]?.trim()
+  if (runtimeStampRaw !== undefined) {
+    const localStamp = parseStamp(runtimeStampRaw)
+    if (localStamp?.type === 'local') {
+      return {
+        baseVersion,
+        machineVersion: toMachineVersion({ baseVersion, stamp: localStamp }),
+        displayVersion: renderLocalVersion({ baseVersion, stamp: localStamp }),
+        sourceKind: 'local',
+        rev: localStamp.rev,
+        dirty: localStamp.dirty,
+        buildTs: localStamp.ts,
+      }
+    }
+  }
+
+  return {
+    baseVersion,
+    machineVersion: baseVersion,
+    displayVersion: baseVersion,
+    sourceKind: 'package',
+    dirty: false,
+  }
+}

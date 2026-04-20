@@ -784,6 +784,7 @@ pkgs.stdenv.mkDerivation {
   dontUnpack = true;
   dontFixup = true;
   passthru = {
+    inherit nixStampJson;
     depsSrc = rootDepsSrc;
     inherit depsSrcByInstallRoot depsBuildsByInstallRoot;
     installRoots = map (root: {

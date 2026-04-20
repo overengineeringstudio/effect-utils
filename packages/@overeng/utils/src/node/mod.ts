@@ -15,6 +15,7 @@ export * from './FileLogger.ts'
 export * from './ActiveHandlesDebugger.ts'
 
 /** CLI version resolution with optional runtime stamp */
+export * from './cli-build-identity.ts'
 export * from './cli-version.ts'
 
 /** Rewrite `help <subcmd>` → `<subcmd> --help` for @effect/cli compatibility */
