@@ -120,10 +120,17 @@ onEvent: (e) => {
   fast — accumulate into plain counters, don't do I/O. If you need to
   persist, buffer and flush after `sync()` returns.
 
-## What's next
+## OTEL adapters
 
-Effect-aware and OTEL adapters that consume `SyncEvent` and emit
-spans/metrics are planned as separate sub-paths
-(`@overeng/notion-react/o11y/effect`, `@overeng/notion-react/o11y/otel`).
-The raw hook above stays the core contract — everything else builds on
-top of it.
+Two drop-in adapters convert `SyncEvent`s into OpenTelemetry spans
+without requiring consumers to hand-roll a span bridge. See
+[observability-otel.md](./observability-otel.md) for setup,
+the span catalogue, and the `service.name` override contract.
+
+- `@overeng/notion-react/o11y/effect` — preferred for Effect consumers;
+  uses the ambient `Effect.Tracer` service and inherits the caller's
+  current span as parent.
+- `@overeng/notion-react/o11y/otel` — raw `@opentelemetry/api` tracer.
+
+The raw `onEvent` hook stays the core contract — both adapters are
+implemented on top of it.

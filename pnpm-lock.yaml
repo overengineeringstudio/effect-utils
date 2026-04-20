@@ -1049,6 +1049,9 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
     devDependencies:
+      '@opentelemetry/api':
+        specifier: 1.9.0
+        version: 1.9.0
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils

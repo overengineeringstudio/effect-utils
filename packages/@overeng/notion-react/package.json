@@ -5,6 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/mod.ts",
+    "./o11y": "./src/o11y/mod.ts",
+    "./o11y/effect": "./src/o11y/effect-adapter.ts",
+    "./o11y/otel": "./src/o11y/otel-adapter.ts",
     "./renderer": "./src/renderer/mod.ts",
     "./test": "./src/test/integration/e2e/helpers.ts",
     "./web": "./src/web/mod.ts",
@@ -16,6 +19,9 @@
     "exports": {
       ".": "./dist/mod.js",
       "./renderer": "./dist/renderer/mod.js",
+      "./o11y": "./dist/o11y/mod.js",
+      "./o11y/effect": "./dist/o11y/effect-adapter.js",
+      "./o11y/otel": "./dist/o11y/otel-adapter.js",
       "./web": "./dist/web/mod.js",
       "./web/styles.css": "./dist/web/styles.css",
       "./web/katex.css": "./dist/web/katex.css"
@@ -44,6 +50,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "0.29.0",
+    "@opentelemetry/api": "1.9.0",
     "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@storybook/react": "10.2.3",
@@ -65,6 +72,7 @@
     "vitest": "3.2.4"
   },
   "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "effect": "^3.21.0",
     "katex": "^0.16.45",
     "react": "^19.2.3",
@@ -72,6 +80,9 @@
     "shiki": "^4.0.2"
   },
   "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    },
     "katex": {
       "optional": true
     },
