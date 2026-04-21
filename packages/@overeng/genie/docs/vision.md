@@ -2,17 +2,17 @@
 
 ## The Problem
 
-### Problem 1: Repository configuration formats are too weak for the job
+### Problem 1: Repository configuration formats are too weak
 
 Modern repositories depend on a large amount of configuration: package
 manifests, TypeScript config, linter and formatter config, CI workflows, and
 more. Those formats are usually static data formats with only limited reuse
 mechanisms. Compared to real programming languages, they are missing basic
 tools such as single-source-of-truth definitions, principled abstraction,
-shared helpers, and comments in the places where teams actually need to explain
-why something exists.
+shared helpers, and comments in the places where teams actually need to
+explain why something exists.
 
-### Problem 2: Partial extension systems add complexity instead of solving composition
+### Problem 2: Partial extension systems do not solve composition
 
 Some configuration ecosystems add narrow escape hatches such as `extends`,
 includes, merges, or inheritance. These features help locally but do not give
@@ -20,7 +20,7 @@ one coherent model for composing configuration across files, packages, and
 repositories. The result is still fragmented logic, hidden coupling, and
 another layer of format-specific complexity that teams have to learn and debug.
 
-### Problem 3: Repository configuration needs the power of code without giving up the real artifacts
+### Problem 3: Configuration needs code without losing real artifacts
 
 Teams need to express repository intent once, in a clean and reusable form,
 while still producing the actual files that existing tools consume. Without
@@ -31,9 +31,9 @@ hard to trust.
 ### Problem 4: Invalid or drifting configuration is usually detected too late
 
 Many configuration mistakes are only discovered when the downstream tool reads
-the file at runtime or in CI. That pushes feedback too far away from the source
-of truth. Repository configuration needs earlier validation, clearer errors, and
-generated artifacts whose diffs carry signal rather than noise.
+the file at runtime or in CI. That pushes feedback too far away from the
+source of truth. Repository configuration needs earlier validation, clearer
+errors, and generated artifacts whose diffs carry signal rather than noise.
 
 ### Problem 5: Shared configuration logic should scale across repositories
 
@@ -57,10 +57,10 @@ own local configuration files.
 - **Each config domain has a typed, constrained authoring model.** Instead of
   writing arbitrary text templates, teams use domain-specific generators that
   guide what is valid and catch problems during generation.
-- **Generated artifacts remain simple, boring, and tool-compatible.** The value
-  lives in the source model and validation, while the emitted files stay as the
-  standard artifacts consumed by package managers, compilers, linters, and CI
-  systems.
+- **Generated artifacts remain simple, boring, and tool-compatible.** The
+  value lives in the source model and validation, while the emitted files stay
+  as the standard artifacts consumed by package managers, compilers, linters,
+  and CI systems.
 
 ## What This Is Not
 

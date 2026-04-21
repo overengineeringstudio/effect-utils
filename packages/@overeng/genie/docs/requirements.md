@@ -31,8 +31,8 @@ may not yet be installed.
   generated workspace state, or other post-bootstrap JavaScript environment.
   Helpers that need that richer environment may need to live in the CLI/build
   layer rather than the runtime layer. This tradeoff is acceptable because
-  bootstrap safety and cross-repo composability are more important than making
-  every helper usable from the runtime surface.
+  bootstrap safety and cross-repo composability matter more than making every
+  helper usable from the runtime surface.
 
 ## Requirements
 
