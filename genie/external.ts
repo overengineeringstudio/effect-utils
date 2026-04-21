@@ -363,6 +363,13 @@ export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
     'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+    /* Restrict `http.client` tracer span attribute emission to a small
+       allowlist of response headers. Upstream hardcodes emission of every
+       header, which for chatty APIs (Notion: ~31 headers per response)
+       dumps low-signal attrs like cf-ray / alt-svc / cookie flags into
+       every span. Keeps the observability-critical ones
+       (content-type, x-notion-request-id, retry-after, ...). */
+    '@effect/platform@0.96.0': './patches/@effect__platform@0.96.0.patch',
   },
 })
 

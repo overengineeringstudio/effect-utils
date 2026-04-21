@@ -91,6 +91,7 @@
   },
   "pnpm": {
     "patchedDependencies": {
+      "@effect/platform@0.96.0": "patches/@effect__platform@0.96.0.patch",
       "effect-distributed-lock@0.0.11": "patches/effect-distributed-lock@0.0.11.patch"
     }
   },

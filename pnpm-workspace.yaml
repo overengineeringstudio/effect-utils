@@ -30,6 +30,7 @@ packages:
   - packages/@overeng/utils-dev
 
 patchedDependencies:
+  '@effect/platform@0.96.0': packages/@overeng/utils/patches/@effect__platform@0.96.0.patch
   effect-distributed-lock@0.0.11: packages/@overeng/utils/patches/effect-distributed-lock@0.0.11.patch
 
 allowUnusedPatches: true
