@@ -1360,4 +1360,283 @@ describe('sync() against in-memory fake Notion', () => {
     // All mutations target OTHER, not ROOT.
     expect(fake.childrenOf(OTHER).length).toBeGreaterThan(0)
   })
+
+  /**
+   * Regression: pixeltrail dogfood v8 observed a warm sync on a tree
+   * containing a column_list inflated the persisted cache from 609 to 710
+   * total nodes even though the rendered tree was byte-for-byte identical
+   * to cold. Root cause: on rebuild of a retained-but-structurally-changed
+   * atomic container, the pre-flight drift retrieve populates
+   * `liveTopLevelIds` and the warm diff is correct, but the cache snapshot
+   * written at the end of the sync double-counted the rebuilt subtree's
+   * descendants. The invariant here is: cache size on warm sync with
+   * unchanged input = cache size after cold.
+   */
+  const totalCacheNodes = (tree: CacheTree): number => flattenCache(tree).length
+
+  it('warm sync with column_list → cache size is stable (no growth)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <>
+        <Paragraph>before</Paragraph>
+        <ColumnList blockKey="cl-1">
+          <Column blockKey="col-a">
+            <Paragraph>a1</Paragraph>
+            <Paragraph>a2</Paragraph>
+          </Column>
+          <Column blockKey="col-b">
+            <Paragraph>b1</Paragraph>
+            <Paragraph>b2</Paragraph>
+          </Column>
+        </ColumnList>
+        <Paragraph>after</Paragraph>
+      </>
+    )
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const coldSnapshot = await Effect.runPromise(cache.load)
+    const coldTotal = totalCacheNodes(coldSnapshot!)
+    const coldTop = coldSnapshot!.children.length
+
+    // Three warm resyncs with identical input must each be a true no-op
+    // w.r.t. cache shape. Repeating catches growth that compounds per run.
+    for (let i = 0; i < 3; i++) {
+      const res = await runWith(
+        fake,
+        sync(tree, { pageId: ROOT, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      )
+      expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+      const warm = await Effect.runPromise(cache.load)
+      expect(warm!.children.length).toBe(coldTop)
+      expect(totalCacheNodes(warm!)).toBe(coldTotal)
+    }
+  })
+
+  it('warm sync with column_list at tail (unkeyed) → zero growth (dogfood v8 repro)', async () => {
+    // Reproduces the pixeltrail dogfood v8 shape: many top-level atomic
+    // children followed by a tail column_list. The tail column_list lands at
+    // a positional key; if any subtree-equality path misfires, it triggers
+    // a full rebuild whose cache writeback double-counts the descendants.
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const leading: ReactNode[] = []
+    for (let i = 0; i < 50; i++) {
+      leading.push(<Paragraph key={`lead-${i}`}>lead {i}</Paragraph>)
+    }
+    const tree = (
+      <>
+        {leading}
+        <ColumnList>
+          <Column>
+            {Array.from({ length: 10 }, (_, i) => (
+              <Paragraph key={`a-${i}`}>col-a item {i}</Paragraph>
+            ))}
+          </Column>
+          <Column>
+            {Array.from({ length: 10 }, (_, i) => (
+              <Paragraph key={`b-${i}`}>col-b item {i}</Paragraph>
+            ))}
+          </Column>
+        </ColumnList>
+      </>
+    )
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const coldSnap = await Effect.runPromise(cache.load)
+    const coldTotal = totalCacheNodes(coldSnap!)
+    const coldTop = coldSnap!.children.length
+
+    for (let i = 0; i < 3; i++) {
+      const res = await runWith(
+        fake,
+        sync(tree, { pageId: ROOT, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      )
+      expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+      const warm = await Effect.runPromise(cache.load)
+      expect(warm!.children.length).toBe(coldTop)
+      expect(totalCacheNodes(warm!)).toBe(coldTotal)
+    }
+  })
+
+  it('warm sync: prior cache with extra descendants triggers full-rebuild → no growth', async () => {
+    /* Direct repro of the dogfood v8 shape: the prior cache has a column_list
+     * entry whose descendants DON'T match the rendered candidate exactly.
+     * That should trigger FULL_REBUILD_ON_SUBTREE_CHANGE. Verify the
+     * resulting cache is anchored on the rendered tree, not accumulating. */
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // Cold: ColumnList with 2 cols × 2 paragraphs + 50 trailing paragraphs.
+    const v1Tree = (
+      <>
+        <ColumnList>
+          <Column>
+            <Paragraph>a1</Paragraph>
+            <Paragraph>a2</Paragraph>
+          </Column>
+          <Column>
+            <Paragraph>b1</Paragraph>
+            <Paragraph>b2</Paragraph>
+          </Column>
+        </ColumnList>
+        {Array.from({ length: 50 }, (_, i) => (
+          <Paragraph key={`tail-${i}`}>tail {i}</Paragraph>
+        ))}
+      </>
+    )
+    await runWith(
+      fake,
+      sync(v1Tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const coldSnap = await Effect.runPromise(cache.load)
+    const coldTotal = totalCacheNodes(coldSnap!)
+    const coldTop = coldSnap!.children.length
+
+    // Warm 1: change body of a nested paragraph inside the column_list. This
+    // SHOULD trigger the retained-subtree full-rebuild path because hashing a
+    // child changes its props hash, and subtree structural equality doesn't
+    // consider hash — but still: cache shape after should equal a fresh cold
+    // render of the v2 tree. Not growth.
+    const v2Tree = (
+      <>
+        <ColumnList>
+          <Column>
+            <Paragraph>a1 changed</Paragraph>
+            <Paragraph>a2</Paragraph>
+          </Column>
+          <Column>
+            <Paragraph>b1</Paragraph>
+            <Paragraph>b2</Paragraph>
+          </Column>
+        </ColumnList>
+        {Array.from({ length: 50 }, (_, i) => (
+          <Paragraph key={`tail-${i}`}>tail {i}</Paragraph>
+        ))}
+      </>
+    )
+    await runWith(
+      fake,
+      sync(v2Tree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Resync v2 multiple times; must be stable in cache shape.
+    const v2Snap = await Effect.runPromise(cache.load)
+    const v2Total = totalCacheNodes(v2Snap!)
+    const v2Top = v2Snap!.children.length
+    // cold total for v2 would be same shape as v1 — same node count.
+    expect(v2Total).toBe(coldTotal)
+    expect(v2Top).toBe(coldTop)
+
+    for (let i = 0; i < 3; i++) {
+      await runWith(
+        fake,
+        sync(v2Tree, { pageId: ROOT, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      )
+      const s = await Effect.runPromise(cache.load)
+      expect(totalCacheNodes(s!)).toBe(v2Total)
+      expect(s!.children.length).toBe(v2Top)
+    }
+  })
+
+  it('cold sync checkpoint snapshots include atomic-container descendants', async () => {
+    /* Regression: the last checkpoint written mid-sync (i.e. before the
+     * authoritative final save) must already reflect absorbed descendants
+     * of atomic containers, otherwise a crash or timeout between the last
+     * op and the final save leaves the cache with hollow atomic containers
+     * — and the next warm sync rebuilds them, inflating the persisted
+     * cache. Pixeltrail dogfood v8 tracked this as cache growth +101 in a
+     * single warm sync against a column_list subtree. */
+    const fake = createFakeNotion()
+    const spy = spyCache()
+    const tree = (
+      <>
+        <Paragraph>intro</Paragraph>
+        <ColumnList>
+          <Column>
+            <Paragraph>a1</Paragraph>
+            <Paragraph>a2</Paragraph>
+          </Column>
+          <Column>
+            <Paragraph>b1</Paragraph>
+            <Paragraph>b2</Paragraph>
+          </Column>
+        </ColumnList>
+      </>
+    )
+    await runWith(
+      fake,
+      sync(tree, { pageId: ROOT, cache: spy.cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Every checkpoint that commits the column_list must carry its full
+    // subtree (4 paragraphs under 2 columns) — not a hollowed `children:[]`.
+    const withColumnList = spy.snapshots.filter((s) =>
+      s.children.some((c) => c.type === 'column_list'),
+    )
+    expect(withColumnList.length).toBeGreaterThan(0)
+    for (const snap of withColumnList) {
+      const cl = snap.children.find((c) => c.type === 'column_list')!
+      // column_list with 2 columns, each with 2 paragraphs = 4 leaves + 2
+      // columns + 1 column_list = 7 nodes.
+      expect(cl.children).toHaveLength(2)
+      for (const col of cl.children) {
+        expect(col.type).toBe('column')
+        expect(col.children.length).toBe(2)
+      }
+    }
+  })
+
+  it('warm sync on scaled tree (~500 top-level) → zero growth', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const sessions: Session[] = []
+    for (let i = 0; i < 500; i++) {
+      sessions.push({
+        id: `sess-${i}`,
+        title: `session ${i}`,
+        body: `body ${i}`,
+      })
+    }
+    const bigTree = <DailyPage screenTime="8h" apps={12} sessions={sessions} />
+    await runWith(
+      fake,
+      sync(bigTree, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const coldSnap = await Effect.runPromise(cache.load)
+    const coldTotal = totalCacheNodes(coldSnap!)
+    const coldTop = coldSnap!.children.length
+
+    for (let i = 0; i < 2; i++) {
+      const res = await runWith(
+        fake,
+        sync(bigTree, { pageId: ROOT, cache }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      )
+      expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+      const warm = await Effect.runPromise(cache.load)
+      expect(warm!.children.length).toBe(coldTop)
+      expect(totalCacheNodes(warm!)).toBe(coldTotal)
+    }
+  })
 })

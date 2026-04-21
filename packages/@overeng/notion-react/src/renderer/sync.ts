@@ -167,10 +167,20 @@ const workingAppend = (
     if (idx >= 0) siblings.splice(idx + 1, 0, node)
     else siblings.push(node)
   }
-  w.byId.set(node.blockId, node)
-  // Register the new node's own (empty) children bucket so descendant
-  // appends can find it.
-  if (!w.childrenById.has(node.blockId)) w.childrenById.set(node.blockId, node.children)
+  // Recursively register `node` and any descendants it carries into the
+  // working-cache indexes. The descendant case only fires for atomic
+  // containers (column_list / table) whose children were absorbed into the
+  // create request — without this, mid-sync checkpoints would write the
+  // container with an empty `children` bucket even though the server holds
+  // the full subtree, and a subsequent warm sync would re-emit the entire
+  // subtree (pixeltrail dogfood v8: cache inflated 609 → 710 after one warm
+  // sync that rebuilt a column_list).
+  const register = (n: WorkingNode): void => {
+    w.byId.set(n.blockId, n)
+    if (!w.childrenById.has(n.blockId)) w.childrenById.set(n.blockId, n.children)
+    for (const c of n.children) register(c)
+  }
+  register(node)
 }
 
 const workingUpdate = (w: WorkingCache, blockId: string, type: string, hash: string): void => {
@@ -1094,6 +1104,43 @@ export const sync = (
     )
 
     const resolve = (id: string): string => idMap.get(id) ?? id
+    /**
+     * Build a WorkingNode subtree from a candidate, resolving tmpIds via the
+     * idMap. Used for atomic-container appends whose descendants land in the
+     * same API call (absorbed via `foldAtomicContainers`). Without this, the
+     * checkpoint snapshot would record the container with `children: []`,
+     * even though the server has the full subtree — which corrupts both the
+     * cache-size accounting (descendants lost → next warm sync sees a
+     * structural mismatch and rebuilds, doubling the subtree in the final
+     * authoritative save) and mid-sync-failure recovery (a subsequent warm
+     * sync would diff against an empty subtree and re-emit redundant
+     * appends). Any candidate descendant whose tmpId isn't in `idMap` is
+     * skipped — that's the "children from a follow-up append" case where the
+     * candidate branch hasn't been committed yet. Pixeltrail dogfood v8:
+     * cache inflated 609 → 710 nodes after a warm sync because absorbed
+     * column_list descendants were dropped from the working cache; the final
+     * `candidateToCache` recovered the shape, but any mid-flight checkpoint
+     * or pre-commit inspection saw the hollowed tree.
+     */
+    const buildSubtreeFromCandidate = (cand: CandidateNode): WorkingNode | undefined => {
+      const resolvedId =
+        cand.blockId === undefined || cand.blockId.startsWith('tmp-')
+          ? idMap.get(cand.blockId ?? '')
+          : cand.blockId
+      if (resolvedId === undefined) return undefined
+      const kids: WorkingNode[] = []
+      for (const c of cand.children) {
+        const sub = buildSubtreeFromCandidate(c)
+        if (sub !== undefined) kids.push(sub)
+      }
+      return {
+        key: cand.key,
+        blockId: resolvedId,
+        type: cand.type,
+        hash: cand.hash,
+        children: kids,
+      }
+    }
     yield* applyDiff(
       plan,
       idMap,
@@ -1102,12 +1149,23 @@ export const sync = (
           if (event.kind === 'appended') {
             for (const { op, serverId, afterId } of event.committed) {
               const parentId = resolve(op.parent)
+              // Absorbed atomic-container descendants were just minted on
+              // the server in the same create request. Reconstruct the
+              // subtree from `op.candidate`, resolving tmpIds via idMap —
+              // descendants whose tmpId isn't in idMap yet (follow-up
+              // appends, e.g. overflow past the 100-child inline cap) are
+              // skipped and filled in when those ops commit.
+              const children: WorkingNode[] = []
+              for (const c of op.candidate.children) {
+                const sub = buildSubtreeFromCandidate(c)
+                if (sub !== undefined) children.push(sub)
+              }
               const node: WorkingNode = {
                 key: op.candidate.key,
                 blockId: serverId,
                 type: op.type,
                 hash: op.candidate.hash,
-                children: [],
+                children,
               }
               workingAppend(working, parentId, node, afterId)
             }
