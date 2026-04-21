@@ -100,7 +100,9 @@ const collectRelativeImportPaths = async ({
     ),
   )
 
-  return Array.from(new Set(resolvedPaths.filter((resolved): resolved is string => resolved !== undefined)))
+  return Array.from(
+    new Set(resolvedPaths.filter((resolved): resolved is string => resolved !== undefined)),
+  )
 }
 
 const stageCompiledBinaryImportGraph = ({
