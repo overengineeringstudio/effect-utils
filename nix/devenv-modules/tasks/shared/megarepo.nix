@@ -312,11 +312,7 @@ in
   tasks = cliGuard.stripGuards tasks;
 }
 // lib.optionalAttrs (bootstrapMembers != [ ]) {
-  # Repos that source-import genie helpers from bootstrap members should not
-  # attempt to run genie before those members exist in repos/.
-  tasks."genie:run".after = lib.mkAfter [ "mr:bootstrap" ];
-  tasks."genie:watch".after = lib.mkAfter [ "mr:bootstrap" ];
-  tasks."genie:check".after = lib.mkAfter [ "mr:bootstrap" ];
-  tasks."lint:check:genie".after = lib.mkAfter [ "mr:bootstrap" ];
-  tasks."lint:check:genie:coverage".after = lib.mkAfter [ "mr:bootstrap" ];
+  # Repos that source-import genie helpers from bootstrap members should ensure
+  # those members exist before any genie-backed task runs.
+  tasks."genie:prepare".after = lib.mkAfter [ "mr:bootstrap" ];
 }

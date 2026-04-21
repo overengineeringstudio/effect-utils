@@ -116,6 +116,7 @@ let
   otherTasks = {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
+      after = [ "genie:prepare" ];
       exec = trace.exec "lint:check:genie" "genie --check";
       execIfModified = geniePatterns;
     };

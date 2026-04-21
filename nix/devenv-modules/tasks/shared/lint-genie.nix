@@ -15,6 +15,7 @@ in
   tasks = cliGuard.stripGuards {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
+      after = [ "genie:prepare" ];
       exec = trace.exec "lint:check:genie" "genie --check";
     };
     "lint:check:lockfile" = {
