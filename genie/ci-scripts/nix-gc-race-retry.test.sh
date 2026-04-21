@@ -70,8 +70,8 @@ if [ -f "\$attempt_file" ]; then
 fi
 if [ "\$attempt" -eq 1 ]; then
   echo 2 > "\$attempt_file"
-  echo "Failed to convert config.cachix to JSON" >&2
-  echo "while evaluating the option cachix.package" >&2
+  echo "error: Failed to convert config.cachix to JSON" >&2
+  echo "error: while evaluating the option cachix.package" >&2
   exit 1
 fi
 echo "cachix recovered"
@@ -80,7 +80,23 @@ chmod +x "$cachix_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "cachix-fixture" "$cachix_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/cachix-attempt")" "cachix wrapper retry count"
 
-echo "Test 3: preserves the original exit code when no GC-race signature is present"
+echo "Test 3: does not retry when literal signature strings appear outside Nix error context"
+false_positive_fixture="$test_dir/false-positive-fixture.sh"
+cat > "$false_positive_fixture" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "AssertionError: expected source to contain Failed to convert config.cachix to JSON" >&2
+echo "source snippet: while evaluating the option cachix.package" >&2
+exit 9
+EOF
+chmod +x "$false_positive_fixture"
+set +e
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "false-positive-fixture" "$false_positive_fixture" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 9 "$exit_code" "non-error-context strings do not trigger retries"
+
+echo "Test 4: preserves the original exit code when no GC-race signature is present"
 non_retry_fixture="$test_dir/non-retry-fixture.sh"
 cat > "$non_retry_fixture" <<'EOF'
 #!/usr/bin/env bash
