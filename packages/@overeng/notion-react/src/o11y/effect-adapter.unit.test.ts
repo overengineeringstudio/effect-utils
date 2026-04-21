@@ -1,8 +1,9 @@
-import { Context, Option, type Tracer } from 'effect'
+import { Context, Effect, Exit, Fiber, Option, type Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import type { SyncEventHandler } from '../renderer/sync-events.ts'
 import { SyncEvent } from '../renderer/sync-events.ts'
-import { makeEffectSpanHandler } from './effect-adapter.ts'
+import { emitSyncEndOnInterrupt, makeEffectSpanHandler } from './effect-adapter.ts'
 
 interface RecordedSpan {
   readonly name: string
@@ -154,5 +155,57 @@ describe('makeEffectSpanHandler', () => {
     expect(b.spans.every((s) => s.ended)).toBe(true)
     expect(a.spans.find((s) => s.name === 'notion-react.op.append')!.endExitTag).toBe('Success')
     expect(b.spans.find((s) => s.name === 'notion-react.op.append')!.endExitTag).toBe('Failure')
+  })
+})
+
+describe('emitSyncEndOnInterrupt', () => {
+  it('emits a synthetic SyncEnd when the inner Effect is interrupted', async () => {
+    const events: SyncEvent[] = []
+    const handler: SyncEventHandler = (e) => events.push(e)
+
+    const program = Effect.never.pipe(emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }))
+
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(program)
+        yield* Effect.sleep('10 millis')
+        yield* Fiber.interrupt(fiber)
+        return yield* fiber.await
+      }),
+    )
+
+    expect(Exit.isSuccess(exit)).toBe(true)
+    expect(events).toHaveLength(1)
+    const [ev] = events
+    expect(ev!._tag).toBe('SyncEnd')
+    if (ev!._tag === 'SyncEnd') {
+      expect(ev.ok).toBe(false)
+      expect(ev.pageId).toBe(ROOT)
+    }
+  })
+
+  it('does not emit SyncEnd on successful completion', async () => {
+    const events: SyncEvent[] = []
+    const handler: SyncEventHandler = (e) => events.push(e)
+
+    await Effect.runPromise(
+      Effect.succeed(42).pipe(emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler })),
+    )
+
+    expect(events).toEqual([])
+  })
+
+  it('does not emit SyncEnd on typed failure (sync() already handles that)', async () => {
+    const events: SyncEvent[] = []
+    const handler: SyncEventHandler = (e) => events.push(e)
+
+    await Effect.runPromise(
+      Effect.fail('boom').pipe(
+        emitSyncEndOnInterrupt({ pageId: ROOT, onEvent: handler }),
+        Effect.catchAll(() => Effect.void),
+      ),
+    )
+
+    expect(events).toEqual([])
   })
 })

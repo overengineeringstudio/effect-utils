@@ -18,7 +18,7 @@ import type { HttpClient } from '@effect/platform'
  *   - Span correlation uses `OpIssued.id` as a Map key so out-of-order
  *     terminal events still resolve correctly.
  */
-import { Context, Effect, Exit, Option } from 'effect'
+import { Cause, Context, Effect, Exit, Option } from 'effect'
 import type { Tracer } from 'effect'
 import type { ReactNode } from 'react'
 
@@ -27,7 +27,7 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import type { NotionCache } from '../cache/types.ts'
 import type { NotionSyncError } from '../renderer/errors.ts'
 import type { SyncResult } from '../renderer/render-to-notion.ts'
-import type { SyncEvent, SyncEventHandler } from '../renderer/sync-events.ts'
+import { SyncEvent, type SyncEventHandler } from '../renderer/sync-events.ts'
 import { sync, type ColdBaseline } from '../renderer/sync.ts'
 
 /** Default service name embedded on every emitted span. */
@@ -263,5 +263,36 @@ export const instrumentedSync = (
       cache: opts.cache,
       onEvent: composed,
       ...(opts.coldBaseline !== undefined ? { coldBaseline: opts.coldBaseline } : {}),
-    })
+    }).pipe(emitSyncEndOnInterrupt({ pageId: opts.pageId, onEvent: composed }))
   })
+
+/**
+ * `sync()` only emits a failure `SyncEnd` via `tapError` on typed errors.
+ * Interrupts flow as `Cause.Interrupt` and bypass that path, which leaves
+ * the `notion-react.sync` root span open (orphaning all
+ * `notion-react.op.*` children). This helper observes the exit directly
+ * and emits a synthetic `SyncEnd` on interrupt so the span handler closes
+ * the root.
+ */
+export const emitSyncEndOnInterrupt =
+  (args: { readonly pageId: string; readonly onEvent: SyncEventHandler }) =>
+  <A, E, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> => {
+    const start = Date.now()
+    return self.pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => {
+          if (Exit.isSuccess(exit)) return
+          if (Cause.isInterruptedOnly(exit.cause) === false) return
+          args.onEvent(
+            SyncEvent.SyncEnd({
+              pageId: args.pageId,
+              durationMs: Date.now() - start,
+              ok: false,
+              opCount: 0,
+              at: Date.now(),
+            }),
+          )
+        }),
+      ),
+    )
+  }
