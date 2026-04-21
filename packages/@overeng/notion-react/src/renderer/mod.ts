@@ -27,6 +27,13 @@ export {
 export { sync } from './sync.ts'
 export { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 export {
+  extractFileUploadId,
+  isUploadIdRejection,
+  replaceFileUploadId,
+  type OnUploadIdRejected,
+  type UploadIdRejectionContext,
+} from './upload-id-retry.ts'
+export {
   aggregateMetrics,
   type MetricsAggregator,
   type OerRatios,

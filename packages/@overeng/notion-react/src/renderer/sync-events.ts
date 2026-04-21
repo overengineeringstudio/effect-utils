@@ -102,6 +102,22 @@ export type SyncEvent = Data.TaggedEnum<{
     readonly removes: number
     readonly at: number
   }
+  /**
+   * Emitted when a Notion op fails with a `validation_error` referencing a
+   * `file_upload_id` (upload evicted early, not-yet-usable, race). The
+   * consumer's `onUploadIdRejected` hook — if provided — is then invoked
+   * to replace the id; the op is retried once with the new id. Without the
+   * hook, the sync surfaces `NotionSyncError { reason: 'notion-upload-id-rejected' }`.
+   */
+  UploadIdRejected: {
+    /** Server blockId when known (update path); `undefined` for newly-created blocks. */
+    readonly blockId: string | undefined
+    /** Internal tmpId for append/insert ops; `undefined` for update ops. */
+    readonly tmpId: string | undefined
+    readonly fileUploadId: string
+    readonly error: string
+    readonly at: number
+  }
 }>
 
 export const SyncEvent = Data.taggedEnum<SyncEvent>()

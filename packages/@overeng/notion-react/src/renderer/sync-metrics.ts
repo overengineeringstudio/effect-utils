@@ -138,6 +138,7 @@ export const aggregateMetrics = (): MetricsAggregator => {
       UpdateNoop: () => {
         updateNoopCount += 1
       },
+      UploadIdRejected: () => {},
     })
 
   const getMetrics = (): SyncMetrics => {

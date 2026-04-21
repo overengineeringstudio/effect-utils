@@ -29,6 +29,14 @@ export interface FakeNotion {
    * mid-batch failure paths.
    */
   readonly failOn: (hook: (req: FakeRequest) => Error | undefined) => void
+  /**
+   * Install a file_upload_id rejection predicate. Any append/update request
+   * whose payload references a matching id surfaces as a Notion-shaped
+   * `validation_error` with HTTP 400, matching the production API's
+   * response envelope for evicted / not-yet-usable uploads. Compose with
+   * `failOn` if both are needed; this one fires inside `failOn`.
+   */
+  readonly rejectUploadIds: (predicate: (fileUploadId: string) => boolean) => void
 }
 
 export interface FakeBlock {
@@ -136,6 +144,32 @@ export const createFakeNotion = (): FakeNotion => {
   }
 
   let failureHook: ((req: FakeRequest) => Error | undefined) | undefined
+  let uploadIdPredicate: ((fileUploadId: string) => boolean) | undefined
+
+  /** Walk a nested block body collecting every `file_upload.id`. */
+  const collectFileUploadIds = (body: unknown): string[] => {
+    const out: string[] = []
+    const walk = (node: unknown): void => {
+      if (node === null || typeof node !== 'object') return
+      const rec = node as Record<string, unknown>
+      const fu = rec.file_upload
+      if (fu !== null && typeof fu === 'object') {
+        const id = (fu as { id?: unknown }).id
+        if (typeof id === 'string') out.push(id)
+      }
+      const children = rec.children
+      if (Array.isArray(children)) {
+        for (const c of children) walk(c)
+      }
+      // Scan every block body (type-keyed payload under e.g. `image`, `video`).
+      for (const [k, v] of Object.entries(rec)) {
+        if (k === 'children' || k === 'file_upload') continue
+        if (v !== null && typeof v === 'object') walk(v)
+      }
+    }
+    walk(body)
+    return out
+  }
 
   const handle = (req: HttpClientRequest.HttpClientRequest, body: unknown): unknown => {
     const url = new URL(req.url)
@@ -146,6 +180,18 @@ export const createFakeNotion = (): FakeNotion => {
     if (failureHook !== undefined) {
       const err = failureHook(fakeReq)
       if (err !== undefined) throw err
+    }
+
+    if (uploadIdPredicate !== undefined && (req.method === 'POST' || req.method === 'PATCH')) {
+      const ids = collectFileUploadIds(body)
+      const rejected = ids.find((id) => uploadIdPredicate!(id))
+      if (rejected !== undefined) {
+        respErr(
+          400,
+          'validation_error',
+          `Invalid file_upload. The file_upload with ID ${rejected} is expired or no longer usable.`,
+        )
+      }
     }
 
     const appendChildrenMatch = path.match(/^\/v1\/blocks\/([^/]+)\/children$/)
@@ -395,6 +441,9 @@ export const createFakeNotion = (): FakeNotion => {
     childrenOf: (id) => childrenOf(id),
     failOn: (hook) => {
       failureHook = hook
+    },
+    rejectUploadIds: (predicate) => {
+      uploadIdPredicate = predicate
     },
   }
 }

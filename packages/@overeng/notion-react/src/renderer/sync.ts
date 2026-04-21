@@ -24,6 +24,13 @@ import {
 } from './sync-diff.ts'
 import { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 import { aggregateMetrics, type SyncMetrics } from './sync-metrics.ts'
+import {
+  extractFileUploadId,
+  isUploadIdRejection,
+  replaceFileUploadId,
+  type OnUploadIdRejected,
+  type UploadIdRejectionContext,
+} from './upload-id-retry.ts'
 
 /**
  * Does this error indicate the target block is already in the desired
@@ -256,7 +263,65 @@ interface O11yCtx {
   readonly onEvent: SyncEventHandler | undefined
   nextOpId: () => number
   opCount: { n: number }
+  /**
+   * Consumer hook: given a rejected `file_upload_id`, return a fresh one. When
+   * undefined, upload-id rejections surface as `NotionSyncError` with
+   * `reason: 'notion-upload-id-rejected'` and an actionable message.
+   */
+  readonly onUploadIdRejected: OnUploadIdRejected | undefined
 }
+
+/**
+ * Attempt to refresh every `file_upload_id` referenced in `propsList` via
+ * the consumer hook. Returns a parallel array of refreshed props, or
+ * `undefined` if no op in the batch carried an upload id (meaning the
+ * original failure wasn't actually upload-id-related — surface as-is).
+ *
+ * Emits one `UploadIdRejected` event per refreshed op.
+ */
+const refreshBatchUploadIds = (
+  batch: readonly {
+    readonly props: Record<string, unknown>
+    readonly blockId: string | undefined
+    readonly tmpId: string | undefined
+  }[],
+  hook: OnUploadIdRejected,
+  originalError: NotionApiError,
+  o11y: O11yCtx,
+): Effect.Effect<readonly Record<string, unknown>[] | undefined, NotionSyncError, never> =>
+  Effect.gen(function* () {
+    let touched = false
+    const out: Record<string, unknown>[] = []
+    for (const entry of batch) {
+      const fileUploadId = extractFileUploadId(entry.props)
+      if (fileUploadId === undefined) {
+        out.push(entry.props)
+        continue
+      }
+      touched = true
+      if (o11y.onEvent !== undefined) {
+        o11y.onEvent(
+          SyncEvent.UploadIdRejected({
+            blockId: entry.blockId,
+            tmpId: entry.tmpId,
+            fileUploadId,
+            error: String(originalError),
+            at: Date.now(),
+          }),
+        )
+      }
+      const ctx: UploadIdRejectionContext = {
+        blockId: entry.blockId,
+        tmpId: entry.tmpId,
+        fileUploadId,
+        originalError,
+      }
+      const { newUploadId } = yield* hook(ctx)
+      out.push(replaceFileUploadId(entry.props, newUploadId))
+    }
+    if (!touched) return undefined
+    return out
+  })
 
 const flushAppendRun = (
   run: readonly AppendLike[],
@@ -301,17 +366,41 @@ const flushAppendRun = (
     let batchAfterId = firstAfterId
     for (let start = 0; start < run.length; start += APPEND_CHILDREN_MAX) {
       const batch = run.slice(start, start + APPEND_CHILDREN_MAX)
-      const children = batch.map((op) => appendBody(op.type, op.props))
+      // Track live props for each op so a retry with refreshed upload ids
+      // can rebuild the batch without re-running the diff.
+      let batchProps: Record<string, unknown>[] = batch.map((op) => ({ ...op.props }))
       const opId = o11y.nextOpId()
       const t0 = o11y.onEvent !== undefined ? performance.now() : 0
       if (o11y.onEvent !== undefined) {
         o11y.onEvent(SyncEvent.OpIssued({ id: opId, kind: 'append', at: Date.now() }))
       }
-      const res = yield* NotionBlocks.append({
-        blockId: parentId,
-        children,
-        ...(position !== undefined ? { position } : {}),
-      }).pipe(
+      const issueAppend = (props: readonly Record<string, unknown>[]) =>
+        NotionBlocks.append({
+          blockId: parentId,
+          children: batch.map((op, i) => appendBody(op.type, props[i]!)),
+          ...(position !== undefined ? { position } : {}),
+        })
+      const res = yield* issueAppend(batchProps).pipe(
+        Effect.catchAll((cause) =>
+          Effect.gen(function* () {
+            if (!isUploadIdRejection(cause) || o11y.onUploadIdRejected === undefined) {
+              return yield* Effect.fail(cause)
+            }
+            const refreshed = yield* refreshBatchUploadIds(
+              batch.map((op, i) => ({
+                props: batchProps[i]!,
+                blockId: undefined,
+                tmpId: op.tmpId,
+              })),
+              o11y.onUploadIdRejected,
+              cause,
+              o11y,
+            )
+            if (refreshed === undefined) return yield* Effect.fail(cause)
+            batchProps = refreshed.slice() as Record<string, unknown>[]
+            return yield* issueAppend(batchProps)
+          }),
+        ),
         Effect.tapError((cause) =>
           Effect.sync(() => {
             if (o11y.onEvent !== undefined) {
@@ -327,13 +416,19 @@ const flushAppendRun = (
             }
           }),
         ),
-        Effect.mapError(
-          (cause) =>
-            new NotionSyncError({
-              reason: first.kind === 'insert' ? 'notion-insert-failed' : 'notion-append-failed',
+        Effect.mapError((cause) => {
+          if (cause instanceof NotionSyncError) return cause
+          if (isUploadIdRejection(cause)) {
+            return new NotionSyncError({
+              reason: 'notion-upload-id-rejected',
               cause,
-            }),
-        ),
+            })
+          }
+          return new NotionSyncError({
+            reason: first.kind === 'insert' ? 'notion-insert-failed' : 'notion-append-failed',
+            cause,
+          })
+        }),
       )
       o11y.opCount.n += 1
       if (o11y.onEvent !== undefined) {
@@ -649,7 +744,26 @@ const applyDiff = (
           if (o11y.onEvent !== undefined) {
             o11y.onEvent(SyncEvent.OpIssued({ id: opId, kind: 'update', at: Date.now() }))
           }
-          yield* NotionBlocks.update({ blockId: op.blockId, [op.type]: op.props }).pipe(
+          let updateProps: Record<string, unknown> = { ...op.props }
+          const issueUpdate = (props: Record<string, unknown>) =>
+            NotionBlocks.update({ blockId: op.blockId, [op.type]: props })
+          yield* issueUpdate(updateProps).pipe(
+            Effect.catchAll((cause) =>
+              Effect.gen(function* () {
+                if (!isUploadIdRejection(cause) || o11y.onUploadIdRejected === undefined) {
+                  return yield* Effect.fail(cause)
+                }
+                const refreshed = yield* refreshBatchUploadIds(
+                  [{ props: updateProps, blockId: op.blockId, tmpId: undefined }],
+                  o11y.onUploadIdRejected,
+                  cause,
+                  o11y,
+                )
+                if (refreshed === undefined) return yield* Effect.fail(cause)
+                updateProps = { ...refreshed[0]! }
+                return yield* issueUpdate(updateProps)
+              }),
+            ),
             Effect.tapError((cause) =>
               Effect.sync(() => {
                 if (o11y.onEvent !== undefined) {
@@ -665,9 +779,16 @@ const applyDiff = (
                 }
               }),
             ),
-            Effect.mapError(
-              (cause) => new NotionSyncError({ reason: 'notion-update-failed', cause }),
-            ),
+            Effect.mapError((cause) => {
+              if (cause instanceof NotionSyncError) return cause
+              if (isUploadIdRejection(cause)) {
+                return new NotionSyncError({
+                  reason: 'notion-upload-id-rejected',
+                  cause,
+                })
+              }
+              return new NotionSyncError({ reason: 'notion-update-failed', cause })
+            }),
           )
           o11y.opCount.n += 1
           if (o11y.onEvent !== undefined) {
@@ -851,6 +972,19 @@ export const sync = (
      * single-writer sync contract.
      */
     readonly coldBaseline?: ColdBaseline
+    /**
+     * Consumer hook invoked when a Notion op fails with a validation_error
+     * referencing a `file_upload_id` (evicted early, not-yet-usable, race).
+     * Return a fresh upload id — the library retries the failing op once
+     * with the replacement. When unset, such failures surface as
+     * `NotionSyncError { reason: 'notion-upload-id-rejected' }`.
+     *
+     * The hook is library-agnostic: it only knows about the rejected id and
+     * receives the originating block/tmpId for context. All upload state
+     * (cache, HTTP client, logging) must be pre-provided on the returned
+     * Effect — mirroring `NotionCache.save/load`.
+     */
+    readonly onUploadIdRejected?: OnUploadIdRejected
   },
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> => {
   /* Compose the user `onEvent` with an internal metrics aggregator iff
@@ -878,6 +1012,7 @@ export const sync = (
         return opIdCounter
       },
       opCount: { n: 0 },
+      onUploadIdRejected: opts.onUploadIdRejected,
     }
     const prior = yield* opts.cache.load.pipe(
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),

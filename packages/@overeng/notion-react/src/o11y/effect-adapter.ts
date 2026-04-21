@@ -29,6 +29,7 @@ import type { NotionSyncError } from '../renderer/errors.ts'
 import type { SyncResult } from '../renderer/render-to-notion.ts'
 import { SyncEvent, type SyncEventHandler } from '../renderer/sync-events.ts'
 import { sync, type ColdBaseline } from '../renderer/sync.ts'
+import type { OnUploadIdRejected } from '../renderer/upload-id-retry.ts'
 
 /** Default service name embedded on every emitted span. */
 export const DEFAULT_SERVICE_NAME = 'notion-react'
@@ -241,6 +242,7 @@ export const instrumentedSync = (
     readonly coldBaseline?: ColdBaseline
     /** Additional handler composed after the OTEL one (for counters / logging). */
     readonly onEvent?: SyncEventHandler
+    readonly onUploadIdRejected?: OnUploadIdRejected
   },
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> =>
   Effect.gen(function* () {
@@ -263,6 +265,9 @@ export const instrumentedSync = (
       cache: opts.cache,
       onEvent: composed,
       ...(opts.coldBaseline !== undefined ? { coldBaseline: opts.coldBaseline } : {}),
+      ...(opts.onUploadIdRejected !== undefined
+        ? { onUploadIdRejected: opts.onUploadIdRejected }
+        : {}),
     }).pipe(emitSyncEndOnInterrupt({ pageId: opts.pageId, onEvent: composed }))
   })
 
