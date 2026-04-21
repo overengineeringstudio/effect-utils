@@ -56,6 +56,10 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";
+  genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
+    MEGAREPO_STORE = megarepoStoreEnv;
+  };
   git = "${pkgs.git}/bin/git";
   scanDirsSetup = builtins.concatStringsSep "\n" (
     map (dir: "scan_dir_args+=(${builtins.toJSON dir})") genieCoverageDirs
@@ -116,6 +120,8 @@ let
   otherTasks = {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
+      after = [ "genie:prepare" ];
+      env = genieTaskEnv;
       exec = trace.exec "lint:check:genie" "genie --check";
       execIfModified = geniePatterns;
     };

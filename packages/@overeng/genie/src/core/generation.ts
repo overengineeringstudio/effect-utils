@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto'
+import nodeFs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import type { Path } from '@effect/platform'
 import {
@@ -15,13 +18,14 @@ import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
-import { ensureImportMapResolver } from './discovery.ts'
+import { ensureImportMapResolver, isCompiledBinary } from './discovery.ts'
 import {
   GenieCheckError,
   GenieFileError,
   GenieImportError,
   InvalidOxfmtConfigError,
 } from './errors.ts'
+import { resolveImportMapsInSource } from './import-map/mod.ts'
 import type { GenerateSuccess, GenieContext } from './types.ts'
 
 /** Loaded genie module plus base context reused across check and validation phases. */
@@ -30,6 +34,168 @@ export type LoadedGenieFile = {
   output: GenieOutput<unknown>
   ctx: GenieContext
 }
+
+const IMPORT_SPECIFIER_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\1/g
+
+const isRelativeImportSpecifier = (specifier: string): boolean =>
+  specifier.startsWith('./') === true || specifier.startsWith('../') === true
+
+const resolveRelativeImportPath = async ({
+  importerPath,
+  specifier,
+}: {
+  importerPath: string
+  specifier: string
+}): Promise<string | undefined> => {
+  const resolvedBase = path.resolve(path.dirname(importerPath), specifier)
+  const candidates = [
+    resolvedBase,
+    `${resolvedBase}.ts`,
+    `${resolvedBase}.tsx`,
+    `${resolvedBase}.mts`,
+    `${resolvedBase}.cts`,
+    `${resolvedBase}.js`,
+    `${resolvedBase}.mjs`,
+    path.join(resolvedBase, 'index.ts'),
+    path.join(resolvedBase, 'index.tsx'),
+    path.join(resolvedBase, 'mod.ts'),
+    path.join(resolvedBase, 'mod.tsx'),
+  ]
+
+  const resolvedCandidates = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const stat = await nodeFs.stat(candidate)
+        return stat.isFile() === true ? candidate : undefined
+      } catch {
+        return undefined
+      }
+    }),
+  )
+
+  return resolvedCandidates.find((candidate) => candidate !== undefined)
+}
+
+const collectRelativeImportPaths = async ({
+  sourceCode,
+  sourcePath,
+}: {
+  sourceCode: string
+  sourcePath: string
+}): Promise<string[]> => {
+  const importSpecifierRegex = new RegExp(IMPORT_SPECIFIER_REGEX)
+  const relativeSpecifiers: string[] = []
+  let match: RegExpExecArray | null = importSpecifierRegex.exec(sourceCode)
+  while (match !== null) {
+    const specifier = match[2]
+    if (specifier !== undefined && isRelativeImportSpecifier(specifier) === true) {
+      relativeSpecifiers.push(specifier)
+    }
+    match = importSpecifierRegex.exec(sourceCode)
+  }
+
+  const resolvedPaths = await Promise.all(
+    relativeSpecifiers.map((specifier) =>
+      resolveRelativeImportPath({ importerPath: sourcePath, specifier }),
+    ),
+  )
+
+  return Array.from(
+    new Set(resolvedPaths.filter((resolved): resolved is string => resolved !== undefined)),
+  )
+}
+
+const stageCompiledBinaryImportGraph = ({
+  entryPath,
+}: {
+  entryPath: string
+}): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const tempRoot = yield* Effect.tryPromise({
+      try: () => nodeFs.mkdtemp(path.join(os.tmpdir(), 'genie-import-')),
+      catch: (error) =>
+        new GenieImportError({
+          genieFilePath: entryPath,
+          message: `Failed to create compiled-binary staging directory for ${entryPath}: ${safeErrorString(error)}`,
+          cause: error,
+        }),
+    })
+
+    const stagedPaths = new Map<string, string>()
+    const relativeEntryPath = entryPath.replace(/^(?:[A-Za-z]:)?[\\/]+/, '')
+
+    const stageModule = (
+      sourcePath: string,
+    ): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
+      Effect.gen(function* () {
+        const existingStagePath = stagedPaths.get(sourcePath)
+        if (existingStagePath !== undefined) {
+          return existingStagePath
+        }
+
+        const relativeSourcePath =
+          sourcePath === entryPath
+            ? relativeEntryPath
+            : path.relative(path.parse(sourcePath).root, sourcePath)
+        const stagePath = path.join(tempRoot, relativeSourcePath)
+        stagedPaths.set(sourcePath, stagePath)
+
+        const sourceCode = yield* Effect.tryPromise({
+          try: () => nodeFs.readFile(sourcePath, 'utf8'),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to read ${sourcePath} while staging compiled-binary imports: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
+        const transformedSource = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath,
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new GenieImportError({
+                genieFilePath: entryPath,
+                message: `Failed to resolve imports in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+                cause: error,
+              }),
+          ),
+        )
+
+        const relativeImportPaths = yield* Effect.tryPromise({
+          try: () => collectRelativeImportPaths({ sourceCode, sourcePath }),
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to analyze imports in ${sourcePath} for compiled-binary staging: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
+        yield* Effect.tryPromise({
+          try: async () => {
+            await nodeFs.mkdir(path.dirname(stagePath), { recursive: true })
+            await nodeFs.writeFile(stagePath, transformedSource)
+          },
+          catch: (error) =>
+            new GenieImportError({
+              genieFilePath: entryPath,
+              message: `Failed to write staged module ${stagePath}: ${safeErrorString(error)}`,
+              cause: error,
+            }),
+        })
+
+        for (const relativeImportPath of relativeImportPaths) {
+          yield* stageModule(relativeImportPath)
+        }
+
+        return stagePath
+      })
+
+    return yield* stageModule(entryPath)
+  })
 
 /**
  * Safely convert error to string.
@@ -356,7 +522,13 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
 }) {
   yield* ensureImportMapResolver
 
-  const importPath = `${genieFilePath}?import=${Date.now()}`
+  const importPathBase =
+    isCompiledBinary() === true
+      ? yield* stageCompiledBinaryImportGraph({ entryPath: genieFilePath }).pipe(
+          Effect.map((stagePath) => pathToFileURL(stagePath).href),
+        )
+      : genieFilePath
+  const importPath = `${importPathBase}?import=${Date.now()}`
 
   const module = yield* Effect.tryPromise({
     // oxlint-disable-next-line eslint-plugin-import/no-dynamic-require -- dynamic import path required for genie
