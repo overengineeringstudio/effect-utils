@@ -210,7 +210,14 @@ const runDevenvTasksBeforeWithOptions = (opts: NixConfigOptions, ...args: [strin
 const readCiHelperScript = (relativePath: string) =>
   readFileSync(new URL(relativePath, import.meta.url), 'utf8').trim()
 
-const nixGcRaceRetryScript = readCiHelperScript('./ci-scripts/nix-gc-race-retry.sh')
+let nixGcRaceRetryScriptCache: string | undefined
+
+const getNixGcRaceRetryScript = () => {
+  if (nixGcRaceRetryScriptCache === undefined) {
+    nixGcRaceRetryScriptCache = readCiHelperScript('./ci-scripts/nix-gc-race-retry.sh')
+  }
+  return nixGcRaceRetryScriptCache
+}
 
 /**
  * Retry wrapper for the Nix store validity race where `derivationStrict` fails
@@ -232,7 +239,7 @@ const withGcRaceRetry = ({ command, label }: { command: string; label: string })
   return [
     '__nix_gc_retry_helper=$(mktemp)',
     'cat > "$__nix_gc_retry_helper" <<\'EOF\'',
-    nixGcRaceRetryScript,
+    getNixGcRaceRetryScript(),
     'EOF',
     '. "$__nix_gc_retry_helper"',
     'rm -f "$__nix_gc_retry_helper"',
