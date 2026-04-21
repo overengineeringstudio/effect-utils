@@ -1,6 +1,6 @@
 # Genie Specification
 
-This document specifies the `@overeng/genie` subsystem in `effect-utils`. It builds on the package-level context in [../README.md](../README.md) and the build/runtime module boundaries in [../src/build/README.md](../src/build/README.md) and [../src/runtime/README.md](../src/runtime/README.md).
+This document specifies the `@overeng/genie` subsystem in `effect-utils`. It builds on [requirements.md](./requirements.md).
 
 ## Status
 
@@ -21,6 +21,12 @@ This spec does not define:
 - the detailed API contract of each individual runtime factory such as `package-json` or `tsconfig-json`
 - the packaging and hash-refresh mechanics of the Nix CLI wrappers outside the `genie` package itself
 - repository-local task wiring beyond the prerequisite boundary that ensures bootstrap members exist before Genie-backed tasks run
+
+The package-level context and current module-boundary docs remain:
+
+- [../README.md](../README.md)
+- [../src/build/README.md](../src/build/README.md)
+- [../src/runtime/README.md](../src/runtime/README.md)
 
 ## Public Surface
 

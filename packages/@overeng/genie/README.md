@@ -2,7 +2,11 @@
 
 TypeScript-based code generator for config files. Define your `package.json`, `tsconfig.json`, `oxlint.jsonc`, `oxfmt.jsonc`, and GitHub workflow files as TypeScript and generate them with consistent formatting.
 
-Architecture and subsystem behavior are specified in [docs/spec.md](./docs/spec.md).
+Architecture and subsystem behavior are documented in the VRS set:
+
+- [docs/vision.md](./docs/vision.md)
+- [docs/requirements.md](./docs/requirements.md)
+- [docs/spec.md](./docs/spec.md)
 
 ## Installation (Nix)
 
