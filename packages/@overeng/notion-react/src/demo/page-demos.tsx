@@ -269,12 +269,14 @@ export const listsAndTodosDemo: DemoEntry = {
       Page,
       Heading1,
       Heading2,
+      Heading3,
       Paragraph,
       BulletedListItem,
       NumberedListItem,
       ToDo,
       Callout,
       Bold,
+      Toggle,
     } = ui
 
     return (
@@ -299,13 +301,17 @@ export const listsAndTodosDemo: DemoEntry = {
 
         <Heading2 {...keyed({}, 'nesting-heading')}>Nesting guidance</Heading2>
         <Callout {...keyed({ icon: 'ℹ️', color: 'gray_background' }, 'nesting-callout')}>
-          v0.1 treats list items as sibling blocks. When you need hierarchy today, stack keyed
-          siblings instead of relying on deep nested children.
+          Nested list children are not part of the sync-safe public demo contract yet.
         </Callout>
-        <Paragraph {...keyed({}, 'stacked-label')}>Stacked approximation:</Paragraph>
-        <BulletedListItem {...keyed({}, 'stack-1')}>Fruit</BulletedListItem>
-        <BulletedListItem {...keyed({}, 'stack-2')}>- Apples</BulletedListItem>
-        <BulletedListItem {...keyed({}, 'stack-3')}>- Oranges</BulletedListItem>
+        <Paragraph {...keyed({}, 'nesting-body')}>
+          When you need hierarchy today, use a parent block such as a toggle or heading and keep
+          list items as ordinary keyed siblings underneath it.
+        </Paragraph>
+        <Heading3 {...keyed({}, 'fallback-heading')}>Recommended fallback</Heading3>
+        <Toggle {...keyed({ title: 'Fruit' }, 'fallback-toggle')}>
+          <BulletedListItem {...keyed({}, 'fallback-apple')}>Apples</BulletedListItem>
+          <BulletedListItem {...keyed({}, 'fallback-orange')}>Oranges</BulletedListItem>
+        </Toggle>
       </Page>
     )
   },
