@@ -283,8 +283,8 @@ run_nix_gc_race_retry() {
     saw_invalid_path=false
     saw_cachix_signature=false
     [ -n "$path" ] && saw_invalid_path=true
-    printf '%s' "$flattened" | grep -q 'Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
-    printf '%s' "$flattened" | grep -q 'while evaluating the option' && printf '%s' "$flattened" | grep -q 'cachix\.package' && saw_cachix_signature=true || true
+    printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
+    printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
     rm -f "$log"
 
     if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ]; then

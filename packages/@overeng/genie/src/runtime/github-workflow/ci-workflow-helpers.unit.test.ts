@@ -74,8 +74,9 @@ const applyMegarepoLockStepSource = extractSourceBlock(
 )
 
 describe('ci workflow retry helpers', () => {
-  it('sources the retry helper from a checked-in shell script', () => {
-    expect(ciWorkflowSource).toContain('./ci-scripts/nix-gc-race-retry.sh')
+  it('inlines the retry helper for bootstrap-safe downstream imports', () => {
+    expect(ciWorkflowSource).toContain('const nixGcRaceRetryScript = String.raw')
+    expect(ciWorkflowSource).toContain('Keep helper script bodies inline')
     expect(ciWorkflowSource).toContain('__nix_gc_retry_helper=$(mktemp)')
     expect(ciWorkflowSource).toContain('run_nix_gc_race_retry')
     expect(nixGcRaceRetryScriptSource).toContain("tr '\\r\\n' '  ' < \"$log\"")
