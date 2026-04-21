@@ -77,12 +77,14 @@ export interface DeleteBlockOptions {
  *
  * @see https://developers.notion.com/reference/retrieve-a-block
  */
-export const retrieve = Effect.fn('NotionBlocks.retrieve')(function* (opts: RetrieveBlockOptions) {
-  return yield* get({
+/* No wrapper span here: the surrounding `notion-react.op.retrieve`
+   (caller) and `NotionHttp.GET` (callee) spans already describe this
+   work. The middle span added no signal. */
+export const retrieve = (opts: RetrieveBlockOptions) =>
+  get({
     path: `/blocks/${opts.blockId}`,
     responseSchema: BlockSchema,
   })
-})
 
 /** Internal helper to build query params for block children */
 const buildBlockChildrenParams = (opts: RetrieveBlockChildrenOptions): string => {
@@ -93,17 +95,16 @@ const buildBlockChildrenParams = (opts: RetrieveBlockChildrenOptions): string =>
 }
 
 /** Internal raw retrieveChildren - used by both retrieveChildren and retrieveChildrenStream */
-const retrieveChildrenRaw = Effect.fn('NotionBlocks.retrieveChildren')(function* (
-  opts: RetrieveBlockChildrenOptions,
-) {
-  const queryString = buildBlockChildrenParams(opts)
-  const path = `/blocks/${opts.blockId}/children${queryString !== '' ? `?${queryString}` : ''}`
-  const response = yield* get({
-    path,
-    responseSchema: BlockChildrenResponseSchema,
+const retrieveChildrenRaw = (opts: RetrieveBlockChildrenOptions) =>
+  Effect.gen(function* () {
+    const queryString = buildBlockChildrenParams(opts)
+    const path = `/blocks/${opts.blockId}/children${queryString !== '' ? `?${queryString}` : ''}`
+    const response = yield* get({
+      path,
+      responseSchema: BlockChildrenResponseSchema,
+    })
+    return toPaginatedResult(response)
   })
-  return toPaginatedResult(response)
-})
 
 /**
  * Retrieve block children with pagination.
@@ -153,50 +154,49 @@ export const retrieveChildrenStream = (
  *
  * @see https://developers.notion.com/reference/patch-block-children
  */
-export const append = Effect.fn('NotionBlocks.append')(function* (
-  opts: AppendBlockChildrenOptions,
-) {
-  const body: Record<string, unknown> = {
-    children: opts.children,
-  }
+export const append = (opts: AppendBlockChildrenOptions) =>
+  Effect.gen(function* () {
+    const body: Record<string, unknown> = {
+      children: opts.children,
+    }
 
-  if (opts.position !== undefined) {
-    body.position = opts.position
-  }
+    if (opts.position !== undefined) {
+      body.position = opts.position
+    }
 
-  return yield* patch({
-    path: `/blocks/${opts.blockId}/children`,
-    body,
-    responseSchema: AppendBlockChildrenResponseSchema,
+    return yield* patch({
+      path: `/blocks/${opts.blockId}/children`,
+      body,
+      responseSchema: AppendBlockChildrenResponseSchema,
+    })
   })
-})
 
 /**
  * Update a block.
  *
  * @see https://developers.notion.com/reference/update-a-block
  */
-export const update = Effect.fn('NotionBlocks.update')(function* (opts: UpdateBlockOptions) {
-  const { blockId, ...body } = opts
+export const update = (opts: UpdateBlockOptions) =>
+  Effect.gen(function* () {
+    const { blockId, ...body } = opts
 
-  return yield* patch({
-    path: `/blocks/${blockId}`,
-    body,
-    responseSchema: BlockSchema,
+    return yield* patch({
+      path: `/blocks/${blockId}`,
+      body,
+      responseSchema: BlockSchema,
+    })
   })
-})
 
 /**
  * Delete (archive) a block.
  *
  * @see https://developers.notion.com/reference/delete-a-block
  */
-export const deleteBlock = Effect.fn('NotionBlocks.delete')(function* (opts: DeleteBlockOptions) {
-  return yield* del({
+export const deleteBlock = (opts: DeleteBlockOptions) =>
+  del({
     path: `/blocks/${opts.blockId}`,
     responseSchema: BlockSchema,
   })
-})
 
 // -----------------------------------------------------------------------------
 // Recursive Block Fetching Types
@@ -415,20 +415,9 @@ export const retrieveAsTree = (
       )
 
       return nodes
-    }).pipe(
-      Effect.withSpan('NotionBlocks.fetchTreeRecursive', {
-        attributes: {
-          'notion.block_id': args.blockId,
-          'notion.depth': args.depth,
-        },
-      }),
-    )
+    })
 
-  return fetchTreeRecursive({ blockId: opts.blockId, depth: 0 }).pipe(
-    Effect.withSpan('NotionBlocks.retrieveAsTree', {
-      attributes: { 'notion.block_id': opts.blockId },
-    }),
-  )
+  return fetchTreeRecursive({ blockId: opts.blockId, depth: 0 })
 }
 
 // -----------------------------------------------------------------------------
@@ -438,20 +427,21 @@ export const retrieveAsTree = (
 const BLOCK_APPEND_BATCH_SIZE = 100
 
 /** Append block children with automatic batching at 100 blocks (Notion API limit) */
-export const appendBatched = Effect.fn('NotionBlocks.appendBatched')(function* (opts: {
+export const appendBatched = (opts: {
   blockId: string
   children: readonly unknown[]
   batchSize?: number
-}) {
-  const size = opts.batchSize ?? BLOCK_APPEND_BATCH_SIZE
-  for (let i = 0; i < opts.children.length; i += size) {
-    const batch = opts.children.slice(i, i + size)
-    yield* append({
-      blockId: opts.blockId,
-      children: batch as Parameters<typeof append>[0]['children'],
-    })
-  }
-})
+}) =>
+  Effect.gen(function* () {
+    const size = opts.batchSize ?? BLOCK_APPEND_BATCH_SIZE
+    for (let i = 0; i < opts.children.length; i += size) {
+      const batch = opts.children.slice(i, i + size)
+      yield* append({
+        blockId: opts.blockId,
+        children: batch as Parameters<typeof append>[0]['children'],
+      })
+    }
+  })
 
 // -----------------------------------------------------------------------------
 // Namespace Export
