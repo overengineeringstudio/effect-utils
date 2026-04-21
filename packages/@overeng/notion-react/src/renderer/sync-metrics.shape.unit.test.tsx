@@ -91,7 +91,18 @@ interface PageSpec {
 
 const cell = (s: string): ReactNode => <>{s}</>
 
-const RealisticPage = ({ spec }: { readonly spec: PageSpec }): ReactNode => (
+const RealisticPage = ({
+  spec,
+  keyedAtomics = false,
+}: {
+  readonly spec: PageSpec
+  /**
+   * When true, pass `blockKey` to Table / ColumnList / Column so their
+   * identity survives sibling shifts. Contrast case for
+   * `[shape-insert-before-*]` scenarios.
+   */
+  readonly keyedAtomics?: boolean
+}): ReactNode => (
   <>
     <Fragment key="callout">
       <Callout blockKey="callout">{spec.callout}</Callout>
@@ -103,7 +114,7 @@ const RealisticPage = ({ spec }: { readonly spec: PageSpec }): ReactNode => (
     ))}
     {spec.tables.map((t) => (
       <Fragment key={t.id}>
-        <Table tableWidth={t.rows[0]!.cells.length}>
+        <Table tableWidth={t.rows[0]!.cells.length} {...(keyedAtomics ? { blockKey: t.id } : {})}>
           {t.rows.map((r) => (
             <Fragment key={r.id}>
               <TableRow cells={r.cells.map(cell)} />
@@ -114,14 +125,14 @@ const RealisticPage = ({ spec }: { readonly spec: PageSpec }): ReactNode => (
     ))}
     {spec.columnSections.map((c) => (
       <Fragment key={c.id}>
-        <ColumnList>
+        <ColumnList {...(keyedAtomics ? { blockKey: c.id } : {})}>
           <Fragment key={`${c.id}-l`}>
-            <Column>
+            <Column {...(keyedAtomics ? { blockKey: `${c.id}-l` } : {})}>
               <Paragraph blockKey={`${c.id}-l-p`}>{c.left}</Paragraph>
             </Column>
           </Fragment>
           <Fragment key={`${c.id}-r`}>
-            <Column>
+            <Column {...(keyedAtomics ? { blockKey: `${c.id}-r` } : {})}>
               <Paragraph blockKey={`${c.id}-r-p`}>{c.right}</Paragraph>
             </Column>
           </Fragment>
@@ -225,6 +236,26 @@ describe('SyncMetrics — realistic daily-page shape', () => {
       toggles: [...baseSpec().toggles, { id: 'tg-new', text: 'appended-tail' }],
     }
     const m = await collect(fake, <RealisticPage spec={next} />, cache)
+    expect(m.actualOps.append).toBe(1)
+    expect(m.actualOps.update).toBe(0)
+    expect(m.actualOps.delete).toBe(0)
+    expect(m.oer.append).toBe(1)
+    expect(m.theoreticalMinOps.append).toBe(1)
+  })
+
+  it('[shape-insert-before-keyed-atomics] keyed Table/ColumnList/Column survive sibling insert → 1 op', async () => {
+    // Contract: when atomic containers carry `blockKey`, inserting a keyed
+    // heading ahead of them does NOT cascade. LCS matches every container
+    // by identity instead of by `p:N` position, so the only emitted op is
+    // the single insert for the new heading.
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await collect(fake, <RealisticPage spec={baseSpec()} keyedAtomics />, cache)
+    const next: PageSpec = {
+      ...baseSpec(),
+      headings: [...baseSpec().headings, { id: 'h-new', text: 'mid-inserted' }],
+    }
+    const m = await collect(fake, <RealisticPage spec={next} keyedAtomics />, cache)
     expect(m.actualOps.append).toBe(1)
     expect(m.actualOps.update).toBe(0)
     expect(m.actualOps.delete).toBe(0)

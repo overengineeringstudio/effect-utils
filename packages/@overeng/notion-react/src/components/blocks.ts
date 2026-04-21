@@ -134,17 +134,29 @@ export const Embed = ({ url }: EmbedProps) => h('embed', { url })
 
 export const Equation = ({ expression }: EquationProps) => h('equation', { expression })
 
-export const Table = ({ children, tableWidth, hasColumnHeader, hasRowHeader }: TableProps) => {
+export const Table = ({
+  children,
+  tableWidth,
+  hasColumnHeader,
+  hasRowHeader,
+  blockKey,
+}: TableProps) => {
   const props: Record<string, unknown> = {}
   if (tableWidth !== undefined) props.tableWidth = tableWidth
   if (hasColumnHeader !== undefined) props.hasColumnHeader = hasColumnHeader
   if (hasRowHeader !== undefined) props.hasRowHeader = hasRowHeader
-  return h('table', props, children)
+  if (blockKey !== undefined) props.blockKey = blockKey
+  return h('table', Object.keys(props).length === 0 ? null : props, children)
 }
 export const TableRow = ({ cells }: TableRowProps) => h('table_row', { cells })
-export const ColumnList = ({ children }: ColumnListProps) => h('column_list', null, children)
-export const Column = ({ children, widthRatio }: ColumnProps) =>
-  h('column', widthRatio === undefined ? null : { widthRatio }, children)
+export const ColumnList = ({ children, blockKey }: ColumnListProps) =>
+  h('column_list', keyedProps(blockKey), children)
+export const Column = ({ children, widthRatio, blockKey }: ColumnProps) => {
+  const props: Record<string, unknown> = {}
+  if (widthRatio !== undefined) props.widthRatio = widthRatio
+  if (blockKey !== undefined) props.blockKey = blockKey
+  return h('column', Object.keys(props).length === 0 ? null : props, children)
+}
 export const LinkToPage = ({ pageId }: LinkToPageProps) => h('link_to_page', { pageId })
 export const TableOfContents = () => h('table_of_contents', null)
 export const ChildPage = ({ title }: ChildPageProps) =>

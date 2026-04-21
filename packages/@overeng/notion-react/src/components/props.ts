@@ -95,14 +95,15 @@ export type EmbedProps = { readonly url: string }
 
 export type EquationProps = { readonly expression: string }
 
-export type TableProps = Children & {
-  readonly tableWidth?: number
-  readonly hasColumnHeader?: boolean
-  readonly hasRowHeader?: boolean
-}
+export type TableProps = Children &
+  BlockKey & {
+    readonly tableWidth?: number
+    readonly hasColumnHeader?: boolean
+    readonly hasRowHeader?: boolean
+  }
 export type TableRowProps = { readonly cells: readonly ReactNode[] }
-export type ColumnListProps = Children
-export type ColumnProps = Children & { readonly widthRatio?: number }
+export type ColumnListProps = Children & BlockKey
+export type ColumnProps = Children & BlockKey & { readonly widthRatio?: number }
 
 export type LinkToPageProps = { readonly pageId: string }
 export type TableOfContentsProps = Record<string, never>
