@@ -541,6 +541,113 @@ describe('sync() against in-memory fake Notion', () => {
     expect(newReqs.map((r) => r.method)).toEqual(['GET'])
   })
 
+  // Warm-sync regression: any structural change inside a retained
+  // column_list (column added/removed/reordered, or a column's own
+  // children changed) must force a full remove+recreate of the whole
+  // column_list. Notion rejects per-column mutation — appending a bare
+  // `column` fails with `body.children[0].column.children should be
+  // defined` (pixeltrail dogfood: warm sync of daily page, trace
+  // `ac464743e6daa36e75f4f427df179a54`).
+  it('column_list warm-sync: adding a column triggers full rebuild, not a bare column append', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const clV1 = (
+      <ColumnList>
+        <Column blockKey="left">
+          <Image url="https://example.com/a.png" />
+        </Column>
+        <Column blockKey="right">
+          <Image url="https://example.com/b.png" />
+        </Column>
+      </ColumnList>
+    )
+    const clV2 = (
+      <ColumnList>
+        <Column blockKey="left">
+          <Image url="https://example.com/a.png" />
+        </Column>
+        <Column blockKey="middle">
+          <Image url="https://example.com/m.png" />
+        </Column>
+        <Column blockKey="right">
+          <Image url="https://example.com/b.png" />
+        </Column>
+      </ColumnList>
+    )
+    await runWith(
+      fake,
+      sync(clV1, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Warm sync with a new column in the middle. Must NOT emit a bare
+    // `column` append — the fake's validateAtomic would reject that.
+    const res = await runWith(
+      fake,
+      sync(clV2, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // Full rebuild semantics: the previous column_list is removed, the
+    // new one appended (+ nested rendered blocks tallied).
+    expect(res.removes).toBe(1)
+    expect(res.appends + res.inserts).toBeGreaterThanOrEqual(1)
+    const top = fake.childrenOf(ROOT)
+    expect(top.map((b) => b.type)).toEqual(['column_list'])
+    const cols = fake.childrenOf(top[0]!.id)
+    expect(cols).toHaveLength(3)
+    expect(cols.every((c) => c.type === 'column')).toBe(true)
+  })
+
+  it('column_list warm-sync: a column whose own children changed also forces full rebuild', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const clV1 = (
+      <ColumnList>
+        <Column blockKey="a">
+          <Image url="https://example.com/a.png" />
+        </Column>
+        <Column blockKey="b">
+          <Image url="https://example.com/b.png" />
+        </Column>
+      </ColumnList>
+    )
+    const clV2 = (
+      <ColumnList>
+        <Column blockKey="a">
+          <Image url="https://example.com/a.png" />
+          <Paragraph>extra</Paragraph>
+        </Column>
+        <Column blockKey="b">
+          <Image url="https://example.com/b.png" />
+        </Column>
+      </ColumnList>
+    )
+    await runWith(
+      fake,
+      sync(clV1, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    // The inner paragraph is new and its parent column existed; a naive
+    // diff would emit `append` of a paragraph under the old column.
+    // Appending children into an existing column IS supported by Notion,
+    // so in principle this could be a surgical op — but the cache path
+    // currently lacks an incremental-rebuild strategy below column_list,
+    // so we conservatively rebuild the whole column_list to stay correct.
+    const res = await runWith(
+      fake,
+      sync(clV2, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(res.removes).toBeGreaterThanOrEqual(1)
+    // Most importantly: no validation error from the fake. If a bare
+    // `column` append slipped through, the fake would have thrown.
+    const top = fake.childrenOf(ROOT)
+    expect(top.map((b) => b.type)).toEqual(['column_list'])
+  })
+
   // ---------------------------------------------------------------
   // Atomic container: `table` — same staged-append prohibition as
   // column_list. Rows must ship inlined; cells travel inside each

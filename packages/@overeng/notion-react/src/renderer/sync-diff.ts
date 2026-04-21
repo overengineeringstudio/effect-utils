@@ -196,6 +196,33 @@ const assertUniqueKeys = (
   check(candidateChildren, 'candidate')
 }
 
+/**
+ * Block types whose descendants cannot be mutated via staged append/insert/
+ * remove after creation — any structural change to their subtree forces a
+ * full rebuild (remove + re-create with the new subtree inlined).
+ *
+ * `column_list`: Notion rejects `append children` against a column_list and
+ * rejects appending a bare `column` anywhere (column requires ≥1 child
+ * inlined at creation). So reordering columns, adding a column, removing a
+ * column, or changing any column's own direct children all require
+ * remove+recreate of the entire column_list.
+ *
+ * Kept separate from `ATOMIC_CONTAINERS` (the create-side inlining set):
+ * `table` is atomic on create but rows CAN be appended post-hoc, so tables
+ * don't need full-rebuild semantics on warm-sync.
+ */
+const FULL_REBUILD_ON_SUBTREE_CHANGE: ReadonlySet<BlockType> = new Set<BlockType>(['column_list'])
+
+/** Deep structural (key+type+children-shape) equality between a cached node and a candidate. */
+const subtreesStructurallyEqual = (cache: CacheNode, cand: CandidateNode): boolean => {
+  if (cache.key !== cand.key || cache.type !== cand.type) return false
+  if (cache.children.length !== cand.children.length) return false
+  for (let i = 0; i < cache.children.length; i++) {
+    if (!subtreesStructurallyEqual(cache.children[i]!, cand.children[i]!)) return false
+  }
+  return true
+}
+
 const diffChildren = (
   parentId: string, // blockId or tmpId of the parent
   cacheChildren: readonly CacheNode[],
@@ -210,6 +237,19 @@ const diffChildren = (
 
   const cacheByKey = new Map<string, CacheNode>()
   for (const c of cacheChildren) cacheByKey.set(c.key, c)
+
+  // Demote retained candidates whose type demands full-rebuild on any
+  // subtree shape change (e.g. column_list — Notion rejects per-column
+  // mutation). Unretaining here flows through the normal insert/append +
+  // remove pair, so the whole subtree is re-created with children inlined.
+  for (const cand of candidateChildren) {
+    if (!FULL_REBUILD_ON_SUBTREE_CHANGE.has(cand.type)) continue
+    if (!retainedKeys.has(cand.key)) continue
+    const prior = cacheByKey.get(cand.key)!
+    if (!subtreesStructurallyEqual(prior, cand)) {
+      retainedKeys.delete(cand.key)
+    }
+  }
 
   // Precompute, for each candidate index, whether any later candidate is
   // retained. A new candidate can safely become an `append` iff no retained
