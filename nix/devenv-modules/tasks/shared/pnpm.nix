@@ -177,9 +177,10 @@ let
         # Content-addressable store (files/) is unaffected.
         # See: pnpm/pnpm#9739
         _gvs_hash=$({
-          # pnpm 11 keeps the process alive when stdin stays open, which is
-          # what GitHub Actions does for long-lived shell steps.
-          pnpm --version < /dev/null
+          # Hash the resolved pnpm package version directly instead of probing
+          # the CLI at runtime. That keeps the task deterministic and avoids
+          # trace-wrapper quoting hazards around command rewriting.
+          printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version}
           sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
           sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
         } | compute_hash)
