@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import fs from 'node:fs/promises'
+import nodeFs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -62,18 +62,18 @@ const resolveRelativeImportPath = async ({
     path.join(resolvedBase, 'mod.tsx'),
   ]
 
-  for (const candidate of candidates) {
-    try {
-      const stat = await fs.stat(candidate)
-      if (stat.isFile() === true) {
-        return candidate
+  const resolvedCandidates = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const stat = await nodeFs.stat(candidate)
+        return stat.isFile() === true ? candidate : undefined
+      } catch {
+        return undefined
       }
-    } catch {
-      // Try the next candidate.
-    }
-  }
+    }),
+  )
 
-  return undefined
+  return resolvedCandidates.find((candidate) => candidate !== undefined)
 }
 
 const collectRelativeImportPaths = async ({
@@ -83,21 +83,24 @@ const collectRelativeImportPaths = async ({
   sourceCode: string
   sourcePath: string
 }): Promise<string[]> => {
-  const relativeImportPaths = new Set<string>()
   const importSpecifierRegex = new RegExp(IMPORT_SPECIFIER_REGEX)
+  const relativeSpecifiers: string[] = []
   let match: RegExpExecArray | null = importSpecifierRegex.exec(sourceCode)
   while (match !== null) {
     const specifier = match[2]
     if (specifier !== undefined && isRelativeImportSpecifier(specifier) === true) {
-      const resolved = await resolveRelativeImportPath({ importerPath: sourcePath, specifier })
-      if (resolved !== undefined) {
-        relativeImportPaths.add(resolved)
-      }
+      relativeSpecifiers.push(specifier)
     }
     match = importSpecifierRegex.exec(sourceCode)
   }
 
-  return Array.from(relativeImportPaths)
+  const resolvedPaths = await Promise.all(
+    relativeSpecifiers.map((specifier) =>
+      resolveRelativeImportPath({ importerPath: sourcePath, specifier }),
+    ),
+  )
+
+  return Array.from(new Set(resolvedPaths.filter((resolved): resolved is string => resolved !== undefined)))
 }
 
 const stageCompiledBinaryImportGraph = ({
@@ -107,7 +110,7 @@ const stageCompiledBinaryImportGraph = ({
 }): Effect.Effect<string, GenieImportError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const tempRoot = yield* Effect.tryPromise({
-      try: () => fs.mkdtemp(path.join(os.tmpdir(), 'genie-import-')),
+      try: () => nodeFs.mkdtemp(path.join(os.tmpdir(), 'genie-import-')),
       catch: (error) =>
         new GenieImportError({
           genieFilePath: entryPath,
@@ -136,7 +139,7 @@ const stageCompiledBinaryImportGraph = ({
         stagedPaths.set(sourcePath, stagePath)
 
         const sourceCode = yield* Effect.tryPromise({
-          try: () => fs.readFile(sourcePath, 'utf8'),
+          try: () => nodeFs.readFile(sourcePath, 'utf8'),
           catch: (error) =>
             new GenieImportError({
               genieFilePath: entryPath,
@@ -171,8 +174,8 @@ const stageCompiledBinaryImportGraph = ({
 
         yield* Effect.tryPromise({
           try: async () => {
-            await fs.mkdir(path.dirname(stagePath), { recursive: true })
-            await fs.writeFile(stagePath, transformedSource)
+            await nodeFs.mkdir(path.dirname(stagePath), { recursive: true })
+            await nodeFs.writeFile(stagePath, transformedSource)
           },
           catch: (error) =>
             new GenieImportError({
