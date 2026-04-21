@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **@overeng/notion-react**: Add shared page-demo builders plus a `sync-notion-demo.tsx` script so the `Pages/*` Storybook stories can be rendered through both the web surface and the Notion reconciler and synced as rerunnable child pages under a target Notion parent
+- **@overeng/notion-react**: Expand the shared public demo catalog to cover the sync-safe block surface end to end, wire cross-page references through a two-pass child-page sync, and document the live API caveats for upload-backed media blocks and column width ratios
 - **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
 - **@overeng/pty-effect/client**: Add PTY client support for session tags, `getSession`, `gc`, `updateTags`, `sendData`, `queryStats`, `readRecentEvents`, and live event following
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)

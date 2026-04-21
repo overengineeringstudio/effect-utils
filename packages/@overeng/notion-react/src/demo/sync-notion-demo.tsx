@@ -5,10 +5,10 @@ import { Chunk, Effect, Layer, Redacted, Stream } from 'effect'
 
 import { NotionBlocks, NotionConfig, NotionPages } from '@overeng/notion-effect-client'
 
-import * as Host from '../components/mod.ts'
 import { FsCache } from '../cache/mod.ts'
+import * as Host from '../components/mod.ts'
 import { sync } from '../renderer/mod.ts'
-import { notionPageDemos } from './page-demos.tsx'
+import { type DemoContext, notionPageDemos } from './page-demos.tsx'
 
 const DEFAULT_PARENT_PAGE_ID = '349f141b18dc8002ad6debd74e7eec76'
 const CACHE_DIR = path.join(process.cwd(), 'tmp', 'notion-demo-cache')
@@ -39,11 +39,9 @@ const childPageTitle = (block: unknown): string | undefined => {
   return candidate.type === 'child_page' ? candidate.child_page?.title : undefined
 }
 
-const listChildPages = (parentPageId: string): Effect.Effect<
-  ReadonlyMap<string, string>,
-  unknown,
-  Env
-> =>
+const listChildPages = (
+  parentPageId: string,
+): Effect.Effect<ReadonlyMap<string, string>, unknown, Env> =>
   Effect.gen(function* () {
     const blocks = yield* Stream.runCollect(
       NotionBlocks.retrieveChildrenStream({ blockId: parentPageId }),
@@ -77,23 +75,32 @@ const ensureChildPage = (
   })
 
 const syncChildPage = (
+  demoContext: DemoContext,
   slug: string,
   pageId: string,
 ): Effect.Effect<void, unknown, Env> =>
-  sync(
-    notionPageDemos.find((demo) => demo.slug === slug)!.render(Host),
-    {
-      pageId,
-      cache: FsCache.make(path.join(CACHE_DIR, `${slug}.${pageId}.json`)),
-    },
-  ).pipe(Effect.asVoid)
+  sync(notionPageDemos.find((demo) => demo.slug === slug)!.render(Host, demoContext), {
+    pageId,
+    cache: FsCache.make(path.join(CACHE_DIR, `${slug}.${pageId}.json`)),
+  }).pipe(Effect.asVoid)
 
 const program = (parentPageId: string): Effect.Effect<void, unknown, Env> =>
   Effect.gen(function* () {
     const existing = yield* listChildPages(parentPageId)
+    const pageIdsBySlug = new Map<string, string>()
     for (const demo of notionPageDemos) {
       const pageId = yield* ensureChildPage(parentPageId, demo.title, existing)
-      yield* syncChildPage(demo.slug, pageId)
+      pageIdsBySlug.set(demo.slug, pageId)
+    }
+
+    const demoContext: DemoContext = {
+      parentPageId,
+      pageIdsBySlug,
+    }
+
+    for (const demo of notionPageDemos) {
+      const pageId = pageIdsBySlug.get(demo.slug)!
+      yield* syncChildPage(demoContext, demo.slug, pageId)
       // eslint-disable-next-line no-console
       console.log(`synced ${demo.slug} -> ${pageId}`)
     }
@@ -101,7 +108,8 @@ const program = (parentPageId: string): Effect.Effect<void, unknown, Env> =>
 
 const main = async () => {
   const notionToken = envOrThrow('NOTION_TOKEN')
-  const rawParent = process.argv[2] ?? process.env.NOTION_DEMO_PARENT_PAGE_ID ?? DEFAULT_PARENT_PAGE_ID
+  const rawParent =
+    process.argv[2] ?? process.env.NOTION_DEMO_PARENT_PAGE_ID ?? DEFAULT_PARENT_PAGE_ID
   const parentPageId = pageIdFromInput(rawParent)
 
   const layer = Layer.mergeAll(
