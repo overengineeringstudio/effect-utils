@@ -17,9 +17,6 @@
 # - bootstrapMembers: Minimal members that must exist before tooling like genie
 #   can evaluate. Uses lock-based `mr apply --only ...` and never fetches remote
 #   refs. Default: [ ] (task becomes a no-op)
-# - checkSkipMembers: Members that `mr:check` should ignore when a repo
-#   intentionally does a partial lock apply (for example CI skipping a sensitive
-#   or heavyweight member). Default: [ ]
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add the dependency in their devenv.nix:
@@ -27,7 +24,6 @@
 {
   syncAll ? true,
   bootstrapMembers ? [ ],
-  checkSkipMembers ? [ ],
 }:
 { lib, pkgs, ... }:
 let
@@ -35,7 +31,6 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   jq = "${pkgs.jq}/bin/jq";
   bootstrapOnlyArgs = lib.concatMapStringsSep " " (member: "--only ${lib.escapeShellArg member}") bootstrapMembers;
-  staticCheckSkipCsv = lib.concatStringsSep "," checkSkipMembers;
 
   # Single-pass jq script that compares megarepo.lock member commits against
   # a Nix lock file (devenv.lock or flake.lock). Handles multiple inputs
@@ -74,14 +69,7 @@ let
   '';
 
   loadCheckSkipMembersScript = ''
-    _mr_skip_csv=${lib.escapeShellArg staticCheckSkipCsv}
-    if [ -n "''${MEGAREPO_SKIP_MEMBERS:-}" ]; then
-      if [ -n "$_mr_skip_csv" ]; then
-        _mr_skip_csv="$_mr_skip_csv,''${MEGAREPO_SKIP_MEMBERS}"
-      else
-        _mr_skip_csv="''${MEGAREPO_SKIP_MEMBERS}"
-      fi
-    fi
+    _mr_skip_csv="''${MEGAREPO_SKIP_MEMBERS:-}"
 
     should_skip_member() {
       local member="$1"

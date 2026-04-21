@@ -161,8 +161,9 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
-  it('exports skipped megarepo members for downstream lock-based checks', () => {
+  it('only exports skipped megarepo members when the CI lane actually skips members', () => {
     expect(applyMegarepoLockStepSource).toContain('MEGAREPO_SKIP_MEMBERS')
+    expect(applyMegarepoLockStepSource).toContain("skipCsv === ''")
     expect(applyMegarepoLockStepSource).toContain(`printf 'MEGAREPO_SKIP_MEMBERS=%s\\n'`)
   })
 })
