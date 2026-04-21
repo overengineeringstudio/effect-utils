@@ -604,7 +604,7 @@ export const resolveImportMapSpecifierForImporterSync = ({
  * Regex to match import/export statements with string specifiers.
  * Captures: full match, quote char, specifier
  */
-const IMPORT_REGEX = /(?:import|export)\s+(?:.*?\s+from\s+)?(['"])([^'"]+)\1/g
+const IMPORT_REGEX = /(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?(['"])([^'"]+)\1/g
 
 /**
  * Transform source code by resolving all `#...` import specifiers.

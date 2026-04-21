@@ -623,6 +623,35 @@ import { baz } from './local.ts'`
     )
 
     Vitest.it.effect(
+      'transforms multiline imports with # specifiers',
+      Effect.fnUntraced(function* () {
+        const packageJsonPath = path.join(tempDir, 'package.json')
+        yield* writeFile(
+          packageJsonPath,
+          toJson({
+            imports: { '#lib/*': './src/lib/*' },
+          }),
+        )
+        const filePath = path.join(tempDir, 'src', 'file.ts')
+        yield* writeFile(filePath, '')
+
+        const sourceCode = `import {
+  foo,
+  bar,
+} from '#lib/mod.ts'`
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
+
+        expect(result).toBe(`import {
+  foo,
+  bar,
+} from '${tempDir}/src/lib/mod.ts'`)
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
       'transforms #mr member imports without a package.json import map',
       Effect.fnUntraced(function* () {
         process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
