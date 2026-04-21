@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react'
+import type { StoryObj } from '@storybook/react'
 
 import type { DemoContext } from '../../demo/page-demos.tsx'
 import { storybookSyncPages } from '../../demo/storybook-sync-catalog.tsx'
@@ -27,12 +27,6 @@ const sharedDemoBySlug = new Map(
     )
     .map((page) => [page.slug, page]),
 )
-
-export const sharedDemoMeta = (title: string) =>
-  ({
-    title,
-    parameters: { layout: 'fullscreen' },
-  }) satisfies Meta
 
 export const sharedDemoStory = (slug: string): StoryObj => {
   const page = sharedDemoBySlug.get(slug)

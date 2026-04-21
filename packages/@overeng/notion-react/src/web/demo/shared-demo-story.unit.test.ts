@@ -16,8 +16,8 @@ describe('shared demo stories', () => {
       const source = readFileSync(path.join(demoStoriesDir, fileName), 'utf8')
 
       expect(source).toContain("from './shared-demo-story.tsx'")
-      expect(source).toContain('sharedDemoMeta(')
       expect(source).toContain('sharedDemoStory(')
+      expect(source).toContain('satisfies Meta')
       expect(source).not.toContain('render: () => (')
     })
   }

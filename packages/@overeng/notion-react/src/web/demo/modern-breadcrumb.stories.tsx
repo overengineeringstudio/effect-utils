@@ -1,6 +1,11 @@
-import { sharedDemoMeta, sharedDemoStory } from './shared-demo-story.tsx'
+import type { Meta } from '@storybook/react'
 
-const meta = sharedDemoMeta('Demo/17 — Modern · Breadcrumb')
+import { sharedDemoStory } from './shared-demo-story.tsx'
+
+const meta = {
+  title: 'Demo/17 — Modern · Breadcrumb',
+  parameters: { layout: 'fullscreen' },
+} satisfies Meta
 export default meta
 
 export const Default = sharedDemoStory('demo-17-modern-breadcrumb')
