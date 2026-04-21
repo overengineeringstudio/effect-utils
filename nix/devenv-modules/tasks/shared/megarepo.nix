@@ -309,10 +309,11 @@ in
   ]
   ++ cliGuard.fromTasks tasks;
 
-  tasks = cliGuard.stripGuards tasks;
-}
-// lib.optionalAttrs (bootstrapMembers != [ ]) {
-  # Repos that source-import genie helpers from bootstrap members should ensure
-  # those members exist before any genie-backed task runs.
-  tasks."genie:prepare".after = lib.mkAfter [ "mr:bootstrap" ];
+  tasks =
+    cliGuard.stripGuards tasks
+    // lib.optionalAttrs (bootstrapMembers != [ ]) {
+      # Repos that source-import genie helpers from bootstrap members should ensure
+      # those members exist before any genie-backed task runs.
+      "genie:prepare".after = lib.mkAfter [ "mr:bootstrap" ];
+    };
 }
