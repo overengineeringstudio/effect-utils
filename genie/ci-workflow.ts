@@ -189,6 +189,8 @@ const withAppendedNixConfig = ({
   return `if [ -n "${'${NIX_CONFIG:-}'}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '%s\\n%s' "$NIX_CONFIG" ${quotedExtraConf}); else NIX_CONFIG_WITH_APPEND=${quotedExtraConf}; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" ${command}`
 }
 
+const dollar = '$'
+
 /**
  * Fall back to the standard CI pnpm paths when a workflow has not exported
  * them via `pnpmStateSetupStep` yet. This keeps `runDevenvTasksBefore` safe for
@@ -213,22 +215,22 @@ const nixGcRaceRetryScript = String.raw`#!/usr/bin/env bash
 run_nix_gc_race_retry() {
   local task="$1"
   local command="$2"
-  local max="\${NIX_GC_RACE_MAX_RETRIES:-10}"
-  local heartbeat="\${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
+  local max="${dollar}{NIX_GC_RACE_MAX_RETRIES:-10}"
+  local heartbeat="${dollar}{CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
   local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature had_errexit
 
   start="$(date +%s)"
 
   write_summary() {
-    [ -n "\${GITHUB_STEP_SUMMARY:-}" ] || return 0
+    [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ] || return 0
     {
       echo "### CI Task"
       echo "- Task: $task"
       echo "- Status: $1"
       echo "- Duration: $elapsed s"
       echo "- Attempts: $attempt/$max"
-      [ -z "\${2:-}" ] || echo "- Note: $2"
+      [ -z "${dollar}{2:-}" ] || echo "- Note: $2"
     } >> "$GITHUB_STEP_SUMMARY"
   }
 
