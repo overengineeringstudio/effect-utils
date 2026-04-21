@@ -2,6 +2,8 @@
 
 TypeScript-based code generator for config files. Define your `package.json`, `tsconfig.json`, `oxlint.jsonc`, `oxfmt.jsonc`, and GitHub workflow files as TypeScript and generate them with consistent formatting.
 
+Architecture and subsystem behavior are specified in [docs/spec.md](./docs/spec.md).
+
 ## Installation (Nix)
 
 Genie is distributed as a native binary via Nix. **This is the only supported installation method** to avoid chicken-egg problems: since genie generates `package.json` files, it must be available before `pnpm install`.
