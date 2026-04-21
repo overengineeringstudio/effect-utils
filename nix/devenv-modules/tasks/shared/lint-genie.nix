@@ -10,12 +10,17 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";
+  genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
+    MEGAREPO_STORE = megarepoStoreEnv;
+  };
 in
 {
   tasks = cliGuard.stripGuards {
     "lint:check:genie" = {
       description = "Check generated files are up to date";
       after = [ "genie:prepare" ];
+      env = genieTaskEnv;
       exec = trace.exec "lint:check:genie" "genie --check";
     };
     "lint:check:lockfile" = {

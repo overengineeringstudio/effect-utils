@@ -15,16 +15,22 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";
+  genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
+    MEGAREPO_STORE = megarepoStoreEnv;
+  };
 
   tasks = {
     "genie:prepare" = {
       description = "Run shared prerequisites before invoking genie";
       exec = "true";
+      env = genieTaskEnv;
     };
     "genie:run" = {
       guard = "genie";
       description = "Generate config files from .genie.ts sources";
       after = [ "genie:prepare" ];
+      env = genieTaskEnv;
       exec = trace.exec "genie:run" "genie";
       status = trace.status "genie:run" "binary" ''
         set -euo pipefail
@@ -37,12 +43,14 @@ let
       guard = "genie";
       description = "Watch and regenerate config files";
       after = [ "genie:prepare" ];
+      env = genieTaskEnv;
       exec = "genie --watch";
     };
     "genie:check" = {
       guard = "genie";
       description = "Check if generated files are up to date (CI)";
       after = [ "genie:prepare" ];
+      env = genieTaskEnv;
       exec = trace.exec "genie:check" "genie --check";
     };
   };
