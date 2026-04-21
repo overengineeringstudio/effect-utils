@@ -710,26 +710,27 @@ const pnpmInstallFailureSummaryScript = [
  * Run the repo-root pnpm install while teeing the full log to the diagnostics
  * directory and summarizing failures in the job output.
  */
-export const pnpmInstallWithDiagnosticsStep = {
-  name: 'Install pnpm dependencies',
-  shell: 'bash',
-  run: [
-    'set -euo pipefail',
-    'mkdir -p "$CI_DIAGNOSTICS_DIR"',
-    'log_file="$CI_DIAGNOSTICS_DIR/pnpm-install.log"',
-    'set +e',
-    '(',
-    runDevenvTasksBefore('pnpm:install'),
-    ') 2>&1 | tee "$log_file"',
-    'rc=${PIPESTATUS[0]}',
-    'set -e',
-    'if [ "$rc" -ne 0 ]; then',
-    pnpmInstallFailureSummaryScript,
-    '  classify_pnpm_failure "$log_file"',
-    'fi',
-    'exit "$rc"',
-  ].join('\n'),
-} as const
+export const pnpmInstallWithDiagnosticsStep = () =>
+  ({
+    name: 'Install pnpm dependencies',
+    shell: 'bash',
+    run: [
+      'set -euo pipefail',
+      'mkdir -p "$CI_DIAGNOSTICS_DIR"',
+      'log_file="$CI_DIAGNOSTICS_DIR/pnpm-install.log"',
+      'set +e',
+      '(',
+      runDevenvTasksBefore('pnpm:install'),
+      ') 2>&1 | tee "$log_file"',
+      'rc=${PIPESTATUS[0]}',
+      'set -e',
+      'if [ "$rc" -ne 0 ]; then',
+      pnpmInstallFailureSummaryScript,
+      '  classify_pnpm_failure "$log_file"',
+      'fi',
+      'exit "$rc"',
+    ].join('\n'),
+  }) as const
 
 const nixCachePrimaryKey = (keyPrefix: string, hashFilesExpression: string) =>
   `${keyPrefix}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${hashFilesExpression}`
@@ -875,7 +876,7 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
     ciDiagnosticsSetupStep,
     ...(opts?.includeDiagnostics === false ? [] : [captureRunnerPressureStep]),
     restorePnpmStateStep(opts?.restorePnpmState),
-    pnpmInstallWithDiagnosticsStep,
+    pnpmInstallWithDiagnosticsStep(),
   ] as const
 
 /**
