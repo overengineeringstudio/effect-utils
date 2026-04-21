@@ -32,19 +32,19 @@ The package-level context and current module-boundary docs remain:
 
 Genie exposes two coupled surfaces:
 
-| Surface | Role |
-| --- | --- |
-| `genie` CLI | discovers `.genie.ts` files, loads them, validates them, renders outputs, and reports status |
-| runtime libraries under `src/runtime/` | provide pure or mostly-pure factories and helpers imported by `.genie.ts` source files |
+| Surface                                | Role                                                                                         |
+| -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `genie` CLI                            | discovers `.genie.ts` files, loads them, validates them, renders outputs, and reports status |
+| runtime libraries under `src/runtime/` | provide pure or mostly-pure factories and helpers imported by `.genie.ts` source files       |
 
 The CLI supports four operating modes:
 
-| Mode | Trigger | Behavior |
-| --- | --- | --- |
-| generate | default | writes generated targets to disk |
-| check | `--check` | verifies generated targets are already up to date |
-| dry-run | `--dry-run` | computes target content and diffs without writing |
-| watch | `--watch` | watches `.genie.ts` files and regenerates changed targets |
+| Mode     | Trigger     | Behavior                                                  |
+| -------- | ----------- | --------------------------------------------------------- |
+| generate | default     | writes generated targets to disk                          |
+| check    | `--check`   | verifies generated targets are already up to date         |
+| dry-run  | `--dry-run` | computes target content and diffs without writing         |
+| watch    | `--watch`   | watches `.genie.ts` files and regenerates changed targets |
 
 Generated targets are read-only by default. `--writeable` opts out of that protection.
 
@@ -54,10 +54,10 @@ Every generator source is a `*.genie.ts` file colocated with its generated targe
 
 Examples:
 
-| Source | Target |
-| --- | --- |
-| `package.json.genie.ts` | `package.json` |
-| `tsconfig.json.genie.ts` | `tsconfig.json` |
+| Source                              | Target                     |
+| ----------------------------------- | -------------------------- |
+| `package.json.genie.ts`             | `package.json`             |
+| `tsconfig.json.genie.ts`            | `tsconfig.json`            |
 | `.github/workflows/ci.yml.genie.ts` | `.github/workflows/ci.yml` |
 
 Genie treats the `.genie.ts` source as the source of truth. Direct edits to generated files are non-authoritative and are expected to be overwritten by the next generation run.
@@ -74,10 +74,10 @@ Factories must propagate composition metadata through `meta` instead of reverse-
 
 Genie is split into two execution domains:
 
-| Domain | Directory | Constraint |
-| --- | --- | --- |
-| build-time CLI | `src/build/` | bundled into the native CLI binary; normal build-time dependencies are allowed |
-| runtime generator library | `src/runtime/` | dynamically imported by `.genie.ts` modules; npm dependencies are disallowed |
+| Domain                    | Directory      | Constraint                                                                     |
+| ------------------------- | -------------- | ------------------------------------------------------------------------------ |
+| build-time CLI            | `src/build/`   | bundled into the native CLI binary; normal build-time dependencies are allowed |
+| runtime generator library | `src/runtime/` | dynamically imported by `.genie.ts` modules; npm dependencies are disallowed   |
 
 The runtime layer must stay lightweight and loadable in arbitrary repository contexts because `.genie.ts` files import it directly during evaluation. The build layer may own TUI concerns, CLI option parsing, process orchestration, and other binary-local concerns.
 
