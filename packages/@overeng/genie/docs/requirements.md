@@ -25,12 +25,14 @@ may not yet be installed.
 - **T01 Generated artifacts remain checked in:** Repositories may continue to
   commit generated outputs when downstream tooling expects real files, as long
   as those outputs remain mechanically derived from `.genie.ts` sources.
-- **T02 Watch mode may be less complete than full batch mode:** Interactive
-  watch flows may prioritize fast incremental regeneration as long as strict
-  batch generation and check mode remain authoritative.
-- **T03 Runtime constraints over convenience:** Runtime helpers may reject
-  normal npm dependency patterns if that restriction is required to keep Genie
-  bootstrap-safe and composable.
+- **T02 Runtime constraints over convenience:** Code imported directly by
+  `.genie.ts` sources may reject otherwise-convenient npm dependency patterns
+  when those patterns would require an already-installed `node_modules`,
+  generated workspace state, or other post-bootstrap JavaScript environment.
+  Helpers that need that richer environment may need to live in the CLI/build
+  layer rather than the runtime layer. This tradeoff is acceptable because
+  bootstrap safety and cross-repo composability are more important than making
+  every helper usable from the runtime surface.
 
 ## Requirements
 
