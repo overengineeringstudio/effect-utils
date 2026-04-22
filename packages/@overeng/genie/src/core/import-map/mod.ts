@@ -263,6 +263,7 @@ type MemberSourceMap = Record<string, string>
 type MegarepoLockMember = {
   readonly url: string
   readonly ref: string
+  readonly commit?: string
 }
 
 type MegarepoLock = {
@@ -344,13 +345,15 @@ const joinMemberSubPath = ({
 const getMegarepoStoreBasePath = (): string =>
   process.env.MEGAREPO_STORE ?? path.join(process.env.HOME ?? '~', '.megarepo')
 
-const deriveStoreWorktreePathFromLockMember = ({
-  member,
+const deriveStoreWorktreePath = ({
+  selector,
+  url,
 }: {
-  member: MegarepoLockMember
+  selector: string
+  url: string
 }): string | undefined => {
-  const url = member.url.replace(/^https?:\/\//, '')
-  const [host, owner, repo] = url.split('/')
+  const normalizedUrl = url.replace(/^https?:\/\//, '')
+  const [host, owner, repo] = normalizedUrl.split('/')
   if (
     host === undefined ||
     host.length === 0 ||
@@ -362,7 +365,7 @@ const deriveStoreWorktreePathFromLockMember = ({
     return undefined
   }
 
-  const refType = classifyMegarepoRef(member.ref)
+  const refType = classifyMegarepoRef(selector)
   return path.join(
     getMegarepoStoreBasePath(),
     host,
@@ -370,8 +373,38 @@ const deriveStoreWorktreePathFromLockMember = ({
     repo,
     'refs',
     refTypeToPathSegment(refType),
-    member.ref,
+    selector,
   )
+}
+
+const deriveStoreWorktreePathFromLockMember = ({
+  member,
+}: {
+  member: MegarepoLockMember
+}): string | undefined => {
+  const selectors = [
+    ...(member.commit !== undefined && member.commit.length > 0 ? [member.commit] : []),
+    member.ref,
+  ]
+
+  for (const selector of selectors) {
+    const derivedPath = deriveStoreWorktreePath({
+      selector,
+      url: member.url,
+    })
+    if (derivedPath !== undefined && fs.existsSync(derivedPath) === true) {
+      return derivedPath
+    }
+  }
+
+  return selectors
+    .map((selector) =>
+      deriveStoreWorktreePath({
+        selector,
+        url: member.url,
+      }),
+    )
+    .find((derivedPath): derivedPath is string => derivedPath !== undefined)
 }
 
 const findRepoRootSync = (fromPath: string): string | undefined => {

@@ -453,6 +453,81 @@ export default packageJson({
         )
       }, Effect.provide(TestLayer)),
     )
+
+    Vitest.it.effect(
+      'prefers locked megarepo commit worktrees over mutable ref worktrees',
+      Effect.fnUntraced(function* () {
+        const lockedCommit = '0123456789abcdef0123456789abcdef01234567'
+
+        process.env[MEGAREPO_STORE_ENV] = path.join(tempDir, '.megarepo')
+        yield* writeFile(path.join(tempDir, '.git'), '')
+        yield* writeFile(
+          path.join(tempDir, 'megarepo.lock'),
+          toJson({
+            members: {
+              'effect-utils': {
+                url: 'https://github.com/overengineeringstudio/effect-utils',
+                ref: 'main',
+                commit: lockedCommit,
+              },
+            },
+          }),
+        )
+        yield* writeFile(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'heads',
+            'main',
+            'genie',
+            'external.ts',
+          ),
+          '',
+        )
+        yield* writeFile(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'commits',
+            lockedCommit,
+            'genie',
+            'external.ts',
+          ),
+          '',
+        )
+
+        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+        yield* writeFile(importerPath, '')
+
+        const resolved = yield* resolveImportMapSpecifierForImporter({
+          specifier: '#mr/effect-utils/genie/external.ts',
+          importerPath,
+        })
+
+        expect(Option.getOrNull(resolved)).toBe(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'commits',
+            lockedCommit,
+            'genie',
+            'external.ts',
+          ),
+        )
+      }, Effect.provide(TestLayer)),
+    )
   })
 
   Vitest.describe('resolveImportMapSpecifierForImporterSync', () => {
@@ -544,6 +619,81 @@ export default packageJson({
         })
 
         expect(resolved).toBe(path.join(tempDir, 'override-effect-utils', 'genie', 'external.ts'))
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
+      'prefers locked megarepo commit worktrees over mutable ref worktrees',
+      Effect.fnUntraced(function* () {
+        const lockedCommit = '0123456789abcdef0123456789abcdef01234567'
+
+        process.env[MEGAREPO_STORE_ENV] = path.join(tempDir, '.megarepo')
+        yield* writeFile(path.join(tempDir, '.git'), '')
+        yield* writeFile(
+          path.join(tempDir, 'megarepo.lock'),
+          toJson({
+            members: {
+              'effect-utils': {
+                url: 'https://github.com/overengineeringstudio/effect-utils',
+                ref: 'main',
+                commit: lockedCommit,
+              },
+            },
+          }),
+        )
+        yield* writeFile(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'heads',
+            'main',
+            'genie',
+            'external.ts',
+          ),
+          '',
+        )
+        yield* writeFile(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'commits',
+            lockedCommit,
+            'genie',
+            'external.ts',
+          ),
+          '',
+        )
+
+        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+        yield* writeFile(importerPath, '')
+
+        const resolved = resolveImportMapSpecifierForImporterSync({
+          specifier: '#mr/effect-utils/genie/external.ts',
+          importerPath,
+        })
+
+        expect(resolved).toBe(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'commits',
+            lockedCommit,
+            'genie',
+            'external.ts',
+          ),
+        )
       }, Effect.provide(TestLayer)),
     )
   })
