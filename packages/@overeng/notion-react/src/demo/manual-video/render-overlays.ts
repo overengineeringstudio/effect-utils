@@ -20,6 +20,18 @@ const outputFile =
   process.argv[3] ??
   path.join(path.dirname(manifestFile), "chapter-overlays.ass");
 
+const PLAY_RES_X = 1920;
+const CONTENT_HEIGHT = Number(process.env.NOTION_VIDEO_CONTENT_HEIGHT ?? "1080");
+const BAND_HEIGHT = Number(process.env.NOTION_VIDEO_BAND_HEIGHT ?? "220");
+const PLAY_RES_Y = CONTENT_HEIGHT + BAND_HEIGHT;
+const BAND_TOP = CONTENT_HEIGHT;
+const LEFT_MARGIN = 72;
+const RIGHT_MARGIN = 72;
+const TITLE_Y = BAND_TOP + 48;
+const BODY_Y = BAND_TOP + 106;
+const COUNT_Y = BAND_TOP + 52;
+const PROGRESS_Y = BAND_TOP + 172;
+
 const toAssTime = (seconds: number): string => {
   const totalCentiseconds = Math.max(0, Math.round(seconds * 100));
   const hours = Math.floor(totalCentiseconds / 360000);
@@ -47,34 +59,54 @@ if (manifest.length === 0) {
   throw new Error(`manifest is empty: ${manifestFile}`);
 }
 
-const dialogueLines = manifest.flatMap((entry) => {
+const renderProgress = (index: number, total: number): string =>
+  Array.from({ length: total }, (_, segmentIndex) => {
+    if (segmentIndex < index) {
+      return "{\\c&HFFC98E&\\alpha&H22&}●";
+    }
+    if (segmentIndex === index) {
+      return "{\\c&HFFFFFF&\\bord2\\shad0}●";
+    }
+    if (segmentIndex === index + 1) {
+      return "{\\c&H8D95A8&\\alpha&H38&}●";
+    }
+    return "{\\c&H6E7688&\\alpha&H70&}●";
+  }).join("{\\fsp14}");
+
+const dialogueLines = manifest.flatMap((entry, index) => {
   const chapter = getManualVideoChapter(entry.chapterId);
-  const overlayStart = entry.startSeconds + 0.2;
-  const overlayEnd = Math.min(entry.endSeconds, overlayStart + 3.8);
+  const overlayStart = entry.startSeconds;
+  const overlayEnd = entry.endSeconds;
 
   if (overlayEnd <= overlayStart) return [];
 
   const title = escapeAss(chapter.overlayTitle);
   const body = escapeAss(chapter.overlayBody);
   const beat = escapeAss(chapter.beatRange);
+  const count = `${String(index + 1).padStart(2, "0")} / ${String(manifest.length).padStart(2, "0")}`;
+  const progress = renderProgress(index, manifest.length);
 
   return [
-    `Dialogue: 0,${toAssTime(overlayStart)},${toAssTime(overlayEnd)},Title,,0,0,0,,${title}`,
-    `Dialogue: 0,${toAssTime(overlayStart + 0.15)},${toAssTime(overlayEnd)},Body,,0,0,0,,${body}\\N{\\\\alpha&HCC&}${beat}`,
+    `Dialogue: 0,${toAssTime(overlayStart)},${toAssTime(overlayEnd)},Title,,0,0,0,,{\\pos(${LEFT_MARGIN},${TITLE_Y})}${title}`,
+    `Dialogue: 0,${toAssTime(overlayStart)},${toAssTime(overlayEnd)},Body,,0,0,0,,{\\pos(${LEFT_MARGIN},${BODY_Y})}${body}\\N{\\\\alpha&HAA&}${beat}`,
+    `Dialogue: 0,${toAssTime(overlayStart)},${toAssTime(overlayEnd)},Count,,0,0,0,,{\\pos(${PLAY_RES_X - RIGHT_MARGIN},${COUNT_Y})}${escapeAss(count)}`,
+    `Dialogue: 0,${toAssTime(overlayStart)},${toAssTime(overlayEnd)},Progress,,0,0,0,,{\\pos(${PLAY_RES_X / 2},${PROGRESS_Y})}${progress}`,
   ];
 });
 
 const ass = `[Script Info]
 ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: ${PLAY_RES_X}
+PlayResY: ${PLAY_RES_Y}
 WrapStyle: 2
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,Helvetica Neue,28,&H00FFFFFF,&H000000FF,&H8A000000,&H64000000,1,0,0,0,100,100,0,0,1,2,0,7,36,36,40,1
-Style: Body,Helvetica Neue,17,&H00F2F2F2,&H000000FF,&H7A000000,&H50000000,0,0,0,0,100,100,0,0,1,1,0,7,36,36,82,1
+Style: Title,Helvetica Neue,42,&H00FFFFFF,&H000000FF,&H8A000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,7,0,0,0,1
+Style: Body,Helvetica Neue,26,&H00F2F2F2,&H000000FF,&H7A000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,7,0,0,0,1
+Style: Count,Helvetica Neue,26,&H00D7DEEF,&H000000FF,&H7A000000,&H00000000,1,0,0,0,100,100,0,0,1,1,0,9,0,0,0,1
+Style: Progress,Helvetica Neue,36,&H00FFFFFF,&H000000FF,&H5A000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,8,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

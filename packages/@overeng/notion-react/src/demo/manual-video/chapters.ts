@@ -26,13 +26,13 @@ const chapters = [
   {
     id: "chapter-0-empty-page",
     title: "Chapter 0 - Empty Page",
-    beatRange: "00:00-00:08",
+    beatRange: "00:00-00:05",
     goal: "Start from a genuinely empty page body and a tiny TSX file.",
     syncMarker: "manual-demo-v0",
     stageLabel: "stage-0: empty page",
     overlayTitle: "Start from empty",
     overlayBody:
-      "The page body is cleared first, and the source is intentionally tiny.",
+      "The page already starts clean, so the demo can begin from a tiny file immediately.",
     expectEmptyBody: true,
     expectedApiTexts: [],
     expectedBrowserTexts: [],

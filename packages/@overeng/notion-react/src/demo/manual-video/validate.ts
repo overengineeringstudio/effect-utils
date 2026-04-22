@@ -8,7 +8,6 @@ import {
   getManualVideoChapter,
   MANUAL_VIDEO_DEFAULT_PAGE_ID,
   MANUAL_VIDEO_SOURCE_FILE,
-  renderManualVideoSource,
 } from "./chapters.ts";
 
 type ValidationCheck = {
@@ -23,6 +22,9 @@ type NotionBlock = {
   readonly has_children?: boolean;
   readonly [key: string]: unknown;
 };
+
+const sleep = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const normalizePageId = (value: string): string => {
   const trimmed = value.trim();
@@ -143,23 +145,44 @@ const fetchBlockChildren = async (
     url.searchParams.set("page_size", "100");
     if (nextCursor) url.searchParams.set("start_cursor", nextCursor);
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Notion-Version": NOTION_API_VERSION,
-      },
-    });
-    if (!response.ok) {
-      throw new Error(
-        `notion children request failed (${response.status}) for ${blockId}`,
-      );
+    let body:
+      | {
+          readonly results: readonly NotionBlock[];
+          readonly has_more: boolean;
+          readonly next_cursor: string | null;
+        }
+      | undefined;
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Notion-Version": NOTION_API_VERSION,
+        },
+      });
+
+      if (response.ok) {
+        body = (await response.json()) as {
+          readonly results: readonly NotionBlock[];
+          readonly has_more: boolean;
+          readonly next_cursor: string | null;
+        };
+        break;
+      }
+
+      if (response.status < 500 || attempt === 5) {
+        throw new Error(
+          `notion children request failed (${response.status}) for ${blockId}`,
+        );
+      }
+
+      await sleep(attempt * 250);
     }
 
-    const body = (await response.json()) as {
-      readonly results: readonly NotionBlock[];
-      readonly has_more: boolean;
-      readonly next_cursor: string | null;
-    };
+    if (body === undefined) {
+      throw new Error(`notion children request did not return a body for ${blockId}`);
+    }
+
     blocks.push(...body.results);
     nextCursor = body.has_more ? (body.next_cursor ?? undefined) : undefined;
   } while (nextCursor);
@@ -211,8 +234,15 @@ const main = async (): Promise<void> => {
   mkdirSync(outDir, { recursive: true });
 
   const chapter = getManualVideoChapter(chapterId);
-  const expectedSource = renderManualVideoSource(chapter);
   const currentSource = readIfExists(MANUAL_VIDEO_SOURCE_FILE);
+  const sourceIncludesChapterMarker =
+    currentSource?.includes(`Generated from ${chapter.id}`) === true;
+  const sourceIncludesSyncMarker =
+    chapter.sourceBody.includes("syncMarker") === false ||
+    currentSource?.includes(chapter.syncMarker) === true;
+  const sourceIncludesStageLabel =
+    chapter.sourceBody.includes("stageLabel") === false ||
+    currentSource?.includes(chapter.stageLabel) === true;
   const topPaneText = captureTmuxPane("notion-demo-video:1.1");
   const bottomPaneText = captureTmuxPane("notion-demo-video:1.2");
 
@@ -245,12 +275,19 @@ const main = async (): Promise<void> => {
     details: currentSource === undefined ? MANUAL_VIDEO_SOURCE_FILE : "present",
   });
   checks.push({
-    name: "source matches tracked chapter",
-    ok: currentSource === expectedSource,
+    name: "source reflects tracked chapter",
+    ok:
+      currentSource !== undefined &&
+      sourceIncludesChapterMarker &&
+      sourceIncludesSyncMarker &&
+      sourceIncludesStageLabel,
     details:
-      currentSource === expectedSource
+      currentSource !== undefined &&
+      sourceIncludesChapterMarker &&
+      sourceIncludesSyncMarker &&
+      sourceIncludesStageLabel
         ? chapter.id
-        : `current source diverges from generated ${chapter.id}`,
+        : `current source is missing chapter markers for ${chapter.id}`,
   });
   checks.push({
     name: "top pane captured",

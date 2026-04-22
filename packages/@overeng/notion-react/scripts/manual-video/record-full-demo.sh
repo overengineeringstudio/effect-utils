@@ -16,9 +16,12 @@ RUN_NAME="notion-demo-${TIMESTAMP}-full-manual-demo"
 OUT_DIR="${1:-$RUNS_DIR/$RUN_NAME}"
 FPS="${NOTION_VIDEO_FPS:-4}"
 TARGET_VIDEO_FPS="${NOTION_VIDEO_TARGET_FPS:-30}"
-SETTLE_SECONDS="${NOTION_VIDEO_SETTLE_SECONDS:-3}"
+VALIDATE_TIMEOUT_SECONDS="${NOTION_VIDEO_VALIDATE_TIMEOUT_SECONDS:-2.5}"
+VALIDATE_POLL_INTERVAL_SECONDS="${NOTION_VIDEO_VALIDATE_POLL_INTERVAL_SECONDS:-0.35}"
 MAX_VALIDATE_ATTEMPTS="${NOTION_VIDEO_MAX_VALIDATE_ATTEMPTS:-3}"
-RETRY_DELAY_SECONDS="${NOTION_VIDEO_RETRY_DELAY_SECONDS:-2}"
+RETRY_DELAY_SECONDS="${NOTION_VIDEO_RETRY_DELAY_SECONDS:-0.75}"
+VIDEO_BAND_HEIGHT="${NOTION_VIDEO_BAND_HEIGHT:-220}"
+SYNC_TIMEOUT_SECONDS="${NOTION_VIDEO_SYNC_TIMEOUT_SECONDS:-75}"
 WINDOW_BOUNDS_SCRIPT="$PKG_DIR/scripts/manual-video/window-bounds.swift"
 SOURCE_FILE="$PKG_DIR/tmp/notion-video-manual-demo.tsx"
 TOKEN_FILE="${NOTION_VIDEO_TOKEN_FILE:-/tmp/notion_demo_token}"
@@ -76,11 +79,20 @@ capture_loop() {
   done
 }
 
+now_seconds() {
+  python3 -c 'import time; print(f"{time.time():.3f}")'
+}
+
+seconds_diff() {
+  local start="$1"
+  local end="$2"
+  awk "BEGIN { printf \"%.3f\", $end - $start }"
+}
+
 run_sync() {
   tmux send-keys -t "$TOP_PANE" Escape
-  tmux send-keys -t "$TOP_PANE" ":silent! checktime" Enter
-  tmux send-keys -t "$TOP_PANE" ":edit! $SOURCE_FILE" Enter
-  sleep 0.5
+  tmux send-keys -t "$TOP_PANE" ":silent update" Enter
+  sleep 0.2
 
   tmux send-keys -t "$BOTTOM_PANE" C-c
   tmux send-keys -t "$BOTTOM_PANE" "clear" Enter
@@ -88,16 +100,36 @@ run_sync() {
     "cd '$PKG_DIR'; env NOTION_TOKEN=(sed -n '\$p' '$TOKEN_FILE') bun src/demo/manual-video/run-sync.ts '$PAGE_ID'" \
     Enter
 
-  for _ in $(seq 1 45); do
+  local max_polls
+  max_polls="$(awk "BEGIN { printf \"%d\", ($SYNC_TIMEOUT_SECONDS / 0.25) + 0.5 }")"
+
+  for _ in $(seq 1 "$max_polls"); do
     pane="$(tmux capture-pane -t "$BOTTOM_PANE" -p | tail -n 20)"
     if printf '%s\n' "$pane" | rg -q 'SYNC OK'; then
       return 0
     fi
-    sleep 1
+    sleep 0.25
   done
 
   echo "sync runner did not print a success summary in the lower tmux pane" >&2
   return 1
+}
+
+reload_top_pane_source() {
+  tmux send-keys -t "$TOP_PANE" Escape
+  tmux send-keys -t "$TOP_PANE" ":silent! checktime" Enter
+  tmux send-keys -t "$TOP_PANE" ":edit! $SOURCE_FILE" Enter
+  sleep 0.2
+}
+
+reset_top_pane_editor() {
+  tmux send-keys -t "$TOP_PANE" Escape
+  tmux send-keys -t "$TOP_PANE" ":qa!" Enter
+  sleep 0.3
+  tmux send-keys -t "$TOP_PANE" C-c
+  tmux send-keys -t "$TOP_PANE" "cd '$PKG_DIR'" Enter
+  tmux send-keys -t "$TOP_PANE" "nvim '$SOURCE_FILE'" Enter
+  sleep 1
 }
 
 validate_chapter() {
@@ -110,6 +142,74 @@ validate_chapter() {
       bun src/demo/manual-video/validate.ts "$chapter_id" "$PAGE_ID" "$attempt_dir"
   ) >"$attempt_dir/validate.json" 2>"$attempt_dir/validate.stderr"
 }
+
+wait_for_validation() {
+  local chapter_id="$1"
+  local attempt_dir="$2"
+  local started_at current_at elapsed_seconds
+
+  started_at="$(now_seconds)"
+
+  while true; do
+    if validate_chapter "$chapter_id" "$attempt_dir"; then
+      return 0
+    fi
+
+    current_at="$(now_seconds)"
+    elapsed_seconds="$(seconds_diff "$started_at" "$current_at")"
+    if awk "BEGIN { exit !($elapsed_seconds >= $VALIDATE_TIMEOUT_SECONDS) }"; then
+      break
+    fi
+
+    sleep "$VALIDATE_POLL_INTERVAL_SECONDS"
+  done
+
+  return 1
+}
+
+emit_chapter_source() {
+  local chapter_id="$1"
+  local output_file="$2"
+
+  (
+    cd "$PKG_DIR"
+    bun src/demo/manual-video/emit-source.ts "$chapter_id" "$output_file"
+  )
+}
+
+perform_editor_transition() {
+  local from_chapter_id="$1"
+  local to_chapter_id="$2"
+  local output_file="$3"
+
+  (
+    cd "$PKG_DIR"
+    bun src/demo/manual-video/perform-transition.ts \
+      "$from_chapter_id" \
+      "$to_chapter_id" \
+      "$TOP_PANE"
+  ) >"$output_file"
+}
+
+prestage_empty_page() {
+  local chapter_id="chapter-0-empty-page"
+  local prestage_dir="$OUT_DIR/prestage-empty"
+  mkdir -p "$prestage_dir"
+
+  emit_chapter_source "$chapter_id" "$SOURCE_FILE" >"$prestage_dir/emit-source.json"
+  reset_top_pane_editor
+  run_sync >"$prestage_dir/sync.log" 2>&1 || {
+    cat "$prestage_dir/sync.log" >&2
+    return 1
+  }
+
+  if ! wait_for_validation "$chapter_id" "$prestage_dir"; then
+    cat "$prestage_dir/validate.stderr" >&2 || true
+    return 1
+  fi
+}
+
+prestage_empty_page
 
 ghostty_id="$(swift "$WINDOW_BOUNDS_SCRIPT" ghostty-id)"
 chrome_id="$(swift "$WINDOW_BOUNDS_SCRIPT" chrome-id)"
@@ -124,21 +224,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-run_started_at="$(date +%s)"
+run_started_at="$(now_seconds)"
 chapter_manifest="$OUT_DIR/chapters/manifest.jsonl"
 : >"$chapter_manifest"
+previous_chapter_id="chapter-0-empty-page"
 
 for chapter_id in "${CHAPTER_IDS[@]}"; do
   chapter_dir="$OUT_DIR/chapters/$chapter_id"
   mkdir -p "$chapter_dir"
   mkdir -p "$chapter_dir/attempts"
 
-  chapter_started_at="$(date +%s)"
+  chapter_started_at="$(now_seconds)"
 
-  (
-    cd "$PKG_DIR"
-    bun src/demo/manual-video/emit-source.ts "$chapter_id" "$SOURCE_FILE"
-  ) >"$chapter_dir/emit-source.json"
+  emit_chapter_source "$chapter_id" "$chapter_dir/expected-source.tsx" \
+    >"$chapter_dir/emit-source.json"
+  perform_editor_transition "$previous_chapter_id" "$chapter_id" \
+    "$chapter_dir/editor-transition.json"
 
   attempt_used=0
   for attempt in $(seq 1 "$MAX_VALIDATE_ATTEMPTS"); do
@@ -146,9 +247,8 @@ for chapter_id in "${CHAPTER_IDS[@]}"; do
     mkdir -p "$attempt_dir"
 
     run_sync
-    sleep "$SETTLE_SECONDS"
 
-    if validate_chapter "$chapter_id" "$attempt_dir"; then
+    if wait_for_validation "$chapter_id" "$attempt_dir"; then
       attempt_used="$attempt"
       find "$attempt_dir" -maxdepth 1 -type f -exec cp {} "$chapter_dir"/ \;
       break
@@ -164,22 +264,23 @@ for chapter_id in "${CHAPTER_IDS[@]}"; do
     exit 1
   fi
 
-  printf '{\n  "chapterId": "%s",\n  "attemptsUsed": %s,\n  "maxAttempts": %s,\n  "settleSeconds": %s,\n  "retryDelaySeconds": %s\n}\n' \
+  printf '{\n  "chapterId": "%s",\n  "attemptsUsed": %s,\n  "maxAttempts": %s,\n  "validateTimeoutSeconds": %s,\n  "validatePollIntervalSeconds": %s,\n  "retryDelaySeconds": %s\n}\n' \
     "$chapter_id" \
     "$attempt_used" \
     "$MAX_VALIDATE_ATTEMPTS" \
-    "$SETTLE_SECONDS" \
+    "$VALIDATE_TIMEOUT_SECONDS" \
+    "$VALIDATE_POLL_INTERVAL_SECONDS" \
     "$RETRY_DELAY_SECONDS" >"$chapter_dir/attempt-summary.json"
 
-  chapter_finished_at="$(date +%s)"
-  chapter_start_offset=$((chapter_started_at - run_started_at))
-  chapter_end_offset=$((chapter_finished_at - run_started_at))
+  chapter_finished_at="$(now_seconds)"
+  chapter_start_offset="$(seconds_diff "$run_started_at" "$chapter_started_at")"
+  chapter_end_offset="$(seconds_diff "$run_started_at" "$chapter_finished_at")"
 
   printf '{"chapterId":"%s","startSeconds":%s,"endSeconds":%s}\n' \
     "$chapter_id" "$chapter_start_offset" "$chapter_end_offset" >>"$chapter_manifest"
+  previous_chapter_id="$chapter_id"
 done
 
-sleep 1
 cleanup
 trap - EXIT
 
@@ -188,9 +289,9 @@ raw_video_file="$OUT_DIR/${RUN_NAME}.raw.mp4"
 frame_file="$OUT_DIR/${RUN_NAME}.png"
 overlay_file="$OUT_DIR/chapters/chapter-overlays.ass"
 capture_frame_count="$(find "$OUT_DIR/frames/ghostty" -name 'frame-*.png' | wc -l | tr -d ' ')"
-run_duration_seconds="$(tail -n 1 "$chapter_manifest" | sed -E 's/.*"endSeconds":([0-9]+).*/\1/')"
+run_duration_seconds="$(tail -n 1 "$chapter_manifest" | sed -E 's/.*"endSeconds":([0-9.]+).*/\1/')"
 
-if [[ -z "$run_duration_seconds" || "$run_duration_seconds" -le 0 ]]; then
+if [[ -z "$run_duration_seconds" ]] || ! awk "BEGIN { exit !($run_duration_seconds > 0) }"; then
   echo "invalid run duration derived from $chapter_manifest" >&2
   exit 1
 fi
@@ -210,14 +311,14 @@ screencapture -l"$chrome_id" -x "$browser_frame"
 ffmpeg -hide_banner -loglevel error -y \
   -i "$terminal_frame" \
   -i "$browser_frame" \
-  -filter_complex '[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2' \
+  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#05070D[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#10141C@1:t=fill[banded];[banded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=2:color=#263143@1:t=fill" \
   -frames:v 1 \
   "$frame_file"
 
 ffmpeg -hide_banner -loglevel error -y \
   -framerate "$capture_input_fps" -i "$OUT_DIR/frames/ghostty/frame-%04d.png" \
   -framerate "$capture_input_fps" -i "$OUT_DIR/frames/chrome/frame-%04d.png" \
-  -filter_complex '[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2' \
+  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#05070D[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#10141C@1:t=fill[banded];[banded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=2:color=#263143@1:t=fill" \
   -r "$TARGET_VIDEO_FPS" \
   -c:v libx264 -preset veryfast -pix_fmt yuv420p "$video_file"
 
