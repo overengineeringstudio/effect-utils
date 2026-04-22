@@ -40,6 +40,7 @@ describe("manual video chapters", () => {
     for (const chapter of manualVideoChapters) {
       expect(chapter.overlayTitle.length).toBeGreaterThan(0);
       expect(chapter.overlayBody.length).toBeGreaterThan(0);
+      expect(chapter.targetDurationSeconds).toBeGreaterThan(0);
     }
   });
 

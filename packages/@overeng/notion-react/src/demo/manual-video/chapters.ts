@@ -11,6 +11,7 @@ export type ManualVideoChapter = {
   readonly id: string;
   readonly title: string;
   readonly beatRange: string;
+  readonly targetDurationSeconds: number;
   readonly goal: string;
   readonly syncMarker: string;
   readonly stageLabel: string;
@@ -27,6 +28,7 @@ const chapters = [
     id: "chapter-0-empty-page",
     title: "Chapter 0 - Empty Page",
     beatRange: "00:00-00:05",
+    targetDurationSeconds: 4,
     goal: "Start from a genuinely empty page body and a tiny TSX file.",
     syncMarker: "manual-demo-v0",
     stageLabel: "stage-0: empty page",
@@ -45,6 +47,7 @@ export default <Page />`,
     id: "chapter-1-hello-world",
     title: "Chapter 1 - Hello World",
     beatRange: "00:08-00:20",
+    targetDurationSeconds: 8,
     goal: "Establish the core loop with a tiny, legible page.",
     syncMarker: "manual-demo-v1",
     stageLabel: "stage-1: hello world",
@@ -78,6 +81,7 @@ export default (
     id: "chapter-2-marker-bump",
     title: "Chapter 2 - First Visible Mutation",
     beatRange: "00:20-00:30",
+    targetDurationSeconds: 6,
     goal: "Prove that a tiny source change causes a tiny visible delta.",
     syncMarker: "manual-demo-v2",
     stageLabel: "stage-2: one-line marker change",
@@ -115,6 +119,7 @@ export default (
     id: "chapter-3-structured-page",
     title: "Chapter 3 - Grow Into Structure",
     beatRange: "00:30-00:48",
+    targetDurationSeconds: 11,
     goal: "Move from a toy page to a small but meaningful Notion document.",
     syncMarker: "manual-demo-v3",
     stageLabel: "stage-3: structured page",
@@ -160,6 +165,7 @@ export default (
     id: "chapter-4-refactor",
     title: "Chapter 4 - Refactor, Don’t Just Append",
     beatRange: "00:48-01:06",
+    targetDurationSeconds: 13,
     goal: "Show that maintainability comes from normal React refactors, not manual duplication.",
     syncMarker: "manual-demo-v4",
     stageLabel: "stage-4: refactor repeated blocks into data",
@@ -221,6 +227,7 @@ export default (
     id: "chapter-5-rich-page",
     title: "Chapter 5 - Credible End State",
     beatRange: "01:06-01:24",
+    targetDurationSeconds: 18,
     goal: "Land on a compact but rich page that proves the tool is viable for serious authoring.",
     syncMarker: "manual-demo-v5",
     stageLabel: "stage-5: rich hierarchical page",

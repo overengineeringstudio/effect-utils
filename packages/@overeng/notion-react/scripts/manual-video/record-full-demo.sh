@@ -27,6 +27,7 @@ SOURCE_FILE="$PKG_DIR/tmp/notion-video-manual-demo.tsx"
 TOKEN_FILE="${NOTION_VIDEO_TOKEN_FILE:-/tmp/notion_demo_token}"
 GHOSTTY_PID="${NOTION_VIDEO_GHOSTTY_PID:-}"
 CHROME_PID="${NOTION_VIDEO_CHROME_PID:-}"
+LAST_SYNC_PANE=""
 
 mkdir -p "$OUT_DIR"
 mkdir -p "$LATEST_DIR"
@@ -106,6 +107,7 @@ run_sync() {
   for _ in $(seq 1 "$max_polls"); do
     pane="$(tmux capture-pane -t "$BOTTOM_PANE" -p | tail -n 20)"
     if printf '%s\n' "$pane" | rg -q 'SYNC OK'; then
+      LAST_SYNC_PANE="$pane"
       return 0
     fi
     sleep 0.25
@@ -113,6 +115,46 @@ run_sync() {
 
   echo "sync runner did not print a success summary in the lower tmux pane" >&2
   return 1
+}
+
+extract_sync_metric() {
+  local key="$1"
+  local fallback="${2:-0}"
+  local value
+  value="$(printf '%s\n' "$LAST_SYNC_PANE" | rg -o "${key}=[0-9]+" | head -n 1 | cut -d= -f2 || true)"
+  if [[ -z "$value" ]]; then
+    printf '%s\n' "$fallback"
+  else
+    printf '%s\n' "$value"
+  fi
+}
+
+write_sync_summary() {
+  local output_file="$1"
+  local duration_ms notion_api_calls appends inserts updates removes retrieve append_calls update_calls delete_calls
+
+  duration_ms="$(extract_sync_metric duration_ms)"
+  notion_api_calls="$(extract_sync_metric notion_api_calls)"
+  appends="$(extract_sync_metric appends)"
+  inserts="$(extract_sync_metric inserts)"
+  updates="$(extract_sync_metric updates)"
+  removes="$(extract_sync_metric removes)"
+  retrieve="$(extract_sync_metric retrieve)"
+  append_calls="$(extract_sync_metric append)"
+  update_calls="$(extract_sync_metric update)"
+  delete_calls="$(extract_sync_metric delete)"
+
+  printf '{\n  "durationMs": %s,\n  "notionApiCalls": %s,\n  "diffAppends": %s,\n  "diffInserts": %s,\n  "diffUpdates": %s,\n  "diffRemoves": %s,\n  "httpRetrieve": %s,\n  "httpAppend": %s,\n  "httpUpdate": %s,\n  "httpDelete": %s\n}\n' \
+    "$duration_ms" \
+    "$notion_api_calls" \
+    "$appends" \
+    "$inserts" \
+    "$updates" \
+    "$removes" \
+    "$retrieve" \
+    "$append_calls" \
+    "$update_calls" \
+    "$delete_calls" >"$output_file"
 }
 
 reload_top_pane_source() {
@@ -250,6 +292,7 @@ for chapter_id in "${CHAPTER_IDS[@]}"; do
 
     if wait_for_validation "$chapter_id" "$attempt_dir"; then
       attempt_used="$attempt"
+      write_sync_summary "$chapter_dir/sync-summary.json"
       find "$attempt_dir" -maxdepth 1 -type f -exec cp {} "$chapter_dir"/ \;
       break
     fi
@@ -276,8 +319,23 @@ for chapter_id in "${CHAPTER_IDS[@]}"; do
   chapter_start_offset="$(seconds_diff "$run_started_at" "$chapter_started_at")"
   chapter_end_offset="$(seconds_diff "$run_started_at" "$chapter_finished_at")"
 
-  printf '{"chapterId":"%s","startSeconds":%s,"endSeconds":%s}\n' \
-    "$chapter_id" "$chapter_start_offset" "$chapter_end_offset" >>"$chapter_manifest"
+  duration_ms="$(sed -n 's/.*"durationMs": \([0-9][0-9]*\).*/\1/p' "$chapter_dir/sync-summary.json")"
+  notion_api_calls="$(sed -n 's/.*"notionApiCalls": \([0-9][0-9]*\).*/\1/p' "$chapter_dir/sync-summary.json")"
+  diff_appends="$(sed -n 's/.*"diffAppends": \([0-9][0-9]*\).*/\1/p' "$chapter_dir/sync-summary.json")"
+  diff_inserts="$(sed -n 's/.*"diffInserts": \([0-9][0-9]*\).*/\1/p' "$chapter_dir/sync-summary.json")"
+  diff_updates="$(sed -n 's/.*"diffUpdates": \([0-9][0-9]*\).*/\1/p' "$chapter_dir/sync-summary.json")"
+  diff_removes="$(sed -n 's/.*"diffRemoves": \([0-9][0-9]*\).*/\1/p' "$chapter_dir/sync-summary.json")"
+
+  printf '{"chapterId":"%s","startSeconds":%s,"endSeconds":%s,"durationMs":%s,"notionApiCalls":%s,"diffAppends":%s,"diffInserts":%s,"diffUpdates":%s,"diffRemoves":%s}\n' \
+    "$chapter_id" \
+    "$chapter_start_offset" \
+    "$chapter_end_offset" \
+    "${duration_ms:-0}" \
+    "${notion_api_calls:-0}" \
+    "${diff_appends:-0}" \
+    "${diff_inserts:-0}" \
+    "${diff_updates:-0}" \
+    "${diff_removes:-0}" >>"$chapter_manifest"
   previous_chapter_id="$chapter_id"
 done
 
@@ -286,8 +344,12 @@ trap - EXIT
 
 video_file="$OUT_DIR/${RUN_NAME}.mp4"
 raw_video_file="$OUT_DIR/${RUN_NAME}.raw.mp4"
+retimed_video_file="$OUT_DIR/${RUN_NAME}.retimed.mp4"
 frame_file="$OUT_DIR/${RUN_NAME}.png"
 overlay_file="$OUT_DIR/chapters/chapter-overlays.ass"
+retimed_manifest_file="$OUT_DIR/chapters/manifest-retimed.jsonl"
+retime_plan_file="$OUT_DIR/chapters/retime-plan.tsv"
+retimed_segments_dir="$OUT_DIR/segments"
 capture_frame_count="$(find "$OUT_DIR/frames/ghostty" -name 'frame-*.png' | wc -l | tr -d ' ')"
 run_duration_seconds="$(tail -n 1 "$chapter_manifest" | sed -E 's/.*"endSeconds":([0-9.]+).*/\1/')"
 
@@ -311,25 +373,65 @@ screencapture -l"$chrome_id" -x "$browser_frame"
 ffmpeg -hide_banner -loglevel error -y \
   -i "$terminal_frame" \
   -i "$browser_frame" \
-  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#05070D[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#10141C@1:t=fill[banded];[banded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=2:color=#263143@1:t=fill" \
+  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#000000[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#000000@1:t=fill" \
   -frames:v 1 \
   "$frame_file"
 
 ffmpeg -hide_banner -loglevel error -y \
   -framerate "$capture_input_fps" -i "$OUT_DIR/frames/ghostty/frame-%04d.png" \
   -framerate "$capture_input_fps" -i "$OUT_DIR/frames/chrome/frame-%04d.png" \
-  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#05070D[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#10141C@1:t=fill[banded];[banded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=2:color=#263143@1:t=fill" \
+  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#000000[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#000000@1:t=fill" \
   -r "$TARGET_VIDEO_FPS" \
   -c:v libx264 -preset veryfast -pix_fmt yuv420p "$video_file"
 
 (
   cd "$PKG_DIR"
-  bun src/demo/manual-video/render-overlays.ts "$chapter_manifest" "$overlay_file"
-) >"$OUT_DIR/chapters/render-overlays.json"
+  bun src/demo/manual-video/retime-manifest.ts \
+    "$chapter_manifest" \
+    "$retimed_manifest_file" \
+    "$retime_plan_file"
+) >"$OUT_DIR/chapters/retime-manifest.json"
 
 mv "$video_file" "$raw_video_file"
+mkdir -p "$retimed_segments_dir"
+
+tail -n +2 "$retime_plan_file" | while IFS=$'\t' read -r chapter_id raw_start raw_end raw_duration target_duration; do
+  segment_file="$retimed_segments_dir/${chapter_id}.mp4"
+  setpts_ratio="$(awk "BEGIN { printf \"%.6f\", $target_duration / $raw_duration }")"
+
+  ffmpeg -hide_banner -loglevel error -y \
+    -i "$raw_video_file" \
+    -ss "$raw_start" \
+    -to "$raw_end" \
+    -vf "setpts=${setpts_ratio}*PTS" \
+    -r "$TARGET_VIDEO_FPS" \
+    -c:v libx264 -preset veryfast -pix_fmt yuv420p \
+    -an \
+    "$segment_file"
+done
+
+concat_list_file="$OUT_DIR/segments/concat.txt"
+: >"$concat_list_file"
+tail -n +2 "$retime_plan_file" | while IFS=$'\t' read -r chapter_id _; do
+  printf "file '%s/%s.mp4'\n" "$retimed_segments_dir" "$chapter_id" >>"$concat_list_file"
+done
+
 ffmpeg -hide_banner -loglevel error -y \
-  -i "$raw_video_file" \
+  -f concat \
+  -safe 0 \
+  -i "$concat_list_file" \
+  -c copy \
+  "$retimed_video_file"
+
+(
+  cd "$PKG_DIR"
+  bun src/demo/manual-video/render-overlays.ts \
+    "$retimed_manifest_file" \
+    "$overlay_file"
+) >"$OUT_DIR/chapters/render-overlays.json"
+
+ffmpeg -hide_banner -loglevel error -y \
+  -i "$retimed_video_file" \
   -vf "ass=$overlay_file" \
   -c:v libx264 -preset veryfast -pix_fmt yuv420p \
   -an \
@@ -341,6 +443,8 @@ ln -sfn "$OUT_DIR" "$LATEST_DIR/current-run"
 
 printf 'video=%s\n' "$video_file"
 printf 'raw_video=%s\n' "$raw_video_file"
+printf 'retimed_video=%s\n' "$retimed_video_file"
 printf 'frame=%s\n' "$frame_file"
 printf 'manifest=%s\n' "$chapter_manifest"
+printf 'retimed_manifest=%s\n' "$retimed_manifest_file"
 printf 'capture_input_fps=%s\n' "$capture_input_fps"

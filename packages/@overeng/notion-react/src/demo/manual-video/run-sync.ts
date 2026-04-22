@@ -14,6 +14,17 @@ import source from "../../../tmp/notion-video-manual-demo.tsx";
 import { MANUAL_VIDEO_DEFAULT_PAGE_ID } from "./chapters.ts";
 
 const CACHE_KEY = "notion-video-manual-demo";
+const ansi = {
+  reset: "\u001B[0m",
+  bold: "\u001B[1m",
+  dim: "\u001B[2m",
+  green: "\u001B[32m",
+  red: "\u001B[31m",
+  cyan: "\u001B[36m",
+  blue: "\u001B[34m",
+  yellow: "\u001B[33m",
+  gray: "\u001B[90m",
+} as const;
 
 const pageId = (
   process.argv[2] ??
@@ -69,23 +80,31 @@ const printSummary = (opts: {
   const totalCalls =
     actual.append + actual.update + actual.delete + actual.retrieve;
   const status = opts.ok ? "SYNC OK" : "SYNC ERROR";
+  const statusColor = opts.ok ? ansi.green : ansi.red;
+  const diffSummary =
+    opts.result === undefined
+      ? "n/a"
+      : `+${opts.result.appends}  ^${opts.result.inserts}  ~${opts.result.updates}  -${opts.result.removes}`;
+  const httpSummary = `GET ${actual.retrieve}  APP ${actual.append}  UPD ${actual.update}  DEL ${actual.delete}`;
 
   console.log(
-    `${status} duration_ms=${formatDuration(opts.durationMs)} notion_api_calls=${totalCalls} cache=${formatCache(opts.metrics?.cacheOutcome)} fallback=${formatFallback(opts.metrics?.fallbackReason)}`,
+    `${statusColor}${ansi.bold}${status}${ansi.reset} ${ansi.cyan}duration_ms=${formatDuration(opts.durationMs)}${ansi.reset} ${ansi.blue}notion_api_calls=${totalCalls}${ansi.reset} ${ansi.dim}cache=${formatCache(opts.metrics?.cacheOutcome)} fallback=${formatFallback(opts.metrics?.fallbackReason)}${ansi.reset}`,
   );
 
   if (opts.result !== undefined) {
     console.log(
-      `SYNC DIFF appends=${opts.result.appends} inserts=${opts.result.inserts} updates=${opts.result.updates} removes=${opts.result.removes}`,
+      `${ansi.yellow}${ansi.bold}SYNC DIFF${ansi.reset} ${diffSummary} ${ansi.dim}appends=${opts.result.appends} inserts=${opts.result.inserts} updates=${opts.result.updates} removes=${opts.result.removes}${ansi.reset}`,
     );
   }
 
   console.log(
-    `SYNC HTTP retrieve=${actual.retrieve} append=${actual.append} update=${actual.update} delete=${actual.delete} batch_flushes=${opts.metrics?.batchCount ?? 0} update_noops=${opts.metrics?.updateNoopCount ?? 0}`,
+    `${ansi.gray}${ansi.bold}SYNC HTTP${ansi.reset} ${ansi.gray}${httpSummary}  flush=${opts.metrics?.batchCount ?? 0}  noop=${opts.metrics?.updateNoopCount ?? 0}  retrieve=${actual.retrieve} append=${actual.append} update=${actual.update} delete=${actual.delete} batch_flushes=${opts.metrics?.batchCount ?? 0} update_noops=${opts.metrics?.updateNoopCount ?? 0}${ansi.reset}`,
   );
 
   if (opts.error !== undefined) {
-    console.log(`SYNC MESSAGE ${opts.error}`);
+    console.log(
+      `${ansi.red}${ansi.bold}SYNC MESSAGE${ansi.reset} ${ansi.red}${opts.error}${ansi.reset}`,
+    );
   }
 };
 
