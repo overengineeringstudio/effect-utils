@@ -31,6 +31,7 @@ const pasteText = (target: string, text: string): void => {
 const focusLine = async (target: string, line: number): Promise<void> => {
   sendKeys(target, "Escape");
   sendKeys(target, `:${Math.max(1, line)}`, "Enter");
+  sendKeys(target, "^");
   sendKeys(target, "z", "z");
   await sleep(120);
 };
@@ -58,6 +59,7 @@ const insertChunk = async (
   target: string,
   chunkLines: readonly string[],
   firstChunk: boolean,
+  focusLineNumber: number,
 ): Promise<void> => {
   if (firstChunk === false) {
     sendKeys(target, "Escape");
@@ -68,6 +70,7 @@ const insertChunk = async (
   pasteText(target, chunkLines.join("\n"));
   await sleep(140);
   sendKeys(target, "Escape");
+  await focusLine(target, focusLineNumber);
   await sleep(80);
 };
 
@@ -87,8 +90,12 @@ const main = async (): Promise<void> => {
     toChapterId,
     fromChapterId,
   );
+  const finalEditedLine =
+    plan.insertedLines.length > 0
+      ? plan.startLine + plan.insertedLines.length - 1
+      : plan.focusLine;
 
-  await focusLine(targetPane, plan.focusLine);
+  await focusLine(targetPane, plan.startLine);
 
   if (plan.changeKind !== "no-op") {
     sendKeys(targetPane, ":set paste", "Enter");
@@ -111,8 +118,15 @@ const main = async (): Promise<void> => {
       );
 
       let firstChunk = true;
+      let nextChunkStartLine = plan.startLine;
       for (const chunk of plan.insertedChunks) {
-        await insertChunk(targetPane, chunk, firstChunk);
+        await insertChunk(
+          targetPane,
+          chunk,
+          firstChunk,
+          nextChunkStartLine + chunk.length - 1,
+        );
+        nextChunkStartLine += chunk.length;
         firstChunk = false;
       }
     }
@@ -122,15 +136,17 @@ const main = async (): Promise<void> => {
     await sleep(80);
   }
 
-  await focusLine(targetPane, plan.focusLine);
+  await focusLine(targetPane, finalEditedLine);
   sendKeys(targetPane, "Escape");
   sendKeys(targetPane, ":write", "Enter");
   await sleep(120);
+  await focusLine(targetPane, finalEditedLine);
 
   console.log(
     JSON.stringify(
       {
         ...plan,
+        finalEditedLine,
         tmuxPane: targetPane,
       },
       null,
