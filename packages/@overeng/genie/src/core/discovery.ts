@@ -10,7 +10,7 @@ import type { StatResult } from './types.ts'
 let importMapResolverRegistered = false
 
 /** Detect if we're running as a compiled Bun binary (bunfs paths indicate compiled binary) */
-const isCompiledBinary = (): boolean => {
+export const isCompiledBinary = (): boolean => {
   try {
     return process.argv[1]?.includes('/$bunfs/') ?? false
   } catch {

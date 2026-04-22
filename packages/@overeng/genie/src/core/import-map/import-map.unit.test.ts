@@ -21,6 +21,9 @@ import {
 } from './mod.ts'
 
 const TestLayer = NodeFileSystem.layer
+const GENIE_MEMBER_OVERRIDE_MAP_ENV = 'GENIE_MEMBER_OVERRIDE_MAP'
+const GENIE_MEMBER_SOURCE_MAP_ENV = 'GENIE_MEMBER_SOURCE_MAP'
+const MEGAREPO_STORE_ENV = 'MEGAREPO_STORE'
 
 /** Type-safe JSON stringify using Schema */
 const toJson = Schema.encodeSync(Schema.parseJson(Schema.Unknown))
@@ -62,6 +65,9 @@ Vitest.describe('import-map', () => {
   })
 
   afterEach(async () => {
+    delete process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV]
+    delete process.env[GENIE_MEMBER_SOURCE_MAP_ENV]
+    delete process.env[MEGAREPO_STORE_ENV]
     await Effect.runPromise(removeTempDir(tempDir).pipe(Effect.provide(TestLayer)))
   })
 
@@ -385,6 +391,68 @@ export default packageJson({
         expect(Option.getOrNull(resolved)).toBe(path.join(tempDir, 'genie', 'mod.ts'))
       }, Effect.provide(TestLayer)),
     )
+
+    Vitest.it.effect(
+      'prefers local editable megarepo member over fallback source map',
+      Effect.fnUntraced(function* () {
+        process.env[MEGAREPO_STORE_ENV] = path.join(tempDir, '.megarepo')
+        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
+          'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
+        })
+
+        yield* writeFile(path.join(tempDir, '.git'), '')
+        yield* writeFile(
+          path.join(tempDir, 'megarepo.lock'),
+          toJson({
+            members: {
+              'effect-utils': {
+                url: 'https://github.com/overengineeringstudio/effect-utils',
+                ref: 'dev',
+              },
+            },
+          }),
+        )
+        yield* writeFile(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'heads',
+            'dev',
+            'genie',
+            'external.ts',
+          ),
+          '',
+        )
+        yield* writeFile(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'), '')
+
+        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+        yield* writeFile(importerPath, '')
+
+        const resolved = yield* resolveImportMapSpecifierForImporter({
+          specifier: '#mr/effect-utils/genie/external.ts',
+          importerPath,
+        })
+
+        expect(Option.getOrNull(resolved)).toBe(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'heads',
+            'dev',
+            'genie',
+            'external.ts',
+          ),
+        )
+      }, Effect.provide(TestLayer)),
+    )
   })
 
   Vitest.describe('resolveImportMapSpecifierForImporterSync', () => {
@@ -409,6 +477,73 @@ export default packageJson({
         })
 
         expect(resolved).toBe(path.join(tempDir, 'genie', 'mod.ts'))
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
+      'uses fallback source map when local megarepo member is absent',
+      Effect.fnUntraced(function* () {
+        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
+          'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
+        })
+        yield* writeFile(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'), '')
+        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+        yield* writeFile(importerPath, '')
+
+        const resolved = resolveImportMapSpecifierForImporterSync({
+          specifier: '#mr/effect-utils/genie/external.ts',
+          importerPath,
+        })
+
+        expect(resolved).toBe(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'))
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
+      'prefers explicit override over local editable megarepo member',
+      Effect.fnUntraced(function* () {
+        process.env[MEGAREPO_STORE_ENV] = path.join(tempDir, '.megarepo')
+        process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV] = JSON.stringify({
+          'effect-utils': path.join(tempDir, 'override-effect-utils'),
+        })
+
+        yield* writeFile(path.join(tempDir, '.git'), '')
+        yield* writeFile(
+          path.join(tempDir, 'megarepo.lock'),
+          toJson({
+            members: {
+              'effect-utils': {
+                url: 'https://github.com/overengineeringstudio/effect-utils',
+                ref: 'dev',
+              },
+            },
+          }),
+        )
+        yield* writeFile(
+          path.join(
+            tempDir,
+            '.megarepo',
+            'github.com',
+            'overengineeringstudio',
+            'effect-utils',
+            'refs',
+            'heads',
+            'dev',
+            'genie',
+            'external.ts',
+          ),
+          '',
+        )
+        yield* writeFile(path.join(tempDir, 'override-effect-utils', 'genie', 'external.ts'), '')
+        const importerPath = path.join(tempDir, 'src', 'genie-file.ts')
+        yield* writeFile(importerPath, '')
+
+        const resolved = resolveImportMapSpecifierForImporterSync({
+          specifier: '#mr/effect-utils/genie/external.ts',
+          importerPath,
+        })
+
+        expect(resolved).toBe(path.join(tempDir, 'override-effect-utils', 'genie', 'external.ts'))
       }, Effect.provide(TestLayer)),
     )
   })
@@ -488,6 +623,35 @@ import { baz } from './local.ts'`
     )
 
     Vitest.it.effect(
+      'transforms multiline imports with # specifiers',
+      Effect.fnUntraced(function* () {
+        const packageJsonPath = path.join(tempDir, 'package.json')
+        yield* writeFile(
+          packageJsonPath,
+          toJson({
+            imports: { '#lib/*': './src/lib/*' },
+          }),
+        )
+        const filePath = path.join(tempDir, 'src', 'file.ts')
+        yield* writeFile(filePath, '')
+
+        const sourceCode = `import {
+  foo,
+  bar,
+} from '#lib/mod.ts'`
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
+
+        expect(result).toBe(`import {
+  foo,
+  bar,
+} from '${tempDir}/src/lib/mod.ts'`)
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
       'preserves non-# imports unchanged',
       Effect.fnUntraced(function* () {
         const packageJsonPath = path.join(tempDir, 'package.json')
@@ -509,6 +673,28 @@ import { bar } from '../parent.ts'`
         })
 
         expect(result).toBe(sourceCode)
+      }, Effect.provide(TestLayer)),
+    )
+
+    Vitest.it.effect(
+      'transforms #mr member imports without a package.json import map',
+      Effect.fnUntraced(function* () {
+        process.env[GENIE_MEMBER_SOURCE_MAP_ENV] = JSON.stringify({
+          'effect-utils': path.join(tempDir, 'fallback-effect-utils'),
+        })
+        const filePath = path.join(tempDir, 'src', 'file.ts')
+        yield* writeFile(filePath, '')
+        yield* writeFile(path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts'), '')
+
+        const sourceCode = `import { packageJson } from '#mr/effect-utils/genie/external.ts'`
+        const result = yield* resolveImportMapsInSource({
+          sourceCode,
+          sourcePath: filePath,
+        })
+
+        expect(result).toBe(
+          `import { packageJson } from '${path.join(tempDir, 'fallback-effect-utils', 'genie', 'external.ts')}'`,
+        )
       }, Effect.provide(TestLayer)),
     )
 
