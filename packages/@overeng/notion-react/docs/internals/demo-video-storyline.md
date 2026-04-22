@@ -38,7 +38,7 @@ The demo must make that feel:
 ## Demo Goals
 
 1. Establish a clean mental model quickly: edit JSX on the left, rerun sync, page updates on the right.
-2. Start from a minimal page so the viewer can track every change.
+2. Start from an empty page body and a minimal TSX file so the viewer can track every change.
 3. Show that the page grows incrementally rather than appearing all at once from a giant prebuilt example.
 4. Demonstrate that the same file evolves from hello-world simplicity to a richer structured Notion page.
 5. Show a development loop that looks credible for real work: edit, save, sync, inspect result, continue.
@@ -63,7 +63,7 @@ Left side:
 
 - `Ghostty` window with one `tmux` session
 - top pane: the standalone TSX source file
-- bottom pane: sync command and timing output
+- bottom pane: sync command and structured sync summary
 
 Right side:
 
@@ -83,13 +83,34 @@ The full demo should be around 60-90 seconds.
 
 Recommended progression:
 
-1. Chapter 1: Establish the loop
-2. Chapter 2: Add structure
-3. Chapter 3: Add richer block composition
-4. Chapter 4: Show an intentional refactor, not just additive growth
-5. Chapter 5: Land on a page that is clearly more sophisticated than where we started
+1. Chapter 0: Clear the page
+2. Chapter 1: Establish the loop
+3. Chapter 2: Add structure
+4. Chapter 3: Add richer block composition
+5. Chapter 4: Show an intentional refactor, not just additive growth
+6. Chapter 5: Land on a page that is clearly more sophisticated than where we started
 
 ## Screenplay Beat Sheet
+
+### Chapter 0 — Empty Page
+
+Time:
+
+- `00:00-00:08`
+
+Goal:
+
+- prove the demo really starts from a clean slate
+
+On screen:
+
+- left top pane shows the smallest possible TSX module
+- right page shows only the existing Notion page title with an empty body
+
+Validation:
+
+- Notion API read of the page body must be empty
+- bottom pane must show a structured sync summary, including duration and Notion API call count
 
 ### Chapter 1 — Hello World
 
@@ -117,7 +138,7 @@ Source state:
 Action:
 
 - viewer sees the file in a clearly minimal state
-- bottom pane runs the sync command
+- bottom pane runs the sync command and prints a structured sync summary
 - right page refreshes to the same minimal page
 
 What the audience should learn:
@@ -130,7 +151,7 @@ Validation:
 
 - combined screenshot must show both windows
 - browser screenshot must show the minimal page with `manual-demo-v1`
-- tmux screenshot must show the file and a successful sync timing
+- tmux screenshot must show the file and a successful sync summary with duration and Notion API calls
 
 ### Chapter 2 — First Visible Mutation
 

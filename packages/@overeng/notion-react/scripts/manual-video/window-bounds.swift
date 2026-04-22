@@ -12,6 +12,7 @@ struct Bounds {
 
 struct Candidate {
   let id: Int
+  let pid: Int
   let owner: String
   let title: String
   let bounds: Bounds
@@ -45,11 +46,17 @@ func candidates(owner: String) -> [Candidate] {
     let title = (info[kCGWindowName as String] as? String) ?? ""
     let bounds = parseBounds(info)
     let id = (info[kCGWindowNumber as String] as? NSNumber)?.intValue ?? 0
+    let pid = (info[kCGWindowOwnerPID as String] as? NSNumber)?.intValue ?? 0
     guard bounds.width >= 500, bounds.height >= 500 else {
       return nil
     }
-    return Candidate(id: id, owner: owner, title: title, bounds: bounds)
+    return Candidate(id: id, pid: pid, owner: owner, title: title, bounds: bounds)
   }
+}
+
+func matchByPid(candidates: [Candidate], pid: Int?) -> Candidate? {
+  guard let pid else { return nil }
+  return candidates.first { $0.pid == pid }
 }
 
 func matchByTitle(candidates: [Candidate], titleFragment: String) -> Candidate? {
@@ -88,14 +95,18 @@ func format(_ bounds: Bounds) -> String {
 
 let ghosttyTitle = ProcessInfo.processInfo.environment["NOTION_VIDEO_GHOSTTY_TITLE_FRAGMENT"] ?? "notion-demo-video"
 let chromeTitle = ProcessInfo.processInfo.environment["NOTION_VIDEO_CHROME_TITLE_FRAGMENT"] ?? "@overeng/notion-react manual demo"
+let ghosttyPid = ProcessInfo.processInfo.environment["NOTION_VIDEO_GHOSTTY_PID"].flatMap(Int.init)
+let chromePid = ProcessInfo.processInfo.environment["NOTION_VIDEO_CHROME_PID"].flatMap(Int.init)
 
 let ghosttyCandidates = candidates(owner: "Ghostty")
 let chromeCandidates = candidates(owner: "Google Chrome")
 
 guard
-  let ghostty = matchByTitle(candidates: ghosttyCandidates, titleFragment: ghosttyTitle)
+  let ghostty = matchByPid(candidates: ghosttyCandidates, pid: ghosttyPid)
+    ?? matchByTitle(candidates: ghosttyCandidates, titleFragment: ghosttyTitle)
     ?? fallbackGhostty(candidates: ghosttyCandidates),
-  let chrome = matchByTitle(candidates: chromeCandidates, titleFragment: chromeTitle)
+  let chrome = matchByPid(candidates: chromeCandidates, pid: chromePid)
+    ?? matchByTitle(candidates: chromeCandidates, titleFragment: chromeTitle)
     ?? fallbackChrome(candidates: chromeCandidates, relativeTo: ghostty)
 else {
   fputs("required windows not found\n", stderr)
@@ -118,6 +129,10 @@ case "ghostty-id":
   print("\(ghostty.id)")
 case "chrome-id":
   print("\(chrome.id)")
+case "ghostty-pid":
+  print("\(ghostty.pid)")
+case "chrome-pid":
+  print("\(chrome.pid)")
 case "combined":
   print(format(combined))
 default:

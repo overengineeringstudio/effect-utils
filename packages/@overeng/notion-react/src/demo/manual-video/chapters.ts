@@ -16,6 +16,7 @@ export type ManualVideoChapter = {
   readonly stageLabel: string;
   readonly overlayTitle: string;
   readonly overlayBody: string;
+  readonly expectEmptyBody?: boolean;
   readonly expectedApiTexts: readonly string[];
   readonly expectedBrowserTexts: readonly string[];
   readonly sourceBody: string;
@@ -23,9 +24,27 @@ export type ManualVideoChapter = {
 
 const chapters = [
   {
+    id: "chapter-0-empty-page",
+    title: "Chapter 0 - Empty Page",
+    beatRange: "00:00-00:08",
+    goal: "Start from a genuinely empty page body and a tiny TSX file.",
+    syncMarker: "manual-demo-v0",
+    stageLabel: "stage-0: empty page",
+    overlayTitle: "Start from empty",
+    overlayBody:
+      "The page body is cleared first, and the source is intentionally tiny.",
+    expectEmptyBody: true,
+    expectedApiTexts: [],
+    expectedBrowserTexts: [],
+    sourceBody: String.raw`
+const { Page } = ui
+
+export default <Page />`,
+  },
+  {
     id: "chapter-1-hello-world",
     title: "Chapter 1 - Hello World",
-    beatRange: "00:00-00:12",
+    beatRange: "00:08-00:20",
     goal: "Establish the core loop with a tiny, legible page.",
     syncMarker: "manual-demo-v1",
     stageLabel: "stage-1: hello world",
@@ -34,24 +53,23 @@ const chapters = [
     expectedApiTexts: [
       "Live sync demo",
       "Sync marker: manual-demo-v1",
-      "Source of truth: JSX in tmux. Target: Notion page body.",
+      "Source of truth: JSX in tmux. Target: real Notion page.",
     ],
     expectedBrowserTexts: ["Live sync demo", "Sync marker: manual-demo-v1"],
     sourceBody: String.raw`
-const { Page, Heading1, Paragraph, Callout, Bold, InlineCode } = ui
+const { Page, Heading1, Paragraph, Callout, InlineCode } = ui
 
-return (
+export default (
   <Page>
     <Heading1 {...keyed({}, 'title')}>Live sync demo</Heading1>
     <Paragraph {...keyed({}, 'summary')}>
-      Source of truth: <Bold>JSX in tmux</Bold>. Target: <Bold>Notion page body</Bold>.
+      Source of truth: JSX in tmux. Target: real Notion page.
     </Paragraph>
     <Callout {...keyed({ icon: '🧪', color: 'blue_background' }, 'status')}>
       Sync marker: {syncMarker}
     </Callout>
     <Paragraph {...keyed({}, 'instructions')}>
-      Start with <InlineCode>{stageLabel}</InlineCode>, then grow the page block-by-block instead
-      of jumping into a large pre-existing example.
+      Start with <InlineCode>{stageLabel}</InlineCode>, then grow the page block-by-block.
     </Paragraph>
   </Page>
 )`,
@@ -59,7 +77,7 @@ return (
   {
     id: "chapter-2-marker-bump",
     title: "Chapter 2 - First Visible Mutation",
-    beatRange: "00:12-00:22",
+    beatRange: "00:20-00:30",
     goal: "Prove that a tiny source change causes a tiny visible delta.",
     syncMarker: "manual-demo-v2",
     stageLabel: "stage-2: one-line marker change",
@@ -76,13 +94,13 @@ return (
       "stage-2: one-line marker change",
     ],
     sourceBody: String.raw`
-const { Page, Heading1, Paragraph, Callout, Bold, InlineCode } = ui
+const { Page, Heading1, Paragraph, Callout, InlineCode } = ui
 
-return (
+export default (
   <Page>
     <Heading1 {...keyed({}, 'title')}>Live sync demo</Heading1>
     <Paragraph {...keyed({}, 'summary')}>
-      Source of truth: <Bold>JSX in tmux</Bold>. Target: <Bold>Notion page body</Bold>.
+      Source of truth: JSX in tmux. Target: real Notion page.
     </Paragraph>
     <Callout {...keyed({ icon: '🧪', color: 'blue_background' }, 'status')}>
       Sync marker: {syncMarker}
@@ -96,7 +114,7 @@ return (
   {
     id: "chapter-3-structured-page",
     title: "Chapter 3 - Grow Into Structure",
-    beatRange: "00:22-00:40",
+    beatRange: "00:30-00:48",
     goal: "Move from a toy page to a small but meaningful Notion document.",
     syncMarker: "manual-demo-v3",
     stageLabel: "stage-3: structured page",
@@ -111,17 +129,20 @@ return (
     ],
     expectedBrowserTexts: ["Demo loop", "Quality bar"],
     sourceBody: String.raw`
-const { Page, Heading1, Heading2, Paragraph, Callout, BulletedListItem, ToDo, Bold } = ui
+const { Page, Heading1, Heading2, Paragraph, Callout, BulletedListItem, ToDo, InlineCode } = ui
 
-return (
+export default (
   <Page>
     <Heading1 {...keyed({}, 'title')}>Live sync demo</Heading1>
     <Paragraph {...keyed({}, 'summary')}>
-      We start simple, then grow a page that feels like a real working document.
+      We start from empty, then grow a page that feels like a real working document.
     </Paragraph>
     <Callout {...keyed({ icon: '🚀', color: 'green_background' }, 'status')}>
       Sync marker: {syncMarker}. JSX stays the source of truth while Notion remains the review surface.
     </Callout>
+    <Paragraph {...keyed({}, 'chapter-label')}>
+      This chapter lands on <InlineCode>{stageLabel}</InlineCode>.
+    </Paragraph>
     <Heading2 {...keyed({}, 'loop-heading')}>Demo loop</Heading2>
     <BulletedListItem {...keyed({}, 'loop-1')}>Edit the JSX file in tmux.</BulletedListItem>
     <BulletedListItem {...keyed({}, 'loop-2')}>Run the sync command in the lower pane.</BulletedListItem>
@@ -132,17 +153,13 @@ return (
     <ToDo {...keyed({ checked: true }, 'todo-1')}>Keep the changed block above the fold.</ToDo>
     <ToDo {...keyed({ checked: true }, 'todo-2')}>Make the sync proof obvious in the terminal.</ToDo>
     <ToDo {...keyed({}, 'todo-3')}>Prepare a richer page structure.</ToDo>
-    <Paragraph {...keyed({}, 'footer')}>
-      This chapter is still compact, but it already reads like a <Bold>real document</Bold> instead
-      of a single paragraph.
-    </Paragraph>
   </Page>
 )`,
   },
   {
     id: "chapter-4-refactor",
     title: "Chapter 4 - Refactor, Don’t Just Append",
-    beatRange: "00:40-00:58",
+    beatRange: "00:48-01:06",
     goal: "Show that maintainability comes from normal React refactors, not manual duplication.",
     syncMarker: "manual-demo-v4",
     stageLabel: "stage-4: refactor repeated blocks into data",
@@ -157,8 +174,7 @@ return (
     ],
     expectedBrowserTexts: ["Demo loop", "Quality bar"],
     sourceBody: String.raw`
-const { Page, Heading1, Heading2, Paragraph, Callout, BulletedListItem, ToDo, Bold, InlineCode } =
-  ui
+const { Page, Heading1, Heading2, Paragraph, Callout, BulletedListItem, ToDo, InlineCode } = ui
 
 const loopSteps = [
   'Edit the JSX file in tmux.',
@@ -172,11 +188,11 @@ const qualityChecks = [
   { blockKey: 'todo-3', checked: false, text: 'Prepare a richer page structure.' },
 ] as const
 
-return (
+export default (
   <Page>
     <Heading1 {...keyed({}, 'title')}>Live sync demo</Heading1>
     <Paragraph {...keyed({}, 'summary')}>
-      We start simple, then grow a page that feels like a real working document.
+      We start from empty, then grow a page that feels like a real working document.
     </Paragraph>
     <Callout {...keyed({ icon: '🧩', color: 'gray_background' }, 'status')}>
       Refactor repeated blocks into data with <InlineCode>{stageLabel}</InlineCode> while keeping
@@ -197,20 +213,14 @@ return (
         {item.text}
       </ToDo>
     ))}
-    <Paragraph {...keyed({}, 'footer')}>
-      This is the same idea as any normal React refactor: better structure, same outcome, easier to
-      extend.
-    </Paragraph>
-    <Paragraph {...keyed({}, 'marker')}>
-      <Bold>Sync marker:</Bold> {syncMarker}
-    </Paragraph>
+    <Paragraph {...keyed({}, 'marker')}>Refactor repeated blocks into data. Sync marker: {syncMarker}</Paragraph>
   </Page>
 )`,
   },
   {
     id: "chapter-5-rich-page",
     title: "Chapter 5 - Credible End State",
-    beatRange: "00:58-01:15",
+    beatRange: "01:06-01:24",
     goal: "Land on a compact but rich page that proves the tool is viable for serious authoring.",
     syncMarker: "manual-demo-v5",
     stageLabel: "stage-5: rich hierarchical page",
@@ -260,12 +270,12 @@ const launchBrief = [
   'Validation artifacts',
 ] as const
 
-return (
+export default (
   <Page>
     <Heading1 {...keyed({}, 'title')}>Live sync demo</Heading1>
     <Paragraph {...keyed({}, 'summary')}>
-      The same JSX file now drives a richer hierarchical Notion page without leaving the normal
-      React authoring model.
+      The same JSX file now drives a richer hierarchical Notion page through{' '}
+      <InlineCode>{stageLabel}</InlineCode> without leaving the normal React authoring model.
     </Paragraph>
     <Callout {...keyed({ icon: '✅', color: 'green_background' }, 'status')}>
       Sync marker: {syncMarker}. The end state is compact, but it already looks like a
@@ -296,7 +306,7 @@ return (
         <ToDo {...keyed({ checked: true }, 'quality-3')}>Preserve evidence for every chapter.</ToDo>
       </Column>
       <Column {...keyed({ widthRatio: 0.45 }, 'artifact-right')}>
-        <Heading2 {...keyed({}, 'artifact-heading')}>Artifacts</Heading2>
+        <Heading2 {...keyed({}, 'artifact-heading')}>Validation artifacts</Heading2>
         <BulletedListItem {...keyed({}, 'artifact-1')}>Combined screenshots</BulletedListItem>
         <BulletedListItem {...keyed({}, 'artifact-2')}>Terminal sync proof</BulletedListItem>
         <BulletedListItem {...keyed({}, 'artifact-3')}>Notion API validation</BulletedListItem>
@@ -331,72 +341,32 @@ export const getManualVideoChapter = (id: string): ManualVideoChapter => {
   return chapter;
 };
 
-const indent = (value: string, spaces: number): string => {
-  const prefix = " ".repeat(spaces);
-  return value
-    .trim()
-    .split("\n")
-    .map((line) => `${prefix}${line}`)
-    .join("\n");
-};
-
 export const renderManualVideoSource = (
   chapter: ManualVideoChapter,
-): string => `import * as path from 'node:path'
+): string => {
+  const usesKeyed = /\bkeyed\(/.test(chapter.sourceBody);
+  const usesSyncMarker = /\bsyncMarker\b/.test(chapter.sourceBody);
+  const usesStageLabel = /\bstageLabel\b/.test(chapter.sourceBody);
 
-import { FetchHttpClient } from '@effect/platform'
-import { Effect, Layer, Redacted } from 'effect'
-import type { ReactElement } from 'react'
+  const lines = [
+    `import { ui${usesKeyed ? ", keyed" : ""} } from '../src/demo/manual-video/runtime.ts'`,
+    "",
+    `// Generated from ${chapter.id}. Edit this file live during the demo.`,
+  ];
 
-import { NotionConfig } from '@overeng/notion-effect-client'
+  if (usesSyncMarker === true) {
+    lines.push(`const syncMarker = ${JSON.stringify(chapter.syncMarker)}`);
+  }
 
-import { FsCache } from '../src/cache/mod.ts'
-import * as Host from '../src/components/mod.ts'
-import type { DemoUi } from '../src/demo/page-demos.tsx'
-import { sync } from '../src/renderer/mod.ts'
+  if (usesStageLabel === true) {
+    lines.push(`const stageLabel = ${JSON.stringify(chapter.stageLabel)}`);
+  }
 
-const DEFAULT_PAGE_ID = '${MANUAL_VIDEO_DEFAULT_PAGE_ID}'
-const CACHE_KEY = 'notion-video-manual-demo'
+  if (usesSyncMarker === true || usesStageLabel === true) {
+    lines.push("");
+  }
 
-// Generated from ${chapter.id}. Edit this file live during the demo.
-const syncMarker = ${JSON.stringify(chapter.syncMarker)}
-const stageLabel = ${JSON.stringify(chapter.stageLabel)}
+  lines.push(chapter.sourceBody.trim(), "");
 
-const keyed = <T extends object>(
-  props: T,
-  blockKey: string,
-): T & { readonly blockKey: string } => ({
-  ...props,
-  blockKey,
-})
-
-const renderManualDemo = (ui: DemoUi): ReactElement => {
-${indent(chapter.sourceBody, 2)}
-}
-
-const notionToken = process.env.NOTION_TOKEN
-if (!notionToken) {
-  throw new Error('NOTION_TOKEN is required')
-}
-
-const pageId = (process.argv[2] ?? process.env.NOTION_DEMO_PAGE_ID ?? DEFAULT_PAGE_ID).trim()
-
-const layer = Layer.mergeAll(
-  Layer.succeed(NotionConfig, {
-    authToken: Redacted.make(notionToken),
-    retryEnabled: true,
-    maxRetries: 5,
-    retryBaseDelay: 1000,
-  }),
-  FetchHttpClient.layer,
-)
-
-await Effect.runPromise(
-  sync(renderManualDemo(Host), {
-    pageId,
-    cache: FsCache.make(
-      path.join(process.cwd(), 'tmp', 'notion-demo-cache', \`\${CACHE_KEY}.\${pageId}.json\`),
-    ),
-  }).pipe(Effect.provide(layer)),
-)
-`;
+  return lines.join("\n");
+};

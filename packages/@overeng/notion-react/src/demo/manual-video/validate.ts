@@ -265,10 +265,14 @@ const main = async (): Promise<void> => {
   });
   checks.push({
     name: "terminal sync proof visible",
-    ok: (bottomPaneText ?? "").includes("Executed in"),
-    details: (bottomPaneText ?? "").includes("Executed in")
-      ? 'found "Executed in"'
-      : 'missing "Executed in" in lower tmux pane',
+    ok:
+      (bottomPaneText ?? "").includes("SYNC OK") &&
+      (bottomPaneText ?? "").includes("notion_api_calls="),
+    details:
+      (bottomPaneText ?? "").includes("SYNC OK") &&
+      (bottomPaneText ?? "").includes("notion_api_calls=")
+        ? 'found sync summary with "SYNC OK" and "notion_api_calls="'
+        : "missing structured sync summary in lower tmux pane",
   });
   checks.push({
     name: "combined screenshot captured",
@@ -297,6 +301,16 @@ const main = async (): Promise<void> => {
   } else {
     pagePlainText = await flattenPagePlainText(notionToken, pageId);
     const normalizedPageText = normalizeTextForContains(pagePlainText);
+    if (chapter.expectEmptyBody === true) {
+      checks.push({
+        name: "notion api body starts empty",
+        ok: normalizedPageText.length === 0,
+        details:
+          normalizedPageText.length === 0
+            ? "body is empty"
+            : `body still contains ${normalizedPageText.length} normalized characters`,
+      });
+    }
     for (const text of chapter.expectedApiTexts) {
       const normalizedExpected = normalizeTextForContains(text);
       checks.push({
@@ -309,7 +323,7 @@ const main = async (): Promise<void> => {
     }
   }
 
-  if (topPaneText !== undefined) {
+  if (topPaneText !== undefined && chapter.sourceBody.includes("syncMarker")) {
     checks.push({
       name: "top pane shows sync marker",
       ok: topPaneText.includes(chapter.syncMarker),
