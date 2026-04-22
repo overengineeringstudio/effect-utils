@@ -31,6 +31,7 @@ const pageId = (
   process.env.NOTION_DEMO_PAGE_ID ??
   MANUAL_VIDEO_DEFAULT_PAGE_ID
 ).trim();
+const syncRunId = process.env.NOTION_SYNC_RUN_ID?.trim() || undefined;
 
 const notionToken = process.env.NOTION_TOKEN;
 if (!notionToken) {
@@ -88,7 +89,7 @@ const printSummary = (opts: {
   const httpSummary = `GET ${actual.retrieve}  APP ${actual.append}  UPD ${actual.update}  DEL ${actual.delete}`;
 
   console.log(
-    `${statusColor}${ansi.bold}${status}${ansi.reset} ${ansi.cyan}duration_ms=${formatDuration(opts.durationMs)}${ansi.reset} ${ansi.blue}notion_api_calls=${totalCalls}${ansi.reset} ${ansi.dim}cache=${formatCache(opts.metrics?.cacheOutcome)} fallback=${formatFallback(opts.metrics?.fallbackReason)}${ansi.reset}`,
+    `${statusColor}${ansi.bold}${status}${ansi.reset} ${ansi.cyan}duration_ms=${formatDuration(opts.durationMs)}${ansi.reset} ${ansi.blue}notion_api_calls=${totalCalls}${ansi.reset} ${ansi.dim}cache=${formatCache(opts.metrics?.cacheOutcome)} fallback=${formatFallback(opts.metrics?.fallbackReason)}${syncRunId !== undefined ? ` sync_run_id=${syncRunId}` : ""}${ansi.reset}`,
   );
 
   if (opts.result !== undefined) {

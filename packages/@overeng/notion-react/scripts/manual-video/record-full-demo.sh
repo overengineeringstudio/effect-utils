@@ -14,7 +14,7 @@ LATEST_DIR="$OPENDEAD_DIR/latest"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 RUN_NAME="notion-demo-${TIMESTAMP}-full-manual-demo"
 OUT_DIR="${1:-$RUNS_DIR/$RUN_NAME}"
-FPS="${NOTION_VIDEO_FPS:-4}"
+FPS="${NOTION_VIDEO_FPS:-30}"
 TARGET_VIDEO_FPS="${NOTION_VIDEO_TARGET_FPS:-30}"
 VALIDATE_TIMEOUT_SECONDS="${NOTION_VIDEO_VALIDATE_TIMEOUT_SECONDS:-2.5}"
 VALIDATE_POLL_INTERVAL_SECONDS="${NOTION_VIDEO_VALIDATE_POLL_INTERVAL_SECONDS:-0.35}"
@@ -23,6 +23,7 @@ RETRY_DELAY_SECONDS="${NOTION_VIDEO_RETRY_DELAY_SECONDS:-0.75}"
 VIDEO_BAND_HEIGHT="${NOTION_VIDEO_BAND_HEIGHT:-220}"
 SYNC_TIMEOUT_SECONDS="${NOTION_VIDEO_SYNC_TIMEOUT_SECONDS:-75}"
 WINDOW_BOUNDS_SCRIPT="$PKG_DIR/scripts/manual-video/window-bounds.swift"
+REGION_RECORDER_SCRIPT="$PKG_DIR/scripts/manual-video/record-region.swift"
 SOURCE_FILE="$PKG_DIR/tmp/notion-video-manual-demo.tsx"
 TOKEN_FILE="${NOTION_VIDEO_TOKEN_FILE:-/tmp/notion_demo_token}"
 GHOSTTY_PID="${NOTION_VIDEO_GHOSTTY_PID:-}"
@@ -33,8 +34,7 @@ mkdir -p "$OUT_DIR"
 mkdir -p "$LATEST_DIR"
 mkdir -p "$OUT_DIR/frames"
 mkdir -p "$OUT_DIR/chapters"
-mkdir -p "$OUT_DIR/frames/ghostty"
-mkdir -p "$OUT_DIR/frames/chrome"
+capture_video_file="$OUT_DIR/${RUN_NAME}.capture.mp4"
 
 if [[ ! -f "$TOKEN_FILE" ]]; then
   echo "missing token file: $TOKEN_FILE" >&2
@@ -62,24 +62,6 @@ if [[ "${#CHAPTER_IDS[@]}" -eq 0 ]]; then
   exit 1
 fi
 
-capture_loop() {
-  local ghostty_id="$1"
-  local chrome_id="$2"
-  local ghostty_dir="$3"
-  local chrome_dir="$4"
-  local fps="$5"
-
-  local index=0
-  while true; do
-    printf -v ghostty_frame '%s/frame-%04d.png' "$ghostty_dir" "$index"
-    printf -v chrome_frame '%s/frame-%04d.png' "$chrome_dir" "$index"
-    screencapture -l"$ghostty_id" -x "$ghostty_frame"
-    screencapture -l"$chrome_id" -x "$chrome_frame"
-    index=$((index + 1))
-    sleep "$(awk "BEGIN { printf \"%.3f\", 1 / $fps }")"
-  done
-}
-
 now_seconds() {
   python3 -c 'import time; print(f"{time.time():.3f}")'
 }
@@ -91,6 +73,13 @@ seconds_diff() {
 }
 
 run_sync() {
+  local sync_run_id pane
+  sync_run_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4().hex)
+PY
+)"
+
   tmux send-keys -t "$TOP_PANE" Escape
   tmux send-keys -t "$TOP_PANE" ":silent update" Enter
   sleep 0.2
@@ -98,7 +87,7 @@ run_sync() {
   tmux send-keys -t "$BOTTOM_PANE" C-c
   tmux send-keys -t "$BOTTOM_PANE" "clear" Enter
   tmux send-keys -t "$BOTTOM_PANE" \
-    "cd '$PKG_DIR'; env NOTION_TOKEN=(sed -n '\$p' '$TOKEN_FILE') bun src/demo/manual-video/run-sync.ts '$PAGE_ID'" \
+    "cd '$PKG_DIR'; env NOTION_TOKEN=(sed -n '\$p' '$TOKEN_FILE') NOTION_SYNC_RUN_ID='$sync_run_id' bun src/demo/manual-video/run-sync.ts '$PAGE_ID'" \
     Enter
 
   local max_polls
@@ -106,14 +95,14 @@ run_sync() {
 
   for _ in $(seq 1 "$max_polls"); do
     pane="$(tmux capture-pane -t "$BOTTOM_PANE" -p | tail -n 20)"
-    if printf '%s\n' "$pane" | rg -q 'SYNC OK'; then
+    if printf '%s\n' "$pane" | rg -q "SYNC OK.*sync_run_id=${sync_run_id}"; then
       LAST_SYNC_PANE="$pane"
       return 0
     fi
     sleep 0.25
   done
 
-  echo "sync runner did not print a success summary in the lower tmux pane" >&2
+  echo "sync runner did not print a success summary for sync_run_id=${sync_run_id} in the lower tmux pane" >&2
   return 1
 }
 
@@ -255,12 +244,13 @@ prestage_empty_page
 
 ghostty_id="$(swift "$WINDOW_BOUNDS_SCRIPT" ghostty-id)"
 chrome_id="$(swift "$WINDOW_BOUNDS_SCRIPT" chrome-id)"
-capture_loop "$ghostty_id" "$chrome_id" "$OUT_DIR/frames/ghostty" "$OUT_DIR/frames/chrome" "$FPS" &
+combined_bounds="$(swift "$WINDOW_BOUNDS_SCRIPT" combined)"
+swift "$REGION_RECORDER_SCRIPT" "$capture_video_file" "$combined_bounds" "$FPS" &
 record_pid=$!
 
 cleanup() {
   if [[ -n "${record_pid:-}" ]] && kill -0 "$record_pid" 2>/dev/null; then
-    kill "$record_pid" 2>/dev/null || true
+    kill -INT "$record_pid" 2>/dev/null || true
     wait "$record_pid" || true
   fi
 }
@@ -350,7 +340,6 @@ overlay_file="$OUT_DIR/chapters/chapter-overlays.ass"
 retimed_manifest_file="$OUT_DIR/chapters/manifest-retimed.jsonl"
 retime_plan_file="$OUT_DIR/chapters/retime-plan.tsv"
 retimed_segments_dir="$OUT_DIR/segments"
-capture_frame_count="$(find "$OUT_DIR/frames/ghostty" -name 'frame-*.png' | wc -l | tr -d ' ')"
 run_duration_seconds="$(tail -n 1 "$chapter_manifest" | sed -E 's/.*"endSeconds":([0-9.]+).*/\1/')"
 
 if [[ -z "$run_duration_seconds" ]] || ! awk "BEGIN { exit !($run_duration_seconds > 0) }"; then
@@ -358,29 +347,24 @@ if [[ -z "$run_duration_seconds" ]] || ! awk "BEGIN { exit !($run_duration_secon
   exit 1
 fi
 
-if [[ -z "$capture_frame_count" || "$capture_frame_count" -le 1 ]]; then
-  echo "insufficient frame count captured: $capture_frame_count" >&2
+if [[ ! -f "$capture_video_file" ]]; then
+  echo "missing capture video: $capture_video_file" >&2
   exit 1
 fi
 
-capture_input_fps="$(awk "BEGIN { printf \"%.6f\", $capture_frame_count / $run_duration_seconds }")"
+capture_input_fps="$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$capture_video_file" | awk -F/ 'NF==2 && $2 != 0 { printf "%.6f", $1 / $2 } NF==1 { printf "%.6f", $1 }')"
 
 terminal_frame="$OUT_DIR/terminal-latest.png"
 browser_frame="$OUT_DIR/browser-latest.png"
-screencapture -l"$ghostty_id" -x "$terminal_frame"
-screencapture -l"$chrome_id" -x "$browser_frame"
-
 ffmpeg -hide_banner -loglevel error -y \
-  -i "$terminal_frame" \
-  -i "$browser_frame" \
-  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#000000[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#000000@1:t=fill" \
+  -sseof -0.1 -i "$capture_video_file" \
+  -vf "pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#000000" \
   -frames:v 1 \
   "$frame_file"
 
 ffmpeg -hide_banner -loglevel error -y \
-  -framerate "$capture_input_fps" -i "$OUT_DIR/frames/ghostty/frame-%04d.png" \
-  -framerate "$capture_input_fps" -i "$OUT_DIR/frames/chrome/frame-%04d.png" \
-  -filter_complex "[0:v][1:v]scale2ref=oh*mdar:ih[left][right];[left][right]hstack=inputs=2[stacked];[stacked]pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#000000[padded];[padded]drawbox=x=0:y=ih-${VIDEO_BAND_HEIGHT}:w=iw:h=${VIDEO_BAND_HEIGHT}:color=#000000@1:t=fill" \
+  -i "$capture_video_file" \
+  -vf "pad=iw:ih+${VIDEO_BAND_HEIGHT}:0:0:color=#000000" \
   -r "$TARGET_VIDEO_FPS" \
   -c:v libx264 -preset veryfast -pix_fmt yuv420p "$video_file"
 

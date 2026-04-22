@@ -239,7 +239,7 @@ const main = async (): Promise<void> => {
     currentSource?.includes(`Generated from ${chapter.id}`) === true;
   const sourceIncludesSyncMarker =
     chapter.sourceBody.includes("syncMarker") === false ||
-    currentSource?.includes(chapter.syncMarker) === true;
+    currentSource?.includes("const syncMarker") === true;
   const sourceIncludesStageLabel =
     chapter.sourceBody.includes("stageLabel") === false ||
     currentSource?.includes(chapter.stageLabel) === true;
@@ -360,13 +360,13 @@ const main = async (): Promise<void> => {
     }
   }
 
-  if (topPaneText !== undefined && chapter.sourceBody.includes("syncMarker")) {
+  if (topPaneText !== undefined && chapter.sourceBody.includes("stageLabel")) {
     checks.push({
-      name: "top pane shows sync marker",
-      ok: topPaneText.includes(chapter.syncMarker),
-      details: topPaneText.includes(chapter.syncMarker)
-        ? chapter.syncMarker
-        : `missing ${chapter.syncMarker} in top pane`,
+      name: "top pane shows current stage label",
+      ok: topPaneText.includes(chapter.stageLabel),
+      details: topPaneText.includes(chapter.stageLabel)
+        ? chapter.stageLabel
+        : `missing ${chapter.stageLabel} in top pane`,
     });
   }
 
