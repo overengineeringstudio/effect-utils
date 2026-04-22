@@ -120,7 +120,7 @@ export default (
     stageLabel: "stage-3: structured page",
     overlayTitle: "Grow into structure",
     overlayBody:
-      "Headings, bullets, and checklists make the page feel like a real doc.",
+      "The JSX tree grows more complex, but sync stays incremental instead of rebuilding the page from scratch.",
     expectedApiTexts: [
       "Demo loop",
       "Edit the JSX file in tmux.",
@@ -226,7 +226,7 @@ export default (
     stageLabel: "stage-5: rich hierarchical page",
     overlayTitle: "Land on a real page",
     overlayBody:
-      "The final page is still legible, but clearly richer than the starting point.",
+      "Familiar React composition now drives toggles, columns, and nested structure while preserving the same sync loop.",
     expectedApiTexts: [
       "Delivery pipeline",
       "Launch brief",
