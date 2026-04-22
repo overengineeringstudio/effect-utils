@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-react**: Expand the shared public demo catalog to cover the sync-safe block surface end to end, wire cross-page references through a two-pass child-page sync, and document the live API caveats for upload-backed media blocks and column width ratios
 - **@overeng/notion-react**: Align the public Notion demo information architecture with the Storybook sidebar, including deterministic child-page ordering on rerun and placeholder coverage for host-owned modern stories
 - **@overeng/notion-react**: Make every `Demo/*` Storybook page a thin wrapper over the shared demo catalog so Storybook and the rerunnable Notion sync consume the same page definitions
+- **@overeng/notion-react**: Add a screenwriter-style Notion React demo storyline with chapter goals, anti-goals, timestamps, and screenshot/API validation requirements so the recording script can be judged against a clear narrative spec
+- **@overeng/notion-react**: Add a chaptered manual-demo workflow with tracked source generation, tmux/Notion validation, and a rerunnable full-recording script that writes combined screenshots and chapter evidence into `~/OpenDead/notion-video-recordings`
 - **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
 - **@overeng/pty-effect/client**: Add PTY client support for session tags, `getSession`, `gc`, `updateTags`, `sendData`, `queryStats`, `readRecentEvents`, and live event following
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)
