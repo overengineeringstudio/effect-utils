@@ -551,13 +551,19 @@ PR #3224) is the reference implementation pattern.
   property name (empirically verified). Spec expansion: extend
   `ChildPageProps` with `properties` and `parent` discriminated-union; the
   driver routes the create the same way. No caching model change.
-- **DQ7 `<ChildPage>` sibling reordering.** _Deferred, not a regression._
-  Notion's `pages.move` only accepts a new parent, not a new sibling
-  position under the same parent. A pure intra-parent reorder would have
-  to go through archive + recreate (losing the id) or be deliberately
-  unsupported. Recommend: unsupported in v1; the library emits a warning
-  and keeps the existing order. Callers who need authoritative sibling
-  order should place the ordering concern on their own state.
+- **DQ7 `<ChildPage>` sibling reordering.** _Addressed via opt-in
+  `reorderSiblings` (phase 4d, #618)._ Notion's `pages.move` rejects a
+  same-parent move, but a roundtrip — move to another parent, then back
+  to the original — bumps the page to the end of the original parent's
+  `child_page` block list (empirical: see
+  `tmp/notion-618/options-ordering.md` experiment 9). Iterating the
+  target order through that roundtrip lands arbitrary sibling order at
+  2N `pages.move` calls per reorder burst. Opt-in via
+  `sync(element, { pageId, cache, reorderSiblings: true })`; default
+  stays the legacy no-op to preserve existing call sites that emit
+  same-parent `movePage`s. Callers can supply their own
+  `{ holdingParentId }` to avoid the library minting-and-archiving a
+  scratch page per sync.
 - **DQ4 Op batching via `position.after_block`.** _Deferred to v0.2._
   v0.1 op counts already meet the derisk targets; batched append adds
   id-mapping and partial-success complexity. v0.2 experiment goal:

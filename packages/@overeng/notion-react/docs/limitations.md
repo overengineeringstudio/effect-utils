@@ -20,17 +20,6 @@ page, call `NotionPages.create` imperatively and render the result as a
 read-only reference via the two-step pattern (see
 [cookbook/sub-page-creation](./cookbook/sub-page-creation.md)).
 
-### Intra-parent sibling-page reorder (DQ7)
-
-Notion's `pages.move` endpoint only changes a page's parent; it cannot
-reorder sub-pages under the same parent. Reordering `<ChildPage>`
-siblings in JSX while keeping the same parent is **not supported** —
-the renderer keeps the existing server order and does not emit any op.
-Emulating reorder via archive + recreate would lose the page id and its
-history. If sibling order matters to your UX, place the ordering concern
-in your own state (e.g. a database with a sort property) rather than in
-JSX structure.
-
 ### Non-title page properties on `<Page>` / `<ChildPage>`
 
 Only `title`, `icon`, and `cover` are projected. Properties set on a
@@ -51,6 +40,41 @@ Covered by R15 / T03: v0.1 requires uploads to be pre-resolved via
 tracked separately and unrelated to the page-ops work.
 
 ## Behavioural caveats
+
+### Intra-parent sibling-page reorder (DQ7) — opt-in
+
+Notion's `pages.move` endpoint rejects a same-parent move with a 400
+validation error. Phase 4d (#618) lands intra-parent reorder behind an
+opt-in option on `sync()`:
+
+```ts
+await sync(element, { pageId, cache, reorderSiblings: true })
+```
+
+When `reorderSiblings` is truthy and the diff detects retained
+`<ChildPage>` siblings under one parent whose order differs from the
+cache, the driver emits a single `reorderPages` op and realizes it via
+the roundtrip primitive: for each page id (in JSX order), move it to a
+holding parent, then back. Each roundtrip bumps the page to the end of
+the original parent's `child_page` block list; iterating in the target
+order lands the full order with 2N `pages.move` calls.
+
+- `reorderSiblings: true` (or unset, defaults to `false`): library
+  auto-provisions a scratch page under the reordered siblings' parent
+  (title `"@overeng/notion-react holding (do not touch)"`), uses it for
+  every reorder in this sync, and archives it on success. One extra
+  `pages.create` + one `pages.update {in_trash: true}` per
+  sync-with-reorder.
+- `reorderSiblings: { holdingParentId }`: caller supplies a
+  workspace-accessible page id. The library never archives
+  caller-supplied holding parents — the caller owns the lifecycle.
+- `reorderSiblings: false` (default): retained-but-reshuffled page
+  siblings still emit a same-parent `movePage` as before. The API
+  rejects it; the driver swallows the validation error. Server sibling
+  order stays as it was. Existing call sites keep working without
+  change.
+
+See [Cookbook → Sub-page creation → Reordering](./cookbook/sub-page-creation.md#reordering-sibling-sub-pages-phase-4d).
 
 ### No idempotency primitive (A09 / T06)
 

@@ -141,3 +141,45 @@ imperatively-managed page outside the sync driver's control by not
 including it in the JSX tree, or scope the sync to a different
 subtree via a dedicated `pageId` — see
 [Cookbook → Partial trees](./partial-trees.md).
+
+## Reordering sibling sub-pages (phase 4d)
+
+The default sync driver does not realize intra-parent `<ChildPage>`
+reorder — Notion's `pages.move` rejects a same-parent move and the
+driver swallows the rejection, leaving server order untouched. Opt in
+to actually land the JSX order with `reorderSiblings`:
+
+```ts
+await Effect.runPromise(
+  sync(
+    <Page>
+      <ChildPage blockKey="c" title="C" />
+      <ChildPage blockKey="b" title="B" />
+      <ChildPage blockKey="a" title="A" />
+    </Page>,
+    { pageId, cache, reorderSiblings: true },
+  ).pipe(Effect.provide(layer)),
+)
+```
+
+When `reorderSiblings: true` the library auto-provisions a scratch
+"holding" page under the reordered siblings' parent, roundtrips each
+sibling through it in JSX order (each move bumps the page to the end of
+the original parent's `child_page` block list), and archives the
+holding page on success. Cost: 2N `pages.move` + 1 `pages.create` + 1
+archive per sync-with-reorder.
+
+For long-running workers that do many reorders, supply your own
+holding parent so the library does not mint-and-archive per sync:
+
+```ts
+await sync(element, {
+  pageId,
+  cache,
+  reorderSiblings: { holdingParentId: HOLDING_PAGE_ID },
+})
+```
+
+The library never archives a caller-supplied holding parent. The
+underlying primitive is empirically verified in
+`tmp/notion-618/options-ordering.md` (experiment 9).

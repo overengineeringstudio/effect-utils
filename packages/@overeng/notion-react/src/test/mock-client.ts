@@ -50,7 +50,11 @@ export interface FakeNotion {
 export interface FakeBlock {
   readonly id: string
   readonly type: string
-  readonly parent: string
+  /**
+   * Parent id. Mutable so the `pages.move` endpoint can reparent the
+   * associated `child_page` block when a page moves parents (phase 4d).
+   */
+  parent: string
   payload: Record<string, unknown>
   archived: boolean
   /** Ordered child ids. */
@@ -389,12 +393,43 @@ export const createFakeNotion = (): FakeNotion => {
 
     // POST /v1/pages/{id}/move — reparent a page. Only page_id → page_id is
     // exercised here; workspace/database moves land later.
+    //
+    // Empirical contract (tmp/notion-618/options-ordering.md experiment 9):
+    //   - same-parent move rejects with 400 "New parent must be different
+    //     from the current parent". Phase 4d `reorderPages` realizes intra-
+    //     parent reorder via a holding-parent roundtrip.
+    //   - different-parent move places the moved page's `child_page` block
+    //     at the end of the new parent's children and removes it from the
+    //     old parent's children.
     if (pageMoveMatch !== null && req.method === 'POST') {
       const id = pageMoveMatch[1]!
       const p = pages.get(id)
       if (p === undefined) respErr(404, 'object_not_found', `Could not find page with ID: ${id}.`)
       const moveBody = body as { parent?: FakePageParent }
-      if (moveBody.parent !== undefined) p!.parent = moveBody.parent
+      if (moveBody.parent !== undefined) {
+        const newParent = moveBody.parent
+        const oldParent = p!.parent
+        if (
+          newParent.type === 'page_id' &&
+          oldParent.type === 'page_id' &&
+          newParent.page_id === oldParent.page_id
+        ) {
+          respErr(400, 'validation_error', 'New parent must be different from the current parent.')
+        }
+        // Mirror the child_page block in the parent block lists so
+        // `blocks.children.list` reflects the move.
+        if (newParent.type === 'page_id' && oldParent.type === 'page_id') {
+          const oldList = getChildList(oldParent.page_id)
+          const idx = oldList.indexOf(id)
+          if (idx !== -1) oldList.splice(idx, 1)
+          // The associated child_page block (id === page id) may not exist if
+          // the page's parent is something other than page_id originally.
+          const cpBlock = blocks.get(id)
+          if (cpBlock !== undefined) cpBlock.parent = newParent.page_id
+          getChildList(newParent.page_id).push(id)
+        }
+        p!.parent = newParent
+      }
       return toPageResponse(p!)
     }
 
@@ -447,9 +482,17 @@ export const createFakeNotion = (): FakeNotion => {
       if (patch.in_trash !== undefined) {
         p.in_trash = patch.in_trash
         p.archived = patch.in_trash
+        // Also archive the mirrored `child_page` block so the parent's
+        // block listing reflects the hidden page (real Notion archives the
+        // block alongside the page). Keeps `childrenOf` behaviour consistent
+        // with the archive contract.
+        const cpBlock = blocks.get(id)
+        if (cpBlock !== undefined) cpBlock.archived = patch.in_trash
       } else if (patch.archived !== undefined) {
         p.archived = patch.archived
         p.in_trash = patch.archived
+        const cpBlock = blocks.get(id)
+        if (cpBlock !== undefined) cpBlock.archived = patch.archived
       }
       return toPageResponse(p)
     }

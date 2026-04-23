@@ -207,10 +207,13 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   only touch that page's children.
 - **R27 Sub-page ordering via `pages.move`:** When the driver detects a
   `<ChildPage>` retained across renders but reparented, it must use
-  `NotionPages.move` to preserve the id, not archive + recreate. Siblings
-  reordering within the same parent may remain remove+re-insert if the
-  block-level ordering algorithm cannot be adapted to pages cheaply
-  (documented, not silent).
+  `NotionPages.move` to preserve the id, not archive + recreate.
+  Intra-parent sibling reorder is supported behind the opt-in
+  `reorderSiblings` option (phase 4d, #618): the driver emits a single
+  `reorderPages` op and realizes it via 2N `pages.move` roundtrips
+  through a holding parent. Default stays off — unretained
+  same-parent-reshuffle siblings still flow through `movePage` and the
+  API rejection is swallowed, matching the pre-phase-4d contract.
 - **R28 Partial-failure archive & reconcile:** If a `pages.create` succeeds
   but subsequent child ops fail, the driver must archive the orphan via
   `in_trash:true` before surfacing the error. The next `sync()` with the

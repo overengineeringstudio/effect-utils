@@ -2,7 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { NotionConfig } from '@overeng/notion-effect-client'
+import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
@@ -563,7 +563,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     await runSync(fake, tree, cache)
     const second = await runSync(fake, tree, cache)
-    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect({
       appends: second.appends,
       inserts: second.inserts,
@@ -604,7 +604,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       </Page>,
       cache,
     )
-    expect(res.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 1 })
+    expect(res.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 1, reorders: 0 })
     expect(res.appends + res.inserts + res.updates + res.removes).toBe(0)
   })
 
@@ -630,7 +630,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     await runSync(fake, tree, cache)
     const second = await runSync(fake, tree, cache)
-    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect({
       appends: second.appends,
       inserts: second.inserts,
@@ -652,7 +652,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     await runSync(fake, tree, cache)
     const second = await runSync(fake, tree, cache)
-    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect({
       appends: second.appends,
       inserts: second.inserts,
@@ -718,7 +718,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       </Page>,
       cache,
     )
-    expect(r3.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r3.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect(r3.appends + r3.inserts + r3.updates + r3.removes).toBe(0)
   })
 
@@ -878,7 +878,214 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     await runSync(fake, tree, cache)
     const r2 = await runSync(fake, tree, cache)
-    expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+  })
+
+  /**
+   * Phase 4d (issue #618): opt-in `reorderSiblings` realises intra-parent
+   * `<ChildPage>` reorder via the `pages.move` roundtrip primitive. See
+   * `tmp/notion-618/options-ordering.md` experiment 9.
+   */
+  describe('reorderSiblings (phase 4d)', () => {
+    // Run a warm sync with an explicit reorderSiblings option.
+    const runSyncWithReorder = async (
+      fake: FakeNotion,
+      element: Parameters<typeof sync>[0],
+      cache: ReturnType<typeof InMemoryCache.make>,
+      reorderSiblings: boolean | { readonly holdingParentId: string },
+    ) =>
+      runWith(
+        fake,
+        sync(element, { pageId: ROOT, cache, reorderSiblings }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      )
+
+    /** Return the final child_page block ids under ROOT in server order. */
+    const pageOrderUnderRoot = (fake: FakeNotion): string[] =>
+      fake
+        .childrenOf(ROOT)
+        .filter((b) => b.type === 'child_page')
+        .map((b) => b.id)
+
+    it('reorderSiblings: true — [a,b,c] → [c,b,a] lands [c,b,a] via 2N roundtrips', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="c" title="C" />
+        </Page>,
+        cache,
+      )
+      const initialOrder = pageOrderUnderRoot(fake)
+      expect(initialOrder).toHaveLength(3)
+      // Map blockKey → page id via title lookup (titles match blockKey upper).
+      const pageByTitle = new Map(
+        [...fake.pages.values()].map((p) => [p.properties.title.title[0]?.text.content, p.id]),
+      )
+      const [idA, idB, idC] = [pageByTitle.get('A')!, pageByTitle.get('B')!, pageByTitle.get('C')!]
+      expect(initialOrder).toEqual([idA, idB, idC])
+
+      const before = fake.requests.length
+      const res = await runSyncWithReorder(
+        fake,
+        <Page>
+          <ChildPage blockKey="c" title="C" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+        true,
+      )
+      // One reorderPages op, no create/archive/move churn.
+      expect(res.pages).toMatchObject({
+        creates: 0,
+        updates: 0,
+        archives: 0,
+        moves: 0,
+        reorders: 1,
+      })
+      // Server order now matches JSX.
+      expect(pageOrderUnderRoot(fake)).toEqual([idC, idB, idA])
+      // 2N = 6 pages.move calls on the wire. Plus 1 holding create + 1 archive.
+      const after = fake.requests.slice(before)
+      const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+      expect(moves).toHaveLength(6)
+      // Auto-provisioned holding page: one page.create, one archive
+      // (pages.update with in_trash: true).
+      const newPages = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
+      expect(newPages).toHaveLength(1)
+    })
+
+    it('reorderSiblings: false — reshuffle keeps server order unchanged, no move roundtrips', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="c" title="C" />
+        </Page>,
+        cache,
+      )
+      const initialOrder = pageOrderUnderRoot(fake)
+      const before = fake.requests.length
+      const res = await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="c" title="C" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+      )
+      // Default path: zero reorderPages ops. The diff still emits same-parent
+      // movePage (existing phase 3b contract); the driver swallows the 400.
+      expect(res.pages.reorders).toBe(0)
+      // Server order unchanged because same-parent moves are rejected.
+      expect(pageOrderUnderRoot(fake)).toEqual(initialOrder)
+      // No 2N roundtrips — at most the original per-sibling movePage attempts.
+      const after = fake.requests.slice(before)
+      const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+      // The diff emits ≤ N-1 movePage ops for a reshuffle (LCS retains ≥1).
+      expect(moves.length).toBeLessThan(6)
+    })
+
+    it('reorderSiblings: { holdingParentId } — caller-supplied parent is reused and never archived', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+        </Page>,
+        cache,
+      )
+      // Pre-create a caller-owned holding parent under ROOT.
+      const holdingParent = await runWith(
+        fake,
+        NotionPages.create({
+          parent: { type: 'page_id', page_id: ROOT },
+          properties: {
+            title: { title: [{ type: 'text', text: { content: 'caller-holding' } }] },
+          },
+        }).pipe(
+          Effect.map((p) => (p as { id: string }).id),
+          Effect.mapError((c) => new Error(String(c))),
+        ),
+      )
+      const before = fake.requests.length
+      const res = await runSyncWithReorder(
+        fake,
+        <Page>
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+        { holdingParentId: holdingParent },
+      )
+      expect(res.pages.reorders).toBe(1)
+      const after = fake.requests.slice(before)
+      const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+      expect(moves).toHaveLength(4) // 2 pages × 2 roundtrips each
+      // Library did NOT create a holding page in this sync (caller supplied).
+      const newPages = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
+      expect(newPages).toHaveLength(0)
+      // Library did NOT archive the caller-supplied holding parent.
+      const holding = fake.pages.get(holdingParent)
+      expect(holding?.in_trash).toBeFalsy()
+    })
+
+    it('reorderSiblings: true auto-provisioned — creates and archives holding page per sync', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+        </Page>,
+        cache,
+      )
+      const pagesBefore = fake.pages.size
+      const before = fake.requests.length
+      await runSyncWithReorder(
+        fake,
+        <Page>
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+        true,
+      )
+      const after = fake.requests.slice(before)
+      // One new page (the holding) was created.
+      const pageCreates = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
+      expect(pageCreates).toHaveLength(1)
+      // One archive PATCH (in_trash: true) against the new page.
+      const archives = after.filter(
+        (r) =>
+          r.method === 'PATCH' &&
+          /^\/v1\/pages\/[^/]+$/.test(r.path) &&
+          (r.body as { in_trash?: boolean }).in_trash === true,
+      )
+      expect(archives).toHaveLength(1)
+      // Auto-provisioned holding page was archived; its title is recognizable.
+      const holdings = [...fake.pages.values()]
+        .slice(pagesBefore)
+        .filter(
+          (p) =>
+            p.properties.title.title[0]?.text.content ===
+            '@overeng/notion-react holding (do not touch)',
+        )
+      expect(holdings).toHaveLength(1)
+      expect(holdings[0]!.in_trash).toBe(true)
+    })
   })
 })

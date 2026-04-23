@@ -410,6 +410,16 @@ interface DiffCtx {
    */
   readonly preClaimedMoves: ReadonlySet<string>
   readonly scopePageId?: string
+  /**
+   * Issue #618 phase 4d. When `true`, `diffChildren` detects same-parent
+   * `<ChildPage>` reshuffles and emits a single `reorderPages` op instead of
+   * per-page `movePage` ops (which the Notion API rejects for same-parent).
+   * When `false` (default), retained-but-reshuffled siblings still flow
+   * through the old `movePage` path — the driver swallows the API rejection
+   * and sibling order stays as it was server-side. See
+   * `tmp/notion-618/options-ordering.md` experiment 9.
+   */
+  readonly reorderSiblings: boolean
 }
 
 const diffChildren = (
@@ -438,6 +448,43 @@ const diffChildren = (
     const prior = cacheByKey.get(cand.key)!
     if (!subtreesStructurallyEqual(prior, cand)) {
       retainedKeys.delete(cand.key)
+    }
+  }
+
+  // Phase 4d (issue #618): detect same-parent `<ChildPage>` sibling reshuffle.
+  // When every candidate page-child at this parent has a key-matching page in
+  // this parent's cache, LCS would retain at most the longest-increasing-order
+  // subset; the remainder falls into the cross-parent `moveSource` branch with
+  // `parent === this parent` — the API rejects that. If the opt-in flag is on
+  // we (a) promote all same-key-at-this-parent pages to retained (their
+  // blockIds carry over and metadata/child diffs run as normal), and (b) emit
+  // a single `reorderPages` op covering every page id at this parent in
+  // candidate order. The sync driver realizes it via 2N `pages.move`
+  // roundtrips through a holding parent.
+  if (ctx.reorderSiblings) {
+    const cachePagesByKey = new Map<string, CacheNode>()
+    for (const c of cacheChildren) {
+      if (c.nodeKind === 'page') cachePagesByKey.set(c.key, c)
+    }
+    const candPages = candidateChildren.filter((c) => c.nodeKind === 'page')
+    const allSameParent = candPages.length > 0 && candPages.every((c) => cachePagesByKey.has(c.key))
+    if (allSameParent) {
+      // Check if order differs from the cache's relative order.
+      const cacheOrderOfKeys = cacheChildren
+        .filter((c) => c.nodeKind === 'page' && cachePagesByKey.has(c.key))
+        .map((c) => c.key)
+      const candOrderOfKeys = candPages.map((c) => c.key)
+      const ordersMatch =
+        cacheOrderOfKeys.length === candOrderOfKeys.length &&
+        cacheOrderOfKeys.every((k, i) => k === candOrderOfKeys[i])
+      if (!ordersMatch) {
+        // Promote every candidate page at this parent to retained.
+        for (const cand of candPages) {
+          retainedKeys.add(cand.key)
+        }
+        const orderedPageIds = candPages.map((c) => cachePagesByKey.get(c.key)!.blockId)
+        ops.push({ kind: 'reorderPages', parentId, orderedPageIds })
+      }
     }
   }
 
@@ -918,7 +965,11 @@ const collectPreClaimedMoves = (
   }
 }
 
-export const diff = (cache: CacheTree, candidate: CandidateTree): DiffOp[] => {
+export const diff = (
+  cache: CacheTree,
+  candidate: CandidateTree,
+  opts?: { readonly reorderSiblings?: boolean },
+): DiffOp[] => {
   tmpCounter = 0
   const ops: DiffOp[] = []
   const pagesByKey = indexCachePages(cache)
@@ -928,6 +979,7 @@ export const diff = (cache: CacheTree, candidate: CandidateTree): DiffOp[] => {
     pagesByKey,
     claimedMoves: new Set<string>(),
     preClaimedMoves,
+    reorderSiblings: opts?.reorderSiblings ?? false,
   }
   diffChildren(candidate.rootId, cache.children, candidate.children, ops, ctx)
   return ops
@@ -999,16 +1051,18 @@ export const tallyDiff = (
  */
 export const tallyPageOps = (
   ops: readonly DiffOp[],
-): { creates: number; updates: number; archives: number; moves: number } => {
+): { creates: number; updates: number; archives: number; moves: number; reorders: number } => {
   let creates = 0
   let updates = 0
   let archives = 0
   let moves = 0
+  let reorders = 0
   for (const op of ops) {
     if (op.kind === 'createPage') creates += 1
     else if (op.kind === 'updatePage') updates += 1
     else if (op.kind === 'archivePage') archives += 1
     else if (op.kind === 'movePage') moves += 1
+    else if (op.kind === 'reorderPages') reorders += 1
   }
-  return { creates, updates, archives, moves }
+  return { creates, updates, archives, moves, reorders }
 }
