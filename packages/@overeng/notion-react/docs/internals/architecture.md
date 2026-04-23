@@ -2,7 +2,7 @@
 
 Map of the package for someone navigating the source for the first
 time. Projection of the normative spec
-([`../../context/vrs/spec.md`](../../context/vrs/spec.md)) — when the
+([`../vrs/spec.md`](../vrs/spec.md)) — when the
 two diverge, the spec wins and this page needs updating.
 
 ## Module boundaries
@@ -39,7 +39,7 @@ packages/@overeng/notion-react/
       *.stories.tsx     Storybook — visual source of truth
     test/         Integration harness + live Notion e2e
     mod.ts        Package entry: re-exports components + renderer + cache
-  context/vrs/  Design source of truth
+  docs/vrs/   Design source of truth
   docs/         This directory — reader-facing projection
 ```
 
@@ -125,5 +125,5 @@ for code blocks / equations respectively.
 
 - [Internals → Reconciler internals](./reconciler-internals.md) — deep
   dive on the host-config surface, LCS algorithm, and cache schema.
-- [`../../context/vrs/spec.md`](../../context/vrs/spec.md) — normative
+- [`../vrs/spec.md`](../vrs/spec.md) — normative
   spec.

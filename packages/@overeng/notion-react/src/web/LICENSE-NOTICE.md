@@ -23,9 +23,6 @@ copied from `react-notion-x/src/icons/check.tsx`.
 
 Upstream version: `v7.10.0` (npm) / commit `c1b4260c`.
 
-See `context/notion-react-visual-parity/{analysis,design-decisions}.md`
-for the gap analysis and adoption rationale.
-
 ## Original license
 
 ```

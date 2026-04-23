@@ -41,8 +41,7 @@ import { ShikiRender } from './shiki.tsx'
  *     import '@overeng/notion-react/web/styles.css'
  *
  * DOM patterns mirror `react-notion-x@v7.10.0` (`packages/react-notion-x/src/
- * block.tsx`) so the vendored CSS contract holds. See
- * `context/notion-react-visual-parity/{analysis,design-decisions}.md`.
+ * block.tsx`) so the vendored CSS contract holds.
  */
 
 /**

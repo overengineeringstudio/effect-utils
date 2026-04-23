@@ -144,7 +144,7 @@ import '@overeng/notion-react/web/styles.css'
 Mirrors the Notion-host component surface for Storybook / browser
 preview. Not API-stable — DOM, class names, and prop behaviour may
 change without deprecation (T05 in
-[requirements.md](../context/vrs/requirements.md)). See
+[requirements.md](./vrs/requirements.md)). See
 [Cookbook → Styling strategies](./cookbook/styling-strategies.md).
 
 ## Test helper

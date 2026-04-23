@@ -10,7 +10,7 @@ The package lives between "use the raw Notion client" (too imperative)
 and "write your own reconciler" (everyone re-invents the cache, the diff,
 and the fallbacks). This directory is the reader-facing projection of
 the design. The authoritative design docs live in
-[`../context/vrs/`](../context/vrs/) — `vision.md`, `requirements.md`,
+[`./vrs/`](./vrs/) — `vision.md`, `requirements.md`,
 `spec.md`.
 
 ## Reading paths

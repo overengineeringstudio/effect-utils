@@ -3,7 +3,7 @@
 Deep dive for contributors changing the reconciler itself. The
 user-facing view lives in [Concepts → Reconciler](../concepts/reconciler.md).
 The normative text lives in
-[`../../context/vrs/spec.md`](../../context/vrs/spec.md) — when this
+[`../vrs/spec.md`](../vrs/spec.md) — when this
 page and the spec disagree, the spec wins.
 
 ## Host-config shape
@@ -28,7 +28,7 @@ The React 19 host-config signature follows
 `react-dom-bindings/src/client/ReactFiberConfigDOM.js`. An earlier
 React-18-shaped implementation produced a 10× op amplification under
 reorders (see the react-derisk report referenced in
-[requirements.md](../../context/vrs/requirements.md) A03); the current
+[requirements.md](../vrs/requirements.md) A03); the current
 host-config is op-optimal on the benchmark scenarios.
 
 ### Instance model
@@ -207,5 +207,5 @@ cheap but not free.
   view.
 - [Internals → Architecture](./architecture.md) — module layout and
   data flow.
-- [`../../context/vrs/spec.md`](../../context/vrs/spec.md) — normative
+- [`../vrs/spec.md`](../vrs/spec.md) — normative
   spec with the fallback decision table and open design questions.

@@ -63,7 +63,7 @@ import { blockKey } from '@overeng/notion-react'
 ## The single-writer rule
 
 The library treats the subtree under `pageId` as single-writer (A04 in
-[requirements.md](../../context/vrs/requirements.md)). Content that
+[requirements.md](../vrs/requirements.md)). Content that
 humans edit directly must live **outside** that subtree — on the same
 page is fine, but above / below / beside the synced container, not
 inside it. A manual edit inside the synced region is overwritten on

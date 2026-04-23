@@ -125,7 +125,7 @@ each mutation class:
 | Move one sibling (reorder within a parent) | 1 `insert` + 1 `remove` |
 
 Notion has no block-move API (see
-[A05](../../context/vrs/requirements.md)), so a move is always a pair.
+[A05](../vrs/requirements.md)), so a move is always a pair.
 
 ## Common mistakes
 

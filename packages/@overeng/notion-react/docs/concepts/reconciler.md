@@ -106,7 +106,7 @@ Ops are issued in a single pass, in emit order:
 The React tree is the source of truth. When a user edits a synced
 block directly in Notion, the next `sync` overwrites the edit with
 the tree's projection. This is by design (A04 in
-[requirements.md](../../context/vrs/requirements.md)): the region the
+[requirements.md](../vrs/requirements.md)): the region the
 library reconciles is treated as single-writer. Keep user-editable
 content outside the synced subtree.
 
@@ -137,5 +137,5 @@ propagates as a tagged `NotionSyncError` — no fallback.
 
 - [Internals → Reconciler internals](../internals/reconciler-internals.md)
   — host-config entries, LCS implementation, cache schema.
-- [`../context/vrs/spec.md`](../../context/vrs/spec.md) — normative
+- [`../vrs/spec.md`](../vrs/spec.md) — normative
   spec.
