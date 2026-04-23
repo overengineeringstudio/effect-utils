@@ -50,15 +50,6 @@ Covered by R15 / T03: v0.1 requires uploads to be pre-resolved via
 `UploadRegistry` before the sync runs. A Suspense-backed path is
 tracked separately and unrelated to the page-ops work.
 
-### Concurrent sibling-page ordering (T08)
-
-When two `<ChildPage>` siblings are created in the same sync under the
-same parent, Notion does **not** guarantee that the resulting server
-order matches JSX order. The renderer does not re-fetch the parent's
-children after a burst of `pages.create`. An opt-in
-`ensureSiblingOrder` sync option is planned (phase 4 polish) for the
-rare cases where order is load-bearing for subsequent diffs.
-
 ## Behavioural caveats
 
 ### No idempotency primitive (A09 / T06)

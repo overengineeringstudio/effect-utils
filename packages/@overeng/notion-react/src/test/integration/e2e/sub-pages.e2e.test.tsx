@@ -380,11 +380,10 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
 
         const rootTree = yield* readPageTree(rootId)
         const childPages = rootTree.filter((b) => b.type === 'child_page')
-        // Order is not guaranteed by Notion for concurrent creates (phase 4
-        // `ensureSiblingOrder` is deferred). Just verify both titles exist.
+        // T08 (phase 4a): same-parent `<ChildPage>` creates are sequential,
+        // so the server's `child_page` order matches JSX order 1:1.
         const titles = childPages.map((b) => b.payload.title as string | undefined)
-        expect(titles).toEqual(expect.arrayContaining(['A', 'B']))
-        expect(titles).toHaveLength(2)
+        expect(titles).toEqual(['A', 'B'])
       }),
     )
   }, 60_000)

@@ -1716,8 +1716,10 @@ export const sync = (
     }
 
     // Any createPage NOT rooted at the sync page (i.e. nested under a retained
-    // <ChildPage>) still needs to run. Execute them in plan order so nested
-    // sibling ordering under a retained parent also reflects candidate order.
+    // <ChildPage>) still needs to run. Execute them in plan order and one at
+    // a time so nested same-parent `<ChildPage>` creates land on the server in
+    // JSX order (T08: `pages.create` is sequential because parallel creates
+    // under a common parent yield nondeterministic `child_page` ordering).
     for (const op of pageOps) {
       if (op.kind !== 'createPage') continue
       if (createRan.has(op.tmpPageId)) continue

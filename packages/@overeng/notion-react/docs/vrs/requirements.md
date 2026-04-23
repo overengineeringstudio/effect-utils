@@ -77,11 +77,14 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   boundaries cut batch windows. Acceptable because page ops are rare
   relative to block ops and the simplicity of per-page scopes outweighs
   small request-count wins.
-- **T08 Concurrent sibling-page order is not authoritative:** When
-  `<ChildPage>` siblings are both newly created in the same sync, Notion
-  does not guarantee POST order matches the resulting `child_page` block
-  order in the parent. The driver re-reads children after a batch of
-  creates only when sibling order is load-bearing for subsequent diffs.
+- **T08 Same-parent `<ChildPage>` creates are sequential:** `pages.create`
+  under the same parent is issued one request at a time (not in parallel)
+  so the resulting `child_page` block order on the parent matches JSX
+  order. Empirical probe: parallel `pages.create` under the same parent
+  yields a nondeterministic `child_page` ordering on the parent; sequential
+  POSTs preserve order 1:1. The latency cost (N sibling creates ≈ N
+  round-trips) is accepted to make JSX order authoritative without a
+  post-create re-fetch.
 - **T09 Database-parented pages deferred:** v0.1 of page ops targets
   page-parented sub-pages. Database parents, custom property schemas, and
   `is_locked`/`erase_content` surfaces are explicitly out of scope but
