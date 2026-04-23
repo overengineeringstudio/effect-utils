@@ -9,6 +9,7 @@ import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
 import {
   ATOMIC_CONTAINERS,
+  issueBlockUpdate,
   MAX_CHILDREN_PER_APPEND,
   type SyncFallbackReason,
   type SyncResult,
@@ -753,7 +754,7 @@ const applyDiff = (
           }
           let updateProps: Record<string, unknown> = { ...op.props }
           const issueUpdate = (props: Record<string, unknown>) =>
-            NotionBlocks.update({ blockId: op.blockId, [op.type]: props })
+            issueBlockUpdate(op.blockId, op.type, props)
           yield* issueUpdate(updateProps).pipe(
             Effect.catchAll((cause) =>
               Effect.gen(function* () {
