@@ -10,6 +10,7 @@ import {
   walkInstances,
   type Instance,
 } from './host-config.ts'
+import type { PageOp } from './op-buffer.ts'
 import { OpBuffer } from './op-buffer.ts'
 
 /**
@@ -80,11 +81,16 @@ export const buildCandidateTree = (element: ReactNode, rootId: string): Candidat
 }
 
 /**
- * Normalized op-plan. `tmpId`s are placeholder identifiers the diff uses to
- * wire up `after`/parent relationships across inserts that chain; they are
- * resolved to real Notion block ids when the plan is applied.
+ * Normalized block-scope op-plan. `tmpId`s are placeholder identifiers the
+ * diff uses to wire up `after`/parent relationships across inserts that
+ * chain; they are resolved to real Notion block ids when the plan is applied.
+ *
+ * `scopePageId` (issue #618): optional id of the subpage whose block tree
+ * this op targets. Unset means the op targets the root page passed to
+ * `sync()`. No current code path sets this — it exists so the forthcoming
+ * page-scope reconcile can tag its emitted ops without a second union.
  */
-export type DiffOp =
+export type BlockOp =
   | {
       readonly kind: 'append'
       readonly parent: string // parent blockId OR tmpId
@@ -92,6 +98,7 @@ export type DiffOp =
       readonly type: BlockType
       readonly props: Record<string, unknown>
       readonly candidate: CandidateNode
+      readonly scopePageId?: string
     }
   | {
       readonly kind: 'insert'
@@ -101,6 +108,7 @@ export type DiffOp =
       readonly type: BlockType
       readonly props: Record<string, unknown>
       readonly candidate: CandidateNode
+      readonly scopePageId?: string
     }
   | {
       readonly kind: 'update'
@@ -111,8 +119,16 @@ export type DiffOp =
       readonly hash: string
       /** New key (never changes on update; carried through for the cache). */
       readonly key: string
+      readonly scopePageId?: string
     }
-  | { readonly kind: 'remove'; readonly blockId: string }
+  | { readonly kind: 'remove'; readonly blockId: string; readonly scopePageId?: string }
+
+/**
+ * Full diff plan union: block ops and (forward-compat) page ops. The existing
+ * reconciler only produces {@link BlockOp}s; {@link PageOp} is reserved for
+ * issue #618 phase 2+.
+ */
+export type DiffOp = BlockOp | PageOp
 
 /** Per-diff counter for tmpIds — reset at the top of `diff()`. */
 let tmpCounter = 0
@@ -411,6 +427,7 @@ const candidateNodeToCacheNode = (cand: CandidateNode): CacheNode => {
     type: cand.type,
     hash: cand.hash,
     children: cand.children.map(candidateNodeToCacheNode),
+    nodeKind: 'block',
   }
 }
 
@@ -428,10 +445,13 @@ export const tallyDiff = (
   let inserts = 0
   let removes = 0
   for (const op of ops) {
+    // Page ops (issue #618) are not tallied into block counts. No emitter
+    // currently produces them; this guard exists so the switch is exhaustive
+    // once they start flowing.
     if (op.kind === 'append') appends += 1
     else if (op.kind === 'update') updates += 1
     else if (op.kind === 'insert') inserts += 1
-    else removes += 1
+    else if (op.kind === 'remove') removes += 1
   }
   return { appends, updates, inserts, removes }
 }

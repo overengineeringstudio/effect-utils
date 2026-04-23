@@ -262,8 +262,22 @@ describe('sync-diff', () => {
         schemaVersion: CACHE_SCHEMA_VERSION,
         rootId: ROOT,
         children: [
-          { key: 'k:dup', blockId: 'blk-1', type: 'paragraph', hash: 'h1', children: [] },
-          { key: 'k:dup', blockId: 'blk-2', type: 'paragraph', hash: 'h2', children: [] },
+          {
+            key: 'k:dup',
+            blockId: 'blk-1',
+            type: 'paragraph',
+            hash: 'h1',
+            children: [],
+            nodeKind: 'block',
+          },
+          {
+            key: 'k:dup',
+            blockId: 'blk-2',
+            type: 'paragraph',
+            hash: 'h2',
+            children: [],
+            nodeKind: 'block',
+          },
         ],
       }
       const candidate = buildCandidateTree(<>{h('paragraph', kb('dup'), 'x')}</>, ROOT)
