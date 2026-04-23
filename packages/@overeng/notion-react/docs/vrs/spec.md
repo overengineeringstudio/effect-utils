@@ -415,10 +415,11 @@ Ordering invariants:
 - `archivePage` (emitted for removed `<ChildPage>`) is applied after block
   ops that touch its parent (so the parent's child_page block disappears
   from the parent's children list in the same sync pass).
-- Sibling-page order is not authoritative (T08); if JSX order matters for
-  subsequent diffs the driver re-fetches `blocks.children.list` after a
-  batch of creates under the same parent. This is off by default; enable
-  via `ensureSiblingOrder: true` on the sync options.
+- Same-parent `createPage` is sequential (T08): `pages.create` calls
+  under a common parent run one at a time via the driver's `for`-of
+  `yield*` loops (no `Effect.all` / concurrency). The resulting server
+  `child_page` order matches JSX order, so no post-create re-fetch is
+  needed.
 
 ### Inline-child packing on create
 

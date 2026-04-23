@@ -730,6 +730,38 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
    * page-before-block candidate order so the cursor advances only for
    * block candidates.
    */
+  /**
+   * Phase 4a (T08): `pages.create` under the same parent runs sequentially
+   * (no `Effect.all` / concurrency). Empirical probe: parallel creates under
+   * one parent yield a nondeterministic `child_page` ordering on the parent;
+   * sequential POSTs preserve JSX order 1:1.
+   *
+   * The fake client appends `child_page` blocks to the parent's child list in
+   * POST order, so asserting the materialized order equals JSX order is a
+   * principled pin on the driver's sequential invariant — no artificial sleep
+   * or race window needed.
+   */
+  it('T08: three sibling <ChildPage>s under one parent materialize in JSX order', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="one" title="one" />
+        <ChildPage blockKey="two" title="two" />
+        <ChildPage blockKey="three" title="three" />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 3, updates: 0, archives: 0, moves: 0 })
+    // Server-side order under the root page matches JSX order.
+    const rootChildPages = fake
+      .childrenOf(ROOT)
+      .filter((b) => b.type === 'child_page')
+      .map((b) => b.payload.title as string)
+    expect(rootChildPages).toEqual(['one', 'two', 'three'])
+  })
+
   it('resolveInlineChildrenIds: page candidate before an inline block does not shift alignment (PR #623 review)', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
