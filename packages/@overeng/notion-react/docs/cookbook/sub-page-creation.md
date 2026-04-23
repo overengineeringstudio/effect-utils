@@ -69,6 +69,21 @@ in the cache. The `blockKey` anchors identity across renders.
 The same applies to the root `<Page>` — its `title` / `icon` / `cover`
 drive `pages.update` on the sync root.
 
+### Clearing icon / cover
+
+Pass `null` explicitly to clear a previously-set field. Omitting the
+prop is "no claim" and preserves the server-side value — use `null`
+when you want the next sync to emit `pages.update({icon: null})` /
+`pages.update({cover: null})`.
+
+```tsx
+// Icon was set in a previous render; this sync clears it.
+<ChildPage blockKey="onboarding" title="Onboarding" icon={null} />
+```
+
+On a fresh sub-page (no prior icon), `icon={null}` is a no-op — there
+is nothing to clear. The same applies to `cover={null}`.
+
 ## Archiving
 
 Remove a `<ChildPage>` from the tree and the next sync emits

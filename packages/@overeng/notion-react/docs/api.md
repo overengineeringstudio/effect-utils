@@ -97,6 +97,16 @@ type PageCover =
   | { type: 'file_upload'; file_upload: { id: string } }
 ```
 
+**Null sentinel on `icon` / `cover`** (phase 4b, #618). Both `<Page>`
+and `<ChildPage>` accept `PageIcon | null` and `PageCover | null`:
+
+- Omitted / `undefined` = "no claim" — the renderer does not touch
+  the server-side field on sync.
+- Explicit `null` = "clear on server" — the next sync emits
+  `pages.update({icon: null})` / `pages.update({cover: null})`. On a
+  fresh page (or when the server-side field is already unset),
+  `null` is equivalent to absent and emits no op.
+
 Empirical constraints (from `tmp/notion-618/experiments/findings.md`):
 
 - **A10** — each `PageTitleSpan`'s `text.content` is capped at 2000

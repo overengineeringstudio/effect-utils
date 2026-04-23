@@ -41,8 +41,15 @@ export interface CandidateNode {
   readonly children: CandidateNode[]
   readonly nodeKind: NodeKind
   readonly title?: readonly Record<string, unknown>[] | undefined
-  readonly icon?: Record<string, unknown> | undefined
-  readonly cover?: Record<string, unknown> | undefined
+  /**
+   * Projected icon payload. `Record<...>` = set, `null` = author asked to
+   * clear on server (`icon={null}` sentinel), `undefined` = prop omitted
+   * (no claim). Phase 4b (#618): `null` is hashed to a dedicated sentinel
+   * so retained-page diff can distinguish "clear" from "absent".
+   */
+  readonly icon?: Record<string, unknown> | null | undefined
+  /** See {@link CandidateNode.icon} — same `null` clear semantics. */
+  readonly cover?: Record<string, unknown> | null | undefined
   readonly titleHash?: string | undefined
   readonly iconHash?: string | undefined
   readonly coverHash?: string | undefined
@@ -59,8 +66,10 @@ export interface CandidateNode {
  */
 export interface CandidateRootPage {
   readonly title?: readonly Record<string, unknown>[] | undefined
-  readonly icon?: Record<string, unknown> | undefined
-  readonly cover?: Record<string, unknown> | undefined
+  /** `null` = clear on server sentinel (phase 4b). See {@link CandidateNode.icon}. */
+  readonly icon?: Record<string, unknown> | null | undefined
+  /** `null` = clear on server sentinel (phase 4b). See {@link CandidateNode.icon}. */
+  readonly cover?: Record<string, unknown> | null | undefined
   readonly titleHash?: string | undefined
   readonly iconHash?: string | undefined
   readonly coverHash?: string | undefined
@@ -100,6 +109,53 @@ const hashAny = (value: unknown): string => {
   return h.toString(16)
 }
 
+/**
+ * Hash helper for icon/cover candidate values (phase 4b, #618).
+ *
+ * - `null` (author asked to clear via `icon={null}` / `cover={null}`) hashes
+ *   to a dedicated sentinel so retained-page diff distinguishes it from both
+ *   "absent" (prop omitted, candidate `undefined`) and "set" (hash of the
+ *   normalized envelope).
+ * - A set envelope goes through the existing normalizer so request-shape
+ *   and response-shape round-trip to the same hash (A07).
+ *
+ * The normalized `null` path deliberately does NOT go through
+ * `normalizeIcon` / `normalizeCover` because both coerce `null` to
+ * `undefined` (that is the correct behaviour server-side — an unset icon
+ * returns `null` and we want to treat it as "no icon"). The candidate
+ * side, however, needs `null` to mean "author asked for a clear", which
+ * is a different state from "unset" on a fresh create.
+ */
+const NULL_CLEAR_HASH = hashAny({ clear: true })
+
+/**
+ * Phase 4b (#618): drift predicate for icon / cover that folds the
+ * `null`-vs-absent equivalence on fresh creates.
+ *
+ * - Candidate hash `undefined` (prop omitted) never drifts (no claim).
+ * - Candidate hash === NULL_CLEAR_HASH (author asked to clear) is drift
+ *   only when the prior cache had a set value. Against an unset prior
+ *   (`undefined`), null-vs-absent both mean "no icon on server", so no op.
+ * - Otherwise, plain hash inequality.
+ */
+export const iconOrCoverDrift = (
+  candHash: string | undefined,
+  priorHash: string | undefined,
+): boolean => {
+  if (candHash === undefined) return false
+  if (candHash === NULL_CLEAR_HASH && priorHash === undefined) return false
+  return candHash !== priorHash
+}
+
+const hashIconOrCoverCandidate = (
+  value: Record<string, unknown> | null | undefined,
+  normalize: (raw: unknown) => Record<string, unknown> | undefined,
+): string | undefined => {
+  if (value === undefined) return undefined
+  if (value === null) return NULL_CLEAR_HASH
+  return hashAny(normalize(value))
+}
+
 const instanceToCandidate = (inst: Instance, index: number): CandidateNode => {
   const props = projectProps(inst)
   const children = blockChildren(inst).map(instanceToCandidate)
@@ -119,8 +175,8 @@ const instanceToCandidate = (inst: Instance, index: number): CandidateNode => {
       icon,
       cover,
       titleHash: title !== undefined ? hashAny(normalizeTitle(title)) : undefined,
-      iconHash: icon !== undefined ? hashAny(normalizeIcon(icon)) : undefined,
-      coverHash: cover !== undefined ? hashAny(normalizeCover(cover)) : undefined,
+      iconHash: hashIconOrCoverCandidate(icon, normalizeIcon),
+      coverHash: hashIconOrCoverCandidate(cover, normalizeCover),
     }
   }
   return {
@@ -149,13 +205,15 @@ export const buildCandidateTree = (element: ReactNode, rootId: string): Candidat
     const title = projectTitleSpans(pageRoot.props.title)
     const icon = projectIcon(pageRoot.props.icon as never)
     const cover = projectCover(pageRoot.props.cover as never)
+    const iconHash = hashIconOrCoverCandidate(icon, normalizeIcon)
+    const coverHash = hashIconOrCoverCandidate(cover, normalizeCover)
     rootPage = {
       ...(title !== undefined ? { title } : {}),
       ...(icon !== undefined ? { icon } : {}),
       ...(cover !== undefined ? { cover } : {}),
       ...(title !== undefined ? { titleHash: hashAny(normalizeTitle(title)) } : {}),
-      ...(icon !== undefined ? { iconHash: hashAny(normalizeIcon(icon)) } : {}),
-      ...(cover !== undefined ? { coverHash: hashAny(normalizeCover(cover)) } : {}),
+      ...(iconHash !== undefined ? { iconHash } : {}),
+      ...(coverHash !== undefined ? { coverHash } : {}),
     }
   }
   return {
@@ -423,8 +481,8 @@ const diffChildren = (
         const prior = cacheByKey.get(cand.key)!
         cand.blockId = prior.blockId
         const titleDrift = cand.titleHash !== undefined && cand.titleHash !== prior.titleHash
-        const iconDrift = cand.iconHash !== undefined && cand.iconHash !== prior.iconHash
-        const coverDrift = cand.coverHash !== undefined && cand.coverHash !== prior.coverHash
+        const iconDrift = iconOrCoverDrift(cand.iconHash, prior.iconHash)
+        const coverDrift = iconOrCoverDrift(cand.coverHash, prior.coverHash)
         if (titleDrift || iconDrift || coverDrift) {
           ops.push({
             kind: 'updatePage',
@@ -457,8 +515,8 @@ const diffChildren = (
         })
         // Any metadata drift comes through as a follow-up updatePage.
         const titleDrift = cand.titleHash !== undefined && cand.titleHash !== moveSource.titleHash
-        const iconDrift = cand.iconHash !== undefined && cand.iconHash !== moveSource.iconHash
-        const coverDrift = cand.coverHash !== undefined && cand.coverHash !== moveSource.coverHash
+        const iconDrift = iconOrCoverDrift(cand.iconHash, moveSource.iconHash)
+        const coverDrift = iconOrCoverDrift(cand.coverHash, moveSource.coverHash)
         if (titleDrift || iconDrift || coverDrift) {
           ops.push({
             kind: 'updatePage',
@@ -484,8 +542,9 @@ const diffChildren = (
           tmpPageId,
           parent: { pageId: parentId },
           ...(cand.title !== undefined ? { title: cand.title } : {}),
-          ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
-          ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+          // Phase 4b (#618): `null` sentinel is drop-on-create (see above).
+          ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
+          ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
           inlineChildren: inline,
           inlineCandidates,
         })
@@ -614,8 +673,12 @@ const emitAppendsForNew = (
         tmpPageId,
         parent: { pageId: parentId },
         ...(cand.title !== undefined ? { title: cand.title } : {}),
-        ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
-        ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+        // Phase 4b (#618): `null` sentinel = "clear on server" only maps to
+        // `pages.update`; on create, the page starts with no icon/cover so
+        // we omit the field entirely rather than sending `{icon: null}`,
+        // which the `CreatePageOptions` schema does not permit.
+        ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
+        ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
         inlineChildren: inline,
         inlineCandidates,
       })
@@ -685,8 +748,9 @@ export const inlinePackChildren = (
         tmpPageId: nestedTmp,
         parent: { pageId: scopeTmpPageId },
         ...(cand.title !== undefined ? { title: cand.title } : {}),
-        ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
-        ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+        // Phase 4b (#618): `null` sentinel is drop-on-create.
+        ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
+        ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
         inlineChildren: nestedPack.inline,
         inlineCandidates: nestedPack.inlineCandidates,
       })
@@ -740,8 +804,9 @@ export const inlinePackChildren = (
         tmpPageId: nestedTmp,
         parent: { pageId: parentTmpId },
         ...(cand.title !== undefined ? { title: cand.title } : {}),
-        ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
-        ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+        // Phase 4b (#618): `null` sentinel is drop-on-create.
+        ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
+        ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
         inlineChildren: nestedPack.inline,
         inlineCandidates: nestedPack.inlineCandidates,
       })

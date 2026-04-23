@@ -26,6 +26,7 @@ import {
   buildCandidateTree,
   candidateToCache,
   diff,
+  iconOrCoverDrift,
   tallyDiff,
   type CandidateNode,
   type CandidateTree,
@@ -1472,8 +1473,11 @@ export const sync = (
       const priorI = prior?.rootIconHash
       const priorC = prior?.rootCoverHash
       const titleDrift = rootPage.titleHash !== undefined && rootPage.titleHash !== priorT
-      const iconDrift = rootPage.iconHash !== undefined && rootPage.iconHash !== priorI
-      const coverDrift = rootPage.coverHash !== undefined && rootPage.coverHash !== priorC
+      // Phase 4b (#618): `null` sentinel on fresh root (no prior icon) is a
+      // no-op; the candidate null hash matches "unset" server state. Once a
+      // prior hash exists, candidate `null` drifts and emits `icon: null`.
+      const iconDrift = iconOrCoverDrift(rootPage.iconHash, priorI)
+      const coverDrift = iconOrCoverDrift(rootPage.coverHash, priorC)
       if (titleDrift || iconDrift || coverDrift) {
         const opId = o11y.nextOpId()
         const t0 = performance.now()

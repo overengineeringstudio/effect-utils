@@ -103,15 +103,14 @@ Cover accepts only `external` and `file_upload` — `emoji` /
 `custom_emoji` covers are rejected by the API. This narrower
 `PageCover` type catches the mistake at compile time.
 
-### Cover `set → unset` is a no-op
+### Clearing `icon` / `cover` requires the `null` sentinel
 
-Dropping the `cover` prop between renders currently does **not** emit a
-cover clear. The current contract is "explicit prop set / unset mirrors
-the server state only when a value is provided"; absence means "no
-claim." An explicit `cover={null}` sentinel would be the natural way to
-express "clear this." Tracked as an open design question; if you need
-to clear a cover today, do it imperatively via `NotionPages.update({
-cover: null })`.
+Dropping the `icon` or `cover` prop between renders is "no claim" and
+preserves the server-side field. To clear a previously-set icon or
+cover, pass `null` explicitly: `<ChildPage icon={null} />` /
+`<ChildPage cover={null} />`. The next sync emits `pages.update({icon:
+null})` / `pages.update({cover: null})`. See
+[API → Page types](./api.md#page-types).
 
 ### Rate-limit signals are in the response body, not headers (A09)
 

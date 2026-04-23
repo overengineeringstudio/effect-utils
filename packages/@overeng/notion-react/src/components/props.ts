@@ -69,8 +69,15 @@ export type PageTitle = string | readonly PageTitleSpan[]
 
 export type PageProps = Children & {
   readonly title?: PageTitle
-  readonly icon?: PageIcon
-  readonly cover?: PageCover
+  /**
+   * Page icon envelope. `undefined` / omitted = "no claim" (server state
+   * preserved). `null` = "clear on server"; the next sync emits a
+   * `pages.update` with `icon: null`, mirroring Notion's API contract for
+   * field clears.
+   */
+  readonly icon?: PageIcon | null
+  /** See {@link PageProps.icon} — same `undefined` vs `null` semantics. */
+  readonly cover?: PageCover | null
 }
 
 export type ParagraphProps = Children & BlockKey
@@ -163,8 +170,10 @@ export type LinkToPageProps = { readonly pageId: string }
 export type TableOfContentsProps = Record<string, never>
 export type ChildPageProps = BlockKey & {
   readonly title?: PageTitle
-  readonly icon?: PageIcon
-  readonly cover?: PageCover
+  /** See {@link PageProps.icon} — `null` clears the sub-page icon on the next sync. */
+  readonly icon?: PageIcon | null
+  /** See {@link PageProps.icon} — `null` clears the sub-page cover on the next sync. */
+  readonly cover?: PageCover | null
   readonly children?: ReactNode
 }
 
