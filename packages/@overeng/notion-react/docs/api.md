@@ -100,7 +100,7 @@ import {
 | `FsCache.make(path)`      | [`cache/fs-cache.ts`](../src/cache/fs-cache.ts)               | JSON file; atomic rename on save; cold-cache on schema mismatch.               |
 | `InMemoryCache.make()`    | [`cache/in-memory-cache.ts`](../src/cache/in-memory-cache.ts) | In-process; tests and ephemeral runs.                                          |
 | `NotionCache`             | [`cache/types.ts`](../src/cache/types.ts)                     | Implement `load` / `save` to add your own backend.                             |
-| `CACHE_SCHEMA_VERSION`    | [`cache/types.ts`](../src/cache/types.ts)                     | Current on-disk schema version (`2`). Mismatches trigger a cold-diff fallback. |
+| `CACHE_SCHEMA_VERSION`    | [`cache/types.ts`](../src/cache/types.ts)                     | Current on-disk schema version (`3`). Mismatches trigger a cold-diff fallback. |
 | `CacheTree` / `CacheNode` | [`cache/types.ts`](../src/cache/types.ts)                     | `Schema.Schema` + `interface` for cache payloads.                              |
 
 ## Errors
