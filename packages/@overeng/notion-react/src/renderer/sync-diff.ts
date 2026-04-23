@@ -9,14 +9,28 @@ import {
   projectProps,
   walkInstances,
   type Instance,
+  type NodeKind,
 } from './host-config.ts'
+import {
+  normalizeCover,
+  normalizeIcon,
+  normalizeTitle,
+  projectCover,
+  projectIcon,
+  projectTitleSpans,
+} from './icons.ts'
 import type { PageOp } from './op-buffer.ts'
 import { OpBuffer } from './op-buffer.ts'
 
 /**
- * Rendered-but-not-yet-synced block. `blockId` starts unset; the sync driver
- * fills it either from the cache (for matched nodes) or from Notion API
- * responses (for new inserts/appends).
+ * Rendered-but-not-yet-synced block or page. `blockId` starts unset; the
+ * sync driver fills it either from the cache (for matched nodes) or from
+ * Notion API responses (for new inserts/appends/creates).
+ *
+ * Page nodes (`nodeKind: 'page'`) carry normalized title/icon/cover payloads
+ * and per-field hashes so the diff can emit a coalesced `updatePage` touching
+ * only the fields that actually drifted. `tmpPageId` is the placeholder the
+ * create op threads through to subsequent block ops scoped to the new page.
  */
 export interface CandidateNode {
   readonly key: string
@@ -25,11 +39,37 @@ export interface CandidateNode {
   readonly hash: string
   blockId: string | undefined
   readonly children: CandidateNode[]
+  readonly nodeKind: NodeKind
+  readonly title?: readonly Record<string, unknown>[] | undefined
+  readonly icon?: Record<string, unknown> | undefined
+  readonly cover?: Record<string, unknown> | undefined
+  readonly titleHash?: string | undefined
+  readonly iconHash?: string | undefined
+  readonly coverHash?: string | undefined
+}
+
+/**
+ * Candidate-tree root metadata. When the author wraps the JSX in a `<Page>`,
+ * the reconciler stashes its title/icon/cover on `container.pageRoot.props`;
+ * `buildCandidateTree` lifts that into `rootPage` so the sync driver can
+ * emit a root-level `updatePage` when metadata drifts.
+ *
+ * Absent when the sync element is a bare fragment (no `<Page>` wrapper) — in
+ * that case the root page's metadata is out of scope for this sync call.
+ */
+export interface CandidateRootPage {
+  readonly title?: readonly Record<string, unknown>[] | undefined
+  readonly icon?: Record<string, unknown> | undefined
+  readonly cover?: Record<string, unknown> | undefined
+  readonly titleHash?: string | undefined
+  readonly iconHash?: string | undefined
+  readonly coverHash?: string | undefined
 }
 
 export interface CandidateTree {
   readonly rootId: string
   readonly children: CandidateNode[]
+  readonly rootPage?: CandidateRootPage
 }
 
 /** Stable-keyed JSON stringify (object keys sorted recursively). */
@@ -53,15 +93,44 @@ const hashProps = (props: Record<string, unknown>): string => {
 const instanceKey = (inst: Instance, index: number): string =>
   inst.blockKey !== undefined ? `k:${inst.blockKey}` : `p:${index}`
 
+const hashAny = (value: unknown): string => {
+  const s = stableStringify(value)
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0
+  return h.toString(16)
+}
+
 const instanceToCandidate = (inst: Instance, index: number): CandidateNode => {
   const props = projectProps(inst)
+  const children = blockChildren(inst).map(instanceToCandidate)
+  if (inst.nodeKind === 'page') {
+    const title = projectTitleSpans(inst.props.title)
+    const icon = projectIcon(inst.props.icon as never)
+    const cover = projectCover(inst.props.cover as never)
+    return {
+      key: instanceKey(inst, index),
+      type: inst.type as BlockType,
+      props,
+      hash: hashProps(props),
+      blockId: undefined,
+      children,
+      nodeKind: 'page',
+      title,
+      icon,
+      cover,
+      titleHash: title !== undefined ? hashAny(normalizeTitle(title)) : undefined,
+      iconHash: icon !== undefined ? hashAny(normalizeIcon(icon)) : undefined,
+      coverHash: cover !== undefined ? hashAny(normalizeCover(cover)) : undefined,
+    }
+  }
   return {
     key: instanceKey(inst, index),
     type: inst.type as BlockType,
     props,
     hash: hashProps(props),
     blockId: undefined,
-    children: blockChildren(inst).map(instanceToCandidate),
+    children,
+    nodeKind: 'block',
   }
 }
 
@@ -74,9 +143,25 @@ export const buildCandidateTree = (element: ReactNode, rootId: string): Candidat
   const buffer = new OpBuffer(rootId)
   const root = createNotionRoot(buffer, rootId)
   root.render(element)
+  const pageRoot = root.container.pageRoot
+  let rootPage: CandidateRootPage | undefined
+  if (pageRoot !== null) {
+    const title = projectTitleSpans(pageRoot.props.title)
+    const icon = projectIcon(pageRoot.props.icon as never)
+    const cover = projectCover(pageRoot.props.cover as never)
+    rootPage = {
+      ...(title !== undefined ? { title } : {}),
+      ...(icon !== undefined ? { icon } : {}),
+      ...(cover !== undefined ? { cover } : {}),
+      ...(title !== undefined ? { titleHash: hashAny(normalizeTitle(title)) } : {}),
+      ...(icon !== undefined ? { iconHash: hashAny(normalizeIcon(icon)) } : {}),
+      ...(cover !== undefined ? { coverHash: hashAny(normalizeCover(cover)) } : {}),
+    }
+  }
   return {
     rootId,
     children: walkInstances(root.container).map(instanceToCandidate),
+    ...(rootPage !== undefined ? { rootPage } : {}),
   }
 }
 
@@ -159,7 +244,11 @@ const retainedCacheIndices = (
   )
   const matches = (ci: number, cj: number): boolean =>
     cacheChildren[ci]!.key === candidateChildren[cj]!.key &&
-    cacheChildren[ci]!.type === candidateChildren[cj]!.type
+    cacheChildren[ci]!.type === candidateChildren[cj]!.type &&
+    // nodeKind boundary: a `<ChildPage>` and a block with the same key+type
+    // must not match — Notion does not allow converting one to the other in
+    // place, so a same-key mismatch materializes as archive/remove + create.
+    cacheChildren[ci]!.nodeKind === candidateChildren[cj]!.nodeKind
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       if (matches(i - 1, j - 1)) {
@@ -239,11 +328,28 @@ const subtreesStructurallyEqual = (cache: CacheNode, cand: CandidateNode): boole
   return true
 }
 
+/**
+ * Context threaded through `diffChildren` to support page-scope emission.
+ * `pagesByKey` lets us detect cross-parent moves: an unretained candidate page
+ * whose key matches a cache-only page entry anywhere in the prior tree is a
+ * move, not a create+archive pair.
+ *
+ * `scopePageId` tags block ops emitted under a `<ChildPage>` subtree (forward-
+ * compat; phase 3b does not recurse into sub-page children, so this is only
+ * ever the sync root id today).
+ */
+interface DiffCtx {
+  readonly pagesByKey: ReadonlyMap<string, CacheNode>
+  readonly claimedMoves: Set<string>
+  readonly scopePageId?: string
+}
+
 const diffChildren = (
   parentId: string, // blockId or tmpId of the parent
   cacheChildren: readonly CacheNode[],
   candidateChildren: CandidateNode[],
   ops: DiffOp[],
+  ctx: DiffCtx,
 ): void => {
   assertUniqueKeys(parentId, cacheChildren, candidateChildren)
   // Identify which cache children survive (order-preserving LCS match).
@@ -297,6 +403,77 @@ const diffChildren = (
   let prevRef = ''
   for (let i = 0; i < candidateChildren.length; i++) {
     const cand = candidateChildren[i]!
+    if (cand.nodeKind === 'page') {
+      // Page candidates never flow through the block insert/append path. They
+      // emit {create,update,move}Page directly so the sync driver can route
+      // to `pages.*` endpoints. Retained page → coalesced updatePage on any
+      // metadata drift; unretained page with matching blockKey elsewhere in
+      // the cache → movePage; otherwise → createPage with inline children.
+      if (retainedKeys.has(cand.key)) {
+        const prior = cacheByKey.get(cand.key)!
+        cand.blockId = prior.blockId
+        const titleDrift = cand.titleHash !== undefined && cand.titleHash !== prior.titleHash
+        const iconDrift = cand.iconHash !== undefined && cand.iconHash !== prior.iconHash
+        const coverDrift = cand.coverHash !== undefined && cand.coverHash !== prior.coverHash
+        if (titleDrift || iconDrift || coverDrift) {
+          ops.push({
+            kind: 'updatePage',
+            pageId: prior.blockId,
+            ...(titleDrift ? { title: cand.title } : {}),
+            ...(iconDrift ? { icon: cand.icon } : {}),
+            ...(coverDrift ? { cover: cand.cover } : {}),
+          })
+        }
+        // Phase 3b gap: we do NOT recurse into the retained page's children.
+        // Block-tree reconciliation inside an existing `<ChildPage>` lands in
+        // phase 3c along with the CACHE_SCHEMA_VERSION bump.
+        prevRef = prior.blockId
+        continue
+      }
+      // Unretained: either brand-new or a cross-parent move.
+      const moveSource = ctx.pagesByKey.get(cand.key)
+      if (moveSource !== undefined && !ctx.claimedMoves.has(moveSource.blockId)) {
+        ctx.claimedMoves.add(moveSource.blockId)
+        cand.blockId = moveSource.blockId
+        ops.push({
+          kind: 'movePage',
+          pageId: moveSource.blockId,
+          parent: { pageId: parentId },
+        })
+        // Any metadata drift comes through as a follow-up updatePage.
+        const titleDrift = cand.titleHash !== undefined && cand.titleHash !== moveSource.titleHash
+        const iconDrift = cand.iconHash !== undefined && cand.iconHash !== moveSource.iconHash
+        const coverDrift = cand.coverHash !== undefined && cand.coverHash !== moveSource.coverHash
+        if (titleDrift || iconDrift || coverDrift) {
+          ops.push({
+            kind: 'updatePage',
+            pageId: moveSource.blockId,
+            ...(titleDrift ? { title: cand.title } : {}),
+            ...(iconDrift ? { icon: cand.icon } : {}),
+            ...(coverDrift ? { cover: cand.cover } : {}),
+          })
+        }
+        prevRef = moveSource.blockId
+      } else {
+        const tmpPageId = nextTmp()
+        const { inline, inlineCandidates, tail } = inlinePackChildren(cand.children, tmpPageId)
+        ops.push({
+          kind: 'createPage',
+          tmpPageId,
+          parent: { pageId: parentId },
+          ...(cand.title !== undefined ? { title: cand.title } : {}),
+          ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
+          ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+          inlineChildren: inline,
+          inlineCandidates,
+        })
+        cand.blockId = tmpPageId
+        for (const t of tail) ops.push(t)
+        prevRef = tmpPageId
+      }
+      continue
+    }
+
     if (retainedKeys.has(cand.key)) {
       // Matched and in-order — reuse blockId.
       const prior = cacheByKey.get(cand.key)!
@@ -309,6 +486,7 @@ const diffChildren = (
           props: cand.props,
           hash: cand.hash,
           key: cand.key,
+          ...(ctx.scopePageId !== undefined ? { scopePageId: ctx.scopePageId } : {}),
         })
       }
       deferred.push({
@@ -332,6 +510,7 @@ const diffChildren = (
           type: cand.type,
           props: cand.props,
           candidate: cand,
+          ...(ctx.scopePageId !== undefined ? { scopePageId: ctx.scopePageId } : {}),
         })
       } else {
         ops.push({
@@ -342,6 +521,7 @@ const diffChildren = (
           type: cand.type,
           props: cand.props,
           candidate: cand,
+          ...(ctx.scopePageId !== undefined ? { scopePageId: ctx.scopePageId } : {}),
         })
       }
       cand.blockId = tmpId
@@ -355,17 +535,26 @@ const diffChildren = (
   // sync driver sees a single coalesce-able append-run per parent.
   for (const d of deferred) {
     if (d.kind === 'new-subtree') {
-      emitAppendsForNew(d.parent, d.children, ops)
+      emitAppendsForNew(d.parent, d.children, ops, ctx)
     } else {
-      diffChildren(d.blockId, d.cache, d.candidate, ops)
+      diffChildren(d.blockId, d.cache, d.candidate, ops, ctx)
     }
   }
 
-  // Removes for cached children not retained (either deleted outright or
-  // reordered — Notion has no move API; reorder = remove + re-insert).
+  // Removes for cached children not retained. Page-kind entries that were not
+  // claimed as a movePage source become archivePage; block-kind entries
+  // become block remove.
   for (const c of cacheChildren) {
-    if (!retainedKeys.has(c.key)) {
-      ops.push({ kind: 'remove', blockId: c.blockId })
+    if (retainedKeys.has(c.key)) continue
+    if (c.nodeKind === 'page') {
+      if (ctx.claimedMoves.has(c.blockId)) continue
+      ops.push({ kind: 'archivePage', pageId: c.blockId })
+    } else {
+      ops.push({
+        kind: 'remove',
+        blockId: c.blockId,
+        ...(ctx.scopePageId !== undefined ? { scopePageId: ctx.scopePageId } : {}),
+      })
     }
   }
 }
@@ -381,8 +570,34 @@ const diffChildren = (
  * under a common parent into ⌈N/100⌉ API calls (#101) even when the
  * siblings themselves have children.
  */
-const emitAppendsForNew = (parentId: string, children: CandidateNode[], ops: DiffOp[]): void => {
+const emitAppendsForNew = (
+  parentId: string,
+  children: CandidateNode[],
+  ops: DiffOp[],
+  ctx: DiffCtx,
+): void => {
   for (const cand of children) {
+    if (cand.nodeKind === 'page') {
+      // Brand-new page nested under a brand-new block subtree. Phase 3b does
+      // not recurse into existing sub-page children, but a freshly-created
+      // <ChildPage> may legitimately appear here (e.g. under a new toggle)
+      // and should create via the page endpoint, not append as a block.
+      const tmpPageId = nextTmp()
+      const { inline, inlineCandidates, tail } = inlinePackChildren(cand.children, tmpPageId)
+      ops.push({
+        kind: 'createPage',
+        tmpPageId,
+        parent: { pageId: parentId },
+        ...(cand.title !== undefined ? { title: cand.title } : {}),
+        ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
+        ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+        inlineChildren: inline,
+        inlineCandidates,
+      })
+      cand.blockId = tmpPageId
+      for (const t of tail) ops.push(t)
+      continue
+    }
     const tmpId = nextTmp()
     ops.push({
       kind: 'append',
@@ -391,12 +606,152 @@ const emitAppendsForNew = (parentId: string, children: CandidateNode[], ops: Dif
       type: cand.type,
       props: cand.props,
       candidate: cand,
+      ...(ctx.scopePageId !== undefined ? { scopePageId: ctx.scopePageId } : {}),
     })
     cand.blockId = tmpId
   }
   for (const cand of children) {
-    if (cand.children.length > 0) emitAppendsForNew(cand.blockId!, cand.children, ops)
+    if (cand.nodeKind === 'page') continue
+    if (cand.children.length > 0) emitAppendsForNew(cand.blockId!, cand.children, ops, ctx)
   }
+}
+
+/**
+ * Notion's `pages.create.children` caps subtree depth at 2 and total blocks
+ * at 100 per request. Walk candidate children and produce (a) an inline body
+ * the sync driver can pass as `children: ...` to `pages.create`, and (b) a
+ * tail of block ops for whatever could not fit inline. Scope-ids on tail ops
+ * reference the `tmpPageId` of the newly-created page; the sync driver
+ * resolves tmp → server id on apply.
+ *
+ * Depth-2 rule (Notion `children` wire shape):
+ *   depth 1 — direct children of the new page (max 100)
+ *   depth 2 — grandchildren, shipped under the parent's own `children` array
+ *   depth 3+ — rejected at the API. Tail them to follow-up appends.
+ *
+ * Page-kind descendants are never inlined — phase 3b does not nest page
+ * creates in a single request. They get tailed as a follow-up createPage op
+ * scoped to the parent's tmpPageId.
+ */
+interface PackResult {
+  readonly inline: readonly Record<string, unknown>[]
+  /** Candidate nodes paired 1:1 with `inline`, in the same order. */
+  readonly inlineCandidates: readonly CandidateNode[]
+  readonly tail: DiffOp[]
+}
+
+export const inlinePackChildren = (
+  children: readonly CandidateNode[],
+  scopeTmpPageId: string,
+): PackResult => {
+  const tail: DiffOp[] = []
+  let total = 0
+  const MAX_TOTAL = 100
+
+  const buildBlock = (cand: CandidateNode, depth: number): Record<string, unknown> | undefined => {
+    if (cand.nodeKind === 'page') {
+      // Page inside a page-create inline body is not supported — tail it as
+      // a separate createPage scoped to the containing page's tmp id. The
+      // sync driver resolves scope after the outer create lands.
+      const nestedTmp = nextTmp()
+      const nestedPack = inlinePackChildren(cand.children, nestedTmp)
+      tail.push({
+        kind: 'createPage',
+        tmpPageId: nestedTmp,
+        parent: { pageId: scopeTmpPageId },
+        ...(cand.title !== undefined ? { title: cand.title } : {}),
+        ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
+        ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+        inlineChildren: nestedPack.inline,
+        inlineCandidates: nestedPack.inlineCandidates,
+      })
+      cand.blockId = nestedTmp
+      for (const t of nestedPack.tail) tail.push(t)
+      return undefined
+    }
+    if (total >= MAX_TOTAL) return undefined
+    total += 1
+    // Mint a tmpId so downstream passes can track id resolution. We do NOT
+    // emit an append op for blocks shipped inline — the outer createPage op
+    // carries the nested body, and `resolveInlineChildrenIds` on the sync
+    // side walks the server response to fill in real ids.
+    const tmpId = nextTmp()
+    cand.blockId = tmpId
+    const body: Record<string, unknown> = {
+      object: 'block',
+      type: cand.type,
+      [cand.type]: { ...cand.props },
+    }
+    if (cand.children.length === 0) return body
+    if (depth >= 2) {
+      // Depth-3+ children cannot ride inline — tail them as regular block
+      // appends scoped to this candidate's tmp id.
+      for (const sub of cand.children) {
+        tailBlock(sub, tmpId)
+      }
+      return body
+    }
+    const nestedBodies: Record<string, unknown>[] = []
+    for (const sub of cand.children) {
+      const nested = buildBlock(sub, depth + 1)
+      if (nested !== undefined) nestedBodies.push(nested)
+    }
+    if (nestedBodies.length > 0) {
+      ;(body[cand.type] as Record<string, unknown>).children = nestedBodies
+    }
+    return body
+  }
+
+  const tailBlock = (cand: CandidateNode, parentTmpId: string): void => {
+    if (cand.nodeKind === 'page') {
+      // TODO(phase-3c): nested page creates under a tailed block are not yet
+      // supported; emit as a createPage scoped to the parent block id. The
+      // sync driver resolves the scope after the parent append lands.
+      const nestedTmp = nextTmp()
+      const nestedPack = inlinePackChildren(cand.children, nestedTmp)
+      tail.push({
+        kind: 'createPage',
+        tmpPageId: nestedTmp,
+        parent: { pageId: parentTmpId },
+        ...(cand.title !== undefined ? { title: cand.title } : {}),
+        ...(cand.icon !== undefined ? { icon: cand.icon } : {}),
+        ...(cand.cover !== undefined ? { cover: cand.cover } : {}),
+        inlineChildren: nestedPack.inline,
+        inlineCandidates: nestedPack.inlineCandidates,
+      })
+      cand.blockId = nestedTmp
+      for (const t of nestedPack.tail) tail.push(t)
+      return
+    }
+    const tmpId = nextTmp()
+    cand.blockId = tmpId
+    tail.push({
+      kind: 'append',
+      parent: parentTmpId,
+      tmpId,
+      type: cand.type,
+      props: cand.props,
+      candidate: cand,
+      scopePageId: scopeTmpPageId,
+    })
+    for (const sub of cand.children) tailBlock(sub, tmpId)
+  }
+
+  const inline: Record<string, unknown>[] = []
+  const inlineCandidates: CandidateNode[] = []
+  for (const cand of children) {
+    if (total >= MAX_TOTAL) {
+      // Overflow at depth 1 — tail as block ops scoped to the new page.
+      tailBlock(cand, scopeTmpPageId)
+      continue
+    }
+    const body = buildBlock(cand, 1)
+    if (body !== undefined) {
+      inline.push(body)
+      inlineCandidates.push(cand)
+    }
+  }
+  return { inline, inlineCandidates, tail }
 }
 
 /**
@@ -404,10 +759,31 @@ const emitAppendsForNew = (parentId: string, children: CandidateNode[], ops: Dif
  * returned ops are ordered so appends/inserts precede removes within a
  * parent.
  */
+/**
+ * Index every page-kind entry in the prior cache tree by blockKey. Used by
+ * `diffChildren` to detect cross-parent moves: an unretained candidate page
+ * with a matching key becomes `movePage` instead of archive+create.
+ */
+const indexCachePages = (cache: CacheTree): Map<string, CacheNode> => {
+  const out = new Map<string, CacheNode>()
+  const walk = (nodes: readonly CacheNode[]): void => {
+    for (const n of nodes) {
+      if (n.nodeKind === 'page') out.set(n.key, n)
+      walk(n.children)
+    }
+  }
+  walk(cache.children)
+  return out
+}
+
 export const diff = (cache: CacheTree, candidate: CandidateTree): DiffOp[] => {
   tmpCounter = 0
   const ops: DiffOp[] = []
-  diffChildren(candidate.rootId, cache.children, candidate.children, ops)
+  const ctx: DiffCtx = {
+    pagesByKey: indexCachePages(cache),
+    claimedMoves: new Set<string>(),
+  }
+  diffChildren(candidate.rootId, cache.children, candidate.children, ops, ctx)
   return ops
 }
 
@@ -420,6 +796,22 @@ const candidateNodeToCacheNode = (cand: CandidateNode): CacheNode => {
   if (cand.blockId === undefined || cand.blockId.startsWith('tmp-')) {
     // Defensive: should not happen after a successful apply.
     throw new Error(`candidateToCache: unresolved blockId for key=${cand.key}`)
+  }
+  if (cand.nodeKind === 'page') {
+    return {
+      key: cand.key,
+      blockId: cand.blockId,
+      type: cand.type,
+      hash: cand.hash,
+      // Phase 3b gap: children of an existing <ChildPage> are not reconciled
+      // against Notion, so we do not persist candidate children under a page
+      // node. Phase 3c bumps CACHE_SCHEMA_VERSION and starts recording them.
+      children: [],
+      nodeKind: 'page',
+      ...(cand.titleHash !== undefined ? { titleHash: cand.titleHash } : {}),
+      ...(cand.iconHash !== undefined ? { iconHash: cand.iconHash } : {}),
+      ...(cand.coverHash !== undefined ? { coverHash: cand.coverHash } : {}),
+    }
   }
   return {
     key: cand.key,
@@ -445,13 +837,31 @@ export const tallyDiff = (
   let inserts = 0
   let removes = 0
   for (const op of ops) {
-    // Page ops (issue #618) are not tallied into block counts. No emitter
-    // currently produces them; this guard exists so the switch is exhaustive
-    // once they start flowing.
     if (op.kind === 'append') appends += 1
     else if (op.kind === 'update') updates += 1
     else if (op.kind === 'insert') inserts += 1
     else if (op.kind === 'remove') removes += 1
   }
   return { appends, updates, inserts, removes }
+}
+
+/**
+ * Page-scope op tally (issue #618 phase 3b). Mirrors {@link tallyDiff} but for
+ * `PageOp`s only. Kept separate so consumers that only care about block ops
+ * don't see their `.toEqual({appends,...})` assertions drift.
+ */
+export const tallyPageOps = (
+  ops: readonly DiffOp[],
+): { creates: number; updates: number; archives: number; moves: number } => {
+  let creates = 0
+  let updates = 0
+  let archives = 0
+  let moves = 0
+  for (const op of ops) {
+    if (op.kind === 'createPage') creates += 1
+    else if (op.kind === 'updatePage') updates += 1
+    else if (op.kind === 'archivePage') archives += 1
+    else if (op.kind === 'movePage') moves += 1
+  }
+  return { creates, updates, archives, moves }
 }

@@ -105,7 +105,15 @@ export type PageOp =
       readonly title?: unknown
       readonly icon?: unknown
       readonly cover?: unknown
+      /** Pre-shaped block bodies shipped inline as `children` on pages.create. */
       readonly inlineChildren: readonly unknown[]
+      /**
+       * Candidate nodes corresponding to `inlineChildren` in submission order.
+       * Internal field — used by the sync driver to resolve inline-block tmpIds
+       * against the server response after `pages.create` returns. Not part of
+       * the public PageOp contract; pre-phase-3b consumers should ignore it.
+       */
+      readonly inlineCandidates?: readonly unknown[]
     }
   | {
       readonly kind: 'updatePage'
