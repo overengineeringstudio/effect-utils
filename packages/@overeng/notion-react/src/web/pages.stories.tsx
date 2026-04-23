@@ -101,9 +101,8 @@ export const TeamUpdate: Story = {
 
 /**
  * Exercises root `<Page>` metadata props (#618): `title`, `icon`, `cover`.
- * The web mirror's `Page` wrapper does not render these today, so this story
- * primarily documents the JSX-driven surface — the Notion-host equivalent
- * drives `pages.update` on the sync root from the same prop shape.
+ * The web mirror renders the cover as a banner above the page and the icon
+ * above the first block (matching Notion's own web UI layout).
  */
 export const RootMetadata: Story = {
   render: () => (
@@ -192,6 +191,115 @@ export const NestedSubPages: Story = {
         <Heading2>On-call</Heading2>
         <Paragraph>Rotation is weekly, Mondays 10:00 CET handoff.</Paragraph>
       </ChildPage>
+    </Page>
+  ),
+}
+
+/**
+ * Icon variants (#618 phase 4c): external image icon, custom_emoji fallback,
+ * and a page with no icon/cover. Covers the full {@link PageIcon} union for
+ * the web mirror.
+ */
+export const IconVariants: Story = {
+  render: () => (
+    <>
+      <Page
+        title="External icon"
+        icon={{
+          type: 'external',
+          external: {
+            url: 'https://www.notion.so/icons/rocket_gray.svg',
+          },
+        }}
+      >
+        <Heading2>External icon</Heading2>
+        <Paragraph>
+          An <Bold>external</Bold> icon envelope points at a public URL and renders as an{' '}
+          <InlineCode>&lt;img&gt;</InlineCode>.
+        </Paragraph>
+      </Page>
+      <Page
+        title="Custom emoji icon"
+        icon={{ type: 'custom_emoji', custom_emoji: { id: 'ce_42' } }}
+      >
+        <Heading2>Custom emoji icon</Heading2>
+        <Paragraph>
+          The web mirror has no workspace-emoji registry, so custom_emoji icons render a neutral
+          fallback glyph with the source id in the <InlineCode>title</InlineCode> attribute.
+        </Paragraph>
+      </Page>
+      <Page title="No icon, no cover">
+        <Heading2>Absent metadata</Heading2>
+        <Paragraph>
+          Without an icon or cover the page header slot collapses entirely — no banner, no hero
+          icon, just the content.
+        </Paragraph>
+      </Page>
+    </>
+  ),
+}
+
+/**
+ * Cover variants (#618 phase 4c): external image cover and file_upload
+ * placeholder. The web mirror cannot resolve upload ids to URLs, so file_upload
+ * renders a subtle gradient stub.
+ */
+export const CoverVariants: Story = {
+  render: () => (
+    <>
+      <Page
+        title="External cover"
+        icon={{ type: 'emoji', emoji: '🌄' }}
+        cover={{
+          type: 'external',
+          external: {
+            url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1200&q=80',
+          },
+        }}
+      >
+        <Heading2>External cover</Heading2>
+        <Paragraph>A public URL cover renders directly as the page banner.</Paragraph>
+      </Page>
+      <Page
+        title="File upload cover (placeholder)"
+        icon={{ type: 'emoji', emoji: '📎' }}
+        cover={{ type: 'file_upload', file_upload: { id: 'up_abc123' } }}
+      >
+        <Heading2>File upload cover</Heading2>
+        <Paragraph>
+          <InlineCode>file_upload</InlineCode> covers reference a Notion Files-API asset by id. The
+          client cannot resolve these without an API round-trip, so we render a gradient stub —
+          hosts that need a real image should pre-resolve before passing the prop.
+        </Paragraph>
+      </Page>
+    </>
+  ),
+}
+
+/**
+ * Child-page icon swap (#618 phase 4c): `<ChildPage icon={...}>` projects the
+ * icon inline on the link chip. Falls back to `📄` when icon is absent.
+ */
+export const ChildPageIcons: Story = {
+  render: () => (
+    <Page title="Sub-page gallery" icon={{ type: 'emoji', emoji: '🗂️' }}>
+      <Heading1>Sub-page gallery</Heading1>
+      <Paragraph>Each child below illustrates a different icon envelope.</Paragraph>
+      <ChildPage blockKey="emoji" title="Emoji icon" icon={{ type: 'emoji', emoji: '🎨' }} />
+      <ChildPage
+        blockKey="external"
+        title="External icon"
+        icon={{
+          type: 'external',
+          external: { url: 'https://www.notion.so/icons/book_gray.svg' },
+        }}
+      />
+      <ChildPage
+        blockKey="custom"
+        title="Custom emoji icon (fallback)"
+        icon={{ type: 'custom_emoji', custom_emoji: { id: 'ce_7' } }}
+      />
+      <ChildPage blockKey="absent" title="No icon — falls back to 📄" />
     </Page>
   ),
 }
