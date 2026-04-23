@@ -14,6 +14,38 @@
   max-width: 720px;
 }
 
+/* Page cover — vendored rnx styles exist but assume a full-viewport layout.
+   Scale the banner down for the Storybook preview frame while keeping the
+   object-fit contract so `<img class="notion-page-cover">` renders correctly. */
+.notion-app > .notion-page-cover {
+  display: block;
+  width: 100%;
+  height: 180px !important;
+  min-height: 180px !important;
+  max-height: 180px !important;
+  object-fit: cover;
+}
+.notion-page-cover-placeholder {
+  background: linear-gradient(135deg, var(--bg-color-1, #f1f1ef), var(--bg-color-2, #e6e6e4));
+}
+
+/* Page icon wrapper — sits above the first block inside `.notion-page`.
+   Vendored CSS models a hero-positioned icon; our preview uses an inline-flow
+   icon that stacks naturally above `.notion-page-content`. */
+.notion-page-icon-wrapper {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.notion-page-icon-wrapper .notion-page-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+.notion-page-icon-wrapper img.notion-page-icon {
+  width: 48px;
+  height: 48px;
+}
+
 /* To-do checkbox — react-notion-x pruned these from its vendored CSS, so
    we add the minimal ruleset here. Shape: a 14px square with a subtle
    border; the checked variant fills with Notion blue and shows the
