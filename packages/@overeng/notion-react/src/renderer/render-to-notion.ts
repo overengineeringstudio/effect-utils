@@ -223,15 +223,29 @@ const absorbedDescendantIds = (
 }
 
 /**
+ * Translate a `PageTitle` ergonomic value to the Notion-wire span array.
+ * Strings become a single-span array; arrays pass through verbatim (each
+ * span is assumed pre-shaped per `PageTitleSpan`). Empty strings yield `[]`.
+ */
+const pageTitleSpans = (title: unknown): readonly Record<string, unknown>[] | undefined => {
+  if (typeof title === 'string') {
+    if (title.length === 0) return []
+    return [{ type: 'text', text: { content: title } }]
+  }
+  if (Array.isArray(title)) return title as readonly Record<string, unknown>[]
+  return undefined
+}
+
+/**
  * Issue a block update against Notion, transparently routing `child_page`
- * title changes through `pages.update` (since the Notion API rejects a
- * `PATCH /blocks/{id}` body of `{ child_page: { title } }` with
- * `validation_error`). Other block types go through `blocks.update` as
- * before.
+ * title/icon/cover changes through `pages.update` (since the Notion API
+ * rejects `PATCH /blocks/{id}` bodies of `{ child_page: {...} }` with
+ * `validation_error`). Other block types go through `blocks.update` as before.
  *
- * The `child_page` prop surface is currently `{ title: string }` only — icon,
- * cover, and other page-level props are out of scope for this helper (#618
- * phase 2). Additional props are ignored rather than forwarded blindly.
+ * The `child_page` props supported here are `title` (string or
+ * `PageTitleSpan[]`), `icon`, and `cover`. If none of them are present the
+ * call is skipped entirely — page-level archive/move/create are phase 3b work
+ * and flow through dedicated emitters rather than `issueBlockUpdate`.
  */
 export const issueBlockUpdate = (
   blockId: string,
@@ -239,19 +253,24 @@ export const issueBlockUpdate = (
   props: Record<string, unknown>,
 ): Effect.Effect<unknown, unknown, NotionConfig | HttpClient.HttpClient> => {
   if (type === 'child_page') {
-    const title = props.title
-    if (typeof title !== 'string') {
+    const spans = pageTitleSpans(props.title)
+    const hasTitle = spans !== undefined
+    const hasIcon = props.icon !== undefined
+    const hasCover = props.cover !== undefined
+    if (!hasTitle && !hasIcon && !hasCover) {
       // Nothing to update at the page level; skip the call rather than
       // round-tripping an empty PATCH that Notion would also reject.
       return Effect.void
     }
+    // The client's `UpdatePageOptions.icon`/`cover` unions are narrower than
+    // the component's `PageIcon`/`PageCover` (no `custom_emoji` on icon,
+    // no `file_upload` on cover). We forward verbatim; mismatches surface as
+    // a Notion validation_error rather than being silently dropped.
     return NotionPages.update({
       pageId: blockId,
-      properties: {
-        title: {
-          title: [{ type: 'text', text: { content: title } }],
-        },
-      },
+      ...(hasTitle ? { properties: { title: { title: spans } } } : {}),
+      ...(hasIcon ? { icon: props.icon as never } : {}),
+      ...(hasCover ? { cover: props.cover as never } : {}),
     })
   }
   return NotionBlocks.update({ blockId, [type]: props })
