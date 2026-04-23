@@ -196,6 +196,32 @@ export const createFakeNotion = (): FakeNotion => {
 
     const appendChildrenMatch = path.match(/^\/v1\/blocks\/([^/]+)\/children$/)
     const blockOpMatch = path.match(/^\/v1\/blocks\/([^/]+)$/)
+    const pageOpMatch = path.match(/^\/v1\/pages\/([^/]+)$/)
+
+    // Minimal `pages.update` stub — issue #618 phase 2 routes `<ChildPage>`
+    // title changes through this endpoint. The stub captures the request in
+    // `requests` (that's the assertion surface) and returns a Notion-shaped
+    // Page envelope so the response schema decodes. It does NOT maintain
+    // server-side page state — phase 3 will do that properly.
+    if (pageOpMatch !== null && req.method === 'PATCH') {
+      const id = pageOpMatch[1]!
+      const now = new Date().toISOString()
+      return {
+        object: 'page',
+        id,
+        created_time: now,
+        created_by: FAKE_USER,
+        last_edited_time: now,
+        last_edited_by: FAKE_USER,
+        icon: null,
+        cover: null,
+        parent: { type: 'workspace', workspace: true },
+        in_trash: false,
+        url: `https://www.notion.so/${id.replace(/-/g, '')}`,
+        public_url: null,
+        properties: (body as { properties?: Record<string, unknown> }).properties ?? {},
+      }
+    }
 
     if (appendChildrenMatch !== null && (req.method === 'POST' || req.method === 'PATCH')) {
       const parent = appendChildrenMatch[1]!
