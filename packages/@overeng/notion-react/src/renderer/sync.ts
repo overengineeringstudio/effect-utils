@@ -682,15 +682,22 @@ const applyDiff = (
         // separate batches or Y ends up adjacent to X).
         const runStart = i
         const runParent = op.parent
+        const runKind = op.kind
         let prevTmpId = op.tmpId
         i += 1
         while (i < ops.length) {
           const next = ops[i]!
           if (!isAppendLike(next) || next.parent !== runParent) break
-          // An `insert` continues the run only when its afterId chains off
-          // the previous op's tmpId. `append` never has an afterId; it
-          // continues the run unconditionally (consecutive tail-appends
-          // batch naturally).
+          // A run must be kind-homogeneous: a positioned-insert batch
+          // carries `position: after_block(...)`, so a trailing `append`
+          // would land adjacent to the last insert instead of at the
+          // parent's tail. Conversely, an `insert` mid-run into a plain
+          // append batch has no way to carry its anchor. Flush the run
+          // before switching kinds.
+          if (next.kind !== runKind) break
+          // Within an insert run, each `insert` continues the run only
+          // when its afterId chains off the previous op's tmpId so sibling
+          // order is preserved across distinct insertion points.
           if (next.kind === 'insert' && next.afterId !== prevTmpId) break
           prevTmpId = next.tmpId
           i += 1
@@ -1002,18 +1009,21 @@ export const sync = (
           metricsAgg.handler(e)
         }
       : (userOnEvent ?? metricsAgg?.handler)
+  /* Hoisted out of the gen so the failure `tapError` branch below can emit
+     a SyncEnd event with the real runtime/op-count counters instead of
+     zeros (those would make partial-failure dashboards useless). */
+  const syncStartMs = onEvent !== undefined ? performance.now() : 0
+  let opIdCounter = 0
+  const o11y: O11yCtx = {
+    onEvent,
+    nextOpId: () => {
+      opIdCounter += 1
+      return opIdCounter
+    },
+    opCount: { n: 0 },
+    onUploadIdRejected: opts.onUploadIdRejected,
+  }
   return Effect.gen(function* () {
-    const syncStartMs = onEvent !== undefined ? performance.now() : 0
-    let opIdCounter = 0
-    const o11y: O11yCtx = {
-      onEvent,
-      nextOpId: () => {
-        opIdCounter += 1
-        return opIdCounter
-      },
-      opCount: { n: 0 },
-      onUploadIdRejected: opts.onUploadIdRejected,
-    }
     const prior = yield* opts.cache.load.pipe(
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
     )
@@ -1351,9 +1361,9 @@ export const sync = (
            into the metrics. */
         const ev = SyncEvent.SyncEnd({
           pageId: opts.pageId,
-          durationMs: 0,
+          durationMs: performance.now() - syncStartMs,
           ok: false,
-          opCount: 0,
+          opCount: o11y.opCount.n,
           at: Date.now(),
         })
         onEvent?.(ev)

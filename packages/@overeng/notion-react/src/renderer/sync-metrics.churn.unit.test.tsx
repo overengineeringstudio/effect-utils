@@ -152,7 +152,7 @@ describe('SyncMetrics — churn patterns', () => {
     const cache = InMemoryCache.make()
     const base = mkItems(20)
     await collect(fake, <Tree items={base} />, cache)
-    const reordered: Item[] = [...base.slice(0, 5).reverse(), ...base.slice(5)]
+    const reordered: Item[] = [...base.slice(0, 5).toReversed(), ...base.slice(5)]
     const m = await collect(fake, <Tree items={reordered} />, cache)
     // Notion has no move-block op. LCS keeps the longest in-order chain
     // (p0 OR p4 plus tail) and remove+re-inserts the rest. Exact counts:

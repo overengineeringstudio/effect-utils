@@ -423,9 +423,10 @@ describe('sync() against in-memory fake Notion', () => {
     // 20 toggle sessions is enough to make the blast radius obvious while
     // keeping the test snappy. Old behavior: 20 removes + 40 appends (2 per
     // session). New behavior: 0-2 ops for a 1-block drift.
-    const manySessions = Array.from({ length: 20 }, (_, i) => ({
-      app: `App${i}`,
-      minutes: 5 + i,
+    const manySessions: readonly Session[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `s${i}`,
+      title: `App${i}`,
+      body: `${5 + i} min focused`,
     }))
     await runWith(
       fake,

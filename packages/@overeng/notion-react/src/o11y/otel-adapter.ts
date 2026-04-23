@@ -10,6 +10,7 @@
  * emits spans/events directly. `@opentelemetry/api` is declared as a
  * peer dep so the adapter doesn't force the SDK on every consumer.
  */
+import { context, trace } from '@opentelemetry/api'
 import type { Attributes, Span, SpanStatusCode, Tracer } from '@opentelemetry/api'
 
 import type { SyncEvent, SyncEventHandler } from '../renderer/sync-events.ts'
@@ -85,14 +86,23 @@ export const createOtelEventHandler = (config: OtelEventHandlerConfig): SyncEven
         break
       }
       case 'OpIssued': {
-        const span = tracer.startSpan(`notion-react.op.${event.kind}`, {
-          startTime: event.at,
-          attributes: withService({
-            'span.label': event.kind,
-            'notion-react.op.id': event.id,
-            'notion-react.op.kind': event.kind,
-          }),
-        })
+        // Parent op spans to the sync root via an explicit context so
+        // traced environments preserve the `notion-react.sync` → op span
+        // hierarchy instead of attaching op spans to the ambient context.
+        const parentCtx =
+          rootSpan !== undefined ? trace.setSpan(context.active(), rootSpan) : context.active()
+        const span = tracer.startSpan(
+          `notion-react.op.${event.kind}`,
+          {
+            startTime: event.at,
+            attributes: withService({
+              'span.label': event.kind,
+              'notion-react.op.id': event.id,
+              'notion-react.op.kind': event.kind,
+            }),
+          },
+          parentCtx,
+        )
         opSpans.set(event.id, span)
         break
       }

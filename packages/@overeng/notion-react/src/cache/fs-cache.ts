@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
@@ -51,7 +52,10 @@ export const FsCache = {
           const body = JSON.stringify(tree)
           const dir = path.dirname(filePath)
           await fs.mkdir(dir, { recursive: true })
-          const tmp = `${filePath}.${process.pid}.tmp`
+          // Per-call unique temp name so concurrent saves in one process
+          // don't race on a shared pathname (which would surface as ENOENT
+          // when one rename pulls the temp out from under another writer).
+          const tmp = `${filePath}.${process.pid}.${randomUUID()}.tmp`
           await fs.writeFile(tmp, body, 'utf8')
           await fs.rename(tmp, filePath)
         },

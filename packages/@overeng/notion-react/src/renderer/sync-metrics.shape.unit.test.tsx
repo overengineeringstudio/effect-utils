@@ -160,9 +160,9 @@ const RealisticPage = ({
 const baseSpec = (): PageSpec => ({
   callout: 'Summary for today',
   headings: Array.from({ length: 5 }, (_, i) => ({ id: `h${i}`, text: `Section ${i}` })),
-  tables: Array.from({ length: 2 }, (_, i) => ({
+  tables: Array.from({ length: 2 }, (_unused, i) => ({
     id: `t${i}`,
-    rows: Array.from({ length: 50 }, (_, r) => ({
+    rows: Array.from({ length: 50 }, (_r, r) => ({
       id: `t${i}-r${r}`,
       cells: [`r${r}-a`, `r${r}-b`, `r${r}-c`],
     })),
@@ -319,11 +319,13 @@ describe('SyncMetrics — realistic daily-page shape', () => {
     await collect(fake, <RealisticPage spec={baseSpec()} />, cache)
     const next: PageSpec = {
       ...baseSpec(),
+      // oxlint-disable-next-line no-map-spread -- copy-on-write test fixture; immutability is the point
       tables: baseSpec().tables.map((t) =>
         t.id !== 't0'
           ? t
           : {
               ...t,
+              // oxlint-disable-next-line no-map-spread -- copy-on-write test fixture; immutability is the point
               rows: t.rows.map((r) =>
                 r.id !== 't0-r10' ? r : { ...r, cells: ['EDITED', r.cells[1]!, r.cells[2]!] },
               ),
