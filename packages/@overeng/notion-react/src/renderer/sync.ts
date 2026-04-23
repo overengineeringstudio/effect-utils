@@ -90,6 +90,16 @@ interface WorkingNode {
   type: string
   hash: string
   children: WorkingNode[]
+  /**
+   * Phase 3c (cache v3): distinguishes sub-pages from regular blocks inside
+   * the working cache. Page nodes carry their own children bucket (reconciled
+   * by recursive diffChildren under `scopePageId = this.blockId`) and
+   * persist per-field metadata hashes so the outer cache round-trips them.
+   */
+  nodeKind: 'block' | 'page'
+  titleHash?: string | undefined
+  iconHash?: string | undefined
+  coverHash?: string | undefined
 }
 
 interface WorkingCache {
@@ -107,6 +117,10 @@ const cacheNodeToWorking = (n: CacheNode): WorkingNode => ({
   type: n.type,
   hash: n.hash,
   children: n.children.map(cacheNodeToWorking),
+  nodeKind: n.nodeKind,
+  ...(n.titleHash !== undefined ? { titleHash: n.titleHash } : {}),
+  ...(n.iconHash !== undefined ? { iconHash: n.iconHash } : {}),
+  ...(n.coverHash !== undefined ? { coverHash: n.coverHash } : {}),
 })
 
 const workingToCacheNode = (n: WorkingNode): CacheNode => {
@@ -128,7 +142,10 @@ const workingToCacheNode = (n: WorkingNode): CacheNode => {
     type: n.type,
     hash: n.hash,
     children: n.children.map(workingToCacheNode),
-    nodeKind: 'block',
+    nodeKind: n.nodeKind,
+    ...(n.titleHash !== undefined ? { titleHash: n.titleHash } : {}),
+    ...(n.iconHash !== undefined ? { iconHash: n.iconHash } : {}),
+    ...(n.coverHash !== undefined ? { coverHash: n.coverHash } : {}),
   }
 }
 
@@ -1357,6 +1374,10 @@ export const sync = (
         type: cand.type,
         hash: cand.hash,
         children: kids,
+        nodeKind: cand.nodeKind,
+        ...(cand.titleHash !== undefined ? { titleHash: cand.titleHash } : {}),
+        ...(cand.iconHash !== undefined ? { iconHash: cand.iconHash } : {}),
+        ...(cand.coverHash !== undefined ? { coverHash: cand.coverHash } : {}),
       }
     }
     const checkpointAppended = (
@@ -1377,6 +1398,14 @@ export const sync = (
               type: op.type,
               hash: op.candidate.hash,
               children,
+              nodeKind: op.candidate.nodeKind,
+              ...(op.candidate.titleHash !== undefined
+                ? { titleHash: op.candidate.titleHash }
+                : {}),
+              ...(op.candidate.iconHash !== undefined ? { iconHash: op.candidate.iconHash } : {}),
+              ...(op.candidate.coverHash !== undefined
+                ? { coverHash: op.candidate.coverHash }
+                : {}),
             }
             workingAppend(working, parentId, node, afterId)
           }
@@ -1476,6 +1505,21 @@ export const sync = (
 
     // Step 2: root-scoped block ops.
     yield* applyDiff(rootBlockPlan, idMap, checkpointAppended, o11y, priorHashById)
+
+    // Step 2b (phase 3c): retained-sub-page-scoped block ops. These address
+    // real server page ids (not tmpPageIds) — the diff's retained-page branch
+    // recursed into the sub-page's children and tagged every emitted block op
+    // with `scopePageId = priorSubPageBlockId`. Apply each scope as its own
+    // applyDiff pass so per-parent coalescing stays local; the shared
+    // `working` cache is already indexed over every nested page subtree so
+    // checkpointAppended lands ops in the right place.
+    const createPageTmpIds = new Set(
+      pageOps.flatMap((op) => (op.kind === 'createPage' ? [op.tmpPageId] : [])),
+    )
+    for (const [scope, scopedOps] of pageScopedBlockPlan) {
+      if (createPageTmpIds.has(scope)) continue // handled in step 3 alongside pages.create
+      yield* applyDiff(scopedOps, idMap, checkpointAppended, o11y, priorHashById)
+    }
 
     // Step 3: createPage ops. Each carries inline-packed children (depth≤2,
     // ≤100 blocks) plus a tail of block ops scoped to the new page's
