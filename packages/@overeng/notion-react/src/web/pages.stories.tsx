@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import {
   BulletedListItem,
   Callout,
+  ChildPage,
   Code,
   Column,
   ColumnList,
@@ -94,6 +95,103 @@ export const TeamUpdate: Story = {
       <ToDo>Confirm packaging backup supplier by Wednesday</ToDo>
       <ToDo>Share press kit with wave-1 publications</ToDo>
       <ToDo>Lock final pricing for Nimbus Plus</ToDo>
+    </Page>
+  ),
+}
+
+/**
+ * Exercises root `<Page>` metadata props (#618): `title`, `icon`, `cover`.
+ * The web mirror's `Page` wrapper does not render these today, so this story
+ * primarily documents the JSX-driven surface — the Notion-host equivalent
+ * drives `pages.update` on the sync root from the same prop shape.
+ */
+export const RootMetadata: Story = {
+  render: () => (
+    <Page
+      title="Q2 Launch Plan"
+      icon={{ type: 'emoji', emoji: '🚀' }}
+      cover={{
+        type: 'external',
+        external: {
+          url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&q=80',
+        },
+      }}
+    >
+      <Heading1>Q2 Launch Plan</Heading1>
+      <Callout icon="📅" color="blue_background">
+        <Bold>Window:</Bold> April 1 — June 30 · <Bold>Owner:</Bold> Priya
+      </Callout>
+      <Heading2>Goals</Heading2>
+      <BulletedListItem>Ship three SKUs in two markets</BulletedListItem>
+      <BulletedListItem>Hit 98% QA pass rate across the first production run</BulletedListItem>
+      <BulletedListItem>Keep NPS at launch above 55</BulletedListItem>
+    </Page>
+  ),
+}
+
+/**
+ * Nested structure (#618): root `<Page>` → `<ChildPage>` (with its own
+ * title/icon) → nested content. Demonstrates the JSX-driven sub-page surface
+ * — each `<ChildPage>` is its own sync boundary with its own `blockKey`
+ * namespace, and `diff()` descends recursively through retained sub-pages.
+ */
+export const NestedSubPages: Story = {
+  render: () => (
+    <Page title="Team handbook" icon={{ type: 'emoji', emoji: '📘' }}>
+      <Heading1>Team handbook</Heading1>
+      <Paragraph>
+        Living reference for how we work. Each section below is its own sub-page — open one to see
+        its contents.
+      </Paragraph>
+      <ChildPage blockKey="onboarding" title="Onboarding" icon={{ type: 'emoji', emoji: '👋' }}>
+        <Heading2>Week 1</Heading2>
+        <Paragraph>
+          Pair with your buddy, get accounts set up, ship a tiny PR on day three.
+        </Paragraph>
+        <Toggle title="Accounts checklist">
+          <BulletedListItem>GitHub invite accepted</BulletedListItem>
+          <BulletedListItem>1Password vault joined</BulletedListItem>
+          <BulletedListItem>Notion workspace access</BulletedListItem>
+          <BulletedListItem>Slack channels auto-joined</BulletedListItem>
+        </Toggle>
+        <Heading3>Your buddy</Heading3>
+        <Paragraph>
+          Your buddy is your go-to for the first two weeks. Ping them for anything — no question is
+          too small.
+        </Paragraph>
+      </ChildPage>
+      <ChildPage
+        blockKey="engineering-guide"
+        title="Engineering guide"
+        icon={{ type: 'emoji', emoji: '🛠️' }}
+      >
+        <Heading2>How we ship</Heading2>
+        <Paragraph>
+          Small PRs, green CI, review within one business day. <InlineCode>main</InlineCode> is
+          always deployable.
+        </Paragraph>
+        <Toggle title="Commit conventions">
+          <Paragraph>
+            Prefix with the affected package and a short verb: <InlineCode>feat(api): …</InlineCode>
+            , <InlineCode>fix(ui): …</InlineCode>, <InlineCode>chore(deps): …</InlineCode>.
+          </Paragraph>
+        </Toggle>
+        <ChildPage
+          blockKey="review-etiquette"
+          title="Review etiquette"
+          icon={{ type: 'emoji', emoji: '🧐' }}
+        >
+          <Heading2>Review etiquette</Heading2>
+          <Paragraph>Lead with questions, not opinions. Assume good faith.</Paragraph>
+          <NumberedListItem>Read the whole diff before commenting</NumberedListItem>
+          <NumberedListItem>Prefer suggestions over imperatives</NumberedListItem>
+          <NumberedListItem>Explicitly approve — "LGTM" counts</NumberedListItem>
+        </ChildPage>
+      </ChildPage>
+      <ChildPage blockKey="ops-runbook" title="Ops runbook" icon={{ type: 'emoji', emoji: '🚨' }}>
+        <Heading2>On-call</Heading2>
+        <Paragraph>Rotation is weekly, Mondays 10:00 CET handoff.</Paragraph>
+      </ChildPage>
     </Page>
   ),
 }

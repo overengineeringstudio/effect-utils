@@ -345,11 +345,22 @@ root <Page id=P0>
 
 ```ts
 type PageOp =
-  | { kind: 'createPage'; tmpPageId: string; parent: { pageId: string }
-      title?: NotionTitleRichText; icon?: NotionIcon; cover?: NotionCover
-      inlineChildren: CreateChildren /* ≤ depth 2, ≤ 100 per A08 */ }
-  | { kind: 'updatePage'; pageId: string
-      title?: NotionTitleRichText; icon?: NotionIcon | null; cover?: NotionCover | null }
+  | {
+      kind: 'createPage'
+      tmpPageId: string
+      parent: { pageId: string }
+      title?: NotionTitleRichText
+      icon?: NotionIcon
+      cover?: NotionCover
+      inlineChildren: CreateChildren /* ≤ depth 2, ≤ 100 per A08 */
+    }
+  | {
+      kind: 'updatePage'
+      pageId: string
+      title?: NotionTitleRichText
+      icon?: NotionIcon | null
+      cover?: NotionCover | null
+    }
   | { kind: 'archivePage'; pageId: string }
   | { kind: 'movePage'; pageId: string; parent: { pageId: string } }
 ```
@@ -420,8 +431,8 @@ structurally uniform.
 
 ### Icon / cover normalization (A07)
 
-`projectIcon(icon)` returns the *request-shape* payload; `normalizeIcon`
-translates the *response-shape* Notion actually persists into the same
+`projectIcon(icon)` returns the _request-shape_ payload; `normalizeIcon`
+translates the _response-shape_ Notion actually persists into the same
 canonical form used for hashing. The hash used by diff / cache is always
 over the normalized form. `custom_emoji` icons with no resolvable id are
 stripped at the component boundary (warn + drop; same policy as
@@ -457,16 +468,16 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 
 ## Fallback decision table (R16)
 
-| Trigger                                           | Behaviour                                  | `fallbackReason`    |
-| ------------------------------------------------- | ------------------------------------------ | ------------------- |
-| No cache file                                     | Cold diff against empty tree               | `"cold-cache"`      |
-| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`    | Diff against stale tree, still reuses keys | `"schema-mismatch"` |
-| Cache `rootId !== opts.pageId`                    | Cold diff against empty tree               | `"page-id-drift"`   |
-| `NotionBlocks.update` returns 404/archived        | Emit structural rebuild of that subtree    | `"block-missing"`   |
-| Cached page id → `pages.retrieve` 404             | Drop cached subtree, recreate if JSX has it, else no-op | `"page-missing"`    |
-| Cached page id is archived on server              | Treat as removed; if JSX still has `<ChildPage>`, create fresh | `"page-archived"`   |
-| `pages.create` succeeds but child ops fail mid-apply | Archive orphan page; surface `NotionSyncError` | `"partial-page-create"` |
-| Diff produces malformed op-plan (invariant break) | Abort; propagate `NotionSyncError`         | n/a (error)         |
+| Trigger                                              | Behaviour                                                      | `fallbackReason`        |
+| ---------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
+| No cache file                                        | Cold diff against empty tree                                   | `"cold-cache"`          |
+| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`       | Diff against stale tree, still reuses keys                     | `"schema-mismatch"`     |
+| Cache `rootId !== opts.pageId`                       | Cold diff against empty tree                                   | `"page-id-drift"`       |
+| `NotionBlocks.update` returns 404/archived           | Emit structural rebuild of that subtree                        | `"block-missing"`       |
+| Cached page id → `pages.retrieve` 404                | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`        |
+| Cached page id is archived on server                 | Treat as removed; if JSX still has `<ChildPage>`, create fresh | `"page-archived"`       |
+| `pages.create` succeeds but child ops fail mid-apply | Archive orphan page; surface `NotionSyncError`                 | `"partial-page-create"` |
+| Diff produces malformed op-plan (invariant break)    | Abort; propagate `NotionSyncError`                             | n/a (error)             |
 
 v0.1 implements `cold-cache`, `schema-mismatch`, and `page-id-drift`
 (via a pre-flight `NotionBlocks.retrieve(cache.rootId)`). `block-missing`

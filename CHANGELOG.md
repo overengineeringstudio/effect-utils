@@ -6,8 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **@overeng/notion-react**: Recursive reconciliation of `<ChildPage>` children (#618 phase 3c). `diff()` now descends into retained sub-pages, emitting block ops tagged with `scopePageId = subPage.blockId`; the sync driver applies each page-scope as its own `applyDiff` pass against a shared working cache that now indexes nested page subtrees. `candidateToCache` persists sub-page block children, and `CACHE_SCHEMA_VERSION` bumps 2 → 3 (old caches fall through the existing `schema-mismatch` cold path). `blockKey` namespaces stay isolated per page (R26).
-- **@overeng/notion-react**: Emit and execute page-scope ops (`createPage`, `updatePage`, `archivePage`, `movePage`) from the sync driver (#618 phase 3b). `<Page>` / `<ChildPage>` now flow through `pages.*` endpoints with inline block packing (depth ≤ 2, ≤ 100 blocks), tail block ops scoped to the new page, partial-create rollback on tail failure, icon/cover normalization, and sibling reshuffle → `movePage`.
+- **@overeng/notion-react**: JSX-driven page operations for root `<Page>` and sub-page `<ChildPage>` (#618). Root `<Page>` accepts `title` / `icon` / `cover` and drives `pages.update` on the sync root. `<ChildPage>` becomes a first-class sync boundary with `title` / `icon` / `cover` / `children` / `blockKey`; the sync driver emits and executes `createPage`, `updatePage`, `archivePage`, and `movePage` via `NotionPages.*` with inline block packing (depth ≤ 2, ≤ 100 blocks), tail block ops scoped to the new page, and partial-create rollback on tail failure. Each sub-page is its own sync boundary with its own `blockKey` namespace, and `diff()` descends recursively through retained sub-pages.
 - **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
 - **@overeng/pty-effect/client**: Add PTY client support for session tags, `getSession`, `gc`, `updateTags`, `sendData`, `queryStats`, `readRecentEvents`, and live event following
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)
@@ -37,6 +36,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/notion-react**: `CACHE_SCHEMA_VERSION` bumped `2 → 3` to accommodate per-page cache subtrees (#618). v2 caches fall through the existing `"schema-mismatch"` cold path — transparent, no caller action required. The first sync after upgrade may emit one spurious metadata update per sub-page as response-normalized title/icon/cover is recomputed.
 - **genie/ci-workflow**: Unify Vercel CI job generation behind a single `vercelDeployJobs()` helper
   - Removes the separate static-job and job-merge helpers now that task-level deploy mode is already unified in `vercel.nix`
   - Lets consumers mix build-mode and static-mode deploys in one project list and attach per-project pre-deploy setup like Vercel git-author configuration

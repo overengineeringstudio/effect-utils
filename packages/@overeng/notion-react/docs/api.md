@@ -23,29 +23,29 @@ From `@overeng/notion-react` (Notion host) and
 `@overeng/notion-react/web` (DOM mirror). Shared prop shapes in
 [`src/components/props.ts`](../src/components/props.ts).
 
-| Component                                                    | Notion block type                                               | Notes                                                                               |
-| ------------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `Page`                                                       | (fragment)                                                      | Root container.                                                                     |
-| `Paragraph`                                                  | `paragraph`                                                     | Rich-text children, `blockKey?`.                                                    |
-| `Heading1` / `Heading2` / `Heading3` / `Heading4`            | `heading_1..4`                                                  | `toggleable?`, `color?`, `blockKey?`.                                               |
-| `BulletedListItem` / `NumberedListItem`                      | `bulleted_list_item`, `numbered_list_item`                      | Rich-text children, `blockKey?`.                                                    |
-| `ToDo`                                                       | `to_do`                                                         | `checked?`, `blockKey?`.                                                            |
-| `Toggle`                                                     | `toggle`                                                        | `title`, nested block children, `blockKey?`.                                        |
-| `Code`                                                       | `code`                                                          | `language?`, `blockKey?`.                                                           |
-| `Quote`                                                      | `quote`                                                         | Rich-text children, `blockKey?`.                                                    |
-| `Callout`                                                    | `callout`                                                       | `icon?` (string or `{ external: url }`), `color?`, `blockKey?`.                     |
-| `Divider`                                                    | `divider`                                                       |                                                                                     |
-| `Image` / `Video` / `Audio` / `File` / `Pdf`                 | `image` / `video` / `audio` / `file` / `pdf`                    | `url?` or `fileUploadId?`, `caption?`.                                              |
-| `Bookmark` / `Embed`                                         | `bookmark`, `embed`                                             | `url`.                                                                              |
-| `Equation`                                                   | `equation`                                                      | `expression`.                                                                       |
-| `Table` / `TableRow`                                         | `table`, `table_row`                                            | `tableWidth?`, `hasColumnHeader?`, `hasRowHeader?` / `cells`.                       |
-| `ColumnList` / `Column`                                      | `column_list`, `column`                                         | `widthRatio?` on `Column`.                                                          |
-| `LinkToPage`                                                 | `link_to_page`                                                  | `pageId`.                                                                           |
-| `TableOfContents`                                            | `table_of_contents`                                             |                                                                                     |
-| `ChildPage`                                                  | `child_page`                                                    | `title?`.                                                                           |
-| `Breadcrumb`                                                 | `breadcrumb`                                                    | Passthrough.                                                                        |
-| `Raw`                                                        | (any)                                                           | Escape hatch: `type` + `content`. See [Custom blocks](./cookbook/custom-blocks.md). |
-| `Template` / `LinkPreview` / `SyncedBlock` / `ChildDatabase` | `template` / `link_preview` / `synced_block` / `child_database` | Thin `<Raw>` wrappers.                                                              |
+| Component                                                    | Notion block type                                               | Notes                                                                                                                      |
+| ------------------------------------------------------------ | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `Page`                                                       | (root page)                                                     | Root container. Optional `title`, `icon`, `cover` drive `pages.update` on the sync root.                                   |
+| `Paragraph`                                                  | `paragraph`                                                     | Rich-text children, `blockKey?`.                                                                                           |
+| `Heading1` / `Heading2` / `Heading3` / `Heading4`            | `heading_1..4`                                                  | `toggleable?`, `color?`, `blockKey?`.                                                                                      |
+| `BulletedListItem` / `NumberedListItem`                      | `bulleted_list_item`, `numbered_list_item`                      | Rich-text children, `blockKey?`.                                                                                           |
+| `ToDo`                                                       | `to_do`                                                         | `checked?`, `blockKey?`.                                                                                                   |
+| `Toggle`                                                     | `toggle`                                                        | `title`, nested block children, `blockKey?`.                                                                               |
+| `Code`                                                       | `code`                                                          | `language?`, `blockKey?`.                                                                                                  |
+| `Quote`                                                      | `quote`                                                         | Rich-text children, `blockKey?`.                                                                                           |
+| `Callout`                                                    | `callout`                                                       | `icon?` (string or `{ external: url }`), `color?`, `blockKey?`.                                                            |
+| `Divider`                                                    | `divider`                                                       |                                                                                                                            |
+| `Image` / `Video` / `Audio` / `File` / `Pdf`                 | `image` / `video` / `audio` / `file` / `pdf`                    | `url?` or `fileUploadId?`, `caption?`.                                                                                     |
+| `Bookmark` / `Embed`                                         | `bookmark`, `embed`                                             | `url`.                                                                                                                     |
+| `Equation`                                                   | `equation`                                                      | `expression`.                                                                                                              |
+| `Table` / `TableRow`                                         | `table`, `table_row`                                            | `tableWidth?`, `hasColumnHeader?`, `hasRowHeader?` / `cells`.                                                              |
+| `ColumnList` / `Column`                                      | `column_list`, `column`                                         | `widthRatio?` on `Column`.                                                                                                 |
+| `LinkToPage`                                                 | `link_to_page`                                                  | `pageId`.                                                                                                                  |
+| `TableOfContents`                                            | `table_of_contents`                                             |                                                                                                                            |
+| `ChildPage`                                                  | `child_page`                                                    | `blockKey?`, `title?` (string or `PageTitleSpan[]`), `icon?`, `cover?`, `children`. JSX-driven create/update/archive/move. |
+| `Breadcrumb`                                                 | `breadcrumb`                                                    | Passthrough.                                                                                                               |
+| `Raw`                                                        | (any)                                                           | Escape hatch: `type` + `content`. See [Custom blocks](./cookbook/custom-blocks.md).                                        |
+| `Template` / `LinkPreview` / `SyncedBlock` / `ChildDatabase` | `template` / `link_preview` / `synced_block` / `child_database` | Thin `<Raw>` wrappers.                                                                                                     |
 
 See [`src/components/blocks.tsx`](../src/components/blocks.tsx) for
 signatures.
@@ -72,6 +72,40 @@ From `@overeng/notion-react` (Notion host) and
 Inline components compose: `<Bold><Link href="…"><Italic>…</Italic></Link></Bold>`
 produces the expected nested annotations in a single `rich_text[]`
 entry.
+
+## Page types
+
+Shared types used by both root `<Page>` and `<ChildPage>`. Source:
+[`src/components/props.ts`](../src/components/props.ts).
+
+```ts
+type PageTitle = string | readonly PageTitleSpan[]
+
+type PageTitleSpan = {
+  type: 'text'
+  text: { content: string; link?: { url: string } | null }
+  annotations?: { bold?: boolean; italic?: boolean; /* … */ color?: string }
+}
+
+type PageIcon =
+  | { type: 'emoji'; emoji: string }
+  | { type: 'external'; external: { url: string } }
+  | { type: 'custom_emoji'; custom_emoji: { id: string } }
+
+type PageCover =
+  | { type: 'external'; external: { url: string } }
+  | { type: 'file_upload'; file_upload: { id: string } }
+```
+
+Empirical constraints (from `tmp/notion-618/experiments/findings.md`):
+
+- **A10** — each `PageTitleSpan`'s `text.content` is capped at 2000
+  characters by the Notion API. Longer strings should be pre-split
+  into multiple spans.
+- **A07** — `PageCover` is narrower than `PageIcon`: covers do not
+  accept `emoji` or `custom_emoji`. Response shape for uploaded assets
+  may differ from the request envelope (`file` vs `external`);
+  normalization happens in the client layer.
 
 ## Keys
 
