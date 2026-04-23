@@ -161,7 +161,7 @@ export type ColumnProps = Children & BlockKey & { readonly widthRatio?: number }
 
 export type LinkToPageProps = { readonly pageId: string }
 export type TableOfContentsProps = Record<string, never>
-export type ChildPageProps = {
+export type ChildPageProps = BlockKey & {
   readonly title?: PageTitle
   readonly icon?: PageIcon
   readonly cover?: PageCover

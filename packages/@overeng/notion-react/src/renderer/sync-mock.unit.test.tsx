@@ -1667,7 +1667,10 @@ describe('sync() against in-memory fake Notion', () => {
         Effect.mapError((cause) => new Error(String(cause))),
       ),
     )
-    expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    // Phase 3b rewires this: `<ChildPage>` at top-level is a page node, so
+    // the title change emits a `pages.update` PageOp, not a block update.
+    expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
 
     const newReqs = fake.requests.slice(before)
     const pagePatches = newReqs.filter(
@@ -1714,7 +1717,8 @@ describe('sync() against in-memory fake Notion', () => {
         { pageId: ROOT, cache },
       ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
     )
-    expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    expect(res).toMatchObject({ appends: 0, updates: 0, inserts: 0, removes: 0 })
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
     const newReqs = fake.requests.slice(before)
     const pagePatches = newReqs.filter(
       (r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path),

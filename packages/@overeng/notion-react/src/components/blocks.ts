@@ -172,11 +172,12 @@ export const Column = ({ children, widthRatio, blockKey }: ColumnProps) => {
 }
 export const LinkToPage = ({ pageId }: LinkToPageProps) => h('link_to_page', { pageId })
 export const TableOfContents = () => h('table_of_contents', null)
-export const ChildPage = ({ title, icon, cover, children }: ChildPageProps) => {
+export const ChildPage = ({ title, icon, cover, children, blockKey }: ChildPageProps) => {
   const p: Record<string, unknown> = {}
   if (title !== undefined) p.title = title
   if (icon !== undefined) p.icon = icon
   if (cover !== undefined) p.cover = cover
+  if (blockKey !== undefined) p.blockKey = blockKey
   return h('child_page', Object.keys(p).length === 0 ? null : p, children)
 }
 

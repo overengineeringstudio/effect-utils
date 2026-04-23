@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-react**: Emit and execute page-scope ops (`createPage`, `updatePage`, `archivePage`, `movePage`) from the sync driver (#618 phase 3b). `<Page>` / `<ChildPage>` now flow through `pages.*` endpoints with inline block packing (depth ≤ 2, ≤ 100 blocks), tail block ops scoped to the new page, partial-create rollback on tail failure, icon/cover normalization, and sibling reshuffle → `movePage`. Phase 3c will land recursive reconciliation of an existing sub-page's children and bump `CACHE_SCHEMA_VERSION` to 3.
 - **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
 - **@overeng/pty-effect/client**: Add PTY client support for session tags, `getSession`, `gc`, `updateTags`, `sendData`, `queryStats`, `readRecentEvents`, and live event following
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)

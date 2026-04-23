@@ -139,6 +139,10 @@ export const aggregateMetrics = (): MetricsAggregator => {
         updateNoopCount += 1
       },
       UploadIdRejected: () => {},
+      // Page-scope ops (#618 phase 3b) are counted separately on the sync
+      // result; they do not fold into the block-op OER numerator/denominator.
+      PageOpIssued: () => {},
+      PageOpApplied: () => {},
     })
 
   const getMetrics = (): SyncMetrics => {
