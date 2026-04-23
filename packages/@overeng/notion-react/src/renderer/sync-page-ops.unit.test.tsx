@@ -731,6 +731,106 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
    * block candidates.
    */
   /**
+   * Phase 4b (#618): `icon={null}` / `cover={null}` are clear sentinels.
+   * Dropping the prop is still "no claim" (server state preserved); passing
+   * `null` explicitly means "clear on server" and emits a `pages.update`
+   * with `{icon: null}` / `{cover: null}`.
+   */
+  it('null sentinel: <ChildPage icon={null}> after a set icon emits updatePage({icon: null})', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={{ type: 'emoji', emoji: '📄' }} />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={null} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    const after = fake.requests.slice(before)
+    const patches = after.filter((r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path))
+    expect(patches).toHaveLength(1)
+    const body = patches[0]!.body as { icon?: unknown; cover?: unknown }
+    expect(body.icon).toBeNull()
+    // Server state reflects the clear.
+    const sub = [...fake.pages.values()].find(
+      (p) => p.properties.title.title[0]?.text.content === 'doc',
+    )!
+    expect(sub.icon).toBeNull()
+
+    // Warm re-sync with the same null prop is a no-op.
+    const before2 = fake.requests.length
+    const res2 = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={null} />
+      </Page>,
+      cache,
+    )
+    expect(res2.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(fake.requests.slice(before2).filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('null sentinel: <ChildPage cover={null}> after a set cover emits updatePage({cover: null})', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" cover={{ type: 'external', external: { url: 'https://x/c.png' } }} />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" cover={null} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    const after = fake.requests.slice(before)
+    const patches = after.filter((r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path))
+    expect(patches).toHaveLength(1)
+    const body = patches[0]!.body as { cover?: unknown }
+    expect(body.cover).toBeNull()
+  })
+
+  it('null sentinel: <ChildPage icon={null}> with no prior icon emits no op (null ≡ absent on fresh server state)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: ChildPage with no icon prop at all.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    // Second sync: swap to `icon={null}`. Server has no icon; null-vs-absent
+    // are both "no icon" on a fresh server state, so no updatePage fires.
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={null} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(fake.requests.slice(before).filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  /**
    * Phase 4a (T08): `pages.create` under the same parent runs sequentially
    * (no `Effect.all` / concurrency). Empirical probe: parallel creates under
    * one parent yield a nondeterministic `child_page` ordering on the parent;

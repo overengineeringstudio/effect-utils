@@ -77,6 +77,41 @@ describe('FakeNotion stateful page model', () => {
     expect(fake.pageRequests.every((r) => r.path.startsWith('/v1/pages'))).toBe(true)
   })
 
+  it('PATCH /v1/pages with {icon: null} / {cover: null} clears the fields (phase 4b #618)', async () => {
+    const fake = createFakeNotion()
+    const created = await runWith(
+      fake,
+      NotionPages.create({
+        parent: { type: 'page_id', page_id: PARENT_ID },
+        properties: { title: { title: [{ type: 'text', text: { content: 'clearable' } }] } },
+        icon: { type: 'emoji', emoji: '🧪' },
+      }),
+    )
+    // Initial icon set via create; cover set via first update.
+    await runWith(
+      fake,
+      NotionPages.update({
+        pageId: created.id,
+        cover: { type: 'external', external: { url: 'https://x/c.png' } },
+      }),
+    )
+    expect(fake.pages.get(created.id)!.icon).not.toBeNull()
+    expect(fake.pages.get(created.id)!.cover).not.toBeNull()
+    // Now clear both via null. The mock handler treats `icon: null` /
+    // `cover: null` as a field clear (mirrors Notion's real behaviour).
+    await runWith(
+      fake,
+      NotionPages.update({
+        pageId: created.id,
+        icon: null,
+        cover: null,
+      }),
+    )
+    const stored = fake.pages.get(created.id)!
+    expect(stored.icon).toBeNull()
+    expect(stored.cover).toBeNull()
+  })
+
   it('in_trash=true archives; in_trash=false restores; retrieval still returns the archived page', async () => {
     const fake = createFakeNotion()
     const created = await runWith(

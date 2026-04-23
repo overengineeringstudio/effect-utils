@@ -26,9 +26,17 @@ import type { PageCover, PageIcon } from '../components/props.ts'
  * Returns `undefined` for a `custom_emoji` envelope with an empty id — these
  * round-trip to `null` on the server, so we treat them as "no icon" at the
  * boundary rather than sending a payload Notion will drop.
+ *
+ * Returns `null` verbatim for a `null` input: callers pass `icon={null}` on
+ * `<Page>` / `<ChildPage>` to mean "clear on server"; the diff propagates the
+ * null through to `pages.update({icon: null})`. `undefined` (prop omitted)
+ * continues to mean "no claim".
  */
-export const projectIcon = (icon: PageIcon | undefined): Record<string, unknown> | undefined => {
+export const projectIcon = (
+  icon: PageIcon | null | undefined,
+): Record<string, unknown> | null | undefined => {
   if (icon === undefined) return undefined
+  if (icon === null) return null
   if (icon.type === 'custom_emoji') {
     if (icon.custom_emoji.id.length === 0) {
       // eslint-disable-next-line no-console
@@ -44,10 +52,14 @@ export const projectIcon = (icon: PageIcon | undefined): Record<string, unknown>
 /**
  * Project an author-supplied `PageCover` into the request body shape. Narrower
  * than icons: only external URL / file_upload. Returns `undefined` if the
- * cover is absent.
+ * cover is absent, `null` if the author asked for a clear (`cover={null}`
+ * on `<Page>` / `<ChildPage>`).
  */
-export const projectCover = (cover: PageCover | undefined): Record<string, unknown> | undefined => {
+export const projectCover = (
+  cover: PageCover | null | undefined,
+): Record<string, unknown> | null | undefined => {
   if (cover === undefined) return undefined
+  if (cover === null) return null
   if (cover.type === 'external') return { type: 'external', external: { url: cover.external.url } }
   return { type: 'file_upload', file_upload: { id: cover.file_upload.id } }
 }
