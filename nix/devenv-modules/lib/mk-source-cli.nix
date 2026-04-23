@@ -23,5 +23,8 @@
 { name, entry }:
 pkgs.writeShellScriptBin name ''
   root="''${WORKSPACE_ROOT:-$PWD}"
-  exec ${pkgs.bun}/bin/bun "$root/${entry}" "$@"
+  exec ${pkgs.bun}/bin/bun \
+    --preserve-symlinks \
+    --preserve-symlinks-main \
+    "$root/${entry}" "$@"
 ''
