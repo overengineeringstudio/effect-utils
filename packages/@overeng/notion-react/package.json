@@ -1,0 +1,104 @@
+{
+  "name": "@overeng/notion-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./o11y": "./src/o11y/mod.ts",
+    "./o11y/effect": "./src/o11y/effect-adapter.ts",
+    "./o11y/otel": "./src/o11y/otel-adapter.ts",
+    "./renderer": "./src/renderer/mod.ts",
+    "./test": "./src/test/integration/e2e/helpers.ts",
+    "./web": "./src/web/mod.ts",
+    "./web/katex.css": "./src/web/katex.css",
+    "./web/styles.css": "./src/web/styles.css"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/mod.js",
+      "./renderer": "./dist/renderer/mod.js",
+      "./o11y": "./dist/o11y/mod.js",
+      "./o11y/effect": "./dist/o11y/effect-adapter.js",
+      "./o11y/otel": "./dist/o11y/otel-adapter.js",
+      "./web": "./dist/web/mod.js",
+      "./web/styles.css": "./dist/web/styles.css",
+      "./web/katex.css": "./dist/web/katex.css"
+    }
+  },
+  "scripts": {
+    "storybook": "storybook dev -p 6014",
+    "storybook:build": "storybook build",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:e2e": "vitest run --config vitest.integration.config.ts e2e"
+  },
+  "dependencies": {
+    "@effect/cluster": "0.58.0",
+    "@effect/experimental": "0.60.0",
+    "@effect/opentelemetry": "0.63.0",
+    "@effect/platform": "0.96.0",
+    "@effect/platform-node": "0.106.0",
+    "@effect/rpc": "0.75.0",
+    "@effect/vitest": "0.29.0",
+    "@effect/workflow": "0.18.0",
+    "@overeng/notion-effect-client": "workspace:^",
+    "@overeng/notion-effect-schema": "workspace:^",
+    "@playwright/test": "1.58.2",
+    "effect": "3.21.0",
+    "vitest": "3.2.4"
+  },
+  "devDependencies": {
+    "@effect/vitest": "0.29.0",
+    "@opentelemetry/api": "1.9.0",
+    "@overeng/utils": "workspace:^",
+    "@overeng/utils-dev": "workspace:^",
+    "@storybook/react": "10.2.3",
+    "@storybook/react-vite": "10.2.3",
+    "@types/katex": "0.16.8",
+    "@types/node": "25.3.3",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@types/react-reconciler": "0.28.9",
+    "effect": "3.21.0",
+    "katex": "0.16.45",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-reconciler": "0.33.0",
+    "shiki": "4.0.2",
+    "storybook": "10.2.3",
+    "typescript": "5.9.3",
+    "vite": "7.3.1",
+    "vitest": "3.2.4"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "effect": "^3.21.0",
+    "katex": "^0.16.45",
+    "react": "^19.2.3",
+    "react-reconciler": "^0.33.0",
+    "shiki": "^4.0.2"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "katex": {
+      "optional": true
+    },
+    "shiki": {
+      "optional": true
+    }
+  },
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/notion-effect-client",
+      "packages/@overeng/notion-effect-schema",
+      "packages/@overeng/notion-react",
+      "packages/@overeng/utils",
+      "packages/@overeng/utils-dev"
+    ]
+  }
+}

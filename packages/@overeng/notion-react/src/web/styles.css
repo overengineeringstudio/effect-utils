@@ -1,0 +1,162 @@
+/**
+ * Overrides on top of `vendored-notion.css` (react-notion-x derivative).
+ * Import order matters: consumers must import `vendored-notion.css` first,
+ * then this file. Both are bundled together via `./mod.ts` and
+ * `.storybook/preview.tsx`.
+ *
+ * Only add rules here that (a) fill gaps react-notion-x does not cover or
+ * (b) tighten something for the Storybook preview surface.
+ */
+
+.notion-page {
+  /* Tighter preview padding than upstream's full-app layout. */
+  padding: 32px 48px 96px;
+  max-width: 720px;
+}
+
+/* To-do checkbox — react-notion-x pruned these from its vendored CSS, so
+   we add the minimal ruleset here. Shape: a 14px square with a subtle
+   border; the checked variant fills with Notion blue and shows the
+   inlined SVG check (`currentColor`). */
+.notion-property-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+.notion-property-checkbox-unchecked,
+.notion-property-checkbox-checked {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+.notion-property-checkbox-unchecked {
+  border: 1.2px solid rgba(55, 53, 47, 0.45);
+  background: transparent;
+}
+.notion-property-checkbox-checked {
+  background: rgb(46, 170, 220);
+  color: #fff;
+}
+.notion-property-checkbox-checked svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+/* Column list — vendored CSS targets `.notion-row` (rnx's own flex wrapper)
+   but omits `.notion-column-list`. Mirror the flex layout here. */
+.notion-column-list {
+  display: flex;
+  flex-direction: row;
+  gap: 1em;
+  align-items: flex-start;
+  width: 100%;
+}
+.notion-column-list > .notion-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Callout icon sizing — vendored CSS keys off `.notion-page-icon-inline`
+   inside `.notion-callout` but only when the parent is a real PageIcon.
+   We pass an emoji string so we need the box rules ourselves.
+
+   Top-align icon + first text line so multi-line callouts don't float the
+   emoji half-way down the block (rnx's default `align-items: center` looks
+   wrong once the text wraps). */
+.notion-callout {
+  align-items: flex-start;
+}
+.notion-callout .notion-page-icon-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  font-size: 1.3em;
+  line-height: 1.5;
+}
+
+/* green_background — react-notion-x's vendored CSS omits the green family
+   from both the `--notion-*_background_co` variables and the matching
+   `.notion-*_background_co` rules. Fill the gap so `<Callout
+   color="green_background">` actually gets a backdrop. */
+:root {
+  --notion-green_background_co: rgba(219, 237, 219, 0.3);
+}
+.dark-mode {
+  --notion-green_background_co: rgba(56, 76, 60, 0.3);
+}
+.notion-green_background_co {
+  background-color: var(--notion-green_background_co);
+}
+
+/* simple_table overflow wrapper — keeps wide tables scrollable.
+   rnx wraps the table one level higher in their block tree; we don't
+   model that, so we keep this wrapper. */
+.notion-simple-table-wrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+/* Our media wrapper — upstream styles via .notion-asset-wrapper, we use a
+   plain <figure>. */
+.notion-media {
+  margin: 6px 0;
+}
+.notion-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 3px;
+}
+.notion-image figcaption {
+  color: var(--fg-color-3);
+  font-size: 0.85em;
+  margin-top: 6px;
+}
+.notion-video video,
+.notion-audio audio {
+  max-width: 100%;
+}
+
+/* Debug / passthrough blocks (Raw, Template, LinkPreview, SyncedBlock,
+   ChildDatabase, Breadcrumb). Not a Notion concept — highlight them so
+   reviewers notice unrendered content. */
+.notion-raw {
+  background: #fff4e5;
+  border: 1px dashed #eb8a2f;
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  font-family: var(--font-mono, 'SFMono-Regular', Menlo, Consolas, monospace);
+  font-size: 0.8em;
+  color: #8c4a00;
+  overflow-x: auto;
+}
+
+/* Stub blocks — upstream renders these via collection chrome we dropped. */
+.notion-mention {
+  color: var(--fg-color-3);
+  background: var(--bg-color-1);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.notion-page-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.notion-page-link:hover {
+  background: var(--bg-color-1);
+}

@@ -1,0 +1,61 @@
+diff --git a/dist/cjs/internal/httpClient.js b/dist/cjs/internal/httpClient.js
+index bdbdb25ba6477956c33a53e7d59b812528acf517..aebe701ba0a129adef7e519870e3fb3f666ed4d5 100644
+--- a/dist/cjs/internal/httpClient.js
++++ b/dist/cjs/internal/httpClient.js
+@@ -30,6 +30,8 @@ function _interopRequireWildcard(e, t) { if ("function" == typeof WeakMap) var r
+ const ATTR_HTTP_REQUEST_HEADER = key => `http.request.header.${key}`;
+ const ATTR_HTTP_REQUEST_METHOD = "http.request.method";
+ const ATTR_HTTP_RESPONSE_HEADER = key => `http.response.header.${key}`;
++/* effect-utils local patch: see dist/esm/internal/httpClient.js */
++const HTTP_HEADER_ATTR_ALLOWLIST = new Set(["content-type", "content-length", "date", "x-request-id", "x-notion-request-id", "retry-after", "x-ratelimit-remaining"]);
+ const ATTR_HTTP_RESPONSE_STATUS_CODE = "http.response.status_code";
+ const ATTR_SERVER_ADDRESS = "server.address";
+ const ATTR_SERVER_PORT = "server.port";
+@@ -178,6 +180,7 @@ const make = f => makeWith(effect => Effect.flatMap(effect, request => Effect.wi
+     const redactedHeaderNames = fiber.getFiberRef(Headers.currentRedactedNames);
+     const redactedHeaders = Headers.redact(request.headers, redactedHeaderNames);
+     for (const name in redactedHeaders) {
++      if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue;
+       span.attribute(ATTR_HTTP_REQUEST_HEADER(name), String(redactedHeaders[name]));
+     }
+     request = fiber.getFiberRef(currentTracerPropagation) ? internalRequest.setHeaders(request, TraceContext.toHeaders(span)) : request;
+@@ -186,6 +189,7 @@ const make = f => makeWith(effect => Effect.flatMap(effect, request => Effect.wi
+         span.attribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
+         const redactedHeaders = Headers.redact(response.headers, redactedHeaderNames);
+         for (const name in redactedHeaders) {
++          if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue;
+           span.attribute(ATTR_HTTP_RESPONSE_HEADER(name), String(redactedHeaders[name]));
+         }
+         if (scopedController) return Effect.succeed(response);
+diff --git a/dist/esm/internal/httpClient.js b/dist/esm/internal/httpClient.js
+index 7705712cda37adc16bafbff38af04ff64a67e17a..fd595d369680377de16cb0c0f09f4289777bf34d 100644
+--- a/dist/esm/internal/httpClient.js
++++ b/dist/esm/internal/httpClient.js
+@@ -23,6 +23,11 @@ import * as internalResponse from "./httpClientResponse.js";
+ const ATTR_HTTP_REQUEST_HEADER = key => `http.request.header.${key}`;
+ const ATTR_HTTP_REQUEST_METHOD = "http.request.method";
+ const ATTR_HTTP_RESPONSE_HEADER = key => `http.response.header.${key}`;
++/* effect-utils local patch: upstream hardcodes emission of every request/response
++   header as a span attribute, which for APIs like Notion dumps ~30 low-signal
++   attrs per span (cf-ray, alt-svc, HSTS, cookie-flagging, etc.). Restrict to a
++   small whitelist of headers that are actually useful for debugging. */
++const HTTP_HEADER_ATTR_ALLOWLIST = new Set(["content-type", "content-length", "date", "x-request-id", "x-notion-request-id", "retry-after", "x-ratelimit-remaining"]);
+ const ATTR_HTTP_RESPONSE_STATUS_CODE = "http.response.status_code";
+ const ATTR_SERVER_ADDRESS = "server.address";
+ const ATTR_SERVER_PORT = "server.port";
+@@ -170,6 +175,7 @@ export const make = f => makeWith(effect => Effect.flatMap(effect, request => Ef
+     const redactedHeaderNames = fiber.getFiberRef(Headers.currentRedactedNames);
+     const redactedHeaders = Headers.redact(request.headers, redactedHeaderNames);
+     for (const name in redactedHeaders) {
++      if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue;
+       span.attribute(ATTR_HTTP_REQUEST_HEADER(name), String(redactedHeaders[name]));
+     }
+     request = fiber.getFiberRef(currentTracerPropagation) ? internalRequest.setHeaders(request, TraceContext.toHeaders(span)) : request;
+@@ -178,6 +184,7 @@ export const make = f => makeWith(effect => Effect.flatMap(effect, request => Ef
+         span.attribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
+         const redactedHeaders = Headers.redact(response.headers, redactedHeaderNames);
+         for (const name in redactedHeaders) {
++          if (HTTP_HEADER_ATTR_ALLOWLIST.has(name.toLowerCase()) === false) continue;
+           span.attribute(ATTR_HTTP_RESPONSE_HEADER(name), String(redactedHeaders[name]));
+         }
+         if (scopedController) return Effect.succeed(response);

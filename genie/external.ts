@@ -143,6 +143,10 @@ export const catalog = defineCatalog({
   'react-dom': '19.2.3',
   'react-aria-components': '1.16.0',
 
+  // Notion rendering (optional peer deps)
+  katex: '0.16.45',
+  shiki: '4.0.2',
+
   // PTY
   '@myobie/pty': '0.9.0',
 
@@ -153,6 +157,7 @@ export const catalog = defineCatalog({
   '@types/bun': '1.3.10',
   '@types/eslint': '9.6.1',
   '@types/is-dom': '1.1.2',
+  '@types/katex': '0.16.8',
 
   // Build tools
   typescript: '5.9.3',
@@ -358,6 +363,13 @@ export const utilsPatches = definePatchedDependencies({
   location: 'packages/@overeng/utils',
   patches: {
     'effect-distributed-lock@0.0.11': './patches/effect-distributed-lock@0.0.11.patch',
+    /* Restrict `http.client` tracer span attribute emission to a small
+       allowlist of response headers. Upstream hardcodes emission of every
+       header, which for chatty APIs (Notion: ~31 headers per response)
+       dumps low-signal attrs like cf-ray / alt-svc / cookie flags into
+       every span. Keeps the observability-critical ones
+       (content-type, x-notion-request-id, retry-after, ...). */
+    '@effect/platform@0.96.0': './patches/@effect__platform@0.96.0.patch',
   },
 })
 

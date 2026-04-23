@@ -41,6 +41,18 @@ export default oxlintConfig({
         'overeng/jsdoc-require-exports': 'off',
       },
     },
+    // notion-react: incubation lint waiver (tracked in #599; remove before GA)
+    {
+      files: ['**/notion-react/**'],
+      rules: {
+        'overeng/jsdoc-require-exports': 'off',
+        'overeng/explicit-boolean-compare': 'off',
+        'overeng/named-args': 'off',
+        'overeng/exports-first': 'off',
+        'overeng/storybook/csf-component': 'off',
+        'no-await-in-loop': 'off',
+      },
+    },
     // KDL parser uses control chars in regexes (KDL spec whitespace/newline matching),
     // generator functions (can't be arrow), and has a structural document<->node cycle
     // KDL packages: ported from @bgotink/kdl — relaxed rules for the port

@@ -50,11 +50,11 @@ export const readMutableTextFileIfChanged = Effect.fn(
               return readStableSnapshot(attempt + 1)
             }
 
-            const content = buffer.subarray(0, bytesRead).toString('utf8')
+            const text = buffer.subarray(0, bytesRead).toString('utf8')
             return {
-              content,
+              content: text,
               contentVersion: buildContentVersionFromText({
-                content,
+                content: text,
                 modifiedAtEpochMs: Math.trunc(after.mtimeMs),
               }),
             }

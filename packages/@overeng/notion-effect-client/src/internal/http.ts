@@ -119,11 +119,11 @@ export const buildRequest = ({
     }
 
     return baseRequest
-  }).pipe(
-    Effect.withSpan('NotionHttp.buildRequest', {
-      attributes: { 'notion.method': method, 'notion.path': path },
-    }),
-  )
+  })
+/* No `Effect.withSpan` here: request construction is a trivial synchronous
+     shape (header mapping + body encoding) and the generated span was noise
+     — 85 zero-signal spans per `pixeltrail sync` run. Method/path are
+     already carried on the surrounding `NotionHttp.<METHOD>` span. */
 
 /** Parse error response from Notion API. */
 const parseErrorResponse = (opts: {

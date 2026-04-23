@@ -16,6 +16,7 @@ import megarepoPkg from './packages/@overeng/megarepo/package.json.genie.ts'
 import notionCliPkg from './packages/@overeng/notion-cli/package.json.genie.ts'
 import notionEffectClientPkg from './packages/@overeng/notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from './packages/@overeng/notion-effect-schema/package.json.genie.ts'
+import notionReactPkg from './packages/@overeng/notion-react/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
 import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
@@ -43,6 +44,7 @@ export const rootWorkspacePackages = [
   notionCliPkg,
   notionEffectClientPkg,
   notionEffectSchemaPkg,
+  notionReactPkg,
   oxcConfigPkg,
   ptyEffectPkg,
   opentuiPkg,

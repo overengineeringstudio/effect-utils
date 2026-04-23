@@ -179,6 +179,17 @@
       }
     },
     {
+      "files": ["**/notion-react/**"],
+      "rules": {
+        "overeng/jsdoc-require-exports": "off",
+        "overeng/explicit-boolean-compare": "off",
+        "overeng/named-args": "off",
+        "overeng/exports-first": "off",
+        "overeng/storybook/csf-component": "off",
+        "no-await-in-loop": "off"
+      }
+    },
+    {
       "files": ["**/kdl/src/**", "**/kdl-effect/src/**"],
       "rules": {
         "no-control-regex": "off",
