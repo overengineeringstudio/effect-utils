@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 
 import { InMemoryCache } from '../../../cache/in-memory-cache.ts'
-import { Heading2, Paragraph } from '../../../components/blocks.ts'
+import { ChildPage, Heading2, Paragraph } from '../../../components/blocks.ts'
 import { h } from '../../../components/h.ts'
 import { sync } from '../../../renderer/sync.ts'
 import {
@@ -447,6 +447,39 @@ describe.skipIf(SKIP_E2E)('sync() mutation scenarios (e2e)', () => {
             | { title?: readonly { plain_text?: string }[] }
             | undefined
           expect(titleProp?.title?.[0]?.plain_text).toBe('Renamed page title')
+        }),
+      )
+    },
+    TIMEOUT,
+  )
+
+  // ---------------------------------------------------------------------
+  // 11b. ChildPage title change — regression for issue #618 phase 2.
+  //      The renderer used to emit `blocks.update { child_page: { title } }`
+  //      which Notion rejects; `sync()` must route this through
+  //      `pages.update` so the title change lands.
+  // ---------------------------------------------------------------------
+  it(
+    'child_page title change round-trips via pages.retrieve (issue #618)',
+    async () => {
+      await withScratchPage('mut-child-page-title', (pageId) =>
+        Effect.gen(function* () {
+          const cache = InMemoryCache.make()
+          yield* runE(sync(<ChildPage title="old title" />, { pageId, cache }))
+          const afterCold = yield* runE(readPageTree(pageId))
+          const cp = afterCold.find((b) => b.type === 'child_page')
+          expect(cp).toBeDefined()
+          const childPageId = cp!.id
+
+          const res = yield* runE(sync(<ChildPage title="new title" />, { pageId, cache }))
+          expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+
+          const page = yield* runE(NotionPages.retrieve({ pageId: childPageId }))
+          const props = (page as { properties?: Record<string, unknown> }).properties ?? {}
+          const titleProp = props.title as
+            | { title?: readonly { plain_text?: string }[] }
+            | undefined
+          expect(titleProp?.title?.[0]?.plain_text).toBe('new title')
         }),
       )
     },
