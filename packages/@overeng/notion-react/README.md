@@ -279,7 +279,7 @@ beginners, integrators, and contributors. Quick links:
   [reconciler](./docs/concepts/reconciler.md),
   [theming](./docs/concepts/theming.md)
 - [API overview](./docs/api.md) · [Cookbook](./docs/README.md#integrator--im-wiring-this-into-an-app) ·
-  [Migration](./docs/migration.md)
+  [Migration](./docs/migration.md) · [Limitations](./docs/limitations.md)
 - Contributors: [contributing](./docs/contributing.md) ·
   [testing](./docs/testing.md) ·
   [internals](./docs/internals/architecture.md)

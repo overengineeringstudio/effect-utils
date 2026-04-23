@@ -205,3 +205,9 @@ without applying it. Stability is best-effort.
 | `createNotionRoot`, `NotionReconciler`, `walkInstances`, `blockChildren`, `projectProps` | [`renderer/host-config.ts`](../src/renderer/host-config.ts)             |
 | `OpBuffer`, `Op`                                                                         | [`renderer/op-buffer.ts`](../src/renderer/op-buffer.ts)                 |
 | `flattenRichText`, `INLINE_TAG`, inline types                                            | [`renderer/flatten-rich-text.ts`](../src/renderer/flatten-rich-text.ts) |
+
+## Limitations
+
+Gaps, deliberate deferrals, and behavioural caveats are documented
+inline in [limitations.md](./limitations.md). Consult that before
+assuming a behavior.
