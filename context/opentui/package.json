@@ -7,7 +7,7 @@
     "@effect-atom/atom-react": "0.5.0",
     "@opentui/core": "0.1.88",
     "@opentui/react": "0.1.88",
-    "effect": "3.21.0",
+    "effect": "3.21.2",
     "react": "19.2.3"
   },
   "devDependencies": {
@@ -16,10 +16,10 @@
   },
   "pnpm": {
     "overrides": {
-      "effect": "3.21.0",
-      "@effect/platform": "0.96.0",
+      "effect": "3.21.2",
+      "@effect/platform": "0.96.1",
       "@effect/experimental": "0.60.0",
-      "@effect/rpc": "0.75.0"
+      "@effect/rpc": "0.75.1"
     }
   },
   "$genie": {

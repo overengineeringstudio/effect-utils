@@ -16,12 +16,12 @@
     "@effect/vitest": "0.29.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "25.3.3",
-    "effect": "3.21.0",
+    "effect": "3.21.2",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
-    "effect": "^3.21.0"
+    "effect": "^3.21.2"
   },
   "$genie": {
     "source": "package.json.genie.ts",

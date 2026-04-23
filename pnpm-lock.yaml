@@ -188,7 +188,7 @@ settings:
 packageExtensionsChecksum: sha256-6cS8D25oV8JxyYRUXZukPZaGz7zpUutYoZpOLuoEA/g=
 
 patchedDependencies:
-  '@effect/platform@0.96.0': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
+  '@effect/platform@0.96.1': 08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32
   effect-distributed-lock@0.0.11: a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b
 
 importers:
@@ -198,17 +198,17 @@ importers:
   context/effect/socket:
     dependencies:
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
     devDependencies:
       '@types/node':
         specifier: 25.3.3
@@ -218,10 +218,10 @@ importers:
     dependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
-        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react':
         specifier: 0.5.0
-        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@opentui/core':
         specifier: 0.1.88
         version: 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -229,8 +229,8 @@ importers:
         specifier: 0.1.88
         version: 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -245,14 +245,14 @@ importers:
   packages/@overeng/agent-session-ingest:
     devDependencies:
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -260,8 +260,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -273,19 +273,19 @@ importers:
     devDependencies:
       '@effect/ai':
         specifier: 0.35.0
-        version: 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -299,14 +299,14 @@ importers:
   packages/@overeng/effect-path:
     devDependencies:
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -314,8 +314,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -344,8 +344,8 @@ importers:
         specifier: 5.1.2
         version: 5.1.2(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -372,19 +372,19 @@ importers:
     devDependencies:
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/sql':
-        specifier: 0.51.0
-        version: 0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.51.1
+        version: 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -398,8 +398,8 @@ importers:
         specifier: 19.2.7
         version: 19.2.7
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -419,11 +419,11 @@ importers:
   packages/@overeng/effect-rpc-tanstack/examples/basic:
     dependencies:
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@tanstack/react-router':
         specifier: 1.145.7
         version: 1.145.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -431,8 +431,8 @@ importers:
         specifier: 1.145.10
         version: 1.145.10(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -474,8 +474,8 @@ importers:
         specifier: 19.2.7
         version: 19.2.7
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -511,8 +511,8 @@ importers:
         specifier: 5.1.2
         version: 5.1.2(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -542,37 +542,37 @@ importers:
     dependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
-        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react':
         specifier: 0.5.0
-        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core':
         specifier: 0.1.88
         version: 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -592,8 +592,8 @@ importers:
         specifier: 0.28.9
         version: 0.28.9(@types/react@19.2.7)
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -612,16 +612,16 @@ importers:
     devDependencies:
       '@effect/printer':
         specifier: 0.49.0
-        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
+        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
       '@effect/printer-ansi':
         specifier: 0.49.0
-        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
+        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(f409a92c5b2e760aaf65ed5613fe06b5)
+        version: file:packages/@overeng/tui-react(35e637019561630976a6835fa79173f5)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -654,7 +654,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -662,8 +662,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -679,7 +679,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -687,8 +687,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -700,37 +700,37 @@ importers:
     dependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
-        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react':
         specifier: 0.5.0
-        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core':
         specifier: 0.1.88
         version: 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -748,7 +748,7 @@ importers:
         version: link:../kdl-effect
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(f409a92c5b2e760aaf65ed5613fe06b5)
+        version: file:packages/@overeng/tui-react(35e637019561630976a6835fa79173f5)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -765,8 +765,8 @@ importers:
         specifier: 0.28.9
         version: 0.28.9(@types/react@19.2.7)
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -785,10 +785,10 @@ importers:
     devDependencies:
       '@effect/printer':
         specifier: 0.49.0
-        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
+        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
       '@effect/printer-ansi':
         specifier: 0.49.0
-        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
+        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
@@ -824,37 +824,37 @@ importers:
     dependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
-        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react':
         specifier: 0.5.0
-        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core':
         specifier: 0.1.88
         version: 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -875,7 +875,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(f409a92c5b2e760aaf65ed5613fe06b5)
+        version: file:packages/@overeng/tui-react(35e637019561630976a6835fa79173f5)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -892,8 +892,8 @@ importers:
         specifier: 0.28.9
         version: 0.28.9(@types/react@19.2.7)
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -911,11 +911,11 @@ importers:
         injected: true
     devDependencies:
       '@effect/sql':
-        specifier: 0.51.0
-        version: 0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.51.1
+        version: 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/typeclass':
         specifier: 0.40.0
-        version: 0.40.0(effect@3.21.0)
+        version: 0.40.0(effect@3.21.2)
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -938,23 +938,23 @@ importers:
   packages/@overeng/notion-effect-client:
     dependencies:
       '@effect/cluster':
-        specifier: ^0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: ^0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: ^0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: ^0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform-node':
         specifier: ^0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: ^0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: ^0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/workflow':
         specifier: ^0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@overeng/notion-effect-schema':
         specifier: workspace:^
         version: link:../notion-effect-schema
@@ -963,11 +963,11 @@ importers:
         version: 1.58.2
     devDependencies:
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -978,8 +978,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -991,7 +991,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -999,8 +999,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1011,29 +1011,29 @@ importers:
   packages/@overeng/notion-react:
     dependencies:
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@overeng/notion-effect-client':
         specifier: workspace:^
         version: link:../notion-effect-client
@@ -1044,8 +1044,8 @@ importers:
         specifier: 1.58.2
         version: 1.58.2
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       vitest:
         specifier: 3.2.4
         version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
@@ -1144,7 +1144,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -1152,8 +1152,8 @@ importers:
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1192,8 +1192,8 @@ importers:
         specifier: 5.1.2
         version: 5.1.2(vite@7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       happy-dom:
         specifier: 18.0.1
         version: 18.0.1
@@ -1231,29 +1231,29 @@ importers:
   packages/@overeng/tui-react:
     dependencies:
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@overeng/tui-core':
         specifier: workspace:^
         version: link:../tui-core
@@ -1279,8 +1279,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       string-width:
         specifier: 7.2.0
         version: 7.2.0
@@ -1293,13 +1293,13 @@ importers:
     devDependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
-        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react':
         specifier: 0.5.0
-        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core':
         specifier: 0.1.88
         version: 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -1350,43 +1350,43 @@ importers:
     dependencies:
       '@effect-atom/atom':
         specifier: 0.5.3
-        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect-atom/atom-react':
         specifier: 0.5.0
-        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
+        version: 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
       '@effect/cli':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/printer':
         specifier: 0.49.0
-        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
+        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
       '@effect/printer-ansi':
         specifier: 0.49.0
-        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
+        version: 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core':
         specifier: 0.1.88
         version: 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -1398,7 +1398,7 @@ importers:
         version: link:../tui-core
       '@overeng/tui-react':
         specifier: workspace:^
-        version: file:packages/@overeng/tui-react(f409a92c5b2e760aaf65ed5613fe06b5)
+        version: file:packages/@overeng/tui-react(35e637019561630976a6835fa79173f5)
       '@overeng/utils':
         specifier: workspace:^
         version: link:../utils
@@ -1415,8 +1415,8 @@ importers:
         specifier: 0.28.9
         version: 0.28.9(@types/react@19.2.7)
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -1453,16 +1453,16 @@ importers:
     dependencies:
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@noble/hashes':
         specifier: 1.7.1
         version: 1.7.1
@@ -1470,11 +1470,11 @@ importers:
         specifier: 1.9.0
         version: 1.9.0
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       effect-distributed-lock:
         specifier: 0.0.11
-        version: 0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.0)(ioredis@5.6.1)(typescript@5.9.3)
+        version: 0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.2)(ioredis@5.6.1)(typescript@5.9.3)
       ioredis:
         specifier: 5.6.1
         version: 5.6.1
@@ -1483,17 +1483,17 @@ importers:
         version: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
     devDependencies:
       '@effect/cluster':
-        specifier: 0.58.0
-        version: 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
+        specifier: 0.58.2
+        version: 0.58.2(f335cd339cca8128b299febedcdd4641)
       '@effect/experimental':
         specifier: 0.60.0
-        version: 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
+        version: 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
       '@effect/rpc':
-        specifier: 0.75.0
-        version: 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+        specifier: 0.75.1
+        version: 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@effect/workflow':
         specifier: 0.18.0
-        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentelemetry/resources':
         specifier: 2.2.0
         version: 2.2.0(@opentelemetry/api@1.9.0)
@@ -1541,22 +1541,22 @@ importers:
     devDependencies:
       '@effect/opentelemetry':
         specifier: 0.63.0
-        version: 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
+        version: 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
       '@effect/platform':
-        specifier: 0.96.0
-        version: 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+        specifier: 0.96.1
+        version: 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@effect/platform-node':
         specifier: 0.106.0
-        version: 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+        version: 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@effect/vitest':
         specifier: 0.29.0
-        version: 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@types/node':
         specifier: 25.3.3
         version: 25.3.3
       effect:
-        specifier: 3.21.0
-        version: 3.21.0
+        specifier: 3.21.2
+        version: 3.21.2
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1698,22 +1698,22 @@ packages:
       '@effect/rpc': ^0.75.0
       effect: ^3.21.0
 
-  '@effect/cli@0.75.0':
-    resolution: {integrity: sha512-SAJj1a1kb5yoSUz4yORmwjyOBv89y2wf2Q08KC/RwskUCZunj29eNZgl8Pkbv6nDFTGlre6EW/Kl2S/aOtQWwQ==}
+  '@effect/cli@0.75.1':
+    resolution: {integrity: sha512-aDZ1OZzaFAb6NyBOrP+Bl52eICds5ERI9aa67LzloJELt5SCWeNwthtaEacBvvMkwVUcykJ+YHcGCkD1t47g8g==}
     peerDependencies:
       '@effect/platform': ^0.96.0
       '@effect/printer': ^0.49.0
       '@effect/printer-ansi': ^0.49.0
-      effect: ^3.21.0
+      effect: ^3.21.1
 
-  '@effect/cluster@0.58.0':
-    resolution: {integrity: sha512-0Zog7s7XdntWcTqdqWPoj6nc7hPaWIzp0k0DsFUWyCynXNPK9dAtgFrSce04NhddNqqbhtZck/lhuqJwNBrprQ==}
+  '@effect/cluster@0.58.2':
+    resolution: {integrity: sha512-oxQ3zUhXq0mJA7Y4TliALMP39Bx0LtAIxcqOW1Bdjh6uk+nG7kul/Puw80SwlcYGv3ul50SG+gvSRUTXB8d3JQ==}
     peerDependencies:
-      '@effect/platform': ^0.96.0
-      '@effect/rpc': ^0.75.0
-      '@effect/sql': ^0.51.0
+      '@effect/platform': ^0.96.1
+      '@effect/rpc': ^0.75.1
+      '@effect/sql': ^0.51.1
       '@effect/workflow': ^0.18.0
-      effect: ^3.21.0
+      effect: ^3.21.2
 
   '@effect/experimental@0.60.0':
     resolution: {integrity: sha512-i5zIg7Xup2KgHyqHlYtkgqSE1bNzCL0GbbTQxrpIzKF0q/ebknOk/ox8B/gIq2vImjoEE81h/oxU+6i1NH210g==}
@@ -1760,10 +1760,10 @@ packages:
       '@effect/sql': ^0.51.0
       effect: ^3.21.0
 
-  '@effect/platform@0.96.0':
-    resolution: {integrity: sha512-U7PLhkVzg7zzrgFvyWATOzD6reL87KG/fcdOxgLWBQ/J5CCU6qdPAVG+0o6o+IxcsLoqGwxs+rFxaFzrdtDV1A==}
+  '@effect/platform@0.96.1':
+    resolution: {integrity: sha512-cjB1QZZYEP8JXCFNGvBLVi0T6YUBQTmOVEUA3SDbiQ6RUO+p6CE3eyD2vMWmrz5nE8yY5QSAuOV9v0boEcUv+A==}
     peerDependencies:
-      effect: ^3.21.0
+      effect: ^3.21.2
 
   '@effect/printer-ansi@0.49.0':
     resolution: {integrity: sha512-N2OyqDTqcGLKeUy2URowThoU5issZQwG/Ihv5qOYWJD0neq9qBIgC57/9BkFpTRPNSMtPHyCOk1TFj297HGLLQ==}
@@ -1777,18 +1777,18 @@ packages:
       '@effect/typeclass': ^0.40.0
       effect: ^3.21.0
 
-  '@effect/rpc@0.75.0':
-    resolution: {integrity: sha512-VFeJ16cZUXqiIzG9UHOVKGuiBPJ7fV+0lEbJU6xi12JnnxXe/19BQPpOwiRawCUbPOR3/xIURDUgGxU+Ft0pvQ==}
+  '@effect/rpc@0.75.1':
+    resolution: {integrity: sha512-8yxF8+mMGGEbF8BUCp34HjdJj7CvTpGeZxBcpsDF6v7zPiGbJL1UDLzA8ZqYjmcngBHhPecbmeONTk/LiLAaEg==}
     peerDependencies:
-      '@effect/platform': ^0.96.0
-      effect: ^3.21.0
+      '@effect/platform': ^0.96.1
+      effect: ^3.21.2
 
-  '@effect/sql@0.51.0':
-    resolution: {integrity: sha512-e7hWe46QD15eMCr4kNBMVdItIVK/WLHJG+d8DLL1FjVf5Ra82k2mwUYIXplJewVbHjt3my6GSKPPd1ZrQjVd5A==}
+  '@effect/sql@0.51.1':
+    resolution: {integrity: sha512-iPDAefrJcI0HcTk9keP9Gq8Pg08K1HmpnmZZt85AqyTcvorhoNsXDFiKBbPldfV2CortwVkacX8KjO9GPpSYCA==}
     peerDependencies:
       '@effect/experimental': ^0.60.0
-      '@effect/platform': ^0.96.0
-      effect: ^3.21.0
+      '@effect/platform': ^0.96.1
+      effect: ^3.21.2
 
   '@effect/typeclass@0.40.0':
     resolution: {integrity: sha512-L/2o2ImeqbemFlqH0b3y2PqQTFc+E0/DUnffCU8bkJUGh0yUZmh2RXuXhR8QOpfNCe718JQjI+mLnpVF2MMmaQ==}
@@ -2347,14 +2347,14 @@ packages:
     peerDependencies:
       '@effect-atom/atom': ^0.5.3
       '@effect-atom/atom-react': ^0.5.0
-      '@effect/cli': ^0.75.0
+      '@effect/cli': ^0.75.1
       '@effect/platform-node': ^0.106.0
       '@opentui/core': ^0.1.88
       '@opentui/react': ^0.1.88
       '@storybook/react': ^10.2.3
       '@types/react': ^19.2.7
       '@types/react-reconciler': ^0.28.9
-      effect: ^3.21.0
+      effect: ^3.21.2
       react: ^19.2.3
       react-dom: ^19.2.3
       react-reconciler: ^0.33.0
@@ -4120,8 +4120,8 @@ packages:
       ioredis:
         optional: true
 
-  effect@3.21.0:
-    resolution: {integrity: sha512-PPN80qRokCd1f015IANNhrwOnLO7GrrMQfk4/lnZRE/8j7UPWrNNjPV0uBrZutI/nHzernbW+J0hdqQysHiSnQ==}
+  effect@3.21.2:
+    resolution: {integrity: sha512-rXd2FGDM8KdjSIrc+mqEELo7ScW7xTVxEf1iInmPSpIde9/nyGuFM710cjTo7/EreGXiUX2MOonPpprbz2XHCg==}
 
   electron-to-chromium@1.5.313:
     resolution: {integrity: sha512-QBMrTWEf00GXZmJyx2lbYD45jpI3TUFnNIzJ5BBc8piGUDwMPa1GV6HJWTZVvY/eiN3fSopl7NRbgGp9sZ9LTA==}
@@ -4678,8 +4678,8 @@ packages:
     resolution: {integrity: sha512-P0efT1C9jIdVRefqjzOQ9Xml57zpOXnIuS+csaB4MdZbTdmGDLo8XhzBG1N7aO11gKDDkJvBLULeFTo46wwreA==}
     hasBin: true
 
-  msgpackr@1.11.9:
-    resolution: {integrity: sha512-FkoAAyyA6HM8wL882EcEyFZ9s7hVADSwG9xrVx3dxxNQAtgADTrJoEWivID82Iv1zWDsv/OtbrrcZAzGzOMdNw==}
+  msgpackr@1.11.10:
+    resolution: {integrity: sha512-iCZNq+HszvF+fC3anCm4nBmWEnbeIAfpDs6IStAEKhQ2YSgkjzVG2FF9XJqwwQh5bH3N9OUTUt4QwVN6MLMLtA==}
 
   multipasta@0.2.7:
     resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
@@ -5611,10 +5611,10 @@ snapshots:
   '@dimforge/rapier2d-simd-compat@0.17.3':
     optional: true
 
-  '@effect-atom/atom-react@0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)':
+  '@effect-atom/atom-react@0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)':
     dependencies:
-      '@effect-atom/atom': 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect-atom/atom': 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
       react: 19.2.3
       scheduler: 0.27.0
     transitivePeerDependencies:
@@ -5622,51 +5622,51 @@ snapshots:
       - '@effect/platform'
       - '@effect/rpc'
 
-  '@effect-atom/atom@0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)':
+  '@effect-atom/atom@0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
 
-  '@effect/ai@0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)':
+  '@effect/ai@0.35.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
       find-my-way-ts: 0.1.6
 
-  '@effect/cli@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)':
+  '@effect/cli@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
-      '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
+      '@effect/printer-ansi': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
       ini: 4.1.3
       toml: 3.0.0
       yaml: 2.8.2
 
-  '@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd)':
+  '@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641)':
     dependencies:
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      '@effect/sql': 0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      '@effect/workflow': 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      '@effect/workflow': 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
       kubernetes-types: 1.30.0
 
-  '@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)':
+  '@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)':
     dependencies:
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      effect: 3.21.2
       uuid: 11.1.0
     optionalDependencies:
       ioredis: 5.6.1
 
-  '@effect/opentelemetry@0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)':
+  '@effect/opentelemetry@0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)':
     dependencies:
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/resources': 2.2.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-logs': 0.208.0(@opentelemetry/api@1.9.0)
@@ -5675,30 +5675,30 @@ snapshots:
       '@opentelemetry/sdk-trace-node': 2.2.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-web': 2.2.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.21.0
+      effect: 3.21.2
 
-  '@effect/platform-node-shared@0.59.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)':
+  '@effect/platform-node-shared@0.59.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/cluster': 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      '@effect/sql': 0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
+      '@effect/cluster': 0.58.2(f335cd339cca8128b299febedcdd4641)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
       '@parcel/watcher': 2.5.6
-      effect: 3.21.0
+      effect: 3.21.2
       multipasta: 0.2.7
       ws: 8.19.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)':
+  '@effect/platform-node@0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/cluster': 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/platform-node-shared': 0.59.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      '@effect/sql': 0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/cluster': 0.58.2(f335cd339cca8128b299febedcdd4641)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/platform-node-shared': 0.59.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
       mime: 3.0.0
       undici: 7.24.4
       ws: 8.19.0
@@ -5706,52 +5706,52 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)':
+  '@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)':
     dependencies:
-      effect: 3.21.0
+      effect: 3.21.2
       find-my-way-ts: 0.1.6
-      msgpackr: 1.11.9
+      msgpackr: 1.11.10
       multipasta: 0.2.7
 
-  '@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)':
+  '@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)
-      '@effect/typeclass': 0.40.0(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/printer': 0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)
+      '@effect/typeclass': 0.40.0(effect@3.21.2)
+      effect: 3.21.2
 
-  '@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0)':
+  '@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/typeclass': 0.40.0(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/typeclass': 0.40.0(effect@3.21.2)
+      effect: 3.21.2
 
-  '@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)':
+  '@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      effect: 3.21.0
-      msgpackr: 1.11.9
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      effect: 3.21.2
+      msgpackr: 1.11.10
 
-  '@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)':
+  '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      effect: 3.21.2
       uuid: 11.1.0
 
-  '@effect/typeclass@0.40.0(effect@3.21.0)':
+  '@effect/typeclass@0.40.0(effect@3.21.2)':
     dependencies:
-      effect: 3.21.0
+      effect: 3.21.2
 
-  '@effect/vitest@0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
+  '@effect/vitest@0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
-      effect: 3.21.0
+      effect: 3.21.2
       vitest: 3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
-  '@effect/workflow@0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)':
+  '@effect/workflow@0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)':
     dependencies:
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      effect: 3.21.0
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      effect: 3.21.2
 
   '@esbuild/aix-ppc64@0.27.4':
     optional: true
@@ -6303,19 +6303,19 @@ snapshots:
       - typescript
       - web-tree-sitter
 
-  '@overeng/tui-react@file:packages/@overeng/tui-react(f409a92c5b2e760aaf65ed5613fe06b5)':
+  '@overeng/tui-react@file:packages/@overeng/tui-react(35e637019561630976a6835fa79173f5)':
     dependencies:
-      '@effect-atom/atom': 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
-      '@effect-atom/atom-react': 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)(react@19.2.3)(scheduler@0.27.0)
-      '@effect/cli': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
-      '@effect/cluster': 0.58.0(8af6ba0060f6fab5cb507354609d74fd)
-      '@effect/experimental': 0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1)
-      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.0)
-      '@effect/platform': 0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0)
-      '@effect/platform-node': 0.106.0(@effect/cluster@0.58.0(8af6ba0060f6fab5cb507354609d74fd))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(@effect/sql@0.51.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
-      '@effect/rpc': 0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)
-      '@effect/vitest': 0.29.0(effect@3.21.0)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
-      '@effect/workflow': 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0)(ioredis@5.6.1))(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(@effect/rpc@0.75.0(@effect/platform@0.96.0(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.0))(effect@3.21.0))(effect@3.21.0)
+      '@effect-atom/atom': 0.5.3(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect-atom/atom-react': 0.5.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)(react@19.2.3)(scheduler@0.27.0)
+      '@effect/cli': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/printer-ansi@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(@effect/printer@0.49.0(@effect/typeclass@0.40.0(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect/cluster': 0.58.2(f335cd339cca8128b299febedcdd4641)
+      '@effect/experimental': 0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1)
+      '@effect/opentelemetry': 0.63.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@opentelemetry/api@1.9.0)(@opentelemetry/resources@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-logs@0.208.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@2.2.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.21.2)
+      '@effect/platform': 0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2)
+      '@effect/platform-node': 0.106.0(@effect/cluster@0.58.2(f335cd339cca8128b299febedcdd4641))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect/rpc': 0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)
+      '@effect/vitest': 0.29.0(effect@3.21.2)(vitest@3.2.4(@types/node@25.3.3)(happy-dom@18.0.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+      '@effect/workflow': 0.18.0(@effect/experimental@0.60.0(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2)(ioredis@5.6.1))(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(@effect/rpc@0.75.1(@effect/platform@0.96.1(patch_hash=08d6466db56675b7a32a3a3c64815a5b784f583b310b6758471a97d3db6edd32)(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
       '@opentui/core': 0.1.88(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       '@opentui/react': 0.1.88(react-devtools-core@7.0.1)(react@19.2.3)(stage-js@1.0.1)(typescript@5.9.3)(web-tree-sitter@0.25.10)(ws@8.19.0)
       '@overeng/tui-core': link:packages/@overeng/tui-core
@@ -6329,7 +6329,7 @@ snapshots:
       '@xterm/headless': 6.0.0
       '@xterm/xterm': 6.0.0
       cli-truncate: 5.1.1
-      effect: 3.21.0
+      effect: 3.21.2
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
       react-reconciler: 0.33.0(react@19.2.3)
@@ -8561,14 +8561,14 @@ snapshots:
       domelementtype: 2.3.0
       domhandler: 5.0.3
 
-  effect-distributed-lock@0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.0)(ioredis@5.6.1)(typescript@5.9.3):
+  effect-distributed-lock@0.0.11(patch_hash=a365d5c8857e3a421ea3b83b6be483433a5a75b344072aa68c4c984b14ec5a0b)(effect@3.21.2)(ioredis@5.6.1)(typescript@5.9.3):
     dependencies:
-      effect: 3.21.0
+      effect: 3.21.2
       typescript: 5.9.3
     optionalDependencies:
       ioredis: 5.6.1
 
-  effect@3.21.0:
+  effect@3.21.2:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
@@ -9142,7 +9142,7 @@ snapshots:
       '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.3
     optional: true
 
-  msgpackr@1.11.9:
+  msgpackr@1.11.10:
     optionalDependencies:
       msgpackr-extract: 3.0.3
 

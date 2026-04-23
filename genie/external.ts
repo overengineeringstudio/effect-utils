@@ -123,19 +123,19 @@ export const catalog = defineCatalog({
   // Effect ecosystem
   '@effect/ai': '0.35.0',
   'effect-distributed-lock': '0.0.11',
-  effect: '3.21.0',
-  '@effect/platform': '0.96.0',
+  effect: '3.21.2',
+  '@effect/platform': '0.96.1',
   '@effect/platform-node': '0.106.0',
-  '@effect/cli': '0.75.0',
+  '@effect/cli': '0.75.1',
   '@effect/vitest': '0.29.0',
   '@effect/printer': '0.49.0',
   '@effect/printer-ansi': '0.49.0',
   '@effect/typeclass': '0.40.0',
-  '@effect/cluster': '0.58.0',
-  '@effect/sql': '0.51.0',
+  '@effect/cluster': '0.58.2',
+  '@effect/sql': '0.51.1',
   '@effect/experimental': '0.60.0',
   '@effect/workflow': '0.18.0',
-  '@effect/rpc': '0.75.0',
+  '@effect/rpc': '0.75.1',
   '@effect/opentelemetry': '0.63.0',
 
   // React ecosystem
@@ -369,7 +369,7 @@ export const utilsPatches = definePatchedDependencies({
        dumps low-signal attrs like cf-ray / alt-svc / cookie flags into
        every span. Keeps the observability-critical ones
        (content-type, x-notion-request-id, retry-after, ...). */
-    '@effect/platform@0.96.0': './patches/@effect__platform@0.96.0.patch',
+    '@effect/platform@0.96.1': './patches/@effect__platform@0.96.0.patch',
   },
 })
 
