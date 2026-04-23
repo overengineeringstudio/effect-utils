@@ -468,6 +468,13 @@ const diffChildren = (
             ...(coverDrift ? { cover: cand.cover } : {}),
           })
         }
+        // Recurse into the moved page's descendants against the cache subtree
+        // we took the id from. Without this, any nested children keep their
+        // tmp ids and `candidateToCache` later throws `unresolved blockId`;
+        // edits inside the moved page would also be silently skipped in the
+        // same sync. Mirrors the retained-page branch above.
+        const moveSubCtx: DiffCtx = { ...ctx, scopePageId: moveSource.blockId }
+        diffChildren(moveSource.blockId, moveSource.children, cand.children, ops, moveSubCtx)
         prevRef = moveSource.blockId
       } else {
         const tmpPageId = nextTmp()

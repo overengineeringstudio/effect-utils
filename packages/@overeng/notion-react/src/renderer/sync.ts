@@ -715,10 +715,20 @@ const resolveInlineChildrenIds = (
           ),
         )
         const liveArr = Chunk.toReadonlyArray(live)
-        for (let i = 0; i < nodes.length && i < liveArr.length; i++) {
+        // `nodes` can mix block candidates (which were inlined into the
+        // pages.create body and therefore appear in `liveArr`) with page
+        // candidates (tailed out as follow-up createPage ops and NOT present
+        // here). Advance the live-child cursor only for block candidates so
+        // alignment doesn't shift when a page sibling appears before an inline
+        // block. See PR #623 review: "Skip page nodes without advancing
+        // live-child alignment".
+        let liveIdx = 0
+        for (let i = 0; i < nodes.length; i++) {
           const cand = nodes[i]!
-          const server = liveArr[i]!
           if (cand.nodeKind === 'page') continue
+          if (liveIdx >= liveArr.length) break
+          const server = liveArr[liveIdx]!
+          liveIdx++
           if (cand.blockId !== undefined && cand.blockId.startsWith('tmp-')) {
             idMap.set(cand.blockId, server.id)
           }

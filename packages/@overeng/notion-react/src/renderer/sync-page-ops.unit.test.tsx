@@ -660,4 +660,93 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       removes: second.removes,
     }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
   })
+
+  /**
+   * PR #623 review fix: movePage branch used to set cand.blockId but never
+   * recursed into cand.children against the move source's cache subtree.
+   * A moved <ChildPage> with descendants would leave those descendants'
+   * blockIds unresolved; `candidateToCache` later threw `unresolved
+   * blockId` on the next sync, and any edits inside the moved page were
+   * silently skipped.
+   */
+  it('move with descendants: cross-parent move carries children through resync (PR #623 review)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: two parents under the root, one carries a keyed sub-page
+    // that contains a paragraph.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="parent-A">
+          <ChildPage blockKey="moved" title="moved-page">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+        <ChildPage blockKey="B" title="parent-B" />
+      </Page>,
+      cache,
+    )
+    // Second sync: move the keyed sub-page under parent-B. This must emit
+    // exactly one movePage + zero block ops and the next sync must be a
+    // clean no-op (proves descendants round-tripped cleanly).
+    const r2 = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="parent-A" />
+        <ChildPage blockKey="B" title="parent-B">
+          <ChildPage blockKey="moved" title="moved-page">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(r2.pages).toMatchObject({ archives: 0 })
+    expect(r2.pages.moves).toBe(1)
+    expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+    // Third sync is the real assertion: any unresolved blockId would fault
+    // here on candidateToCache.
+    const r3 = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="parent-A" />
+        <ChildPage blockKey="B" title="parent-B">
+          <ChildPage blockKey="moved" title="moved-page">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(r3.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r3.appends + r3.inserts + r3.updates + r3.removes).toBe(0)
+  })
+
+  /**
+   * PR #623 review fix: `resolveInlineChildrenIds` used to advance its
+   * live-child cursor even on page candidates, which aren't present in the
+   * server response. A page before an inline block would shift alignment
+   * and drop the block's tmpId from the idMap. The regression pins a
+   * page-before-block candidate order so the cursor advances only for
+   * block candidates.
+   */
+  it('resolveInlineChildrenIds: page candidate before an inline block does not shift alignment (PR #623 review)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // Root pass: a ChildPage sibling before a sibling Paragraph — both at
+    // the same level under <Page>. Root scope already interleaves ops, so
+    // the alignment bug bites at nested scope. Keep this as a belt-and-
+    // suspenders regression: pair candidate order is the load-bearing
+    // invariant either way.
+    const tree = (
+      <Page>
+        <ChildPage blockKey="cp" title="child-page" />
+        <Paragraph blockKey="p">sibling</Paragraph>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const r2 = await runSync(fake, tree, cache)
+    expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+  })
 })
