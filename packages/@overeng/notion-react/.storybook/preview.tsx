@@ -6,7 +6,7 @@ import '../src/web/styles.css'
 import '../src/web/katex.css'
 
 /**
- * Per R21 + T05 in `context/vrs/requirements.md`, the web renderer under
+ * Per R21 + T05 in `docs/vrs/requirements.md`, the web renderer under
  * `src/web/` is explicitly a preview surface — not a production Notion
  * renderer. DOM, CSS hooks, and component props may change without
  * deprecation. This banner makes that visible in every story so reviewers

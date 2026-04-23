@@ -4,9 +4,9 @@ React component library and `react-reconciler`-based renderer that produces
 Notion blocks. Write Notion pages as JSX; the renderer translates to
 `NotionBlocks.append` / `update` / `delete` calls against the Notion API.
 
-Full design docs: [`context/vrs/vision.md`](./context/vrs/vision.md) ·
-[`requirements.md`](./context/vrs/requirements.md) ·
-[`spec.md`](./context/vrs/spec.md).
+Full design docs: [`docs/vrs/vision.md`](./docs/vrs/vision.md) ·
+[`requirements.md`](./docs/vrs/requirements.md) ·
+[`spec.md`](./docs/vrs/spec.md).
 
 ## Scope
 
@@ -14,6 +14,25 @@ This library renders React → Notion **blocks**. Notion **databases**
 (creating/updating DBs, rows, schema, views) are out of scope — use
 [`@overeng/notion-effect-client`](../notion-effect-client) directly for
 database operations.
+
+### Sub-pages
+
+`<ChildPage>` renders a reference to an existing Notion page. Creating a
+new sub-page is a page-level op (`pages.create`), not a block-level op,
+and is not driven by this library today. Use the two-step pattern:
+
+```ts
+// 1. Create the page via @overeng/notion-effect-client
+const subpage = yield* NotionPages.create({
+  parent: { page_id: parentId },
+  properties: { title: [{ type: 'text', text: { content: 'My Subpage' } }] },
+})
+
+// 2. Render its id from JSX (read-only reference)
+<ChildPage blockKey={subpage.id} title="My Subpage" />
+```
+
+Integrated JSX-driven sub-page creation may follow in a later version.
 
 ## Why
 
@@ -173,7 +192,7 @@ forking.
 the only error channel surfaced to callers. `SyncResult` carries a
 `fallbackReason` when the sync took a fallback path
 (`"cold-cache"`, `"schema-mismatch"`, …). See the
-[fallback table in spec.md](./context/vrs/spec.md#fallback-decision-table-r16).
+[fallback table in spec.md](./docs/vrs/spec.md#fallback-decision-table-r16).
 
 ## Storybook preview (`@overeng/notion-react/web`)
 
@@ -182,7 +201,7 @@ the only error channel surfaced to callers. `SyncResult` carries a
 > deprecation. It exists so authors can iterate on block / inline
 > components visually in Storybook. It is **not** pixel-parity with
 > Notion, not an end-user renderer, and not an API-stable target. See
-> R21 + T05 in [`context/vrs/requirements.md`](./context/vrs/requirements.md).
+> R21 + T05 in [`docs/vrs/requirements.md`](./docs/vrs/requirements.md).
 
 ```bash
 pnpm --filter @overeng/notion-react storybook
@@ -194,7 +213,7 @@ TypeScript error.
 
 ### Non-goals
 
-Mirrors [`context/vrs/vision.md`](./context/vrs/vision.md) "What This Is Not":
+Mirrors [`docs/vrs/vision.md`](./docs/vrs/vision.md) "What This Is Not":
 
 - Not a Notion editor
 - Not a collaborative renderer
@@ -225,4 +244,4 @@ Source material:
 
 - Block + inline component reference: `src/components/`
 - Host-config + diff internals: `src/renderer/`
-- Design questions (open): [`spec.md#open-design-questions`](./context/vrs/spec.md#open-design-questions)
+- Design questions (open): [`spec.md#open-design-questions`](./docs/vrs/spec.md#open-design-questions)

@@ -118,4 +118,4 @@ sync — handlers are not safe to share across overlapping `sync()` calls.
 ## See also
 
 - [observing-sync.md](./observing-sync.md) — the underlying `onEvent` hook
-- [o11y-design.md](../../context/o11y-design.md) — design rationale
+- [o11y-design.md](../internals/o11y-design.md) — design rationale

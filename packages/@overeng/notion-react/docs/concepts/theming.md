@@ -4,7 +4,7 @@ This page covers the web preview surface only. The Notion renderer
 itself produces block-type tagged payloads — Notion's own client styles
 them. The web renderer exists for local iteration in Storybook and is
 **not** API-stable (see T05 in
-[requirements.md](../../context/vrs/requirements.md)).
+[requirements.md](../vrs/requirements.md)).
 
 ## CSS surface
 

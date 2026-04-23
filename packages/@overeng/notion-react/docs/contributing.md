@@ -47,7 +47,7 @@ can't falsify your change.
 ## VRS is the source of design truth
 
 System-level design lives in
-[`../context/vrs/`](../context/vrs/) as three documents:
+[`./vrs/`](./vrs/) as three documents:
 
 - `vision.md` — what problem the package solves and why.
 - `requirements.md` — testable constraints (R01, R02, …).
