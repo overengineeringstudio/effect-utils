@@ -10,11 +10,11 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@effect/platform": "0.96.0",
-    "@effect/rpc": "0.75.0",
+    "@effect/platform": "0.96.1",
+    "@effect/rpc": "0.75.1",
     "@tanstack/react-router": "1.145.7",
     "@tanstack/react-start": "1.145.10",
-    "effect": "3.21.0",
+    "effect": "3.21.2",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

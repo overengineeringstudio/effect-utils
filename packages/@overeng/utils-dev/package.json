@@ -14,20 +14,20 @@
   },
   "devDependencies": {
     "@effect/opentelemetry": "0.63.0",
-    "@effect/platform": "0.96.0",
+    "@effect/platform": "0.96.1",
     "@effect/platform-node": "0.106.0",
     "@effect/vitest": "0.29.0",
     "@types/node": "25.3.3",
-    "effect": "3.21.0",
+    "effect": "3.21.2",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
     "@effect/opentelemetry": "^0.63.0",
-    "@effect/platform": "^0.96.0",
+    "@effect/platform": "^0.96.1",
     "@effect/platform-node": "^0.106.0",
     "@effect/vitest": "^0.29.0",
-    "effect": "^3.21.0",
+    "effect": "^3.21.2",
     "vitest": "^3.2.4"
   },
   "$genie": {
