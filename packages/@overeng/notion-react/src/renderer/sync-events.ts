@@ -125,7 +125,7 @@ export type SyncEvent = Data.TaggedEnum<{
    */
   PageOpIssued: {
     readonly id: number
-    readonly kind: 'createPage' | 'updatePage' | 'archivePage' | 'movePage'
+    readonly kind: 'createPage' | 'updatePage' | 'archivePage' | 'movePage' | 'reorderPages'
     readonly pageId: string
     readonly at: number
   }
@@ -135,7 +135,7 @@ export type SyncEvent = Data.TaggedEnum<{
    */
   PageOpApplied: {
     readonly id: number
-    readonly kind: 'createPage' | 'updatePage' | 'archivePage' | 'movePage'
+    readonly kind: 'createPage' | 'updatePage' | 'archivePage' | 'movePage' | 'reorderPages'
     readonly pageId: string
     readonly resolvedPageId?: string
     readonly durationMs: number

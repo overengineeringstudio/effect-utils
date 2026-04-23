@@ -77,7 +77,7 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
           </Page>,
           { pageId: rootId, cache },
         )
-        expect(r4.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+        expect(r4.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
 
         const r5 = yield* sync(<Page />, { pageId: rootId, cache })
         expect(r5.pages.archives).toBe(1)
@@ -197,7 +197,7 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
 
         // Rapid resync → zero ops (R04 + S6).
         const r2 = yield* sync(tree, { pageId: rootId, cache })
-        expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+        expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
         expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
       }),
     )
@@ -322,7 +322,7 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
 
         // Rapid resync → zero ops.
         const r2 = yield* sync(tree, { pageId: rootId, cache })
-        expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+        expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
         expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
       }),
     )
@@ -359,7 +359,7 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
 
         // Rapid resync → zero ops.
         const r2 = yield* sync(tree, { pageId: rootId, cache })
-        expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+        expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
         expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
       }),
     )
@@ -431,8 +431,46 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
 
         // Step 5: resync identical → zero ops.
         const r5 = yield* sync(finalTree, { pageId: rootId, cache })
-        expect(r5.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+        expect(r5.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
         expect(r5.appends + r5.inserts + r5.updates + r5.removes).toBe(0)
+      }),
+    )
+  }, 90_000)
+
+  /**
+   * Phase 4d (issue #618): opt-in `reorderSiblings` lands the JSX order under
+   * one parent via the `pages.move` roundtrip primitive. One live scenario
+   * keeps the happy-path end-to-end; unit-level coverage exercises the op
+   * count and holding-parent lifecycle.
+   */
+  it('reorderSiblings: true — three siblings reorder lands in JSX order', async () => {
+    await withScratchPage('sub-pages-reorder', (rootId) =>
+      Effect.gen(function* () {
+        const cache = InMemoryCache.make()
+        yield* sync(
+          <Page>
+            <ChildPage blockKey="a" title="A" />
+            <ChildPage blockKey="b" title="B" />
+            <ChildPage blockKey="c" title="C" />
+          </Page>,
+          { pageId: rootId, cache },
+        )
+        // Reorder to [c, b, a].
+        const r = yield* sync(
+          <Page>
+            <ChildPage blockKey="c" title="C" />
+            <ChildPage blockKey="b" title="B" />
+            <ChildPage blockKey="a" title="A" />
+          </Page>,
+          { pageId: rootId, cache, reorderSiblings: true },
+        )
+        expect(r.pages.reorders).toBe(1)
+        // Read server order and compare against JSX.
+        const live = yield* readPageTree(rootId, 1)
+        const titles = live
+          .filter((n) => n.type === 'child_page')
+          .map((n) => (n.payload as { title?: string }).title)
+        expect(titles).toEqual(['C', 'B', 'A'])
       }),
     )
   }, 90_000)

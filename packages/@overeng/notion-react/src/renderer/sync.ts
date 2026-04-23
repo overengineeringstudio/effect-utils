@@ -1093,6 +1093,27 @@ export const sync = (
      * Effect — mirroring `NotionCache.save/load`.
      */
     readonly onUploadIdRejected?: OnUploadIdRejected
+    /**
+     * Issue #618 phase 4d: opt-in intra-parent `<ChildPage>` reorder. When
+     * enabled, retained-by-blockKey page siblings whose order differs from
+     * the cache's order emit a single `reorderPages` op that the driver
+     * realizes via 2N `pages.move` roundtrips through a holding parent
+     * (Notion's `pages.move` rejects same-parent, but a trip to any other
+     * parent and back bumps the page to the end of the original parent's
+     * `child_page` list — see `tmp/notion-618/options-ordering.md`).
+     *
+     * - `undefined` / `false` (default): retained-but-reshuffled page
+     *   siblings still emit `movePage` with the same parent; the API
+     *   rejects it and the driver swallows the validation error. Sibling
+     *   order on the server stays as it was.
+     * - `true`: library auto-provisions a single scratch page under the
+     *   reordered siblings' parent (title: "@overeng/notion-react holding
+     *   (do not touch)"), reuses it across syncs via the cache, and archives
+     *   it between reorder bursts.
+     * - `{ holdingParentId }`: caller supplies a workspace-accessible page
+     *   id. The library never archives caller-supplied holding parents.
+     */
+    readonly reorderSiblings?: boolean | { readonly holdingParentId: string }
   },
 ): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient.HttpClient> => {
   /* Compose the user `onEvent` with an internal metrics aggregator iff
@@ -1304,7 +1325,9 @@ export const sync = (
       }
     }
 
-    const plan = diff(diffBase, candidate)
+    const plan = diff(diffBase, candidate, {
+      reorderSiblings: opts.reorderSiblings !== undefined && opts.reorderSiblings !== false,
+    })
     if (onEvent !== undefined) {
       const tally = tallyDiff(plan)
       onEvent(
@@ -1438,7 +1461,8 @@ export const sync = (
         op.kind === 'createPage' ||
         op.kind === 'updatePage' ||
         op.kind === 'archivePage' ||
-        op.kind === 'movePage'
+        op.kind === 'movePage' ||
+        op.kind === 'reorderPages'
       ) {
         pageOps.push(op)
       } else {
@@ -1621,12 +1645,24 @@ export const sync = (
             }),
           )
         }
+        // Phase 4d (#618): same-parent moves are an API-level no-op in real
+        // Notion (it rejects with "New parent must be different from the
+        // current parent"). The existing contract has always been "emit
+        // movePage for sibling reshuffle, accept that the order doesn't
+        // actually change" — swallow the validation error so the sync still
+        // counts the intent. Callers who want intra-parent reorder to
+        // actually land opt into `reorderSiblings`, which emits
+        // `reorderPages` instead of same-parent `movePage`.
         yield* NotionPages.move({
           pageId: op.pageId,
           parent: { type: 'page_id', page_id: resolve(op.parent.pageId) },
         }).pipe(
-          Effect.mapError(
-            (cause) => new NotionSyncError({ reason: 'notion-page-move-failed', cause }),
+          Effect.catchAll((cause) =>
+            cause instanceof NotionApiError &&
+            cause.code === 'validation_error' &&
+            /must be different from the current parent/i.test(cause.message)
+              ? Effect.void
+              : Effect.fail(new NotionSyncError({ reason: 'notion-page-move-failed', cause })),
           ),
         )
         if (onEvent !== undefined) {
@@ -1812,6 +1848,126 @@ export const sync = (
       }
       o11y.opCount.n += 1
       pageCounts = { ...pageCounts, archives: pageCounts.archives + 1 }
+    }
+
+    // Step 7 (phase 4d, #618): apply `reorderPages` ops via the pages.move
+    // roundtrip primitive. Each op is a (parentId, [p1, p2, p3, …]) tuple; for
+    // each page id in target order we `pages.move` it to a holding parent, then
+    // back to `parentId`. That bumps the page to the end of `parentId`'s
+    // `child_page` block list (experiment 9 in
+    // `tmp/notion-618/options-ordering.md`). Iterating in target order lands
+    // the full order with 2N API calls. Sequential on purpose — parallelism
+    // would race the "last one wins tail append" ordering.
+    //
+    // Holding-parent lifecycle (per-sync ephemeral for the auto-provisioned
+    // path): a scratch page is created on first demand inside this sync,
+    // reused for every reorderPages op in this sync, and archived at the end.
+    // Cache stashing was considered and rejected — reusing across syncs needs
+    // restore-before-use + re-archive-after, which adds two API calls per
+    // sync-with-reorder and complicates partial-failure semantics. Minting
+    // fresh is one extra create+archive per sync-with-reorder. Caller-
+    // supplied holding parents are never archived; the caller owns the
+    // lifecycle.
+    const reorderOps = pageOps.filter(
+      (op): op is Extract<PageOp, { kind: 'reorderPages' }> => op.kind === 'reorderPages',
+    )
+    if (reorderOps.length > 0) {
+      const callerHolding =
+        typeof opts.reorderSiblings === 'object' && opts.reorderSiblings !== null
+          ? opts.reorderSiblings.holdingParentId
+          : undefined
+      let holdingId: string | undefined = callerHolding
+      for (const op of reorderOps) {
+        const resolvedParent = resolve(op.parentId)
+        // Auto-provision on first need. Put the holding page under the same
+        // parent as the first reorder's target parent — keeps the scratch in
+        // the same workspace region and avoids crossing permission boundaries.
+        if (holdingId === undefined) {
+          const created = yield* NotionPages.create({
+            parent: { type: 'page_id', page_id: resolvedParent },
+            properties: {
+              title: {
+                title: [
+                  {
+                    type: 'text',
+                    text: { content: '@overeng/notion-react holding (do not touch)' },
+                  },
+                ],
+              },
+            },
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new NotionSyncError({ reason: 'notion-reorder-holding-create-failed', cause }),
+            ),
+          )
+          const createdId = (created as { id?: string }).id
+          if (createdId === undefined) {
+            return yield* Effect.fail(
+              new NotionSyncError({
+                reason: 'notion-reorder-holding-create-failed',
+                cause: 'no id in response',
+              }),
+            )
+          }
+          holdingId = createdId
+          o11y.opCount.n += 1
+        }
+        const opId = o11y.nextOpId()
+        const t0 = performance.now()
+        if (onEvent !== undefined) {
+          onEvent(
+            SyncEvent.PageOpIssued({
+              id: opId,
+              kind: 'reorderPages',
+              pageId: resolvedParent,
+              at: Date.now(),
+            }),
+          )
+        }
+        for (const pageId of op.orderedPageIds) {
+          yield* NotionPages.move({
+            pageId,
+            parent: { type: 'page_id', page_id: holdingId },
+          }).pipe(
+            Effect.mapError(
+              (cause) => new NotionSyncError({ reason: 'notion-page-reorder-failed', cause }),
+            ),
+          )
+          o11y.opCount.n += 1
+          yield* NotionPages.move({
+            pageId,
+            parent: { type: 'page_id', page_id: resolvedParent },
+          }).pipe(
+            Effect.mapError(
+              (cause) => new NotionSyncError({ reason: 'notion-page-reorder-failed', cause }),
+            ),
+          )
+          o11y.opCount.n += 1
+        }
+        if (onEvent !== undefined) {
+          onEvent(
+            SyncEvent.PageOpApplied({
+              id: opId,
+              kind: 'reorderPages',
+              pageId: resolvedParent,
+              durationMs: performance.now() - t0,
+              at: Date.now(),
+            }),
+          )
+        }
+        pageCounts = { ...pageCounts, reorders: pageCounts.reorders + 1 }
+      }
+      // Archive the auto-provisioned holding page. Caller-supplied holding
+      // parents stay where they are — callers own the lifecycle.
+      if (callerHolding === undefined && holdingId !== undefined) {
+        yield* NotionPages.archive({ pageId: holdingId }).pipe(
+          // Best-effort: if archive fails we still succeeded on the reorder,
+          // and the scratch page is recognizable by its title.
+          Effect.catchAll(() => Effect.void),
+        )
+        o11y.opCount.n += 1
+      }
     }
 
     resolveTreeIds(candidate, idMap)

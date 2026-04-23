@@ -74,6 +74,13 @@ export interface PageOpCounts {
   readonly updates: number
   readonly archives: number
   readonly moves: number
+  /**
+   * Count of {@link DiffOp} `reorderPages` ops applied (phase 4d, #618). Each
+   * emitted op drives 2N internal `pages.move` roundtrips; this counter tracks
+   * the op itself, not the expanded HTTP calls — `moves` already accounts for
+   * cross-parent reparents without intra-parent reorder.
+   */
+  readonly reorders: number
 }
 
 /** Default zero page-op tally. See {@link PageOpCounts}. */
@@ -82,6 +89,7 @@ export const emptyPageCounts = (): PageOpCounts => ({
   updates: 0,
   archives: 0,
   moves: 0,
+  reorders: 0,
 })
 
 /** Summary of the ops applied during a render/sync pass. */

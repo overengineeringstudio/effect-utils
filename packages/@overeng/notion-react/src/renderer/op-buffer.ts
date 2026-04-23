@@ -128,3 +128,18 @@ export type PageOp =
       readonly pageId: string
       readonly parent: { readonly pageId: string }
     }
+  /**
+   * Intra-parent sibling reorder (issue #618 phase 4d). Opt-in via
+   * `sync({reorderSiblings})`. Only emitted when retained-by-blockKey page
+   * siblings appear in a different order under the same parent than in the
+   * cache. The driver realizes the target order via the `pages.move` roundtrip
+   * primitive: for each page id (in target order), move to a holding parent,
+   * then back to the original parent. Each roundtrip places the page at the
+   * end of the original parent's `child_page` block list, so iterating in
+   * target order lands the full order with 2N API calls.
+   */
+  | {
+      readonly kind: 'reorderPages'
+      readonly parentId: string
+      readonly orderedPageIds: readonly string[]
+    }

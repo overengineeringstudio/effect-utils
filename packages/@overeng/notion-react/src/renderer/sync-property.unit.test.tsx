@@ -165,7 +165,7 @@ describe('sync() property: second identical sync emits zero ops', () => {
         inserts: 0,
         updates: 0,
         removes: 0,
-        pages: { creates: 0, updates: 0, archives: 0, moves: 0 },
+        pages: { creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 },
       })
     }
   })
@@ -202,6 +202,6 @@ describe('sync() childpage-idempotency bug (issue #618 phase 3d follow-up)', () 
       sync(tree, { pageId: ROOT, cache }).pipe(Effect.mapError((c) => new Error(String(c)))),
     )
     expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
-    expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
   })
 })

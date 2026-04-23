@@ -13,9 +13,34 @@ import { renderToNotion, sync } from '@overeng/notion-react'
 | Export           | Source                                                                | Purpose                                                                                                 |
 | ---------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `renderToNotion` | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts) | Cold-start append; no cache. Returns `Effect<SyncResult, NotionSyncError, NotionConfig \| HttpClient>`. |
-| `sync`           | [`renderer/sync.ts`](../src/renderer/sync.ts)                         | Incremental cache-backed sync. Same return type.                                                        |
+| `sync`           | [`renderer/sync.ts`](../src/renderer/sync.ts)                         | Incremental cache-backed sync. Same return type. See [sync options](#sync-options).                     |
 | `collectOps`     | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts) | Collect an `OpBuffer` from a one-shot render. Exposed for tests.                                        |
 | `SyncResult`     | [`renderer/render-to-notion.ts`](../src/renderer/render-to-notion.ts) | `{ appends, updates, removes, inserts, fallbackReason? }`                                               |
+
+## Sync options
+
+```ts
+sync(element, {
+  pageId,
+  cache,
+  onEvent?,            // per-op event callback (see observing-sync cookbook)
+  onMetrics?,          // one-shot SyncMetrics snapshot after SyncEnd
+  coldBaseline?,       // 'clean' (default) | 'merge' — how to treat pre-existing live children on cold sync
+  onUploadIdRejected?, // retry hook for evicted file_upload_ids
+  reorderSiblings?,    // opt-in intra-parent <ChildPage> reorder (phase 4d, #618)
+})
+```
+
+`reorderSiblings` values:
+
+| Value                           | Behaviour                                                                                                                                                       |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `undefined` / `false` (default) | Retained-but-reshuffled `<ChildPage>` siblings emit a same-parent `movePage`; the API rejects it; the driver swallows the error; server sibling order unchanged. |
+| `true`                          | Library auto-provisions a scratch holding page, roundtrips each sibling in JSX order (2N `pages.move` calls), archives the scratch page on success.             |
+| `{ holdingParentId: string }`   | Caller supplies a workspace-accessible page id; the library uses it as the holding parent and never archives it. Caller owns the lifecycle.                      |
+
+See [Cookbook → Sub-page creation → Reordering](./cookbook/sub-page-creation.md#reordering-sibling-sub-pages-phase-4d)
+and [Limitations → Intra-parent sibling-page reorder](./limitations.md#intra-parent-sibling-page-reorder-dq7--opt-in).
 
 ## Block components
 
