@@ -241,7 +241,7 @@ describe.skipIf(SKIP_E2E)('sub-pages (e2e, issue #618 phases 3b/3c/3d)', () => {
   // parent's diff has a chance to claim it as `movePage`. Both ops flow to
   // the sync driver, and the server end-state is non-deterministic depending
   // on which op wins. Bug confirmed live (see issue #618 phase 3d report).
-  it.skip('reparent: move a sub-page between two sibling sub-pages (end-state converges)', async () => {
+  it('reparent: move a sub-page between two sibling sub-pages (end-state converges)', async () => {
     await withScratchPage('sub-pages-reparent', (rootId) =>
       Effect.gen(function* () {
         const cache = InMemoryCache.make()
