@@ -2,7 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 
-import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
+import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
 import { NotionSyncError } from './errors.ts'
@@ -223,6 +223,41 @@ const absorbedDescendantIds = (
 }
 
 /**
+ * Issue a block update against Notion, transparently routing `child_page`
+ * title changes through `pages.update` (since the Notion API rejects a
+ * `PATCH /blocks/{id}` body of `{ child_page: { title } }` with
+ * `validation_error`). Other block types go through `blocks.update` as
+ * before.
+ *
+ * The `child_page` prop surface is currently `{ title: string }` only — icon,
+ * cover, and other page-level props are out of scope for this helper (#618
+ * phase 2). Additional props are ignored rather than forwarded blindly.
+ */
+export const issueBlockUpdate = (
+  blockId: string,
+  type: BlockType,
+  props: Record<string, unknown>,
+): Effect.Effect<unknown, unknown, NotionConfig | HttpClient.HttpClient> => {
+  if (type === 'child_page') {
+    const title = props.title
+    if (typeof title !== 'string') {
+      // Nothing to update at the page level; skip the call rather than
+      // round-tripping an empty PATCH that Notion would also reject.
+      return Effect.void
+    }
+    return NotionPages.update({
+      pageId: blockId,
+      properties: {
+        title: {
+          title: [{ type: 'text', text: { content: title } }],
+        },
+      },
+    })
+  }
+  return NotionBlocks.update({ blockId, [type]: props })
+}
+
+/**
  * Render `element` to Notion in append-only mode. Assumes the target page
  * has no pre-existing children this renderer owns; suitable for first-time
  * creation. For incremental updates against a prior state, use `sync`.
@@ -332,7 +367,7 @@ export const renderToNotion = (
           break
         }
         case 'update': {
-          yield* NotionBlocks.update({ blockId: resolve(op.id), [op.type]: op.props }).pipe(
+          yield* issueBlockUpdate(resolve(op.id), op.type, op.props).pipe(
             Effect.mapError(
               (cause) => new NotionSyncError({ reason: 'notion-update-failed', cause }),
             ),

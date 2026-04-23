@@ -8,6 +8,7 @@ import type { NotionConfig } from '@overeng/notion-effect-client'
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import type { CacheNode, CacheTree, NotionCache } from '../cache/types.ts'
 import {
+  ChildPage,
   Column,
   ColumnList,
   Heading2,
@@ -1639,5 +1640,48 @@ describe('sync() against in-memory fake Notion', () => {
       expect(warm!.children.length).toBe(coldTop)
       expect(totalCacheNodes(warm!)).toBe(coldTotal)
     }
+  })
+
+  // ---------------------------------------------------------------------
+  // Regression: issue #618 phase 2
+  //
+  // A `<ChildPage title>` change used to emit `PATCH /v1/blocks/{id}` with
+  // `{ child_page: { title } }`, which the Notion API rejects with
+  // `validation_error`. The fix routes this through `pages.update` so
+  // Notion's page-properties endpoint receives a well-formed payload.
+  // ---------------------------------------------------------------------
+  it('child_page title change → routes through pages.update (not blocks.update)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runWith(
+      fake,
+      sync(<ChildPage title="old title" />, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    const before = fake.requests.length
+
+    const res = await runWith(
+      fake,
+      sync(<ChildPage title="new title" />, { pageId: ROOT, cache }).pipe(
+        Effect.mapError((cause) => new Error(String(cause))),
+      ),
+    )
+    expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+
+    const newReqs = fake.requests.slice(before)
+    const pagePatches = newReqs.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path),
+    )
+    const blockPatches = newReqs.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/blocks\/[^/]+$/.test(r.path),
+    )
+    expect(pagePatches).toHaveLength(1)
+    expect(blockPatches).toHaveLength(0)
+
+    const body = pagePatches[0]!.body as {
+      properties?: { title?: { title?: readonly { text?: { content?: string } }[] } }
+    }
+    expect(body.properties?.title?.title?.[0]?.text?.content).toBe('new title')
   })
 })
