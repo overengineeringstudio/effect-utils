@@ -1435,17 +1435,17 @@ export const sync = (
       }
     }
 
-    // Root-scoped block ops (scopePageId undefined) run now. Tail block ops
-    // scoped to a createPage's tmpPageId run after their page is created.
-    const rootBlockPlan: DiffOp[] = []
+    // Partition block ops by scope. Root-scope ops (scopePageId undefined) are
+    // picked up by the candidate-ordered interleaved pass below; tail block
+    // ops scoped to a createPage's tmpPageId run inside `runCreatePage`;
+    // retained-sub-page-scoped ops run in step 2b.
     const pageScopedBlockPlan = new Map<string, DiffOp[]>()
     for (const op of blockPlan) {
       const scope =
         op.kind === 'append' || op.kind === 'insert' || op.kind === 'update' || op.kind === 'remove'
           ? op.scopePageId
           : undefined
-      if (scope === undefined) rootBlockPlan.push(op)
-      else {
+      if (scope !== undefined) {
         const list = pageScopedBlockPlan.get(scope) ?? []
         list.push(op)
         pageScopedBlockPlan.set(scope, list)
@@ -1503,8 +1503,192 @@ export const sync = (
       }
     }
 
-    // Step 2: root-scoped block ops.
-    yield* applyDiff(rootBlockPlan, idMap, checkpointAppended, o11y, priorHashById)
+    // Issue #618 follow-up: at the root scope, `pages.create` and block
+    // `append` both tail-append on the server. Running block ops before
+    // createPage (as the pre-fix code did) inverted sibling order on the
+    // server whenever a JSX tree placed a `<ChildPage>` before a sibling
+    // block — the next warm sync would then hit a drift mismatch (cache in
+    // candidate order, server in swapped order) and treat the retained
+    // `<ChildPage>` as unretained, blowing up `candidateToCache` with an
+    // unresolved tmpId for its inner block descendants.
+    //
+    // Fix: walk the root-scope plan in candidate order, interleaving block
+    // ops with `createPage` / `movePage`. Consecutive block ops are still
+    // batched through `applyDiff` so per-parent coalescing (#101) stays
+    // intact. Same-scope `movePage` is also interleaved because Notion
+    // tail-appends the moved page at its new parent.
+    const runCreatePage = (op: Extract<PageOp, { kind: 'createPage' }>) =>
+      Effect.gen(function* () {
+        const opId = o11y.nextOpId()
+        const t0 = performance.now()
+        if (onEvent !== undefined) {
+          onEvent(
+            SyncEvent.PageOpIssued({
+              id: opId,
+              kind: 'createPage',
+              pageId: op.tmpPageId,
+              at: Date.now(),
+            }),
+          )
+        }
+        const resolvedParentId = resolve(op.parent.pageId)
+        const created = yield* NotionPages.create({
+          parent: { type: 'page_id', page_id: resolvedParentId },
+          properties:
+            op.title !== undefined
+              ? { title: { title: op.title as never } }
+              : { title: { title: [] } },
+          ...(op.icon !== undefined ? { icon: op.icon as never } : {}),
+          ...(op.cover !== undefined ? { cover: op.cover as never } : {}),
+          ...(op.inlineChildren.length > 0
+            ? { children: toCreateChildren(op.inlineChildren) }
+            : {}),
+        }).pipe(
+          Effect.mapError(
+            (cause) => new NotionSyncError({ reason: 'notion-page-create-failed', cause }),
+          ),
+        )
+        const createdId = (created as { id?: string }).id
+        if (createdId === undefined) {
+          return yield* Effect.fail(
+            new NotionSyncError({
+              reason: 'notion-page-create-failed',
+              cause: 'no id in response',
+            }),
+          )
+        }
+        idMap.set(op.tmpPageId, createdId)
+        const inlineCands = (op.inlineCandidates ?? []) as readonly CandidateNode[]
+        yield* resolveInlineChildrenIds(createdId, op, inlineCands, idMap)
+
+        if (onEvent !== undefined) {
+          onEvent(
+            SyncEvent.PageOpApplied({
+              id: opId,
+              kind: 'createPage',
+              pageId: op.tmpPageId,
+              resolvedPageId: createdId,
+              durationMs: performance.now() - t0,
+              at: Date.now(),
+            }),
+          )
+        }
+        o11y.opCount.n += 1
+        pageCounts = { ...pageCounts, creates: pageCounts.creates + 1 }
+
+        const tail = pageScopedBlockPlan.get(op.tmpPageId) ?? []
+        if (tail.length > 0) {
+          yield* applyDiff(tail, idMap, checkpointAppended, o11y, priorHashById).pipe(
+            Effect.catchAll((cause) =>
+              Effect.gen(function* () {
+                partialCreateFallback = true
+                yield* NotionPages.update({ pageId: createdId, in_trash: true }).pipe(
+                  Effect.catchAll(() => Effect.void),
+                )
+                return yield* Effect.fail(cause)
+              }),
+            ),
+            Effect.asVoid,
+          )
+        }
+      })
+
+    const runMovePage = (op: Extract<PageOp, { kind: 'movePage' }>) =>
+      Effect.gen(function* () {
+        const opId = o11y.nextOpId()
+        const t0 = performance.now()
+        if (onEvent !== undefined) {
+          onEvent(
+            SyncEvent.PageOpIssued({
+              id: opId,
+              kind: 'movePage',
+              pageId: op.pageId,
+              at: Date.now(),
+            }),
+          )
+        }
+        yield* NotionPages.move({
+          pageId: op.pageId,
+          parent: { type: 'page_id', page_id: resolve(op.parent.pageId) },
+        }).pipe(
+          Effect.mapError(
+            (cause) => new NotionSyncError({ reason: 'notion-page-move-failed', cause }),
+          ),
+        )
+        if (onEvent !== undefined) {
+          onEvent(
+            SyncEvent.PageOpApplied({
+              id: opId,
+              kind: 'movePage',
+              pageId: op.pageId,
+              durationMs: performance.now() - t0,
+              at: Date.now(),
+            }),
+          )
+        }
+        o11y.opCount.n += 1
+        pageCounts = { ...pageCounts, moves: pageCounts.moves + 1 }
+      })
+
+    // Build a root-scope op list in candidate order: root block ops (no
+    // scopePageId) plus `createPage`/`movePage` whose parent is the sync root.
+    // `updatePage` and `archivePage` don't affect server sibling order so
+    // they stay in their own steps below.
+    const moveRan = new Set<string>()
+    const createRan = new Set<string>()
+    const rootInterleaved: DiffOp[] = []
+    for (const op of plan) {
+      if (
+        op.kind === 'append' ||
+        op.kind === 'insert' ||
+        op.kind === 'update' ||
+        op.kind === 'remove'
+      ) {
+        if (op.scopePageId === undefined) rootInterleaved.push(op)
+        continue
+      }
+      if (op.kind === 'createPage' && op.parent.pageId === opts.pageId) {
+        rootInterleaved.push(op)
+        continue
+      }
+      if (op.kind === 'movePage' && op.parent.pageId === opts.pageId) {
+        rootInterleaved.push(op)
+        continue
+      }
+    }
+
+    // Walk in order, batching consecutive block ops through applyDiff so
+    // coalescing still holds; flush on each pageOp boundary.
+    {
+      let blockBuf: DiffOp[] = []
+      const flushBlocks = Effect.gen(function* () {
+        if (blockBuf.length > 0) {
+          const toFlush = blockBuf
+          blockBuf = []
+          yield* applyDiff(toFlush, idMap, checkpointAppended, o11y, priorHashById)
+        }
+      })
+      for (const op of rootInterleaved) {
+        if (
+          op.kind === 'append' ||
+          op.kind === 'insert' ||
+          op.kind === 'update' ||
+          op.kind === 'remove'
+        ) {
+          blockBuf.push(op)
+          continue
+        }
+        yield* flushBlocks
+        if (op.kind === 'createPage') {
+          yield* runCreatePage(op)
+          createRan.add(op.tmpPageId)
+        } else if (op.kind === 'movePage') {
+          yield* runMovePage(op)
+          moveRan.add(op.pageId)
+        }
+      }
+      yield* flushBlocks
+    }
 
     // Step 2b (phase 3c): retained-sub-page-scoped block ops. These address
     // real server page ids (not tmpPageIds) — the diff's retained-page branch
@@ -1517,101 +1701,17 @@ export const sync = (
       pageOps.flatMap((op) => (op.kind === 'createPage' ? [op.tmpPageId] : [])),
     )
     for (const [scope, scopedOps] of pageScopedBlockPlan) {
-      if (createPageTmpIds.has(scope)) continue // handled in step 3 alongside pages.create
+      if (createPageTmpIds.has(scope)) continue // tail block ops for a root-scope createPage already applied inside runCreatePage
       yield* applyDiff(scopedOps, idMap, checkpointAppended, o11y, priorHashById)
     }
 
-    // Step 3: createPage ops. Each carries inline-packed children (depth≤2,
-    // ≤100 blocks) plus a tail of block ops scoped to the new page's
-    // `tmpPageId`. On partial failure (tail ops fail) archive the new page
-    // to leave the workspace in a consistent state.
+    // Any createPage NOT rooted at the sync page (i.e. nested under a retained
+    // <ChildPage>) still needs to run. Execute them in plan order so nested
+    // sibling ordering under a retained parent also reflects candidate order.
     for (const op of pageOps) {
       if (op.kind !== 'createPage') continue
-      const opId = o11y.nextOpId()
-      const t0 = performance.now()
-      if (onEvent !== undefined) {
-        onEvent(
-          SyncEvent.PageOpIssued({
-            id: opId,
-            kind: 'createPage',
-            pageId: op.tmpPageId,
-            at: Date.now(),
-          }),
-        )
-      }
-      const resolvedParentId = resolve(op.parent.pageId)
-      const created = yield* NotionPages.create({
-        parent: { type: 'page_id', page_id: resolvedParentId },
-        properties:
-          op.title !== undefined
-            ? { title: { title: op.title as never } }
-            : { title: { title: [] } },
-        ...(op.icon !== undefined ? { icon: op.icon as never } : {}),
-        ...(op.cover !== undefined ? { cover: op.cover as never } : {}),
-        ...(op.inlineChildren.length > 0 ? { children: toCreateChildren(op.inlineChildren) } : {}),
-      }).pipe(
-        Effect.mapError(
-          (cause) => new NotionSyncError({ reason: 'notion-page-create-failed', cause }),
-        ),
-      )
-      const createdId = (created as { id?: string }).id
-      if (createdId === undefined) {
-        return yield* Effect.fail(
-          new NotionSyncError({
-            reason: 'notion-page-create-failed',
-            cause: 'no id in response',
-          }),
-        )
-      }
-      idMap.set(op.tmpPageId, createdId)
-      // Resolve inline-block tmpIds from the server response. `inlineCandidates`
-      // pairs 1:1 with `inlineChildren`; without this, scope-tagged tail ops
-      // cannot resolve their parents.
-      const inlineCands = (op.inlineCandidates ?? []) as readonly CandidateNode[]
-      yield* resolveInlineChildrenIds(createdId, op, inlineCands, idMap)
-
-      if (onEvent !== undefined) {
-        onEvent(
-          SyncEvent.PageOpApplied({
-            id: opId,
-            kind: 'createPage',
-            pageId: op.tmpPageId,
-            resolvedPageId: createdId,
-            durationMs: performance.now() - t0,
-            at: Date.now(),
-          }),
-        )
-      }
-      o11y.opCount.n += 1
-      pageCounts = { ...pageCounts, creates: pageCounts.creates + 1 }
-
-      // Apply tail block ops scoped to this page. On failure, archive the
-      // new page and flag partial-page-create.
-      const tail = pageScopedBlockPlan.get(op.tmpPageId) ?? []
-      if (tail.length > 0) {
-        const tailResult = yield* applyDiff(
-          tail,
-          idMap,
-          checkpointAppended,
-          o11y,
-          priorHashById,
-        ).pipe(
-          Effect.catchAll((cause) =>
-            Effect.gen(function* () {
-              partialCreateFallback = true
-              // Best-effort cleanup: archive the newly-created page. Swallow
-              // cleanup errors so the original failure propagates.
-              yield* NotionPages.update({ pageId: createdId, in_trash: true }).pipe(
-                Effect.catchAll(() => Effect.void),
-              )
-              return yield* Effect.fail(cause)
-            }),
-          ),
-          Effect.asVoid,
-        )
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        tailResult
-      }
+      if (createRan.has(op.tmpPageId)) continue
+      yield* runCreatePage(op)
     }
 
     // Step 4: updatePage for retained sub-pages.
@@ -1654,42 +1754,13 @@ export const sync = (
       pageCounts = { ...pageCounts, updates: pageCounts.updates + 1 }
     }
 
-    // Step 5: movePage for reparented sub-pages.
+    // Step 5: movePage for reparented sub-pages not yet executed (those that
+    // weren't at the root scope). Root-scope moves already ran in the
+    // interleaved pass above to preserve sibling ordering on the server.
     for (const op of pageOps) {
       if (op.kind !== 'movePage') continue
-      const opId = o11y.nextOpId()
-      const t0 = performance.now()
-      if (onEvent !== undefined) {
-        onEvent(
-          SyncEvent.PageOpIssued({
-            id: opId,
-            kind: 'movePage',
-            pageId: op.pageId,
-            at: Date.now(),
-          }),
-        )
-      }
-      yield* NotionPages.move({
-        pageId: op.pageId,
-        parent: { type: 'page_id', page_id: resolve(op.parent.pageId) },
-      }).pipe(
-        Effect.mapError(
-          (cause) => new NotionSyncError({ reason: 'notion-page-move-failed', cause }),
-        ),
-      )
-      if (onEvent !== undefined) {
-        onEvent(
-          SyncEvent.PageOpApplied({
-            id: opId,
-            kind: 'movePage',
-            pageId: op.pageId,
-            durationMs: performance.now() - t0,
-            at: Date.now(),
-          }),
-        )
-      }
-      o11y.opCount.n += 1
-      pageCounts = { ...pageCounts, moves: pageCounts.moves + 1 }
+      if (moveRan.has(op.pageId)) continue
+      yield* runMovePage(op)
     }
 
     // Step 6: archivePage for sub-pages with no matching candidate.

@@ -541,4 +541,56 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(normalizeCover({ type: 'emoji', emoji: 'x' })).toBeUndefined()
     expect(normalizeCover(null)).toBeUndefined()
   })
+
+  /**
+   * Regression for the phase-3d idempotency bug (issue #618 follow-up): when a
+   * `<Page>` mixes a leading `<ChildPage>` with a trailing plain block, the
+   * pre-fix driver applied the root-scope block append before `pages.create`,
+   * inverting the sibling order on the server. The next warm sync saw a drift
+   * (cache in candidate order, server in swapped order) and unretained the
+   * `<ChildPage>`, crashing `candidateToCache` on the inner block's tmpId.
+   */
+  it('idempotent: <Page>[<ChildPage>blk</ChildPage>, <Paragraph>]  → 2nd sync is a no-op', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage title="cp">
+          <Paragraph>inner</Paragraph>
+        </ChildPage>
+        <Paragraph>sibling</Paragraph>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  it('idempotent: <Page>[<Paragraph>, <ChildPage>]  → 2nd sync is a no-op (reverse order)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <Paragraph>sibling</Paragraph>
+        <ChildPage title="cp">
+          <Paragraph>inner</Paragraph>
+        </ChildPage>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
 })
