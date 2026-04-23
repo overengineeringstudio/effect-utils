@@ -452,12 +452,22 @@ const RenderedTableOfContents = ({ entries }: { readonly entries: readonly TocEn
   )
 }
 
-export const ChildPage = ({ title }: ChildPageProps) => (
-  <div className="notion-page-link">
-    <span className="notion-page-icon-inline">📄</span>
-    <span>{title ?? 'Untitled'}</span>
-  </div>
-)
+export const ChildPage = ({ title }: ChildPageProps) => {
+  // Ergonomic title surface accepts plain string or a PageTitleSpan[] — the
+  // DOM mirror only renders a preview so we flatten span content here.
+  const label =
+    title === undefined
+      ? 'Untitled'
+      : typeof title === 'string'
+        ? title
+        : title.map((s) => s.text.content).join('')
+  return (
+    <div className="notion-page-link">
+      <span className="notion-page-icon-inline">📄</span>
+      <span>{label}</span>
+    </div>
+  )
+}
 
 export const Raw = <TType extends string>({ type, content }: RawProps<TType>) => (
   <div className="notion-raw" data-type={type}>
