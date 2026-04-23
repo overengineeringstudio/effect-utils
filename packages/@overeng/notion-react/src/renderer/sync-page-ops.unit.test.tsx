@@ -572,6 +572,42 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
   })
 
+  /**
+   * Regression for the cross-parent `pages.move` race (issue #618 phase 3d
+   * follow-up): reparenting a `<ChildPage>` between two sibling parents in a
+   * single sync used to emit both an `archivePage` (from the outgoing
+   * parent's `diffChildren` removes loop) and a `movePage` (from the
+   * incoming parent's candidate loop) for the same page. The sync driver
+   * applied both, leaving the end state order-dependent. Fix: pre-claim
+   * cross-parent moves in a whole-tree pass before per-parent emission.
+   */
+  it('reparent: moving <ChildPage> across sibling parents emits only movePage', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="A">
+          <ChildPage blockKey="m" title="moveable" />
+        </ChildPage>
+        <ChildPage blockKey="B" title="B" />
+      </Page>,
+      cache,
+    )
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="A" />
+        <ChildPage blockKey="B" title="B">
+          <ChildPage blockKey="m" title="moveable" />
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 1 })
+    expect(res.appends + res.inserts + res.updates + res.removes).toBe(0)
+  })
+
   it('idempotent: <Page>[<Paragraph>, <ChildPage>]  → 2nd sync is a no-op (reverse order)', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()

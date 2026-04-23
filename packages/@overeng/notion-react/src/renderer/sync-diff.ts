@@ -341,6 +341,16 @@ const subtreesStructurallyEqual = (cache: CacheNode, cand: CandidateNode): boole
 interface DiffCtx {
   readonly pagesByKey: ReadonlyMap<string, CacheNode>
   readonly claimedMoves: Set<string>
+  /**
+   * Blockids pre-claimed as move targets by a whole-tree pass before any ops
+   * are emitted. A per-parent `diffChildren` recurse archives unretained page
+   * children at its tail; without this set, an outgoing parent's archive
+   * would race the incoming parent's `movePage` and the sync driver would
+   * apply both for the same page (issue #618 phase 3d follow-up). The pre-
+   * claim set is consulted in the removes loop to suppress archive emission
+   * for pages that another part of the tree will claim as a move.
+   */
+  readonly preClaimedMoves: ReadonlySet<string>
   readonly scopePageId?: string
 }
 
@@ -548,11 +558,14 @@ const diffChildren = (
 
   // Removes for cached children not retained. Page-kind entries that were not
   // claimed as a movePage source become archivePage; block-kind entries
-  // become block remove.
+  // become block remove. `preClaimedMoves` covers the cross-parent case where
+  // the incoming parent (claiming the `movePage`) is recursed AFTER this
+  // parent's removes loop — without it, we would race archive vs move.
   for (const c of cacheChildren) {
     if (retainedKeys.has(c.key)) continue
     if (c.nodeKind === 'page') {
       if (ctx.claimedMoves.has(c.blockId)) continue
+      if (ctx.preClaimedMoves.has(c.blockId)) continue
       ops.push({ kind: 'archivePage', pageId: c.blockId })
     } else {
       ops.push({
@@ -782,12 +795,67 @@ const indexCachePages = (cache: CacheTree): Map<string, CacheNode> => {
   return out
 }
 
+/**
+ * Walk the candidate tree once to pre-claim every cross-parent `<ChildPage>`
+ * move. A page appears as a move when its `blockKey` matches a page-kind cache
+ * entry that isn't retained at the candidate's current position — `cache` is
+ * indexed globally via `pagesByKey`, so the outgoing parent's cache entry can
+ * live anywhere in the prior tree.
+ *
+ * Pre-claiming is necessary because `diffChildren` emits its per-parent
+ * `archivePage` / `remove` loop at the end of *each* recursion. Without a
+ * global claim up front, the outgoing parent's recurse emits `archivePage(m)`
+ * before the incoming parent's recurse even starts — the sync driver then
+ * applies both `archivePage` and `movePage` for the same page and the end
+ * state is order-dependent (issue #618 phase 3d follow-up).
+ *
+ * Claiming is purely a `claimedMoves.add`; no ops are emitted. The later
+ * `diffChildren` pass skips archive emission for any claimed blockId, and the
+ * incoming parent's candidate loop emits the actual `movePage` op.
+ */
+const collectPreClaimedMoves = (
+  cacheChildren: readonly CacheNode[],
+  candidateChildren: readonly CandidateNode[],
+  pagesByKey: ReadonlyMap<string, CacheNode>,
+  out: Set<string>,
+): void => {
+  const retainedCache = retainedCacheIndices(cacheChildren, candidateChildren)
+  const retainedKeys = new Set<string>()
+  for (const idx of retainedCache) retainedKeys.add(cacheChildren[idx]!.key)
+  const cacheByKey = new Map<string, CacheNode>()
+  for (const c of cacheChildren) cacheByKey.set(c.key, c)
+  for (const cand of candidateChildren) {
+    if (cand.nodeKind === 'page') {
+      if (!retainedKeys.has(cand.key)) {
+        const moveSource = pagesByKey.get(cand.key)
+        if (moveSource !== undefined) out.add(moveSource.blockId)
+      } else {
+        // Retained page: recurse into its children against the cached subtree
+        // to catch moves that cross sub-page boundaries.
+        const prior = cacheByKey.get(cand.key)!
+        collectPreClaimedMoves(prior.children, cand.children, pagesByKey, out)
+      }
+      continue
+    }
+    // Retained block: recurse so a moved `<ChildPage>` nested inside a
+    // retained `<Toggle>` (or similar) is still pre-claimed.
+    if (retainedKeys.has(cand.key)) {
+      const prior = cacheByKey.get(cand.key)!
+      collectPreClaimedMoves(prior.children, cand.children, pagesByKey, out)
+    }
+  }
+}
+
 export const diff = (cache: CacheTree, candidate: CandidateTree): DiffOp[] => {
   tmpCounter = 0
   const ops: DiffOp[] = []
+  const pagesByKey = indexCachePages(cache)
+  const preClaimedMoves = new Set<string>()
+  collectPreClaimedMoves(cache.children, candidate.children, pagesByKey, preClaimedMoves)
   const ctx: DiffCtx = {
-    pagesByKey: indexCachePages(cache),
+    pagesByKey,
     claimedMoves: new Set<string>(),
+    preClaimedMoves,
   }
   diffChildren(candidate.rootId, cache.children, candidate.children, ops, ctx)
   return ops
