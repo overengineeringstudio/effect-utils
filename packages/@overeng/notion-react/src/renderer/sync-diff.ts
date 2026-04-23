@@ -424,9 +424,14 @@ const diffChildren = (
             ...(coverDrift ? { cover: cand.cover } : {}),
           })
         }
-        // Phase 3b gap: we do NOT recurse into the retained page's children.
-        // Block-tree reconciliation inside an existing `<ChildPage>` lands in
-        // phase 3c along with the CACHE_SCHEMA_VERSION bump.
+        // Phase 3c: recurse into the retained sub-page's children. Block ops
+        // emitted here are tagged with `scopePageId = prior.blockId` so the
+        // sync driver routes them through a per-page working-cache subtree
+        // (keeping blockKey namespaces isolated per R26). Nested page
+        // descendants emit their own createPage/updatePage/… ops which the
+        // driver routes in the same pass.
+        const subCtx: DiffCtx = { ...ctx, scopePageId: prior.blockId }
+        diffChildren(prior.blockId, prior.children, cand.children, ops, subCtx)
         prevRef = prior.blockId
         continue
       }
@@ -704,9 +709,10 @@ export const inlinePackChildren = (
 
   const tailBlock = (cand: CandidateNode, parentTmpId: string): void => {
     if (cand.nodeKind === 'page') {
-      // TODO(phase-3c): nested page creates under a tailed block are not yet
-      // supported; emit as a createPage scoped to the parent block id. The
-      // sync driver resolves the scope after the parent append lands.
+      // Nested page under a tailed block: emit as a createPage scoped to the
+      // parent block id. `parentTmpId` resolves to a real server block id once
+      // the enclosing append/insert lands (via `idMap`), and the sync driver
+      // executes this createPage afterwards in the shared pageOps pass.
       const nestedTmp = nextTmp()
       const nestedPack = inlinePackChildren(cand.children, nestedTmp)
       tail.push({
@@ -803,10 +809,11 @@ const candidateNodeToCacheNode = (cand: CandidateNode): CacheNode => {
       blockId: cand.blockId,
       type: cand.type,
       hash: cand.hash,
-      // Phase 3b gap: children of an existing <ChildPage> are not reconciled
-      // against Notion, so we do not persist candidate children under a page
-      // node. Phase 3c bumps CACHE_SCHEMA_VERSION and starts recording them.
-      children: [],
+      // Phase 3c (cache v3): page nodes persist their own block subtree so a
+      // subsequent sync can diff retained-page children against what we
+      // actually wrote. Nested page descendants are recorded as `page` cache
+      // nodes and reconciled by their own recursive `sync()` pass.
+      children: cand.children.map(candidateNodeToCacheNode),
       nodeKind: 'page',
       ...(cand.titleHash !== undefined ? { titleHash: cand.titleHash } : {}),
       ...(cand.iconHash !== undefined ? { iconHash: cand.iconHash } : {}),
