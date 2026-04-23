@@ -16,15 +16,64 @@ export interface CacheNode {
   readonly type: string
   readonly hash: string
   readonly children: readonly CacheNode[]
+  /**
+   * Whether this cache entry describes a block or a (sub)page. Forward-compat
+   * field for the page-ops work (issue #618): existing v2 caches were written
+   * before this field existed and must continue to deserialize — the default
+   * of `'block'` preserves their semantics. No emitter currently produces
+   * `'page'` entries; the field exists so the schema is stable ahead of the
+   * driver change that starts writing them.
+   */
+  readonly nodeKind: 'block' | 'page'
+  /**
+   * Hash of the page's `title` property. Reserved for page-scope reconciliation
+   * (issue #618 phase 2+). Unset on block entries and on v2 caches written
+   * before the field existed.
+   */
+  readonly titleHash?: string | undefined
+  /**
+   * Hash of the page's `icon` property. See {@link CacheNode.titleHash}.
+   */
+  readonly iconHash?: string | undefined
+  /**
+   * Hash of the page's `cover` property. See {@link CacheNode.titleHash}.
+   */
+  readonly coverHash?: string | undefined
 }
 
-export const CacheNode: Schema.Schema<CacheNode> = Schema.suspend(() =>
+/**
+ * On-disk encoding of {@link CacheNode}. Mirrors `Type` except `nodeKind` is
+ * optional — existing v2 caches were written before the field existed and
+ * must still deserialize. The decoder fills in `'block'` as the default.
+ */
+interface CacheNodeEncoded {
+  readonly key: string
+  readonly blockId: string
+  readonly type: string
+  readonly hash: string
+  readonly children: readonly CacheNodeEncoded[]
+  readonly nodeKind?: 'block' | 'page' | undefined
+  readonly titleHash?: string | undefined
+  readonly iconHash?: string | undefined
+  readonly coverHash?: string | undefined
+}
+
+export const CacheNode: Schema.Schema<CacheNode, CacheNodeEncoded> = Schema.suspend(() =>
   Schema.Struct({
     key: Schema.String,
     blockId: Schema.String,
     type: Schema.String,
     hash: Schema.String,
     children: Schema.Array(CacheNode),
+    // `optionalWith({ default })` keeps existing v2 caches decodable: entries
+    // serialized before this field existed default to `'block'`, which matches
+    // the legacy "every cache node is a block" invariant.
+    nodeKind: Schema.optionalWith(Schema.Literal('block', 'page'), {
+      default: () => 'block' as const,
+    }),
+    titleHash: Schema.optional(Schema.String),
+    iconHash: Schema.optional(Schema.String),
+    coverHash: Schema.optional(Schema.String),
   }),
 )
 
