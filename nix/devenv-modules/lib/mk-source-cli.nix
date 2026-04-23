@@ -23,6 +23,8 @@
 { name, entry }:
 pkgs.writeShellScriptBin name ''
   root="''${WORKSPACE_ROOT:-$PWD}"
+  # Source CLIs in megarepo workspaces depend on linked packages resolving
+  # through the workspace symlink graph, not through realpath locations.
   exec ${pkgs.bun}/bin/bun \
     --preserve-symlinks \
     --preserve-symlinks-main \
