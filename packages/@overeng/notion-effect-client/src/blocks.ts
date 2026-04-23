@@ -75,11 +75,12 @@ export interface DeleteBlockOptions {
 /**
  * Retrieve a block by ID.
  *
+ * No wrapper span here: the surrounding `notion-react.op.retrieve` (caller)
+ * and `NotionHttp.GET` (callee) spans already describe this work. The middle
+ * span added no signal.
+ *
  * @see https://developers.notion.com/reference/retrieve-a-block
  */
-/* No wrapper span here: the surrounding `notion-react.op.retrieve`
-   (caller) and `NotionHttp.GET` (callee) spans already describe this
-   work. The middle span added no signal. */
 export const retrieve = (opts: RetrieveBlockOptions) =>
   get({
     path: `/blocks/${opts.blockId}`,
