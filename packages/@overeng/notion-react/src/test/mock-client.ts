@@ -308,6 +308,13 @@ export const createFakeNotion = (): FakeNotion => {
         properties?: { title?: { title?: unknown } } & Record<string, unknown>
         icon?: FakeIcon | null
         cover?: FakeCover | null
+        /**
+         * Optional inline block bodies shipped alongside the create request.
+         * Notion's `pages.create.children` accepts the same 2-deep shape as
+         * the append endpoint; the mock materializes them via `mintNestedForPage`
+         * so subsequent GETs (and `resolveInlineChildrenIds`) see real ids.
+         */
+        children?: { type: string; [k: string]: unknown }[]
       }
       const id = mintId()
       const titleSpans = coerceTitleSpans(b.properties?.title?.title)
@@ -341,6 +348,41 @@ export const createFakeNotion = (): FakeNotion => {
         }
         blocks.set(id, childBlock)
         getChildList(parentId).push(id)
+      }
+      // Phase 3c (#618): process inline `children` on the new page so the
+      // sync driver's `resolveInlineChildrenIds` can pair each candidate with
+      // a real server id. Mirrors the append handler's nested body shape,
+      // bounded to depth 2 per Notion's wire contract (tail children beyond
+      // depth 2 arrive via follow-up `blocks.children.append`).
+      if (b.children !== undefined) {
+        const mintPageChild = (
+          child: { type: string; [k: string]: unknown },
+          parentId: string,
+        ): FakeBlock => {
+          const payload = (child[child.type] as Record<string, unknown>) ?? {}
+          const { children: nestedChildren, ...rest } = payload as {
+            children?: { type: string; [k: string]: unknown }[]
+          } & Record<string, unknown>
+          const nb: FakeBlock = {
+            id: mintId(),
+            type: child.type,
+            parent: parentId,
+            payload: rest,
+            archived: false,
+            children: [],
+          }
+          blocks.set(nb.id, nb)
+          if (nestedChildren !== undefined) {
+            for (const c of nestedChildren) {
+              const sub = mintPageChild(c, nb.id)
+              nb.children.push(sub.id)
+            }
+          }
+          return nb
+        }
+        const newKids: FakeBlock[] = b.children.map((child) => mintPageChild(child, id))
+        const list = getChildList(id)
+        for (const nb of newKids) list.push(nb.id)
       }
       return toPageResponse(page)
     }

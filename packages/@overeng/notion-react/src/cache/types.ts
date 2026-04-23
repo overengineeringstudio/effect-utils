@@ -3,7 +3,7 @@ import { Schema, type Effect } from 'effect'
 import type { CacheError } from '../renderer/errors.ts'
 
 /** Current on-disk schema version. Bumping invalidates all cached trees. */
-export const CACHE_SCHEMA_VERSION = 2 as const
+export const CACHE_SCHEMA_VERSION = 3 as const
 
 export interface CacheNode {
   readonly key: string
