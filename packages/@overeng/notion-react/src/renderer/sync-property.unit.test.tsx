@@ -129,7 +129,7 @@ const runWith = <A,>(
  * the property holds across random shapes of the *unaffected* sub-lattice,
  * so it's a useful regression guard going forward.
  */
-describe.skip('sync() property: second identical sync emits zero ops', () => {
+describe('sync() property: second identical sync emits zero ops', () => {
   const NUM_RUNS = 30
   // Fixed base seed so a CI failure is reproducible; use the seed from the
   // failure line to re-derive the offending tree.
@@ -181,7 +181,7 @@ void Fragment
  * `<ChildPage>` (with block descendants) and a sibling block. Filed as a
  * follow-up on issue #618.
  */
-describe.skip('sync() childpage-idempotency bug (issue #618 phase 3d follow-up)', () => {
+describe('sync() childpage-idempotency bug (issue #618 phase 3d follow-up)', () => {
   it('<Page>[<ChildPage><Paragraph/></ChildPage>, <Paragraph/>] — second sync throws', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
