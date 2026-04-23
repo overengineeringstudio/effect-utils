@@ -17,7 +17,61 @@ type Children = { readonly children?: ReactNode }
  */
 type BlockKey = { readonly blockKey?: string }
 
-export type PageProps = Children
+/**
+ * Notion page icon envelope. `emoji` is a bare unicode glyph; `external` points
+ * at a public URL; `custom_emoji` references a workspace-scoped custom emoji by
+ * id. Shapes empirically verified in `tmp/notion-618/experiments/findings.md`.
+ *
+ * Note (A07): response shape may differ slightly from request shape (e.g. the
+ * `file` vs `external` duality for uploaded files); downstream normalization
+ * happens at the client layer, not here.
+ */
+export type PageIcon =
+  | { readonly type: 'emoji'; readonly emoji: string }
+  | { readonly type: 'external'; readonly external: { readonly url: string } }
+  | { readonly type: 'custom_emoji'; readonly custom_emoji: { readonly id: string } }
+
+/**
+ * Notion page cover envelope. Narrower than {@link PageIcon}: emoji and
+ * custom_emoji are not accepted on covers. `file_upload` references a Notion
+ * Files-API-uploaded asset by id.
+ */
+export type PageCover =
+  | { readonly type: 'external'; readonly external: { readonly url: string } }
+  | { readonly type: 'file_upload'; readonly file_upload: { readonly id: string } }
+
+/**
+ * One rich-text span inside a Notion page title. Titles accept 1..N spans;
+ * per A10, each span's `text.content` is capped at 2000 characters by the
+ * Notion API. Annotations mirror the block-level rich_text envelope.
+ */
+export type PageTitleSpan = {
+  readonly type: 'text'
+  readonly text: {
+    readonly content: string
+    readonly link?: { readonly url: string } | null
+  }
+  readonly annotations?: {
+    readonly bold?: boolean
+    readonly italic?: boolean
+    readonly strikethrough?: boolean
+    readonly underline?: boolean
+    readonly code?: boolean
+    readonly color?: string
+  }
+}
+
+/**
+ * Ergonomic page-title prop: a plain string (projected as a single span) or an
+ * explicit array of {@link PageTitleSpan}s for annotated/multi-span titles.
+ */
+export type PageTitle = string | readonly PageTitleSpan[]
+
+export type PageProps = Children & {
+  readonly title?: PageTitle
+  readonly icon?: PageIcon
+  readonly cover?: PageCover
+}
 
 export type ParagraphProps = Children & BlockKey
 
@@ -107,7 +161,12 @@ export type ColumnProps = Children & BlockKey & { readonly widthRatio?: number }
 
 export type LinkToPageProps = { readonly pageId: string }
 export type TableOfContentsProps = Record<string, never>
-export type ChildPageProps = { readonly title?: string }
+export type ChildPageProps = {
+  readonly title?: PageTitle
+  readonly icon?: PageIcon
+  readonly cover?: PageCover
+  readonly children?: ReactNode
+}
 
 export type RawProps<TType extends string = string> = {
   readonly type: TType

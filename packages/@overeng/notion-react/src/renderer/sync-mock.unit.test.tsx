@@ -1684,4 +1684,51 @@ describe('sync() against in-memory fake Notion', () => {
     }
     expect(body.properties?.title?.title?.[0]?.text?.content).toBe('new title')
   })
+
+  // Regression: issue #618 phase 3a
+  //
+  // `<ChildPage>` now widens to accept `icon` and `cover` alongside `title`.
+  // The renderer projects them into the block-update payload, and the
+  // widened `issueBlockUpdate` helper translates each field into the
+  // corresponding `pages.update` body shape (properties / icon / cover).
+  // ---------------------------------------------------------------------
+  it('child_page icon + cover change → routed through pages.update with merged body', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runWith(
+      fake,
+      sync(<ChildPage title="doc" icon={{ type: 'emoji', emoji: '📄' }} />, {
+        pageId: ROOT,
+        cache,
+      }).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    const before = fake.requests.length
+    const res = await runWith(
+      fake,
+      sync(
+        <ChildPage
+          title="doc"
+          icon={{ type: 'emoji', emoji: '🧪' }}
+          cover={{ type: 'external', external: { url: 'https://x/c.png' } }}
+        />,
+        { pageId: ROOT, cache },
+      ).pipe(Effect.mapError((cause) => new Error(String(cause)))),
+    )
+    expect(res).toMatchObject({ appends: 0, updates: 1, inserts: 0, removes: 0 })
+    const newReqs = fake.requests.slice(before)
+    const pagePatches = newReqs.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path),
+    )
+    expect(pagePatches).toHaveLength(1)
+    const body = pagePatches[0]!.body as {
+      icon?: { type?: string; emoji?: string }
+      cover?: { type?: string; external?: { url?: string } }
+      properties?: { title?: { title?: readonly { text?: { content?: string } }[] } }
+    }
+    // Title stayed the same, so we expect icon + cover in the PATCH body.
+    // Whether `properties.title` is included depends on the diff-path
+    // minimization, but icon/cover must be there regardless.
+    expect(body.icon).toEqual({ type: 'emoji', emoji: '🧪' })
+    expect(body.cover).toEqual({ type: 'external', external: { url: 'https://x/c.png' } })
+  })
 })

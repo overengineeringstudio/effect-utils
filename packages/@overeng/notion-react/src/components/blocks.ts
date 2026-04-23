@@ -1,5 +1,3 @@
-import { Fragment, createElement, type ReactElement } from 'react'
-
 import { h } from './h.ts'
 import type {
   BookmarkProps,
@@ -47,8 +45,23 @@ import type {
  * source-level dogfooding.
  */
 
-export const Page = ({ children }: PageProps): ReactElement =>
-  createElement(Fragment, null, children)
+/**
+ * Root page wrapper. Renders as a virtual `page_root` host node so the
+ * reconciler can carry optional page-level metadata (title/icon/cover) — the
+ * host-config detects `page_root` and folds its children into the sync
+ * container's top-level instead of emitting a block op for the wrapper
+ * itself. Unwrapped top-level blocks (no `<Page>`) continue to work.
+ *
+ * Note: root-page metadata update is wired in phase 3b (#618); props are
+ * projected here so the host-config sees them when 3b lands.
+ */
+export const Page = (props: PageProps) => {
+  const hostProps: Record<string, unknown> = {}
+  if (props.title !== undefined) hostProps.title = props.title
+  if (props.icon !== undefined) hostProps.icon = props.icon
+  if (props.cover !== undefined) hostProps.cover = props.cover
+  return h('page_root', Object.keys(hostProps).length === 0 ? null : hostProps, props.children)
+}
 
 /**
  * Helper: emit a `blockKey`-only props bag when it's set, else `null`
@@ -159,8 +172,13 @@ export const Column = ({ children, widthRatio, blockKey }: ColumnProps) => {
 }
 export const LinkToPage = ({ pageId }: LinkToPageProps) => h('link_to_page', { pageId })
 export const TableOfContents = () => h('table_of_contents', null)
-export const ChildPage = ({ title }: ChildPageProps) =>
-  h('child_page', title === undefined ? null : { title })
+export const ChildPage = ({ title, icon, cover, children }: ChildPageProps) => {
+  const p: Record<string, unknown> = {}
+  if (title !== undefined) p.title = title
+  if (icon !== undefined) p.icon = icon
+  if (cover !== undefined) p.cover = cover
+  return h('child_page', Object.keys(p).length === 0 ? null : p, children)
+}
 
 /**
  * Schema-typed passthrough for block types that do not yet have ergonomic
