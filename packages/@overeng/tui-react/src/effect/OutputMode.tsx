@@ -19,10 +19,9 @@
  * Use named presets for common scenarios:
  * - `tty` - Interactive terminal (progressive, animated, colors)
  * - `ci` - CI environment (progressive, static spinners, colors)
- * - `pipe` - File-redirected output (final, static, colors)
  * - `log` - Log file (final, static, no colors)
  * - `fullscreen` - Alternate buffer mode (progressive, animated, colors)
- * - `json` - JSON output (final) - default for piped output (cmd | other)
+ * - `json` - JSON output (final) - default for non-TTY stdout (pipe, socket, file)
  * - `ndjson` - NDJSON streaming (progressive)
  *
  * @example
@@ -141,18 +140,6 @@ export const ciPlain: OutputMode = {
 }
 
 /**
- * Pipe mode - Piped/redirected output.
- *
- * Final React rendering (single output at end) with static spinners and colors.
- * Use this when stdout is redirected to a file or another process.
- */
-export const pipe: OutputMode = {
-  _tag: 'react',
-  timing: 'final',
-  render: { animation: false, colors: true, unicode: true, alternate: false },
-}
-
-/**
  * Log mode - Plain text log output.
  *
  * Final React rendering with static spinners and no colors.
@@ -236,17 +223,6 @@ export const ciRenderConfig: RenderConfig = {
 export const ciPlainRenderConfig: RenderConfig = {
   animation: false,
   colors: false,
-  unicode: true,
-  alternate: false,
-}
-
-/**
- * RenderConfig for piped output.
- * Final timing with static spinners, with colors and unicode.
- */
-export const pipeRenderConfig: RenderConfig = {
-  animation: false,
-  colors: true,
   unicode: true,
   alternate: false,
 }
@@ -478,9 +454,6 @@ export const ciLayer: Layer.Layer<OutputModeTag> = layer(ci)
 
 /** Layer for ci-plain mode */
 export const ciPlainLayer: Layer.Layer<OutputModeTag> = layer(ciPlain)
-
-/** Layer for pipe mode */
-export const pipeLayer: Layer.Layer<OutputModeTag> = layer(pipe)
 
 /** Layer for log mode */
 export const logLayer: Layer.Layer<OutputModeTag> = layer(log)

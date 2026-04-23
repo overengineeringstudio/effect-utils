@@ -18,7 +18,6 @@ import {
   ViewOutputStreamTag,
   tty,
   ci,
-  pipe,
   json,
   isTTY,
 } from './OutputMode.tsx'
@@ -49,12 +48,6 @@ const isNoUnicodeSet = (): boolean =>
  * Check if running in a CI environment.
  */
 const isCIEnv = (): boolean => typeof process !== 'undefined' && process.env?.CI !== undefined
-
-/**
- * Check if TUI_PIPE_MODE=visual env var is set to force visual output in pipes.
- */
-const isPipeModeVisual = (): boolean =>
-  typeof process !== 'undefined' && process.env?.TUI_PIPE_MODE === 'visual'
 
 /**
  * Classify the stdout file descriptor type.
@@ -116,35 +109,25 @@ export const isAgentEnv = (): boolean => {
  * Auto-detect the appropriate OutputMode based on environment.
  *
  * Detection logic:
- * 1. `TUI_VISUAL=1` env → forces React mode (tty or ci based on TTY)
- * 2. Agent environment detected → `json` (structured output for coding agents)
- * 3. TTY + not CI → `tty` (animated terminal)
- * 4. TTY + CI → `ci` (static terminal)
- * 5. Non-TTY + captured (pipe/socket) → `json` (machine-readable for downstream tools)
- * 6. Non-TTY + file redirect → `pipe` (visual output for file storage)
+ * 1. `TUI_VISUAL=1` env → forces React mode (tty or ci based on TTY).
+ * 2. Agent environment detected → `json` (structured output for coding agents).
+ * 3. TTY + not CI → `tty` (animated terminal).
+ * 4. TTY + CI → `ci` (static terminal).
+ * 5. Non-TTY stdout (pipe, socket, regular file) → `json`. Same treatment
+ *    regardless of which fd type — the stdout contract says "machine output
+ *    when no human is watching," and for result-oriented commands built on
+ *    `runResult` the view still renders (to stderr) in visual modes.
  *
- * Respects `NO_COLOR`, `NO_UNICODE`, and `TUI_PIPE_MODE` environment variables.
- *
- * @returns Detected OutputMode
- *
- * @example
- * ```typescript
- * const mode = detectOutputMode()
- * // Returns appropriate mode based on environment
- * ```
+ * Respects `NO_COLOR` and `NO_UNICODE` environment variables.
  */
 export const detectOutputMode = (): OutputMode => {
-  // Check environment
   const forceVisual = isVisualEnvSet()
   const ttyEnv = isTTY()
   const ciEnv = isCIEnv()
   const agentEnv = isAgentEnv()
   const noColor = isNoColorSet()
   const noUnicode = isNoUnicodeSet()
-  const stdoutType = stdoutFdType()
-  const forcePipeVisual = isPipeModeVisual()
 
-  // Helper to apply noColor and noUnicode
   const withEnvOverrides = (mode: OutputMode): OutputMode => {
     if (mode._tag !== 'react') return mode
     let render = mode.render
@@ -154,29 +137,19 @@ export const detectOutputMode = (): OutputMode => {
   }
 
   if (forceVisual === true) {
-    // Forced visual: use tty if actually TTY, otherwise ci mode
     return withEnvOverrides(ttyEnv === true && ciEnv === false ? tty : ci)
   }
 
-  // Agent environment → JSON output for structured consumption
   if (agentEnv === true) {
     return json
   }
 
-  // Auto-detect based on environment
   if (ttyEnv === true) {
     return withEnvOverrides(ciEnv === true ? ci : tty)
   }
 
-  // Non-TTY: distinguish between captured (pipe/socket) and file redirect
-  // Captured by another process (shell pipe or child_process) → JSON for machine consumption
-  // Unless TUI_PIPE_MODE=visual is set
-  if (stdoutType === 'pipe' && forcePipeVisual === false) {
-    return json
-  }
-
-  // File redirect or TUI_PIPE_MODE=visual → pipe mode (final React output)
-  return withEnvOverrides(pipe)
+  // Non-TTY — any flavour of captured/redirected stdout gets `json`.
+  return json
 }
 
 /**

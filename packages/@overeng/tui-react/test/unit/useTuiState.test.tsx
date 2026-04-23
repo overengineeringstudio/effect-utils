@@ -88,7 +88,7 @@ describe('createTuiApp', () => {
         const tui = yield* TestApp.run()
         const result = tui.getState()
         expect(result).toEqual({ _tag: 'Idle' })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
 
     it.effect('dispatch updates state via reducer', () =>
@@ -97,7 +97,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Start' })
         const result = tui.getState()
         expect(result).toEqual({ _tag: 'Running', count: 0 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
 
     it.effect('multiple dispatches apply reducer sequentially', () =>
@@ -109,7 +109,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Increment' })
         const result = tui.getState()
         expect(result).toEqual({ _tag: 'Running', count: 3 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
 
     it.effect('dispatch with payload', () =>
@@ -120,12 +120,12 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Finish', total: 42 })
         const result = tui.getState()
         expect(result).toEqual({ _tag: 'Complete', total: 42 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
   })
 
   describe('json mode', () => {
-    it.effect('outputs JSON on scope close with Success wrapper', () =>
+    it.effect('outputs final raw state on scope close', () =>
       Effect.gen(function* () {
         const tui = yield* TestApp.run()
         tui.dispatch({ _tag: 'Start' })
@@ -137,33 +137,28 @@ describe('createTuiApp', () => {
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
           const parsed = JSON.parse(capturedOutput[0]!)
-          // State is a union (non-struct), so it's wrapped in `value`
-          expect(parsed._tag).toBe('Success')
-          expect(parsed.value).toEqual({ _tag: 'Complete', total: 10 })
+          expect(parsed).toEqual({ _tag: 'Complete', total: 10 })
         }),
       ),
     )
 
-    it.effect('outputs final state even if only initial', () =>
+    it.effect('outputs initial state when nothing was dispatched', () =>
       TestApp.run().pipe(
         Effect.scoped,
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
           const parsed = JSON.parse(capturedOutput[0]!)
-          // State is a union (non-struct), so it's wrapped in `value`
-          expect(parsed._tag).toBe('Success')
-          expect(parsed.value).toEqual({ _tag: 'Idle' })
+          expect(parsed).toEqual({ _tag: 'Idle' })
         }),
       ),
     )
   })
 
   describe('ndjson mode', () => {
-    it.live('outputs NDJSON with final Success wrapper', () =>
+    it.live('streams each state change as a raw JSON line', () =>
       Effect.gen(function* () {
         const tui = yield* TestApp.run()
-        // Small delay to allow stream to process
         yield* Effect.sleep('10 millis')
         tui.dispatch({ _tag: 'Start' })
         yield* Effect.sleep('10 millis')
@@ -173,22 +168,18 @@ describe('createTuiApp', () => {
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
         Effect.andThen(() => {
-          // Should have multiple JSON lines (intermediate raw + final wrapped)
+          // Initial snapshot + one line per state change. No trailing envelope.
           expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-          // Each line should be valid JSON
           for (const line of capturedOutput) {
             expect(() => JSON.parse(line)).not.toThrow()
           }
 
-          // First output should be raw state (Idle)
           const firstParsed = JSON.parse(capturedOutput[0]!)
           expect(firstParsed._tag).toBe('Idle')
 
-          // Last output should be Success wrapper with Complete state
           const lastParsed = JSON.parse(capturedOutput[capturedOutput.length - 1]!)
-          expect(lastParsed._tag).toBe('Success')
-          expect(lastParsed.value._tag).toBe('Complete')
+          expect(lastParsed._tag).toBe('Complete')
         }),
       ),
     )
@@ -202,7 +193,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Finish', total: 10 })
       }).pipe(
         Effect.scoped,
-        Effect.provide(testModeLayer('pipe')),
+        Effect.provide(testModeLayer('log')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(0)
         }),
@@ -226,7 +217,7 @@ describe('createTuiApp', () => {
         states.push(updated)
       }).pipe(
         Effect.scoped,
-        Effect.provide(testModeLayer('pipe')),
+        Effect.provide(testModeLayer('log')),
         Effect.andThen(() => {
           expect(states).toEqual([{ _tag: 'Idle' }, { _tag: 'Running', count: 0 }])
         }),

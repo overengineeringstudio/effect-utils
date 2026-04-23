@@ -27,14 +27,13 @@ import { Options } from '@effect/cli'
 import { Cause, Effect, Layer, Logger, Option } from 'effect'
 
 import { createLogCapture } from './LogCapture.ts'
-import { detectOutputMode } from './OutputMode.node.ts'
-import type { OutputModeTag } from './OutputMode.tsx'
+import { detectOutputMode, viewOutputStreamStdoutLayer } from './OutputMode.node.ts'
+import type { OutputModeTag, ViewOutputStreamTag } from './OutputMode.tsx'
 import {
   type OutputMode,
   tty,
   ci,
   ciPlain,
-  pipe,
   log,
   altScreen,
   json,
@@ -57,7 +56,6 @@ export const OUTPUT_MODE_VALUES = [
   'alt-screen',
   'ci',
   'ci-plain',
-  'pipe',
   'log',
   'json',
   'ndjson',
@@ -76,14 +74,13 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
  * `--output` / `-o` flag for controlling output mode.
  *
  * Available modes:
- * - `auto` (default) - Auto-detect based on environment (TTY, CI, pipe)
+ * - `auto` (default) - Auto-detect based on environment (TTY, CI, captured stdout)
  * - `tty` - Live output with animated spinners and colors
  * - `alt-screen` - Live output in alternate screen buffer (fullscreen TUI)
  * - `ci` - Live output with static spinners and colors
  * - `ci-plain` - Live output with static spinners, no colors
- * - `pipe` - Final output only with colors (for piping)
  * - `log` - Final output only, no colors (for log files)
- * - `json` - Final JSON output
+ * - `json` - Final JSON output (raw state; exit code signals success/failure)
  * - `ndjson` - Live streaming JSON output (newline-delimited)
  *
  * @example
@@ -98,7 +95,7 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
 export const outputOption = Options.choice('output', OUTPUT_MODE_VALUES).pipe(
   Options.withAlias('o'),
   Options.withDescription(
-    'Output mode: auto, tty, alt-screen, ci, ci-plain, pipe, log, json, ndjson',
+    'Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson',
   ),
   Options.withDefault('auto' as OutputModeValue),
 )
@@ -115,7 +112,6 @@ const modeMap: Record<Exclude<OutputModeValue, 'auto'>, OutputMode> = {
   'alt-screen': altScreen,
   ci: ci,
   'ci-plain': ciPlain,
-  pipe: pipe,
   log: log,
   json: json,
   ndjson: ndjson,
@@ -141,7 +137,7 @@ const stderrLoggerLayer: Layer.Layer<never> = Logger.replace(
  *   accessible via `useCapturedLogs()` in React components.
  * - **JSON modes** (`json`, `ndjson`): Redirects logs to stderr, keeping stdout
  *   clean for JSON data only.
- * - **Final React modes** (`pipe`, `log`): No log capture (single render at end).
+ * - **Final React modes** (`log`): No log capture (single render at end).
  *
  * @example
  * ```typescript
@@ -174,9 +170,23 @@ export const outputModeLayer = (value: OutputModeValue): Layer.Layer<OutputModeT
     )
   }
 
-  // Final React modes (pipe, log) -- no capture needed
+  // Final React modes (log) -- no capture needed
   return layer(mode)
 }
+
+/**
+ * Complete TUI runtime layer: combines the output mode with the default
+ * `ViewOutputStreamTag` binding (stdout). This is what every entry point
+ * except `runResult` should provide — `runResult` overrides the view stream
+ * to stderr internally.
+ *
+ * Prefer this over `outputModeLayer` when wiring a CLI main — it gives you
+ * both dependencies in one call. `runTuiMain` uses it internally.
+ */
+export const tuiRuntimeLayer = (
+  value: OutputModeValue,
+): Layer.Layer<OutputModeTag | ViewOutputStreamTag> =>
+  Layer.merge(outputModeLayer(value), viewOutputStreamStdoutLayer)
 
 /**
  * Resolve an OutputModeValue to an OutputMode.

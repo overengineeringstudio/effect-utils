@@ -218,97 +218,6 @@ export interface NdjsonConfig<in S, in A, E> {
 }
 
 // =============================================================================
-// Output Schema Types
-// =============================================================================
-
-/**
- * The Cause schema used for Failure output.
- * Uses Schema.Defect for both error and defect fields.
- *
- * Typed errors (Fail nodes) are serialized lossily as { name, message }.
- * Structured error details should be carried in state (for JSON consumers),
- * while typed errors still propagate via the Effect channel for in-process handling.
- */
-const OutputCauseSchema = Schema.Cause({
-  error: Schema.Defect,
-  defect: Schema.Defect,
-})
-
-/**
- * Type for the encoded cause in JSON output.
- */
-export type OutputCauseEncoded = typeof OutputCauseSchema.Encoded
-
-/**
- * Type for the cause value (Effect's Cause type).
- */
-export type OutputCause = typeof OutputCauseSchema.Type
-
-/**
- * Success output - command completed (results may include member-level errors).
- * Fields are spread flat from the state schema plus `_tag: "Success"`.
- */
-export type TuiOutputSuccess<S> = { readonly _tag: 'Success' } & S
-
-/**
- * Failure output - command crashed or was interrupted.
- * Contains the cause and the state at time of failure.
- */
-export interface TuiOutputFailure<S> {
-  readonly _tag: 'Failure'
-  readonly cause: OutputCause
-  readonly state: S
-}
-
-/**
- * Union of Success and Failure output types.
- */
-export type TuiOutput<S> = TuiOutputSuccess<S> | TuiOutputFailure<S>
-
-/**
- * Derive an output schema from a state schema.
- *
- * Creates a discriminated union:
- * - `Success`: State fields spread flat + `_tag: "Success"`
- * - `Failure`: `{ _tag: "Failure", cause: Cause, state: S }`
- *
- * @example
- * ```typescript
- * const StateSchema = Schema.Struct({ count: Schema.Number })
- * const OutputSchema = deriveOutputSchema(StateSchema)
- *
- * // Success: { _tag: "Success", count: 42 }
- * // Failure: { _tag: "Failure", cause: {...}, state: { count: 10 } }
- * ```
- */
-export const deriveOutputSchema = <S, I, R>(
-  stateSchema: Schema.Schema<S, I, R>,
-): Schema.Schema<TuiOutput<S>> => {
-  const ast = stateSchema.ast
-  if (ast._tag !== 'TypeLiteral') {
-    // Fallback: wrap state in a `value` field if not a struct
-    const SuccessSchema = Schema.TaggedStruct('Success', {
-      value: stateSchema as Schema.Schema<S, I>,
-    })
-    const FailureSchema = Schema.TaggedStruct('Failure', {
-      cause: OutputCauseSchema,
-      state: stateSchema as Schema.Schema<S, I>,
-    })
-    return Schema.Union(SuccessSchema, FailureSchema) as unknown as Schema.Schema<TuiOutput<S>>
-  }
-
-  // State is a struct - spread fields into Success
-  const stateStruct = stateSchema as unknown as Schema.Struct<Schema.Struct.Fields>
-  const SuccessSchema = Schema.TaggedStruct('Success', stateStruct.fields)
-  const FailureSchema = Schema.TaggedStruct('Failure', {
-    cause: OutputCauseSchema,
-    state: stateSchema as Schema.Schema<S, I>,
-  })
-
-  return Schema.Union(SuccessSchema, FailureSchema) as unknown as Schema.Schema<TuiOutput<S>>
-}
-
-// =============================================================================
 // TuiApp API Types
 // =============================================================================
 
@@ -353,23 +262,6 @@ export interface TuiApp<S, A> {
    * Atom containing the current state. Use with `useTuiAtomValue(App.stateAtom)`.
    */
   readonly stateAtom: Atom.Writable<S>
-
-  /**
-   * Schema for JSON output, derived from stateSchema.
-   *
-   * Output is a discriminated union:
-   * - `Success`: State fields spread flat + `_tag: "Success"`
-   * - `Failure`: `{ _tag: "Failure", cause: Cause, state: S }`
-   *
-   * Use this for type-safe parsing of CLI JSON output.
-   *
-   * @example
-   * ```typescript
-   * type Output = typeof MyApp.outputSchema.Type
-   * // { _tag: "Success", count: number } | { _tag: "Failure", cause: Cause, state: {...} }
-   * ```
-   */
-  readonly outputSchema: Schema.Schema<TuiOutput<S>>
 
   /**
    * Run the app, optionally rendering a view.
@@ -501,9 +393,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
   // Create a registry for this app
   const registry = Registry.make()
 
-  // Derive output schema from state schema (once per app, not per run)
-  const outputSchema = deriveOutputSchema(config.stateSchema)
-
   // Check once if schema has Interrupted variant
   const interruptedAction = createInterruptedAction(config.actionSchema)
   const run_ = (
@@ -593,7 +482,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
           mode,
           stateAtom,
           stateSchema,
-          outputSchema,
           registry,
           view,
           ndjsonConfig: config.ndjson,
@@ -630,7 +518,6 @@ export const createTuiApp = <S, A>(config: TuiAppConfig<S, A>): TuiApp<S, A> => 
   return {
     [TuiAppTypeId]: TuiAppTypeId,
     stateAtom,
-    outputSchema,
     run: run_,
     config,
   }
@@ -650,7 +537,6 @@ const setupMode = <S,>({
   mode,
   stateAtom,
   stateSchema,
-  outputSchema,
   registry,
   view,
   ndjsonConfig,
@@ -658,7 +544,6 @@ const setupMode = <S,>({
   mode: OutputMode
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  outputSchema: Schema.Schema<TuiOutput<S>>
   registry: Registry.Registry
   view?: ReactElement | undefined
   ndjsonConfig?: NdjsonConfig<S, any, any> | undefined
@@ -691,7 +576,6 @@ const setupMode = <S,>({
         return setupProgressiveJsonWithEvents({
           stateAtom,
           stateSchema,
-          outputSchema,
           registry,
           ndjsonConfig,
         }).pipe(Effect.map((emitter) => ({ root: null, eventEmitter: emitter })))
@@ -699,11 +583,10 @@ const setupMode = <S,>({
       return setupProgressiveJsonWithAtom({
         stateAtom,
         stateSchema,
-        outputSchema,
         registry,
       }).pipe(Effect.as({ root: null, eventEmitter: undefined }))
     } else {
-      return setupFinalJsonWithAtom({ stateAtom, stateSchema, outputSchema, registry }).pipe(
+      return setupFinalJsonWithAtom({ stateAtom, stateSchema, registry }).pipe(
         Effect.as({ root: null, eventEmitter: undefined }),
       )
     }
@@ -805,82 +688,61 @@ const setupFinalVisualWithAtom = ({
 }
 
 /**
- * Check if a state schema is a struct (TypeLiteral in AST).
- * Used to determine whether to spread state fields or wrap in `value`.
- */
-const isStructSchema = <S,>(stateSchema: Schema.Schema<S>): boolean => {
-  return stateSchema.ast._tag === 'TypeLiteral'
-}
-
-/**
- * Final JSON mode with atoms: Output final state as JSON on scope close.
+ * Final JSON mode: emit the final state as a single raw JSON line on scope close.
  *
- * Wraps output in Success/Failure based on Exit status:
- * - Success (struct state): `{ _tag: "Success", ...state }`
- * - Success (non-struct state): `{ _tag: "Success", value: state }`
- * - Failure (defect/interrupt): `{ _tag: "Failure", cause: {...}, state: {...} }`
+ * No envelope — exit code signals success/failure; the state itself carries
+ * any per-item/per-field error details via its schema. This matches how
+ * `curl -w`, `jq`, `gh ... --json`, and `kubectl ... -o json` behave: data on
+ * stdout, exit code is the truth source, error messaging on stderr.
+ *
+ * We emit on every exit (success or failure) so consumers always have a final
+ * observable state; `formatError` handles stderr for failure details.
  */
 const setupFinalJsonWithAtom = <S,>({
   stateAtom,
   stateSchema,
-  outputSchema,
   registry,
 }: {
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  outputSchema: Schema.Schema<TuiOutput<S>>
   registry: Registry.Registry
 }): Effect.Effect<void, never, Scope.Scope> =>
-  Effect.addFinalizer((exit) =>
+  Effect.addFinalizer(() =>
     Effect.gen(function* () {
       const finalState = registry.get(stateAtom)
-      const isStruct = isStructSchema(stateSchema)
-
-      // Wrap in Success or Failure based on exit status
-      // For non-struct states, wrap in `value` field to avoid _tag collision
-      const output =
-        exit._tag === 'Success'
-          ? isStruct === true
-            ? { _tag: 'Success' as const, ...finalState }
-            : { _tag: 'Success' as const, value: finalState }
-          : { _tag: 'Failure' as const, cause: exit.cause as OutputCause, state: finalState }
-
-      const jsonString = yield* Schema.encode(Schema.parseJson(outputSchema))(output as any)
+      const jsonString = yield* Schema.encode(Schema.parseJson(stateSchema))(finalState)
       yield* Console.log(jsonString)
     }).pipe(Effect.orDie),
   )
 
 /**
- * Progressive JSON mode: Stream state changes as NDJSON via atom subscriptions.
+ * Progressive JSON mode: stream every state change as an NDJSON line.
  *
- * Intermediate lines output raw state for progressive consumption.
- * Final line wraps in Success/Failure based on Exit status.
+ * Contract: initial snapshot + each state change. No trailing envelope line —
+ * EOF + exit code signal completion. Consumers read the final line as the
+ * authoritative end state.
  */
 const setupProgressiveJsonWithAtom = <S,>({
   stateAtom,
   stateSchema,
-  outputSchema,
   registry,
 }: {
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  outputSchema: Schema.Schema<TuiOutput<S>>
   registry: Registry.Registry
 }): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<never>()
-    const isStruct = isStructSchema(stateSchema)
 
-    // Output initial state (raw, for progressive consumption)
+    // Initial snapshot for bootstrapping.
     const initialState = registry.get(stateAtom)
     const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
       Effect.orDie,
     )
     yield* Console.log(initialJson)
 
-    // Subscribe to changes and output as NDJSON (raw state for intermediate lines)
+    // Subscribe to subsequent state changes.
     const unsubscribe = registry.subscribe(stateAtom, (state) => {
-      // Encode and output synchronously
       Runtime.runSync(runtime)(
         Schema.encode(Schema.parseJson(stateSchema))(state).pipe(
           Effect.flatMap((jsonString) => Console.log(jsonString)),
@@ -889,64 +751,40 @@ const setupProgressiveJsonWithAtom = <S,>({
       )
     })
 
-    // Add finalizer to unsubscribe and output final wrapped result
-    yield* Effect.addFinalizer((exit) =>
-      Effect.gen(function* () {
-        unsubscribe()
-
-        // Output final line with Success/Failure wrapper
-        // For non-struct states, wrap in `value` field to avoid _tag collision
-        const finalState = registry.get(stateAtom)
-        const output =
-          exit._tag === 'Success'
-            ? isStruct === true
-              ? { _tag: 'Success' as const, ...finalState }
-              : { _tag: 'Success' as const, value: finalState }
-            : { _tag: 'Failure' as const, cause: exit.cause as OutputCause, state: finalState }
-
-        const jsonString = yield* Schema.encode(Schema.parseJson(outputSchema))(output as any)
-        yield* Console.log(jsonString)
-      }).pipe(Effect.orDie),
-    )
+    yield* Effect.addFinalizer(() => Effect.sync(unsubscribe))
   })
 
 /**
- * Progressive JSON mode with event mapping: emits mapped events per action
- * instead of full state snapshots.
+ * Progressive JSON mode with event mapping: emit mapped events per action.
  *
- * Stream contract:
- * - Line 1: full state snapshot (for consumer bootstrapping)
- * - Intermediate lines: events produced by `ndjsonConfig.fromAction(action, prevState)`
- * - Final line: Success/Failure wrapper with full state
+ * Contract:
+ *   - Line 1: initial full state snapshot (bootstrapping).
+ *   - Intermediate lines: events from `ndjsonConfig.fromAction(...)`.
+ *   - No trailing envelope — EOF + exit code signal completion.
  *
- * Returns an emitter callback to be called from `dispatch()`.
+ * Returns the emitter callback invoked from `dispatch()`.
  */
 const setupProgressiveJsonWithEvents = <S, E>({
   stateAtom,
   stateSchema,
-  outputSchema,
   registry,
   ndjsonConfig,
 }: {
   stateAtom: Atom.Writable<S>
   stateSchema: Schema.Schema<S>
-  outputSchema: Schema.Schema<TuiOutput<S>>
   registry: Registry.Registry
   ndjsonConfig: NdjsonConfig<S, any, E>
 }): Effect.Effect<(args: { action: any; prevState: S }) => void, never, Scope.Scope> =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<never>()
-    const isStruct = isStructSchema(stateSchema)
     const { eventSchema, fromAction } = ndjsonConfig
 
-    // Output initial state (full snapshot for bootstrapping)
     const initialState = registry.get(stateAtom)
     const initialJson = yield* Schema.encode(Schema.parseJson(stateSchema))(initialState).pipe(
       Effect.orDie,
     )
     yield* Console.log(initialJson)
 
-    // Emitter callback — called from dispatch() for each action
     const emitter = ({ action, prevState }: { action: any; prevState: S }): void => {
       const events = fromAction({ action, prevState })
       for (const event of events) {
@@ -958,22 +796,6 @@ const setupProgressiveJsonWithEvents = <S, E>({
         )
       }
     }
-
-    // Finalizer: emit final wrapped result (same as atom-based progressive JSON)
-    yield* Effect.addFinalizer((exit) =>
-      Effect.gen(function* () {
-        const finalState = registry.get(stateAtom)
-        const output =
-          exit._tag === 'Success'
-            ? isStruct === true
-              ? { _tag: 'Success' as const, ...finalState }
-              : { _tag: 'Success' as const, value: finalState }
-            : { _tag: 'Failure' as const, cause: exit.cause as OutputCause, state: finalState }
-
-        const jsonString = yield* Schema.encode(Schema.parseJson(outputSchema))(output as any)
-        yield* Console.log(jsonString)
-      }).pipe(Effect.orDie),
-    )
 
     return emitter
   })
@@ -1015,7 +837,9 @@ const runImpl = <S, A, B, E, R>(
  *
  * Use this for state-driven commands where the TUI state machine IS the output
  * (e.g., dashboards, interactive TUIs). In JSON modes, the final state is
- * serialized via `TuiApp.outputSchema`.
+ * serialized via `stateSchema` on scope close; NDJSON mode streams every state
+ * change. Exit code signals overall success/failure; error details go to
+ * stderr via `formatError`.
  *
  * For result-oriented commands (where the handler returns a value and the state
  * machine is just visual scaffolding), use `runResult` instead.

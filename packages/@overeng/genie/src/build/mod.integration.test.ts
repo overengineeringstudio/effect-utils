@@ -627,23 +627,21 @@ export default { data: {}, stringify: () => '{}' }`,
 
             expect(exitCode).not.toBe(0)
 
-            // Parse JSON output using the typed output schema
-            const output = yield* Schema.decodeUnknown(Schema.parseJson(GenieApp.outputSchema))(
-              stdout.trim(),
-            )
-
-            expect(output._tag).toBe('Failure')
-            if (output._tag !== 'Failure') return
+            // Flat JSON contract: final stdout line is the raw state (no envelope).
+            // Exit code signals failure; per-file error details are carried in state.
+            const state = yield* Schema.decodeUnknown(
+              Schema.parseJson(GenieApp.config.stateSchema),
+            )(stdout.trim())
 
             // Bug #135: files array must NOT be empty
-            expect(output.state.files.length).toBe(2)
+            expect(state.files.length).toBe(2)
             // Bug #135: cwd must NOT be empty
-            expect(output.state.cwd).not.toBe('')
+            expect(state.cwd).not.toBe('')
             // Summary should be correct
-            expect(output.state.summary?.failed).toBe(1)
-            expect(output.state.summary?.unchanged).toBe(1)
+            expect(state.summary?.failed).toBe(1)
+            expect(state.summary?.unchanged).toBe(1)
             // Per-file error details should be present
-            const errorFile = output.state.files.find((f) => f.status === 'error')
+            const errorFile = state.files.find((f) => f.status === 'error')
             expect(errorFile).toBeDefined()
             expect(errorFile!.message).toContain('intentional failure')
           }),
@@ -714,18 +712,16 @@ export default { data: {}, stringify: () => '{}' }`,
 
             expect(exitCode).not.toBe(0)
 
-            // Parse final line (Failure-wrapped) using the typed output schema
+            // NDJSON flat contract: each line is raw state; last line is the
+            // authoritative end state (no trailing Failure envelope).
             const lines = stdout.trim().split('\n')
-            const finalLine = yield* Schema.decodeUnknown(Schema.parseJson(GenieApp.outputSchema))(
-              lines[lines.length - 1]!,
-            )
+            const finalState = yield* Schema.decodeUnknown(
+              Schema.parseJson(GenieApp.config.stateSchema),
+            )(lines[lines.length - 1]!)
 
-            expect(finalLine._tag).toBe('Failure')
-            if (finalLine._tag !== 'Failure') return
-
-            expect(finalLine.state.files.length).toBe(2)
-            expect(finalLine.state.cwd).not.toBe('')
-            expect(finalLine.state.summary?.failed).toBe(1)
+            expect(finalState.files.length).toBe(2)
+            expect(finalState.cwd).not.toBe('')
+            expect(finalState.summary?.failed).toBe(1)
           }),
         )
       },

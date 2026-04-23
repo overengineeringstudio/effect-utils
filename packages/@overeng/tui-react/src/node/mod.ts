@@ -30,6 +30,7 @@ export {
 export {
   outputOption,
   outputModeLayer,
+  tuiRuntimeLayer,
   resolveOutputMode,
   runTuiMain,
   defaultFormatError,

@@ -49,7 +49,6 @@ export const ALL_OUTPUT_TABS: OutputTab[] = [
   'alt-screen',
   'ci',
   'ci-plain',
-  'pipe',
   'log',
   'json',
   'ndjson',

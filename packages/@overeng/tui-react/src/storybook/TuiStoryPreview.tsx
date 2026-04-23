@@ -27,9 +27,8 @@
  * - `alt-screen` - Fullscreen TUI simulation
  * - `ci` - CI output with colors
  * - `ci-plain` - CI output without colors
- * - `pipe` - Final output with colors (for piping)
  * - `log` - Final output without colors (for log files)
- * - `json` - Final JSON output
+ * - `json` - Final JSON output (raw state)
  * - `ndjson` - Streaming NDJSON
  */
 
@@ -48,7 +47,6 @@ import {
   RenderConfigProvider,
   ciRenderConfig,
   ciPlainRenderConfig,
-  pipeRenderConfig,
   logRenderConfig,
   stripAnsi,
 } from '../effect/OutputMode.tsx'
@@ -68,7 +66,6 @@ export type OutputTab =
   | 'alt-screen'
   | 'ci'
   | 'ci-plain'
-  | 'pipe'
   | 'log'
   | 'json'
   | 'ndjson'
@@ -393,14 +390,6 @@ export const TuiStoryPreview = <S, A>({
         )}
         {activeTab === 'ci-plain' && (
           <CIPlainPreviewPane
-            View={ViewCast}
-            stateAtom={stateAtom as Atom.Atom<unknown>}
-            registry={registry}
-            height={height}
-          />
-        )}
-        {activeTab === 'pipe' && (
-          <PipePreviewPane
             View={ViewCast}
             stateAtom={stateAtom as Atom.Atom<unknown>}
             registry={registry}
@@ -1252,85 +1241,6 @@ const CIPlainPreviewPane: React.FC<{
 }
 
 // =============================================================================
-// Pipe Preview Component (final output with colors)
-// =============================================================================
-
-const PipePreviewPane: React.FC<{
-  View: React.ComponentType<{ stateAtom: Atom.Atom<unknown> }>
-  stateAtom: Atom.Atom<unknown>
-  registry: Registry.Registry
-  height: number
-}> = ({ View, stateAtom, registry, height }) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal | null>(null)
-  // Get current state for dependency tracking
-  const state = registry.get(stateAtom)
-
-  useEffect(() => {
-    if (containerRef.current === null) return
-
-    if (terminalRef.current === null) {
-      const terminal = new Terminal({
-        fontFamily: 'Monaco, Menlo, "DejaVu Sans Mono", Consolas, monospace',
-        fontSize: 14,
-        theme: xtermTheme,
-        allowProposedApi: true,
-        cursorBlink: false,
-        cursorStyle: 'bar',
-        disableStdin: true,
-      })
-
-      const fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
-      terminal.open(containerRef.current)
-      terminal.loadAddon(new WebglAddon())
-      fitAddon.fit()
-
-      terminalRef.current = terminal
-    }
-
-    const terminal = terminalRef.current
-    terminal.clear()
-    terminal.reset()
-
-    // Render with pipe mode (final, with colors)
-    // Wrap in registry context so useTuiAtomValue works
-    const element = (
-      <TuiRegistryContext.Provider value={registry}>
-        <RenderConfigProvider config={pipeRenderConfig}>
-          <View stateAtom={stateAtom} />
-        </RenderConfigProvider>
-      </TuiRegistryContext.Provider>
-    )
-
-    renderToString({ element })
-      .then((ansiOutput) => {
-        const lines = ansiOutput.split('\n')
-        lines.forEach((line, i) => {
-          terminal.write(line)
-          if (i < lines.length - 1) {
-            terminal.write('\r\n')
-          }
-        })
-      })
-      .catch((err: Error) => {
-        terminal.write(`Error: ${err.message}`)
-      })
-
-    return () => {}
-  }, [state, stateAtom, registry, View])
-
-  useEffect(() => {
-    return () => {
-      terminalRef.current?.dispose()
-      terminalRef.current = null
-    }
-  }, [])
-
-  return <div ref={containerRef} style={{ ...containerStyles, padding: previewPadding, height }} />
-}
-
-// =============================================================================
 // Fullscreen Terminal Component
 // =============================================================================
 
@@ -1513,7 +1423,6 @@ const TAB_LABELS: Record<OutputTab, string> = {
   'alt-screen': 'Alt Screen',
   ci: 'CI',
   'ci-plain': 'CI Plain',
-  pipe: 'Pipe',
   log: 'Log',
   json: 'JSON',
   ndjson: 'NDJSON',
@@ -1524,14 +1433,13 @@ const TAB_DESCRIPTIONS: Record<OutputTab, string> = {
   'alt-screen': 'Live • Animated • Colored • Fullscreen',
   ci: 'Live • Static • Colored',
   'ci-plain': 'Live • Static • Plain',
-  pipe: 'Final • Static • Colored',
   log: 'Final • Static • Plain',
   json: 'Final JSON output',
   ndjson: 'Streaming NDJSON',
 }
 
 /** Modes that only show final output (no timeline) */
-const FINAL_MODES: Set<OutputTab> = new Set(['pipe', 'log', 'json'])
+const FINAL_MODES: Set<OutputTab> = new Set(['log', 'json'])
 
 const isFinalMode = (tab: OutputTab): boolean => FINAL_MODES.has(tab)
 

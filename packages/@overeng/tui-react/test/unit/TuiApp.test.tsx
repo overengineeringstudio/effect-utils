@@ -13,10 +13,8 @@ import {
   run,
   runResult,
   useTuiAtomValue,
-  deriveOutputSchema,
   Box,
   Text,
-  type TuiOutput,
 } from '../../src/mod.tsx'
 
 const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, json: string): A =>
@@ -112,7 +110,7 @@ describe('createTuiApp', () => {
         const tui = yield* CounterApp.run()
         const result = tui.getState()
         expect(result).toEqual({ count: 0 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
 
     it.effect('dispatch updates state', () =>
@@ -123,7 +121,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Increment' })
         const result = tui.getState()
         expect(result).toEqual({ count: 3 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
 
     it.effect('dispatch with payload', () =>
@@ -132,7 +130,7 @@ describe('createTuiApp', () => {
         tui.dispatch({ _tag: 'Set', value: 42 })
         const result = tui.getState()
         expect(result).toEqual({ count: 42 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
     )
   })
 
@@ -147,8 +145,8 @@ describe('createTuiApp', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
-          const output = decodeJson(CounterApp.outputSchema, capturedOutput[0]!)
-          expect(output).toEqual({ _tag: 'Success', count: 2 })
+          const state = decodeJson(CounterState, capturedOutput[0]!)
+          expect(state).toEqual({ count: 2 })
         }),
       ),
     )
@@ -162,15 +160,15 @@ describe('createTuiApp', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen(() => {
           expect(capturedOutput).toHaveLength(1)
-          const output = decodeJson(CounterApp.outputSchema, capturedOutput[0]!)
-          expect(output).toEqual({ _tag: 'Success', count: 100 })
+          const state = decodeJson(CounterState, capturedOutput[0]!)
+          expect(state).toEqual({ count: 100 })
         }),
       ),
     )
   })
 
   describe('ndjson mode', () => {
-    it.live('streams state changes as NDJSON with final Success wrapper', () =>
+    it.live('streams each state change as a raw JSON line', () =>
       Effect.gen(function* () {
         const tui = yield* CounterApp.run()
         yield* Effect.sleep('10 millis')
@@ -182,22 +180,18 @@ describe('createTuiApp', () => {
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
         Effect.andThen(() => {
-          // Should have at least initial state + final wrapped output
+          // Initial snapshot + one line per state change. No trailing envelope.
           expect(capturedOutput.length).toBeGreaterThanOrEqual(2)
 
-          // Intermediate lines are raw state (for progressive consumption)
           const initialState = decodeJson(CounterState, capturedOutput[0]!)
           expect(initialState).toEqual({ count: 0 })
 
-          // Final line should be wrapped in Success
-          const finalOutput = decodeJson(
-            CounterApp.outputSchema,
+          // Last emitted line is the authoritative end state.
+          const finalState = decodeJson(
+            CounterState,
             capturedOutput[capturedOutput.length - 1]!,
           )
-          expect(finalOutput._tag).toBe('Success')
-          if (finalOutput._tag === 'Success') {
-            expect(finalOutput.count).toBe(2)
-          }
+          expect(finalState).toEqual({ count: 2 })
         }),
       ),
     )
@@ -247,19 +241,14 @@ describe('createTuiApp', () => {
           const initialState = decodeJson(CounterState, capturedOutput[0]!)
           expect(initialState).toEqual({ count: 0 })
 
-          // Intermediate lines: events (not full state)
+          // Subsequent lines: events (not full state). No trailing envelope.
           const event1 = decodeJson(CounterEvent, capturedOutput[1]!)
           expect(event1).toEqual({ _tag: 'Incremented', newCount: 1 })
 
           const event2 = decodeJson(CounterEvent, capturedOutput[2]!)
           expect(event2).toEqual({ _tag: 'Incremented', newCount: 2 })
 
-          // Final line: Success wrapper with full state
-          const finalOutput = decodeJson(
-            EventCounterApp.outputSchema,
-            capturedOutput[capturedOutput.length - 1]!,
-          )
-          expect(finalOutput).toEqual({ _tag: 'Success', count: 2 })
+          expect(capturedOutput).toHaveLength(3)
         }),
       ),
     )
@@ -286,13 +275,9 @@ describe('createTuiApp', () => {
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
         Effect.andThen(() => {
-          // Only initial state + final wrapped output (no intermediate events)
-          expect(capturedOutput).toHaveLength(2)
+          // Only initial state snapshot — no intermediate events, no envelope.
+          expect(capturedOutput).toHaveLength(1)
           expect(decodeJson(CounterState, capturedOutput[0]!)).toEqual({ count: 0 })
-          expect(decodeJson(SilentApp.outputSchema, capturedOutput[1]!)).toEqual({
-            _tag: 'Success',
-            count: 2,
-          })
         }),
       )
     })
@@ -324,8 +309,8 @@ describe('createTuiApp', () => {
         Effect.scoped,
         Effect.provide(testModeLayer('ndjson')),
         Effect.andThen(() => {
-          // Initial + 2 events from 1 action + final
-          expect(capturedOutput).toHaveLength(4)
+          // Initial + 2 events from 1 action. No trailing envelope.
+          expect(capturedOutput).toHaveLength(3)
           expect(decodeJson(CounterEvent, capturedOutput[1]!)).toEqual({
             _tag: 'Decremented',
             newCount: 0,
@@ -416,36 +401,18 @@ describe('createTuiApp', () => {
 
         expect(tui1.getState()).toEqual({ count: 11 })
         expect(tui2.getState()).toEqual({ count: 19 })
-      }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe')))
+      }).pipe(Effect.scoped, Effect.provide(testModeLayer('log')))
     })
   })
 
-  describe('outputSchema', () => {
-    test('exposes derived outputSchema on app', () => {
-      expect(CounterApp.outputSchema).toBeDefined()
-    })
-
-    test('outputSchema type inference works', () => {
-      // Type assertion - if this compiles, types are correct
-      type Output = typeof CounterApp.outputSchema.Type
-      const _successCheck: Output = { _tag: 'Success', count: 42 }
-      const _failureCheck: Output = {
-        _tag: 'Failure',
-        cause: Cause.interrupt(FiberId.none),
-        state: { count: 10 },
-      }
-      expect(_successCheck._tag).toBe('Success')
-      expect(_failureCheck._tag).toBe('Failure')
-    })
-  })
 })
 
 // =============================================================================
-// Issue #129 Reproduction: ParseError masks real errors in JSON output
+// Issue #129: typed errors must not mask real state on failure
 // https://github.com/overengineeringstudio/effect-utils/issues/129
 // =============================================================================
 
-describe('Issue #129: Typed errors properly encoded in JSON output', () => {
+describe('Issue #129: typed errors do not mask final state', () => {
   let originalLog: typeof console.log
   let capturedOutput: string[]
 
@@ -461,13 +428,12 @@ describe('Issue #129: Typed errors properly encoded in JSON output', () => {
     console.log = originalLog
   })
 
-  // Simulate a typed error like GenieGenerationFailedError
   class GenerationFailed extends Schema.TaggedError<GenerationFailed>()('GenerationFailed', {
     message: Schema.String,
     failedCount: Schema.Number,
   }) {}
 
-  it.effect('json mode: typed error in handler produces Failure JSON output', () =>
+  it.effect('json mode: typed error still emits final state on stdout', () =>
     run(CounterApp, (tui) =>
       Effect.gen(function* () {
         tui.dispatch({ _tag: 'Set', value: 42 })
@@ -480,21 +446,15 @@ describe('Issue #129: Typed errors properly encoded in JSON output', () => {
       Effect.provide(testModeLayer('json')),
       Effect.catchAllCause((cause) =>
         Effect.sync(() => {
-          // FIX: JSON output IS produced with Failure wrapper
+          // Flat contract: stdout gets the final raw state, no envelope.
+          // Exit code signals failure; the error details live in `cause` and
+          // are surfaced via `formatError` → stderr.
           expect(capturedOutput).toHaveLength(1)
-          const output = JSON.parse(capturedOutput[0]!)
-          expect(output._tag).toBe('Failure')
-          expect(output.state.count).toBe(42)
-          expect(output.cause).toBeDefined()
+          const state = JSON.parse(capturedOutput[0]!)
+          expect(state.count).toBe(42)
+          expect(state._tag).toBeUndefined()
 
-          // FIX: No ParseError defect — typed error encoded safely via Schema.Defect
-          const defects = [...Cause.defects(cause)]
-          const parseError = defects.find(
-            (d) => d instanceof Error && d.message.includes('Expected never'),
-          )
-          expect(parseError).toBeUndefined()
-
-          // The typed error is still in the cause for in-process handling
+          // Typed error still propagates via the Effect channel.
           const failures = [...Cause.failures(cause)]
           expect(failures.some((e) => e instanceof GenerationFailed)).toBe(true)
         }),
@@ -502,7 +462,7 @@ describe('Issue #129: Typed errors properly encoded in JSON output', () => {
     ),
   )
 
-  it.live('ndjson mode: typed error produces final Failure line', () =>
+  it.live('ndjson mode: typed error preserves emitted intermediate state lines', () =>
     run(CounterApp, (tui) =>
       Effect.gen(function* () {
         yield* Effect.sleep('10 millis')
@@ -517,35 +477,15 @@ describe('Issue #129: Typed errors properly encoded in JSON output', () => {
       Effect.provide(testModeLayer('ndjson')),
       Effect.catchAllCause((cause) =>
         Effect.sync(() => {
-          // Intermediate state lines are output correctly
-          const intermediateLines = capturedOutput.filter((line) => {
-            try {
-              const parsed = JSON.parse(line)
-              return !('_tag' in parsed)
-            } catch {
-              return false
-            }
-          })
-          expect(intermediateLines.length).toBeGreaterThan(0)
+          // Every state change before the error is on stdout as raw JSON.
+          // No trailing Failure envelope — exit code + stderr carry error info.
+          const states = capturedOutput.map((line) => JSON.parse(line))
+          expect(states.some((s) => s.count === 42)).toBe(true)
+          expect(states.every((s) => s._tag !== 'Failure')).toBe(true)
 
-          // FIX: The final Failure-wrapped line IS present
-          const failureLines = capturedOutput.filter((line) => {
-            try {
-              const parsed = JSON.parse(line)
-              return '_tag' in parsed && parsed._tag === 'Failure'
-            } catch {
-              return false
-            }
-          })
-          expect(failureLines).toHaveLength(1)
-          const failureOutput = JSON.parse(failureLines[0]!)
-          expect(failureOutput.state.count).toBe(42)
-
-          // FIX: No ParseError defect
-          const defects = [...Cause.defects(cause)]
-          expect(
-            defects.some((d) => d instanceof Error && d.message.includes('Expected never')),
-          ).toBe(false)
+          // Typed error still propagates via the Effect channel.
+          const failures = [...Cause.failures(cause)]
+          expect(failures.some((e) => e instanceof GenerationFailed)).toBe(true)
         }),
       ),
     ),
@@ -583,7 +523,7 @@ describe('run (standalone dual API)', () => {
         tui.dispatch({ _tag: 'Increment' })
         expect(tui.getState()).toEqual({ count: 2 })
       }),
-    ).pipe(Effect.provide(testModeLayer('pipe'))),
+    ).pipe(Effect.provide(testModeLayer('log'))),
   )
 
   it.effect('data-last (pipeable): dispatch updates state', () =>
@@ -595,7 +535,7 @@ describe('run (standalone dual API)', () => {
           expect(tui.getState()).toEqual({ count: 42 })
         }),
       ),
-      Effect.provide(testModeLayer('pipe')),
+      Effect.provide(testModeLayer('log')),
     ),
   )
 
@@ -606,7 +546,7 @@ describe('run (standalone dual API)', () => {
         return tui.getState().count
       }),
     ).pipe(
-      Effect.provide(testModeLayer('pipe')),
+      Effect.provide(testModeLayer('log')),
       Effect.map((count) => {
         expect(count).toBe(99)
       }),
@@ -615,7 +555,7 @@ describe('run (standalone dual API)', () => {
 
   it.effect('typed errors are propagated via Effect channel', () =>
     run(CounterApp, () => new TestError({ message: 'test error' })).pipe(
-      Effect.provide(testModeLayer('pipe')),
+      Effect.provide(testModeLayer('log')),
       Effect.catchAll((error) =>
         Effect.sync(() => {
           expect(error).toBeInstanceOf(TestError)
@@ -631,10 +571,10 @@ describe('run (standalone dual API)', () => {
       Effect.gen(function* () {
         tui.dispatch({ _tag: 'Increment' })
       }),
-    ).pipe(Effect.provide(testModeLayer('pipe'))),
+    ).pipe(Effect.provide(testModeLayer('log'))),
   )
 
-  it.effect('json mode outputs Success for successful handler', () =>
+  it.effect('json mode outputs final raw state for successful handler', () =>
     run(CounterApp, (tui) =>
       Effect.gen(function* () {
         tui.dispatch({ _tag: 'Set', value: 77 })
@@ -643,8 +583,8 @@ describe('run (standalone dual API)', () => {
       Effect.provide(testModeLayer('json')),
       Effect.andThen(() => {
         expect(capturedOutput).toHaveLength(1)
-        const output = JSON.parse(capturedOutput[0]!)
-        expect(output).toEqual({ _tag: 'Success', count: 77 })
+        const state = JSON.parse(capturedOutput[0]!)
+        expect(state).toEqual({ count: 77 })
       }),
     ),
   )
@@ -751,7 +691,7 @@ describe('runResult', () => {
           }),
         { result: Schema.String, view: <CounterView /> },
       ).pipe(
-        Effect.provide(testModeLayer('pipe')),
+        Effect.provide(testModeLayer('log')),
         Effect.andThen((result) => {
           expect(result).toBe('the-secret')
           // stdout is byte-for-byte the result (plus a trailing newline).
@@ -855,193 +795,3 @@ describe('runResult', () => {
   })
 })
 
-// =============================================================================
-// deriveOutputSchema Tests
-// =============================================================================
-
-describe('deriveOutputSchema', () => {
-  describe('struct state schema', () => {
-    const StateSchema = Schema.Struct({
-      count: Schema.Number,
-      name: Schema.String,
-    })
-    const OutputSchema = deriveOutputSchema(StateSchema)
-
-    it.effect('success: encodes state fields flat with _tag', () =>
-      Effect.gen(function* () {
-        const successValue: TuiOutput<typeof StateSchema.Type> = {
-          _tag: 'Success',
-          count: 42,
-          name: 'test',
-        }
-
-        const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue)
-        const parsed = decodeJsonEncoded(OutputSchema, encoded)
-
-        expect(parsed).toEqual({
-          _tag: 'Success',
-          count: 42,
-          name: 'test',
-        })
-      }),
-    )
-
-    it.effect('success: decodes flat fields to success value', () =>
-      Effect.gen(function* () {
-        const json = encodeJsonEncoded(OutputSchema, {
-          _tag: 'Success',
-          count: 42,
-          name: 'test',
-        })
-
-        const decoded = yield* Schema.decode(Schema.parseJson(OutputSchema))(json)
-
-        expect(decoded).toEqual({
-          _tag: 'Success',
-          count: 42,
-          name: 'test',
-        })
-      }),
-    )
-
-    it.effect('failure: encodes cause and state', () =>
-      Effect.gen(function* () {
-        // Create a real Cause.interrupt value
-        const interruptCause = Cause.interrupt(FiberId.none)
-
-        const failureValue: TuiOutput<typeof StateSchema.Type> = {
-          _tag: 'Failure',
-          cause: interruptCause,
-          state: { count: 10, name: 'partial' },
-        }
-
-        const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-        const parsed = decodeJsonEncoded(OutputSchema, encoded)
-
-        expect(parsed._tag).toBe('Failure')
-        if (parsed._tag === 'Failure') {
-          expect(parsed.state).toEqual({ count: 10, name: 'partial' })
-          expect(parsed.cause).toBeDefined()
-          expect(parsed.cause._tag).toBe('Interrupt')
-        }
-      }),
-    )
-
-    it.effect('failure: decodes cause and state', () =>
-      Effect.gen(function* () {
-        const interruptCause = Cause.interrupt(FiberId.none)
-        const failureValue: TuiOutput<typeof StateSchema.Type> = {
-          _tag: 'Failure',
-          cause: interruptCause,
-          state: { count: 10, name: 'partial' },
-        }
-        const json = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-
-        const decoded = yield* Schema.decode(Schema.parseJson(OutputSchema))(json)
-
-        expect(decoded._tag).toBe('Failure')
-        if (decoded._tag === 'Failure') {
-          expect(decoded.state).toEqual({ count: 10, name: 'partial' })
-        }
-      }),
-    )
-  })
-
-  describe('nested struct state schema', () => {
-    const NestedStateSchema = Schema.Struct({
-      workspace: Schema.Struct({
-        name: Schema.String,
-        root: Schema.String,
-      }),
-      results: Schema.Array(
-        Schema.Struct({
-          name: Schema.String,
-          status: Schema.Literal('ok', 'error'),
-        }),
-      ),
-    })
-    const OutputSchema = deriveOutputSchema(NestedStateSchema)
-
-    it.effect('success: encodes nested state flat', () =>
-      Effect.gen(function* () {
-        const successValue: TuiOutput<typeof NestedStateSchema.Type> = {
-          _tag: 'Success',
-          workspace: { name: 'my-repo', root: '/path' },
-          results: [{ name: 'pkg-a', status: 'ok' }],
-        }
-
-        const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(successValue)
-        const parsed = decodeJsonEncoded(OutputSchema, encoded)
-
-        expect(parsed).toEqual({
-          _tag: 'Success',
-          workspace: { name: 'my-repo', root: '/path' },
-          results: [{ name: 'pkg-a', status: 'ok' }],
-        })
-      }),
-    )
-
-    it.effect('failure: preserves nested state at time of failure', () =>
-      Effect.gen(function* () {
-        // Create a real Cause.interrupt value
-        const interruptCause = Cause.interrupt(FiberId.none)
-
-        const failureValue: TuiOutput<typeof NestedStateSchema.Type> = {
-          _tag: 'Failure',
-          cause: interruptCause,
-          state: {
-            workspace: { name: 'my-repo', root: '/path' },
-            results: [{ name: 'pkg-a', status: 'ok' }],
-          },
-        }
-
-        const encoded = yield* Schema.encode(Schema.parseJson(OutputSchema))(failureValue)
-        const parsed = decodeJsonEncoded(OutputSchema, encoded)
-
-        expect(parsed._tag).toBe('Failure')
-        if (parsed._tag === 'Failure') {
-          expect(parsed.state.workspace.name).toBe('my-repo')
-          expect(parsed.state.results).toHaveLength(1)
-        }
-      }),
-    )
-  })
-
-  describe('discriminated union state schema', () => {
-    // Sometimes state itself is a tagged union (e.g., Idle | Loading | Done)
-    const UnionStateSchema = Schema.Union(
-      Schema.TaggedStruct('Idle', {}),
-      Schema.TaggedStruct('Loading', { progress: Schema.Number }),
-      Schema.TaggedStruct('Done', { result: Schema.String }),
-    )
-    const OutputSchema = deriveOutputSchema(UnionStateSchema)
-    const OutputEncodedSchema = Schema.Union(
-      Schema.TaggedStruct('Success', { value: UnionStateSchema }),
-      Schema.TaggedStruct('Failure', {
-        cause: Schema.Cause({ error: Schema.Never, defect: Schema.Defect }),
-        state: UnionStateSchema,
-      }),
-    )
-
-    it.effect('non-struct state: wraps in value field', () =>
-      Effect.gen(function* () {
-        // For non-struct schemas, we can't spread fields
-        // The schema should fall back to wrapping in a `value` field
-        // This is a limitation - union states get wrapped in `value`
-        const successValue: Schema.Schema.Encoded<typeof OutputEncodedSchema> = {
-          _tag: 'Success',
-          value: { _tag: 'Done', result: 'completed' },
-        }
-
-        const encoded = encodeJsonEncoded(OutputEncodedSchema, successValue)
-        const parsed = decodeJsonEncoded(OutputEncodedSchema, encoded)
-        yield* Schema.decode(Schema.parseJson(OutputSchema))(encoded)
-
-        expect(parsed._tag).toBe('Success')
-        if (parsed._tag === 'Success') {
-          expect(parsed.value._tag).toBe('Done')
-        }
-      }),
-    )
-  })
-})
