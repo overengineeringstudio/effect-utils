@@ -47,6 +47,7 @@ import {
   Context,
   Effect,
   Function as Fn,
+  Layer,
   Option,
   PubSub,
   Runtime,
@@ -64,6 +65,7 @@ import {
   type OutputMode,
   type RenderConfig,
   RenderConfigProvider,
+  ViewOutputStreamTag,
   stripAnsi,
 } from './OutputMode.tsx'
 
@@ -720,7 +722,14 @@ const setupProgressiveVisualWithView = ({
   capturedLogs?: LogCaptureHandle
 }): Effect.Effect<Root, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const root = createRoot({ terminalOrStream: process.stdout })
+    // Default to stdout when no explicit view stream is provided (e.g. interactive
+    // `run`). `runResult` overrides this to stderr to keep stdout clean for the
+    // result payload.
+    const viewStream = Option.getOrElse(
+      yield* Effect.serviceOption(ViewOutputStreamTag),
+      () => process.stdout,
+    )
+    const root = createRoot({ terminalOrStream: viewStream })
 
     // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
     const TuiAppWrapper = (): ReactNode => {
@@ -762,27 +771,37 @@ const setupFinalVisualWithAtom = ({
 }): Effect.Effect<void, never, Scope.Scope> => {
   if (view === undefined) return Effect.void
 
-  return Effect.addFinalizer(() =>
-    Effect.gen(function* () {
-      // Wrapper component that provides registry context (using our own context)
-      const RegistryWrapper = ({ children }: { children: ReactNode }): ReactElement => (
-        <TuiRegistryContext.Provider value={registry}>
-          <RenderConfigProvider config={renderConfig}>{children}</RenderConfigProvider>
-        </TuiRegistryContext.Provider>
-      )
+  return Effect.gen(function* () {
+    // Resolve the view output stream up-front so the finalizer writes to the
+    // correct channel. `runResult` binds this to stderr; other callers default
+    // to stdout.
+    const viewStream = Option.getOrElse(
+      yield* Effect.serviceOption(ViewOutputStreamTag),
+      () => process.stdout,
+    )
 
-      const element = <RegistryWrapper>{view}</RegistryWrapper>
+    yield* Effect.addFinalizer(() =>
+      Effect.gen(function* () {
+        // Wrapper component that provides registry context (using our own context)
+        const RegistryWrapper = ({ children }: { children: ReactNode }): ReactElement => (
+          <TuiRegistryContext.Provider value={registry}>
+            <RenderConfigProvider config={renderConfig}>{children}</RenderConfigProvider>
+          </TuiRegistryContext.Provider>
+        )
 
-      // Render to string
-      const output = yield* Effect.promise(() => renderToString({ element }))
+        const element = <RegistryWrapper>{view}</RegistryWrapper>
 
-      // Strip ANSI codes if colors are disabled
-      const finalOutput = renderConfig.colors === true ? output : stripAnsi(output)
+        // Render to string
+        const output = yield* Effect.promise(() => renderToString({ element }))
 
-      // Output to stdout
-      yield* Console.log(finalOutput)
-    }).pipe(Effect.orDie),
-  )
+        // Strip ANSI codes if colors are disabled
+        const finalOutput = renderConfig.colors === true ? output : stripAnsi(output)
+
+        // Write to the resolved view stream (stdout by default, stderr for `runResult`).
+        viewStream.write(finalOutput + '\n')
+      }).pipe(Effect.orDie),
+    )
+  })
 }
 
 /**
@@ -1085,15 +1104,23 @@ const runResultImpl = <S, A, O, E, R>(
       )
     }
 
-    if (mode._tag === 'react') {
-      // Visual mode: render view + run handler, return result to caller
-      return yield* Effect.scoped(app.run(options.view).pipe(Effect.flatMap(handler)))
-    }
+    // Unified contract (Unix stdout/stderr split):
+    // - stdout always receives the handler's return value, via `writeResult`.
+    // - The TUI view, if any, renders to stderr. This keeps the result stream
+    //   safe for `$(...)`, redirects, and pipelines regardless of TTY state.
+    //
+    // The stderr binding is provided locally via `ViewOutputStreamTag` so
+    // `setupProgressiveVisualWithView` / `setupFinalVisualWithAtom` pick the
+    // right channel without additional plumbing.
+    const stderrStreamLayer = Layer.succeed(ViewOutputStreamTag, process.stderr)
 
-    // Machine mode (json final): skip state serialization, run handler, write result
-    const result = yield* Effect.scoped(
-      app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
-    )
+    const innerEffect = mode._tag === 'react'
+      ? Effect.scoped(app.run(options.view).pipe(Effect.flatMap(handler)))
+      : Effect.scoped(
+          app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
+        )
+
+    const result = yield* innerEffect.pipe(Effect.provide(stderrStreamLayer))
 
     yield* writeResult({ value: result, schema: options.result })
 
@@ -1107,10 +1134,17 @@ const runResultImpl = <S, A, O, E, R>(
  * scaffolding and the handler produces the actual output (e.g., `op-proxy read`
  * returns a secret string, `op-proxy list` returns an items array).
  *
- * In visual modes (TTY): renders the view, handler return value is passed through.
- * In machine modes (json): handler return value is serialized to stdout.
- *   - `Schema.String` → raw string (no JSON quotes)
- *   - Structured schemas → JSON-encoded
+ * Stdout/stderr contract (all non-ndjson modes):
+ *   - **stdout**: the handler's return value, serialized via `options.result`.
+ *     `Schema.String` → raw string (no JSON quotes).
+ *     Structured schemas → JSON-encoded.
+ *   - **stderr**: the optional `view`, if provided and the mode is visual.
+ *     Routed via `ViewOutputStreamTag` so redirects of stdout never capture
+ *     the rendered view.
+ *
+ * This makes `cmd > file`, `cmd | ...`, and `TOKEN="$(cmd)"` safe and
+ * composable regardless of TTY state.
+ *
  * In ndjson mode: fails loudly (result-oriented commands don't support state streaming).
  *
  * @example

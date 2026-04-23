@@ -22,6 +22,8 @@ export {
   isAgentEnv,
   detectOutputMode,
   detectLayer,
+  viewOutputStreamStdoutLayer,
+  viewOutputStreamStderrLayer,
 } from '../effect/OutputMode.node.ts'
 
 // Effect CLI integration (requires node:fs transitively via detectOutputMode)

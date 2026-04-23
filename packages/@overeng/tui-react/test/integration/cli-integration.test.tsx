@@ -209,18 +209,29 @@ const runDeploy = (services: string[]) =>
 
 describe('CLI Integration', () => {
   let originalLog: typeof console.log
+  let originalStdoutWrite: typeof process.stdout.write
   let capturedOutput: string[]
 
   beforeEach(() => {
     originalLog = console.log
+    originalStdoutWrite = process.stdout.write
     capturedOutput = []
     console.log = (msg: string) => {
       capturedOutput.push(msg)
     }
+    // Final visual modes (e.g. `pipe`) write directly to the view stream, not
+    // via `console.log`. Capture both so the assertions still see one entry per
+    // logical output.
+    process.stdout.write = ((chunk: unknown) => {
+      const str = String(chunk)
+      capturedOutput.push(str.endsWith('\n') ? str.slice(0, -1) : str)
+      return true
+    }) as typeof process.stdout.write
   })
 
   afterEach(() => {
     console.log = originalLog
+    process.stdout.write = originalStdoutWrite
   })
 
   it.live('json mode outputs complete state with Success wrapper', () =>

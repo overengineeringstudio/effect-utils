@@ -12,7 +12,16 @@ import * as fs from 'node:fs'
 
 import { Layer } from 'effect'
 
-import { type OutputMode, OutputModeTag, tty, ci, pipe, json, isTTY } from './OutputMode.tsx'
+import {
+  type OutputMode,
+  OutputModeTag,
+  ViewOutputStreamTag,
+  tty,
+  ci,
+  pipe,
+  json,
+  isTTY,
+} from './OutputMode.tsx'
 
 // =============================================================================
 // Node.js Detection Helpers
@@ -174,3 +183,26 @@ export const detectOutputMode = (): OutputMode => {
  * Layer that auto-detects mode from environment.
  */
 export const detectLayer: Layer.Layer<OutputModeTag> = Layer.sync(OutputModeTag, detectOutputMode)
+
+/**
+ * Default layer binding the TUI view stream to `process.stdout`.
+ *
+ * Most entry points (`run`, interactive TUIs) want the view on stdout. Provide
+ * this alongside your `OutputModeTag` layer so setup functions have a default.
+ */
+export const viewOutputStreamStdoutLayer: Layer.Layer<ViewOutputStreamTag> = Layer.succeed(
+  ViewOutputStreamTag,
+  process.stdout,
+)
+
+/**
+ * Layer binding the TUI view stream to `process.stderr`.
+ *
+ * `runResult` provides this internally so the view never pollutes stdout, which
+ * is reserved for the result payload. Callers generally should not provide it
+ * explicitly.
+ */
+export const viewOutputStreamStderrLayer: Layer.Layer<ViewOutputStreamTag> = Layer.succeed(
+  ViewOutputStreamTag,
+  process.stderr,
+)

@@ -295,6 +295,23 @@ export const fullscreenRenderConfig = altScreenRenderConfig
  */
 export class OutputModeTag extends Context.Tag('OutputMode')<OutputModeTag, OutputMode>() {}
 
+/**
+ * Stream the TUI view renders into.
+ *
+ * Separating the view channel from the data channel is what makes the Unix
+ * stdout contract (`stdout = data, stderr = diagnostics`) enforceable for
+ * result-oriented commands. `runResult` provides a stderr-bound layer so the
+ * view never pollutes the result stream; other entry points default to stdout.
+ *
+ * Implementations are a Node `WriteStream`-shaped value (both `process.stdout`
+ * and `process.stderr` qualify). Default and stderr layers are in the Node
+ * entry point (`OutputMode.node.ts`) to keep this module browser-safe.
+ */
+export class ViewOutputStreamTag extends Context.Tag('@overeng/tui-react/ViewOutputStream')<
+  ViewOutputStreamTag,
+  NodeJS.WriteStream
+>() {}
+
 // =============================================================================
 // Environment Helpers (browser-safe — use typeof process guards)
 // =============================================================================

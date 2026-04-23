@@ -669,14 +669,18 @@ describe('run (standalone dual API)', () => {
 describe('runResult', () => {
   let originalLog: typeof console.log
   let originalStdoutWrite: typeof process.stdout.write
+  let originalStderrWrite: typeof process.stderr.write
   let capturedConsole: string[]
   let capturedStdout: string[]
+  let capturedStderr: string[]
 
   beforeEach(() => {
     originalLog = console.log
     originalStdoutWrite = process.stdout.write
+    originalStderrWrite = process.stderr.write
     capturedConsole = []
     capturedStdout = []
+    capturedStderr = []
     console.log = (msg: string) => {
       capturedConsole.push(msg)
     }
@@ -684,11 +688,16 @@ describe('runResult', () => {
       capturedStdout.push(String(chunk))
       return true
     }) as typeof process.stdout.write
+    process.stderr.write = ((chunk: unknown) => {
+      capturedStderr.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
   })
 
   afterEach(() => {
     console.log = originalLog
     process.stdout.write = originalStdoutWrite
+    process.stderr.write = originalStderrWrite
   })
 
   describe('string result (Schema.String)', () => {
@@ -732,21 +741,47 @@ describe('runResult', () => {
       ),
     )
 
-    it.effect('pipe mode (react/final): renders view, not raw result', () =>
+    it.effect('pipe mode (react/final): stdout has raw result only; view goes to stderr', () =>
       runResult(
         CounterApp,
         (tui) =>
           Effect.gen(function* () {
             tui.dispatch({ _tag: 'Set', value: 55 })
-            return 'should-not-be-raw'
+            return 'the-secret'
           }),
         { result: Schema.String, view: <CounterView /> },
       ).pipe(
         Effect.provide(testModeLayer('pipe')),
         Effect.andThen((result) => {
-          expect(result).toBe('should-not-be-raw')
+          expect(result).toBe('the-secret')
+          // stdout is byte-for-byte the result (plus a trailing newline).
           const stdout = capturedStdout.join('')
-          expect(stdout).not.toContain('should-not-be-raw')
+          expect(stdout).toBe('the-secret\n')
+          // stderr carries the rendered view so the channel is not lost.
+          const stderr = capturedStderr.join('')
+          expect(stderr).toContain('55')
+          // The result never leaks into the view channel.
+          expect(stderr).not.toContain('the-secret')
+        }),
+      ),
+    )
+
+    it.effect('tty mode: stdout has raw result only; view goes to stderr', () =>
+      runResult(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            tui.dispatch({ _tag: 'Set', value: 7 })
+            return 'tty-secret'
+          }),
+        { result: Schema.String, view: <CounterView /> },
+      ).pipe(
+        Effect.provide(testModeLayer('tty')),
+        Effect.andThen((result) => {
+          expect(result).toBe('tty-secret')
+          const stdout = capturedStdout.join('')
+          expect(stdout).toBe('tty-secret\n')
+          expect(stdout).not.toContain('\u001b[') // no ANSI on stdout
         }),
       ),
     )

@@ -147,6 +147,7 @@ export {
 export {
   // Types
   OutputModeTag,
+  ViewOutputStreamTag,
   type OutputMode,
   type ReactOutputMode,
   type JsonOutputMode,
