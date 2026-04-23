@@ -608,6 +608,37 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(res.appends + res.inserts + res.updates + res.removes).toBe(0)
   })
 
+  /**
+   * Probe for latent nested-scope variant of the phase-3d bug-A interleaving
+   * risk: the root-pass interleaves createPage with block ops, but each nested
+   * `<ChildPage>` scope still applies its own per-parent block/page ops. A
+   * mixed `<ChildPage>` + plain block sibling set *inside* a retained
+   * `<ChildPage>` could hit the same cache-vs-server order mismatch that the
+   * root-scope fix addresses, triggering `candidateToCache: unresolved
+   * blockId` on the next warm sync.
+   */
+  it('idempotent: nested <ChildPage>[<ChildPage>, <Paragraph>] warm resync — no unresolved blockId', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage title="outer">
+          <ChildPage title="inner" />
+          <Paragraph>sibling</Paragraph>
+        </ChildPage>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
   it('idempotent: <Page>[<Paragraph>, <ChildPage>]  → 2nd sync is a no-op (reverse order)', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
