@@ -12,7 +12,7 @@ pkgs.pnpm.overrideAttrs (old: {
   version = "11.0.0-beta.2";
   src = pkgs.fetchurl {
     url = "https://registry.npmjs.org/pnpm/-/pnpm-11.0.0-beta.2.tgz";
-    hash = "sha256-syuYPRrvgyvkdkvAyrZEHm/pQT1T3IwS1QnC7q3RHNk=";
+    hash = "sha256-0fp4evy2xE292b7kcNbLuUgO62+cbz7Vsga27x40w8A=";
   };
   postInstall = (old.postInstall or "") + ''
     chmod +x $out/libexec/pnpm/bin/pnpm.cjs
