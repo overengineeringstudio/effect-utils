@@ -81,6 +81,16 @@ export const CacheTree = Schema.Struct({
   schemaVersion: Schema.Number,
   rootId: Schema.String,
   children: Schema.Array(CacheNode),
+  /**
+   * Hashes of the root page's title / icon / cover (issue #618 phase 3b).
+   * Optional so v2 caches written before phase 3b still decode cleanly. When
+   * absent, the first post-upgrade sync treats any candidate metadata as
+   * drift and emits a single spurious root `updatePage`. Acceptable per the
+   * phase-3b scope — phase 3c bumps the schema version properly.
+   */
+  rootTitleHash: Schema.optional(Schema.String),
+  rootIconHash: Schema.optional(Schema.String),
+  rootCoverHash: Schema.optional(Schema.String),
 })
 
 export type CacheTree = typeof CacheTree.Type
