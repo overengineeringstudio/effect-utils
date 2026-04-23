@@ -9,6 +9,7 @@ import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import { NotionSyncError } from './errors.ts'
 import {
   ATOMIC_CONTAINERS,
+  emptyPageCounts,
   MAX_CHILDREN_PER_APPEND,
   type SyncFallbackReason,
   type SyncResult,
@@ -119,6 +120,7 @@ const workingToCacheNode = (n: WorkingNode): CacheNode => {
     type: n.type,
     hash: n.hash,
     children: n.children.map(workingToCacheNode),
+    nodeKind: 'block',
   }
 }
 
@@ -914,6 +916,7 @@ const driftedBase = (
         type: 'unknown',
         hash: '',
         children: [],
+        nodeKind: 'block',
       }
     }),
   }
@@ -1351,7 +1354,8 @@ export const sync = (
     if (opts.onMetrics !== undefined && metricsAgg !== undefined) {
       opts.onMetrics(metricsAgg.getMetrics())
     }
-    return fallbackReason === undefined ? counts : { ...counts, fallbackReason }
+    const result: SyncResult = { ...counts, pages: emptyPageCounts() }
+    return fallbackReason === undefined ? result : { ...result, fallbackReason }
   }).pipe(
     Effect.tapError(() =>
       Effect.sync(() => {

@@ -111,6 +111,7 @@ describe('pagination + batch boundaries', () => {
           // Intentionally bogus hash to force an update op on re-sync.
           hash: 'stale',
           children: [],
+          nodeKind: 'block',
         },
       ],
     })

@@ -50,8 +50,39 @@ export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>([
  * - `page-id-drift`: the cache was written against a different pageId
  *   than the one passed to `sync`; diffing would target ids on the wrong
  *   page, so we cold-start.
+ * - `page-missing`: a page-scoped reconcile targeted a page that no longer
+ *   exists (issue #618 phase 2+). No emitter currently produces this.
+ * - `page-archived`: a page-scoped reconcile targeted a page that was
+ *   archived out-of-band (issue #618 phase 2+). No emitter currently
+ *   produces this.
+ * - `partial-page-create`: a page-create landed partially (metadata / some
+ *   blocks) but the full subtree could not be inlined (issue #618
+ *   phase 2+). No emitter currently produces this.
  */
-export type SyncFallbackReason = 'cold-cache' | 'schema-mismatch' | 'cache-drift' | 'page-id-drift'
+export type SyncFallbackReason =
+  | 'cold-cache'
+  | 'schema-mismatch'
+  | 'cache-drift'
+  | 'page-id-drift'
+  | 'page-missing'
+  | 'page-archived'
+  | 'partial-page-create'
+
+/** Per-page-op counts (issue #618). Zero across the board until phase 2 wires page emission. */
+export interface PageOpCounts {
+  readonly creates: number
+  readonly updates: number
+  readonly archives: number
+  readonly moves: number
+}
+
+/** Default zero page-op tally. See {@link PageOpCounts}. */
+export const emptyPageCounts = (): PageOpCounts => ({
+  creates: 0,
+  updates: 0,
+  archives: 0,
+  moves: 0,
+})
 
 /** Summary of the ops applied during a render/sync pass. */
 export type SyncResult = {
@@ -59,10 +90,12 @@ export type SyncResult = {
   readonly updates: number
   readonly removes: number
   readonly inserts: number
+  /** Page-scope op counts. Always zero pre-phase-2. */
+  readonly pages: PageOpCounts
   readonly fallbackReason?: SyncFallbackReason
 }
 
-const tally = (ops: readonly Op[]): Omit<SyncResult, 'fallbackReason'> => {
+const tally = (ops: readonly Op[]): Omit<SyncResult, 'fallbackReason' | 'pages'> => {
   let appends = 0
   let updates = 0
   let removes = 0
@@ -317,5 +350,5 @@ export const renderToNotion = (
       }
     }
 
-    return { ...tally(buffer.ops) }
+    return { ...tally(buffer.ops), pages: emptyPageCounts() }
   })

@@ -82,3 +82,41 @@ export class OpBuffer {
     this.ops.length = 0
   }
 }
+
+/**
+ * Page-scope op union (issue #618). Reserved for the page-ops work that
+ * layers on top of the existing block reconciler: create/update/archive/move
+ * a Notion (sub)page independent of the block tree under it.
+ *
+ * No emitter currently produces these; this is forward-compat type plumbing
+ * for phases 2+ of the #618 epic. Once the sync driver starts emitting
+ * PageOps the {@link DiffOp} union is already prepared to carry them.
+ *
+ * Payload fields (`title`, `icon`, `cover`, `inlineChildren`) are typed as
+ * `unknown` pending the schema decisions in phase 2 — they will tighten to
+ * the concrete `PageProperty` / `PageIcon` / `PageCover` shapes from
+ * `@overeng/notion-effect-schema` once those wire through the renderer.
+ */
+export type PageOp =
+  | {
+      readonly kind: 'createPage'
+      readonly tmpPageId: string
+      readonly parent: { readonly pageId: string }
+      readonly title?: unknown
+      readonly icon?: unknown
+      readonly cover?: unknown
+      readonly inlineChildren: readonly unknown[]
+    }
+  | {
+      readonly kind: 'updatePage'
+      readonly pageId: string
+      readonly title?: unknown
+      readonly icon?: unknown
+      readonly cover?: unknown
+    }
+  | { readonly kind: 'archivePage'; readonly pageId: string }
+  | {
+      readonly kind: 'movePage'
+      readonly pageId: string
+      readonly parent: { readonly pageId: string }
+    }
