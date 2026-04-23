@@ -12,6 +12,28 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   stable ids, rich-text payloads, and an append/insert/update/delete API
   surface. The library builds on `@overeng/notion-effect-client` and
   `@overeng/notion-effect-schema`.
+- **A06 Block / page API boundary:** Pages and blocks are distinct API
+  resources. `child_page` blocks cannot be created or updated via the block
+  API; page creation, metadata updates, and archival go through
+  `NotionPages.create` / `NotionPages.update`. A `pages.create` response
+  auto-materializes a `child_page` block in the parent whose id equals the
+  new page id.
+- **A07 Page metadata is per-response normalized:** Notion may rewrite
+  icon/cover payloads on the round-trip (built-in icon URLs resolve to an
+  undocumented `{type:"icon", icon:{name,color}}` shape; unknown
+  `custom_emoji` ids silently drop to `null`). Equivalence checks must
+  normalize on response shape, not request shape.
+- **A08 Inline-child depth on create ≤ 2:** `pages.create` accepts nested
+  `children[]` up to two levels deep; deeper subtrees must be landed with
+  follow-up `blocks.children.append` calls. Per-request child count is
+  capped at 100 for both `pages.create` and `blocks.children.append`.
+- **A09 No idempotency primitive:** The Notion API exposes no idempotency
+  key or client token. Recovery from partial failure is archive-and-retry,
+  keyed by correlating JSX identity to page ids through the cache. Archived
+  pages remain retrievable via `pages.retrieve` / `blocks.retrieve`; only
+  `blocks.children.list` returns 404 on an archived page.
+- **A10 Title length:** Each title rich_text span is capped at 2000
+  characters. Callers that need longer titles must split across spans.
 - **A02 Effect callers:** Downstream callers run in Effect and can provide
   `NotionConfig` + `HttpClient` in their runtime.
 - **A03 React 19 + react-reconciler:** Rendering uses `react@19` and
@@ -42,6 +64,28 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
 - **T05 Web renderer is not API-stable:** The companion web renderer exists
   for preview/Storybook only. Its output DOM, CSS hooks, and component
   props may change without deprecation.
+- **T06 Archive-on-partial-failure:** Per A09, mid-flight sub-page creation
+  that fails after `pages.create` leaves an archived orphan rather than
+  attempting a speculative block-level cleanup. The next sync reconciles
+  by id — the orphan is either rehydrated (if JSX still contains the
+  `<ChildPage>`) or stays archived. Acceptable because archived pages are
+  trash-recoverable and the alternative (block-by-block rollback) is not
+  transactional anyway.
+- **T07 No cross-page op batching:** Block ops are batched up to 100
+  children per `NotionBlocks.append` call; page ops (`createPage`,
+  `updatePage`, `archivePage`) are always individual requests. Sub-page
+  boundaries cut batch windows. Acceptable because page ops are rare
+  relative to block ops and the simplicity of per-page scopes outweighs
+  small request-count wins.
+- **T08 Concurrent sibling-page order is not authoritative:** When
+  `<ChildPage>` siblings are both newly created in the same sync, Notion
+  does not guarantee POST order matches the resulting `child_page` block
+  order in the parent. The driver re-reads children after a batch of
+  creates only when sibling order is load-bearing for subsequent diffs.
+- **T09 Database-parented pages deferred:** v0.1 of page ops targets
+  page-parented sub-pages. Database parents, custom property schemas, and
+  `is_locked`/`erase_content` surfaces are explicitly out of scope but
+  must not be precluded by the prop design.
 
 ## Requirements
 
@@ -134,6 +178,50 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   must let component authors render their JSX tree into a Notion-looking
   HTML preview inside Storybook. It is a development aid, not a
   production target (per T05).
+- **R21a Page-op scenario suite:** Page-level mutations (root metadata
+  change, sub-page create, sub-page rename, sub-page icon/cover change,
+  sub-page archive, sub-page reparent via `move`, partial-failure archive
+  &amp; resync) must each be covered by an e2e test that asserts API
+  op-counts meet R24–R28. Cache v2→v3 migration, >100 children under a
+  newly created sub-page, and inline-depth-3 subtree splitting must also
+  be covered.
+
+### Must reconcile page-level metadata and sub-pages
+
+- **R24 Root page metadata projection:** `<Page>` props (`title`, `icon`,
+  `cover`) must project to `NotionPages.update` on the sync root (the
+  `pageId` passed to `sync`). No-op when unchanged; single `pages.update`
+  call when any field changes; per A07 the stored cache compares against
+  the response-normalized shape.
+- **R25 JSX-driven sub-pages:** `<ChildPage>` with `title`, `icon`,
+  `cover`, and JSX `children` must create, update, archive, and populate
+  the referenced page via `NotionPages.create` / `NotionPages.update`
+  / (archive =) `NotionPages.update {in_trash:true}`. Title / icon / cover
+  changes must never route through the block API (per A06).
+- **R26 Per-page sync boundary:** Each rendered page (the root and every
+  nested `<ChildPage>`) is its own reconciliation unit with an isolated
+  `blockKey` namespace and its own cache subtree. Block ops for a page
+  only touch that page's children.
+- **R27 Sub-page ordering via `pages.move`:** When the driver detects a
+  `<ChildPage>` retained across renders but reparented, it must use
+  `NotionPages.move` to preserve the id, not archive + recreate. Siblings
+  reordering within the same parent may remain remove+re-insert if the
+  block-level ordering algorithm cannot be adapted to pages cheaply
+  (documented, not silent).
+- **R28 Partial-failure archive & reconcile:** If a `pages.create` succeeds
+  but subsequent child ops fail, the driver must archive the orphan via
+  `in_trash:true` before surfacing the error. The next `sync()` with the
+  same JSX reconciles by re-creating from scratch — archived orphans stay
+  archived.
+- **R29 SyncResult exposes page op counts:** `SyncResult` must carry
+  `pages: { creates, updates, archives, moves }` alongside existing block
+  counts. `SyncEvent` gains `PageOpIssued` / `PageOpApplied` variants.
+- **R30 Cache migration is transparent:** Bumping `CACHE_SCHEMA_VERSION`
+  for this feature (2 → 3, adding `nodeKind` and per-page subtrees) must
+  fall through the existing `"schema-mismatch"` path — callers must not
+  see hard errors on existing caches. A new fallback reason `"page-missing"`
+  covers the case where a cached page id is archived or deleted out of
+  band; `"page-archived"` differentiates drift from intentional archival.
 
 ### Must bound churn from upstream
 
