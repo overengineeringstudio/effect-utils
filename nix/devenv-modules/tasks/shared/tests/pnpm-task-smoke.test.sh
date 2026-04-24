@@ -263,7 +263,7 @@ echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
   unset PNPM_HOME
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
-  grep -qxF "PNPM_HOME=$workspace/.pnpm-home" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home" "$tmpdir/pnpm.log"
 )
 
 echo "Test 5: status hits after install with the default GVS path"
@@ -303,7 +303,7 @@ echo "Test 8: nested workspace exec uses its own cwd, cache, and PNPM_HOME"
   test -f "$workspace/.direnv/task-cache/pnpm-install/nested/install-state.hash"
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_HOME=$workspace/.pnpm-home/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home/nested" "$tmpdir/pnpm.log"
 )
 
 echo "Test 9: nested workspace status hits after nested install"

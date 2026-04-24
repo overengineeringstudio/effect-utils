@@ -50,9 +50,9 @@ let
       "${config.devenv.root}/${workspaceRoot}";
   defaultPnpmHome =
     if workspaceRoot == "." then
-      "${config.devenv.root}/.pnpm-home"
+      "${config.devenv.root}/.direnv/pnpm-home"
     else
-      "${config.devenv.root}/.pnpm-home/${workspaceCacheName}";
+      "${config.devenv.root}/.direnv/pnpm-home/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then "${taskNamePrefix}:install" else "${taskNamePrefix}:install:${taskSuffix}";
   updateTaskName =
@@ -125,7 +125,7 @@ let
   ensureLocalPnpmHomeFn = ''
     # Keep pnpm's hot GVS projection workspace-local by default so local tasks
     # match CI and don't inherit stale global link state from unrelated repos.
-    if [ -z "''${PNPM_HOME:-}" ] || { [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ "''${PNPM_HOME:-}" = ${lib.escapeShellArg "${config.devenv.root}/.pnpm-home"} ]; }; then
+    if [ -z "''${PNPM_HOME:-}" ] || { [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ "''${PNPM_HOME:-}" = ${lib.escapeShellArg "${config.devenv.root}/.direnv/pnpm-home"} ]; }; then
       export PNPM_HOME=${lib.escapeShellArg defaultPnpmHome}
     fi
   '';
@@ -334,7 +334,7 @@ in
   packages = cliGuard.fromTasks allTasks;
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
-    export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.pnpm-home}"
+    export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.direnv/pnpm-home}"
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_manage_package_manager_versions=false
   '';
