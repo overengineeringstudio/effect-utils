@@ -94,9 +94,7 @@ export type OutputModeValue = (typeof OUTPUT_MODE_VALUES)[number]
  */
 export const outputOption = Options.choice('output', OUTPUT_MODE_VALUES).pipe(
   Options.withAlias('o'),
-  Options.withDescription(
-    'Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson',
-  ),
+  Options.withDescription('Output mode: auto, tty, alt-screen, ci, ci-plain, log, json, ndjson'),
   Options.withDefault('auto' as OutputModeValue),
 )
 

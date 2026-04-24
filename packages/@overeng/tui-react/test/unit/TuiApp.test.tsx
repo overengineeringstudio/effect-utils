@@ -3,26 +3,15 @@
  */
 
 import { it } from '@effect/vitest'
-import { Cause, Effect, FiberId, pipe, Schema } from 'effect'
+import { Cause, Effect, pipe, Schema } from 'effect'
 import React from 'react'
 import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
 import { testModeLayer } from '../../src/effect/testing.tsx'
-import {
-  createTuiApp,
-  run,
-  runResult,
-  useTuiAtomValue,
-  Box,
-  Text,
-} from '../../src/mod.tsx'
+import { createTuiApp, run, runResult, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
 
 const decodeJson = <A, I>(schema: Schema.Schema<A, I, never>, json: string): A =>
   Schema.decodeSync(Schema.parseJson(schema))(json)
-const decodeJsonEncoded = <A, I>(schema: Schema.Schema<A, I, never>, json: string): I =>
-  Schema.decodeSync(Schema.parseJson(Schema.encodedSchema(schema)))(json)
-const encodeJsonEncoded = <A, I>(schema: Schema.Schema<A, I, never>, value: I): string =>
-  Schema.encodeSync(Schema.parseJson(Schema.encodedSchema(schema)))(value)
 
 // =============================================================================
 // Test State and Actions
@@ -187,10 +176,7 @@ describe('createTuiApp', () => {
           expect(initialState).toEqual({ count: 0 })
 
           // Last emitted line is the authoritative end state.
-          const finalState = decodeJson(
-            CounterState,
-            capturedOutput[capturedOutput.length - 1]!,
-          )
+          const finalState = decodeJson(CounterState, capturedOutput[capturedOutput.length - 1]!)
           expect(finalState).toEqual({ count: 2 })
         }),
       ),
@@ -404,7 +390,6 @@ describe('createTuiApp', () => {
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('log')))
     })
   })
-
 })
 
 // =============================================================================
@@ -794,4 +779,3 @@ describe('runResult', () => {
     )
   })
 })
-

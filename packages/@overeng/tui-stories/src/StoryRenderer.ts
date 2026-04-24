@@ -2,7 +2,7 @@
  * Render a captured story to output.
  *
  * Supports all output modes matching the web Storybook tabs:
- * - tty/alt-screen/ci/ci-plain/pipe/log: React rendering with different RenderConfigs
+ * - tty/alt-screen/ci/ci-plain/log: React rendering with different RenderConfigs
  * - json: Final state encoded via Schema
  * - ndjson: Timeline events as newline-delimited JSON
  */
@@ -16,7 +16,6 @@ import {
   ttyRenderConfig,
   ciRenderConfig,
   ciPlainRenderConfig,
-  pipeRenderConfig,
   logRenderConfig,
   altScreenRenderConfig,
   stripAnsi,
@@ -43,22 +42,13 @@ export type TimelineMode = 'initial' | 'final' | { readonly at: number }
  * - alt-screen: same as tty but with alternate buffer flag
  * - ci: static spinners, colors, unicode
  * - ci-plain: static spinners, no colors, unicode
- * - pipe: static spinners, colors (final timing)
  * - log: static spinners, no colors (final timing)
  *
  * Data modes (state serialized as JSON):
  * - json: final state encoded via stateSchema
  * - ndjson: each timeline step encoded as a JSON line
  */
-export type OutputMode =
-  | 'tty'
-  | 'alt-screen'
-  | 'ci'
-  | 'ci-plain'
-  | 'pipe'
-  | 'log'
-  | 'json'
-  | 'ndjson'
+export type OutputMode = 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'log' | 'json' | 'ndjson'
 
 /** All valid output mode values */
 export const OUTPUT_MODES = [
@@ -66,7 +56,6 @@ export const OUTPUT_MODES = [
   'alt-screen',
   'ci',
   'ci-plain',
-  'pipe',
   'log',
   'json',
   'ndjson',
@@ -89,7 +78,6 @@ const renderConfigForMode: Record<Exclude<OutputMode, 'json' | 'ndjson'>, Render
   'alt-screen': altScreenRenderConfig,
   ci: ciRenderConfig,
   'ci-plain': ciPlainRenderConfig,
-  pipe: pipeRenderConfig,
   log: logRenderConfig,
 }
 

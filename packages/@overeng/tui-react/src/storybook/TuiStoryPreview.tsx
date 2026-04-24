@@ -61,14 +61,7 @@ import { xtermTheme, containerStyles, previewTextStyles, previewPadding } from '
 // =============================================================================
 
 /** Identifier for a preview output mode tab (tty, ci, json, etc.). */
-export type OutputTab =
-  | 'tty'
-  | 'alt-screen'
-  | 'ci'
-  | 'ci-plain'
-  | 'log'
-  | 'json'
-  | 'ndjson'
+export type OutputTab = 'tty' | 'alt-screen' | 'ci' | 'ci-plain' | 'log' | 'json' | 'ndjson'
 
 /** A timed action event for storybook timeline playback. */
 export interface TimelineEvent<A> {

@@ -260,9 +260,7 @@ describe('CLI Integration', () => {
       // Multiple lines: initial + each state change. No trailing envelope.
       expect(capturedOutput.length).toBeGreaterThan(1)
 
-      const parsed = capturedOutput.map(
-        (line) => parseJson(line) as { _tag: string },
-      )
+      const parsed = capturedOutput.map((line) => parseJson(line) as { _tag: string })
 
       // First line is the initial state.
       expect(parsed[0]!._tag).toBe('Idle')

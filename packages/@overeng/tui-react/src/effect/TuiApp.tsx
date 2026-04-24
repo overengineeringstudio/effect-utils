@@ -938,11 +938,12 @@ const runResultImpl = <S, A, O, E, R>(
     // right channel without additional plumbing.
     const stderrStreamLayer = Layer.succeed(ViewOutputStreamTag, process.stderr)
 
-    const innerEffect = mode._tag === 'react'
-      ? Effect.scoped(app.run(options.view).pipe(Effect.flatMap(handler)))
-      : Effect.scoped(
-          app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
-        )
+    const innerEffect =
+      mode._tag === 'react'
+        ? Effect.scoped(app.run(options.view).pipe(Effect.flatMap(handler)))
+        : Effect.scoped(
+            app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
+          )
 
     const result = yield* innerEffect.pipe(Effect.provide(stderrStreamLayer))
 

@@ -161,7 +161,10 @@ export const createRoot = ({
   const streamMaybe = terminalOrStream as { on?: Function; off?: Function }
   const resizeEmitter =
     typeof streamMaybe.on === 'function' && typeof streamMaybe.off === 'function'
-      ? (streamMaybe as { on: (ev: string, fn: () => void) => void; off: (ev: string, fn: () => void) => void })
+      ? (streamMaybe as {
+          on: (ev: string, fn: () => void) => void
+          off: (ev: string, fn: () => void) => void
+        })
       : null
   if (resizeEmitter !== null) {
     resizeEmitter.on('resize', resizeHandler)

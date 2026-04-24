@@ -23,11 +23,7 @@ import { describe, test, expect } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 
-const FIXTURE = path.resolve(
-  __dirname,
-  'fixtures',
-  'runResult-cli.tsx',
-)
+const FIXTURE = path.resolve(__dirname, 'fixtures', 'runResult-cli.tsx')
 
 // `bun run` executes .tsx directly. We rely on bun being on PATH in the
 // devenv shell; vitest's integration suite already runs in that shell.
@@ -66,9 +62,7 @@ describe('runResult subprocess stdout contract', () => {
     const env = ENV_WITHOUT_AGENT()
     env.TEST_PAYLOAD = 'redirected-value-xyz'
 
-    const tmpdir = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), 'tui-react-redirect-'),
-    )
+    const tmpdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'tui-react-redirect-'))
     const outPath = path.join(tmpdir, 'stdout.txt')
     try {
       const outFd = fs.openSync(outPath, 'w')
@@ -91,10 +85,7 @@ describe('runResult subprocess stdout contract', () => {
       }
 
       const fileContents = await fs.promises.readFile(outPath, 'utf8')
-      const stderrContents = await fs.promises.readFile(
-        path.join(tmpdir, 'stderr.txt'),
-        'utf8',
-      )
+      const stderrContents = await fs.promises.readFile(path.join(tmpdir, 'stderr.txt'), 'utf8')
 
       // Byte-clean: just the result and a trailing newline.
       expect(fileContents).toBe('redirected-value-xyz\n')
