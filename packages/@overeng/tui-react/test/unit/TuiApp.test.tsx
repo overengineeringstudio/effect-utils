@@ -3,7 +3,7 @@
  */
 
 import { it } from '@effect/vitest'
-import { Cause, Effect, pipe, Schema } from 'effect'
+import { Cause, Console, Effect, pipe, Schema } from 'effect'
 import React from 'react'
 import { describe, expect, beforeEach, afterEach, test } from 'vitest'
 
@@ -750,7 +750,7 @@ describe('runResult', () => {
             yield* Effect.log('progress: starting')
             yield* Effect.log('progress: halfway')
             yield* Effect.logInfo('progress: done')
-            yield* Effect.sync(() => Effect.Console)
+            yield* Console.log('console: chatty')
             tui.dispatch({ _tag: 'Set', value: 1 })
             return 'the-clean-payload'
           }),
@@ -762,8 +762,9 @@ describe('runResult', () => {
           // stdout must be byte-clean: only the result + trailing newline.
           const stdout = capturedStdout.join('')
           expect(stdout).toBe('the-clean-payload\n')
-          // Any Effect.log lines should not appear on stdout.
+          // Any Effect.log / Console.log lines should not appear on stdout.
           expect(stdout).not.toContain('progress')
+          expect(stdout).not.toContain('console:')
         }),
       ),
     )
