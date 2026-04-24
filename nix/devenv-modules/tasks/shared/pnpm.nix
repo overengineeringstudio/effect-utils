@@ -125,8 +125,17 @@ let
   ensureLocalPnpmHomeFn = ''
     # Keep pnpm's hot GVS projection workspace-local by default so local tasks
     # match CI and don't inherit stale global link state from unrelated repos.
-    if [ -z "''${PNPM_HOME:-}" ] || { [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ "''${PNPM_HOME:-}" = ${lib.escapeShellArg "${config.devenv.root}/.direnv/pnpm-home"} ]; }; then
+    if [ ${lib.escapeShellArg workspaceRoot} = "." ]; then
+      if [ -z "''${PNPM_HOME:-}" ]; then
+        export PNPM_HOME=${lib.escapeShellArg defaultPnpmHome}
+      fi
+    elif [ -z "''${PNPM_HOME:-}" ]; then
       export PNPM_HOME=${lib.escapeShellArg defaultPnpmHome}
+    else
+      case "$PNPM_HOME" in
+        */${workspaceCacheName}) ;;
+        *) export PNPM_HOME="$PNPM_HOME/${workspaceCacheName}" ;;
+      esac
     fi
   '';
 

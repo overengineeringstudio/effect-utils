@@ -1161,8 +1161,8 @@ ${args.join(' ')}`,
  * conflicts on self-hosted runners.
  */
 export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
-  const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
   const skipCsv = opts?.skip?.join(',') ?? ''
+  const skipArgs = skipCsv === '' ? '' : `--skip ${shellSingleQuote(skipCsv)}`
   const quotedSkipCsv = shellSingleQuote(skipCsv)
   const exportSkipMembersScript =
     skipCsv === ''
