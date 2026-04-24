@@ -93,6 +93,12 @@ let
     }
   '';
 
+  mrLsMemberNamesJq = ''
+    select(._tag == "Success")
+    | (.value.members // .value.value.members // [])
+    | .[].name
+  '';
+
   tasks = {
     "mr:bootstrap" = {
       guard = "mr";
@@ -208,7 +214,7 @@ let
         ${loadCheckSkipMembersScript}
 
         # Verify all configured members have symlinks in repos/
-        members=$(mr ls --output json | ${jq} -r 'select(._tag == "Success") | .value.members[].name') || exit 1
+        members=$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}') || exit 1
         for member in $members; do
           if should_skip_member "$member"; then
             continue
@@ -236,7 +242,7 @@ let
 
         # Check for missing member symlinks
         missing=""
-        members=$(mr ls --output json | ${jq} -r 'select(._tag == "Success") | .value.members[].name') || exit 1
+        members=$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}') || exit 1
         for member in $members; do
           if should_skip_member "$member"; then
             continue
