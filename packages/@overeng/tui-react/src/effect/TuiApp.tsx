@@ -48,6 +48,7 @@ import {
   Effect,
   Function as Fn,
   Layer,
+  Logger,
   Option,
   PubSub,
   Runtime,
@@ -887,8 +888,67 @@ export interface RunResultOptions<O> {
 const isStringSchema = (schema: Schema.Schema<unknown>): boolean =>
   schema.ast._tag === 'StringKeyword'
 
+/**
+ * Build an Effect `Console` service bound to a single Node `WriteStream`.
+ *
+ * Used by `runResult` to route handler-emitted `Effect.Console.log`/`.info`/
+ * `.warn`/… to stderr so they don't contaminate the stdout result channel.
+ * Wraps Node's built-in `console.Console` (which already understands the full
+ * Console surface) and promotes each method into an `Effect`.
+ */
+const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
+  // Use the Node Console constructor available on the global `console`.
+  // Typed as `any` because DOM lib typings for `globalThis.console` don't
+  // expose the constructor; this only runs in Node, where it's available.
+  const ConsoleCtor = (globalThis.console as any).Console as new (options: {
+    stdout: NodeJS.WriteStream
+    stderr: NodeJS.WriteStream
+  }) => any
+  const raw = new ConsoleCtor({ stdout: stream, stderr: stream })
+  // Brand the object with the Console `TypeId` so `Console.setConsole`
+  // accepts it. The symbol is keyed as `effect/Console` via `Symbol.for`.
+  const TypeId = Symbol.for('effect/Console')
+  const service = {
+    [TypeId]: TypeId,
+    assert: (condition: boolean, ...args: ReadonlyArray<any>) =>
+      Effect.sync(() => raw.assert(condition, ...args)),
+    clear: Effect.sync(() => raw.clear()),
+    count: (label?: string) => Effect.sync(() => raw.count(label)),
+    countReset: (label?: string) => Effect.sync(() => raw.countReset(label)),
+    debug: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.debug(...args)),
+    dir: (item: any, options?: any) => Effect.sync(() => raw.dir(item, options)),
+    dirxml: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.dirxml(...args)),
+    error: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.error(...args)),
+    group: (options?: { label?: string; collapsed?: boolean }) =>
+      Effect.sync(() =>
+        options?.collapsed === true
+          ? raw.groupCollapsed(options?.label)
+          : raw.group(options?.label),
+      ),
+    groupEnd: Effect.sync(() => raw.groupEnd()),
+    info: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.info(...args)),
+    log: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.log(...args)),
+    table: (tabularData: any, properties?: ReadonlyArray<string>) =>
+      Effect.sync(() => raw.table(tabularData, properties)),
+    time: (label?: string) => Effect.sync(() => raw.time(label)),
+    timeEnd: (label?: string) => Effect.sync(() => raw.timeEnd(label)),
+    timeLog: (label?: string, ...args: ReadonlyArray<any>) =>
+      Effect.sync(() => raw.timeLog(label, ...args)),
+    trace: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.trace(...args)),
+    warn: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.warn(...args)),
+    unsafe: raw,
+  }
+  return service as unknown as Console.Console
+}
+
 /** Write a value to stdout using the appropriate format for its schema type.
- *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded. */
+ *  Strings are written raw (no JSON encoding). Structured types are JSON-encoded.
+ *
+ *  Writes directly to `process.stdout` rather than going through the Effect
+ *  `Console` service, since `runResult` rebinds that service to stderr for
+ *  handler-emitted logs — we need the result itself to land on stdout
+ *  regardless.
+ */
 const writeResult = <O,>({
   value,
   schema,
@@ -903,7 +963,12 @@ const writeResult = <O,>({
         if (str.length > 0 && str.endsWith('\n') === false) process.stdout.write('\n')
       })
     : Schema.encode(Schema.parseJson(schema))(value).pipe(
-        Effect.flatMap((json) => Console.log(json)),
+        Effect.flatMap((json) =>
+          Effect.sync(() => {
+            process.stdout.write(json)
+            process.stdout.write('\n')
+          }),
+        ),
         Effect.orDie,
       )
 
@@ -932,11 +997,18 @@ const runResultImpl = <S, A, O, E, R>(
     // - stdout always receives the handler's return value, via `writeResult`.
     // - The TUI view, if any, renders to stderr. This keeps the result stream
     //   safe for `$(...)`, redirects, and pipelines regardless of TTY state.
+    // - Handler-emitted logs (`Effect.log`, `Effect.logInfo`, …) and console
+    //   output (`Effect.Console.log`, …) likewise route to stderr. In visual
+    //   `log` mode (final React, no log capture) this used to leak onto stdout
+    //   and contaminate the byte-clean result.
     //
-    // The stderr binding is provided locally via `ViewOutputStreamTag` so
-    // `setupProgressiveVisualWithView` / `setupFinalVisualWithAtom` pick the
-    // right channel without additional plumbing.
-    const stderrStreamLayer = Layer.succeed(ViewOutputStreamTag, process.stderr)
+    // The stderr bindings are provided locally so callers don't need extra
+    // plumbing at the main site — `runResult`'s contract is self-contained.
+    const stderrSideChannelLayer = Layer.mergeAll(
+      Layer.succeed(ViewOutputStreamTag, process.stderr),
+      Logger.replace(Logger.defaultLogger, Logger.prettyLogger().pipe(Logger.withConsoleError)),
+      Console.setConsole(consoleOnStream(process.stderr)),
+    )
 
     const innerEffect =
       mode._tag === 'react'
@@ -945,7 +1017,7 @@ const runResultImpl = <S, A, O, E, R>(
             app.run().pipe(Effect.provideService(SkipModeOutputTag, true), Effect.flatMap(handler)),
           )
 
-    const result = yield* innerEffect.pipe(Effect.provide(stderrStreamLayer))
+    const result = yield* innerEffect.pipe(Effect.provide(stderrSideChannelLayer))
 
     yield* writeResult({ value: result, schema: options.result })
 

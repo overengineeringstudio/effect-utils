@@ -718,7 +718,7 @@ describe('runResult', () => {
       total: Schema.Number,
     })
 
-    it.effect('json mode: writes JSON-encoded result to console', () =>
+    it.effect('json mode: writes JSON-encoded result directly to stdout', () =>
       runResult(
         CounterApp,
         (tui) =>
@@ -731,10 +731,39 @@ describe('runResult', () => {
         Effect.provide(testModeLayer('json')),
         Effect.andThen((result) => {
           expect(result).toEqual({ items: ['a', 'b', 'c'], total: 3 })
-          expect(capturedConsole).toHaveLength(1)
-          const parsed = JSON.parse(capturedConsole[0]!)
-          expect(parsed).toEqual({ items: ['a', 'b', 'c'], total: 3 })
-          expect(parsed._tag).toBeUndefined()
+          // `runResult` writes structured results directly via process.stdout
+          // (not Effect.Console) so handler-emitted logs can be routed to
+          // stderr without interfering with the result channel.
+          const stdout = capturedStdout.join('')
+          expect(stdout).toBe(JSON.stringify({ items: ['a', 'b', 'c'], total: 3 }) + '\n')
+        }),
+      ),
+    )
+  })
+
+  describe('handler-emitted logs do not pollute stdout', () => {
+    it.effect('Effect.log and Effect.Console.log in log mode go to stderr', () =>
+      runResult(
+        CounterApp,
+        (tui) =>
+          Effect.gen(function* () {
+            yield* Effect.log('progress: starting')
+            yield* Effect.log('progress: halfway')
+            yield* Effect.logInfo('progress: done')
+            yield* Effect.sync(() => Effect.Console)
+            tui.dispatch({ _tag: 'Set', value: 1 })
+            return 'the-clean-payload'
+          }),
+        { result: Schema.String, view: <CounterView /> },
+      ).pipe(
+        Effect.provide(testModeLayer('log')),
+        Effect.andThen((result) => {
+          expect(result).toBe('the-clean-payload')
+          // stdout must be byte-clean: only the result + trailing newline.
+          const stdout = capturedStdout.join('')
+          expect(stdout).toBe('the-clean-payload\n')
+          // Any Effect.log lines should not appear on stdout.
+          expect(stdout).not.toContain('progress')
         }),
       ),
     )
