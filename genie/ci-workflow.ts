@@ -1085,7 +1085,7 @@ export const coldFreshNixBuildStep = ({
 
 /**
  * Guard the pnpm dependency-prep contract against regressions that would
- * silently reintroduce package-manager self-bootstrap or non-frozen lockfile
+ * silently reintroduce package-manager self-bootstrap or implicit lockfile
  * normalization inside fixed-output builds.
  */
 export const pnpmBuilderContractStep = ({
@@ -1107,6 +1107,7 @@ export const pnpmBuilderContractStep = ({
     'for required in \\',
     "  'manage-package-manager-versions=false' \\",
     "  'npm_config_manage_package_manager_versions=false' \\",
+    "  'frozenLockfile ? true' \\",
     "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
     '  if ! grep -Fq -- "$required" "$builder"; then',
     '    echo "::error::missing required pnpm builder contract fragment: $required"',
@@ -1114,7 +1115,6 @@ export const pnpmBuilderContractStep = ({
     '  fi',
     'done',
     'for forbidden in \\',
-    "  '--no-frozen-lockfile' \\",
     "  'lockfile-only' \\",
     "  'pnpm add pnpm@'; do",
     '  if grep -Fq -- "$forbidden" "$builder"; then',
