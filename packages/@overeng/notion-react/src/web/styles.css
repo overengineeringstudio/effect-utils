@@ -12,6 +12,13 @@
   /* Tighter preview padding than upstream's full-app layout. */
   padding: 32px 48px 96px;
   max-width: 720px;
+  /* Upstream `--notion-font` omits Noto Color Emoji, which is the only color-emoji
+     family installed on common Linux hosts (e.g. the Netlify Storybook runner).
+     Layering it into the stack keeps body-text emojis from falling back to
+     monochrome glyphs. */
+  --notion-font:
+    ui-sans-serif, system-ui, apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', Arial, sans-serif, 'Segoe UI Symbol';
 }
 
 /* Page cover — vendored rnx styles exist but assume a full-viewport layout.
@@ -191,4 +198,28 @@
 }
 .notion-page-link:hover {
   background: var(--bg-color-1);
+}
+.notion-page-link:focus-visible {
+  outline: 2px solid var(--select-color-0, rgba(46, 170, 220, 0.5));
+  outline-offset: 1px;
+}
+
+/* <ChildPage> wrapper: the link chip is the title row; nested children (when
+   a `<ChildPage>` has any) render indented below. The wrapper itself is not
+   a full `.notion-page` — that class carries the preview padding and would
+   compound on every nested level. */
+.notion-child-page {
+  margin: 2px 0;
+}
+.notion-page-children {
+  margin: 2px 0 6px 24px;
+}
+
+/* Inline page icons (e.g. on a `<ChildPage>` link chip). The vendored rules
+   for `.notion-page-icon-image` assume a hero-sized wrapper; the inline variant
+   collapses to 0×0 without an explicit box. */
+.notion-page-icon-inline .notion-page-icon-image {
+  width: 1.2em;
+  height: 1.2em;
+  display: inline-block;
 }

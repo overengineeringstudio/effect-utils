@@ -525,7 +525,7 @@ const RenderedTableOfContents = ({ entries }: { readonly entries: readonly TocEn
   )
 }
 
-export const ChildPage = ({ title, icon }: ChildPageProps) => {
+export const ChildPage = ({ title, icon, children }: ChildPageProps) => {
   // Ergonomic title surface accepts plain string or a PageTitleSpan[] — the
   // DOM mirror only renders a preview so we flatten span content here.
   const label =
@@ -542,10 +542,21 @@ export const ChildPage = ({ title, icon }: ChildPageProps) => {
     ) : (
       <span className="notion-page-icon-inline">{renderPageIcon(icon, 'inline')}</span>
     )
-  return (
-    <div className="notion-page-link">
+  // Phase 5a: the link chip is the visual affordance. Phase 5b replaces `href="#"`
+  // with a `NotionUrlProvider`-resolved URL; for now the anchor gives us hover +
+  // keyboard focus without a navigation target.
+  const chip = (
+    <a className="notion-page-link" href="#">
       {iconNode}
       <span>{label}</span>
+    </a>
+  )
+  return (
+    <div className="notion-child-page">
+      {chip}
+      {children !== undefined && children !== null && children !== false ? (
+        <div className="notion-page-children">{children}</div>
+      ) : null}
     </div>
   )
 }
