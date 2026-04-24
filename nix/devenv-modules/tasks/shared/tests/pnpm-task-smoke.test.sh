@@ -151,6 +151,10 @@ if [ "${1:-}" = "--version" ]; then
 fi
 if [ "${1:-}" = "install" ]; then
   printf 'PNPM_HOME=%s\n' "${PNPM_HOME:-}" >> "${TEST_PNPM_LOG:?}"
+  if [ "${TEST_PNPM_FAIL_NETWORK:-0}" = "1" ]; then
+    echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
+    exit 42
+  fi
   mkdir -p node_modules
   touch node_modules/.install-ok
   exit 0
@@ -336,14 +340,36 @@ echo "Test 10: install flags and pre-install hooks are applied"
   grep -qxF "install --config.confirmModulesPurge=false --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
 )
 
-echo "Test 11: generated test task runs vitest without pnpm exec"
+echo "Test 11: CI install failures preserve and classify the pnpm log"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export CI=1
+  export CI_DIAGNOSTICS_DIR="$tmpdir/diagnostics"
+  export TEST_PNPM_FAIL_NETWORK=1
+  unset PNPM_HOME
+  rm -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  unset TEST_PNPM_FAIL_NETWORK
+  unset CI
+  assert_exit_code 42 "$exit_code" "CI install should return the pnpm failure code"
+  test -f "$tmpdir/diagnostics/pnpm-install.log"
+  grep -qF "ERR_PNPM_META_FETCH_FAIL" "$tmpdir/diagnostics/pnpm-install.log"
+  grep -qF "[pnpm] Install failed: registry/network fetch failure" <<< "$output"
+  grep -qF "Socket timeout" <<< "$output"
+)
+
+echo "Test 12: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 12: generated storybook task runs storybook without pnpm exec"
+echo "Test 13: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"

@@ -181,13 +181,78 @@ let
 
   runPnpmInstallFn = ''
     run_pnpm_install() {
+      local install_args
       if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-        pnpm install --config.confirmModulesPurge=false --frozen-lockfile ${installFlagsString}
+        install_args=(install --config.confirmModulesPurge=false --frozen-lockfile ${installFlagsString})
       elif [ -n "''${CI:-}" ]; then
-        pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile ${installFlagsString}
+        install_args=(install --config.confirmModulesPurge=false --no-frozen-lockfile ${installFlagsString})
       else
-        pnpm install --config.confirmModulesPurge=false ${installFlagsString}
+        install_args=(install --config.confirmModulesPurge=false ${installFlagsString})
       fi
+
+      if [ -z "''${CI:-}" ]; then
+        pnpm "''${install_args[@]}"
+        return
+      fi
+
+      local diagnostics_dir
+      diagnostics_dir="''${CI_DIAGNOSTICS_DIR:-${cacheRoot}/diagnostics}"
+      mkdir -p "$diagnostics_dir"
+
+      local log_file
+      log_file="$diagnostics_dir/pnpm-install.log"
+
+      echo "[pnpm] Running install; full log: $log_file"
+      local rc
+      set +e
+      pnpm "''${install_args[@]}" > "$log_file" 2>&1
+      rc="$?"
+      set -e
+      if [ "$rc" -eq 0 ]; then
+        return
+      fi
+
+      local classification="pnpm install failure"
+      local evidence=""
+
+      if grep -Eq 'ERR_PNPM_(META_)?FETCH_FAIL|Socket timeout|request to .* failed|fetch.*failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN' "$log_file"; then
+        classification="registry/network fetch failure"
+        evidence="$(grep -Em1 'ERR_PNPM_(META_)?FETCH_FAIL|Socket timeout|request to .* failed|fetch.*failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN' "$log_file" || true)"
+      elif grep -Eq 'ERR_PNPM_WORKSPACE_PKG_NOT_FOUND' "$log_file"; then
+        classification="workspace package mismatch"
+        evidence="$(grep -Em1 'ERR_PNPM_WORKSPACE_PKG_NOT_FOUND' "$log_file" || true)"
+      fi
+
+      if [ -n "''${GITHUB_ACTIONS:-}" ]; then
+        echo "::group::pnpm install failure diagnostics"
+      fi
+
+      echo "[pnpm] Install failed: $classification" >&2
+      echo "[pnpm] Workspace: ${lib.escapeShellArg workspaceRootAbs}" >&2
+      echo "[pnpm] Log: $log_file" >&2
+      if [ -n "$evidence" ]; then
+        echo "[pnpm] Evidence: $evidence" >&2
+      fi
+      echo "[pnpm] Last 120 log lines:" >&2
+      tail -120 "$log_file" >&2 || true
+
+      if [ -n "''${GITHUB_STEP_SUMMARY:-}" ]; then
+        {
+          echo "### pnpm install failed"
+          echo ""
+          echo "- Classification: $classification"
+          if [ -n "$evidence" ]; then
+            echo "- Evidence: \`$evidence\`"
+          fi
+          echo "- Log artifact: \`$log_file\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+      fi
+
+      if [ -n "''${GITHUB_ACTIONS:-}" ]; then
+        echo "::endgroup::"
+      fi
+
+      return "$rc"
     }
   '';
 
