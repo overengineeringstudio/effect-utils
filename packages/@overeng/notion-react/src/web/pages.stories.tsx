@@ -25,7 +25,11 @@ import {
 } from './blocks.tsx'
 import { Bold, InlineCode, Italic, Link, Mention } from './inline.tsx'
 
-const meta = { title: 'Pages', parameters: { layout: 'fullscreen' } } satisfies Meta
+const meta = {
+  title: 'Pages',
+  tags: ['autodocs'],
+  parameters: { layout: 'fullscreen' },
+} satisfies Meta
 export default meta
 
 type Story = StoryObj
@@ -454,6 +458,29 @@ export const TradeoffsSection: Story = {
         url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80"
         caption="Nimbus Smart Lamp — studio reference"
       />
+    </Page>
+  ),
+}
+
+/**
+ * Empty page — `<Page title="Empty" />` with no children. Documents the
+ * current behaviour: the page-scope wrapper renders with title/icon slots
+ * collapsed (no icon/cover supplied) and an empty content flex-column.
+ * Useful as a baseline to reason about sub-page placeholders.
+ */
+export const EmptyPage: Story = {
+  render: () => <Page title="Empty" />,
+}
+
+/**
+ * `<ChildPage>` with no content beyond its title — the inline link chip. Used
+ * as a leaf sub-page marker in parent pages that don't hydrate the full
+ * sub-page body.
+ */
+export const EmptyChildPage: Story = {
+  render: () => (
+    <Page title="Sub-pages only">
+      <ChildPage blockKey="empty-sub" title="No body" />
     </Page>
   ),
 }
