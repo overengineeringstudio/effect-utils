@@ -85,23 +85,6 @@ layer(TestStories.layer, { timeout: '30 seconds' })('StoryRenderer', (it) => {
     }),
   )
 
-  it.effect('renders pipe mode (colors, like ci)', () =>
-    Effect.gen(function* () {
-      const captured = yield* captureOrSkip('CLI/Status/Basic')
-      if (captured === undefined) return
-
-      const output = yield* renderStory({
-        captured,
-        width: 80,
-        timelineMode: 'initial',
-        output: 'pipe',
-      })
-
-      expect(output.length).toBeGreaterThan(0)
-      expect(output).toContain('\x1b[')
-    }),
-  )
-
   it.effect('renders json mode (state as JSON)', () =>
     Effect.gen(function* () {
       const captured = yield* captureOrSkip('CLI/Status/Basic')

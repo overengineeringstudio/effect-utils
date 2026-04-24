@@ -18,7 +18,6 @@ import {
   // Presets
   tty,
   ci,
-  pipe,
   log,
   altScreen,
   json,
@@ -55,15 +54,6 @@ describe('OutputMode presets', () => {
       expect(ci.render.animation).toBe(false)
       expect(ci.render.colors).toBe(true)
       expect(ci.render.alternate).toBe(false)
-    }
-  })
-
-  test('pipe preset has correct config', () => {
-    expect(pipe._tag).toBe('react')
-    expect(pipe.timing).toBe('final')
-    if (pipe._tag === 'react') {
-      expect(pipe.render.animation).toBe(false)
-      expect(pipe.render.colors).toBe(true)
     }
   })
 
@@ -299,23 +289,10 @@ describe('detectOutputMode', () => {
     }
   })
 
-  test('TUI_PIPE_MODE=visual forces pipe mode even when piped', () => {
-    clearEnv()
-    try {
-      process.env.TUI_PIPE_MODE = 'visual'
-      const mode = detectOutputMode()
-      // With TUI_PIPE_MODE=visual, should get React pipe mode regardless of FIFO state
-      expect(mode._tag).toBe('react')
-      expect(mode.timing).toBe('final')
-    } finally {
-      restoreEnv()
-    }
-  })
-
   test('NO_COLOR removes colors from detected mode', () => {
     clearEnv()
     try {
-      process.env.TUI_PIPE_MODE = 'visual' // Force React mode
+      process.env.TUI_VISUAL = '1' // Force React mode so color override applies
       process.env.NO_COLOR = '1'
       const mode = detectOutputMode()
       expect(mode._tag).toBe('react')
@@ -330,7 +307,7 @@ describe('detectOutputMode', () => {
   test('NO_UNICODE removes unicode from detected mode', () => {
     clearEnv()
     try {
-      process.env.TUI_PIPE_MODE = 'visual' // Force React mode
+      process.env.TUI_VISUAL = '1'
       process.env.NO_UNICODE = '1'
       const mode = detectOutputMode()
       expect(mode._tag).toBe('react')
@@ -346,8 +323,7 @@ describe('detectOutputMode', () => {
 describe('resolveOutputMode', () => {
   test('auto resolves based on environment', () => {
     const mode = resolveOutputMode('auto')
-    // In test environment, auto resolves via detectOutputMode
-    // (may be 'json' if agent env vars are set, or 'react' pipe mode otherwise)
+    // In test environment (non-TTY stdout), auto resolves to json.
     expect(['react', 'json']).toContain(mode._tag)
   })
 
@@ -377,12 +353,6 @@ describe('resolveOutputMode', () => {
     expect(isReact(mode) && mode.render.animation).toBe(false)
   })
 
-  test('pipe returns pipe mode', () => {
-    const mode = resolveOutputMode('pipe')
-    expect(mode._tag).toBe('react')
-    expect(mode.timing).toBe('final')
-  })
-
   test('log returns log mode', () => {
     const mode = resolveOutputMode('log')
     expect(mode._tag).toBe('react')
@@ -409,7 +379,6 @@ describe('type guards', () => {
   test('isReact returns true for react modes', () => {
     expect(isReact(tty)).toBe(true)
     expect(isReact(ci)).toBe(true)
-    expect(isReact(pipe)).toBe(true)
     expect(isReact(log)).toBe(true)
     expect(isReact(altScreen)).toBe(true)
     expect(isReact(json)).toBe(false)
@@ -426,7 +395,6 @@ describe('type guards', () => {
   test('isProgressive returns true for progressive modes', () => {
     expect(isProgressive(tty)).toBe(true)
     expect(isProgressive(ci)).toBe(true)
-    expect(isProgressive(pipe)).toBe(false)
     expect(isProgressive(log)).toBe(false)
     expect(isProgressive(json)).toBe(false)
     expect(isProgressive(ndjson)).toBe(true)
@@ -435,7 +403,6 @@ describe('type guards', () => {
   test('isFinal returns true for final modes', () => {
     expect(isFinal(tty)).toBe(false)
     expect(isFinal(ci)).toBe(false)
-    expect(isFinal(pipe)).toBe(true)
     expect(isFinal(log)).toBe(true)
     expect(isFinal(json)).toBe(true)
     expect(isFinal(ndjson)).toBe(false)

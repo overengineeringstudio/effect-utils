@@ -480,14 +480,12 @@ describe('megarepo.json parsing', () => {
 // --cwd Option Tests
 // =============================================================================
 
-/** TUI output envelope for RootState (non-struct schema wraps in { _tag, value }) */
-const RootOutputEnvelope = Schema.TaggedStruct('Success', {
-  value: RootState,
-})
-
 /**
  * Run the root CLI command with --cwd and capture JSON output.
  * Does NOT provide Cwd explicitly — relies on Command.provide from --cwd.
+ *
+ * With the flat JSON output contract, stdout is directly the app state
+ * (no `{_tag: 'Success', value: ...}` envelope wrapper).
  */
 const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
   Effect.gen(function* () {
@@ -503,8 +501,7 @@ const runRootWithCwd = ({ cwdPath }: { cwdPath: string }) =>
 
     let state: typeof RootState.Type | undefined
     if (stdout.trim() !== '') {
-      const envelope = yield* Schema.decodeUnknown(Schema.parseJson(RootOutputEnvelope))(stdout)
-      state = envelope.value
+      state = yield* Schema.decodeUnknown(Schema.parseJson(RootState))(stdout)
     }
 
     return {

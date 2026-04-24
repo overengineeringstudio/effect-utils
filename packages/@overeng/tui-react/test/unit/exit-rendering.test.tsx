@@ -257,7 +257,7 @@ describe('Interrupt Handling', () => {
         // Scope will close here, which should dispatch Interrupted
       }).pipe(
         Effect.scoped,
-        Effect.provide(testModeLayer('pipe')),
+        Effect.provide(testModeLayer('log')),
         Effect.andThen(() => {
           // After scope closes, Interrupted should have been dispatched
           // The finalizer dispatches Interrupted, so the last state should have interrupted: true
@@ -279,7 +279,7 @@ describe('Interrupt Handling', () => {
         states.push(tui.getState())
       }).pipe(
         Effect.scoped,
-        Effect.provide(testModeLayer('pipe')),
+        Effect.provide(testModeLayer('log')),
         Effect.andThen(() => {
           // Should not have interrupted state since schema doesn't have Interrupted
           expect(states.every((s) => s.interrupted === false)).toBe(true)
@@ -306,7 +306,7 @@ describe('TuiAppApi.unmount()', () => {
 
       // State should still be accessible
       expect(tui.getState().value).toBe('before unmount')
-    }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+    }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
   )
 
   it.effect('explicit unmount prevents double unmount', () =>
@@ -322,7 +322,7 @@ describe('TuiAppApi.unmount()', () => {
       // Scope close should also be safe
       // If we get here without error, the test passes
       expect(true).toBe(true)
-    }).pipe(Effect.scoped, Effect.provide(testModeLayer('pipe'))),
+    }).pipe(Effect.scoped, Effect.provide(testModeLayer('log'))),
   )
 })
 
@@ -346,7 +346,7 @@ describe('Final state output', () => {
     console.log = originalLog
   })
 
-  it.effect('json mode outputs Success wrapper on normal completion', () =>
+  it.effect('json mode outputs final raw state on normal completion', () =>
     Effect.gen(function* () {
       const tui = yield* AppWithInterrupt.run()
       tui.dispatch({ _tag: 'SetValue', value: 'final' })
@@ -355,19 +355,15 @@ describe('Final state output', () => {
       Effect.provide(testModeLayer('json')),
       Effect.andThen(() => {
         expect(capturedOutput).toHaveLength(1)
-        const output = JSON.parse(capturedOutput[0]!)
-
-        // Should be wrapped in Success
-        expect(output._tag).toBe('Success')
-        // The final state should have the value we set
-        expect(output.value).toBe('final')
-        // Normal scope close should NOT dispatch Interrupted (only actual fiber interruption does)
-        expect(output.interrupted).toBe(false)
+        const state = JSON.parse(capturedOutput[0]!)
+        // Flat contract: stdout is raw state, no envelope.
+        expect(state.value).toBe('final')
+        expect(state.interrupted).toBe(false)
       }),
     ),
   )
 
-  it.effect('json mode outputs Failure wrapper on defect', () =>
+  it.effect('json mode emits final state on defect (error details via Effect channel)', () =>
     Effect.gen(function* () {
       const tui = yield* AppWithInterrupt.run()
       tui.dispatch({ _tag: 'SetValue', value: 'partial' })
@@ -379,22 +375,20 @@ describe('Final state output', () => {
       Effect.catchAllDefect((defect) => Effect.succeed({ caught: defect })),
       Effect.andThen((result) => {
         expect(result).toHaveProperty('caught')
+        // State captured at time of failure is still emitted (no envelope).
         expect(capturedOutput).toHaveLength(1)
-        const output = JSON.parse(capturedOutput[0]!)
-
-        // Should be wrapped in Failure
-        expect(output._tag).toBe('Failure')
-        // State at time of failure should be preserved
-        expect(output.state.value).toBe('partial')
-        // Cause should be a Die with the defect
-        expect(output.cause._tag).toBe('Die')
-        expect(output.cause.defect.message).toBe('Simulated crash')
+        const state = JSON.parse(capturedOutput[0]!)
+        expect(state.value).toBe('partial')
+        // Error details live in the Effect cause (reached via runTuiMain's
+        // formatError → stderr), not in the stdout payload.
+        const caught = (result as { caught: unknown }).caught
+        expect(caught).toBeInstanceOf(Error)
+        expect((caught as Error).message).toBe('Simulated crash')
       }),
     ),
   )
 
-  it.live('json mode outputs Failure wrapper on interrupt', () => {
-    // Create a fresh app instance to avoid state pollution from other tests
+  it.live('json mode emits final state on interrupt', () => {
     const InterruptTestApp = createTuiApp({
       stateSchema: TestState,
       actionSchema: TestActionWithInterrupt,
@@ -402,39 +396,25 @@ describe('Final state output', () => {
       reducer: testReducerWithInterrupt,
     })
 
-    // Create a fiber and interrupt it
     return Effect.gen(function* () {
       const fiber = yield* Effect.gen(function* () {
         const tui = yield* InterruptTestApp.run()
         tui.dispatch({ _tag: 'SetValue', value: 'before interrupt' })
-        // Yield to ensure dispatch is processed
         yield* Effect.yieldNow()
-        // Wait forever (will be interrupted)
         return yield* Effect.never
       }).pipe(Effect.scoped, Effect.provide(testModeLayer('json')), Effect.fork)
 
-      // Give the fiber time to start and process the dispatch
       yield* Effect.sleep('50 millis')
-
-      // Interrupt it
       yield* fiber.interruptAsFork(fiber.id())
-
-      // Wait for it to complete
       const _ = yield* fiber.await
     }).pipe(
       Effect.andThen(() => {
+        // Interrupt still emits the final state (no envelope). The interrupt
+        // signal itself rides the Effect channel, not stdout.
         expect(capturedOutput).toHaveLength(1)
-        const output = JSON.parse(capturedOutput[0]!)
-
-        // Should be wrapped in Failure
-        expect(output._tag).toBe('Failure')
-        // State should be present (exact value may vary due to forking semantics)
-        expect(output.state).toBeDefined()
-        expect(output.state).toHaveProperty('value')
-        // Cause should contain an Interrupt
-        // Note: The cause may be nested (Sequential/Parallel) depending on how interruption propagates
-        const causeJson = JSON.stringify(output.cause)
-        expect(causeJson).toContain('Interrupt')
+        const state = JSON.parse(capturedOutput[0]!)
+        expect(state).toBeDefined()
+        expect(state).toHaveProperty('value')
       }),
     )
   })

@@ -250,8 +250,8 @@ describe('log capture integration', () => {
       Effect.andThen(() => {
         // JSON mode should still output to console.log (our captured output)
         expect(capturedOutput).toHaveLength(1)
-        const output = JSON.parse(capturedOutput[0]!)
-        expect(output).toEqual({ _tag: 'Success', count: 1 })
+        const state = JSON.parse(capturedOutput[0]!)
+        expect(state).toEqual({ count: 1 })
       }),
     ),
   )

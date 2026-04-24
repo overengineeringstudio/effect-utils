@@ -209,76 +209,76 @@ const runDeploy = (services: string[]) =>
 
 describe('CLI Integration', () => {
   let originalLog: typeof console.log
+  let originalStdoutWrite: typeof process.stdout.write
   let capturedOutput: string[]
 
   beforeEach(() => {
     originalLog = console.log
+    originalStdoutWrite = process.stdout.write
     capturedOutput = []
     console.log = (msg: string) => {
       capturedOutput.push(msg)
     }
+    // Final visual modes (e.g. `pipe`) write directly to the view stream, not
+    // via `console.log`. Capture both so the assertions still see one entry per
+    // logical output.
+    process.stdout.write = ((chunk: unknown) => {
+      const str = String(chunk)
+      capturedOutput.push(str.endsWith('\n') === true ? str.slice(0, -1) : str)
+      return true
+    }) as typeof process.stdout.write
   })
 
   afterEach(() => {
     console.log = originalLog
+    process.stdout.write = originalStdoutWrite
   })
 
-  it.live('json mode outputs complete state with Success wrapper', () =>
+  it.live('json mode outputs final raw state', () =>
     Effect.gen(function* () {
       const result = yield* runDeploy(['api', 'web'])
 
       expect(result.success).toBe(true)
       expect(capturedOutput).toHaveLength(1)
 
-      const output = parseJson(capturedOutput[0]!) as {
+      const state = parseJson(capturedOutput[0]!) as {
         _tag: string
-        value: { _tag: string; services: Array<{ name: string }> }
+        services: Array<{ name: string }>
       }
-      // State is a union (non-struct), so it's wrapped in Success with `value`
-      expect(output._tag).toBe('Success')
-      expect(output.value._tag).toBe('Complete')
-      const services = output.value.services
-      expect(services).toHaveLength(2)
-      expect(services[0]!.name).toBe('api')
-      expect(services[1]!.name).toBe('web')
+      // Flat contract: stdout is the raw state, no envelope.
+      expect(state._tag).toBe('Complete')
+      expect(state.services).toHaveLength(2)
+      expect(state.services[0]!.name).toBe('api')
+      expect(state.services[1]!.name).toBe('web')
     }).pipe(Effect.provide(testModeLayer('json'))),
   )
 
-  it.live('ndjson mode streams state changes with final Success wrapper', () =>
+  it.live('ndjson mode streams each state change as raw JSON', () =>
     Effect.gen(function* () {
       yield* runDeploy(['api'])
 
-      // Should have multiple JSON outputs (intermediate raw + final wrapped)
+      // Multiple lines: initial + each state change. No trailing envelope.
       expect(capturedOutput.length).toBeGreaterThan(1)
 
-      // All should be valid JSON
-      const parsed = capturedOutput.map(
-        (line) => parseJson(line) as { _tag: string; value?: { _tag: string } },
-      )
+      const parsed = capturedOutput.map((line) => parseJson(line) as { _tag: string })
 
-      // Intermediate lines should be raw state
-      const intermediateTags = parsed.slice(0, -1).map((p) => p._tag)
-      expect(intermediateTags).toContain('Idle')
+      // First line is the initial state.
+      expect(parsed[0]!._tag).toBe('Idle')
 
-      // Final line should be Success wrapper with Complete state
-      const finalOutput = parsed[parsed.length - 1] as {
-        _tag: string
-        value: { _tag: string }
-      }
-      expect(finalOutput._tag).toBe('Success')
-      expect(finalOutput.value._tag).toBe('Complete')
+      // Last emitted line is the authoritative end state.
+      const finalState = parsed[parsed.length - 1]!
+      expect(finalState._tag).toBe('Complete')
     }).pipe(Effect.provide(testModeLayer('ndjson'))),
   )
 
-  it.live('pipe mode produces final output only', () =>
+  it.live('log mode produces final rendered output', () =>
     Effect.gen(function* () {
       yield* runDeploy(['api', 'web'])
 
-      // Pipe mode outputs the final rendered state (single output at end)
+      // Final-visual mode: single rendered frame to stdout on scope close.
       expect(capturedOutput).toHaveLength(1)
-      // Should contain the final "Deployed" message
       expect(capturedOutput[0]).toContain('Deployed')
-    }).pipe(Effect.provide(testModeLayer('pipe'))),
+    }).pipe(Effect.provide(testModeLayer('log'))),
   )
 
   it('detectOutputMode returns appropriate mode for environment', () => {
@@ -316,6 +316,6 @@ describe('CLI Integration', () => {
 
       expect(result.success).toBe(true)
       expect(result.totalDuration).toBeGreaterThan(0)
-    }).pipe(Effect.provide(testModeLayer('pipe'))),
+    }).pipe(Effect.provide(testModeLayer('log'))),
   )
 })

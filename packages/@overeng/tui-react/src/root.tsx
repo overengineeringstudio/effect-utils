@@ -150,12 +150,24 @@ export const createRoot = ({
   // Track last rendered element for re-rendering in flush
   let lastRenderedElement: ReactElement | null = null
 
-  // Auto-rerender on terminal resize (Node.js only)
+  // Auto-rerender on terminal resize (Node.js only).
+  // Listen on the passed stream when it exposes an `on`/`off` pair (i.e. a
+  // Node `WriteStream`). Previously this was hardcoded to `process.stdout`,
+  // which silently ignored resizes when the caller rendered to e.g.
+  // `process.stderr`.
   const resizeHandler = () => {
     if (disposed === false) scheduleRender()
   }
-  if (typeof process !== 'undefined' && process.stdout?.on !== undefined) {
-    process.stdout.on('resize', resizeHandler)
+  const streamMaybe = terminalOrStream as { on?: Function; off?: Function }
+  const resizeEmitter =
+    typeof streamMaybe.on === 'function' && typeof streamMaybe.off === 'function'
+      ? (streamMaybe as {
+          on: (ev: string, fn: () => void) => void
+          off: (ev: string, fn: () => void) => void
+        })
+      : null
+  if (resizeEmitter !== null) {
+    resizeEmitter.on('resize', resizeHandler)
   }
 
   // Microtask batching for render scheduling.
@@ -435,9 +447,9 @@ export const createRoot = ({
 
       // Mark as disposed to prevent any more renders
       disposed = true
-      // Remove resize listener
-      if (typeof process !== 'undefined' && process.stdout?.off !== undefined) {
-        process.stdout.off('resize', resizeHandler)
+      // Remove resize listener from the stream we attached to.
+      if (resizeEmitter !== null) {
+        resizeEmitter.off('resize', resizeHandler)
       }
       // Dispose renderer (preserves content for persist mode)
       renderer.dispose({ mode: unmountOptions?.mode ?? 'persist' })

@@ -19,10 +19,9 @@
  * Use named presets for common scenarios:
  * - `tty` - Interactive terminal (progressive, animated, colors)
  * - `ci` - CI environment (progressive, static spinners, colors)
- * - `pipe` - File-redirected output (final, static, colors)
  * - `log` - Log file (final, static, no colors)
  * - `fullscreen` - Alternate buffer mode (progressive, animated, colors)
- * - `json` - JSON output (final) - default for piped output (cmd | other)
+ * - `json` - JSON output (final) - default for non-TTY stdout (pipe, socket, file)
  * - `ndjson` - NDJSON streaming (progressive)
  *
  * @example
@@ -141,18 +140,6 @@ export const ciPlain: OutputMode = {
 }
 
 /**
- * Pipe mode - Piped/redirected output.
- *
- * Final React rendering (single output at end) with static spinners and colors.
- * Use this when stdout is redirected to a file or another process.
- */
-export const pipe: OutputMode = {
-  _tag: 'react',
-  timing: 'final',
-  render: { animation: false, colors: true, unicode: true, alternate: false },
-}
-
-/**
  * Log mode - Plain text log output.
  *
  * Final React rendering with static spinners and no colors.
@@ -241,17 +228,6 @@ export const ciPlainRenderConfig: RenderConfig = {
 }
 
 /**
- * RenderConfig for piped output.
- * Final timing with static spinners, with colors and unicode.
- */
-export const pipeRenderConfig: RenderConfig = {
-  animation: false,
-  colors: true,
-  unicode: true,
-  alternate: false,
-}
-
-/**
  * RenderConfig for log files.
  * Final timing with static spinners, no colors, unicode enabled.
  */
@@ -294,6 +270,23 @@ export const fullscreenRenderConfig = altScreenRenderConfig
  * ```
  */
 export class OutputModeTag extends Context.Tag('OutputMode')<OutputModeTag, OutputMode>() {}
+
+/**
+ * Stream the TUI view renders into.
+ *
+ * Separating the view channel from the data channel is what makes the Unix
+ * stdout contract (`stdout = data, stderr = diagnostics`) enforceable for
+ * result-oriented commands. `runResult` provides a stderr-bound layer so the
+ * view never pollutes the result stream; other entry points default to stdout.
+ *
+ * Implementations are a Node `WriteStream`-shaped value (both `process.stdout`
+ * and `process.stderr` qualify). Default and stderr layers are in the Node
+ * entry point (`OutputMode.node.ts`) to keep this module browser-safe.
+ */
+export class ViewOutputStreamTag extends Context.Tag('@overeng/tui-react/ViewOutputStream')<
+  ViewOutputStreamTag,
+  NodeJS.WriteStream
+>() {}
 
 // =============================================================================
 // Environment Helpers (browser-safe — use typeof process guards)
@@ -461,9 +454,6 @@ export const ciLayer: Layer.Layer<OutputModeTag> = layer(ci)
 
 /** Layer for ci-plain mode */
 export const ciPlainLayer: Layer.Layer<OutputModeTag> = layer(ciPlain)
-
-/** Layer for pipe mode */
-export const pipeLayer: Layer.Layer<OutputModeTag> = layer(pipe)
 
 /** Layer for log mode */
 export const logLayer: Layer.Layer<OutputModeTag> = layer(log)

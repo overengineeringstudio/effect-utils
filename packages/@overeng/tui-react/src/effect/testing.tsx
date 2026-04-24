@@ -28,7 +28,6 @@ import {
   OutputModeTag,
   tty,
   ci,
-  pipe,
   log,
   altScreen,
   json,
@@ -43,7 +42,7 @@ import type { TuiAppConfig, TuiAppApi } from './TuiApp.tsx'
 /**
  * Mode preset name for testing.
  */
-export type TestModePreset = 'tty' | 'ci' | 'pipe' | 'log' | 'fullscreen' | 'json' | 'ndjson'
+export type TestModePreset = 'tty' | 'ci' | 'log' | 'fullscreen' | 'json' | 'ndjson'
 
 /**
  * Options for running a test command.
@@ -94,8 +93,6 @@ export const modeFromTag = (preset: TestModePreset): OutputMode => {
       return tty
     case 'ci':
       return ci
-    case 'pipe':
-      return pipe
     case 'log':
       return log
     case 'fullscreen':
