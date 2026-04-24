@@ -11,6 +11,9 @@
 # - pnpm:reset-lock-files
 {
   packages,
+  workspaceRoot ? ".",
+  taskNamePrefix ? "pnpm",
+  taskSuffix ? null,
   globalCache ? true,
   frozenInCi ? true,
   installAfter ? [ ],
@@ -28,7 +31,37 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
-  cacheRoot = cache.mkCachePath "pnpm-install";
+  workspaceCacheName =
+    if workspaceRoot == "." then
+      "root"
+    else
+      builtins.replaceStrings [ "/" "." ] [ "-" "_" ] workspaceRoot;
+  cacheRoot =
+    if workspaceRoot == "." then
+      cache.mkCachePath "pnpm-install"
+    else
+      cache.mkCachePath "pnpm-install/${workspaceCacheName}";
+  workspaceRootAbs =
+    if workspaceRoot == "." then
+      config.devenv.root
+    else
+      "${config.devenv.root}/${workspaceRoot}";
+  defaultPnpmHome =
+    if workspaceRoot == "." then
+      "${config.devenv.root}/.pnpm-home"
+    else
+      "${config.devenv.root}/.pnpm-home/${workspaceCacheName}";
+  installTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:install" else "${taskNamePrefix}:install:${taskSuffix}";
+  updateTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:update" else "${taskNamePrefix}:update:${taskSuffix}";
+  cleanTaskName =
+    if taskSuffix == null then "${taskNamePrefix}:clean" else "${taskNamePrefix}:clean:${taskSuffix}";
+  resetLockFilesTaskName =
+    if taskSuffix == null then
+      "${taskNamePrefix}:reset-lock-files"
+    else
+      "${taskNamePrefix}:reset-lock-files:${taskSuffix}";
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./pnpm-task-helpers.sh
   );
@@ -43,7 +76,7 @@ let
       map (
         path:
         let
-          pkgJsonPath = "${config.devenv.root}/${path}/package.json";
+          pkgJsonPath = "${workspaceRootAbs}/${path}/package.json";
           pkgJsonExists = builtins.pathExists pkgJsonPath;
           pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else { };
           name = pkgJson.name or null;
@@ -62,7 +95,7 @@ let
   getInjectedDeps =
     path:
     let
-      pkgJsonPath = "${config.devenv.root}/${path}/package.json";
+      pkgJsonPath = "${workspaceRootAbs}/${path}/package.json";
       pkgJsonExists = builtins.pathExists pkgJsonPath;
       pkgJson = if pkgJsonExists then builtins.fromJSON (builtins.readFile pkgJsonPath) else { };
       depsMeta = pkgJson.dependenciesMeta or { };
@@ -89,7 +122,9 @@ let
   ensureLocalPnpmHomeFn = ''
     # Keep pnpm's hot GVS projection workspace-local by default so local tasks
     # match CI and don't inherit stale global link state from unrelated repos.
-    ensure_local_pnpm_home_default ${lib.escapeShellArg config.devenv.root}
+    if [ -z "''${PNPM_HOME:-}" ] || { [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ "''${PNPM_HOME:-}" = ${lib.escapeShellArg "${config.devenv.root}/.pnpm-home"} ]; }; then
+      export PNPM_HOME=${lib.escapeShellArg defaultPnpmHome}
+    fi
   '';
 
   computeWorkspaceStateHash = ''
@@ -143,12 +178,13 @@ let
   '';
 
   allTasks = {
-    "pnpm:install" = {
+    "${installTaskName}" = {
       guard = "pnpm";
-      description = "Install the repo-root pnpm workspace from the authoritative root lockfile";
+      description = "Install the pnpm workspace at ${workspaceRoot} from its authoritative lockfile";
       after = installAfter;
-      exec = trace.exec "pnpm:install" ''
+      exec = trace.exec installTaskName ''
         set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         mkdir -p "${cacheRoot}"
@@ -177,9 +213,10 @@ let
         # Content-addressable store (files/) is unaffected.
         # See: pnpm/pnpm#9739
         _gvs_hash=$({
-          # pnpm 11 keeps the process alive when stdin stays open, which is
-          # what GitHub Actions does for long-lived shell steps.
-          pnpm --version < /dev/null
+          # Hash the resolved pnpm package version directly instead of probing
+          # the CLI at runtime. That keeps the task deterministic and avoids
+          # trace-wrapper quoting hazards around command rewriting.
+          printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version}
           sed -n '/^packageExtensions:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
           sed -n '/^allowBuilds:/,/^[a-zA-Z]/p' pnpm-workspace.yaml 2>/dev/null || true
         } | compute_hash)
@@ -214,8 +251,9 @@ let
         cache_value="$(compute_install_state_hash)"
         ${cache.writeCacheFile ''"$hash_file"''}
       '';
-      status = trace.status "pnpm:install" "hash" ''
+      status = trace.status installTaskName "hash" ''
         set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         hash_file="${cacheRoot}/install-state.hash"
@@ -238,12 +276,13 @@ let
       '';
     };
 
-    "pnpm:update" = {
+    "${updateTaskName}" = {
       guard = "pnpm";
-      description = "Update the authoritative repo-root pnpm lockfile";
-      after = [ "genie:run" ] ++ updateAfter;
-      exec = trace.exec "pnpm:update" ''
+      description = "Update the authoritative pnpm lockfile at ${workspaceRoot}";
+      after = (if workspaceRoot == "." then [ "genie:run" ] else [ ]) ++ updateAfter;
+      exec = trace.exec updateTaskName ''
         set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
         export npm_config_manage_package_manager_versions=false
@@ -252,12 +291,13 @@ let
       '';
     };
 
-    "pnpm:clean" = {
+    "${cleanTaskName}" = {
       guard = "pnpm";
-      description = "Remove repo-root and package-level node_modules";
+      description = "Remove node_modules for the pnpm workspace at ${workspaceRoot}";
       after = cleanAfter;
-      exec = trace.exec "pnpm:clean" ''
+      exec = trace.exec cleanTaskName ''
         set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
 
@@ -273,10 +313,11 @@ let
       '';
     };
 
-    "pnpm:reset-lock-files" = {
-      description = "Remove the repo-root pnpm lock file (last resort)";
+    "${resetLockFilesTaskName}" = {
+      description = "Remove the pnpm lock file at ${workspaceRoot} (last resort)";
       after = resetLockFilesAfter;
-      exec = trace.exec "pnpm:reset-lock-files" ''
+      exec = trace.exec resetLockFilesTaskName ''
+        cd ${lib.escapeShellArg workspaceRootAbs}
         rm -f ${lockFilePaths}
       '';
     };
@@ -286,7 +327,7 @@ in
 {
   packages = cliGuard.fromTasks allTasks;
 
-  enterShell = lib.mkIf globalCache ''
+  enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.pnpm-home}"
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_manage_package_manager_versions=false
