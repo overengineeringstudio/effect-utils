@@ -1740,26 +1740,88 @@ export const sync = (
       yield* flushBlocks
     }
 
-    // Step 2b (phase 3c): retained-sub-page-scoped block ops. These address
-    // real server page ids (not tmpPageIds) — the diff's retained-page branch
+    // Step 2b (phase 3c): retained-sub-page-scoped ops. These address real
+    // server page ids (not tmpPageIds) — the diff's retained-page branch
     // recursed into the sub-page's children and tagged every emitted block op
-    // with `scopePageId = priorSubPageBlockId`. Apply each scope as its own
-    // applyDiff pass so per-parent coalescing stays local; the shared
-    // `working` cache is already indexed over every nested page subtree so
-    // checkpointAppended lands ops in the right place.
+    // with `scopePageId = priorSubPageBlockId`. For the same reason the root
+    // scope interleaves block ops with createPage/movePage (both tail-append,
+    // so running appends before nested creates inverts candidate order), every
+    // sub-page scope needs the same interleaved walk. Without it, a retained
+    // `<ChildPage>` with mixed `[<ChildPage>, <Paragraph>]` candidates would
+    // materialize as `[Paragraph, child_page]` on the server and drift on the
+    // next warm sync.
     const createPageTmpIds = new Set(
       pageOps.flatMap((op) => (op.kind === 'createPage' ? [op.tmpPageId] : [])),
     )
-    for (const [scope, scopedOps] of pageScopedBlockPlan) {
+    const subPageScopes = new Set<string>()
+    for (const scope of pageScopedBlockPlan.keys()) {
       if (createPageTmpIds.has(scope)) continue // tail block ops for a root-scope createPage already applied inside runCreatePage
-      yield* applyDiff(scopedOps, idMap, checkpointAppended, o11y, priorHashById)
+      subPageScopes.add(scope)
+    }
+    for (const op of pageOps) {
+      if (op.kind === 'createPage' && op.parent.pageId !== opts.pageId) {
+        subPageScopes.add(op.parent.pageId)
+      } else if (op.kind === 'movePage' && op.parent.pageId !== opts.pageId) {
+        subPageScopes.add(op.parent.pageId)
+      }
+    }
+    for (const scope of subPageScopes) {
+      const scopedInterleaved: DiffOp[] = []
+      for (const op of plan) {
+        if (
+          op.kind === 'append' ||
+          op.kind === 'insert' ||
+          op.kind === 'update' ||
+          op.kind === 'remove'
+        ) {
+          if (op.scopePageId === scope) scopedInterleaved.push(op)
+          continue
+        }
+        if (op.kind === 'createPage' && op.parent.pageId === scope) {
+          scopedInterleaved.push(op)
+          continue
+        }
+        if (op.kind === 'movePage' && op.parent.pageId === scope) {
+          scopedInterleaved.push(op)
+          continue
+        }
+      }
+      let scopeBuf: DiffOp[] = []
+      const flushScopeBuf = Effect.gen(function* () {
+        if (scopeBuf.length > 0) {
+          const toFlush = scopeBuf
+          scopeBuf = []
+          yield* applyDiff(toFlush, idMap, checkpointAppended, o11y, priorHashById)
+        }
+      })
+      for (const op of scopedInterleaved) {
+        if (
+          op.kind === 'append' ||
+          op.kind === 'insert' ||
+          op.kind === 'update' ||
+          op.kind === 'remove'
+        ) {
+          scopeBuf.push(op)
+          continue
+        }
+        yield* flushScopeBuf
+        if (op.kind === 'createPage') {
+          yield* runCreatePage(op)
+          createRan.add(op.tmpPageId)
+        } else if (op.kind === 'movePage') {
+          yield* runMovePage(op)
+          moveRan.add(op.pageId)
+        }
+      }
+      yield* flushScopeBuf
     }
 
-    // Any createPage NOT rooted at the sync page (i.e. nested under a retained
-    // <ChildPage>) still needs to run. Execute them in plan order and one at
-    // a time so nested same-parent `<ChildPage>` creates land on the server in
-    // JSX order (T08: `pages.create` is sequential because parallel creates
-    // under a common parent yield nondeterministic `child_page` ordering).
+    // Safety net: any createPage not yet executed (e.g. nested under a
+    // createPage that itself runs via this pass — tail block ops handle that,
+    // but a nested page under a nested page isn't covered above). Execute in
+    // plan order so JSX order is preserved (T08: pages.create is sequential
+    // because parallel creates under a common parent yield nondeterministic
+    // child_page ordering).
     for (const op of pageOps) {
       if (op.kind !== 'createPage') continue
       if (createRan.has(op.tmpPageId)) continue

@@ -901,12 +901,29 @@ export const inlinePackChildren = (
  * Index every page-kind entry in the prior cache tree by blockKey. Used by
  * `diffChildren` to detect cross-parent moves: an unretained candidate page
  * with a matching key becomes `movePage` instead of archive+create.
+ *
+ * Key uniqueness is only enforced among siblings, so two pages in different
+ * branches may legitimately share a blockKey. When that happens we cannot
+ * pick a single move source safely — last-write-wins would silently pair the
+ * candidate with the wrong cache entry and archive the intended source. Treat
+ * such keys as ambiguous (omit from the map); the caller then falls back to
+ * archive + createPage, which is correct in all cases.
  */
 const indexCachePages = (cache: CacheTree): Map<string, CacheNode> => {
   const out = new Map<string, CacheNode>()
+  const collided = new Set<string>()
   const walk = (nodes: readonly CacheNode[]): void => {
     for (const n of nodes) {
-      if (n.nodeKind === 'page') out.set(n.key, n)
+      if (n.nodeKind === 'page') {
+        if (collided.has(n.key)) {
+          // already ambiguous — leave it out
+        } else if (out.has(n.key)) {
+          out.delete(n.key)
+          collided.add(n.key)
+        } else {
+          out.set(n.key, n)
+        }
+      }
       walk(n.children)
     }
   }

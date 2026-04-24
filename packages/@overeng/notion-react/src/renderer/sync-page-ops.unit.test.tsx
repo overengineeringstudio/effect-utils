@@ -1088,4 +1088,91 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       expect(holdings[0]!.in_trash).toBe(true)
     })
   })
+
+  /**
+   * PR #623 review fix: non-root (retained sub-page) scopes used to run all
+   * scoped block ops before nested `createPage`/`movePage`. Both endpoints
+   * tail-append, so `[<ChildPage>, <Paragraph>]` candidate order under a
+   * retained sub-page landed as `[Paragraph, child_page]` on the server —
+   * silent server-order corruption, undetected by the cache-vs-candidate diff.
+   */
+  it('retained sub-page: mixed [<ChildPage>, <Paragraph>] children land in JSX order on the server', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: outer empty, so it's retained (not freshly-created) on the
+    // second sync — exercising the sub-page scope path, not the inline
+    // packing path used for brand-new pages.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="outer" title="outer" />
+      </Page>,
+      cache,
+    )
+    const outerId = [...fake.pages.values()].find(
+      (p) => p.properties.title.title[0]?.text.content === 'outer',
+    )!.id
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="outer" title="outer">
+          <ChildPage blockKey="inner" title="inner" />
+          <Paragraph blockKey="p">sibling</Paragraph>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    const kinds = fake.childrenOf(outerId).map((b) => b.type)
+    expect(kinds).toEqual(['child_page', 'paragraph'])
+  })
+
+  /**
+   * PR #623 review fix: `indexCachePages` used to collapse page-kind cache
+   * entries by blockKey globally, last-write-wins. Two pages legitimately
+   * sharing a blockKey across different parent branches (sibling-uniqueness is
+   * all the diff enforces) would make `pagesByKey.get(key)` select the wrong
+   * source for a cross-parent move pre-claim, archiving or moving the wrong
+   * page. Fix: treat collided keys as ambiguous (omit from the map) so the
+   * diff falls back to archive + createPage, which is safe in all cases.
+   */
+  it('duplicate blockKey across branches: retained page is not misrouted as a move source', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="dead" title="dead">
+          <ChildPage blockKey="m" title="dead-m" />
+        </ChildPage>
+        <ChildPage blockKey="keep" title="keep">
+          <ChildPage blockKey="m" title="keep-m" />
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    const keepM = [...fake.pages.values()].find(
+      (p) => p.properties.title.title[0]?.text.content === 'keep-m',
+    )!
+    const r = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="keep" title="keep">
+          <ChildPage blockKey="m" title="keep-m" />
+        </ChildPage>
+        <ChildPage blockKey="new-parent" title="new-parent">
+          <ChildPage blockKey="m" title="new-m" />
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    // No movePage should be emitted: the duplicate-key ambiguity means the
+    // diff cannot safely pick a move source, so the new "m" is a fresh
+    // createPage and the dead branch is archive+create'd normally.
+    expect(r.pages.moves).toBe(0)
+    // "keep/m" must remain untouched — same physical page, not archived.
+    const keepMAfter = fake.pages.get(keepM.id)!
+    expect(keepMAfter.in_trash).toBe(false)
+    expect(keepMAfter.archived).toBe(false)
+    expect(keepMAfter.properties.title.title[0]?.text.content).toBe('keep-m')
+  })
 })
