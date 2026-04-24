@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react'
 import type { ReactNode } from 'react'
 
+import { NotionUrlProviderProvider } from '../src/renderer/url-provider.ts'
 import '../src/web/vendored-notion.css'
 import '../src/web/styles.css'
 import '../src/web/katex.css'
@@ -40,15 +41,25 @@ const PreviewBanner = () => (
  *
  * Stories that compose `<Page>` explicitly nest harmlessly inside this wrapper.
  */
+/**
+ * Default URL resolver for Storybook previews: point every page/sub-page link
+ * at the CanonicalPage story so `<ChildPage>`, `<LinkToPage>`, and page-
+ * `<Mention>` become clickable in the preview. Real hosts pass their own
+ * resolver via {@link NotionUrlProviderProvider}; this decorator exists purely
+ * so Storybook surfaces the wiring visually.
+ */
+const storybookUrlResolver = ({ pageId }: { readonly pageId: string }): string =>
+  `?path=/story/pages--canonical-page&notionPageId=${encodeURIComponent(pageId)}`
+
 const StorybookDecorator = ({ children }: { children: ReactNode }) => (
-  <>
+  <NotionUrlProviderProvider value={{ resolve: storybookUrlResolver }}>
     <PreviewBanner />
     <div className="notion notion-app">
       <div className="notion-page">
         <div className="notion-page-content">{children}</div>
       </div>
     </div>
-  </>
+  </NotionUrlProviderProvider>
 )
 
 const preview: Preview = {

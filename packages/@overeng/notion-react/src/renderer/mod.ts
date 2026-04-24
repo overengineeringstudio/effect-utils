@@ -56,3 +56,9 @@ export {
   type UploadRecord,
   type UploadRegistry,
 } from './upload-registry.ts'
+export {
+  NotionUrlProviderProvider,
+  useNotionUrl,
+  type NotionUrlProvider,
+  type NotionUrlResolver,
+} from './url-provider.ts'
