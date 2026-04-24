@@ -916,6 +916,7 @@ const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
     count: (label?: string) => Effect.sync(() => raw.count(label)),
     countReset: (label?: string) => Effect.sync(() => raw.countReset(label)),
     debug: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.debug(...args)),
+    // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
     dir: (item: any, options?: any) => Effect.sync(() => raw.dir(item, options)),
     dirxml: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.dirxml(...args)),
     error: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.error(...args)),
@@ -928,6 +929,7 @@ const consoleOnStream = (stream: NodeJS.WriteStream): Console.Console => {
     groupEnd: Effect.sync(() => raw.groupEnd()),
     info: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.info(...args)),
     log: (...args: ReadonlyArray<any>) => Effect.sync(() => raw.log(...args)),
+    // oxlint-disable-next-line overeng/named-args -- matches effect Console.Console interface
     table: (tabularData: any, properties?: ReadonlyArray<string>) =>
       Effect.sync(() => raw.table(tabularData, properties)),
     time: (label?: string) => Effect.sync(() => raw.time(label)),
