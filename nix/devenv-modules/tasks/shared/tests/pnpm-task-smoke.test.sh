@@ -166,6 +166,7 @@ set -euo pipefail
 
 # The smoke test is single-process, so it only needs a no-op lock command to
 # keep the generated task script moving through its install path.
+printf 'flock %s\n' "$*" >> "${TEST_FLOCK_LOG:?}"
 exit 0
 EOF
 chmod +x "$tmpdir/bin/flock"
@@ -220,6 +221,7 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
+export TEST_FLOCK_LOG="$tmpdir/flock.log"
 unset CI
 
 echo "Test 1: status misses before install"
@@ -239,9 +241,13 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   cd "$workspace"
   export HOME="$tmpdir/home"
   export PNPM_HOME="$workspace/.pnpm-home-a"
+  : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
   test -d "$workspace/node_modules"
+  grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
+  grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
+  grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
 )
 
 echo "Test 3: status hits after install with same GVS path"

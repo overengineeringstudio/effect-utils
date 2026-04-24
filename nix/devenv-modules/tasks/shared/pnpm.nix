@@ -206,6 +206,15 @@ let
           exit 1
         fi
 
+        pnpm_home_lockfile="''${PNPM_HOME:-${cacheRoot}}/.effect-utils-pnpm-install.lock"
+        mkdir -p "$(dirname "$pnpm_home_lockfile")"
+        exec 201>"$pnpm_home_lockfile"
+        if ! ${flock} -w 600 201; then
+          echo "[pnpm] PNPM_HOME lock timeout after 600s: $pnpm_home_lockfile" >&2
+          echo "[pnpm] Another pnpm install sharing this PNPM_HOME may be stuck" >&2
+          exit 1
+        fi
+
         export npm_config_manage_package_manager_versions=false
 
         ${computeWorkspaceStateHash}
