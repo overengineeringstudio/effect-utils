@@ -77,20 +77,7 @@ let
         return 0
       fi
 
-      local remaining="$_mr_skip_csv"
-      local member
-      while [ -n "$remaining" ]; do
-        member="''${remaining%%,*}"
-        if [ "$remaining" = "$member" ]; then
-          remaining=""
-        else
-          remaining="''${remaining#*,}"
-        fi
-
-        if [ -n "$member" ]; then
-          MR_SKIP_ARGS+=(--skip "$member")
-        fi
-      done
+      MR_SKIP_ARGS+=(--skip "$_mr_skip_csv")
     }
 
     should_skip_member() {
