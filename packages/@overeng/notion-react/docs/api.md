@@ -33,10 +33,10 @@ sync(element, {
 
 `reorderSiblings` values:
 
-| Value                           | Behaviour                                                                                                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Value                           | Behaviour                                                                                                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `undefined` / `false` (default) | Retained-but-reshuffled `<ChildPage>` siblings emit a same-parent `movePage`; the API rejects it; the driver swallows the error; server sibling order unchanged. |
-| `true`                          | Library auto-provisions a scratch holding page, roundtrips each sibling in JSX order (2N `pages.move` calls), archives the scratch page on success.             |
+| `true`                          | Library auto-provisions a scratch holding page, roundtrips each sibling in JSX order (2N `pages.move` calls), archives the scratch page on success.              |
 | `{ holdingParentId: string }`   | Caller supplies a workspace-accessible page id; the library uses it as the holding parent and never archives it. Caller owns the lifecycle.                      |
 
 See [Cookbook → Sub-page creation → Reordering](./cookbook/sub-page-creation.md#reordering-sibling-sub-pages-phase-4d)
