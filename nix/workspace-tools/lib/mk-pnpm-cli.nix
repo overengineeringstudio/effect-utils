@@ -558,6 +558,9 @@ let
         src = depsSrc;
         sourceRoot = ".";
         lockfilePaths = [ lockfilePath ];
+        # Staged install roots are synthetic workspace subsets; pnpm 11 correctly
+        # rejects validating them against the source workspace's full lockfile.
+        frozenLockfile = false;
         preInstall = ''
           chmod -R +w .
         '';
@@ -585,6 +588,9 @@ let
       src = rootDepsSrc;
       sourceRoot = ".";
       lockfilePaths = [ "pnpm-lock.yaml" ];
+      # The aggregate staged root includes external workspace members so link:
+      # deps resolve as workspace packages, which requires a derived subset lock.
+      frozenLockfile = false;
       preInstall = ''
         chmod -R +w .
       '';

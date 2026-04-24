@@ -74,6 +74,7 @@ in
       sourceRoot,
       pnpmDepsHash,
       preInstall ? "",
+      frozenLockfile ? true,
       lockfilePaths ? [ "pnpm-lock.yaml" ],
     }:
     let
@@ -113,6 +114,7 @@ in
           filesystem strategy across both the initial realization and the rebuild.
         */
         if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
+      pnpmLockfileModeArg = if frozenLockfile then "--frozen-lockfile" else "--no-frozen-lockfile";
     in
     pkgs.stdenvNoCC.mkDerivation {
       # Bump the prepared-workspace artifact version whenever the materialization
@@ -291,7 +293,7 @@ in
                     # Keep the legacy wrapper invocation literal in-source so downstream
                     # contract checks can verify the install mode by string match:
                     # pnpm install --frozen-lockfile --ignore-scripts
-                    node "$PNPM_MJS" install --frozen-lockfile --ignore-scripts
+                    node "$PNPM_MJS" install ${pnpmLockfileModeArg} --ignore-scripts
                   )
                   log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
                   log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
