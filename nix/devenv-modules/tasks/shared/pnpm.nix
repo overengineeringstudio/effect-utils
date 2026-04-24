@@ -16,6 +16,8 @@
   taskSuffix ? null,
   globalCache ? true,
   frozenInCi ? true,
+  installFlags ? [ ],
+  preInstall ? "",
   installAfter ? [ ],
   updateAfter ? [ ],
   cleanAfter ? [ ],
@@ -70,6 +72,7 @@ let
   );
 
   flock = "${pkgs.flock}/bin/flock";
+  installFlagsString = lib.escapeShellArgs installFlags;
 
   packageNameToPath = builtins.listToAttrs (
     builtins.filter (x: x != null) (
@@ -161,6 +164,8 @@ let
       {
         printf '%s\n' "$workspace_state_hash"
         printf '%s\n' "''${gvs_links_dir:-}"
+        printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
+        printf '%s\n' ${lib.escapeShellArg preInstall}
       } | compute_hash
     }
   '';
@@ -168,11 +173,11 @@ let
   runPnpmInstallFn = ''
     run_pnpm_install() {
       if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-        pnpm install --config.confirmModulesPurge=false --frozen-lockfile
+        pnpm install --config.confirmModulesPurge=false --frozen-lockfile ${installFlagsString}
       elif [ -n "''${CI:-}" ]; then
-        pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile
+        pnpm install --config.confirmModulesPurge=false --no-frozen-lockfile ${installFlagsString}
       else
-        pnpm install --config.confirmModulesPurge=false
+        pnpm install --config.confirmModulesPurge=false ${installFlagsString}
       fi
     }
   '';
@@ -205,6 +210,7 @@ let
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
+        ${preInstall}
         ${runPnpmInstallFn}
 
         # pnpm 11 GVS: hash-based link invalidation. pnpm reuses existing GVS
