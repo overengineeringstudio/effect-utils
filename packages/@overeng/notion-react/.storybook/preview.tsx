@@ -47,9 +47,16 @@ const PreviewBanner = () => (
  * `<Mention>` become clickable in the preview. Real hosts pass their own
  * resolver via {@link NotionUrlProviderProvider}; this decorator exists purely
  * so Storybook surfaces the wiring visually.
+ *
+ * `target: '_top'` is load-bearing: Storybook renders stories inside an
+ * `<iframe>`, and without it a click navigates the iframe itself and escapes
+ * the Storybook shell chrome. `_top` breaks out to the top-level window so
+ * the sidebar/toolbar survive the navigation.
  */
-const storybookUrlResolver = ({ pageId }: { readonly pageId: string }): string =>
-  `?path=/story/pages--canonical-page&notionPageId=${encodeURIComponent(pageId)}`
+const storybookUrlResolver = ({ pageId }: { readonly pageId: string }) => ({
+  href: `?path=/story/pages--canonical-page&notionPageId=${encodeURIComponent(pageId)}`,
+  target: '_top' as const,
+})
 
 const StorybookDecorator = ({ children }: { children: ReactNode }) => (
   <NotionUrlProviderProvider value={{ resolve: storybookUrlResolver }}>

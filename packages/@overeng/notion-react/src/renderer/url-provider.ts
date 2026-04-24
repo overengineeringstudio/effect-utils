@@ -13,15 +13,36 @@ import { createContext, useContext } from 'react'
  * - Silent miss. `resolve` may return `undefined`; consumers also treat that
  *   as "no URL".
  *
+ * Return shape: resolvers may return either a bare URL string or an object
+ * with anchor attributes (`href`, optional `target`, optional `rel`). The
+ * object form is load-bearing for embedded renderers (e.g. Storybook) where
+ * the anchor must break out of an iframe via `target="_top"` to avoid
+ * navigating the preview frame itself.
+ *
  * Mirrors the silent-fallback shape of {@link UploadRegistry}.
  */
+export type NotionUrlHref =
+  | string
+  | {
+      readonly href: string
+      readonly target?: '_self' | '_blank' | '_parent' | '_top'
+      readonly rel?: string
+    }
+
 export type NotionUrlResolver = (ref: {
   readonly pageId: string
   readonly blockId?: string
-}) => string | undefined
+}) => NotionUrlHref | undefined
 
 export type NotionUrlProvider = {
   readonly resolve: NotionUrlResolver
+}
+
+/** Normalized shape returned by {@link useNotionUrl}. Consumers spread onto `<a>`. */
+export type ResolvedNotionUrl = {
+  readonly href: string
+  readonly target?: string
+  readonly rel?: string
 }
 
 const NotionUrlContext = createContext<NotionUrlProvider | undefined>(undefined)
@@ -31,12 +52,16 @@ export const NotionUrlProviderProvider = NotionUrlContext.Provider
 /**
  * Resolve a page/block ref to an app URL via the mounted {@link NotionUrlProvider}.
  * Returns `undefined` when no provider is mounted OR when the provider's
- * `resolve` returns `undefined`.
+ * `resolve` returns `undefined`. String returns from the resolver are
+ * normalized to `{ href }` so consumers can uniformly spread the result.
  */
 export const useNotionUrl = (ref: {
   readonly pageId: string
   readonly blockId?: string
-}): string | undefined => {
+}): ResolvedNotionUrl | undefined => {
   const provider = useContext(NotionUrlContext)
-  return provider?.resolve(ref)
+  const raw = provider?.resolve(ref)
+  if (raw === undefined) return undefined
+  if (typeof raw === 'string') return { href: raw }
+  return raw
 }

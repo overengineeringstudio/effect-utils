@@ -14,7 +14,14 @@ import { NotionUrlProviderProvider, useNotionUrl } from './url-provider.ts'
 const Probe = ({ pageId, blockId }: { pageId: string; blockId?: string }) => {
   const ref = blockId === undefined ? { pageId } : { pageId, blockId }
   const url = useNotionUrl(ref)
-  return <span>{url ?? 'no-url'}</span>
+  if (url === undefined) return <span>no-url</span>
+  return (
+    <span>
+      {url.href}
+      {url.target === undefined ? '' : `|target=${url.target}`}
+      {url.rel === undefined ? '' : `|rel=${url.rel}`}
+    </span>
+  )
 }
 
 describe('useNotionUrl', () => {
@@ -39,6 +46,30 @@ describe('useNotionUrl', () => {
       </NotionUrlProviderProvider>,
     )
     expect(html).toContain('no-url')
+  })
+
+  it('normalizes a string return to { href }', () => {
+    const html = renderToStaticMarkup(
+      <NotionUrlProviderProvider value={{ resolve: ({ pageId }) => `/s/${pageId}` }}>
+        <Probe pageId="p1" />
+      </NotionUrlProviderProvider>,
+    )
+    expect(html).toContain('/s/p1')
+    expect(html).not.toContain('target=')
+    expect(html).not.toContain('rel=')
+  })
+
+  it('passes through { href, target, rel } object returns', () => {
+    const html = renderToStaticMarkup(
+      <NotionUrlProviderProvider
+        value={{
+          resolve: ({ pageId }) => ({ href: `/o/${pageId}`, target: '_top', rel: 'noopener' }),
+        }}
+      >
+        <Probe pageId="p1" />
+      </NotionUrlProviderProvider>,
+    )
+    expect(html).toContain('/o/p1|target=_top|rel=noopener')
   })
 
   it('passes blockId through to the resolver', () => {
@@ -69,6 +100,21 @@ describe('web consumers honor NotionUrlProvider', () => {
       </NotionUrlProviderProvider>,
     )
     expect(html).toContain('href="/x/p1"')
+  })
+
+  it('ChildPage forwards target + rel when the provider returns them', () => {
+    const html = renderToStaticMarkup(
+      <NotionUrlProviderProvider
+        value={{
+          resolve: ({ pageId }) => ({ href: `/x/${pageId}`, target: '_top', rel: 'noopener' }),
+        }}
+      >
+        <ChildPage blockKey="p1" title="Sub" />
+      </NotionUrlProviderProvider>,
+    )
+    expect(html).toContain('href="/x/p1"')
+    expect(html).toContain('target="_top"')
+    expect(html).toContain('rel="noopener"')
   })
 
   it('LinkToPage uses resolved URL when provider resolves', () => {
