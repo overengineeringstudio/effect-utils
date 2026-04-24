@@ -71,6 +71,28 @@ let
   loadCheckSkipMembersScript = ''
     _mr_skip_csv="''${MEGAREPO_SKIP_MEMBERS:-}"
 
+    build_mr_skip_args() {
+      MR_SKIP_ARGS=()
+      if [ -z "$_mr_skip_csv" ]; then
+        return 0
+      fi
+
+      local remaining="$_mr_skip_csv"
+      local member
+      while [ -n "$remaining" ]; do
+        member="''${remaining%%,*}"
+        if [ "$remaining" = "$member" ]; then
+          remaining=""
+        else
+          remaining="''${remaining#*,}"
+        fi
+
+        if [ -n "$member" ]; then
+          MR_SKIP_ARGS+=(--skip "$member")
+        fi
+      done
+    }
+
     should_skip_member() {
       local member="$1"
       if [ -z "$_mr_skip_csv" ]; then
@@ -130,7 +152,9 @@ let
           exit 0
         fi
 
-        mr fetch --apply${if syncAll then " --all" else ""}
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr fetch --apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
       '';
       # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
       status = trace.status "mr:fetch-apply" "binary" ''
@@ -158,7 +182,9 @@ let
           exit 0
         fi
 
-        mr lock${if syncAll then " --all" else ""}
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr lock${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
       '';
     };
 
@@ -170,7 +196,9 @@ let
           exit 0
         fi
 
-        mr apply${if syncAll then " --all" else ""}
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
       '';
     };
 
