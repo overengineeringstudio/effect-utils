@@ -42,21 +42,47 @@ const PreviewBanner = () => (
  * Stories that compose `<Page>` explicitly nest harmlessly inside this wrapper.
  */
 /**
- * Default URL resolver for Storybook previews: point every page/sub-page link
- * at the CanonicalPage story so `<ChildPage>`, `<LinkToPage>`, and page-
- * `<Mention>` become clickable in the preview. Real hosts pass their own
- * resolver via {@link NotionUrlProviderProvider}; this decorator exists purely
- * so Storybook surfaces the wiring visually.
+ * Registry mapping `ChildPage` / `LinkToPage` / `Mention` pageIds (sourced from
+ * `blockKey` or an explicit `pageId` prop in stories) to the storyId that
+ * renders that sub-page as a standalone `<Page>`. Keeping this co-located with
+ * Storybook config rather than in library code preserves the boundary: the
+ * preview surface owns routing; the library owns components.
  *
- * `target: '_top'` is load-bearing: Storybook renders stories inside an
- * `<iframe>`, and without it a click navigates the iframe itself and escapes
- * the Storybook shell chrome. `_top` breaks out to the top-level window so
- * the sidebar/toolbar survive the navigation.
+ * When a pageId is absent from this registry, the resolver returns `undefined`
+ * and ChildPage/LinkToPage render as inert anchors — the same silent-miss
+ * behaviour a production host gets for unresolved pages.
  */
-const storybookUrlResolver = ({ pageId }: { readonly pageId: string }) => ({
-  href: `?path=/story/pages--canonical-page&notionPageId=${encodeURIComponent(pageId)}`,
-  target: '_top' as const,
-})
+const subPageStoryRegistry: Record<string, string> = {
+  onboarding: 'pages-subpage--onboarding',
+  'engineering-guide': 'pages-subpage--engineering-guide',
+  'review-etiquette': 'pages-subpage--review-etiquette',
+  'ops-runbook': 'pages-subpage--ops-runbook',
+  spec: 'pages-subpage--spec',
+  'launch-runbook': 'pages-subpage--launch-runbook',
+}
+
+/**
+ * Storybook preview URL resolver. Looks up the clicked pageId in the sub-page
+ * registry and returns a Storybook shell URL targeting the matching story.
+ *
+ * - **Absolute `/?path=...`**: the resolver runs inside the story iframe
+ *   (`/iframe.html?...`). A relative `?path=...` would swap the query of the
+ *   iframe URL and load the story raw (no sidebar/toolbar). An absolute
+ *   root-relative path navigates to the Storybook shell at `/`, which then
+ *   picks up `?path=` and renders the story inside its iframe again — keeping
+ *   the chrome intact.
+ * - **`target: '_top'`**: without it the anchor navigates the iframe itself
+ *   instead of the top window, leaving the user stranded in a nested-frame
+ *   view. `_top` breaks out to the top-level window.
+ */
+const storybookUrlResolver = ({ pageId }: { readonly pageId: string }) => {
+  const storyId = subPageStoryRegistry[pageId]
+  if (storyId === undefined) return undefined
+  return {
+    href: `/?path=/story/${storyId}`,
+    target: '_top' as const,
+  }
+}
 
 const StorybookDecorator = ({ children }: { children: ReactNode }) => (
   <NotionUrlProviderProvider value={{ resolve: storybookUrlResolver }}>
