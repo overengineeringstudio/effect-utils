@@ -28,6 +28,7 @@ import type {
   ToDoProps,
   ToggleProps,
 } from '../components/props.ts'
+import { useNotionUrl } from '../renderer/url-provider.ts'
 import { KatexRender } from './katex.tsx'
 import { ShikiRender } from './shiki.tsx'
 
@@ -489,11 +490,15 @@ export const Column = ({ children, widthRatio }: ColumnProps) => (
   </div>
 )
 
-export const LinkToPage = ({ pageId }: LinkToPageProps) => (
-  <a className="notion-page-link" href={`#${pageId}`}>
-    ↗ page {pageId}
-  </a>
-)
+export const LinkToPage = ({ pageId }: LinkToPageProps) => {
+  const resolved = useNotionUrl({ pageId })
+  const href = resolved ?? `#${pageId}`
+  return (
+    <a className="notion-page-link" href={href}>
+      ↗ page {pageId}
+    </a>
+  )
+}
 
 /**
  * Marker component. The real render happens in `groupBlocks`, which walks
@@ -525,7 +530,7 @@ const RenderedTableOfContents = ({ entries }: { readonly entries: readonly TocEn
   )
 }
 
-export const ChildPage = ({ title, icon, children }: ChildPageProps) => {
+export const ChildPage = ({ title, icon, children, blockKey }: ChildPageProps) => {
   // Ergonomic title surface accepts plain string or a PageTitleSpan[] — the
   // DOM mirror only renders a preview so we flatten span content here.
   const label =
@@ -542,11 +547,14 @@ export const ChildPage = ({ title, icon, children }: ChildPageProps) => {
     ) : (
       <span className="notion-page-icon-inline">{renderPageIcon(icon, 'inline')}</span>
     )
-  // Phase 5a: the link chip is the visual affordance. Phase 5b replaces `href="#"`
-  // with a `NotionUrlProvider`-resolved URL; for now the anchor gives us hover +
-  // keyboard focus without a navigation target.
+  // `blockKey` doubles as the pageId hint we hand to the URL resolver — it is
+  // the author-visible identity of the sub-page in the renderer. Without a
+  // `blockKey` we have no pageId to resolve; the anchor falls back to `"#"` so
+  // the visual affordance (hover/focus) is preserved but the link is inert.
+  const resolved = useNotionUrl({ pageId: blockKey ?? '' })
+  const href = blockKey !== undefined && resolved !== undefined ? resolved : '#'
   const chip = (
-    <a className="notion-page-link" href="#">
+    <a className="notion-page-link" href={href}>
       {iconNode}
       <span>{label}</span>
     </a>

@@ -8,6 +8,7 @@ import type {
   MentionProps,
   TextProps,
 } from '../components/props.ts'
+import { useNotionUrl } from '../renderer/url-provider.ts'
 import { KatexRender } from './katex.tsx'
 
 /**
@@ -52,9 +53,32 @@ const mentionLabel = (props: MentionProps): ReactNode => {
   return '@mention'
 }
 
-export const Mention = (props: MentionProps) => (
-  <span className="notion-mention">{mentionLabel(props)}</span>
-)
+/**
+ * Extract the page id from a page-mention envelope. Only page mentions carry a
+ * resolvable ref; user/date/database mentions aren't page URLs and are left
+ * alone.
+ */
+const pageMentionId = (mention: Record<string, unknown>): string | undefined => {
+  const page = mention['page']
+  if (typeof page !== 'object' || page === null) return undefined
+  const id = (page as { id?: unknown }).id
+  return typeof id === 'string' ? id : undefined
+}
+
+export const Mention = (props: MentionProps) => {
+  const pageId = pageMentionId(props.mention)
+  // `useNotionUrl` is called unconditionally (React rules-of-hooks); we only
+  // use its value for page mentions. Non-page mentions render as before.
+  const resolved = useNotionUrl({ pageId: pageId ?? '' })
+  if (pageId !== undefined && resolved !== undefined) {
+    return (
+      <a className="notion-mention notion-page-link" href={resolved}>
+        {mentionLabel(props)}
+      </a>
+    )
+  }
+  return <span className="notion-mention">{mentionLabel(props)}</span>
+}
 
 export const InlineEquation = ({ expression }: InlineEquationProps) => (
   <KatexRender expression={expression} displayMode={false} />
