@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
 import {
+  Bookmark,
   BulletedListItem,
   Callout,
   ChildPage,
@@ -300,6 +301,103 @@ export const ChildPageIcons: Story = {
         icon={{ type: 'custom_emoji', custom_emoji: { id: 'ce_7' } }}
       />
       <ChildPage blockKey="absent" title="No icon — falls back to 📄" />
+    </Page>
+  ),
+}
+
+/**
+ * Canonical page (#618 phase 5a): one of every major block type composed into
+ * a plausible page. Useful as a visual regression surface and a "what does the
+ * full web mirror look like?" reference.
+ */
+export const CanonicalPage: Story = {
+  render: () => (
+    <Page
+      title="Nimbus — product brief"
+      icon={{ type: 'emoji', emoji: '🛸' }}
+      cover={{
+        type: 'external',
+        external: {
+          url: 'https://images.unsplash.com/photo-1464802686167-b939a6910659?w=1200&q=80',
+        },
+      }}
+    >
+      <Heading1>Nimbus — product brief</Heading1>
+      <TableOfContents />
+      <Callout icon="🎯" color="blue_background">
+        <Bold>Goal:</Bold> ship Nimbus <Italic>v1</Italic> with three SKUs in{' '}
+        <InlineCode>US</InlineCode> and <InlineCode>EU</InlineCode>.
+      </Callout>
+      <Paragraph>
+        This page exercises one of every block we render. Edit it as the renderer evolves so the
+        canonical surface stays current.
+      </Paragraph>
+      <Heading2>Pricing</Heading2>
+      <Table tableWidth={3} hasColumnHeader>
+        <TableRow cells={['Tier', 'Price', 'Highlight']} />
+        <TableRow cells={['Nimbus One', '$89', 'Core dimming']} />
+        <TableRow cells={['Nimbus Plus', '$129', 'Color temperature']} />
+        <TableRow cells={['Nimbus Pro', '$179', 'Full RGB + scenes']} />
+      </Table>
+      <Heading2>Plan</Heading2>
+      <ToDo checked>Lock SKU matrix</ToDo>
+      <ToDo checked>Firmware v1.0.3 signed</ToDo>
+      <ToDo>Confirm packaging backup supplier</ToDo>
+      <BulletedListItem>Factory QA above 98%</BulletedListItem>
+      <BulletedListItem>Press kit legal-approved</BulletedListItem>
+      <NumberedListItem>Freeze firmware</NumberedListItem>
+      <NumberedListItem>Ship to press</NumberedListItem>
+      <NumberedListItem>Open public order form</NumberedListItem>
+      <Heading3>Open questions</Heading3>
+      <Toggle title="Should we add a warranty extension SKU? (click to expand)">
+        <Paragraph>
+          Deferred to v1.1. Current SKUs already span the pricing envelope we validated in research.
+        </Paragraph>
+      </Toggle>
+      <Heading3>Snippet</Heading3>
+      <Code language="ts">{`export const tiers = ['one', 'plus', 'pro'] as const`}</Code>
+      <Quote>
+        The best launches are <Italic>boring</Italic> launches.
+      </Quote>
+      <Divider />
+      <Heading2>Layout</Heading2>
+      <ColumnList>
+        <Column>
+          <Heading3>US</Heading3>
+          <Paragraph>
+            Launch <InlineCode>June 3</InlineCode>.
+          </Paragraph>
+        </Column>
+        <Column>
+          <Heading3>EU</Heading3>
+          <Paragraph>
+            Launch <InlineCode>June 17</InlineCode>.
+          </Paragraph>
+        </Column>
+      </ColumnList>
+      <Heading2>References</Heading2>
+      <Bookmark url="https://notion.so" />
+      <Image
+        url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80"
+        caption="Nimbus Smart Lamp — studio reference"
+      />
+      <Heading2>Sub-pages</Heading2>
+      <ChildPage blockKey="spec" title="Technical spec" icon={{ type: 'emoji', emoji: '📐' }}>
+        <Paragraph>
+          Full hardware + firmware spec. See <Link href="#">the linked doc</Link>.
+        </Paragraph>
+        <BulletedListItem>ARM Cortex-M4 @ 120 MHz</BulletedListItem>
+        <BulletedListItem>Wi-Fi 802.11 b/g/n + BLE 5.0</BulletedListItem>
+      </ChildPage>
+      <ChildPage
+        blockKey="launch-runbook"
+        title="Launch runbook"
+        icon={{ type: 'emoji', emoji: '🚀' }}
+      />
+      <Paragraph>
+        Last updated <Mention mention={{ user: { id: 'u1' } }} plainText="@priya" /> · April 19,
+        2026.
+      </Paragraph>
     </Page>
   ),
 }
