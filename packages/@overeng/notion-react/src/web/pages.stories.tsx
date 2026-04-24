@@ -45,7 +45,7 @@ export const LaunchOverview: Story = {
         <TableRow cells={['Nimbus Pro', '$179', 'Full RGB + scenes']} />
       </Table>
       <Heading2>Phases</Heading2>
-      <Toggle title="Phase 1 — Manufacturing (April)">
+      <Toggle title="Phase 1 — Manufacturing (April)" defaultOpen>
         <Paragraph>
           First production run of <InlineCode>5,000</InlineCode> units. QA pass-rate target 98%.
         </Paragraph>
@@ -54,7 +54,7 @@ export const LaunchOverview: Story = {
         </BulletedListItem>
         <BulletedListItem>Firmware v1.0.3 locked</BulletedListItem>
       </Toggle>
-      <Toggle title="Phase 2 — Marketing (May)">
+      <Toggle title="Phase 2 — Marketing (May)" defaultOpen>
         <Paragraph>Press kit, launch video, influencer seeding.</Paragraph>
       </Toggle>
       <Heading2>Timeline</Heading2>
