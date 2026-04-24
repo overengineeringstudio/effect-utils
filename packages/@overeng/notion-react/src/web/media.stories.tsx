@@ -27,19 +27,40 @@ import {
 } from './blocks.tsx'
 import { InlineCode } from './inline.tsx'
 
-const meta = { title: 'Media & Layout' } satisfies Meta
+const meta = { title: 'Media & Layout', tags: ['autodocs'] } satisfies Meta
 export default meta
 
 type Story = StoryObj
 
 export const ImageBlock: Story = {
+  argTypes: {
+    url: { control: 'text' },
+    caption: { control: 'text' },
+  },
+  args: {
+    url: 'https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?w=800&q=80',
+    caption: 'a tree, in a forest, near a river',
+  },
+  render: (args: Record<string, unknown>) => (
+    <Page>
+      <Image url={args.url as string} caption={args.caption as string} />
+      <Image caption="no url — shows an empty placeholder" />
+    </Page>
+  ),
+}
+
+/**
+ * Broken image — the `src` points at a host that will never resolve. Surfaces
+ * the browser's native broken-image affordance inside the `<figure>` wrapper,
+ * so hosts can see what a bad URL looks like inside the Notion-scoped layout.
+ */
+export const BrokenImage: Story = {
   render: () => (
     <Page>
       <Image
-        url="https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?w=800&q=80"
-        caption="a tree, in a forest, near a river"
+        url="https://does-not-exist.example/bad.png"
+        caption="Broken image — host does not resolve"
       />
-      <Image caption="no url — shows an empty placeholder" />
     </Page>
   ),
 }
