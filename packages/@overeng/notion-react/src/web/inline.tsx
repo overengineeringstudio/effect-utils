@@ -72,7 +72,12 @@ export const Mention = (props: MentionProps) => {
   const resolved = useNotionUrl({ pageId: pageId ?? '' })
   if (pageId !== undefined && resolved !== undefined) {
     return (
-      <a className="notion-mention notion-page-link" href={resolved}>
+      <a
+        className="notion-mention notion-page-link"
+        href={resolved.href}
+        target={resolved.target}
+        rel={resolved.rel}
+      >
         {mentionLabel(props)}
       </a>
     )

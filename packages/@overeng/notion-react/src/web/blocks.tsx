@@ -492,9 +492,9 @@ export const Column = ({ children, widthRatio }: ColumnProps) => (
 
 export const LinkToPage = ({ pageId }: LinkToPageProps) => {
   const resolved = useNotionUrl({ pageId })
-  const href = resolved ?? `#${pageId}`
+  const href = resolved?.href ?? `#${pageId}`
   return (
-    <a className="notion-page-link" href={href}>
+    <a className="notion-page-link" href={href} target={resolved?.target} rel={resolved?.rel}>
       ↗ page {pageId}
     </a>
   )
@@ -552,9 +552,15 @@ export const ChildPage = ({ title, icon, children, blockKey }: ChildPageProps) =
   // `blockKey` we have no pageId to resolve; the anchor falls back to `"#"` so
   // the visual affordance (hover/focus) is preserved but the link is inert.
   const resolved = useNotionUrl({ pageId: blockKey ?? '' })
-  const href = blockKey !== undefined && resolved !== undefined ? resolved : '#'
+  const hasLink = blockKey !== undefined && resolved !== undefined
+  const href = hasLink ? resolved.href : '#'
   const chip = (
-    <a className="notion-page-link" href={href}>
+    <a
+      className="notion-page-link"
+      href={href}
+      target={hasLink ? resolved.target : undefined}
+      rel={hasLink ? resolved.rel : undefined}
+    >
       {iconNode}
       <span>{label}</span>
     </a>
