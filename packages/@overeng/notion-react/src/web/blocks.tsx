@@ -173,14 +173,14 @@ const HeadingTag = ({
  */
 const heading =
   (level: 1 | 2 | 3 | 4) =>
-  ({ children, toggleable }: HeadingProps) => {
+  ({ children, toggleable, body, defaultOpen }: HeadingProps) => {
     if (toggleable === true) {
       return (
-        <details className="notion-toggle">
+        <details className="notion-toggle" open={defaultOpen ?? false}>
           <summary>
             <HeadingTag level={level}>{children}</HeadingTag>
           </summary>
-          <div />
+          <div>{body}</div>
         </details>
       )
     }
@@ -301,8 +301,8 @@ export const ToDo = ({ children, checked }: ToDoProps) => {
   )
 }
 
-export const Toggle = ({ children, title }: ToggleProps) => (
-  <details className="notion-toggle">
+export const Toggle = ({ children, title, defaultOpen }: ToggleProps) => (
+  <details className="notion-toggle" open={defaultOpen ?? false}>
     <summary>{title ?? ''}</summary>
     <div>{children}</div>
   </details>

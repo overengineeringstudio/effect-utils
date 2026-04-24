@@ -76,11 +76,15 @@ export const Paragraph = ({ children, blockKey }: ParagraphProps) =>
 
 const heading =
   (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
-  ({ children, toggleable, color, blockKey }: HeadingProps) => {
+  ({ children, toggleable, color, blockKey, body, defaultOpen }: HeadingProps) => {
     const props: Record<string, unknown> = {}
     if (toggleable !== undefined) props.toggleable = toggleable
     if (color !== undefined) props.color = color
     if (blockKey !== undefined) props.blockKey = blockKey
+    // `body` / `defaultOpen` are web-mirror-only hints; `host-config.blockProps`
+    // does not project them onto the Notion payload.
+    if (body !== undefined) props.body = body
+    if (defaultOpen !== undefined) props.defaultOpen = defaultOpen
     return h(tag, Object.keys(props).length === 0 ? null : props, children)
   }
 export const Heading1 = heading('heading_1')
@@ -100,10 +104,13 @@ export const ToDo = ({ children, checked, blockKey }: ToDoProps) => {
   return h('to_do', Object.keys(props).length === 0 ? null : props, children)
 }
 
-export const Toggle = ({ children, title, blockKey }: ToggleProps) => {
+export const Toggle = ({ children, title, blockKey, defaultOpen }: ToggleProps) => {
   const props: Record<string, unknown> = {}
   if (title !== undefined) props.title = title
   if (blockKey !== undefined) props.blockKey = blockKey
+  // `defaultOpen` is a web-mirror-only hint and is not projected to the Notion
+  // payload in `host-config.blockProps`.
+  if (defaultOpen !== undefined) props.defaultOpen = defaultOpen
   return h('toggle', Object.keys(props).length === 0 ? null : props, children)
 }
 

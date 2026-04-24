@@ -113,6 +113,19 @@ export type NotionColor =
 export type HeadingProps = Children &
   BlockKey & {
     readonly toggleable?: boolean
+    /**
+     * When `toggleable` is `true`, the expanded-state body — rendered inside
+     * the `<details>` body slot in the web mirror. Ignored for non-toggleable
+     * headings. Web-mirror-only hint; never projected to the Notion payload
+     * (Notion has no body-for-toggleable-heading concept in its schema).
+     */
+    readonly body?: ReactNode
+    /**
+     * Web-mirror-only hint for toggleable headings: initial expanded state.
+     * Projects to `<details open>`. Never emitted to Notion (Notion toggles
+     * have no server-side "default open" concept).
+     */
+    readonly defaultOpen?: boolean
     /** Notion block color. Projected verbatim onto the `heading_*` payload. */
     readonly color?: NotionColor
   }
@@ -122,7 +135,16 @@ export type NumberedListItemProps = Children & BlockKey
 
 export type ToDoProps = Children & BlockKey & { readonly checked?: boolean }
 
-export type ToggleProps = Children & BlockKey & { readonly title?: string }
+export type ToggleProps = Children &
+  BlockKey & {
+    readonly title?: string
+    /**
+     * Web-mirror-only hint: initial expanded state (`<details open>`). Never
+     * emitted to Notion — Notion toggles have no server-side "default open"
+     * concept; the default stays collapsed to match Notion's own UX.
+     */
+    readonly defaultOpen?: boolean
+  }
 
 export type CodeProps = Children & BlockKey & { readonly language?: string }
 
