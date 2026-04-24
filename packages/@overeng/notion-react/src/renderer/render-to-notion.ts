@@ -2,7 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 
-import { NotionBlocks, type NotionConfig } from '@overeng/notion-effect-client'
+import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
 import { NotionSyncError } from './errors.ts'
@@ -50,8 +50,47 @@ export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>([
  * - `page-id-drift`: the cache was written against a different pageId
  *   than the one passed to `sync`; diffing would target ids on the wrong
  *   page, so we cold-start.
+ * - `page-missing`: a page-scoped reconcile targeted a page that no longer
+ *   exists (issue #618 phase 2+). No emitter currently produces this.
+ * - `page-archived`: a page-scoped reconcile targeted a page that was
+ *   archived out-of-band (issue #618 phase 2+). No emitter currently
+ *   produces this.
+ * - `partial-page-create`: a page-create landed partially (metadata / some
+ *   blocks) but the full subtree could not be inlined (issue #618
+ *   phase 2+). No emitter currently produces this.
  */
-export type SyncFallbackReason = 'cold-cache' | 'schema-mismatch' | 'cache-drift' | 'page-id-drift'
+export type SyncFallbackReason =
+  | 'cold-cache'
+  | 'schema-mismatch'
+  | 'cache-drift'
+  | 'page-id-drift'
+  | 'page-missing'
+  | 'page-archived'
+  | 'partial-page-create'
+
+/** Per-page-op counts (issue #618). Zero across the board until phase 2 wires page emission. */
+export interface PageOpCounts {
+  readonly creates: number
+  readonly updates: number
+  readonly archives: number
+  readonly moves: number
+  /**
+   * Count of {@link DiffOp} `reorderPages` ops applied (phase 4d, #618). Each
+   * emitted op drives 2N internal `pages.move` roundtrips; this counter tracks
+   * the op itself, not the expanded HTTP calls — `moves` already accounts for
+   * cross-parent reparents without intra-parent reorder.
+   */
+  readonly reorders: number
+}
+
+/** Default zero page-op tally. See {@link PageOpCounts}. */
+export const emptyPageCounts = (): PageOpCounts => ({
+  creates: 0,
+  updates: 0,
+  archives: 0,
+  moves: 0,
+  reorders: 0,
+})
 
 /** Summary of the ops applied during a render/sync pass. */
 export type SyncResult = {
@@ -59,10 +98,12 @@ export type SyncResult = {
   readonly updates: number
   readonly removes: number
   readonly inserts: number
+  /** Page-scope op counts. Always zero pre-phase-2. */
+  readonly pages: PageOpCounts
   readonly fallbackReason?: SyncFallbackReason
 }
 
-const tally = (ops: readonly Op[]): Omit<SyncResult, 'fallbackReason'> => {
+const tally = (ops: readonly Op[]): Omit<SyncResult, 'fallbackReason' | 'pages'> => {
   let appends = 0
   let updates = 0
   let removes = 0
@@ -190,6 +231,60 @@ const absorbedDescendantIds = (
 }
 
 /**
+ * Translate a `PageTitle` ergonomic value to the Notion-wire span array.
+ * Strings become a single-span array; arrays pass through verbatim (each
+ * span is assumed pre-shaped per `PageTitleSpan`). Empty strings yield `[]`.
+ */
+const pageTitleSpans = (title: unknown): readonly Record<string, unknown>[] | undefined => {
+  if (typeof title === 'string') {
+    if (title.length === 0) return []
+    return [{ type: 'text', text: { content: title } }]
+  }
+  if (Array.isArray(title)) return title as readonly Record<string, unknown>[]
+  return undefined
+}
+
+/**
+ * Issue a block update against Notion, transparently routing `child_page`
+ * title/icon/cover changes through `pages.update` (since the Notion API
+ * rejects `PATCH /blocks/{id}` bodies of `{ child_page: {...} }` with
+ * `validation_error`). Other block types go through `blocks.update` as before.
+ *
+ * The `child_page` props supported here are `title` (string or
+ * `PageTitleSpan[]`), `icon`, and `cover`. If none of them are present the
+ * call is skipped entirely — page-level archive/move/create are phase 3b work
+ * and flow through dedicated emitters rather than `issueBlockUpdate`.
+ */
+export const issueBlockUpdate = (
+  blockId: string,
+  type: BlockType,
+  props: Record<string, unknown>,
+): Effect.Effect<unknown, unknown, NotionConfig | HttpClient.HttpClient> => {
+  if (type === 'child_page') {
+    const spans = pageTitleSpans(props.title)
+    const hasTitle = spans !== undefined
+    const hasIcon = props.icon !== undefined
+    const hasCover = props.cover !== undefined
+    if (!hasTitle && !hasIcon && !hasCover) {
+      // Nothing to update at the page level; skip the call rather than
+      // round-tripping an empty PATCH that Notion would also reject.
+      return Effect.void
+    }
+    // The client's `UpdatePageOptions.icon`/`cover` unions are narrower than
+    // the component's `PageIcon`/`PageCover` (no `custom_emoji` on icon,
+    // no `file_upload` on cover). We forward verbatim; mismatches surface as
+    // a Notion validation_error rather than being silently dropped.
+    return NotionPages.update({
+      pageId: blockId,
+      ...(hasTitle ? { properties: { title: { title: spans } } } : {}),
+      ...(hasIcon ? { icon: props.icon as never } : {}),
+      ...(hasCover ? { cover: props.cover as never } : {}),
+    })
+  }
+  return NotionBlocks.update({ blockId, [type]: props })
+}
+
+/**
  * Render `element` to Notion in append-only mode. Assumes the target page
  * has no pre-existing children this renderer owns; suitable for first-time
  * creation. For incremental updates against a prior state, use `sync`.
@@ -299,7 +394,7 @@ export const renderToNotion = (
           break
         }
         case 'update': {
-          yield* NotionBlocks.update({ blockId: resolve(op.id), [op.type]: op.props }).pipe(
+          yield* issueBlockUpdate(resolve(op.id), op.type, op.props).pipe(
             Effect.mapError(
               (cause) => new NotionSyncError({ reason: 'notion-update-failed', cause }),
             ),
@@ -317,5 +412,5 @@ export const renderToNotion = (
       }
     }
 
-    return { ...tally(buffer.ops) }
+    return { ...tally(buffer.ops), pages: emptyPageCounts() }
   })

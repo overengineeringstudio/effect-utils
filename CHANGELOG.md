@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **@overeng/notion-react**: JSX-driven page operations for root `<Page>` and sub-page `<ChildPage>` (#618). Root `<Page>` accepts `title` / `icon` / `cover` and drives `pages.update` on the sync root. `<ChildPage>` becomes a first-class sync boundary with `title` / `icon` / `cover` / `children` / `blockKey`; the sync driver emits and executes `createPage`, `updatePage`, `archivePage`, and `movePage` via `NotionPages.*` with inline block packing (depth ≤ 2, ≤ 100 blocks), tail block ops scoped to the new page, and partial-create rollback on tail failure. Each sub-page is its own sync boundary with its own `blockKey` namespace, and `diff()` descends recursively through retained sub-pages.
+- **@overeng/notion-react**: Opt-in `reorderSiblings` on `sync()` (#618 phase 4d). Intra-parent `<ChildPage>` reorder lands via a single `reorderPages` op that the driver realizes with 2N `pages.move` roundtrips through a holding parent (Notion's `pages.move` rejects same-parent, but a trip out and back bumps the page to the end of the original parent's `child_page` block list). Accepts `true` (library auto-provisions and archives a scratch page per sync-with-reorder) or `{ holdingParentId }` (caller-owned lifecycle). Default `false` preserves the pre-4d contract: retained-but-reshuffled siblings still emit same-parent `movePage`, the API rejects, and the driver swallows the validation error.
 - **@overeng/notion-cli**: Expose `notion` binary via Nix flake (`packages.${system}.notion-cli`) so consuming repos can add it to their `$PATH` without managing JS module resolution themselves
 - **@overeng/pty-effect/client**: Add PTY client support for session tags, `getSession`, `gc`, `updateTags`, `sendData`, `queryStats`, `readRecentEvents`, and live event following
 - **@overeng/notion-effect-schema**: Add `NamedIcon` (type: `"icon"`) variant to `Icon` union for native Notion icons (noticons) (#543)
@@ -30,10 +32,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **@overeng/notion-react**: Route `<ChildPage>` title updates through `pages.update` instead of `blocks.update` (#618). Notion's `PATCH /v1/blocks/{id}` rejects a `{ child_page: { title } }` body with `validation_error`; the sync driver now emits `PATCH /v1/pages/{id}` with a properly-shaped `title` property for `child_page` updates.
 - **@overeng/pty-effect/client**: Fix flaky timeout in `followEvents` (#577) — `asyncScoped`'s setup ran lazily inside the forked consumer fiber, missing events fired before the fiber started. Replaced with `Stream.asyncPush` (setup still lazy, but `emit.single` is now correctly synchronous for `fs.watch` callbacks). Test updated to watch `session_exit` instead of `session_start`, since `EventFollower.watchFile` starts reading at the current end-of-file when a new session is discovered, making `session_start` unreachable via live following.
 
 ### Changed
 
+- **@overeng/notion-react**: `<Page>` and `<ChildPage>` accept `icon={null}` and `cover={null}` as explicit clear sentinels (#618). Dropping the prop is still "no claim" (preserves server state); passing `null` emits `pages.update({icon: null})` / `pages.update({cover: null})`. On a fresh page with no prior icon/cover, `null` is a no-op.
+- **@overeng/notion-react**: Same-parent `<ChildPage>` creates are now sequential — JSX order is preserved 1:1 on the server (#618). Parallel `pages.create` under a common parent yields nondeterministic `child_page` ordering; the driver issues sequential POSTs so no post-create re-fetch is needed. T08 (formerly "concurrent sibling-page order is not authoritative") is now a normative invariant; the deferred `ensureSiblingOrder` sync option is dropped.
+- **@overeng/notion-react**: `CACHE_SCHEMA_VERSION` bumped `2 → 3` to accommodate per-page cache subtrees (#618). v2 caches fall through the existing `"schema-mismatch"` cold path — transparent, no caller action required. The first sync after upgrade may emit one spurious metadata update per sub-page as response-normalized title/icon/cover is recomputed.
 - **genie/ci-workflow**: Unify Vercel CI job generation behind a single `vercelDeployJobs()` helper
   - Removes the separate static-job and job-merge helpers now that task-level deploy mode is already unified in `vercel.nix`
   - Lets consumers mix build-mode and static-mode deploys in one project list and attach per-project pre-deploy setup like Vercel git-author configuration

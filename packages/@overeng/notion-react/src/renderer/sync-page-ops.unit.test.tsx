@@ -1,0 +1,1178 @@
+import type { HttpClient } from '@effect/platform'
+import { Effect } from 'effect'
+import { describe, expect, it } from 'vitest'
+
+import { NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
+
+import { InMemoryCache } from '../cache/in-memory-cache.ts'
+import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
+import { ChildPage, Page, Paragraph, Toggle } from '../components/blocks.ts'
+import { createFakeNotion, FakeNotionResponseError, type FakeNotion } from '../test/mock-client.ts'
+import { normalizeCover, projectCover } from './icons.ts'
+import { sync } from './sync.ts'
+
+/**
+ * Driver-level coverage for the page-scope op plumbing introduced in #618
+ * phase 3b. Scenarios mirror the phase-3b prompt acceptance list: create,
+ * update-coalesce, archive, move, nodeKind-LCS boundary, partial-failure
+ * rollback.
+ */
+const ROOT = '00000000-0000-4000-8000-000000000001'
+
+const runWith = <A,>(
+  fake: FakeNotion,
+  eff: Effect.Effect<A, unknown, HttpClient.HttpClient | NotionConfig>,
+): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
+
+const runSync = async (
+  fake: FakeNotion,
+  element: Parameters<typeof sync>[0],
+  cache = InMemoryCache.make(),
+) => {
+  return await runWith(
+    fake,
+    sync(element, { pageId: ROOT, cache }).pipe(
+      Effect.mapError((cause) => new Error(String(cause))),
+    ),
+  )
+}
+
+describe('sync() page ops (issue #618 phase 3b)', () => {
+  it('create: <Page><ChildPage/></Page> first-sync → 1 createPage, 0 block ops', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="child" />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 1, updates: 0, archives: 0, moves: 0 })
+    expect({
+      appends: res.appends,
+      inserts: res.inserts,
+      updates: res.updates,
+      removes: res.removes,
+    }).toEqual({
+      appends: 0,
+      inserts: 0,
+      updates: 0,
+      removes: 0,
+    })
+    // Server state: one page posted, one child_page block auto-materialized.
+    expect(fake.pages.size).toBe(1)
+    const [created] = [...fake.pages.values()]
+    expect(created!.properties.title.title[0]?.text.content).toBe('child')
+  })
+
+  it('idempotent: rendering the same <Page><ChildPage/></Page> twice → 0 ops on second sync', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage title="child" />
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const before = fake.requests.length
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+    // Only the pre-flight drift GET should hit the wire on a clean resync.
+    const after = fake.requests.slice(before)
+    expect(after.filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('root-page metadata: <Page title> change → 1 updatePage on root, 0 block ops', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page title="v1">
+        <Paragraph>body</Paragraph>
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page title="v2">
+        <Paragraph>body</Paragraph>
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    expect(res.updates + res.appends + res.inserts + res.removes).toBe(0)
+    const after = fake.requests.slice(before)
+    const pagePatches = after.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path),
+    )
+    expect(pagePatches).toHaveLength(1)
+  })
+
+  it('sub-page metadata: <ChildPage icon> change → 1 updatePage on the sub-page, 0 others', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={{ type: 'emoji', emoji: '📄' }} />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={{ type: 'emoji', emoji: '🧪' }} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    const after = fake.requests.slice(before)
+    const patches = after.filter((r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path))
+    expect(patches).toHaveLength(1)
+    const body = patches[0]!.body as { icon?: { emoji?: string }; properties?: unknown }
+    expect(body.icon).toEqual({ type: 'emoji', emoji: '🧪' })
+    expect(body.properties).toBeUndefined()
+  })
+
+  it('remove: <Page><ChildPage/></Page> → <Page/> emits 1 archivePage, 0 block ops', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(fake, <Page />, cache)
+    expect(res.pages).toMatchObject({ creates: 0, updates: 0, archives: 1, moves: 0 })
+    expect(res.removes + res.appends + res.inserts + res.updates).toBe(0)
+    const after = fake.requests.slice(before)
+    const patches = after.filter((r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path))
+    expect(patches).toHaveLength(1)
+    // One of the fake pages must now be in_trash.
+    const trashed = [...fake.pages.values()].filter((p) => p.in_trash)
+    expect(trashed).toHaveLength(1)
+  })
+
+  it('move: sibling reshuffle of sub-pages → 1 movePage, 0 create/archive', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="a" title="Alpha" />
+        <ChildPage blockKey="b" title="Beta" />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    // Re-order siblings. LCS retains one; the other becomes a move (identity
+    // preserved via blockKey, no archive+create). Notion has no sibling-
+    // reorder API so the unretained sibling materializes as a `pages.move`
+    // with the same parent — semantically a no-op reparent, but this is the
+    // contract in phase 3b: reordered pages flow through movePage.
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="b" title="Beta" />
+        <ChildPage blockKey="a" title="Alpha" />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, archives: 0, moves: 1 })
+    expect(res.appends + res.inserts + res.removes + res.updates).toBe(0)
+    // Exactly one POST .../move on the wire (plus the pre-flight drift GET).
+    const after = fake.requests.slice(before)
+    const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+    expect(moves).toHaveLength(1)
+  })
+
+  it('nodeKind LCS boundary: same key+type but block vs page → remove+create, not update', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: paragraph with blockKey=k.
+    await runSync(
+      fake,
+      <>
+        <Paragraph blockKey="k">hello</Paragraph>
+      </>,
+      cache,
+    )
+    // Second sync: a ChildPage with the same blockKey. Same key, different
+    // nodeKind → must NOT be an update. Expected: 1 remove (block) + 1
+    // createPage.
+    const res = await runSync(fake, <ChildPage blockKey="k" title="doc" />, cache)
+    expect(res.removes).toBe(1)
+    expect(res.pages).toMatchObject({ creates: 1, updates: 0 })
+  })
+
+  it('partial-failure: createPage succeeds but scope-tail block ops fail → new page archived, fallbackReason set', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // Pack >100 direct children so `inlinePackChildren` tails the overflow.
+    // Then fail any children-append — the only such calls after createPage
+    // will be for the tail. Sync must archive the newly-created page.
+    const manyParagraphs = Array.from({ length: 105 }, (_, i) => (
+      <Paragraph key={String(i)} blockKey={`p${i}`}>{`p${i}`}</Paragraph>
+    ))
+    // Trigger failure on any PATCH /v1/blocks/{id}/children — that's the
+    // append endpoint the tail ops use.
+    fake.failOn((req) =>
+      req.method === 'PATCH' && /\/v1\/blocks\/[^/]+\/children$/.test(req.path)
+        ? new FakeNotionResponseError(500, 'internal_server_error', 'boom')
+        : undefined,
+    )
+    const result = await Effect.runPromiseExit(
+      sync(
+        <Page>
+          <ChildPage title="big">{manyParagraphs}</ChildPage>
+        </Page>,
+        {
+          pageId: ROOT,
+          cache,
+        },
+      ).pipe(Effect.provide(fake.layer)),
+    )
+    // The sync must fail because the tail append errored out.
+    expect(result._tag).toBe('Failure')
+    // The new page must have been archived as part of the rollback.
+    const createdPages = [...fake.pages.values()]
+    expect(createdPages).toHaveLength(1)
+    expect(createdPages[0]!.in_trash).toBe(true)
+  })
+
+  it('phase 3c: idempotent deep sync (Page → ChildPage → Paragraph → Toggle → Paragraph)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage blockKey="c" title="doc">
+          <Paragraph blockKey="p1">outer</Paragraph>
+          <Toggle blockKey="t1" title="fold">
+            <Paragraph blockKey="p2">inner</Paragraph>
+          </Toggle>
+        </ChildPage>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const before = fake.requests.length
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+    const after = fake.requests.slice(before)
+    expect(after.filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('phase 3c: nested-page mutation → 1 scoped block update, 0 page ops', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="c" title="doc">
+          <Paragraph blockKey="p">v1</Paragraph>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    // Locate the sub-page id from the fake pages map.
+    const subPageId = [...fake.pages.values()][0]!.id
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="c" title="doc">
+          <Paragraph blockKey="p">v2</Paragraph>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(res.updates).toBe(1)
+    expect(res.appends + res.inserts + res.removes).toBe(0)
+    // The single update targets a block whose parent is the sub-page id — i.e.
+    // a paragraph under the sub-page, not a root-level block.
+    const after = fake.requests.slice(before)
+    const blockPatches = after.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/blocks\/[^/]+$/.test(r.path),
+    )
+    expect(blockPatches).toHaveLength(1)
+    const updatedBlockId = blockPatches[0]!.path.match(/^\/v1\/blocks\/([^/]+)$/)![1]!
+    const updated = fake.blocks.get(updatedBlockId)
+    expect(updated?.parent).toBe(subPageId)
+  })
+
+  it('phase 3c: page-within-page creates both, block under innermost only', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const t1 = (
+      <Page>
+        <ChildPage blockKey="A" title="outer">
+          <ChildPage blockKey="B" title="inner">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>
+    )
+    const r1 = await runSync(fake, t1, cache)
+    expect(r1.pages.creates).toBe(2)
+    // Both pages exist; the paragraph is a child of the inner page.
+    expect(fake.pages.size).toBe(2)
+    const pages = [...fake.pages.values()]
+    const outer = pages.find((p) => p.properties.title.title[0]?.text.content === 'outer')!
+    const inner = pages.find((p) => p.properties.title.title[0]?.text.content === 'inner')!
+    const paragraphs = [...fake.blocks.values()].filter((b) => b.type === 'paragraph')
+    expect(paragraphs).toHaveLength(1)
+    expect(paragraphs[0]!.parent).toBe(inner.id)
+
+    // Re-render identical → 0 ops.
+    const before = fake.requests.length
+    const r2 = await runSync(fake, t1, cache)
+    expect(r2.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+    expect(fake.requests.slice(before).filter((r) => r.method !== 'GET')).toEqual([])
+
+    // Rename inner → 1 updatePage on the inner page, 0 block/outer ops.
+    const t2 = (
+      <Page>
+        <ChildPage blockKey="A" title="outer">
+          <ChildPage blockKey="B" title="inner-renamed">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>
+    )
+    const r3 = await runSync(fake, t2, cache)
+    expect(r3.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    expect(r3.appends + r3.inserts + r3.updates + r3.removes).toBe(0)
+    // The updatePage targeted the inner page id.
+    const pagePatches = fake.requests.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path),
+    )
+    const lastPatch = pagePatches[pagePatches.length - 1]!
+    expect(lastPatch.path).toBe(`/v1/pages/${inner.id}`)
+    // Outer page untouched.
+    expect(outer.properties.title.title[0]?.text.content).toBe('outer')
+  })
+
+  it('phase 3c: archive cascade — archiving outer <ChildPage> issues no block ops on the inner', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="outer">
+          <ChildPage blockKey="B" title="inner">
+            <Paragraph>body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    // Drop the outer subtree entirely → single archivePage on outer. The
+    // inner sub-page's blocks stay as-is (orphaned alongside the archived
+    // outer); no block-scope ops are emitted against them.
+    const res = await runSync(fake, <Page />, cache)
+    expect(res.pages).toMatchObject({ archives: 1 })
+    expect(res.appends + res.inserts + res.updates + res.removes).toBe(0)
+    const after = fake.requests.slice(before)
+    const blockPatches = after.filter(
+      (r) => r.method === 'PATCH' && /^\/v1\/blocks\/[^/]+$/.test(r.path),
+    )
+    const blockDeletes = after.filter(
+      (r) => r.method === 'DELETE' && /^\/v1\/blocks\/[^/]+$/.test(r.path),
+    )
+    expect(blockPatches).toHaveLength(0)
+    expect(blockDeletes).toHaveLength(0)
+  })
+
+  it('phase 3c: blockKey namespace isolation — same key under root vs sub-page do not collide', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <Toggle blockKey="k1" title="root-toggle">
+          <Paragraph>root-body</Paragraph>
+        </Toggle>
+        <ChildPage blockKey="c" title="doc">
+          <Toggle blockKey="k1" title="sub-toggle">
+            <Paragraph>sub-body</Paragraph>
+          </Toggle>
+        </ChildPage>
+      </Page>
+    )
+    // Cold sync must not throw on duplicate blockKey=k1 (scopes are per-parent).
+    await runSync(fake, tree, cache)
+    // Warm sync: both keys retain against their own scope's cache → 0 ops.
+    const before = fake.requests.length
+    const res = await runSync(fake, tree, cache)
+    expect(res.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(res.appends + res.inserts + res.updates + res.removes).toBe(0)
+    expect(fake.requests.slice(before).filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('phase 3c: cache v2 → v3 fallback (InMemoryCache with hand-built v2 tree)', async () => {
+    const fake = createFakeNotion()
+    // Hand-build a v2 cache tree: schemaVersion=2, a stale block entry.
+    const v2: CacheTree = {
+      schemaVersion: 2,
+      rootId: ROOT,
+      children: [
+        {
+          key: 'k:stale',
+          blockId: '99999999-1111-4111-8111-000000000000',
+          type: 'paragraph',
+          hash: 'stale',
+          children: [],
+          nodeKind: 'block',
+        },
+      ],
+    }
+    const cache = InMemoryCache.make(v2)
+    const res = await runSync(
+      fake,
+      <Page>
+        <Paragraph blockKey="fresh">hi</Paragraph>
+      </Page>,
+      cache,
+    )
+    // The schema bump means the prior cache is treated as v2, which differs
+    // from the current CACHE_SCHEMA_VERSION. Expect fallbackReason to be set.
+    expect(CACHE_SCHEMA_VERSION).toBe(3)
+    expect(res.fallbackReason).toBe('schema-mismatch')
+  })
+
+  it('phase 3c: >100 children under a new sub-page land via tail appends scoped to the new page', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const many = Array.from({ length: 105 }, (_, i) => (
+      <Paragraph key={String(i)} blockKey={`p${i}`}>{`p${i}`}</Paragraph>
+    ))
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="c" title="big">
+          {many}
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(res.pages.creates).toBe(1)
+    // The 5 overflow paragraphs came through the tail path; all 105 are
+    // present under the new sub-page.
+    const subPage = [...fake.pages.values()][0]!
+    const kids = fake.childrenOf(subPage.id)
+    expect(kids.filter((k) => k.type === 'paragraph')).toHaveLength(105)
+    // Idempotent warm sync.
+    const before = fake.requests.length
+    const r2 = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="c" title="big">
+          {many}
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(r2.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+    expect(fake.requests.slice(before).filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('phase 3c: inline depth 3 under new <ChildPage> — level 3 tails as block.append under inner parent', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // Depth-3 structure: ChildPage → Toggle → Toggle → Paragraph.
+    // `inlinePackChildren` carries depths 1–2 on the pages.create body; the
+    // level-3 paragraph tails as a block.append op under the inner toggle's
+    // tmp id, which resolves on apply.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="c" title="deep">
+          <Toggle title="t1">
+            <Toggle title="t2">
+              <Paragraph>leaf</Paragraph>
+            </Toggle>
+          </Toggle>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    // Assert the paragraph materialized at depth 3 under the sub-page.
+    const subPage = [...fake.pages.values()][0]!
+    const t1 = fake.childrenOf(subPage.id).find((b) => b.type === 'toggle')!
+    const t2 = fake.childrenOf(t1.id).find((b) => b.type === 'toggle')!
+    const leaf = fake.childrenOf(t2.id).find((b) => b.type === 'paragraph')
+    expect(leaf).toBeDefined()
+  })
+
+  it('cover: only external / file_upload accepted; emoji-shaped cover is rejected at the boundary', () => {
+    // Compile-time: `cover={{ type: 'emoji', emoji: 'x' }}` on <ChildPage/>
+    // or <Page/> is a TypeScript error because `PageCover` is narrower than
+    // `PageIcon` (no emoji/custom_emoji). Runtime sanity: feeding a bogus
+    // shape directly to the normalizer yields `undefined` rather than
+    // letting it flow through to the wire.
+    expect(projectCover({ type: 'external', external: { url: 'https://x/c.png' } })).toEqual({
+      type: 'external',
+      external: { url: 'https://x/c.png' },
+    })
+    expect(projectCover({ type: 'file_upload', file_upload: { id: 'abc' } })).toEqual({
+      type: 'file_upload',
+      file_upload: { id: 'abc' },
+    })
+    expect(normalizeCover({ type: 'emoji', emoji: 'x' })).toBeUndefined()
+    expect(normalizeCover(null)).toBeUndefined()
+  })
+
+  /**
+   * Regression for the phase-3d idempotency bug (issue #618 follow-up): when a
+   * `<Page>` mixes a leading `<ChildPage>` with a trailing plain block, the
+   * pre-fix driver applied the root-scope block append before `pages.create`,
+   * inverting the sibling order on the server. The next warm sync saw a drift
+   * (cache in candidate order, server in swapped order) and unretained the
+   * `<ChildPage>`, crashing `candidateToCache` on the inner block's tmpId.
+   */
+  it('idempotent: <Page>[<ChildPage>blk</ChildPage>, <Paragraph>]  → 2nd sync is a no-op', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage title="cp">
+          <Paragraph>inner</Paragraph>
+        </ChildPage>
+        <Paragraph>sibling</Paragraph>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  /**
+   * Regression for the cross-parent `pages.move` race (issue #618 phase 3d
+   * follow-up): reparenting a `<ChildPage>` between two sibling parents in a
+   * single sync used to emit both an `archivePage` (from the outgoing
+   * parent's `diffChildren` removes loop) and a `movePage` (from the
+   * incoming parent's candidate loop) for the same page. The sync driver
+   * applied both, leaving the end state order-dependent. Fix: pre-claim
+   * cross-parent moves in a whole-tree pass before per-parent emission.
+   */
+  it('reparent: moving <ChildPage> across sibling parents emits only movePage', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="A">
+          <ChildPage blockKey="m" title="moveable" />
+        </ChildPage>
+        <ChildPage blockKey="B" title="B" />
+      </Page>,
+      cache,
+    )
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="A" />
+        <ChildPage blockKey="B" title="B">
+          <ChildPage blockKey="m" title="moveable" />
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 1, reorders: 0 })
+    expect(res.appends + res.inserts + res.updates + res.removes).toBe(0)
+  })
+
+  /**
+   * Probe for latent nested-scope variant of the phase-3d bug-A interleaving
+   * risk: the root-pass interleaves createPage with block ops, but each nested
+   * `<ChildPage>` scope still applies its own per-parent block/page ops. A
+   * mixed `<ChildPage>` + plain block sibling set *inside* a retained
+   * `<ChildPage>` could hit the same cache-vs-server order mismatch that the
+   * root-scope fix addresses, triggering `candidateToCache: unresolved
+   * blockId` on the next warm sync.
+   */
+  it('idempotent: nested <ChildPage>[<ChildPage>, <Paragraph>] warm resync — no unresolved blockId', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage title="outer">
+          <ChildPage title="inner" />
+          <Paragraph>sibling</Paragraph>
+        </ChildPage>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  it('idempotent: <Page>[<Paragraph>, <ChildPage>]  → 2nd sync is a no-op (reverse order)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <Paragraph>sibling</Paragraph>
+        <ChildPage title="cp">
+          <Paragraph>inner</Paragraph>
+        </ChildPage>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const second = await runSync(fake, tree, cache)
+    expect(second.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect({
+      appends: second.appends,
+      inserts: second.inserts,
+      updates: second.updates,
+      removes: second.removes,
+    }).toEqual({ appends: 0, inserts: 0, updates: 0, removes: 0 })
+  })
+
+  /**
+   * PR #623 review fix: movePage branch used to set cand.blockId but never
+   * recursed into cand.children against the move source's cache subtree.
+   * A moved <ChildPage> with descendants would leave those descendants'
+   * blockIds unresolved; `candidateToCache` later threw `unresolved
+   * blockId` on the next sync, and any edits inside the moved page were
+   * silently skipped.
+   */
+  it('move with descendants: cross-parent move carries children through resync (PR #623 review)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: two parents under the root, one carries a keyed sub-page
+    // that contains a paragraph.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="parent-A">
+          <ChildPage blockKey="moved" title="moved-page">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+        <ChildPage blockKey="B" title="parent-B" />
+      </Page>,
+      cache,
+    )
+    // Second sync: move the keyed sub-page under parent-B. This must emit
+    // exactly one movePage + zero block ops and the next sync must be a
+    // clean no-op (proves descendants round-tripped cleanly).
+    const r2 = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="parent-A" />
+        <ChildPage blockKey="B" title="parent-B">
+          <ChildPage blockKey="moved" title="moved-page">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(r2.pages).toMatchObject({ archives: 0 })
+    expect(r2.pages.moves).toBe(1)
+    expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+    // Third sync is the real assertion: any unresolved blockId would fault
+    // here on candidateToCache.
+    const r3 = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="A" title="parent-A" />
+        <ChildPage blockKey="B" title="parent-B">
+          <ChildPage blockKey="moved" title="moved-page">
+            <Paragraph blockKey="p">body</Paragraph>
+          </ChildPage>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(r3.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect(r3.appends + r3.inserts + r3.updates + r3.removes).toBe(0)
+  })
+
+  /**
+   * PR #623 review fix: `resolveInlineChildrenIds` used to advance its
+   * live-child cursor even on page candidates, which aren't present in the
+   * server response. A page before an inline block would shift alignment
+   * and drop the block's tmpId from the idMap. The regression pins a
+   * page-before-block candidate order so the cursor advances only for
+   * block candidates.
+   */
+  /**
+   * Phase 4b (#618): `icon={null}` / `cover={null}` are clear sentinels.
+   * Dropping the prop is still "no claim" (server state preserved); passing
+   * `null` explicitly means "clear on server" and emits a `pages.update`
+   * with `{icon: null}` / `{cover: null}`.
+   */
+  it('null sentinel: <ChildPage icon={null}> after a set icon emits updatePage({icon: null})', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={{ type: 'emoji', emoji: '📄' }} />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={null} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    const after = fake.requests.slice(before)
+    const patches = after.filter((r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path))
+    expect(patches).toHaveLength(1)
+    const body = patches[0]!.body as { icon?: unknown; cover?: unknown }
+    expect(body.icon).toBeNull()
+    // Server state reflects the clear.
+    const sub = [...fake.pages.values()].find(
+      (p) => p.properties.title.title[0]?.text.content === 'doc',
+    )!
+    expect(sub.icon).toBeNull()
+
+    // Warm re-sync with the same null prop is a no-op.
+    const before2 = fake.requests.length
+    const res2 = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={null} />
+      </Page>,
+      cache,
+    )
+    expect(res2.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(fake.requests.slice(before2).filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  it('null sentinel: <ChildPage cover={null}> after a set cover emits updatePage({cover: null})', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" cover={{ type: 'external', external: { url: 'https://x/c.png' } }} />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" cover={null} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 1, archives: 0, moves: 0 })
+    const after = fake.requests.slice(before)
+    const patches = after.filter((r) => r.method === 'PATCH' && /^\/v1\/pages\/[^/]+$/.test(r.path))
+    expect(patches).toHaveLength(1)
+    const body = patches[0]!.body as { cover?: unknown }
+    expect(body.cover).toBeNull()
+  })
+
+  it('null sentinel: <ChildPage icon={null}> with no prior icon emits no op (null ≡ absent on fresh server state)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: ChildPage with no icon prop at all.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" />
+      </Page>,
+      cache,
+    )
+    const before = fake.requests.length
+    // Second sync: swap to `icon={null}`. Server has no icon; null-vs-absent
+    // are both "no icon" on a fresh server state, so no updatePage fires.
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="doc" icon={null} />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
+    expect(fake.requests.slice(before).filter((r) => r.method !== 'GET')).toEqual([])
+  })
+
+  /**
+   * Phase 4a (T08): `pages.create` under the same parent runs sequentially
+   * (no `Effect.all` / concurrency). Empirical probe: parallel creates under
+   * one parent yield a nondeterministic `child_page` ordering on the parent;
+   * sequential POSTs preserve JSX order 1:1.
+   *
+   * The fake client appends `child_page` blocks to the parent's child list in
+   * POST order, so asserting the materialized order equals JSX order is a
+   * principled pin on the driver's sequential invariant — no artificial sleep
+   * or race window needed.
+   */
+  it('T08: three sibling <ChildPage>s under one parent materialize in JSX order', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const res = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="one" title="one" />
+        <ChildPage blockKey="two" title="two" />
+        <ChildPage blockKey="three" title="three" />
+      </Page>,
+      cache,
+    )
+    expect(res.pages).toMatchObject({ creates: 3, updates: 0, archives: 0, moves: 0 })
+    // Server-side order under the root page matches JSX order.
+    const rootChildPages = fake
+      .childrenOf(ROOT)
+      .filter((b) => b.type === 'child_page')
+      .map((b) => b.payload.title as string)
+    expect(rootChildPages).toEqual(['one', 'two', 'three'])
+  })
+
+  it('resolveInlineChildrenIds: page candidate before an inline block does not shift alignment (PR #623 review)', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // Root pass: a ChildPage sibling before a sibling Paragraph — both at
+    // the same level under <Page>. Root scope already interleaves ops, so
+    // the alignment bug bites at nested scope. Keep this as a belt-and-
+    // suspenders regression: pair candidate order is the load-bearing
+    // invariant either way.
+    const tree = (
+      <Page>
+        <ChildPage blockKey="cp" title="child-page" />
+        <Paragraph blockKey="p">sibling</Paragraph>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const r2 = await runSync(fake, tree, cache)
+    expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
+    expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
+  })
+
+  /**
+   * Phase 4d (issue #618): opt-in `reorderSiblings` realises intra-parent
+   * `<ChildPage>` reorder via the `pages.move` roundtrip primitive. See
+   * `tmp/notion-618/options-ordering.md` experiment 9.
+   */
+  describe('reorderSiblings (phase 4d)', () => {
+    // Run a warm sync with an explicit reorderSiblings option.
+    const runSyncWithReorder = async (
+      fake: FakeNotion,
+      element: Parameters<typeof sync>[0],
+      cache: ReturnType<typeof InMemoryCache.make>,
+      reorderSiblings: boolean | { readonly holdingParentId: string },
+    ) =>
+      runWith(
+        fake,
+        sync(element, { pageId: ROOT, cache, reorderSiblings }).pipe(
+          Effect.mapError((cause) => new Error(String(cause))),
+        ),
+      )
+
+    /** Return the final child_page block ids under ROOT in server order. */
+    const pageOrderUnderRoot = (fake: FakeNotion): string[] =>
+      fake
+        .childrenOf(ROOT)
+        .filter((b) => b.type === 'child_page')
+        .map((b) => b.id)
+
+    it('reorderSiblings: true — [a,b,c] → [c,b,a] lands [c,b,a] via 2N roundtrips', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="c" title="C" />
+        </Page>,
+        cache,
+      )
+      const initialOrder = pageOrderUnderRoot(fake)
+      expect(initialOrder).toHaveLength(3)
+      // Map blockKey → page id via title lookup (titles match blockKey upper).
+      const pageByTitle = new Map(
+        [...fake.pages.values()].map((p) => [p.properties.title.title[0]?.text.content, p.id]),
+      )
+      const [idA, idB, idC] = [pageByTitle.get('A')!, pageByTitle.get('B')!, pageByTitle.get('C')!]
+      expect(initialOrder).toEqual([idA, idB, idC])
+
+      const before = fake.requests.length
+      const res = await runSyncWithReorder(
+        fake,
+        <Page>
+          <ChildPage blockKey="c" title="C" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+        true,
+      )
+      // One reorderPages op, no create/archive/move churn.
+      expect(res.pages).toMatchObject({
+        creates: 0,
+        updates: 0,
+        archives: 0,
+        moves: 0,
+        reorders: 1,
+      })
+      // Server order now matches JSX.
+      expect(pageOrderUnderRoot(fake)).toEqual([idC, idB, idA])
+      // 2N = 6 pages.move calls on the wire. Plus 1 holding create + 1 archive.
+      const after = fake.requests.slice(before)
+      const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+      expect(moves).toHaveLength(6)
+      // Auto-provisioned holding page: one page.create, one archive
+      // (pages.update with in_trash: true).
+      const newPages = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
+      expect(newPages).toHaveLength(1)
+    })
+
+    it('reorderSiblings: false — reshuffle keeps server order unchanged, no move roundtrips', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="c" title="C" />
+        </Page>,
+        cache,
+      )
+      const initialOrder = pageOrderUnderRoot(fake)
+      const before = fake.requests.length
+      const res = await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="c" title="C" />
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+      )
+      // Default path: zero reorderPages ops. The diff still emits same-parent
+      // movePage (existing phase 3b contract); the driver swallows the 400.
+      expect(res.pages.reorders).toBe(0)
+      // Server order unchanged because same-parent moves are rejected.
+      expect(pageOrderUnderRoot(fake)).toEqual(initialOrder)
+      // No 2N roundtrips — at most the original per-sibling movePage attempts.
+      const after = fake.requests.slice(before)
+      const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+      // The diff emits ≤ N-1 movePage ops for a reshuffle (LCS retains ≥1).
+      expect(moves.length).toBeLessThan(6)
+    })
+
+    it('reorderSiblings: { holdingParentId } — caller-supplied parent is reused and never archived', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+        </Page>,
+        cache,
+      )
+      // Pre-create a caller-owned holding parent under ROOT.
+      const holdingParent = await runWith(
+        fake,
+        NotionPages.create({
+          parent: { type: 'page_id', page_id: ROOT },
+          properties: {
+            title: { title: [{ type: 'text', text: { content: 'caller-holding' } }] },
+          },
+        }).pipe(
+          Effect.map((p) => (p as { id: string }).id),
+          Effect.mapError((c) => new Error(String(c))),
+        ),
+      )
+      const before = fake.requests.length
+      const res = await runSyncWithReorder(
+        fake,
+        <Page>
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+        { holdingParentId: holdingParent },
+      )
+      expect(res.pages.reorders).toBe(1)
+      const after = fake.requests.slice(before)
+      const moves = after.filter((r) => r.method === 'POST' && r.path.endsWith('/move'))
+      expect(moves).toHaveLength(4) // 2 pages × 2 roundtrips each
+      // Library did NOT create a holding page in this sync (caller supplied).
+      const newPages = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
+      expect(newPages).toHaveLength(0)
+      // Library did NOT archive the caller-supplied holding parent.
+      const holding = fake.pages.get(holdingParent)
+      expect(holding?.in_trash).toBeFalsy()
+    })
+
+    it('reorderSiblings: true auto-provisioned — creates and archives holding page per sync', async () => {
+      const fake = createFakeNotion()
+      const cache = InMemoryCache.make()
+      await runSync(
+        fake,
+        <Page>
+          <ChildPage blockKey="a" title="A" />
+          <ChildPage blockKey="b" title="B" />
+        </Page>,
+        cache,
+      )
+      const pagesBefore = fake.pages.size
+      const before = fake.requests.length
+      await runSyncWithReorder(
+        fake,
+        <Page>
+          <ChildPage blockKey="b" title="B" />
+          <ChildPage blockKey="a" title="A" />
+        </Page>,
+        cache,
+        true,
+      )
+      const after = fake.requests.slice(before)
+      // One new page (the holding) was created.
+      const pageCreates = after.filter((r) => r.method === 'POST' && r.path === '/v1/pages')
+      expect(pageCreates).toHaveLength(1)
+      // One archive PATCH (in_trash: true) against the new page.
+      const archives = after.filter(
+        (r) =>
+          r.method === 'PATCH' &&
+          /^\/v1\/pages\/[^/]+$/.test(r.path) &&
+          (r.body as { in_trash?: boolean }).in_trash === true,
+      )
+      expect(archives).toHaveLength(1)
+      // Auto-provisioned holding page was archived; its title is recognizable.
+      const holdings = [...fake.pages.values()]
+        .slice(pagesBefore)
+        .filter(
+          (p) =>
+            p.properties.title.title[0]?.text.content ===
+            '@overeng/notion-react holding (do not touch)',
+        )
+      expect(holdings).toHaveLength(1)
+      expect(holdings[0]!.in_trash).toBe(true)
+    })
+  })
+
+  /**
+   * PR #623 review fix: non-root (retained sub-page) scopes used to run all
+   * scoped block ops before nested `createPage`/`movePage`. Both endpoints
+   * tail-append, so `[<ChildPage>, <Paragraph>]` candidate order under a
+   * retained sub-page landed as `[Paragraph, child_page]` on the server —
+   * silent server-order corruption, undetected by the cache-vs-candidate diff.
+   */
+  it('retained sub-page: mixed [<ChildPage>, <Paragraph>] children land in JSX order on the server', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    // First sync: outer empty, so it's retained (not freshly-created) on the
+    // second sync — exercising the sub-page scope path, not the inline
+    // packing path used for brand-new pages.
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="outer" title="outer" />
+      </Page>,
+      cache,
+    )
+    const outerId = [...fake.pages.values()].find(
+      (p) => p.properties.title.title[0]?.text.content === 'outer',
+    )!.id
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="outer" title="outer">
+          <ChildPage blockKey="inner" title="inner" />
+          <Paragraph blockKey="p">sibling</Paragraph>
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    const kinds = fake.childrenOf(outerId).map((b) => b.type)
+    expect(kinds).toEqual(['child_page', 'paragraph'])
+  })
+
+  /**
+   * PR #623 review fix: `indexCachePages` used to collapse page-kind cache
+   * entries by blockKey globally, last-write-wins. Two pages legitimately
+   * sharing a blockKey across different parent branches (sibling-uniqueness is
+   * all the diff enforces) would make `pagesByKey.get(key)` select the wrong
+   * source for a cross-parent move pre-claim, archiving or moving the wrong
+   * page. Fix: treat collided keys as ambiguous (omit from the map) so the
+   * diff falls back to archive + createPage, which is safe in all cases.
+   */
+  it('duplicate blockKey across branches: retained page is not misrouted as a move source', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="dead" title="dead">
+          <ChildPage blockKey="m" title="dead-m" />
+        </ChildPage>
+        <ChildPage blockKey="keep" title="keep">
+          <ChildPage blockKey="m" title="keep-m" />
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    const keepM = [...fake.pages.values()].find(
+      (p) => p.properties.title.title[0]?.text.content === 'keep-m',
+    )!
+    const r = await runSync(
+      fake,
+      <Page>
+        <ChildPage blockKey="keep" title="keep">
+          <ChildPage blockKey="m" title="keep-m" />
+        </ChildPage>
+        <ChildPage blockKey="new-parent" title="new-parent">
+          <ChildPage blockKey="m" title="new-m" />
+        </ChildPage>
+      </Page>,
+      cache,
+    )
+    // No movePage should be emitted: the duplicate-key ambiguity means the
+    // diff cannot safely pick a move source, so the new "m" is a fresh
+    // createPage and the dead branch is archive+create'd normally.
+    expect(r.pages.moves).toBe(0)
+    // "keep/m" must remain untouched — same physical page, not archived.
+    const keepMAfter = fake.pages.get(keepM.id)!
+    expect(keepMAfter.in_trash).toBe(false)
+    expect(keepMAfter.archived).toBe(false)
+    expect(keepMAfter.properties.title.title[0]?.text.content).toBe('keep-m')
+  })
+})

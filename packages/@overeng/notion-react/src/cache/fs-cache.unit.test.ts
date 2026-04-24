@@ -21,7 +21,16 @@ afterEach(async () => {
 const sampleTree = (): CacheTree => ({
   schemaVersion: CACHE_SCHEMA_VERSION,
   rootId: 'root-1',
-  children: [{ key: 'b:hello', blockId: 'blk-1', type: 'paragraph', hash: 'h1', children: [] }],
+  children: [
+    {
+      key: 'b:hello',
+      blockId: 'blk-1',
+      type: 'paragraph',
+      hash: 'h1',
+      children: [],
+      nodeKind: 'block',
+    },
+  ],
 })
 
 describe('FsCache', () => {

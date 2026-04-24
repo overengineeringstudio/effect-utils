@@ -162,7 +162,7 @@ into a single nested request body (`{ column_list: { children: [...] }
 ## Cache schema
 
 ```ts
-export const CACHE_SCHEMA_VERSION = 2 as const
+export const CACHE_SCHEMA_VERSION = 3 as const
 
 export interface CacheNode {
   readonly key: string

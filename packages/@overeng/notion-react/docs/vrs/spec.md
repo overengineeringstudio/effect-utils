@@ -4,9 +4,11 @@ This document specifies how `@overeng/notion-react` renders JSX trees into
 Notion block pages incrementally. It builds on
 [requirements.md](./requirements.md).
 
-**Status:** Draft — core reconciler + LCS diff landed (Phases 1–2 on
-branch `schickling/2026-04-19-notion-react`), nested children support and
-Suspense uploads are open.
+**Status:** Draft — core block reconciler + LCS diff landed (Phases 1–2);
+page-ops layer (R24–R30) in design on branch
+`schickling/2026-04-23-notion-react-followup2` (issue #618). Nested
+children support inside TEXT_LEAF containers and Suspense uploads still
+open.
 
 ## Scope
 
@@ -22,6 +24,8 @@ This spec defines:
 - The `UploadRegistry` mechanism and the extension point for v0.2
   Suspense-based uploads.
 - The fallback decision table used by the sync driver.
+- The page-op layer: root `<Page>` metadata projection, `<ChildPage>`
+  create/update/archive/move, per-page sync boundaries, and cache v3.
 
 It does not define:
 
@@ -231,15 +235,23 @@ interface CacheNode {
 }
 ```
 
-**Cache schema v1** (`CACHE_SCHEMA_VERSION = 1`):
+**Cache schema v3** (`CACHE_SCHEMA_VERSION = 3`; v1 → v2 added `type`
+for same-key type-change detection; v2 → v3 adds `nodeKind` and per-page
+subtrees per R26/R30):
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "rootId": "<page uuid>",
+  "rootPage": { "titleHash": "...", "iconHash": "...", "coverHash": "..." },
   "children": [ CacheNode, ... ]
 }
 ```
+
+Each `CacheNode` carries `nodeKind: 'block' | 'page'`. Page-kind nodes
+additionally carry `titleHash`, `iconHash`, `coverHash` (djb2 of
+response-normalized projections per A07) and recurse into their own
+`children` with their own key namespace.
 
 Schema mismatches fall through to a cold-start diff — the stale tree is
 still used for matching when keys line up (no data corruption), and the
@@ -308,6 +320,134 @@ After apply, the candidate tree is walked once more to rewrite any
 unresolved `tmpId` → `realId` (via `resolveTreeIds`) before
 `candidateToCache` produces the CacheTree snapshot.
 
+## Page-ops layer (R24–R30)
+
+Pages are a second reconciliation surface layered on top of the block
+reconciler. Every rendered page — the sync root and every nested
+`<ChildPage>` — is its own sync boundary with:
+
+- its own `blockKey` namespace (retained keys only compare within the
+  same page);
+- its own cache subtree (keyed by the page id);
+- its own `OpBuffer` populated via a nested reconciler pass;
+- a `PageOp` emitted by the parent's diff describing the transition.
+
+```
+root <Page id=P0>
+  ├── block subtree (reconciled by the root's block diff)
+  └── <ChildPage id=P1>
+        ├── PageOp per transition (create/update/archive/move)
+        └── recursive sync({ pageId: P1, cache: cache.pages[P1] })
+              └── <ChildPage id=P2> … and so on
+```
+
+### PageOp kinds
+
+```ts
+type PageOp =
+  | {
+      kind: 'createPage'
+      tmpPageId: string
+      parent: { pageId: string }
+      title?: NotionTitleRichText
+      icon?: NotionIcon
+      cover?: NotionCover
+      inlineChildren: CreateChildren /* ≤ depth 2, ≤ 100 per A08 */
+    }
+  | {
+      kind: 'updatePage'
+      pageId: string
+      title?: NotionTitleRichText
+      icon?: NotionIcon | null
+      cover?: NotionCover | null
+    }
+  | { kind: 'archivePage'; pageId: string }
+  | { kind: 'movePage'; pageId: string; parent: { pageId: string } }
+```
+
+`DiffOp` widens to `BlockOp | PageOp`. `BlockOp` gains `scopePageId` so
+batching (up to 100 children per `NotionBlocks.append`, per A08 / T07) can
+never straddle a page boundary.
+
+### Diff algorithm — pages
+
+Sibling pages under the same parent are diffed with the same LCS used for
+blocks, but the match predicate is `(key, nodeKind, type)` so a
+`<ChildPage>` never matches a block with the same key, and vice versa.
+Retention rules per candidate page:
+
+1. Retained: compare `(titleHash, iconHash, coverHash)` against cache.
+   Any differ → emit `updatePage` (coalesced single `pages.update`).
+   Recurse into children with `sync` (see driver).
+2. Not retained, no prior with same id in cache anywhere in the parent's
+   subtree: emit `createPage` with tmp id; recurse into children using the
+   tmp id as the page scope until applyDiff resolves.
+3. Not retained, but prior exists at a different parent in cache →
+   emit `movePage` to the new parent. Do not archive+recreate (R27).
+4. Cache-only (no candidate): emit `archivePage`.
+
+### Driver — per-page recursion (R26)
+
+```
+sync(element, { pageId, cache }):
+  1. load cache; verify pageId exists via blocks.retrieve
+     (on 404 / archived → fallback `page-missing` or `page-archived`)
+  2. build candidate tree for THIS page only (stops at <ChildPage>)
+  3. diff(cache.thisPage, candidate) → { blockOps, pageOps }
+  4. apply root-metadata updatePage (if any) first
+  5. apply block ops under the root page id (existing driver)
+  6. for each <ChildPage> candidate in order:
+       - createPage / movePage / archivePage as dictated by diffOp
+       - if createPage: persist tmp→real id; insert new
+         CacheNode with nodeKind='page' at the correct key
+       - recurse: sync(childElement, { pageId: real, cache: cache.pages[real] })
+  7. on any error mid-recursion:
+       - if a page was created this run but its children failed mid-apply,
+         issue pages.update {in_trash:true} on the partial page (T06/R28)
+       - propagate NotionSyncError with fallbackReason when applicable
+  8. checkpoint cache after every successful page-level step
+  9. SyncResult includes pages: { creates, updates, archives, moves }
+```
+
+Ordering invariants:
+
+- `createPage` must complete before any block op scoped to its id.
+- `archivePage` (emitted for removed `<ChildPage>`) is applied after block
+  ops that touch its parent (so the parent's child_page block disappears
+  from the parent's children list in the same sync pass).
+- Same-parent `createPage` is sequential (T08): `pages.create` calls
+  under a common parent run one at a time via the driver's `for`-of
+  `yield*` loops (no `Effect.all` / concurrency). The resulting server
+  `child_page` order matches JSX order, so no post-create re-fetch is
+  needed.
+
+### Inline-child packing on create
+
+`inlinePackChildren(candidateChildren)` splits a page's candidate children
+into `(inline, tail)` where `inline` fits `pages.create` (depth ≤ 2, ≤ 100
+blocks) and `tail` is emitted as follow-up `NotionBlocks.append` batches
+scoped to the new page id. A candidate whose subtree is deeper than
+inline can carry is moved entirely to tail to keep the inline set
+structurally uniform.
+
+### Icon / cover normalization (A07)
+
+`projectIcon(icon)` returns the _request-shape_ payload; `normalizeIcon`
+translates the _response-shape_ Notion actually persists into the same
+canonical form used for hashing. The hash used by diff / cache is always
+over the normalized form. `custom_emoji` icons with no resolvable id are
+stripped at the component boundary (warn + drop; same policy as
+UploadRegistry miss, DQ5).
+
+### Latent-bug fix
+
+The current code path for `<ChildPage title>` changes emits
+`NotionBlocks.update({blockId, child_page:{title}})`, which the Notion
+validator rejects (verified against live API). Under this spec,
+`<ChildPage>` title / icon / cover changes route exclusively through
+`updatePage`. Shipping this spec as a single PR is acceptable; splitting
+out a one-line fix-first PR is also acceptable.
+
 ## NotionCache interface
 
 ```ts
@@ -329,13 +469,16 @@ Third-party backends (SQLite, Redis, …) implement `NotionCache` directly
 
 ## Fallback decision table (R16)
 
-| Trigger                                           | Behaviour                                  | `fallbackReason`    |
-| ------------------------------------------------- | ------------------------------------------ | ------------------- |
-| No cache file                                     | Cold diff against empty tree               | `"cold-cache"`      |
-| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`    | Diff against stale tree, still reuses keys | `"schema-mismatch"` |
-| Cache `rootId !== opts.pageId`                    | Cold diff against empty tree               | `"page-id-drift"`   |
-| `NotionBlocks.update` returns 404/archived        | Emit structural rebuild of that subtree    | `"block-missing"`   |
-| Diff produces malformed op-plan (invariant break) | Abort; propagate `NotionSyncError`         | n/a (error)         |
+| Trigger                                              | Behaviour                                                      | `fallbackReason`        |
+| ---------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
+| No cache file                                        | Cold diff against empty tree                                   | `"cold-cache"`          |
+| Cache `schemaVersion !== CACHE_SCHEMA_VERSION`       | Diff against stale tree, still reuses keys                     | `"schema-mismatch"`     |
+| Cache `rootId !== opts.pageId`                       | Cold diff against empty tree                                   | `"page-id-drift"`       |
+| `NotionBlocks.update` returns 404/archived           | Emit structural rebuild of that subtree                        | `"block-missing"`       |
+| Cached page id → `pages.retrieve` 404                | Drop cached subtree, recreate if JSX has it, else no-op        | `"page-missing"`        |
+| Cached page id is archived on server                 | Treat as removed; if JSX still has `<ChildPage>`, create fresh | `"page-archived"`       |
+| `pages.create` succeeds but child ops fail mid-apply | Archive orphan page; surface `NotionSyncError`                 | `"partial-page-create"` |
+| Diff produces malformed op-plan (invariant break)    | Abort; propagate `NotionSyncError`                             | n/a (error)             |
 
 v0.1 implements `cold-cache`, `schema-mismatch`, and `page-id-drift`
 (via a pre-flight `NotionBlocks.retrieve(cache.rootId)`). `block-missing`
@@ -402,6 +545,25 @@ PR #3224) is the reference implementation pattern.
 "page-id-drift"`. Adds ~1 API call per sync — negligible vs savings.
   Finer-grained `"block-missing"` detection during `applyDiff` deferred
   to v0.2.
+- **DQ6 Database-parented pages.** _Deferred._ `<ChildPage>` currently
+  targets page-parented sub-pages only. A database parent would take
+  `{parent: {database_id}}` and a custom `properties` map keyed by
+  property name (empirically verified). Spec expansion: extend
+  `ChildPageProps` with `properties` and `parent` discriminated-union; the
+  driver routes the create the same way. No caching model change.
+- **DQ7 `<ChildPage>` sibling reordering.** _Addressed via opt-in
+  `reorderSiblings` (phase 4d, #618)._ Notion's `pages.move` rejects a
+  same-parent move, but a roundtrip — move to another parent, then back
+  to the original — bumps the page to the end of the original parent's
+  `child_page` block list (empirical: see
+  `tmp/notion-618/options-ordering.md` experiment 9). Iterating the
+  target order through that roundtrip lands arbitrary sibling order at
+  2N `pages.move` calls per reorder burst. Opt-in via
+  `sync(element, { pageId, cache, reorderSiblings: true })`; default
+  stays the legacy no-op to preserve existing call sites that emit
+  same-parent `movePage`s. Callers can supply their own
+  `{ holdingParentId }` to avoid the library minting-and-archiving a
+  scratch page per sync.
 - **DQ4 Op batching via `position.after_block`.** _Deferred to v0.2._
   v0.1 op counts already meet the derisk targets; batched append adds
   id-mapping and partial-success complexity. v0.2 experiment goal:

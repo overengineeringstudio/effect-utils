@@ -1,34 +1,66 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
 import {
+  Audio,
   Bookmark,
+  Breadcrumb,
+  ChildDatabase,
   ChildPage,
   Column,
   ColumnList,
   Embed,
   Equation,
+  File,
   Image,
+  LinkPreview,
   LinkToPage,
   Page,
   Paragraph,
+  Pdf,
+  Raw,
+  SyncedBlock,
   Table,
   TableOfContents,
   TableRow,
+  Template,
+  Video,
 } from './blocks.tsx'
+import { InlineCode } from './inline.tsx'
 
-const meta = { title: 'Media & Layout' } satisfies Meta
+const meta = { title: 'Media & Layout', tags: ['autodocs'] } satisfies Meta
 export default meta
 
 type Story = StoryObj
 
 export const ImageBlock: Story = {
+  argTypes: {
+    url: { control: 'text' },
+    caption: { control: 'text' },
+  },
+  args: {
+    url: 'https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?w=800&q=80',
+    caption: 'a tree, in a forest, near a river',
+  },
+  render: (args: Record<string, unknown>) => (
+    <Page>
+      <Image url={args.url as string} caption={args.caption as string} />
+      <Image caption="no url — shows an empty placeholder" />
+    </Page>
+  ),
+}
+
+/**
+ * Broken image — the `src` points at a host that will never resolve. Surfaces
+ * the browser's native broken-image affordance inside the `<figure>` wrapper,
+ * so hosts can see what a bad URL looks like inside the Notion-scoped layout.
+ */
+export const BrokenImage: Story = {
   render: () => (
     <Page>
       <Image
-        url="https://images.unsplash.com/photo-1523961131990-5ea7c61b2107?w=800&q=80"
-        caption="a tree, in a forest, near a river"
+        url="https://does-not-exist.example/bad.png"
+        caption="Broken image — host does not resolve"
       />
-      <Image caption="no url — shows an empty placeholder" />
     </Page>
   ),
 }
@@ -88,6 +120,81 @@ export const Navigation: Story = {
       <LinkToPage pageId="abc-123" />
       <ChildPage title="Sub-page: architecture notes" />
       <ChildPage />
+    </Page>
+  ),
+}
+
+/**
+ * Media blocks beyond `<Image>`: video, audio, file, and PDF. The web mirror
+ * wraps each in `<figure class="notion-media ...">` and delegates to the native
+ * HTML5 element — there is no Notion-specific player chrome.
+ */
+export const VideoBlock: Story = {
+  render: () => (
+    <Page>
+      <Video
+        url="https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"
+        caption="Big Buck Bunny — short reference clip"
+      />
+    </Page>
+  ),
+}
+
+export const AudioBlock: Story = {
+  render: () => (
+    <Page>
+      <Audio
+        url="https://commons.wikimedia.org/wiki/Special:FilePath/En-us-hello.ogg"
+        caption="Short spoken sample"
+      />
+    </Page>
+  ),
+}
+
+export const FileBlock: Story = {
+  render: () => (
+    <Page>
+      <Paragraph>
+        <InlineCode>&lt;File&gt;</InlineCode> renders as a plain anchor — hosts can wrap it to add
+        richer affordances.
+      </Paragraph>
+      <File url="https://www.w3.org/TR/PNG/iso_8859-1.txt" caption="sample file" />
+    </Page>
+  ),
+}
+
+export const PdfBlock: Story = {
+  render: () => (
+    <Page>
+      <Pdf
+        url="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"
+        caption="sample PDF"
+      />
+    </Page>
+  ),
+}
+
+/**
+ * Passthrough blocks (`Raw`, `Template`, `LinkPreview`, `SyncedBlock`,
+ * `ChildDatabase`, `Breadcrumb`): these are surfaces the web mirror does not
+ * fully project. They render their payload inline as JSON inside a dashed
+ * `.notion-raw` box so reviewers can tell at a glance that the content is
+ * preserved but not rendered. Hosts that need richer rendering should swap
+ * these components out at their module boundary.
+ */
+export const PassthroughBlocks: Story = {
+  render: () => (
+    <Page>
+      <Paragraph>
+        These components are intentionally rendered as JSON-in-a-box — see the component docs for
+        the rationale.
+      </Paragraph>
+      <Raw type="my_custom_type" content={{ note: 'raw payload preserved through the pipeline' }} />
+      <Template content={{ template: { rich_text: [{ text: { content: 'New task' } }] } }} />
+      <LinkPreview content={{ url: 'https://github.com/overengineeringstudio/effect-utils' }} />
+      <SyncedBlock content={{ synced_from: { block_id: 'block-id-xyz' } }} />
+      <ChildDatabase content={{ title: 'Tasks (database)' }} />
+      <Breadcrumb />
     </Page>
   ),
 }

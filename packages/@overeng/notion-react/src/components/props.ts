@@ -17,7 +17,68 @@ type Children = { readonly children?: ReactNode }
  */
 type BlockKey = { readonly blockKey?: string }
 
-export type PageProps = Children
+/**
+ * Notion page icon envelope. `emoji` is a bare unicode glyph; `external` points
+ * at a public URL; `custom_emoji` references a workspace-scoped custom emoji by
+ * id. Shapes empirically verified in `tmp/notion-618/experiments/findings.md`.
+ *
+ * Note (A07): response shape may differ slightly from request shape (e.g. the
+ * `file` vs `external` duality for uploaded files); downstream normalization
+ * happens at the client layer, not here.
+ */
+export type PageIcon =
+  | { readonly type: 'emoji'; readonly emoji: string }
+  | { readonly type: 'external'; readonly external: { readonly url: string } }
+  | { readonly type: 'custom_emoji'; readonly custom_emoji: { readonly id: string } }
+
+/**
+ * Notion page cover envelope. Narrower than {@link PageIcon}: emoji and
+ * custom_emoji are not accepted on covers. `file_upload` references a Notion
+ * Files-API-uploaded asset by id.
+ */
+export type PageCover =
+  | { readonly type: 'external'; readonly external: { readonly url: string } }
+  | { readonly type: 'file_upload'; readonly file_upload: { readonly id: string } }
+
+/**
+ * One rich-text span inside a Notion page title. Titles accept 1..N spans;
+ * per A10, each span's `text.content` is capped at 2000 characters by the
+ * Notion API. Annotations mirror the block-level rich_text envelope.
+ */
+export type PageTitleSpan = {
+  readonly type: 'text'
+  readonly text: {
+    readonly content: string
+    readonly link?: { readonly url: string } | null
+  }
+  readonly annotations?: {
+    readonly bold?: boolean
+    readonly italic?: boolean
+    readonly strikethrough?: boolean
+    readonly underline?: boolean
+    readonly code?: boolean
+    readonly color?: string
+  }
+}
+
+/**
+ * Ergonomic page-title prop: a plain string (projected as a single span) or an
+ * explicit array of {@link PageTitleSpan}s for annotated/multi-span titles.
+ */
+export type PageTitle = string | readonly PageTitleSpan[]
+
+export type PageProps = Children & {
+  readonly title?: PageTitle
+  /**
+   * Page icon envelope. `undefined` / omitted = "no claim" (server state
+   * preserved). `null` = "clear on server"; the next sync emits a
+   * `pages.update` with `icon: null`, mirroring Notion's API contract for
+   * field clears.
+   */
+  readonly icon?: PageIcon | null
+  /** See {@link PageProps.icon} — same `undefined` vs `null` semantics. */
+  readonly cover?: PageCover | null
+}
 
 export type ParagraphProps = Children & BlockKey
 
@@ -52,6 +113,19 @@ export type NotionColor =
 export type HeadingProps = Children &
   BlockKey & {
     readonly toggleable?: boolean
+    /**
+     * When `toggleable` is `true`, the expanded-state body — rendered inside
+     * the `<details>` body slot in the web mirror. Ignored for non-toggleable
+     * headings. Web-mirror-only hint; never projected to the Notion payload
+     * (Notion has no body-for-toggleable-heading concept in its schema).
+     */
+    readonly body?: ReactNode
+    /**
+     * Web-mirror-only hint for toggleable headings: initial expanded state.
+     * Projects to `<details open>`. Never emitted to Notion (Notion toggles
+     * have no server-side "default open" concept).
+     */
+    readonly defaultOpen?: boolean
     /** Notion block color. Projected verbatim onto the `heading_*` payload. */
     readonly color?: NotionColor
   }
@@ -61,7 +135,16 @@ export type NumberedListItemProps = Children & BlockKey
 
 export type ToDoProps = Children & BlockKey & { readonly checked?: boolean }
 
-export type ToggleProps = Children & BlockKey & { readonly title?: string }
+export type ToggleProps = Children &
+  BlockKey & {
+    readonly title?: string
+    /**
+     * Web-mirror-only hint: initial expanded state (`<details open>`). Never
+     * emitted to Notion — Notion toggles have no server-side "default open"
+     * concept; the default stays collapsed to match Notion's own UX.
+     */
+    readonly defaultOpen?: boolean
+  }
 
 export type CodeProps = Children & BlockKey & { readonly language?: string }
 
@@ -107,7 +190,14 @@ export type ColumnProps = Children & BlockKey & { readonly widthRatio?: number }
 
 export type LinkToPageProps = { readonly pageId: string }
 export type TableOfContentsProps = Record<string, never>
-export type ChildPageProps = { readonly title?: string }
+export type ChildPageProps = BlockKey & {
+  readonly title?: PageTitle
+  /** See {@link PageProps.icon} — `null` clears the sub-page icon on the next sync. */
+  readonly icon?: PageIcon | null
+  /** See {@link PageProps.icon} — `null` clears the sub-page cover on the next sync. */
+  readonly cover?: PageCover | null
+  readonly children?: ReactNode
+}
 
 export type RawProps<TType extends string = string> = {
   readonly type: TType

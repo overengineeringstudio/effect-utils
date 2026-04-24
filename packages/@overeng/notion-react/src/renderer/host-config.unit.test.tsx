@@ -122,6 +122,16 @@ describe('host-config', () => {
     ])
   })
 
+  it('does not project Toggle defaultOpen to the Notion payload', () => {
+    const { buffer, root } = makeRoot()
+    root.render(<Toggle title="more" defaultOpen />)
+    const op = buffer.ops[0]!
+    expect(op.kind).toBe('append')
+    if (op.kind !== 'append') return
+    expect(op.props).not.toHaveProperty('defaultOpen')
+    expect(op.props).not.toHaveProperty('body')
+  })
+
   it('projects Heading color onto the block payload', () => {
     const { buffer, root } = makeRoot()
     root.render(<Heading1 color="blue_background">Titled</Heading1>)

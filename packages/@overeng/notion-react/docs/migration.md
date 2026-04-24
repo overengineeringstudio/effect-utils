@@ -33,7 +33,7 @@ is stable within the 0.1.x line:
   `@overeng/notion-react/web`.
 - `blockKey` helper; `blockKey` prop on `Heading1..4`, `Toggle`,
   `Callout`.
-- `CACHE_SCHEMA_VERSION = 2`.
+- `CACHE_SCHEMA_VERSION = 3`.
 
 Known limitations (not bugs — tracked for v0.2):
 
@@ -44,9 +44,29 @@ Known limitations (not bugs — tracked for v0.2):
   only; `file_upload` envelope lands with the Notion API
   `file_upload` surface.
 
+## Cache schema v2 → v3
+
+Landed on `[Unreleased]` (issue #618, sub-page reconciliation).
+
+**What changed.** The cache tree gained a `nodeKind` discriminator
+and per-page subtrees so the reconciler can address sub-page
+boundaries independently. `CACHE_SCHEMA_VERSION` bumps `2 → 3`.
+
+**Migration path.** Transparent. v2 caches are rejected by schema
+validation and fall through the existing `"schema-mismatch"` cold
+path — the next sync is a full rebuild against the stale tree and
+emits `fallbackReason: "schema-mismatch"` (R30). No caller action
+required; no data corruption. Keys still match where they can, so
+block-level ops are typically no-ops plus a cache rewrite.
+
+**Observable differences.** The first sync after upgrade may emit
+one spurious `updatePage` per sub-page, because response-normalized
+title/icon/cover is recomputed from scratch and may differ cosmetically
+from what the old cache stored. Subsequent syncs are stable.
+
 ## Cache migrations
 
-The on-disk cache schema version is currently `2`. Bumping it
+The on-disk cache schema version is currently `3`. Bumping it
 invalidates every existing cache file; the sync driver falls back to
 a cold-start diff against the stale tree (`fallbackReason =
 "schema-mismatch"`). No data is corrupted — keys still match where

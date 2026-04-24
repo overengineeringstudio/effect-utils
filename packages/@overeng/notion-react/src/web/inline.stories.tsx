@@ -13,7 +13,7 @@ import {
   Underline,
 } from './inline.tsx'
 
-const meta = { title: 'Inline' } satisfies Meta
+const meta = { title: 'Inline', tags: ['autodocs'] } satisfies Meta
 export default meta
 
 type Story = StoryObj

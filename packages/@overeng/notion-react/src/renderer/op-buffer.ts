@@ -82,3 +82,64 @@ export class OpBuffer {
     this.ops.length = 0
   }
 }
+
+/**
+ * Page-scope op union (issue #618). Reserved for the page-ops work that
+ * layers on top of the existing block reconciler: create/update/archive/move
+ * a Notion (sub)page independent of the block tree under it.
+ *
+ * No emitter currently produces these; this is forward-compat type plumbing
+ * for phases 2+ of the #618 epic. Once the sync driver starts emitting
+ * PageOps the {@link DiffOp} union is already prepared to carry them.
+ *
+ * Payload fields (`title`, `icon`, `cover`, `inlineChildren`) are typed as
+ * `unknown` pending the schema decisions in phase 2 — they will tighten to
+ * the concrete `PageProperty` / `PageIcon` / `PageCover` shapes from
+ * `@overeng/notion-effect-schema` once those wire through the renderer.
+ */
+export type PageOp =
+  | {
+      readonly kind: 'createPage'
+      readonly tmpPageId: string
+      readonly parent: { readonly pageId: string }
+      readonly title?: unknown
+      readonly icon?: unknown
+      readonly cover?: unknown
+      /** Pre-shaped block bodies shipped inline as `children` on pages.create. */
+      readonly inlineChildren: readonly unknown[]
+      /**
+       * Candidate nodes corresponding to `inlineChildren` in submission order.
+       * Internal field — used by the sync driver to resolve inline-block tmpIds
+       * against the server response after `pages.create` returns. Not part of
+       * the public PageOp contract; pre-phase-3b consumers should ignore it.
+       */
+      readonly inlineCandidates?: readonly unknown[]
+    }
+  | {
+      readonly kind: 'updatePage'
+      readonly pageId: string
+      readonly title?: unknown
+      readonly icon?: unknown
+      readonly cover?: unknown
+    }
+  | { readonly kind: 'archivePage'; readonly pageId: string }
+  | {
+      readonly kind: 'movePage'
+      readonly pageId: string
+      readonly parent: { readonly pageId: string }
+    }
+  /**
+   * Intra-parent sibling reorder (issue #618 phase 4d). Opt-in via
+   * `sync({reorderSiblings})`. Only emitted when retained-by-blockKey page
+   * siblings appear in a different order under the same parent than in the
+   * cache. The driver realizes the target order via the `pages.move` roundtrip
+   * primitive: for each page id (in target order), move to a holding parent,
+   * then back to the original parent. Each roundtrip places the page at the
+   * end of the original parent's `child_page` block list, so iterating in
+   * target order lands the full order with 2N API calls.
+   */
+  | {
+      readonly kind: 'reorderPages'
+      readonly parentId: string
+      readonly orderedPageIds: readonly string[]
+    }

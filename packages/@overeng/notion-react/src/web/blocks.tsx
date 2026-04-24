@@ -16,6 +16,8 @@ import type {
   LinkToPageProps,
   MediaProps,
   NumberedListItemProps,
+  PageCover,
+  PageIcon,
   PageProps,
   ParagraphProps,
   PassthroughProps,
@@ -26,6 +28,7 @@ import type {
   ToDoProps,
   ToggleProps,
 } from '../components/props.ts'
+import { useNotionUrl } from '../renderer/url-provider.ts'
 import { KatexRender } from './katex.tsx'
 import { ShikiRender } from './shiki.tsx'
 
@@ -50,11 +53,26 @@ import { ShikiRender } from './shiki.tsx'
  * `.notion-page-content` is the flex-column that makes inline-display blocks
  * (e.g. `.notion-h`) stack vertically.
  */
-export const Page = ({ children }: PageProps) => {
+export const Page = ({ children, icon, cover }: PageProps) => {
   const headings = collectHeadings(children)
+  const hasCover = cover !== undefined && cover !== null
+  const hasIcon = icon !== undefined && icon !== null
+  const pageClass = [
+    'notion-page',
+    hasCover ? 'notion-page-has-cover' : 'notion-page-no-cover',
+    hasIcon ? 'notion-page-has-icon' : 'notion-page-no-icon',
+    hasIcon && icon.type === 'emoji' ? 'notion-page-has-text-icon' : '',
+    hasIcon && icon.type !== 'emoji' ? 'notion-page-has-image-icon' : '',
+  ]
+    .filter((c) => c !== '')
+    .join(' ')
   return (
     <div className="notion notion-app">
-      <div className="notion-page">
+      {hasCover ? renderPageCover(cover) : null}
+      <div className={pageClass}>
+        {hasIcon ? (
+          <div className="notion-page-icon-wrapper">{renderPageIcon(icon, 'large')}</div>
+        ) : null}
         <div className="notion-page-content">{groupBlocks(children, headings)}</div>
       </div>
     </div>
@@ -155,14 +173,14 @@ const HeadingTag = ({
  */
 const heading =
   (level: 1 | 2 | 3 | 4) =>
-  ({ children, toggleable }: HeadingProps) => {
+  ({ children, toggleable, body, defaultOpen }: HeadingProps) => {
     if (toggleable === true) {
       return (
-        <details className="notion-toggle">
+        <details className="notion-toggle" open={defaultOpen ?? false}>
           <summary>
             <HeadingTag level={level}>{children}</HeadingTag>
           </summary>
-          <div />
+          <div>{body}</div>
         </details>
       )
     }
@@ -283,8 +301,8 @@ export const ToDo = ({ children, checked }: ToDoProps) => {
   )
 }
 
-export const Toggle = ({ children, title }: ToggleProps) => (
-  <details className="notion-toggle">
+export const Toggle = ({ children, title, defaultOpen }: ToggleProps) => (
+  <details className="notion-toggle" open={defaultOpen ?? false}>
     <summary>{title ?? ''}</summary>
     <div>{children}</div>
   </details>
@@ -306,6 +324,62 @@ export const Quote = ({ children }: QuoteProps) => (
 const renderCalloutIcon = (icon: NonNullable<CalloutProps['icon']>): ReactNode => {
   if (typeof icon === 'string') return icon
   return <img src={icon.external} alt="" className="notion-page-icon-image" />
+}
+
+/**
+ * Render a Notion {@link PageIcon} envelope.
+ *
+ * `size: 'large'` → hero-sized icon above the page title (matches Notion's own
+ * web UI, which positions the icon above the first block).
+ * `size: 'inline'` → 1em-sized inline icon for {@link ChildPage} links.
+ *
+ * `custom_emoji` only carries an id in the request-shape; absent a workspace
+ * emoji registry on the client, we render a neutral text fallback so the slot
+ * is not empty.
+ */
+const renderPageIcon = (icon: PageIcon | null | undefined, size: 'large' | 'inline'): ReactNode => {
+  if (icon === null || icon === undefined) return null
+  const imgClass =
+    size === 'large'
+      ? 'notion-page-icon notion-page-icon-image'
+      : 'notion-page-icon notion-page-icon-image notion-page-icon-inline'
+  const textClass =
+    size === 'large' ? 'notion-page-icon' : 'notion-page-icon notion-page-icon-inline'
+  switch (icon.type) {
+    case 'emoji':
+      return <span className={textClass}>{icon.emoji}</span>
+    case 'external':
+      return <img src={icon.external.url} alt="" className={imgClass} />
+    case 'custom_emoji':
+      // No URL resolver on the client: surface the id-scoped fallback rather
+      // than a broken image. Hosts with a custom-emoji registry can swap this.
+      return (
+        <span className={textClass} title={`custom_emoji:${icon.custom_emoji.id}`}>
+          🙂
+        </span>
+      )
+  }
+}
+
+/**
+ * Render a Notion {@link PageCover} envelope.
+ *
+ * `external` → `<img>` using the public URL.
+ * `file_upload` → placeholder stub. The client cannot resolve an upload id to a
+ * URL without a round-trip to `files.retrieve`; hosts that need this should
+ * pre-resolve before handing the prop to the web mirror.
+ */
+const renderPageCover = (cover: PageCover | null | undefined): ReactNode => {
+  if (cover === null || cover === undefined) return null
+  if (cover.type === 'external') {
+    return <img className="notion-page-cover" src={cover.external.url} alt="" />
+  }
+  return (
+    <div
+      className="notion-page-cover notion-page-cover-placeholder"
+      title={`file_upload:${cover.file_upload.id}`}
+    />
+  )
 }
 
 export const Callout = ({ children, icon, color }: CalloutProps) => (
@@ -416,11 +490,15 @@ export const Column = ({ children, widthRatio }: ColumnProps) => (
   </div>
 )
 
-export const LinkToPage = ({ pageId }: LinkToPageProps) => (
-  <a className="notion-page-link" href={`#${pageId}`}>
-    ↗ page {pageId}
-  </a>
-)
+export const LinkToPage = ({ pageId }: LinkToPageProps) => {
+  const resolved = useNotionUrl({ pageId })
+  const href = resolved?.href ?? `#${pageId}`
+  return (
+    <a className="notion-page-link" href={href} target={resolved?.target} rel={resolved?.rel}>
+      ↗ page {pageId}
+    </a>
+  )
+}
 
 /**
  * Marker component. The real render happens in `groupBlocks`, which walks
@@ -452,12 +530,50 @@ const RenderedTableOfContents = ({ entries }: { readonly entries: readonly TocEn
   )
 }
 
-export const ChildPage = ({ title }: ChildPageProps) => (
-  <div className="notion-page-link">
-    <span className="notion-page-icon-inline">📄</span>
-    <span>{title ?? 'Untitled'}</span>
-  </div>
-)
+export const ChildPage = ({ title, icon, children, blockKey }: ChildPageProps) => {
+  // Ergonomic title surface accepts plain string or a PageTitleSpan[] — the
+  // DOM mirror only renders a preview so we flatten span content here.
+  const label =
+    title === undefined
+      ? 'Untitled'
+      : typeof title === 'string'
+        ? title
+        : title.map((s) => s.text.content).join('')
+  // Cover is intentionally not rendered on child-page links — matches Notion's
+  // own UX, which only surfaces the icon + title on the inline link chip.
+  const iconNode =
+    icon === undefined || icon === null ? (
+      <span className="notion-page-icon-inline">📄</span>
+    ) : (
+      <span className="notion-page-icon-inline">{renderPageIcon(icon, 'inline')}</span>
+    )
+  // `blockKey` doubles as the pageId hint we hand to the URL resolver — it is
+  // the author-visible identity of the sub-page in the renderer. Without a
+  // `blockKey` we have no pageId to resolve; the anchor falls back to `"#"` so
+  // the visual affordance (hover/focus) is preserved but the link is inert.
+  const resolved = useNotionUrl({ pageId: blockKey ?? '' })
+  const hasLink = blockKey !== undefined && resolved !== undefined
+  const href = hasLink ? resolved.href : '#'
+  const chip = (
+    <a
+      className="notion-page-link"
+      href={href}
+      target={hasLink ? resolved.target : undefined}
+      rel={hasLink ? resolved.rel : undefined}
+    >
+      {iconNode}
+      <span>{label}</span>
+    </a>
+  )
+  return (
+    <div className="notion-child-page">
+      {chip}
+      {children !== undefined && children !== null && children !== false ? (
+        <div className="notion-page-children">{children}</div>
+      ) : null}
+    </div>
+  )
+}
 
 export const Raw = <TType extends string>({ type, content }: RawProps<TType>) => (
   <div className="notion-raw" data-type={type}>

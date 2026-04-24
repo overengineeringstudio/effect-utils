@@ -7,6 +7,7 @@ import {
   Bookmark,
   BulletedListItem,
   Callout,
+  ChildPage,
   Code,
   Divider,
   Equation,
@@ -15,6 +16,7 @@ import {
   Heading3,
   Heading4,
   Image,
+  Page,
   Paragraph,
   TableOfContents,
   ToDo,
@@ -26,6 +28,18 @@ const collect = (element: React.ReactNode) => {
   const root = createNotionRoot(buffer, 'root')
   root.render(<>{element}</>)
   return buffer.ops
+}
+
+/**
+ * Render and expose the container so tests can inspect the `page_root`
+ * wrapper and top-level instances — the regular `collect` helper only
+ * surfaces the emitted op stream.
+ */
+const renderWithContainer = (element: React.ReactNode) => {
+  const buffer = new OpBuffer('root')
+  const root = createNotionRoot(buffer, 'root')
+  root.render(<>{element}</>)
+  return { ops: buffer.ops, container: root.container }
 }
 
 describe('block components', () => {
@@ -293,5 +307,141 @@ describe('blockKey on ergonomic components', () => {
     expect(tree.children[0]!.key).toMatch(/^k:/)
     expect(tree.children[0]!.type).toBe(expectedType)
     expect((tree.children[0]!.props as { blockKey?: unknown }).blockKey).toBeUndefined()
+  })
+})
+
+/**
+ * Phase 3a of #618: `<Page>` is now a virtual `page_root` host wrapper that
+ * carries optional page-level metadata (title/icon/cover). The reconciler
+ * folds its children into the container's top-level so existing usage
+ * (wrapping a block tree in `<Page>`) keeps emitting the same block ops,
+ * while the metadata lands on `container.pageRoot` for phase 3b wiring.
+ */
+describe('Page component (page_root wrapper)', () => {
+  it('carries title/icon/cover on the container.pageRoot (never emitted as a block op)', () => {
+    const { ops, container } = renderWithContainer(
+      <Page
+        title="Root Page"
+        icon={{ type: 'emoji', emoji: '📘' }}
+        cover={{ type: 'external', external: { url: 'https://x/cover.png' } }}
+      >
+        <Paragraph>hi</Paragraph>
+      </Page>,
+    )
+    // `page_root` itself must NOT produce a block op; only the child does.
+    expect(ops.map((o) => ('type' in o ? o.type : o.kind))).toEqual(['paragraph'])
+    expect(container.pageRoot).not.toBeNull()
+    expect(container.pageRoot!.type).toBe('page_root')
+    expect(container.pageRoot!.nodeKind).toBe('page')
+    // Props bag carries the page-level metadata (plus React's own `children`
+    // passthrough, which we ignore here — only title/icon/cover are relevant
+    // for the phase 3b page-update emission).
+    expect(container.pageRoot!.props.title).toBe('Root Page')
+    expect(container.pageRoot!.props.icon).toEqual({ type: 'emoji', emoji: '📘' })
+    expect(container.pageRoot!.props.cover).toEqual({
+      type: 'external',
+      external: { url: 'https://x/cover.png' },
+    })
+  })
+
+  it('folds children into top-level so existing unwrapped usage keeps working', () => {
+    const wrapped = renderWithContainer(
+      <Page>
+        <Paragraph>a</Paragraph>
+        <Paragraph>b</Paragraph>
+      </Page>,
+    )
+    const bare = renderWithContainer(
+      <>
+        <Paragraph>a</Paragraph>
+        <Paragraph>b</Paragraph>
+      </>,
+    )
+    // Two blocks either way — the wrapper is transparent to the op stream.
+    expect(wrapped.ops.map((o) => ('type' in o ? o.type : o.kind))).toEqual([
+      'paragraph',
+      'paragraph',
+    ])
+    expect(bare.ops.map((o) => ('type' in o ? o.type : o.kind))).toEqual(['paragraph', 'paragraph'])
+    expect(wrapped.container.topLevel.map((i) => i.type)).toEqual(['paragraph', 'paragraph'])
+  })
+
+  it('Page with no metadata still registers the wrapper on the container', () => {
+    const { container } = renderWithContainer(
+      <Page>
+        <Paragraph>x</Paragraph>
+      </Page>,
+    )
+    expect(container.pageRoot).not.toBeNull()
+    expect(container.pageRoot!.props.title).toBeUndefined()
+    expect(container.pageRoot!.props.icon).toBeUndefined()
+    expect(container.pageRoot!.props.cover).toBeUndefined()
+  })
+})
+
+describe('ChildPage component (page-boundary block)', () => {
+  it('projects icon and cover into the append op props', () => {
+    const ops = collect(
+      <ChildPage
+        title="Notes"
+        icon={{ type: 'emoji', emoji: '📝' }}
+        cover={{ type: 'external', external: { url: 'https://x/c.png' } }}
+      />,
+    )
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('child_page')
+    expect(op.props).toEqual({
+      title: 'Notes',
+      icon: { type: 'emoji', emoji: '📝' },
+      cover: { type: 'external', external: { url: 'https://x/c.png' } },
+    })
+  })
+
+  it('accepts a rich PageTitleSpan[] and projects it verbatim', () => {
+    const ops = collect(
+      <ChildPage
+        title={[
+          { type: 'text', text: { content: 'Hello ' }, annotations: { bold: true } },
+          { type: 'text', text: { content: 'world' } },
+        ]}
+      />,
+    )
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('child_page')
+    expect((op.props as { title: readonly unknown[] }).title).toHaveLength(2)
+  })
+
+  it('ChildPage with custom_emoji icon projects the full envelope', () => {
+    const ops = collect(
+      <ChildPage
+        title="x"
+        icon={{
+          type: 'custom_emoji',
+          custom_emoji: { id: '00000000-0000-4000-8000-000000000abc' },
+        }}
+      />,
+    )
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect((op.props as { icon: unknown }).icon).toEqual({
+      type: 'custom_emoji',
+      custom_emoji: { id: '00000000-0000-4000-8000-000000000abc' },
+    })
+  })
+
+  it('ChildPage with no props emits a child_page append with empty props', () => {
+    const ops = collect(<ChildPage />)
+    const op = ops[0]!
+    if (op.kind !== 'append') throw new Error('expected append')
+    expect(op.type).toBe('child_page')
+    expect(op.props).toEqual({})
+  })
+
+  it('ChildPage reconciler instance is marked nodeKind: page', () => {
+    const { container } = renderWithContainer(<ChildPage title="x" />)
+    expect(container.topLevel[0]!.type).toBe('child_page')
+    expect(container.topLevel[0]!.nodeKind).toBe('page')
   })
 })

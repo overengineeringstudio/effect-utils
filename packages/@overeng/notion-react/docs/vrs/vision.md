@@ -26,9 +26,11 @@
 ## The Vision
 
 - A JSX-first authoring surface where `<Page><Heading1>...</Heading1></Page>`
-  is the full description of a Notion page. Block components match Notion
-  block types 1:1; inline components compose annotations and links into rich
-  text the caller never has to hand-assemble.
+  is the full description of a Notion page, including page-level metadata
+  (title, icon, cover) and nested sub-pages expressed as `<ChildPage>` with
+  their own children. Block components match Notion block types 1:1; inline
+  components compose annotations and links into rich text the caller never
+  has to hand-assemble.
 - A principled reconciliation step between successive renders so that an
   unchanged tree costs zero Notion API calls, and a one-line change costs a
   single `update`. The same code path covers cold-start (append everything)
@@ -54,8 +56,11 @@
 - Not a direct DOM renderer for end users. The companion web renderer exists
   to preview components visually (Storybook, design iteration); it is not a
   production React-DOM target and is not API-stable.
-- Not a general-purpose block database ORM. It outputs blocks within a
-  single page/container; it does not model databases, queries, or relations.
+- Not a general-purpose database ORM. Sub-pages under page parents are
+  first-class (`<ChildPage>` creates, updates, and archives pages), but
+  modeling databases, custom property schemas, queries, or relations is out
+  of scope. Database-parented pages may be supported incrementally without
+  changing this constraint.
 - Not a "write once, render anywhere" layer. JSX is the input; Notion is the
   output. Other targets (Markdown, HTML) are out of scope for v0.
 
@@ -74,3 +79,8 @@
   replaces.
 - **S5** A new block type can be added by writing a component (+ host-config
   projection) in under ~50 lines, without forking the library.
+- **S6** A JSX tree containing `<ChildPage>` nodes with their own children
+  syncs with the same idempotency guarantee (S1) and op-minimality guarantee
+  (S2) as a flat block tree: zero ops on re-render; one page-level op per
+  isolated metadata change; one `createPage` + minimum block appends on
+  insert; one `archivePage` on remove.

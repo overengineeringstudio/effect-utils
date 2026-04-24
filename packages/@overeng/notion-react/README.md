@@ -15,11 +15,57 @@ This library renders React → Notion **blocks**. Notion **databases**
 [`@overeng/notion-effect-client`](../notion-effect-client) directly for
 database operations.
 
+### Root page metadata
+
+The root `<Page>` accepts `title`, `icon`, and `cover`. When any of
+these change across syncs, the driver emits `pages.update` against
+the sync root.
+
+```tsx
+<Page
+  title="Q2 Launch Plan"
+  icon={{ type: 'emoji', emoji: '🚀' }}
+  cover={{ type: 'external', external: { url: 'https://example.com/banner.jpg' } }}
+>
+  <Heading1>Overview</Heading1>…
+</Page>
+```
+
+`title` accepts either a plain string (projected as a single rich-text
+span) or an explicit `PageTitleSpan[]` when you need annotations or
+multiple spans. Each span's `text.content` is capped at 2000 chars by
+the Notion API (A10).
+
 ### Sub-pages
 
-`<ChildPage>` renders a reference to an existing Notion page. Creating a
-new sub-page is a page-level op (`pages.create`), not a block-level op,
-and is not driven by this library today. Use the two-step pattern:
+`<ChildPage>` is a JSX-driven sub-page. By default, adding it to the
+tree creates a new Notion page under the sync parent; removing it
+archives the page; moving it to a different parent `<ChildPage>` reuses
+the same `blockKey`-identified page via `pages.move`. Nested block
+children render under the new page.
+
+```tsx
+<Page>
+  <Heading1>Team handbook</Heading1>
+  <ChildPage blockKey="onboarding" title="Onboarding" icon={{ type: 'emoji', emoji: '👋' }}>
+    <Heading2>Week 1</Heading2>
+    <Paragraph>Set up your dev environment.</Paragraph>
+    <ChildPage blockKey="onboarding-dev" title="Dev setup">
+      <Paragraph>Clone the repo, run `dt bun:install`.</Paragraph>
+    </ChildPage>
+  </ChildPage>
+</Page>
+```
+
+Each `<ChildPage>` is its own sync boundary with its own `blockKey`
+namespace — see
+[Concepts → Page boundaries](./docs/concepts/page-boundaries.md) and
+[Cookbook → Sub-page creation](./docs/cookbook/sub-page-creation.md).
+
+**Still supported — the two-step `pages.create` + `<ChildPage blockKey>`
+pattern.** Drop to this when you need control over the `pages.create`
+envelope: database parents (not yet supported from JSX),
+workspace-level pages, or custom properties.
 
 ```ts
 // 1. Create the page via @overeng/notion-effect-client
@@ -31,8 +77,6 @@ const subpage = yield* NotionPages.create({
 // 2. Render its id from JSX (read-only reference)
 <ChildPage blockKey={subpage.id} title="My Subpage" />
 ```
-
-Integrated JSX-driven sub-page creation may follow in a later version.
 
 ## Why
 
@@ -235,7 +279,7 @@ beginners, integrators, and contributors. Quick links:
   [reconciler](./docs/concepts/reconciler.md),
   [theming](./docs/concepts/theming.md)
 - [API overview](./docs/api.md) · [Cookbook](./docs/README.md#integrator--im-wiring-this-into-an-app) ·
-  [Migration](./docs/migration.md)
+  [Migration](./docs/migration.md) · [Limitations](./docs/limitations.md)
 - Contributors: [contributing](./docs/contributing.md) ·
   [testing](./docs/testing.md) ·
   [internals](./docs/internals/architecture.md)

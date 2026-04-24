@@ -118,6 +118,29 @@ export type SyncEvent = Data.TaggedEnum<{
     readonly error: string
     readonly at: number
   }
+  /**
+   * Page-scope op emitted by the diff (issue #618 phase 3b). Fires before
+   * the corresponding `pages.*` API call. `pageId` carries the target (for
+   * create this is the `tmpPageId` placeholder; resolved in `PageOpApplied`).
+   */
+  PageOpIssued: {
+    readonly id: number
+    readonly kind: 'createPage' | 'updatePage' | 'archivePage' | 'movePage' | 'reorderPages'
+    readonly pageId: string
+    readonly at: number
+  }
+  /**
+   * Page-scope op applied (#618 phase 3b). Fires after the API call lands.
+   * For createPage, `resolvedPageId` carries the server-minted real id.
+   */
+  PageOpApplied: {
+    readonly id: number
+    readonly kind: 'createPage' | 'updatePage' | 'archivePage' | 'movePage' | 'reorderPages'
+    readonly pageId: string
+    readonly resolvedPageId?: string
+    readonly durationMs: number
+    readonly at: number
+  }
 }>
 
 export const SyncEvent = Data.taggedEnum<SyncEvent>()
