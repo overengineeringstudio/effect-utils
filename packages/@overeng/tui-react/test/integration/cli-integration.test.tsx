@@ -224,7 +224,7 @@ describe('CLI Integration', () => {
     // logical output.
     process.stdout.write = ((chunk: unknown) => {
       const str = String(chunk)
-      capturedOutput.push(str.endsWith('\n') ? str.slice(0, -1) : str)
+      capturedOutput.push(str.endsWith('\n') === true ? str.slice(0, -1) : str)
       return true
     }) as typeof process.stdout.write
   })
