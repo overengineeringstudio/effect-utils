@@ -192,13 +192,14 @@ let
 
   runPnpmInstallFn = ''
     run_pnpm_install() {
+      local extra_install_args=("$@")
       local install_args
       if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" --frozen-lockfile ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" --frozen-lockfile ${installFlagsString})
       elif [ -n "''${CI:-}" ]; then
-        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" --no-frozen-lockfile ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" --no-frozen-lockfile ${installFlagsString})
       else
-        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" ${installFlagsString})
       fi
 
       if [ -z "''${CI:-}" ]; then
@@ -334,15 +335,16 @@ let
         _gvs_hash_file=""
         _gvs_links_dir="$(resolve_gvs_links_dir)"
         _purged_node_modules=false
+        _force_install=false
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
           _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
           mkdir -p "$(dirname "$_gvs_links_dir")"
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
-            echo "[pnpm] GVS config changed, clearing stale links"
-            rm -rf "$_gvs_links_dir"
+            echo "[pnpm] GVS config changed, forcing current workspace relink"
             purge_node_modules node_modules ${nodeModulesPaths}
             _purged_node_modules=true
+            _force_install=true
           fi
         fi
 
@@ -351,7 +353,11 @@ let
           purge_node_modules node_modules ${nodeModulesPaths}
         fi
 
-        run_pnpm_install
+        if [ "$_force_install" = true ]; then
+          run_pnpm_install --force
+        else
+          run_pnpm_install
+        fi
 
         # Persist GVS hash after successful install
         if [ -n "''${_gvs_hash_file:-}" ]; then
@@ -416,13 +422,9 @@ let
 
         purge_node_modules node_modules ${nodeModulesPaths}
 
-        # `pnpm:clean` is expected to force a genuinely fresh install. Keeping
-        # the live GVS projection around defeats that expectation because pnpm
-        # may reuse stale `links/` entries even after node_modules is gone.
-        gvs_links_dir="$(resolve_gvs_links_dir)"
-        if [ -n "''${gvs_links_dir:-}" ]; then
-          rm -rf "$gvs_links_dir" "$(dirname "$gvs_links_dir")/.effect-utils-gvs-links.hash"
-        fi
+        # The GVS `links/` directory lives under the shared store-dir. Deleting
+        # it from one workspace would break node_modules projections in other
+        # workspaces that point at the same shared store.
       '';
     };
 
