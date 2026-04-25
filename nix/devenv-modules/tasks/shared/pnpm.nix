@@ -194,11 +194,11 @@ let
     run_pnpm_install() {
       local install_args
       if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-        install_args=(install --config.confirmModulesPurge=false --frozen-lockfile ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" --frozen-lockfile ${installFlagsString})
       elif [ -n "''${CI:-}" ]; then
-        install_args=(install --config.confirmModulesPurge=false --no-frozen-lockfile ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" --no-frozen-lockfile ${installFlagsString})
       else
-        install_args=(install --config.confirmModulesPurge=false ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" ${installFlagsString})
       fi
 
       if [ -z "''${CI:-}" ]; then
@@ -398,7 +398,7 @@ let
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
         export npm_config_manage_package_manager_versions=false
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
       '';
     };
