@@ -1085,7 +1085,7 @@ export const coldFreshNixBuildStep = ({
 
 /**
  * Guard the pnpm dependency-prep contract against regressions that would
- * silently reintroduce package-manager self-bootstrap or non-frozen lockfile
+ * silently reintroduce package-manager self-bootstrap or implicit lockfile
  * normalization inside fixed-output builds.
  */
 export const pnpmBuilderContractStep = ({
@@ -1107,6 +1107,7 @@ export const pnpmBuilderContractStep = ({
     'for required in \\',
     "  'manage-package-manager-versions=false' \\",
     "  'npm_config_manage_package_manager_versions=false' \\",
+    "  'frozenLockfile ? true' \\",
     "  'pnpm install --frozen-lockfile --ignore-scripts'; do",
     '  if ! grep -Fq -- "$required" "$builder"; then',
     '    echo "::error::missing required pnpm builder contract fragment: $required"',
@@ -1114,7 +1115,6 @@ export const pnpmBuilderContractStep = ({
     '  fi',
     'done',
     'for forbidden in \\',
-    "  '--no-frozen-lockfile' \\",
     "  'lockfile-only' \\",
     "  'pnpm add pnpm@'; do",
     '  if grep -Fq -- "$forbidden" "$builder"; then',
@@ -1129,17 +1129,41 @@ export const pnpmBuilderContractStep = ({
 export const jobLocalMegarepoStore =
   '${{ runner.temp }}/megarepo-store/${{ github.run_id }}/${{ github.run_attempt }}/${{ github.job }}'
 
-/** Install megarepo CLI from effect-utils */
+/**
+ * Install the megarepo CLI into a job-local bin directory.
+ *
+ * Uses the effect-utils commit from megarepo.lock when available so setup-time
+ * `mr` has the same CLI contract as the shared task module used later by
+ * devenv. This avoids stale self-hosted runner profile state shadowing the
+ * pinned package.
+ */
 export const installMegarepoStep = {
   name: 'Install megarepo CLI',
-  run: 'nix profile install github:overengineeringstudio/effect-utils#megarepo',
+  run: `EU_REV=$(jq -r '.members["effect-utils"].commit // empty' megarepo.lock 2>/dev/null || true)
+if [ -n "$EU_REV" ]; then
+  MR_REF="github:overengineeringstudio/effect-utils/$EU_REV#megarepo"
+else
+  MR_REF="github:overengineeringstudio/effect-utils#megarepo"
+fi
+
+MR_OUT=$(nix build --no-link --print-out-paths "$MR_REF")
+MR_BIN_DIR="\${RUNNER_TEMP:-/tmp}/megarepo-bin"
+mkdir -p "$MR_BIN_DIR"
+ln -sf "$MR_OUT/bin/mr" "$MR_BIN_DIR/mr"
+if [ -n "\${GITHUB_PATH:-}" ]; then
+  printf '%s\n' "$MR_BIN_DIR" >> "$GITHUB_PATH"
+else
+  export PATH="$MR_BIN_DIR:$PATH"
+fi
+"$MR_BIN_DIR/mr" --version`,
   shell: 'bash',
 } as const
 
 /** Fetch latest refs and apply megarepo workspace. */
 export const syncMegarepoWorkspaceStep = (opts?: { skip?: string[] }) => {
   const args = ['mr', 'fetch', '--apply']
-  if (opts?.skip !== undefined) for (const s of opts.skip) args.push('--skip', s)
+  const skipCsv = opts?.skip?.join(',')
+  if (skipCsv !== undefined && skipCsv !== '') args.push('--skip', shellSingleQuote(skipCsv))
   return {
     name: 'Sync megarepo dependencies',
     env: { MEGAREPO_STORE: jobLocalMegarepoStore },
@@ -1161,8 +1185,8 @@ ${args.join(' ')}`,
  * conflicts on self-hosted runners.
  */
 export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {
-  const skipArgs = opts?.skip?.flatMap((s) => ['--skip', s]).join(' ') ?? ''
   const skipCsv = opts?.skip?.join(',') ?? ''
+  const skipArgs = skipCsv === '' ? '' : `--skip ${shellSingleQuote(skipCsv)}`
   const quotedSkipCsv = shellSingleQuote(skipCsv)
   const exportSkipMembersScript =
     skipCsv === ''

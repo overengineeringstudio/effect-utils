@@ -1672,6 +1672,7 @@ jobs:
           for required in \
             'manage-package-manager-versions=false' \
             'npm_config_manage_package_manager_versions=false' \
+            'frozenLockfile ? true' \
             'pnpm install --frozen-lockfile --ignore-scripts'; do
             if ! grep -Fq -- "$required" "$builder"; then
               echo "::error::missing required pnpm builder contract fragment: $required"
@@ -1679,7 +1680,6 @@ jobs:
             fi
           done
           for forbidden in \
-            '--no-frozen-lockfile' \
             'lockfile-only' \
             'pnpm add pnpm@'; do
             if grep -Fq -- "$forbidden" "$builder"; then

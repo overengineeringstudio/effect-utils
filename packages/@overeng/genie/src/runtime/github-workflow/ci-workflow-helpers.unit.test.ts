@@ -72,6 +72,18 @@ const applyMegarepoLockStepSource = extractSourceBlock(
   'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
   '/**\n * Resolve the devenv binary and do a fast store-path validity check.',
 )
+const installMegarepoStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export const installMegarepoStep = {',
+  '/** Fetch latest refs and apply megarepo workspace. */',
+)
+const megarepoTaskModuleSource = readFileSync(
+  new URL(
+    ['../../../../../../nix/devenv-modules/tasks/shared', 'megarepo.nix'].join('/'),
+    import.meta.url,
+  ),
+  'utf8',
+)
 
 describe('ci workflow retry helpers', () => {
   it('inlines the retry helper for bootstrap-safe downstream imports', () => {
@@ -162,10 +174,31 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
+  it('installs setup-time megarepo from the locked effect-utils commit without mutating nix profiles', () => {
+    expect(installMegarepoStepSource).toContain(
+      'MR_REF="github:overengineeringstudio/effect-utils/$EU_REV#megarepo"',
+    )
+    expect(installMegarepoStepSource).toContain(
+      'MR_OUT=$(nix build --no-link --print-out-paths "$MR_REF")',
+    )
+    expect(installMegarepoStepSource).toContain('printf \'%s\\n\' "$MR_BIN_DIR" >> "$GITHUB_PATH"')
+    expect(installMegarepoStepSource).not.toContain('nix profile install')
+  })
+
   it('only exports skipped megarepo members when the CI lane actually skips members', () => {
     expect(applyMegarepoLockStepSource).toContain('MEGAREPO_SKIP_MEMBERS')
     expect(applyMegarepoLockStepSource).toContain("skipCsv === ''")
     expect(applyMegarepoLockStepSource).toContain(`printf 'MEGAREPO_SKIP_MEMBERS=%s\\n'`)
+  })
+
+  it('passes skipped megarepo members as one comma-separated CLI option', () => {
+    expect(megarepoTaskModuleSource).toContain('MR_SKIP_ARGS+=(--skip "$_mr_skip_csv")')
+    expect(megarepoTaskModuleSource).not.toContain('MR_SKIP_ARGS+=(--skip "$member")')
+  })
+
+  it('accepts both historical and nested mr ls success payloads', () => {
+    expect(megarepoTaskModuleSource).toContain('(.value.members // .value.value.members // [])')
+    expect(megarepoTaskModuleSource).not.toContain('.value.members[].name')
   })
 })
 

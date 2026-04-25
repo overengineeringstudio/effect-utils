@@ -790,7 +790,7 @@ function createPackageJson<const T extends PackageJsonData, const TMeta>(
  * Aggregates are repository coordination files, not package-level authoring
  * surfaces, so this stays centralized instead of being repeated by callers.
  */
-const DEFAULT_AGGREGATE_PACKAGE_MANAGER = 'pnpm@11.0.0-beta.2'
+const DEFAULT_AGGREGATE_PACKAGE_MANAGER = 'pnpm@11.0.0-rc.5'
 
 /**
  * Project an aggregate manifest from package metadata for an explicit repo view.

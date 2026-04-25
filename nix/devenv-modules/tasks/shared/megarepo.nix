@@ -71,6 +71,15 @@ let
   loadCheckSkipMembersScript = ''
     _mr_skip_csv="''${MEGAREPO_SKIP_MEMBERS:-}"
 
+    build_mr_skip_args() {
+      MR_SKIP_ARGS=()
+      if [ -z "$_mr_skip_csv" ]; then
+        return 0
+      fi
+
+      MR_SKIP_ARGS+=(--skip "$_mr_skip_csv")
+    }
+
     should_skip_member() {
       local member="$1"
       if [ -z "$_mr_skip_csv" ]; then
@@ -82,6 +91,12 @@ let
         *) return 1 ;;
       esac
     }
+  '';
+
+  mrLsMemberNamesJq = ''
+    select(._tag == "Success")
+    | (.value.members // .value.value.members // [])
+    | .[].name
   '';
 
   tasks = {
@@ -130,7 +145,9 @@ let
           exit 0
         fi
 
-        mr fetch --apply${if syncAll then " --all" else ""}
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr fetch --apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
       '';
       # Status: use `mr status --output json` to detect if workspace reconciliation is needed.
       status = trace.status "mr:fetch-apply" "binary" ''
@@ -158,7 +175,9 @@ let
           exit 0
         fi
 
-        mr lock${if syncAll then " --all" else ""}
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr lock${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
       '';
     };
 
@@ -170,7 +189,9 @@ let
           exit 0
         fi
 
-        mr apply${if syncAll then " --all" else ""}
+        ${loadCheckSkipMembersScript}
+        build_mr_skip_args
+        mr apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
       '';
     };
 
@@ -193,7 +214,7 @@ let
         ${loadCheckSkipMembersScript}
 
         # Verify all configured members have symlinks in repos/
-        members=$(mr ls --output json | ${jq} -r 'select(._tag == "Success") | .value.members[].name') || exit 1
+        members=$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}') || exit 1
         for member in $members; do
           if should_skip_member "$member"; then
             continue
@@ -221,7 +242,7 @@ let
 
         # Check for missing member symlinks
         missing=""
-        members=$(mr ls --output json | ${jq} -r 'select(._tag == "Success") | .value.members[].name') || exit 1
+        members=$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}') || exit 1
         for member in $members; do
           if should_skip_member "$member"; then
             continue

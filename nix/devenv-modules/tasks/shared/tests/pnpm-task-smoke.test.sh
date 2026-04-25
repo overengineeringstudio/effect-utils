@@ -21,6 +21,8 @@ extract_task_script() {
   local workspace_root="$1"
   local attr="$2"
   local output_path="$3"
+  local module_args="${4:-packages = [ ];}"
+  local task_name="${5:-pnpm:install}"
 
   nix eval --impure --raw --expr "
     let
@@ -33,12 +35,12 @@ extract_task_script() {
         # path that is only realized when a derivation builds.
         writeText = name: text: builtins.toFile name text;
       };
-      module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix { packages = [ ]; }) {
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix { ${module_args} }) {
         pkgs = pkgsForTest;
         lib = pkgs.lib;
         config = { devenv.root = \"$workspace_root\"; };
       };
-    in module.tasks.\"pnpm:install\".${attr}
+    in (builtins.getAttr \"${task_name}\" module.tasks).${attr}
   " > "$output_path"
   chmod +x "$output_path"
 }
@@ -102,7 +104,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 workspace="$tmpdir/workspace"
-mkdir -p "$workspace/.direnv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin"
+mkdir -p "$workspace/.direnv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
 
 cat > "$workspace/package.json" <<'EOF'
 {"name":"smoke-workspace","private":true}
@@ -119,20 +121,40 @@ EOF
 cat > "$workspace/packages/demo/package.json" <<'EOF'
 {"name":"demo","private":true}
 EOF
+cat > "$workspace/nested/package.json" <<'EOF'
+{"name":"nested-workspace","private":true}
+EOF
+cat > "$workspace/nested/pnpm-workspace.yaml" <<'EOF'
+packages: ["pkg"]
+EOF
+cat > "$workspace/nested/pnpm-lock.yaml" <<'EOF'
+lockfileVersion: '9.0'
+settings: {}
+importers: {}
+packages: {}
+EOF
+cat > "$workspace/nested/pkg/package.json" <<'EOF'
+{"name":"nested-pkg","private":true}
+EOF
 
 cat > "$tmpdir/bin/pnpm" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${TEST_PNPM_LOG:?}"
+printf 'PWD=%s\n' "$PWD" >> "${TEST_PNPM_LOG:?}"
 if [ "${1:-}" = "--version" ]; then
   if [ "${TEST_PNPM_VERSION_READS_STDIN:-0}" = "1" ]; then
     cat >/dev/null
   fi
-  echo "11.0.0-beta.2"
+  echo "11.0.0-rc.5"
   exit 0
 fi
 if [ "${1:-}" = "install" ]; then
   printf 'PNPM_HOME=%s\n' "${PNPM_HOME:-}" >> "${TEST_PNPM_LOG:?}"
+  if [ "${TEST_PNPM_FAIL_NETWORK:-0}" = "1" ]; then
+    echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
+    exit 42
+  fi
   mkdir -p node_modules
   touch node_modules/.install-ok
   exit 0
@@ -148,6 +170,7 @@ set -euo pipefail
 
 # The smoke test is single-process, so it only needs a no-op lock command to
 # keep the generated task script moving through its install path.
+printf 'flock %s\n' "$*" >> "${TEST_FLOCK_LOG:?}"
 exit 0
 EOF
 chmod +x "$tmpdir/bin/flock"
@@ -182,6 +205,9 @@ chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
+extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--ignore-scripts" "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
 extract_shared_task_script \
   "nix/devenv-modules/tasks/shared/test.nix" \
   "test:demo" \
@@ -199,6 +225,8 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
+export TEST_FLOCK_LOG="$tmpdir/flock.log"
+unset CI
 
 echo "Test 1: status misses before install"
 (
@@ -217,9 +245,13 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   cd "$workspace"
   export HOME="$tmpdir/home"
   export PNPM_HOME="$workspace/.pnpm-home-a"
+  : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
   test -d "$workspace/node_modules"
+  grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
+  grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
+  grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
 )
 
 echo "Test 3: status hits after install with same GVS path"
@@ -241,7 +273,7 @@ echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
   unset PNPM_HOME
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
-  grep -qxF "PNPM_HOME=$workspace/.pnpm-home" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home" "$tmpdir/pnpm.log"
 )
 
 echo "Test 5: status hits after install with the default GVS path"
@@ -268,38 +300,76 @@ echo "Test 6: status misses after effective GVS path changes"
   assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
 )
 
-echo "Test 7: exec invoked pnpm version and install"
-grep -qxF -- "--version" "$tmpdir/pnpm.log"
+echo "Test 7: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 8: exec detaches stdin before probing pnpm version"
+echo "Test 8: nested workspace exec uses its own cwd, cache, and PNPM_HOME"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
-  export PNPM_HOME="$workspace/.pnpm-home-a"
-  export TEST_PNPM_VERSION_READS_STDIN=1
+  unset PNPM_HOME
   : > "$tmpdir/pnpm.log"
-  mkfifo "$tmpdir/open-stdin"
-  sleep 30 > "$tmpdir/open-stdin" &
-  producer_pid=$!
+  bash "$tmpdir/pnpm-install-nested.exec.sh"
+  test -f "$workspace/.direnv/task-cache/pnpm-install/nested/install-state.hash"
+  test -d "$workspace/nested/node_modules"
+  grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home/nested" "$tmpdir/pnpm.log"
+)
+
+echo "Test 9: nested workspace status hits after nested install"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
   set +e
-  timeout 3s bash "$tmpdir/pnpm-install.exec.sh" < "$tmpdir/open-stdin"
+  bash "$tmpdir/pnpm-install-nested.status.sh"
   exit_code=$?
   set -e
-  kill "$producer_pid" 2>/dev/null || true
-  wait "$producer_pid" 2>/dev/null || true
-  assert_exit_code 0 "$exit_code" "exec should not inherit an open stdin pipe"
+  assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
-grep -qxF -- "--version" "$tmpdir/pnpm.log"
 
-echo "Test 9: generated test task runs vitest without pnpm exec"
+echo "Test 10: install flags and pre-install hooks are applied"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  rm -f .preinstall-marker
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-flags.exec.sh"
+  test -f .preinstall-marker
+  grep -qxF "install --config.confirmModulesPurge=false --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
+)
+
+echo "Test 11: CI install failures preserve and classify the pnpm log"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export CI=1
+  export CI_DIAGNOSTICS_DIR="$tmpdir/diagnostics"
+  export TEST_PNPM_FAIL_NETWORK=1
+  unset PNPM_HOME
+  rm -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
+  set +e
+  output="$(bash "$tmpdir/pnpm-install.exec.sh" 2>&1)"
+  exit_code=$?
+  set -e
+  unset TEST_PNPM_FAIL_NETWORK
+  unset CI
+  assert_exit_code 42 "$exit_code" "CI install should return the pnpm failure code"
+  test -f "$tmpdir/diagnostics/pnpm-install.log"
+  grep -qF "ERR_PNPM_META_FETCH_FAIL" "$tmpdir/diagnostics/pnpm-install.log"
+  grep -qF "[pnpm] Install failed: registry/network fetch failure" <<< "$output"
+  grep -qF "Socket timeout" <<< "$output"
+)
+
+echo "Test 12: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 10: generated storybook task runs storybook without pnpm exec"
+echo "Test 13: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"

@@ -51,6 +51,7 @@ let
       );
     in
     pkgs.writeShellScriptBin cli ''
+      # cli-guard-wrapper:${cli}
       set -euo pipefail
 
       if [ "''${DT_PASSTHROUGH:-}" = "1" ]; then
@@ -62,6 +63,9 @@ let
           _resolved="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
           [ "$_resolved" = "$_self" ] && continue
           if [ -x "$_d/${cli}" ]; then
+            if grep -q '^# cli-guard-wrapper:${cli}$' "$_d/${cli}" 2>/dev/null; then
+              continue
+            fi
             _real="$_d/${cli}"
             break
           fi

@@ -13,6 +13,7 @@
   dirty ? false,
   prodInstall ? false,
   smokeTestArgs ? [ "--help" ],
+  generateCompletions ? true,
   extraBunBuildArgs ? [ ],
 }:
 
@@ -558,6 +559,9 @@ let
         src = depsSrc;
         sourceRoot = ".";
         lockfilePaths = [ lockfilePath ];
+        # Staged install roots are synthetic workspace subsets; pnpm 11 correctly
+        # rejects validating them against the source workspace's full lockfile.
+        frozenLockfile = false;
         preInstall = ''
           chmod -R +w .
         '';
@@ -585,6 +589,9 @@ let
       src = rootDepsSrc;
       sourceRoot = ".";
       lockfilePaths = [ "pnpm-lock.yaml" ];
+      # The aggregate staged root includes external workspace members so link:
+      # deps resolve as workspace packages, which requires a derived subset lock.
+      frozenLockfile = false;
       preInstall = ''
         chmod -R +w .
       '';
@@ -927,13 +934,15 @@ pkgs.stdenv.mkDerivation {
     installedBytes=''${installedBytes:-0}
     echo "cli-build: phase=install cli=${binaryName} package=${packageDir} duration=$(install_timer_elapsed "$installStartedAt")s installed_size=$(install_format_bytes "$installedBytes")"
 
-    # Generate shell completions (Effect CLI built-in support)
-    mkdir -p "$out/share/fish/vendor_completions.d"
-    mkdir -p "$out/share/bash-completion/completions"
-    mkdir -p "$out/share/zsh/site-functions"
-    $out/bin/${binaryName} --log-level none --completions fish > "$out/share/fish/vendor_completions.d/${binaryName}.fish" || true
-    $out/bin/${binaryName} --log-level none --completions bash > "$out/share/bash-completion/completions/${binaryName}" || true
-    $out/bin/${binaryName} --log-level none --completions zsh > "$out/share/zsh/site-functions/_${binaryName}" || true
+    ${lib.optionalString generateCompletions ''
+      # Generate shell completions (Effect CLI built-in support)
+      mkdir -p "$out/share/fish/vendor_completions.d"
+      mkdir -p "$out/share/bash-completion/completions"
+      mkdir -p "$out/share/zsh/site-functions"
+      $out/bin/${binaryName} --log-level none --completions fish > "$out/share/fish/vendor_completions.d/${binaryName}.fish" || true
+      $out/bin/${binaryName} --log-level none --completions bash > "$out/share/bash-completion/completions/${binaryName}" || true
+      $out/bin/${binaryName} --log-level none --completions zsh > "$out/share/zsh/site-functions/_${binaryName}" || true
+    ''}
     runHook postInstall
   '';
 }
