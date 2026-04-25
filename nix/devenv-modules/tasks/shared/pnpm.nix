@@ -53,6 +53,7 @@ let
       "${config.devenv.root}/.direnv/pnpm-home"
     else
       "${config.devenv.root}/.direnv/pnpm-home/${workspaceCacheName}";
+  defaultPnpmStoreDir = "${config.devenv.root}/.direnv/pnpm-store";
   installTaskName =
     if taskSuffix == null then "${taskNamePrefix}:install" else "${taskNamePrefix}:install:${taskSuffix}";
   updateTaskName =
@@ -138,6 +139,16 @@ let
       esac
     fi
   '';
+  ensureLocalPnpmStoreDirFn = ''
+    if [ -n "''${npm_config_store_dir:-}" ]; then
+      export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-$npm_config_store_dir}"
+    elif [ -n "''${PNPM_STORE_DIR:-}" ]; then
+      export npm_config_store_dir="$PNPM_STORE_DIR"
+    else
+      export PNPM_STORE_DIR=${lib.escapeShellArg defaultPnpmStoreDir}
+      export npm_config_store_dir="$PNPM_STORE_DIR"
+    fi
+  '';
 
   computeWorkspaceStateHash = ''
     compute_workspace_state_hash() {
@@ -181,13 +192,14 @@ let
 
   runPnpmInstallFn = ''
     run_pnpm_install() {
+      local extra_install_args=("$@")
       local install_args
       if [ -n "''${CI:-}" ] && ${if frozenInCi then "true" else "false"}; then
-        install_args=(install --config.confirmModulesPurge=false --frozen-lockfile ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" --frozen-lockfile ${installFlagsString})
       elif [ -n "''${CI:-}" ]; then
-        install_args=(install --config.confirmModulesPurge=false --no-frozen-lockfile ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" --no-frozen-lockfile ${installFlagsString})
       else
-        install_args=(install --config.confirmModulesPurge=false ${installFlagsString})
+        install_args=(install --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir" "''${extra_install_args[@]}" ${installFlagsString})
       fi
 
       if [ -z "''${CI:-}" ]; then
@@ -266,6 +278,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
         # manifests. The fingerprint also includes the active GVS projection
@@ -286,6 +299,15 @@ let
         if ! ${flock} -w 600 201; then
           echo "[pnpm] PNPM_HOME lock timeout after 600s: $pnpm_home_lockfile" >&2
           echo "[pnpm] Another pnpm install sharing this PNPM_HOME may be stuck" >&2
+          exit 1
+        fi
+
+        pnpm_store_lockfile="''${npm_config_store_dir:-${cacheRoot}}/.effect-utils-pnpm-store.lock"
+        mkdir -p "$(dirname "$pnpm_store_lockfile")"
+        exec 202>"$pnpm_store_lockfile"
+        if ! ${flock} -w 600 202; then
+          echo "[pnpm] store-dir lock timeout after 600s: $pnpm_store_lockfile" >&2
+          echo "[pnpm] Another pnpm install sharing this store-dir may be stuck" >&2
           exit 1
         fi
 
@@ -313,15 +335,16 @@ let
         _gvs_hash_file=""
         _gvs_links_dir="$(resolve_gvs_links_dir)"
         _purged_node_modules=false
+        _force_install=false
 
         if [ -n "''${_gvs_links_dir:-}" ]; then
           _gvs_hash_file="$(dirname "$_gvs_links_dir")/.effect-utils-gvs-links.hash"
           mkdir -p "$(dirname "$_gvs_links_dir")"
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
-            echo "[pnpm] GVS config changed, clearing stale links"
-            rm -rf "$_gvs_links_dir"
+            echo "[pnpm] GVS config changed, forcing current workspace relink"
             purge_node_modules node_modules ${nodeModulesPaths}
             _purged_node_modules=true
+            _force_install=true
           fi
         fi
 
@@ -330,7 +353,11 @@ let
           purge_node_modules node_modules ${nodeModulesPaths}
         fi
 
-        run_pnpm_install
+        if [ "$_force_install" = true ]; then
+          run_pnpm_install --force
+        else
+          run_pnpm_install
+        fi
 
         # Persist GVS hash after successful install
         if [ -n "''${_gvs_hash_file:-}" ]; then
@@ -345,6 +372,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
         hash_file="${cacheRoot}/install-state.hash"
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
@@ -374,8 +402,9 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
         export npm_config_manage_package_manager_versions=false
-        pnpm install --fix-lockfile --config.confirmModulesPurge=false
+        pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir"
         echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
       '';
     };
@@ -389,16 +418,13 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
 
         purge_node_modules node_modules ${nodeModulesPaths}
 
-        # `pnpm:clean` is expected to force a genuinely fresh install. Keeping
-        # the live GVS projection around defeats that expectation because pnpm
-        # may reuse stale `links/` entries even after node_modules is gone.
-        gvs_links_dir="$(resolve_gvs_links_dir)"
-        if [ -n "''${gvs_links_dir:-}" ]; then
-          rm -rf "$gvs_links_dir" "$(dirname "$gvs_links_dir")/.effect-utils-gvs-links.hash"
-        fi
+        # The GVS `links/` directory lives under the shared store-dir. Deleting
+        # it from one workspace would break node_modules projections in other
+        # workspaces that point at the same shared store.
       '';
     };
 
@@ -418,6 +444,8 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.direnv/pnpm-home}"
+    export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}"
+    export npm_config_store_dir="''${npm_config_store_dir:-$PNPM_STORE_DIR}"
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_manage_package_manager_versions=false
   '';

@@ -40,9 +40,14 @@ emit_dir_state() {
 }
 
 resolve_gvs_links_dir() {
-  # Prefer the explicit pnpm home because CI now intentionally decouples the
-  # mutable store location from the workspace-relative GVS projection root.
-  if [ -n "${PNPM_HOME:-}" ]; then
+  # pnpm 11 stores the GVS links under the effective store-dir. Prefer the
+  # explicit store setting when tasks share storage across isolated PNPM_HOME
+  # directories.
+  if [ -n "${npm_config_store_dir:-}" ]; then
+    printf '%s\n' "${npm_config_store_dir}/v11/links"
+  elif [ -n "${PNPM_STORE_DIR:-}" ]; then
+    printf '%s\n' "${PNPM_STORE_DIR}/v11/links"
+  elif [ -n "${PNPM_HOME:-}" ]; then
     printf '%s\n' "${PNPM_HOME}/store/v11/links"
   elif [ -n "${XDG_DATA_HOME:-}" ] && [ -d "${XDG_DATA_HOME}/pnpm/store/v11" ]; then
     printf '%s\n' "${XDG_DATA_HOME}/pnpm/store/v11/links"

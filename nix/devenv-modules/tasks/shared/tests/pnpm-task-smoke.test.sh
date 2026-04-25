@@ -151,6 +151,8 @@ if [ "${1:-}" = "--version" ]; then
 fi
 if [ "${1:-}" = "install" ]; then
   printf 'PNPM_HOME=%s\n' "${PNPM_HOME:-}" >> "${TEST_PNPM_LOG:?}"
+  printf 'PNPM_STORE_DIR=%s\n' "${PNPM_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
+  printf 'npm_config_store_dir=%s\n' "${npm_config_store_dir:-}" >> "${TEST_PNPM_LOG:?}"
   if [ "${TEST_PNPM_FAIL_NETWORK:-0}" = "1" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
     exit 42
@@ -205,6 +207,7 @@ chmod +x "$workspace/packages/demo/node_modules/.bin/storybook"
 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-nested.exec.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install-nested.status.sh" 'packages = [ "pkg" ]; workspaceRoot = "nested"; taskSuffix = "nested";' "pnpm:install:nested"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install-flags.exec.sh" 'packages = [ "." ]; installFlags = [ "--ignore-scripts" "--config.public-hoist-pattern=*" ]; preInstall = "touch .preinstall-marker";'
@@ -227,6 +230,8 @@ export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
 export TEST_FLOCK_LOG="$tmpdir/flock.log"
 unset CI
+unset PNPM_STORE_DIR
+unset npm_config_store_dir
 
 echo "Test 1: status misses before install"
 (
@@ -251,7 +256,10 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   test -d "$workspace/node_modules"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
+  grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
+  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.direnv/pnpm-store --force" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
+  grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
 
 echo "Test 3: status hits after install with same GVS path"
@@ -274,6 +282,8 @@ echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
 echo "Test 5: status hits after install with the default GVS path"
@@ -288,7 +298,7 @@ echo "Test 5: status hits after install with the default GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after default-PNPM_HOME install"
 )
 
-echo "Test 6: status misses after effective GVS path changes"
+echo "Test 6: status still hits when PNPM_HOME changes but store-dir stays shared"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -297,30 +307,49 @@ echo "Test 6: status misses after effective GVS path changes"
   bash "$tmpdir/pnpm-install.status.sh"
   exit_code=$?
   set -e
-  assert_exit_code 1 "$exit_code" "status should miss when GVS path changes"
+  assert_exit_code 0 "$exit_code" "status should hit when only PNPM_HOME changes"
 )
 
-echo "Test 7: exec invoked pnpm install"
+echo "Test 7: status misses after effective store-dir changes"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_STORE_DIR="$workspace/.other-pnpm-store"
+  unset npm_config_store_dir
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  assert_exit_code 1 "$exit_code" "status should miss when store-dir changes"
+)
+
+echo "Test 8: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 8: nested workspace exec uses its own cwd, cache, and PNPM_HOME"
+echo "Test 9: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
   unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
   test -f "$workspace/.direnv/task-cache/pnpm-install/nested/install-state.hash"
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
-echo "Test 9: nested workspace status hits after nested install"
+echo "Test 10: nested workspace status hits after nested install"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
   unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
   set +e
   bash "$tmpdir/pnpm-install-nested.status.sh"
   exit_code=$?
@@ -328,19 +357,21 @@ echo "Test 9: nested workspace status hits after nested install"
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
 
-echo "Test 10: install flags and pre-install hooks are applied"
+echo "Test 11: install flags and pre-install hooks are applied"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
   unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
   rm -f .preinstall-marker
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.confirmModulesPurge=false --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.direnv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
 )
 
-echo "Test 11: CI install failures preserve and classify the pnpm log"
+echo "Test 12: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -348,6 +379,8 @@ echo "Test 11: CI install failures preserve and classify the pnpm log"
   export CI_DIAGNOSTICS_DIR="$tmpdir/diagnostics"
   export TEST_PNPM_FAIL_NETWORK=1
   unset PNPM_HOME
+  unset PNPM_STORE_DIR
+  unset npm_config_store_dir
   rm -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
   set +e
   output="$(bash "$tmpdir/pnpm-install.exec.sh" 2>&1)"
@@ -362,18 +395,29 @@ echo "Test 11: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 12: generated test task runs vitest without pnpm exec"
+echo "Test 13: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 13: generated storybook task runs storybook without pnpm exec"
+echo "Test 14: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
+)
+
+echo "Test 15: clean leaves shared GVS links intact"
+(
+  cd "$workspace"
+  mkdir -p "$workspace/.direnv/pnpm-store/v11/links/shared-pkg"
+  mkdir -p "$workspace/node_modules" "$workspace/packages/demo/node_modules"
+  bash "$tmpdir/pnpm-clean.exec.sh"
+  test -d "$workspace/.direnv/pnpm-store/v11/links/shared-pkg"
+  test ! -e "$workspace/node_modules"
+  test ! -e "$workspace/packages/demo/node_modules"
 )
 
 echo ""
