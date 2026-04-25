@@ -230,6 +230,8 @@ export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
 export TEST_FLOCK_LOG="$tmpdir/flock.log"
 unset CI
+unset PNPM_STORE_DIR
+unset npm_config_store_dir
 
 echo "Test 1: status misses before install"
 (
