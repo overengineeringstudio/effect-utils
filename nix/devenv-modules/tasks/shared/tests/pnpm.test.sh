@@ -104,21 +104,51 @@ echo ""
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
-echo "Test 1: PNPM_HOME takes precedence for GVS links path"
-mkdir -p "$test_dir/pnpm-home/store/v11" "$test_dir/xdg/pnpm/store/v11" "$test_dir/home/.local/share/pnpm/store/v11"
+echo "Test 1: explicit store-dir takes precedence for GVS links path"
+mkdir -p "$test_dir/pnpm-store/v11" "$test_dir/pnpm-home/store/v11" "$test_dir/xdg/pnpm/store/v11" "$test_dir/home/.local/share/pnpm/store/v11"
 (
   export HOME="$test_dir/home"
+  export npm_config_store_dir="$test_dir/pnpm-store"
+  export PNPM_STORE_DIR="$test_dir/ignored-pnpm-store"
+  export PNPM_HOME="$test_dir/pnpm-home"
+  export XDG_DATA_HOME="$test_dir/xdg"
+  assert_eq \
+    "$test_dir/pnpm-store/v11/links" \
+    "$(resolve_gvs_links_dir)" \
+    "resolve_gvs_links_dir prefers npm_config_store_dir"
+)
+
+echo "Test 2: PNPM_STORE_DIR is used when npm_config_store_dir is unset"
+(
+  export HOME="$test_dir/home"
+  unset npm_config_store_dir
+  export PNPM_STORE_DIR="$test_dir/pnpm-store"
+  export PNPM_HOME="$test_dir/pnpm-home"
+  export XDG_DATA_HOME="$test_dir/xdg"
+  assert_eq \
+    "$test_dir/pnpm-store/v11/links" \
+    "$(resolve_gvs_links_dir)" \
+    "resolve_gvs_links_dir uses PNPM_STORE_DIR"
+)
+
+echo "Test 3: PNPM_HOME is used when store-dir is unset"
+(
+  export HOME="$test_dir/home"
+  unset npm_config_store_dir
+  unset PNPM_STORE_DIR
   export PNPM_HOME="$test_dir/pnpm-home"
   export XDG_DATA_HOME="$test_dir/xdg"
   assert_eq \
     "$test_dir/pnpm-home/store/v11/links" \
     "$(resolve_gvs_links_dir)" \
-    "resolve_gvs_links_dir prefers PNPM_HOME"
+    "resolve_gvs_links_dir falls back to PNPM_HOME"
 )
 
-echo "Test 2: XDG_DATA_HOME is used when PNPM_HOME is unset"
+echo "Test 4: XDG_DATA_HOME is used when PNPM_HOME is unset"
 (
   export HOME="$test_dir/home"
+  unset npm_config_store_dir
+  unset PNPM_STORE_DIR
   unset PNPM_HOME
   export XDG_DATA_HOME="$test_dir/xdg"
   assert_eq \
@@ -127,7 +157,7 @@ echo "Test 2: XDG_DATA_HOME is used when PNPM_HOME is unset"
     "resolve_gvs_links_dir uses XDG_DATA_HOME"
 )
 
-echo "Test 3: ensure_local_pnpm_home_default sets a workspace-local default"
+echo "Test 5: ensure_local_pnpm_home_default sets a workspace-local default"
 (
   unset PNPM_HOME
   ensure_local_pnpm_home_default "$test_dir/workspace"
@@ -137,7 +167,7 @@ echo "Test 3: ensure_local_pnpm_home_default sets a workspace-local default"
     "ensure_local_pnpm_home_default sets PNPM_HOME"
 )
 
-echo "Test 4: ensure_local_pnpm_home_default preserves an explicit PNPM_HOME"
+echo "Test 6: ensure_local_pnpm_home_default preserves an explicit PNPM_HOME"
 (
   export PNPM_HOME="$test_dir/custom-home"
   ensure_local_pnpm_home_default "$test_dir/workspace"
@@ -147,7 +177,7 @@ echo "Test 4: ensure_local_pnpm_home_default preserves an explicit PNPM_HOME"
     "ensure_local_pnpm_home_default keeps explicit PNPM_HOME"
 )
 
-echo "Test 5: Cache fingerprint changes when GVS path changes"
+echo "Test 7: Cache fingerprint changes when GVS path changes"
 fingerprint_a="$(cache_fingerprint "workspace-hash" "/tmp/a/store/v11/links")"
 fingerprint_b="$(cache_fingerprint "workspace-hash" "/tmp/b/store/v11/links")"
 if [ "$fingerprint_a" = "$fingerprint_b" ]; then
@@ -155,7 +185,7 @@ if [ "$fingerprint_a" = "$fingerprint_b" ]; then
   exit 1
 fi
 
-echo "Test 6: resolve_package_bin prefers package-local .bin shims"
+echo "Test 8: resolve_package_bin prefers package-local .bin shims"
 bin_fixture="$test_dir/bin-fixture"
 make_bin_fixture "$bin_fixture"
 resolved_bin="$(resolve_package_bin fake-tool fake-tool "$bin_fixture")"
@@ -165,14 +195,14 @@ assert_eq \
   "$resolved_bin" \
   "resolve_package_bin prefers the generated .bin shim"
 
-echo "Test 7: run_package_bin executes the .bin shim when present"
+echo "Test 9: run_package_bin executes the .bin shim when present"
 output="$(cd "$bin_fixture" && run_package_bin fake-tool fake-tool alpha beta)"
 assert_eq \
   "fake-tool-shim:alpha beta" \
   "$output" \
   "run_package_bin executes the resolved shim"
 
-echo "Test 8: resolve_package_bin falls back to the package bin file"
+echo "Test 10: resolve_package_bin falls back to the package bin file"
 fallback_fixture="$test_dir/fallback-bin-fixture"
 make_bin_fixture_without_shim "$fallback_fixture"
 resolved_fallback_bin="$(resolve_package_bin fallback-tool fallback-tool "$fallback_fixture")"
@@ -182,7 +212,7 @@ assert_eq \
   "$resolved_fallback_bin" \
   "resolve_package_bin falls back to the package bin file"
 
-echo "Test 9: Projection health passes when symlinked package can resolve deps"
+echo "Test 11: Projection health passes when symlinked package can resolve deps"
 healthy_dir="$test_dir/healthy"
 make_projection_fixture "$healthy_dir" 1
 set +e
@@ -191,7 +221,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health passes"
 
-echo "Test 10: Projection health ignores packages that do not export ./package.json"
+echo "Test 12: Projection health ignores packages that do not export ./package.json"
 exports_dir="$test_dir/exports"
 make_projection_fixture "$exports_dir" 1 1
 set +e
@@ -200,7 +230,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health should not depend on package.json exports"
 
-echo "Test 11: Projection health fails when symlinked package loses a transitive dep"
+echo "Test 13: Projection health fails when symlinked package loses a transitive dep"
 stale_dir="$test_dir/stale"
 make_projection_fixture "$stale_dir" 0
 set +e
@@ -209,7 +239,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
 
-echo "Test 12: Broken node_modules symlink is rejected before projection checks"
+echo "Test 14: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"
