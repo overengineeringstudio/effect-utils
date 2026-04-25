@@ -53,6 +53,7 @@ let
       "${config.devenv.root}/.direnv/pnpm-home"
     else
       "${config.devenv.root}/.direnv/pnpm-home/${workspaceCacheName}";
+  defaultPnpmStoreDir = "${config.devenv.root}/.direnv/pnpm-store";
   installTaskName =
     if taskSuffix == null then "${taskNamePrefix}:install" else "${taskNamePrefix}:install:${taskSuffix}";
   updateTaskName =
@@ -136,6 +137,16 @@ let
         */${workspaceCacheName}) ;;
         *) export PNPM_HOME="$PNPM_HOME/${workspaceCacheName}" ;;
       esac
+    fi
+  '';
+  ensureLocalPnpmStoreDirFn = ''
+    if [ -n "''${npm_config_store_dir:-}" ]; then
+      export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-$npm_config_store_dir}"
+    elif [ -n "''${PNPM_STORE_DIR:-}" ]; then
+      export npm_config_store_dir="$PNPM_STORE_DIR"
+    else
+      export PNPM_STORE_DIR=${lib.escapeShellArg defaultPnpmStoreDir}
+      export npm_config_store_dir="$PNPM_STORE_DIR"
     fi
   '';
 
@@ -266,6 +277,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
         mkdir -p "${cacheRoot}"
         # This cache tracks the effective install state, not just workspace
         # manifests. The fingerprint also includes the active GVS projection
@@ -286,6 +298,15 @@ let
         if ! ${flock} -w 600 201; then
           echo "[pnpm] PNPM_HOME lock timeout after 600s: $pnpm_home_lockfile" >&2
           echo "[pnpm] Another pnpm install sharing this PNPM_HOME may be stuck" >&2
+          exit 1
+        fi
+
+        pnpm_store_lockfile="''${npm_config_store_dir:-${cacheRoot}}/.effect-utils-pnpm-store.lock"
+        mkdir -p "$(dirname "$pnpm_store_lockfile")"
+        exec 202>"$pnpm_store_lockfile"
+        if ! ${flock} -w 600 202; then
+          echo "[pnpm] store-dir lock timeout after 600s: $pnpm_store_lockfile" >&2
+          echo "[pnpm] Another pnpm install sharing this store-dir may be stuck" >&2
           exit 1
         fi
 
@@ -345,6 +366,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
         hash_file="${cacheRoot}/install-state.hash"
 
         if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
@@ -374,6 +396,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
         export npm_config_manage_package_manager_versions=false
         pnpm install --fix-lockfile --config.confirmModulesPurge=false
         echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
@@ -389,6 +412,7 @@ let
         cd ${lib.escapeShellArg workspaceRootAbs}
         ${loadPnpmTaskHelpersFn}
         ${ensureLocalPnpmHomeFn}
+        ${ensureLocalPnpmStoreDirFn}
 
         purge_node_modules node_modules ${nodeModulesPaths}
 
@@ -418,6 +442,8 @@ in
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.direnv/pnpm-home}"
+    export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}"
+    export npm_config_store_dir="''${npm_config_store_dir:-$PNPM_STORE_DIR}"
     export npm_config_cache="$HOME/.cache/pnpm"
     export npm_config_manage_package_manager_versions=false
   '';
