@@ -44,7 +44,7 @@
     "@effect/workflow": "0.18.0",
     "@overeng/notion-effect-client": "workspace:^",
     "@overeng/notion-effect-schema": "workspace:^",
-    "@playwright/test": "1.58.2",
+    "@playwright/test": "1.59.0",
     "effect": "3.21.2",
     "vitest": "3.2.4"
   },

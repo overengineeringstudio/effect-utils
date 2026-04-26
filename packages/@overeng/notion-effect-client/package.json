@@ -34,7 +34,7 @@
     "@effect/platform-node": "^0.106.0",
     "@effect/rpc": "^0.75.1",
     "@effect/workflow": "^0.18.0",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.59.0",
     "effect": "^3.21.2"
   },
   "$genie": {
