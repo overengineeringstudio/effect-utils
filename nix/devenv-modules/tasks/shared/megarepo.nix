@@ -30,11 +30,14 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   jq = "${pkgs.jq}/bin/jq";
-  bootstrapOnlyArgs = lib.concatMapStringsSep " " (member: "--only ${lib.escapeShellArg member}") bootstrapMembers;
+  bootstrapOnlyArgs = lib.concatMapStringsSep " " (
+    member: "--only ${lib.escapeShellArg member}"
+  ) bootstrapMembers;
 
   # Single-pass jq script that compares megarepo.lock member commits against
   # a Nix lock file (devenv.lock or flake.lock). Handles multiple inputs
-  # pointing to the same repo (e.g. effect-utils + playwright).
+  # pointing to the same repo (e.g. effect-utils + playwright), including
+  # branch-pinned git locks that encode GitHub remotes as `type = "git"`.
   # Takes two args: $1 = megarepo.lock path, $2 = lock file path
   lockSyncCheckScript = ''
     set -euo pipefail
@@ -45,9 +48,29 @@ let
     mismatches=$(${jq} -n \
       --slurpfile ml "$ml" \
       --slurpfile lf "$lf" '
+      def repo_key($node):
+        if $node.locked?.type == "github" then
+          "\($node.locked.owner)/\($node.locked.repo)"
+        elif $node.locked?.type == "git" then
+          ($node.locked.url // $node.original.url // "") as $url |
+          if $url == "" then
+            empty
+          else
+            $url
+            | sub("^git\\+ssh://git@github.com/"; "")
+            | sub("^ssh://git@github.com/"; "")
+            | sub("^git@github.com:"; "")
+            | sub("^https://github.com/"; "")
+            | sub("\\.git$"; "")
+          end
+        else
+          empty
+        end;
+
       [$lf[0].nodes | to_entries[] |
-        select(.value.locked?.type == "github") |
-        { key: "\(.value.locked.owner)/\(.value.locked.repo)", rev: .value.locked.rev, name: .key }
+        (repo_key(.value)) as $key |
+        select($key != null and $key != "") |
+        { key: $key, rev: .value.locked.rev, name: .key }
       ] as $lock_inputs |
       [$ml[0].members | to_entries[] |
         (.value.url | split("/") | .[-2:] | join("/")) as $mkey |
