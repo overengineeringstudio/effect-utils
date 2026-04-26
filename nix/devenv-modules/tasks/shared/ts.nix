@@ -39,14 +39,20 @@
   tsconfigFile ? "tsconfig.all.json",
   tscBin ? "tsc",
 }:
-{ lib, pkgs, config, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
-  inheritedCheckAfter = config.tasks."ts:check".after or [
-    "genie:run"
-    "pnpm:install"
-  ];
+  inheritedCheckAfter =
+    config.tasks."ts:check".after or [
+      "genie:run"
+      "pnpm:install"
+    ];
 
   # Script that runs tsc with --extendedDiagnostics --verbose,
   # parses per-project timing, and emits OTEL child spans.

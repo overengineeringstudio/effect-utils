@@ -72,22 +72,20 @@ in
     "check:quick" = {
       description = "Fast checks for development (${checkQuickTypecheckTask}${lib.optionalString hasLint ", lint"}${lib.optionalString hasNixCheck ", nix-fingerprint"}) without tests";
       exec = "true";
-      after = [ checkQuickTypecheckTask ]
-        ++ megarepoTasks
-        ++ lintTask
-        ++ nixQuickTask
-        ++ extraChecks;
+      after = [ checkQuickTypecheckTask ] ++ megarepoTasks ++ lintTask ++ nixQuickTask ++ extraChecks;
     };
 
     "check:all" = {
       description = "All checks (${checkAllTypecheckTask}${extraDesc})";
       exec = "true";
-      after = [ checkAllTypecheckTask ]
-        ++ megarepoTasks
-        ++ extraChecks
-        ++ lintTask
-        ++ nixFullTask
-        ++ testTasks;
+      after = [
+        checkAllTypecheckTask
+      ]
+      ++ megarepoTasks
+      ++ extraChecks
+      ++ lintTask
+      ++ nixFullTask
+      ++ testTasks;
     };
   };
 }

@@ -1,4 +1,7 @@
-{ pkgs, lib ? pkgs.lib }:
+{
+  pkgs,
+  lib ? pkgs.lib,
+}:
 let
   # All deploy tasks accept the same high-level input shape via DEVENV_TASK_INPUT.
   # Provider modules still own their provider-specific behavior, but type parsing
@@ -123,7 +126,12 @@ let
       echo "${providerLabel} deploy URL: $final_url"
       echo "${providerLabel} deployed at UTC: $deployed_at_utc"
       echo "DEPLOY_TASK_METADATA: $deploy_metadata_json"
-      ${if legacyMetadataPrefix == null then "" else ''echo "${legacyMetadataPrefix}: $deploy_metadata_json"''}
+      ${
+        if legacyMetadataPrefix == null then
+          ""
+        else
+          ''echo "${legacyMetadataPrefix}: $deploy_metadata_json"''
+      }
     '';
 in
 {
