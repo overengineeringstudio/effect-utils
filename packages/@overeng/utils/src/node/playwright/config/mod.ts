@@ -15,7 +15,7 @@ import { createServer } from 'node:net'
 import type { PlaywrightTestConfig } from '@playwright/test'
 export type { PlaywrightTestConfig }
 
-import { shouldNeverHappen } from '../../../isomorphic/mod.ts'
+import { shouldNeverHappen } from '../../../isomorphic/core.ts'
 /** Web server configuration for Vite. */
 export interface WebServerConfig {
   /** Command to start the dev server (use `{{port}}` placeholder) */
