@@ -62,7 +62,20 @@ let
           }
         ' "$hashSourcePath"
       else
-        grep -oE "$hashKey\\s*=\\s*\"sha256-[^\"]+\"" "$hashSourcePath" | grep -oE 'sha256-[^"]+' | head -1 || true
+        local directHash
+        directHash=$(grep -oE "$hashKey\\s*=\\s*\"sha256-[^\"]+\"" "$hashSourcePath" | grep -oE 'sha256-[^"]+' | head -1 || true)
+        if [ -n "$directHash" ]; then
+          printf '%s\n' "$directHash"
+          return
+        fi
+
+        if [ "$hashKey" = "bunDepsHash" ] || [ "$hashKey" = "pnpmDepsHash" ]; then
+          ${pkgs.perl}/bin/perl -0777 -ne '
+            if (/depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*"([^"]+)"/s) {
+              print $1;
+            }
+          ' "$hashSourcePath"
+        fi
       fi
     }
 
@@ -109,6 +122,19 @@ let
           ' "$hashSourcePath"
         fi
       else
+        if [ "$hashKey" = "bunDepsHash" ] || [ "$hashKey" = "pnpmDepsHash" ]; then
+          if ${pkgs.perl}/bin/perl -0777 -ne '
+            exit 0 if /depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/s;
+            exit 1;
+          ' "$hashSourcePath"; then
+            ${pkgs.perl}/bin/perl -0777 -i -pe '
+              my $val = $ENV{"HASH_VALUE"};
+              s/(depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/$1 . qq{"$val"}/se;
+            ' "$hashSourcePath"
+            return
+          fi
+        fi
+
         ${pkgs.perl}/bin/perl -0777 -i -pe '
           my $key = $ENV{"HASH_KEY"};
           my $val = $ENV{"HASH_VALUE"};

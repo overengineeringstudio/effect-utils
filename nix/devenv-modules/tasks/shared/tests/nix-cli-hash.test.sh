@@ -165,6 +165,20 @@ update_hash_in_file() {
       ' "$buildNixPath"
     fi
   else
+    if [ "$hashKey" = "bunDepsHash" ] || [ "$hashKey" = "pnpmDepsHash" ]; then
+      if perl -0777 -ne '
+        exit 0 if /depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/s;
+        exit 1;
+      ' "$buildNixPath"; then
+        export HASH_VALUE="$newValue"
+        perl -0777 -i -pe '
+          my $val = $ENV{"HASH_VALUE"};
+          s/(depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/$1 . qq{"$val"}/se;
+        ' "$buildNixPath"
+        return
+      fi
+    fi
+
     # Simple single hash pattern
     export HASH_KEY="$hashKey"
     export HASH_VALUE="$newValue"
@@ -203,6 +217,32 @@ if grep -q 'lockfileHash = "sha256-LOCKFILE12345678901234567890123456789012="' "
   echo "  ✓ Other hashes preserved"
 else
   echo "  ✗ Other hashes were incorrectly modified"
+  cat "$tmpfile"
+  rm "$tmpfile"
+  exit 1
+fi
+rm "$tmpfile"
+
+# Test 3: Nested depsBuilds main hash pattern
+echo "Testing nested depsBuilds main hash pattern..."
+tmpfile=$(mktemp)
+cat > "$tmpfile" << 'EOF'
+{ pkgs }:
+{
+  depsBuilds = {
+    "." = {
+      hash = "sha256-OLDHASH123456789012345678901234567890123=";
+    };
+  };
+}
+EOF
+
+update_hash_in_file "pnpmDepsHash" "sha256-NESTEDHASH999999999999999999999999999999=" "$tmpfile"
+
+if grep -q 'hash = "sha256-NESTEDHASH999999999999999999999999999999="' "$tmpfile"; then
+  echo "  ✓ Nested depsBuilds hash update works"
+else
+  echo "  ✗ Nested depsBuilds hash update failed"
   cat "$tmpfile"
   rm "$tmpfile"
   exit 1

@@ -44,10 +44,7 @@ let
     else
       cache.mkCachePath "pnpm-install/${workspaceCacheName}";
   workspaceRootAbs =
-    if workspaceRoot == "." then
-      config.devenv.root
-    else
-      "${config.devenv.root}/${workspaceRoot}";
+    if workspaceRoot == "." then config.devenv.root else "${config.devenv.root}/${workspaceRoot}";
   defaultPnpmHome =
     if workspaceRoot == "." then
       "${config.devenv.root}/.direnv/pnpm-home"
@@ -55,7 +52,10 @@ let
       "${config.devenv.root}/.direnv/pnpm-home/${workspaceCacheName}";
   defaultPnpmStoreDir = "${config.devenv.root}/.direnv/pnpm-store";
   installTaskName =
-    if taskSuffix == null then "${taskNamePrefix}:install" else "${taskNamePrefix}:install:${taskSuffix}";
+    if taskSuffix == null then
+      "${taskNamePrefix}:install"
+    else
+      "${taskNamePrefix}:install:${taskSuffix}";
   updateTaskName =
     if taskSuffix == null then "${taskNamePrefix}:update" else "${taskNamePrefix}:update:${taskSuffix}";
   cleanTaskName =

@@ -149,7 +149,9 @@ let
             ${netlify} api getCurrentUser --auth="$NETLIFY_AUTH_TOKEN" >"$auth_user_file" 2>/dev/null
             auth_user_exit="$?"
             if [ -n "${if siteId != null then siteId else ""}" ]; then
-              ${netlify} api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${if siteId != null then siteId else ""}\"}" >"$auth_site_file" 2>/dev/null
+              ${netlify} api getSite --auth="$NETLIFY_AUTH_TOKEN" --data "{\"site_id\":\"${
+                if siteId != null then siteId else ""
+              }\"}" >"$auth_site_file" 2>/dev/null
               auth_site_exit="$?"
             else
               auth_site_exit=1
@@ -167,7 +169,9 @@ let
             if [ "$auth_site_exit" -eq 0 ]; then
               resolved_account_slug="$(${pkgs.jq}/bin/jq -r '.account_slug // "unknown"' "$auth_site_file")"
               resolved_site_name="$(${pkgs.jq}/bin/jq -r '.name // "unknown"' "$auth_site_file")"
-              echo "  getSite(${if siteId != null then siteId else "site-id-unset"}): ok (site=''${resolved_site_name}, account=''${resolved_account_slug})" >&2
+              echo "  getSite(${
+                if siteId != null then siteId else "site-id-unset"
+              }): ok (site=''${resolved_site_name}, account=''${resolved_account_slug})" >&2
             else
               echo "  getSite: skipped or failed (no siteId configured)" >&2
             fi

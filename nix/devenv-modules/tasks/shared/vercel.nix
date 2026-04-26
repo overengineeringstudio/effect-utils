@@ -88,24 +88,22 @@ let
     '';
 
   # Shared URL extraction + output (used by both modes)
-  sharedEpilogue =
-    deployment:
-    ''
-      deploy_url="$(${pkgs.gnugrep}/bin/grep -Eo 'https://[^[:space:]"]+\.vercel\.app' "$deploy_log" | tail -n 1 || true)"
-      rm -f "$deploy_log"
+  sharedEpilogue = deployment: ''
+    deploy_url="$(${pkgs.gnugrep}/bin/grep -Eo 'https://[^[:space:]"]+\.vercel\.app' "$deploy_log" | tail -n 1 || true)"
+    rm -f "$deploy_log"
 
-      if [ "$deploy_exit" -ne 0 ]; then
-        exit "$deploy_exit"
-      fi
+    if [ "$deploy_exit" -ne 0 ]; then
+      exit "$deploy_exit"
+    fi
 
-      if [ -z "$deploy_url" ]; then
-        echo "Error: Could not determine Vercel deploy URL from CLI output." >&2
-        exit 1
-      fi
+    if [ -z "$deploy_url" ]; then
+      echo "Error: Could not determine Vercel deploy URL from CLI output." >&2
+      exit 1
+    fi
 
-      raw_deploy_url="$deploy_url"
-      final_url="$deploy_url"
-    '';
+    raw_deploy_url="$deploy_url"
+    final_url="$deploy_url"
+  '';
 
   # ── Build mode ──────────────────────────────────────────────────────────
   # Pull Vercel project settings, build locally, then deploy prebuilt output.

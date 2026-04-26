@@ -12,8 +12,14 @@ let
     builtins.readFile ../shared/pnpm-task-helpers.sh
   );
   packages = [
-    { path = "packages/@overeng/notion-effect-client"; name = "notion-effect-client"; }
-    { path = "packages/@overeng/notion-cli"; name = "notion-cli"; }
+    {
+      path = "packages/@overeng/notion-effect-client";
+      name = "notion-effect-client";
+    }
+    {
+      path = "packages/@overeng/notion-cli";
+      name = "notion-cli";
+    }
   ];
   vitestExec = ''
     set -euo pipefail
