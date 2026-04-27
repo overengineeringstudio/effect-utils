@@ -225,6 +225,12 @@ extract_shared_task_script \
   "$tmpdir/storybook-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install.status.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-clean.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-nested.status.sh"
+rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-flags.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/test-demo.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
