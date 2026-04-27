@@ -559,9 +559,10 @@ let
         src = depsSrc;
         sourceRoot = ".";
         lockfilePaths = [ lockfilePath ];
-        # Staged install roots are synthetic workspace subsets; pnpm 11 correctly
-        # rejects validating them against the source workspace's full lockfile.
-        frozenLockfile = false;
+        # Fixed-output dependency preparation must not let pnpm repair or
+        # resolve the staged lockfile inside the sandbox. If a synthetic
+        # install root is stale, fail here and fix the staged lockfile source.
+        frozenLockfile = true;
         preInstall = ''
           chmod -R +w .
         '';
@@ -589,9 +590,10 @@ let
       src = rootDepsSrc;
       sourceRoot = ".";
       lockfilePaths = [ "pnpm-lock.yaml" ];
-      # The aggregate staged root includes external workspace members so link:
-      # deps resolve as workspace packages, which requires a derived subset lock.
-      frozenLockfile = false;
+      # Fixed-output dependency preparation must be a pure materialization of
+      # the staged manifests and lockfile. Unfrozen installs can rewrite the
+      # effective dependency graph and produce hash ping-pong across builders.
+      frozenLockfile = true;
       preInstall = ''
         chmod -R +w .
       '';

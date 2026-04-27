@@ -81,6 +81,7 @@
         packages = {
           genie = effectUtilsPackages.genie;
           megarepo = effectUtilsPackages.megarepo;
+          "mk-pnpm-cli-pure-eval-fixture" = pureEvalFixture;
           oxlint-npm = effectUtilsPackages.oxlint-npm;
           default = effectUtilsPackages.megarepo;
         };
