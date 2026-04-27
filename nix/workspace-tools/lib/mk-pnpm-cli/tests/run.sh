@@ -245,6 +245,24 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-derived-workspace-root"
 
+  echo "Check: downstream prepared deps use frozen lockfile mode"
+  local drv
+  drv="$(
+    nix eval --raw --no-write-lock-file \
+      --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
+      "path:$DOWNSTREAM_DIR#packages.$SYSTEM.mk-pnpm-cli-pure-eval-fixture.passthru.depsBuildsByInstallRoot.root.drvPath"
+  )"
+  local install_phase
+  install_phase="$(nix derivation show "$drv" | jq -r '.derivations | to_entries[0].value.env.installPhase')"
+  if [[ "$install_phase" != *'install --frozen-lockfile --ignore-scripts'* ]]; then
+    echo "error: prepared deps derivation does not use --frozen-lockfile: $drv" >&2
+    exit 1
+  fi
+  if [[ "$install_phase" == *'install --no-frozen-lockfile --ignore-scripts'* ]]; then
+    echo "error: prepared deps derivation still uses --no-frozen-lockfile: $drv" >&2
+    exit 1
+  fi
+
   echo "Timing: downstream-pure-eval $(( $(date +%s) - start ))s"
 }
 

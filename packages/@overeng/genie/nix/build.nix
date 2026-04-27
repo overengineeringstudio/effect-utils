@@ -24,7 +24,7 @@ let
     # Managed by `dt nix:hash:genie` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-D7R3eVcqh8EKUVS+M8mZFHfEuX6yDsP0LsId+1k8pmE=";
+        hash = "sha256-botZT9BfaxJabjmacIg0A5aqoMM0/XbEIPe4X/an0Ts=";
       };
     };
     inherit gitRev commitTs dirty;
