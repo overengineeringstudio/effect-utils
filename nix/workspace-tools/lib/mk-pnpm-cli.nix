@@ -15,6 +15,10 @@
   smokeTestArgs ? [ "--help" ],
   generateCompletions ? true,
   extraBunBuildArgs ? [ ],
+  # Nix-owned native Node packages to link into the restored workspace during
+  # CLI bundling. This keeps pnpm dependency preparation platform-neutral while
+  # still supporting packages that resolve native bindings by npm package name.
+  nativeNodePackages ? [ ],
 }:
 
 let
@@ -24,7 +28,7 @@ let
   coerceSourceRoot =
     sourceRoot:
     if builtins.isAttrs sourceRoot && builtins.hasAttr "outPath" sourceRoot then
-      if (sourceRoot.type or null) == "derivation" then sourceRoot.outPath else sourceRoot
+      sourceRoot.outPath
     else if builtins.isPath sourceRoot then
       sourceRoot
     else
@@ -36,11 +40,16 @@ let
     prefix: sourceRoot:
     let
       rawPath = coerceSourceRoot sourceRoot;
+      normalizedName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
+      sanitizedPath = builtins.path {
+        path = rawPath;
+        name = normalizedName;
+      };
     in
-    builtins.path {
-      path = rawPath;
-      name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
-    };
+    pkgs.runCommand normalizedName { inherit sanitizedPath; } ''
+      mkdir -p "$out"
+      cp -R "$sanitizedPath"/. "$out"/
+    '';
 
   workspaceSourceRawRoots = lib.mapAttrs (_: coerceSourceRoot) workspaceSources;
   workspaceSourceRoots = lib.mapAttrs normalizeSourceRoot workspaceSources;
@@ -83,10 +92,16 @@ let
 
   snapshotPath =
     namePrefix: path:
-    builtins.path {
-      path = path;
-      name = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] namePrefix);
-    };
+    let
+      snapshotName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] namePrefix);
+      sanitizedPath = builtins.path {
+        path = path;
+        name = snapshotName;
+      };
+    in
+    pkgs.runCommand snapshotName { inherit sanitizedPath; } ''
+      cp "$sanitizedPath" "$out"
+    '';
 
   rawFileSourcePathFor =
     relPath:
@@ -265,12 +280,11 @@ let
     dir: !(lib.elem dir allExternallyOwnedDirs)
   ) workspaceClosureDirs;
 
-  # The aggregate root still needs every workspace member listed in its
-  # pnpm-workspace.yaml, even when some members are owned by nested install
-  # roots. Otherwise pnpm treats downstream link: deps into those external
-  # roots as opaque file links and materializes zero-byte placeholders in the
-  # aggregate root node_modules instead of workspace symlinks.
-  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml workspaceClosureDirs (
+  # Dependency preparation already gives each external install root its own
+  # dedicated deps-build. Keep the aggregate root workspace scoped to the
+  # members it actually owns; otherwise pnpm validates external member manifests
+  # against the aggregate root lockfile and reports false stale-lock failures.
+  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml aggregateOwnedWorkspaceClosureDirs (
     workspaceSuffixLines rootPnpmWorkspaceYaml
   );
 
@@ -340,12 +354,12 @@ let
     let
       entry = builtins.getAttr installDir depsBuilds;
     in
-    if !(builtins.isAttrs entry && entry ? hash) then
+    if !(builtins.isAttrs entry && entry ? hash && builtins.isString entry.hash) then
       throw "mk-pnpm-cli: depsBuilds.${installDir} must be { hash = \"sha256-...\"; }"
     else
       {
         dir = installDir;
-        hash = entry.hash;
+        inherit (entry) hash;
       }
   ) (builtins.attrNames depsBuilds);
 
@@ -354,7 +368,23 @@ let
     if !(builtins.hasAttr installDir depsBuilds) then
       throw "mk-pnpm-cli: depsBuilds is missing an entry for install root ${installDir}"
     else
-      (builtins.getAttr installDir depsBuilds).hash;
+      let
+        entry = builtins.getAttr installDir depsBuilds;
+      in
+      if !(builtins.isAttrs entry && entry ? hash && builtins.isString entry.hash) then
+        throw "mk-pnpm-cli: depsBuilds.${installDir} must be { hash = \"sha256-...\"; }"
+      else
+        entry.hash;
+
+  mkdirOutParentCmd =
+    relPath:
+    let
+      parent = builtins.dirOf relPath;
+    in
+    if parent == "." then
+      ''mkdir -p "$out"''
+    else
+      ''mkdir -p "$out/${parent}"'';
 
   copyFileCmd =
     relPath:
@@ -362,7 +392,7 @@ let
       srcPath = absoluteFileSourcePathFor relPath;
     in
     ''
-      mkdir -p "$out/$(dirname "${relPath}")"
+      ${mkdirOutParentCmd relPath}
       cp ${lib.escapeShellArg (toString srcPath)} "$out/${relPath}"
     '';
 
@@ -372,8 +402,8 @@ let
       srcPath = absoluteDirectorySourcePathFor relPath;
     in
     ''
-      mkdir -p "$out/$(dirname "${relPath}")"
-      cp -R ${lib.escapeShellArg (toString srcPath)} "$out/$(dirname "${relPath}")/"
+      ${mkdirOutParentCmd relPath}
+      cp -R ${lib.escapeShellArg (toString srcPath)} "$out/${builtins.dirOf relPath}/"
       chmod -R +w "$out/${relPath}"
     '';
 
@@ -396,12 +426,11 @@ let
     installDir: workspaceYaml:
     let
       targetPath = installRootScopedPath installDir "pnpm-workspace.yaml";
+      workspaceYamlFile = pkgs.writeText "pnpm-workspace.yaml" workspaceYaml;
     in
     ''
-      mkdir -p "$out/$(dirname "${targetPath}")"
-      cat > "$out/${targetPath}" <<'EOF'
-      ${workspaceYaml}
-      EOF
+      ${mkdirOutParentCmd targetPath}
+      cp ${workspaceYamlFile} "$out/${targetPath}"
     '';
 
   /**
@@ -485,11 +514,13 @@ let
           targetRelPath = if targetPrefix == "" then relPath else "${targetPrefix}/${relPath}";
           srcPathArg = lib.escapeShellArg (toString srcPath);
           targetRelPathArg = lib.escapeShellArg targetRelPath;
+          targetParentArg = lib.escapeShellArg (builtins.dirOf targetRelPath);
         in
         ''
           target_patch=${targetRelPathArg}
-          mkdir -p "$out/$(dirname "$target_patch")"
-          chmod -R +w "$out/$(dirname "$target_patch")" 2>/dev/null || true
+          target_parent=${targetParentArg}
+          mkdir -p "$out/$target_parent"
+          chmod -R +w "$out/$target_parent" 2>/dev/null || true
           cp ${srcPathArg} "$out/$target_patch"
         '';
     in
@@ -646,11 +677,7 @@ let
       ''
       + builtins.concatStringsSep "\n" (map copyFileCmd rootWorkspaceFiles)
       + builtins.concatStringsSep "\n" (map copyOptionalFileCmd optionalRootWorkspaceFiles)
-      + ''
-                cat > "$out/pnpm-workspace.yaml" <<'EOF'
-        ${filteredRootPnpmWorkspaceYaml}
-        EOF
-      ''
+      + writeWorkspaceYamlCmd "." filteredRootPnpmWorkspaceYaml
       + builtins.concatStringsSep "\n" (
         map (
           root:
@@ -674,12 +701,7 @@ let
                 ++ (map copyDirCmd (builtins.filter (dir: dir != root.installDir) root.memberDirs))
             )
             ++ [
-              ''
-                                  mkdir -p "$out/${root.installDir}"
-                                  cat > "$out/${root.installDir}/pnpm-workspace.yaml" <<'EOF'
-                ${root.filteredPnpmWorkspaceYaml}
-                EOF
-              ''
+              (writeWorkspaceYamlCmd root.installDir root.filteredPnpmWorkspaceYaml)
             ]
           )
         ) externalInstallRoots
@@ -777,6 +799,39 @@ let
         log_cli_phase "dedup-pnpm" "duration=$(timer_elapsed "$dedupStartedAt")s deduped=$dedup_count external_roots=${toString (builtins.length externalInstallRoots)}"
       '';
 
+  linkNativeNodePackageScript =
+    nativePackage:
+    let
+      packageName = nativePackage.name;
+      packagePath = nativePackage.package;
+    in
+    ''
+      nativePackageLinkStartedAt=$(timer_now)
+      native_package_name=${lib.escapeShellArg packageName}
+      native_package_path=${lib.escapeShellArg packagePath}
+
+      link_native_package() {
+        local node_modules_dir="$1"
+        local target="$node_modules_dir/$native_package_name"
+        mkdir -p "$(dirname "$target")"
+        rm -rf "$target"
+        ln -s "$native_package_path" "$target"
+      }
+
+      link_native_package "$NIX_BUILD_TOP/workspace/node_modules"
+      if [ -d "$NIX_BUILD_TOP/workspace/node_modules/.pnpm" ]; then
+        while IFS= read -r node_modules_dir; do
+          link_native_package "$node_modules_dir"
+        done < <(find "$NIX_BUILD_TOP/workspace/node_modules/.pnpm" -type d -name node_modules)
+      fi
+
+      log_cli_phase "link-native-node-package" "duration=$(timer_elapsed "$nativePackageLinkStartedAt")s package=$native_package_name"
+    '';
+
+  linkNativeNodePackagesScript = builtins.concatStringsSep "\n" (
+    map linkNativeNodePackageScript nativeNodePackages
+  );
+
 in
 assert _validateInstallRootHashContract;
 pkgs.stdenv.mkDerivation {
@@ -862,6 +917,8 @@ pkgs.stdenv.mkDerivation {
     chmod -R +w workspace
 
     ${dedupPnpmScript}
+
+    ${linkNativeNodePackagesScript}
 
     cd workspace
 

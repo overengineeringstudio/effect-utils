@@ -28,7 +28,7 @@ let
     pnpm = pinnedPnpm;
   };
   packageDir = "packages/@overeng/oxc-config";
-  pnpmDepsHash = "sha256-jXP50Bh4VrF/JnkQdOMoReqQRCJgV0q4gLX5APsMRNE=";
+  pnpmDepsHash = "sha256-sw/mwo5URR5pGjLeE8ECo3mKmgBQPqhnhN6NIea6BB0=";
 
   srcPath =
     if builtins.isAttrs src && builtins.hasAttr "outPath" src then
@@ -85,7 +85,6 @@ let
           else
             lines;
 
-      # GVS requires a global pnpm store unavailable inside Nix sandboxes
       stripGvs =
         lines: builtins.filter (l: !(lib.hasPrefix "enableGlobalVirtualStore" (lib.trim l))) lines;
     in
@@ -101,62 +100,46 @@ let
     in
     if suffix == "" then "${packagesBlock}\n" else "${packagesBlock}\n\n${suffix}\n";
 
-  filteredRootPnpmWorkspaceYaml = formatWorkspaceYaml [ packageDir ] (
-    workspaceSuffixLines rootPnpmWorkspaceYaml
+  filteredRootPnpmWorkspaceYamlFile = pkgs.writeText "oxc-config-pnpm-workspace.yaml" (
+    formatWorkspaceYaml [ packageDir ] (workspaceSuffixLines rootPnpmWorkspaceYaml)
   );
 
-  copyFileCmd = relPath: ''
-    mkdir -p "$out/$(dirname "${relPath}")"
-    cp "$src/${relPath}" "$out/${relPath}"
-  '';
+  sourceExclusions = [
+    ".git"
+    ".direnv"
+    ".devenv"
+    ".cache"
+    ".turbo"
+    ".next"
+    ".bun"
+    "node_modules"
+    "dist"
+    "result"
+    "coverage"
+    "tmp"
+    "out"
+  ];
 
-  copyDirCmd = relPath: ''
-    mkdir -p "$out/$(dirname "${relPath}")"
-    cp -R "$src/${relPath}" "$out/$(dirname "${relPath}")/"
-    chmod -R +w "$out/${relPath}"
-  '';
-
-  copyOptionalFileCmd = relPath: ''
-    if [ -f "$src/${relPath}" ]; then
-      ${copyFileCmd relPath}
-    fi
-  '';
-
-  materializeWorkspace =
-    {
-      nameSuffix,
-      manifestOnly,
-    }:
-    pkgs.runCommand "oxc-config-${nameSuffix}" { src = srcPath; } (
-      ''
-        set -euo pipefail
-        mkdir -p "$out"
-      ''
-      + builtins.concatStringsSep "\n" (
-        map copyFileCmd [
+  depsSrc = lib.cleanSourceWith {
+    src = srcPath;
+    filter =
+      path: type:
+      let
+        relPath = lib.removePrefix (toString srcPath + "/") (toString path);
+        baseName = baseNameOf path;
+      in
+      !(lib.elem baseName sourceExclusions)
+      && (
+        builtins.elem relPath [
           "package.json"
           "pnpm-lock.yaml"
-        ]
-      )
-      + builtins.concatStringsSep "\n" (
-        map copyOptionalFileCmd [
+          "pnpm-workspace.yaml"
           ".npmrc"
           "tsconfig.base.json"
         ]
-      )
-      + ''
-                cat > "$out/pnpm-workspace.yaml" <<'EOF'
-        ${filteredRootPnpmWorkspaceYaml}
-        EOF
-      ''
-      + (if manifestOnly then copyFileCmd "${packageDir}/package.json" else copyDirCmd packageDir)
-      + "\n"
-      + builtins.concatStringsSep "\n" (map copyDirCmd patchesDirs)
-    );
-
-  depsSrc = materializeWorkspace {
-    nameSuffix = "pnpm-deps-src";
-    manifestOnly = true;
+        || hasPathPrefix relPath "${packageDir}/package.json"
+        || builtins.any (dir: hasPathPrefix relPath dir) patchesDirs
+      );
   };
 
   # Full source for building (includes .ts files, excludes node_modules etc.)
@@ -167,27 +150,13 @@ let
       let
         relPath = lib.removePrefix (toString srcPath + "/") (toString path);
         baseName = baseNameOf path;
-        excludedNames = [
-          ".git"
-          ".direnv"
-          ".devenv"
-          ".cache"
-          ".turbo"
-          ".next"
-          ".bun"
-          "node_modules"
-          "dist"
-          "result"
-          "coverage"
-          "tmp"
-          "out"
-        ];
       in
-      !(lib.elem baseName excludedNames)
+      !(lib.elem baseName sourceExclusions)
       && (
         builtins.elem relPath [
           "package.json"
           "pnpm-lock.yaml"
+          "pnpm-workspace.yaml"
           ".npmrc"
           "tsconfig.base.json"
         ]
@@ -201,6 +170,10 @@ let
     src = depsSrc;
     sourceRoot = ".";
     inherit pnpmDepsHash;
+    preInstall = ''
+      chmod +w pnpm-workspace.yaml
+      cp ${filteredRootPnpmWorkspaceYamlFile} pnpm-workspace.yaml
+    '';
   };
 
 in
@@ -232,13 +205,10 @@ pkgs.stdenv.mkDerivation {
           deps = pnpmDeps;
           target = "workspace";
         }}
-        chmod -R +w workspace
-        cat > workspace/pnpm-workspace.yaml <<'EOF'
-    ${filteredRootPnpmWorkspaceYaml}
-    EOF
         cd workspace
 
         cd ${packageDir}
+        chmod +w .
 
         # Bundle into single JS file.
         # --external jiti: eslint's config loader uses jiti for dynamic imports, but

@@ -245,7 +245,7 @@ run_downstream_pure_eval_regression() {
     --override-input effect-utils "path:$WORKSPACE_REAL/repos/effect-utils" \
     "path:$DOWNSTREAM_DIR#checks.$SYSTEM.pure-eval-derived-workspace-root"
 
-  echo "Check: downstream prepared deps use frozen lockfile mode"
+  echo "Check: downstream prepared deps use frozen lockfile mode and skip optional native deps"
   local drv
   drv="$(
     nix eval --raw --no-write-lock-file \
@@ -254,12 +254,16 @@ run_downstream_pure_eval_regression() {
   )"
   local install_phase
   install_phase="$(nix derivation show "$drv" | jq -r '.derivations | to_entries[0].value.env.installPhase')"
-  if [[ "$install_phase" != *'install --frozen-lockfile --ignore-scripts'* ]]; then
+  if [[ "$install_phase" != *'install --frozen-lockfile --no-optional --ignore-scripts'* ]]; then
     echo "error: prepared deps derivation does not use --frozen-lockfile: $drv" >&2
     exit 1
   fi
-  if [[ "$install_phase" == *'install --no-frozen-lockfile --ignore-scripts'* ]]; then
+  if [[ "$install_phase" == *'install --no-frozen-lockfile'* ]]; then
     echo "error: prepared deps derivation still uses --no-frozen-lockfile: $drv" >&2
+    exit 1
+  fi
+  if [[ "$install_phase" != *'--no-optional'* ]]; then
+    echo "error: prepared deps derivation does not skip optional dependencies: $drv" >&2
     exit 1
   fi
 

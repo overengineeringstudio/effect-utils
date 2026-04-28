@@ -15,6 +15,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   unwrapped = mkPnpmCli {
     name = "genie-unwrapped";
     entry = "packages/@overeng/genie/bin/genie.tsx";
@@ -24,9 +25,10 @@ let
     # Managed by `dt nix:hash:genie` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-gfQzumT5uwOZCAK+6115VngQp6IMTy+Za3LvyOXt+7w=";
+        hash = "sha256-3ZDKAIb7rWqWU/RutXIuaLHzYkU9oZN+6QMSXJbERk8=";
       };
     };
+    nativeNodePackages = [ opentuiCoreNative ];
     inherit gitRev commitTs dirty;
   };
 in
