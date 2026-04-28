@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **@overeng/tui-stories**: Restore concurrent story module imports on Bun `1.3.14+` and non-Bun runtimes now that Bun fixed the dynamic `import()` TDZ bug in oven-sh/bun#29393; older Bun versions keep the sequential compatibility path.
 - **@overeng/notion-react**: `<Page>` and `<ChildPage>` accept `icon={null}` and `cover={null}` as explicit clear sentinels (#618). Dropping the prop is still "no claim" (preserves server state); passing `null` emits `pages.update({icon: null})` / `pages.update({cover: null})`. On a fresh page with no prior icon/cover, `null` is a no-op.
 - **@overeng/notion-react**: Same-parent `<ChildPage>` creates are now sequential — JSX order is preserved 1:1 on the server (#618). Parallel `pages.create` under a common parent yields nondeterministic `child_page` ordering; the driver issues sequential POSTs so no post-create re-fetch is needed. T08 (formerly "concurrent sibling-page order is not authoritative") is now a normative invariant; the deferred `ensureSiblingOrder` sync option is dropped.
 - **@overeng/notion-react**: `CACHE_SCHEMA_VERSION` bumped `2 → 3` to accommodate per-page cache subtrees (#618). v2 caches fall through the existing `"schema-mismatch"` cold path — transparent, no caller action required. The first sync after upgrade may emit one spurious metadata update per sub-page as response-normalized title/icon/cover is recomputed.

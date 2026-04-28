@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from '@effect/vitest'
 import { Effect } from 'effect'
 
-import { discoverStories } from '../src/StoryDiscovery.ts'
+import { discoverStories, storyImportConcurrencyForRuntime } from '../src/StoryDiscovery.ts'
 import { parseStoryModule } from '../src/StoryModule.ts'
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../..')
@@ -38,6 +38,13 @@ describe('StoryDiscovery', () => {
       expect(modules).toEqual([])
     }),
   )
+
+  it('uses concurrent story imports outside affected Bun versions', () => {
+    expect(storyImportConcurrencyForRuntime(undefined)).toBe('unbounded')
+    expect(storyImportConcurrencyForRuntime('1.3.13')).toBe(1)
+    expect(storyImportConcurrencyForRuntime('1.3.14')).toBe('unbounded')
+    expect(storyImportConcurrencyForRuntime('1.4.0')).toBe('unbounded')
+  })
 
   it('parseStoryModule handles valid exports', () => {
     const mod = parseStoryModule({

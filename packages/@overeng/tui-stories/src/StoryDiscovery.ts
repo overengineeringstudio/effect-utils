@@ -70,6 +70,27 @@ export interface DiscoverStoriesResult {
   readonly skippedCount: number
 }
 
+type StoryImportConcurrency = 1 | 'unbounded'
+
+const bunVersionSupportsConcurrentDynamicImport = (version: string): boolean => {
+  const [major = 0, minor = 0, patch = 0] = version
+    .split('.')
+    .map((part) => Number.parseInt(part, 10))
+    .map((part) => (Number.isNaN(part) ? 0 : part))
+
+  return major > 1 || (major === 1 && (minor > 3 || (minor === 3 && patch >= 14)))
+}
+
+export const storyImportConcurrencyForRuntime = (
+  bunVersion: string | undefined = process.versions.bun,
+): StoryImportConcurrency => {
+  if (bunVersion === undefined) return 'unbounded'
+
+  // Fixed by Bun's module-loader rewrite in 1.3.14:
+  // https://github.com/oven-sh/bun/issues/20489
+  return bunVersionSupportsConcurrentDynamicImport(bunVersion) ? 'unbounded' : 1
+}
+
 /** Discover and parse all story files in the given package directories */
 export const discoverStories = (options: {
   readonly packageDirs: readonly string[]
@@ -84,15 +105,9 @@ export const discoverStories = (options: {
       return { modules: [], skippedCount: 0 }
     }
 
-    /* Sequential imports to avoid Bun's ESM TDZ bug: when concurrent import() calls
-       share a dependency and one chain fails (e.g. missing module), Bun leaves the shared
-       module's bindings uninitialized for other importers. With the shared
-       @overeng/tui-react/storybook dependency this caused ~100% TDZ failure rate.
-       Performance is unaffected — shared modules are cached after first evaluation.
-       See: https://github.com/oven-sh/bun/issues/20489 */
     const results = yield* Effect.all(
       filePaths.map((fp) => importStoryFile(fp)),
-      { concurrency: 1 },
+      { concurrency: storyImportConcurrencyForRuntime() },
     )
 
     const modules = results.filter((m): m is ParsedStoryModule => m !== undefined)
