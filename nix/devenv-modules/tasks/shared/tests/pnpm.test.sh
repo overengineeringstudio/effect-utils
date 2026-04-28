@@ -65,6 +65,31 @@ EOF
   fi
 }
 
+make_missing_export_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["src"],"exports":{"./vitest":{"default":"./src/vitest.js"}}}
+EOF
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
+make_unshipped_conditional_export_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root/dist"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["dist"],"exports":{".":{"custom-condition":"./src/index.ts","default":"./dist/index.js"}}}
+EOF
+  touch "$package_root/dist/index.js"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
 make_bin_fixture() {
   local root="$1"
 
@@ -248,6 +273,24 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$broken_dir/node_mod
 exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "broken symlink is rejected"
+
+echo "Test 15: Projection health fails when a package export target is missing"
+missing_export_dir="$test_dir/missing-export"
+make_missing_export_fixture "$missing_export_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_export_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "projection health detects missing package export target"
+
+echo "Test 16: Projection health ignores unshipped conditional export targets"
+unshipped_export_dir="$test_dir/unshipped-export"
+make_unshipped_conditional_export_fixture "$unshipped_export_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$unshipped_export_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health ignores export targets outside package files"
 
 echo ""
 echo "All pnpm task helper tests passed"

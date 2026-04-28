@@ -343,6 +343,7 @@ let
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, forcing current workspace relink"
             purge_node_modules node_modules ${nodeModulesPaths}
+            rm -rf "$_gvs_links_dir"
             _purged_node_modules=true
             _force_install=true
           fi
@@ -351,12 +352,21 @@ let
         if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is stale, purging install state"
           purge_node_modules node_modules ${nodeModulesPaths}
+          if [ -n "''${_gvs_links_dir:-}" ]; then
+            rm -rf "$_gvs_links_dir"
+          fi
+          _force_install=true
         fi
 
         if [ "$_force_install" = true ]; then
           run_pnpm_install --force
         else
           run_pnpm_install
+        fi
+
+        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
+          echo "[pnpm] node_modules projection is still unhealthy after install" >&2
+          exit 1
         fi
 
         # Persist GVS hash after successful install
