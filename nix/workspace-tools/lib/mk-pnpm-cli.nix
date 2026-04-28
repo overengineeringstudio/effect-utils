@@ -799,38 +799,42 @@ let
         log_cli_phase "dedup-pnpm" "duration=$(timer_elapsed "$dedupStartedAt")s deduped=$dedup_count external_roots=${toString (builtins.length externalInstallRoots)}"
       '';
 
-  linkNativeNodePackageScript =
-    nativePackage:
-    let
-      packageName = nativePackage.name;
-      packagePath = nativePackage.package;
-    in
-    ''
-      nativePackageLinkStartedAt=$(timer_now)
-      native_package_name=${lib.escapeShellArg packageName}
-      native_package_path=${lib.escapeShellArg packagePath}
-
-      link_native_package() {
-        local node_modules_dir="$1"
-        local target="$node_modules_dir/$native_package_name"
-        mkdir -p "$(dirname "$target")"
-        rm -rf "$target"
-        ln -s "$native_package_path" "$target"
-      }
-
-      link_native_package "$NIX_BUILD_TOP/workspace/node_modules"
-      if [ -d "$NIX_BUILD_TOP/workspace/node_modules/.pnpm" ]; then
-        while IFS= read -r node_modules_dir; do
-          link_native_package "$node_modules_dir"
-        done < <(find "$NIX_BUILD_TOP/workspace/node_modules/.pnpm" -type d -name node_modules)
-      fi
-
-      log_cli_phase "link-native-node-package" "duration=$(timer_elapsed "$nativePackageLinkStartedAt")s package=$native_package_name"
-    '';
-
-  linkNativeNodePackagesScript = builtins.concatStringsSep "\n" (
-    map linkNativeNodePackageScript nativeNodePackages
+  nativeNodePackageEntries = builtins.concatStringsSep "\n" (
+    map (nativePackage: "${lib.escapeShellArg nativePackage.name}\t${lib.escapeShellArg nativePackage.package}") nativeNodePackages
   );
+
+  linkNativeNodePackagesScript =
+    if nativeNodePackages == [ ] then
+      ""
+    else
+      let
+        externalRootNodeModulesDirs = builtins.concatStringsSep "\n" (
+          map (root: ''native_node_modules_dirs+=("$NIX_BUILD_TOP/workspace/${root.installDir}/node_modules")'') externalInstallRoots
+        );
+      in
+      ''
+        nativePackageLinkStartedAt=$(timer_now)
+        native_node_modules_dirs=("$NIX_BUILD_TOP/workspace/node_modules")
+        ${externalRootNodeModulesDirs}
+
+        native_package_count=0
+        while IFS=$'\t' read -r native_package_name native_package_path; do
+          [ -n "$native_package_name" ] || continue
+          native_package_count=$((native_package_count + 1))
+          for node_modules_dir in "''${native_node_modules_dirs[@]}"; do
+            [ -d "$node_modules_dir" ] || continue
+            target="$node_modules_dir/$native_package_name"
+            mkdir -p "$(dirname "$target")"
+            rm -rf "$target"
+            ln -s "$native_package_path" "$target"
+          done
+          log_cli_phase "link-native-node-package" "package=$native_package_name"
+        done <<'NATIVE_NODE_PACKAGES'
+        ${nativeNodePackageEntries}
+        NATIVE_NODE_PACKAGES
+
+        log_cli_phase "link-native-node-packages" "duration=$(timer_elapsed "$nativePackageLinkStartedAt")s packages=$native_package_count node_modules_dirs=''${#native_node_modules_dirs[@]}"
+      '';
 
 in
 assert _validateInstallRootHashContract;
