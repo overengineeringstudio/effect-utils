@@ -7,6 +7,8 @@
 }:
 let
   repoFlake = builtins.getFlake (toString ./.);
+  # TODO: Drop this overlay once nixpkgs ships a stable Bun version with
+  # oven-sh/bun#29393 (>= 1.3.14).
   bunOverlay = import ./nix/bun-overlay.nix;
   flakePkgs = import repoFlake.inputs.nixpkgs {
     inherit (pkgs) system;

@@ -29,6 +29,8 @@
       # lastModified is the git commit timestamp (Unix seconds)
       commitTs = self.sourceInfo.lastModified or 0;
       dirty = self.sourceInfo ? dirtyShortRev;
+      # TODO: Drop this overlay once nixpkgs ships a stable Bun version with
+      # oven-sh/bun#29393 (>= 1.3.14).
       bunOverlay = import ./nix/bun-overlay.nix;
     in
     flake-utils.lib.eachDefaultSystem (
