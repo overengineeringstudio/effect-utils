@@ -76,11 +76,12 @@ const bunVersionSupportsConcurrentDynamicImport = (version: string): boolean => 
   const [major = 0, minor = 0, patch = 0] = version
     .split('.')
     .map((part) => Number.parseInt(part, 10))
-    .map((part) => (Number.isNaN(part) ? 0 : part))
+    .map((part) => (Number.isNaN(part) === true ? 0 : part))
 
   return major > 1 || (major === 1 && (minor > 3 || (minor === 3 && patch >= 14)))
 }
 
+/** Return safe story import concurrency for the active JavaScript runtime. */
 export const storyImportConcurrencyForRuntime = (
   bunVersion: string | undefined = process.versions.bun,
 ): StoryImportConcurrency => {
@@ -88,7 +89,7 @@ export const storyImportConcurrencyForRuntime = (
 
   // Fixed by Bun's module-loader rewrite in 1.3.14:
   // https://github.com/oven-sh/bun/issues/20489
-  return bunVersionSupportsConcurrentDynamicImport(bunVersion) ? 'unbounded' : 1
+  return bunVersionSupportsConcurrentDynamicImport(bunVersion) === true ? 'unbounded' : 1
 }
 
 /** Discover and parse all story files in the given package directories */
