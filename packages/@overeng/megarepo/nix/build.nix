@@ -24,7 +24,7 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-sAg/u489WA5/R6zTkx81QPSIs70sAs7yQr8GuDJctd0=";
+        hash = "sha256-3CS4PQWD2EcV0TUWWnhH4iM73XaymhYbz8/PlMZQgk4=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];

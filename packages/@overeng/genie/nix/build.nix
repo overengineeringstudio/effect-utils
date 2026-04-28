@@ -25,7 +25,7 @@ let
     # Managed by `dt nix:hash:genie` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-3ZDKAIb7rWqWU/RutXIuaLHzYkU9oZN+6QMSXJbERk8=";
+        hash = "sha256-gvNaFg6BvYxKeG4veyeANwfDqltTXS43trSuJpm9r44=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];

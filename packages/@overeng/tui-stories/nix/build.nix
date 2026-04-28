@@ -21,7 +21,7 @@ let
     # Managed by `dt nix:hash:tui-stories` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-ZVLw9tQ9uHf2QxXVWMAEO3pltz4UG1aP5V60qUSA1bU=";
+        hash = "sha256-arpU/d9vFOKJ8wif82Ki6cOmfaMeZNbxBNJfTN66R/U=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];

@@ -21,7 +21,7 @@ let
     # Managed by `dt nix:hash:notion-cli` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-oXhGpIRloRg2/WIOK+yeAwtco63+V7CzaGNtrml5Qso=";
+        hash = "sha256-XXK2ihjQfTtOa8FSqWkcUugDpnKQic7Ra/X0CCRjGao=";
       };
     };
     nativeNodePackages = [ opentuiCoreNative ];
