@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **nix/bun**: Overlay nixpkgs' Bun package to `1.3.14-canary.1+ca9e0896c` with fixed-output hashes so repo builds use the module-loader rewrite that fixes concurrent dynamic import TDZ failures before a stable `bun-v1.3.14` release asset is available.
 - **@overeng/tui-stories**: Restore concurrent story module imports on Bun `1.3.14+` and non-Bun runtimes now that Bun fixed the dynamic `import()` TDZ bug in oven-sh/bun#29393; older Bun versions keep the sequential compatibility path.
 - **@overeng/notion-react**: `<Page>` and `<ChildPage>` accept `icon={null}` and `cover={null}` as explicit clear sentinels (#618). Dropping the prop is still "no claim" (preserves server state); passing `null` emits `pages.update({icon: null})` / `pages.update({cover: null})`. On a fresh page with no prior icon/cover, `null` is a no-op.
 - **@overeng/notion-react**: Same-parent `<ChildPage>` creates are now sequential — JSX order is preserved 1:1 on the server (#618). Parallel `pages.create` under a common parent yields nondeterministic `child_page` ordering; the driver issues sequential POSTs so no post-create re-fetch is needed. T08 (formerly "concurrent sibling-page order is not authoritative") is now a normative invariant; the deferred `ensureSiblingOrder` sync option is dropped.

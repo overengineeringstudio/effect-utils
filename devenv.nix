@@ -7,7 +7,11 @@
 }:
 let
   repoFlake = builtins.getFlake (toString ./.);
-  flakePkgs = import repoFlake.inputs.nixpkgs { inherit (pkgs) system; };
+  bunOverlay = import ./nix/bun-overlay.nix;
+  flakePkgs = import repoFlake.inputs.nixpkgs {
+    inherit (pkgs) system;
+    overlays = [ bunOverlay ];
+  };
   cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
   # Use npm oxlint with NAPI bindings to enable JavaScript plugin support
   oxlintNpm = import ./nix/oxlint-npm.nix {
@@ -42,7 +46,7 @@ let
     context = ./nix/devenv-modules/tasks/shared/context.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
-  mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { inherit pkgs; };
+  mkSourceCli = import ./nix/devenv-modules/lib/mk-source-cli.nix { pkgs = flakePkgs; };
 
   # CLI packages built with Nix (for hash management)
   nixCliPackages = [
@@ -371,7 +375,7 @@ in
     inputs.tsgo.packages.${pkgs.system}.effect-tsgo
     (import ./nix/pnpm.nix { inherit pkgs; })
     pkgs.nodejs_24
-    pkgs.bun
+    flakePkgs.bun
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     oxlintWithPlugins
