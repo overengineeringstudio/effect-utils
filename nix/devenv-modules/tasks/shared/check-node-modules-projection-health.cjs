@@ -16,6 +16,7 @@ const moduleDirs = (process.env.NODE_MODULES_DIRS || '')
   .filter((value) => fs.existsSync(value))
 
 const dependencyProjectionFailures = []
+const packageContentFailures = []
 
 const collectEntryPaths = (nodeModulesDir) => {
   const result = []
@@ -55,6 +56,76 @@ const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
   return undefined
 }
 
+const isDeclarationTarget = (value) =>
+  value.endsWith('.d.ts') || value.endsWith('.d.mts') || value.endsWith('.d.cts')
+
+/**
+ * Only runtime export targets prove whether the package projection can be
+ * loaded. Declaration-only branches are intentionally ignored: several packages
+ * publish type conditions that are absent from the GVS link projection while
+ * their runtime `default` / `import` targets are present and load correctly.
+ * See https://github.com/pnpm/pnpm/issues/11385 for the stale runtime-export
+ * projection scenario this check guards.
+ * TODO(pnpm#11385): remove this package-content check if pnpm starts repairing
+ * incomplete GVS link projections during forced installs.
+ */
+const collectRuntimeExportTargets = (value, conditionName = undefined) => {
+  if (typeof value === 'string') {
+    if (conditionName === 'types' || isDeclarationTarget(value)) return []
+    return [value]
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectRuntimeExportTargets(entry, conditionName))
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([nestedConditionName, nestedValue]) =>
+      collectRuntimeExportTargets(nestedValue, nestedConditionName),
+    )
+  }
+
+  return []
+}
+
+const verifyPackageContent = ({ pkg, packageDir, entryPath }) => {
+  if (!packageDir.includes('/v11/links/')) return
+
+  const includedFiles = Array.isArray(pkg.files)
+    ? pkg.files.filter((file) => typeof file === 'string' && !file.startsWith('!'))
+    : []
+  if (includedFiles.length === 0) return
+
+  const targets = []
+
+  if (typeof pkg.main === 'string') {
+    targets.push(pkg.main)
+  }
+
+  if (pkg.exports !== undefined) {
+    targets.push(...collectRuntimeExportTargets(pkg.exports))
+  }
+
+  for (const target of targets) {
+    if (!target.startsWith('./')) continue
+    if (target.includes('*')) continue
+
+    const relativeTarget = target.slice(2)
+    if (
+      !includedFiles.some(
+        (file) => file === relativeTarget || relativeTarget.startsWith(`${file}/`),
+      )
+    ) {
+      continue
+    }
+
+    const resolved = path.resolve(packageDir, target)
+    if (!fs.existsSync(resolved)) {
+      packageContentFailures.push(`${pkg.name ?? entryPath} -> ${target} (${packageDir})`)
+    }
+  }
+}
+
 for (const nodeModulesDir of moduleDirs) {
   for (const entryPath of collectEntryPaths(nodeModulesDir)) {
     let stat
@@ -77,6 +148,8 @@ for (const nodeModulesDir of moduleDirs) {
     if (!fs.existsSync(packageJsonPath)) continue
 
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+    verifyPackageContent({ pkg, packageDir: realPath, entryPath })
+
     const dependencyNames = Object.keys(pkg.dependencies ?? {})
     if (dependencyNames.length === 0) continue
 
@@ -99,6 +172,13 @@ for (const nodeModulesDir of moduleDirs) {
 if (dependencyProjectionFailures.length > 0) {
   for (const failure of dependencyProjectionFailures) {
     console.error(`[pnpm] Missing dependency projection: ${failure}`)
+  }
+  process.exit(1)
+}
+
+if (packageContentFailures.length > 0) {
+  for (const failure of packageContentFailures) {
+    console.error(`[pnpm] Missing package content: ${failure}`)
   }
   process.exit(1)
 }
