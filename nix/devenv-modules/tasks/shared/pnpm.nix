@@ -349,6 +349,8 @@ let
             # Dropping links/ keeps the content-addressed files/ store intact
             # while forcing GVS to materialize fresh package link projections.
             # See https://github.com/pnpm/pnpm/issues/11385.
+            # TODO(pnpm#11385): remove this links/ purge once forced installs
+            # rebuild incomplete GVS link projections.
             rm -rf "$_gvs_links_dir"
             _purged_node_modules=true
             _force_install=true
@@ -364,6 +366,8 @@ let
             # link projection. Deleting node_modules alone would just reconnect
             # the workspace to the same incomplete v11/links package directory.
             # See https://github.com/pnpm/pnpm/issues/11385.
+            # TODO(pnpm#11385): remove this links/ purge once forced installs
+            # rebuild incomplete GVS link projections.
             rm -rf "$_gvs_links_dir"
           fi
           _force_install=true

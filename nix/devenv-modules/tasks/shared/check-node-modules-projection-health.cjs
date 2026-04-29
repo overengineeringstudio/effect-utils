@@ -66,6 +66,8 @@ const isDeclarationTarget = (value) =>
  * their runtime `default` / `import` targets are present and load correctly.
  * See https://github.com/pnpm/pnpm/issues/11385 for the stale runtime-export
  * projection scenario this check guards.
+ * TODO(pnpm#11385): remove this package-content check if pnpm starts repairing
+ * incomplete GVS link projections during forced installs.
  */
 const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   if (typeof value === 'string') {
