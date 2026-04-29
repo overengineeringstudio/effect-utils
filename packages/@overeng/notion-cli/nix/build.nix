@@ -11,6 +11,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   unwrapped = mkPnpmCli {
     name = "notion-cli-unwrapped";
     entry = "packages/@overeng/notion-cli/src/cli.ts";
@@ -20,9 +21,10 @@ let
     # Managed by `dt nix:hash:notion-cli` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-+4uvdGZjB6vijG415O6WoU1sSz29XUAKanHvLz2HPzc=";
+        hash = "sha256-XXK2ihjQfTtOa8FSqWkcUugDpnKQic7Ra/X0CCRjGao=";
       };
     };
+    nativeNodePackages = [ opentuiCoreNative ];
     inherit gitRev commitTs dirty;
   };
 in

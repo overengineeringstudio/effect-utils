@@ -34,7 +34,6 @@
 
 let
   lib = pkgs.lib;
-  pnpmPlatform = import ./pnpm-platform.nix;
   preparedWorkspacePlaceholder = "/__pnpm_prepared_workspace__";
   nixClosureBytesScript = pkgs.writeText "nix-closure-bytes.cjs" ''
     const fs = require("fs");
@@ -48,6 +47,332 @@ let
       ? (data[0] ?? {})
       : (typeof data === "object" && data !== null ? Object.values(data)[0] ?? {} : {});
     process.stdout.write(String(item.closureSize ?? item.narSize ?? 0));
+  '';
+  fileCountScript = pkgs.writeText "file-count.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    let count = 0;
+    const walk = (dirPath, visited = new Set()) => {
+      const realPath = fs.realpathSync(dirPath);
+      if (visited.has(realPath)) {
+        return;
+      }
+      visited.add(realPath);
+
+      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        const entryPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          walk(entryPath, visited);
+        } else if (entry.isFile()) {
+          count += 1;
+        }
+      }
+    };
+
+    const target = process.argv[2];
+    if (target && fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+      walk(target);
+    } else if (target && fs.existsSync(target)) {
+      count = 1;
+    }
+    process.stdout.write(String(count));
+  '';
+  removeNodeModulesScript = pkgs.writeText "remove-node-modules.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    const walk = (dirPath) => {
+      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        const entryPath = path.join(dirPath, entry.name);
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        if (entry.name === "node_modules") {
+          fs.rmSync(entryPath, { recursive: true, force: true });
+        } else {
+          walk(entryPath);
+        }
+      }
+    };
+
+    walk(process.argv[2]);
+  '';
+  normalizePreparedTreeScript = pkgs.writeText "normalize-prepared-tree.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    const shouldDelete = (relativePath) =>
+      relativePath === "node_modules/.modules.yaml" ||
+      relativePath.endsWith("/node_modules/.modules.yaml") ||
+      relativePath.startsWith("node_modules/.pnpm-workspace-state-") ||
+      relativePath.includes("/node_modules/.pnpm-workspace-state-") ||
+      relativePath === "node_modules/.pnpm/lock.yaml" ||
+      relativePath.endsWith("/node_modules/.pnpm/lock.yaml");
+
+    const normalize = (dirPath, root) => {
+      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        const entryPath = path.join(dirPath, entry.name);
+        const relativePath = path.relative(root, entryPath);
+
+        if (entry.isDirectory()) {
+          normalize(entryPath, root);
+          fs.chmodSync(entryPath, 0o755);
+        } else if (entry.isFile()) {
+          if (shouldDelete(relativePath)) {
+            fs.rmSync(entryPath, { force: true });
+            continue;
+          }
+          const mode = fs.statSync(entryPath).mode;
+          fs.chmodSync(entryPath, (mode & 0o111) === 0 ? 0o444 : 0o555);
+        }
+      }
+    };
+
+    const root = process.argv[2];
+    normalize(root, root);
+    fs.chmodSync(root, 0o755);
+  '';
+  chmodBinScriptsWritableScript = pkgs.writeText "chmod-bin-scripts-writable.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    const walk = (dirPath) => {
+      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        const entryPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          walk(entryPath);
+        } else if (entry.isFile() && dirPath.endsWith(`''${path.sep}.bin`)) {
+          const mode = fs.statSync(entryPath).mode;
+          fs.chmodSync(entryPath, mode | 0o200);
+        }
+      }
+    };
+
+    walk(process.argv[2]);
+  '';
+  rewritePreparedWorkspaceScript = pkgs.writeText "rewrite-prepared-workspace.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    const workspaceRoot = process.cwd();
+    const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+
+    const rewriteTextFile = (filePath, transform) => {
+      if (!fs.existsSync(filePath)) {
+        return;
+      }
+
+      const next = transform(fs.readFileSync(filePath, "utf8"));
+      fs.writeFileSync(filePath, next);
+    };
+
+    const sortedDirEntries = (dirPath) =>
+      fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) =>
+        left.name.localeCompare(right.name)
+      );
+
+    const workspacePackages = new Map();
+
+    const collectWorkspacePackages = (dirPath) => {
+      for (const entry of sortedDirEntries(dirPath)) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+
+        if (entry.name === "node_modules" || entry.name === ".git") {
+          continue;
+        }
+
+        const entryPath = path.join(dirPath, entry.name);
+        const packageJsonPath = path.join(entryPath, "package.json");
+        if (fs.existsSync(packageJsonPath)) {
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+          if (typeof packageJson.name === "string" && !workspacePackages.has(packageJson.name)) {
+            workspacePackages.set(packageJson.name, entryPath);
+          }
+        }
+
+        collectWorkspacePackages(entryPath);
+      }
+    };
+
+    const packageDirsInNodeModules = (nodeModulesPath) => {
+      if (!fs.existsSync(nodeModulesPath)) {
+        return [];
+      }
+
+      const packageDirs = [];
+      for (const entry of sortedDirEntries(nodeModulesPath)) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+
+        if (entry.name.startsWith("@")) {
+          const scopeDir = path.join(nodeModulesPath, entry.name);
+          for (const scopedEntry of sortedDirEntries(scopeDir)) {
+            if (scopedEntry.isDirectory()) {
+              packageDirs.push(path.join(scopeDir, scopedEntry.name));
+            }
+          }
+        } else {
+          packageDirs.push(path.join(nodeModulesPath, entry.name));
+        }
+      }
+
+      return packageDirs;
+    };
+
+    const relinkLocalVirtualPackages = (dirPath) => {
+      for (const entry of sortedDirEntries(dirPath)) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+
+        const entryPath = path.join(dirPath, entry.name);
+        if (entry.name === ".pnpm") {
+          for (const virtualEntry of sortedDirEntries(entryPath)) {
+            if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
+              continue;
+            }
+
+            const virtualNodeModulesPath = path.join(entryPath, virtualEntry.name, "node_modules");
+            for (const packageDir of packageDirsInNodeModules(virtualNodeModulesPath)) {
+              const packageJsonPath = path.join(packageDir, "package.json");
+              if (!fs.existsSync(packageJsonPath)) {
+                continue;
+              }
+
+              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+              const workspacePackageDir = workspacePackages.get(packageJson.name);
+              if (!workspacePackageDir) {
+                continue;
+              }
+
+              fs.rmSync(packageDir, { recursive: true, force: true });
+              fs.symlinkSync(path.relative(path.dirname(packageDir), workspacePackageDir), packageDir, "dir");
+            }
+          }
+        } else {
+          relinkLocalVirtualPackages(entryPath);
+        }
+      }
+    };
+
+    collectWorkspacePackages(workspaceRoot);
+    relinkLocalVirtualPackages(workspaceRoot);
+
+    const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+      const realDirPath = fs.realpathSync(dirPath);
+      if (visitedRealPaths.has(realDirPath)) {
+        return;
+      }
+      visitedRealPaths.add(realDirPath);
+
+      for (const entry of sortedDirEntries(dirPath)) {
+        const entryPath = path.join(dirPath, entry.name);
+        const isDirectory = (() => {
+          if (entry.isDirectory()) {
+            return true;
+          }
+          if (!entry.isSymbolicLink()) {
+            return false;
+          }
+          try {
+            return fs.statSync(entryPath).isDirectory();
+          } catch (error) {
+            if (error && error.code === "ENOENT") {
+              return false;
+            }
+            throw error;
+          }
+        })();
+
+        if (!isDirectory) {
+          continue;
+        }
+
+        if (entry.name === ".bin") {
+          for (const binEntry of sortedDirEntries(entryPath)) {
+            if (!binEntry.isFile()) {
+              continue;
+            }
+            rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
+              script.split(workspaceRoot).join(workspacePlaceholder)
+            );
+          }
+          continue;
+        }
+
+        rewriteBinScripts(entryPath, visitedRealPaths);
+      }
+    };
+
+    rewriteBinScripts(workspaceRoot);
+  '';
+  restorePreparedWorkspaceScript = pkgs.writeText "restore-prepared-workspace.cjs" ''
+    const fs = require("fs");
+    const path = require("path");
+
+    const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
+    const workspaceTarget = process.env.PREPARED_WORKSPACE_TARGET;
+
+    const rewriteTextFile = (filePath) => {
+      if (!fs.existsSync(filePath)) {
+        return;
+      }
+
+      const current = fs.readFileSync(filePath, "utf8");
+      const next = current.split(workspacePlaceholder).join(workspaceTarget);
+      if (next !== current) {
+        fs.writeFileSync(filePath, next);
+      }
+    };
+
+    const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
+      const realDirPath = fs.realpathSync(dirPath);
+      if (visitedRealPaths.has(realDirPath)) {
+        return;
+      }
+      visitedRealPaths.add(realDirPath);
+
+      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        const entryPath = path.join(dirPath, entry.name);
+        const isDirectory = (() => {
+          if (entry.isDirectory()) {
+            return true;
+          }
+          if (!entry.isSymbolicLink()) {
+            return false;
+          }
+          try {
+            return fs.statSync(entryPath).isDirectory();
+          } catch (error) {
+            if (error && error.code === "ENOENT") {
+              return false;
+            }
+            throw error;
+          }
+        })();
+
+        if (!isDirectory) {
+          continue;
+        }
+
+        if (entry.name === ".bin") {
+          for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
+            if (binEntry.isFile()) {
+              rewriteTextFile(path.join(entryPath, binEntry.name));
+            }
+          }
+          continue;
+        }
+
+        rewriteBinScripts(entryPath, visitedRealPaths);
+      }
+    };
+
+    rewriteBinScripts(workspaceTarget);
   '';
 in
 {
@@ -76,6 +401,7 @@ in
       preInstall ? "",
       frozenLockfile ? true,
       lockfilePaths ? [ "pnpm-lock.yaml" ],
+      includeOptionalDependencies ? false,
     }:
     let
       # Embed a fingerprint of the FOD's inputs (lockfile, package.json, etc.)
@@ -115,13 +441,14 @@ in
         */
         if pkgs.stdenv.hostPlatform.isDarwin then "copy" else "clone-or-copy";
       pnpmLockfileModeArg = if frozenLockfile then "--frozen-lockfile" else "--no-frozen-lockfile";
+      pnpmOptionalModeArg = if includeOptionalDependencies then "" else "--no-optional";
     in
     pkgs.stdenvNoCC.mkDerivation {
       # Bump the prepared-workspace artifact version whenever the materialization
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v8";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v12";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -166,7 +493,7 @@ in
 
                 file_count() {
                   if [ -d "$1" ]; then
-                    find "$1" -type f | wc -l | tr -d ' '
+                    ${pkgs.nodejs}/bin/node ${lib.escapeShellArg fileCountScript} "$1"
                   else
                     echo 1
                   fi
@@ -197,6 +524,20 @@ in
                   echo "workspace-prep: phase=$phase $*"
                 }
 
+                log_prep_event() {
+                  local phase="$1"
+                  local duration="$2"
+                  local detail="$3"
+                  printf 'workspace-prep-otel: service.name=nix-pnpm-prep span.name=nix.pnpm-prep.%s span.label=%s package.name=%s derivation.name=%s system=%s duration_s=%s %s\n' \
+                    "$phase" \
+                    "$phase" \
+                    ${lib.escapeShellArg name} \
+                    "$name" \
+                    ${lib.escapeShellArg pkgs.stdenv.hostPlatform.system} \
+                    "$duration" \
+                    "$detail"
+                }
+
                 log_store_closure() {
                   local label="$1"
                   local path="$2"
@@ -221,8 +562,10 @@ in
                 # Self-hosted checkouts and local worktrees can accumulate ignored
                 # install artifacts, and pnpm's symlink layout will then collide
                 # with those preexisting node_modules trees during materialization.
-                find "$SOURCE_DIR" -type d -name node_modules -prune -exec rm -rf {} +
-                log_prep_phase "stage-source-copy" "duration=$(timer_elapsed "$sourceCopyStartedAt")s source_root=$sourceRoot"
+                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg removeNodeModulesScript} "$SOURCE_DIR"
+                sourceCopyDuration=$(timer_elapsed "$sourceCopyStartedAt")
+                log_prep_phase "stage-source-copy" "duration=''${sourceCopyDuration}s source_root=$sourceRoot"
+                log_prep_event "stage-source-copy" "$sourceCopyDuration" "source_root=$sourceRoot"
                 log_store_closure "src" "$src"
                 log_path_stats "staged-source-copy" "$SOURCE_DIR"
 
@@ -247,7 +590,7 @@ in
                 export npm_config_manage_package_manager_versions=false
                 export NODE_ENV=development
                 export LOCKFILE_PATHS_JSON='${builtins.toJSON lockfilePaths}'
-                export PNPM_MJS=$(find ${lib.escapeShellArg (toString pnpm)} -type f \( -name pnpm.mjs -o -name pnpm.cjs \) | head -n 1)
+                export PNPM_MJS=${lib.escapeShellArg "${pnpm}/libexec/pnpm/bin/pnpm.mjs"}
 
                 if [ -z "$PNPM_MJS" ]; then
                   echo "workspace-prep: FATAL - could not locate pnpm entrypoint under ${lib.escapeShellArg (toString pnpm)}"
@@ -258,8 +601,11 @@ in
                 # workspace-only. Use env vars and .npmrc instead.
                 # Back up .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\npackage-import-method=%s\nside-effects-cache=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
-                ${pnpmPlatform.setupScript}
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nenable-global-virtual-store=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+                # Keep prepared dependency artifacts platform-neutral. Native
+                # optional packages are owned by the Nix package/build layer so
+                # pnpm dependency preparation stays pure, smaller, and stable
+                # across Linux/macOS builders.
 
                 node -e '
                   const path = require("path");
@@ -288,184 +634,33 @@ in
 
                   log_prep_phase "install-start" "install_root=$install_root"
                   installStartedAt=$(timer_now)
-                  (
-                    cd "$install_root"
-                    # Keep the legacy wrapper invocation literal in-source so downstream
-                    # contract checks can verify the install mode by string match:
-                    # pnpm install --frozen-lockfile --ignore-scripts
-                    node "$PNPM_MJS" install ${pnpmLockfileModeArg} --ignore-scripts
-                  )
-                  log_prep_phase "install" "install_root=$install_root duration=$(timer_elapsed "$installStartedAt")s"
+                  # Avoid a nested shell for the install root. On Darwin under
+                  # process pressure we observed the subshell remain asleep
+                  # after pnpm exited, leaving fixed-output deps builders
+                  # wedged before post-install normalization.
+                  pushd "$install_root" >/dev/null
+                  # Keep the frozen invocation literal in-source so downstream
+                  # contract checks can verify the strict default install mode:
+                  # pnpm install --frozen-lockfile --ignore-scripts
+                  node "$PNPM_MJS" install ${pnpmLockfileModeArg} ${pnpmOptionalModeArg} --ignore-scripts
+                  popd >/dev/null
+                  installDuration=$(timer_elapsed "$installStartedAt")
+                  log_prep_phase "install" "install_root=$install_root duration=''${installDuration}s"
+                  log_prep_event "install" "$installDuration" "install_root=$install_root"
                   log_path_stats "install-root:$install_root-node_modules" "$install_root/node_modules"
                 done < .pnpm-install-roots.txt
 
                 export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
-                node <<'NODE'
-                const fs = require("fs");
-                const path = require("path");
-
-                const workspaceRoot = process.cwd();
-                const workspaceRealRoot = fs.realpathSync(workspaceRoot);
-                const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
-
-                const rewriteTextFile = (filePath, transform) => {
-                  if (!fs.existsSync(filePath)) {
-                    return;
-                  }
-
-                  const next = transform(fs.readFileSync(filePath, "utf8"));
-                  fs.writeFileSync(filePath, next);
-                };
-
-                /**
-                 * Deterministic directory traversal is critical here because we mutate
-                 * the prepared tree in-place before archiving it. If pnpm layout
-                 * rewrites happen in filesystem iteration order, the fixed-output hash
-                 * can drift across machines even when the final archive writer is sorted.
-                 */
-                const sortedDirEntries = (dirPath) =>
-                  fs.readdirSync(dirPath, { withFileTypes: true }).sort((left, right) =>
-                    left.name.localeCompare(right.name)
-                  );
-
-                // pnpm virtual packages for workspace `file:` deps should point back to
-                // the staged workspace members, not copied package snapshots, or the
-                // prepared tree will bake in install-root-specific absolute paths.
-                const workspacePackages = new Map();
-
-                const collectWorkspacePackages = (dirPath) => {
-                  for (const entry of sortedDirEntries(dirPath)) {
-                    if (!entry.isDirectory()) {
-                      continue;
-                    }
-
-                    if (entry.name === "node_modules" || entry.name === ".git") {
-                      continue;
-                    }
-
-                    const entryPath = path.join(dirPath, entry.name);
-                    const packageJsonPath = path.join(entryPath, "package.json");
-                    if (fs.existsSync(packageJsonPath)) {
-                      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-                      if (typeof packageJson.name === "string" && !workspacePackages.has(packageJson.name)) {
-                        workspacePackages.set(packageJson.name, entryPath);
-                      }
-                    }
-
-                    collectWorkspacePackages(entryPath);
-                  }
-                };
-
-                const packageDirsInNodeModules = (nodeModulesPath) => {
-                  if (!fs.existsSync(nodeModulesPath)) {
-                    return [];
-                  }
-
-                  const packageDirs = [];
-                  for (const entry of sortedDirEntries(nodeModulesPath)) {
-                    if (!entry.isDirectory()) {
-                      continue;
-                    }
-
-                    if (entry.name.startsWith("@")) {
-                      const scopeDir = path.join(nodeModulesPath, entry.name);
-                      for (const scopedEntry of sortedDirEntries(scopeDir)) {
-                        if (scopedEntry.isDirectory()) {
-                          packageDirs.push(path.join(scopeDir, scopedEntry.name));
-                        }
-                      }
-                    } else {
-                      packageDirs.push(path.join(nodeModulesPath, entry.name));
-                    }
-                  }
-
-                  return packageDirs;
-                };
-
-                const relinkLocalVirtualPackages = (dirPath) => {
-                  for (const entry of sortedDirEntries(dirPath)) {
-                    if (!entry.isDirectory()) {
-                      continue;
-                    }
-
-                    const entryPath = path.join(dirPath, entry.name);
-                    if (entry.name === ".pnpm") {
-                      for (const virtualEntry of sortedDirEntries(entryPath)) {
-                        if (!virtualEntry.isDirectory() || !virtualEntry.name.includes("file+")) {
-                          continue;
-                        }
-
-                        const virtualNodeModulesPath = path.join(entryPath, virtualEntry.name, "node_modules");
-                        for (const packageDir of packageDirsInNodeModules(virtualNodeModulesPath)) {
-                          const packageJsonPath = path.join(packageDir, "package.json");
-                          if (!fs.existsSync(packageJsonPath)) {
-                            continue;
-                          }
-
-                          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-                          const workspacePackageDir = workspacePackages.get(packageJson.name);
-                          if (!workspacePackageDir) {
-                            continue;
-                          }
-
-                          fs.rmSync(packageDir, { recursive: true, force: true });
-                          fs.symlinkSync(path.relative(path.dirname(packageDir), workspacePackageDir), packageDir, "dir");
-                        }
-                      }
-                    } else {
-                      relinkLocalVirtualPackages(entryPath);
-                    }
-                  }
-                };
-
-                collectWorkspacePackages(workspaceRoot);
-                relinkLocalVirtualPackages(workspaceRoot);
-
-                const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-                  const realDirPath = fs.realpathSync(dirPath);
-                  if (visitedRealPaths.has(realDirPath)) {
-                    return;
-                  }
-                  visitedRealPaths.add(realDirPath);
-
-                  for (const entry of sortedDirEntries(dirPath)) {
-                    const entryPath = path.join(dirPath, entry.name);
-                    const isDirectory =
-                      entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
-
-                    if (!isDirectory) {
-                      continue;
-                    }
-
-                    if (entry.name === ".bin") {
-                      for (const binEntry of sortedDirEntries(entryPath)) {
-                        if (!binEntry.isFile()) {
-                          continue;
-                        }
-                        rewriteTextFile(path.join(entryPath, binEntry.name), (script) =>
-                          script.split(workspaceRoot).join(workspacePlaceholder)
-                        );
-                      }
-                      continue;
-                    }
-
-                    rewriteBinScripts(entryPath, visitedRealPaths);
-                  }
-                };
-
-                rewriteBinScripts(workspaceRoot);
-        NODE
+                rewriteStartedAt=$(timer_now)
+                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg rewritePreparedWorkspaceScript}
+                rewriteDuration=$(timer_elapsed "$rewriteStartedAt")
+                log_prep_phase "rewrite" "duration=''${rewriteDuration}s"
+                log_prep_event "rewrite" "$rewriteDuration" "kind=prepared-workspace"
 
                 # These pnpm bookkeeping files are only needed for future pnpm
                 # operations. Downstream builders restore a prepared tree and go
                 # straight to bun, so keeping them only widens the determinism surface.
                 # Remove them for the root install plus any nested composed repos.
-                find . -type f \( \
-                  -path '*/node_modules/.modules.yaml' -o \
-                  -path '*/node_modules/.pnpm-workspace-state-*.json' -o \
-                  -path '*/node_modules/.pnpm/lock.yaml' \
-                \) -delete
-
                 # Restore original .npmrc (remove build-local settings that contain
                 # non-deterministic paths like $STORE_PATH).
                 if [ -f .npmrc.orig ]; then
@@ -479,9 +674,7 @@ in
                 rm -rf "$STORE_PATH"
                 rm -f .pnpm-install-roots.txt
 
-                find . -type d -exec chmod 755 {} +
-                find . -type f -perm /111 -exec chmod 555 {} +
-                find . -type f ! -perm /111 -exec chmod 444 {} +
+                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg normalizePreparedTreeScript} .
 
                 archiveStartedAt=$(timer_now)
                 log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
@@ -505,8 +698,12 @@ in
                   cd "$out"
                   tar -xf -
                 )
-                log_prep_phase "archive" "duration=$(timer_elapsed "$archiveStartedAt")s mode=tar-stream-copy"
-                log_prep_phase "complete" "duration=$(timer_elapsed "$prepStartedAt")s output_hash=${pnpmDepsHash}"
+                archiveDuration=$(timer_elapsed "$archiveStartedAt")
+                log_prep_phase "archive" "duration=''${archiveDuration}s mode=tar-stream-copy"
+                log_prep_event "archive" "$archiveDuration" "mode=tar-stream-copy"
+                prepDuration=$(timer_elapsed "$prepStartedAt")
+                log_prep_phase "complete" "duration=''${prepDuration}s output_hash=${pnpmDepsHash}"
+                log_prep_event "complete" "$prepDuration" "output_hash=${pnpmDepsHash}"
 
                 runHook postInstall
       '';
@@ -554,7 +751,7 @@ in
 
             restore_file_count() {
               if [ -d "$1" ]; then
-                find "$1" -type f | wc -l | tr -d ' '
+                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg fileCountScript} "$1"
               else
                 echo 1
               fi
@@ -569,58 +766,8 @@ in
             export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
             export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
 
-            find "$PREPARED_WORKSPACE_TARGET" -path '*/.bin/*' -type f -exec chmod u+w {} +
-
-            node <<'NODE'
-            const fs = require("fs");
-            const path = require("path");
-
-            const workspacePlaceholder = process.env.PREPARED_WORKSPACE_PLACEHOLDER;
-            const workspaceTarget = process.env.PREPARED_WORKSPACE_TARGET;
-
-            const rewriteTextFile = (filePath) => {
-              if (!fs.existsSync(filePath)) {
-                return;
-              }
-
-              const current = fs.readFileSync(filePath, "utf8");
-              const next = current.split(workspacePlaceholder).join(workspaceTarget);
-              if (next !== current) {
-                fs.writeFileSync(filePath, next);
-              }
-            };
-
-            const rewriteBinScripts = (dirPath, visitedRealPaths = new Set()) => {
-              const realDirPath = fs.realpathSync(dirPath);
-              if (visitedRealPaths.has(realDirPath)) {
-                return;
-              }
-              visitedRealPaths.add(realDirPath);
-
-              for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-                const entryPath = path.join(dirPath, entry.name);
-                const isDirectory =
-                  entry.isDirectory() || (entry.isSymbolicLink() && fs.statSync(entryPath).isDirectory());
-
-                if (!isDirectory) {
-                  continue;
-                }
-
-                if (entry.name === ".bin") {
-                  for (const binEntry of fs.readdirSync(entryPath, { withFileTypes: true })) {
-                    if (binEntry.isFile()) {
-                      rewriteTextFile(path.join(entryPath, binEntry.name));
-                    }
-                  }
-                  continue;
-                }
-
-                rewriteBinScripts(entryPath, visitedRealPaths);
-              }
-            };
-
-            rewriteBinScripts(workspaceTarget);
-      NODE
+            ${pkgs.nodejs}/bin/node ${lib.escapeShellArg chmodBinScriptsWritableScript} "$PREPARED_WORKSPACE_TARGET"
+            ${pkgs.nodejs}/bin/node ${lib.escapeShellArg restorePreparedWorkspaceScript}
 
             restored_bytes=$(restore_path_bytes "$PREPARED_WORKSPACE_TARGET")
             restored_files=$(restore_file_count "$PREPARED_WORKSPACE_TARGET")

@@ -9,7 +9,6 @@ pure and designed to work in both megarepo workspaces and standalone repos.
   - `mk-bun-cli.nix` — Bun binary builder (deterministic, local file deps).
   - `mk-pnpm-cli.nix` — pnpm + bun compile builder for workspace CLIs.
   - `mk-pnpm-deps.nix` — FOD helper for preparing relocatable pnpm install trees that downstream builds restore without rerunning `pnpm install`.
-  - `pnpm-platform.nix` — pnpm `supportedArchitectures` setup for cross-platform hashes.
   - `cli-build-stamp.nix` — build stamp helper for CLIs.
   - `update-bun-hashes.nix` — helper to refresh bunDeps hashes.
 - `docs/`
@@ -56,6 +55,14 @@ Each `hash` is the authoritative fixed-output hash of one prepared deps
 artifact. The downstream CLI derivation depends on those artifacts directly, so
 the artifact hash already is the effective dependency fingerprint for rebuilds.
 Any faster preflight staleness check belongs in tooling, not in the builder API.
+
+Prepared pnpm dependency artifacts intentionally skip optional dependencies and
+lifecycle scripts. Platform-native tools or bindings belong in the Nix package
+or build phase that actually needs them, usually via `nativeBuildInputs`, PATH,
+`nativeNodePackages`, or an explicit wrapper. `nativeNodePackages` links a
+Nix-owned Node package into the restored build workspace for bundlers that still
+resolve a platform package by npm name, while keeping the prepared pnpm tree
+platform-neutral.
 
 The helper exposes the resulting install-root metadata via
 `passthru.installRoots`, `passthru.depsBuildsByInstallRoot`, and

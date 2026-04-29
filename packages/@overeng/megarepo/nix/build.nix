@@ -14,6 +14,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   base = mkPnpmCli {
     name = "megarepo";
     entry = "packages/@overeng/megarepo/bin/mr.ts";
@@ -23,9 +24,10 @@ let
     # Managed by `dt nix:hash:megarepo` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-Ezj3QYZMJL73oVKBIvkmtZ5gpKU2I+z9I8nzxQYCd0A=";
+        hash = "sha256-3CS4PQWD2EcV0TUWWnhH4iM73XaymhYbz8/PlMZQgk4=";
       };
     };
+    nativeNodePackages = [ opentuiCoreNative ];
     smokeTestArgs = [ "--help" ];
     inherit gitRev commitTs dirty;
   };

@@ -11,6 +11,7 @@
 let
   pnpm = import ../../../../nix/pnpm.nix { inherit pkgs; };
   mkPnpmCli = import ../../../../nix/workspace-tools/lib/mk-pnpm-cli.nix { inherit pkgs pnpm; };
+  opentuiCoreNative = import ../../../../nix/opentui-core-native.nix { inherit pkgs; };
   unwrapped = mkPnpmCli {
     name = "tui-stories-unwrapped";
     entry = "packages/@overeng/tui-stories/bin/tui-stories.tsx";
@@ -20,9 +21,10 @@ let
     # Managed by `dt nix:hash:tui-stories` — do not edit manually.
     depsBuilds = {
       "." = {
-        hash = "sha256-vDorhJCcdJabUPZCtKhJl+2SqUnd59g/6QVL7ZnrC1w=";
+        hash = "sha256-arpU/d9vFOKJ8wif82Ki6cOmfaMeZNbxBNJfTN66R/U=";
       };
     };
+    nativeNodePackages = [ opentuiCoreNative ];
     inherit gitRev commitTs dirty;
   };
 in
