@@ -64,6 +64,8 @@ const isDeclarationTarget = (value) =>
  * loaded. Declaration-only branches are intentionally ignored: several packages
  * publish type conditions that are absent from the GVS link projection while
  * their runtime `default` / `import` targets are present and load correctly.
+ * See https://github.com/pnpm/pnpm/issues/11385 for the stale runtime-export
+ * projection scenario this check guards.
  */
 const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   if (typeof value === 'string') {
