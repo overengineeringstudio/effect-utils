@@ -343,6 +343,11 @@ let
           if [ ! -f "$_gvs_hash_file" ] || [ "$(cat "$_gvs_hash_file")" != "$_gvs_hash" ]; then
             echo "[pnpm] GVS config changed, forcing current workspace relink"
             purge_node_modules node_modules ${nodeModulesPaths}
+            # A workspace relink only rewrites node_modules. If the broken
+            # package projection is already cached under v11/links, pnpm can
+            # reuse that incomplete directory even for `pnpm install --force`.
+            # Dropping links/ keeps the content-addressed files/ store intact
+            # while forcing GVS to materialize fresh package link projections.
             rm -rf "$_gvs_links_dir"
             _purged_node_modules=true
             _force_install=true
@@ -353,6 +358,10 @@ let
           echo "[pnpm] node_modules projection is stale, purging install state"
           purge_node_modules node_modules ${nodeModulesPaths}
           if [ -n "''${_gvs_links_dir:-}" ]; then
+            # The health check can fail while package symlinks and package.json
+            # still exist, e.g. an exported runtime file is missing inside a GVS
+            # link projection. Deleting node_modules alone would just reconnect
+            # the workspace to the same incomplete v11/links package directory.
             rm -rf "$_gvs_links_dir"
           fi
           _force_install=true

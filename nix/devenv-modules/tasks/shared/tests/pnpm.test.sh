@@ -90,6 +90,19 @@ EOF
   ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 }
 
+make_missing_type_export_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root/dist"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["dist"],"exports":{"./internal/module-runner":{"types":"./dist/module-runner.d.ts","default":"./dist/module-runner.js"}}}
+EOF
+  touch "$package_root/dist/module-runner.js"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
 make_bin_fixture() {
   local root="$1"
 
@@ -291,6 +304,15 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$unshipped_export_di
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores export targets outside package files"
+
+echo "Test 17: Projection health ignores missing declaration-only export targets"
+missing_type_dir="$test_dir/missing-type-export"
+make_missing_type_export_fixture "$missing_type_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_type_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health ignores type-only export targets"
 
 echo ""
 echo "All pnpm task helper tests passed"

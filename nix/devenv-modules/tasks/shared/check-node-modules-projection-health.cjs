@@ -56,17 +56,29 @@ const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
   return undefined
 }
 
-const collectExportTargets = (value) => {
+const isDeclarationTarget = (value) =>
+  value.endsWith('.d.ts') || value.endsWith('.d.mts') || value.endsWith('.d.cts')
+
+/**
+ * Only runtime export targets prove whether the package projection can be
+ * loaded. Declaration-only branches are intentionally ignored: several packages
+ * publish type conditions that are absent from the GVS link projection while
+ * their runtime `default` / `import` targets are present and load correctly.
+ */
+const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   if (typeof value === 'string') {
+    if (conditionName === 'types' || isDeclarationTarget(value)) return []
     return [value]
   }
 
   if (Array.isArray(value)) {
-    return value.flatMap(collectExportTargets)
+    return value.flatMap((entry) => collectRuntimeExportTargets(entry, conditionName))
   }
 
   if (value && typeof value === 'object') {
-    return Object.values(value).flatMap(collectExportTargets)
+    return Object.entries(value).flatMap(([nestedConditionName, nestedValue]) =>
+      collectRuntimeExportTargets(nestedValue, nestedConditionName),
+    )
   }
 
   return []
@@ -87,7 +99,7 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath }) => {
   }
 
   if (pkg.exports !== undefined) {
-    targets.push(...collectExportTargets(pkg.exports))
+    targets.push(...collectRuntimeExportTargets(pkg.exports))
   }
 
   for (const target of targets) {
