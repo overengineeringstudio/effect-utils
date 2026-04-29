@@ -27,6 +27,7 @@ const OpenTag: FC<any> = ({ tagName, attributes, styles }) => {
           }
           return attributeNodes
         }
+        return undefined
       })()}
 
       {'>'}
