@@ -448,7 +448,7 @@ in
       # strategy changes, even if the recursive output hash stays the same.
       # Self-hosted darwin runners can otherwise keep colliding with stale temp
       # output paths for earlier artifact layouts while evaluating the same FOD.
-      pname = "${name}-pnpm-deps-${srcFingerprint}-v12";
+      pname = "${name}-pnpm-deps-${srcFingerprint}-v15";
       version = "0.0.0";
 
       inherit src sourceRoot;
@@ -601,7 +601,10 @@ in
                 # workspace-only. Use env vars and .npmrc instead.
                 # Back up .npmrc before appending build-local settings (restored after install).
                 cp .npmrc .npmrc.orig 2>/dev/null || true
-        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nenable-global-virtual-store=false\nmanage-package-manager-versions=false\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        printf 'store-dir=%s\nvirtual-store-dir=node_modules/.pnpm\npackage-import-method=%s\nside-effects-cache=false\nenable-global-virtual-store=false\nmanage-package-manager-versions=false\nnode-linker=isolated\n' "$STORE_PATH" ${lib.escapeShellArg pnpmPackageImportMethod} >> .npmrc
+        if [ -f pnpm-workspace.yaml ]; then
+          ${pkgs.perl}/bin/perl -0pi -e 's/nodeLinker: hoisted/nodeLinker: isolated/g' pnpm-workspace.yaml
+        fi
                 # Keep prepared dependency artifacts platform-neutral. Native
                 # optional packages are owned by the Nix package/build layer so
                 # pnpm dependency preparation stays pure, smaller, and stable
@@ -678,29 +681,33 @@ in
 
                 archiveStartedAt=$(timer_now)
                 log_path_stats "prepared-workspace-output" "$SOURCE_DIR"
-                # Materialize the prepared workspace directly as the fixed-output
-                # directory. This keeps the hash boundary aligned with the actual
-                # restored tree and avoids serializer-specific failures for large
-                # prepared workspaces.
-                #
                 # Self-hosted darwin runners have shown `cp -a` spuriously failing
                 # with `create_symlink: File exists` while materializing pnpm's
                 # symlink-heavy trees into `$out.tmp`, even after clearing the
-                # destination. Stream the tree through tar instead so the output
-                # model stays recursive without relying on `cp`'s platform-specific
-                # directory copy semantics.
+                # destination. Stream the tree through tar for copying, but keep
+                # the fixed-output boundary as a recursive directory tree so
+                # serializer details do not turn platform-neutral installs into
+                # per-platform hashes.
                 rm -rf "$out"
                 mkdir -p "$out"
-                (
-                  cd "$SOURCE_DIR"
-                  tar -cf - .
-                ) | (
-                  cd "$out"
-                  tar -xf -
-                )
+                ${pkgs.gnutar}/bin/tar \
+                  --create \
+                  --sort=name \
+                  --mtime='@1' \
+                  --owner=0 \
+                  --group=0 \
+                  --numeric-owner \
+                  --file - \
+                  --directory "$SOURCE_DIR" \
+                  . \
+                  | ${pkgs.gnutar}/bin/tar \
+                    --extract \
+                    --file - \
+                    --directory "$out" \
+                    --delay-directory-restore
                 archiveDuration=$(timer_elapsed "$archiveStartedAt")
-                log_prep_phase "archive" "duration=''${archiveDuration}s mode=tar-stream-copy"
-                log_prep_event "archive" "$archiveDuration" "mode=tar-stream-copy"
+                log_prep_phase "archive" "duration=''${archiveDuration}s mode=tar-stream-tree"
+                log_prep_event "archive" "$archiveDuration" "mode=tar-stream-tree"
                 prepDuration=$(timer_elapsed "$prepStartedAt")
                 log_prep_phase "complete" "duration=''${prepDuration}s output_hash=${pnpmDepsHash}"
                 log_prep_event "complete" "$prepDuration" "output_hash=${pnpmDepsHash}"
@@ -729,48 +736,66 @@ in
       label ? "prepared-workspace",
     }:
     ''
-            restore_timer_now() {
-              perl -MTime::HiRes=time -e 'printf "%.3f", time'
-            }
+      restore_timer_now() {
+        perl -MTime::HiRes=time -e 'printf "%.3f", time'
+      }
 
-            restore_timer_elapsed() {
-              perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(restore_timer_now)"
-            }
+      restore_timer_elapsed() {
+        perl -e 'printf "%.3f", $ARGV[1] - $ARGV[0]' "$1" "$(restore_timer_now)"
+      }
 
-            restore_format_bytes() {
-              numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
-            }
+      restore_format_bytes() {
+        numfmt --to=iec-i --suffix=B --format='%.1f' "$1" 2>/dev/null || echo "$1"'B'
+      }
 
-            restore_path_bytes() {
-              if [ -d "$1" ]; then
-                du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
-              else
-                stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
-              fi
-            }
+      restore_path_bytes() {
+        if [ -d "$1" ]; then
+          du --apparent-size -sk "$1" 2>/dev/null | awk '{print $1 * 1024}'
+        else
+          stat -c%s "$1" 2>/dev/null || stat -f%z "$1"
+        fi
+      }
 
-            restore_file_count() {
-              if [ -d "$1" ]; then
-                ${pkgs.nodejs}/bin/node ${lib.escapeShellArg fileCountScript} "$1"
-              else
-                echo 1
-              fi
-            }
+      restore_file_count() {
+        if [ -d "$1" ]; then
+          ${pkgs.nodejs}/bin/node ${lib.escapeShellArg fileCountScript} "$1"
+        else
+          echo 1
+        fi
+      }
 
-            restoreStartedAt=$(restore_timer_now)
-            mkdir -p ${lib.escapeShellArg target}
-            # Restore with overlay semantics because the caller's target already
-            # contains the real source tree.
-            cp -a ${deps}/. ${lib.escapeShellArg target}/
+      restoreStartedAt=$(restore_timer_now)
+      mkdir -p ${lib.escapeShellArg target}
+      # Restore with overlay semantics because the caller's target already
+      # contains the real source tree.
+      if [ ${lib.escapeShellArg label} = "." ]; then
+        restoreRoot=${lib.escapeShellArg target}
+      else
+        restoreRoot=${lib.escapeShellArg target}/${lib.escapeShellArg label}
+      fi
+      if [ -d "$restoreRoot" ]; then
+        ${pkgs.findutils}/bin/find "$restoreRoot" -name node_modules -prune \
+          -exec ${pkgs.bash}/bin/bash -c 'for path do if [ -L "$path" ] || [ ! -d "$path" ]; then rm -f "$path"; else chmod -R u+w "$path" 2>/dev/null || true; rm -rf "$path"; fi; done' bash {} +
+      fi
 
-            export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
-            export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
+      ${pkgs.gnutar}/bin/tar \
+        --create \
+        --file - \
+        --directory ${deps} \
+        . \
+        | ${pkgs.gnutar}/bin/tar \
+        --extract \
+        --file - \
+        --directory ${lib.escapeShellArg target} \
+        --delay-directory-restore
 
-            ${pkgs.nodejs}/bin/node ${lib.escapeShellArg chmodBinScriptsWritableScript} "$PREPARED_WORKSPACE_TARGET"
-            ${pkgs.nodejs}/bin/node ${lib.escapeShellArg restorePreparedWorkspaceScript}
+      export PREPARED_WORKSPACE_PLACEHOLDER='${preparedWorkspacePlaceholder}'
+      export PREPARED_WORKSPACE_TARGET="$(cd ${lib.escapeShellArg target} && pwd -P)"
 
-            restored_bytes=$(restore_path_bytes "$PREPARED_WORKSPACE_TARGET")
-            restored_files=$(restore_file_count "$PREPARED_WORKSPACE_TARGET")
-            echo "workspace-restore: phase=restore label=${label} target=$PREPARED_WORKSPACE_TARGET duration=$(restore_timer_elapsed "$restoreStartedAt")s size=$(restore_format_bytes "$restored_bytes") files=$restored_files"
+      ${pkgs.nodejs}/bin/node ${lib.escapeShellArg chmodBinScriptsWritableScript} "$PREPARED_WORKSPACE_TARGET"
+      ${pkgs.nodejs}/bin/node ${lib.escapeShellArg restorePreparedWorkspaceScript}
+
+      restored_payload_bytes=$(restore_path_bytes ${deps})
+      echo "workspace-restore: phase=restore label=${label} target=$PREPARED_WORKSPACE_TARGET duration=$(restore_timer_elapsed "$restoreStartedAt")s payload_size=$(restore_format_bytes "$restored_payload_bytes") mode=tar-stream-tree"
     '';
 }

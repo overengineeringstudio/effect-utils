@@ -24,6 +24,211 @@
 let
   lib = pkgs.lib;
   pnpmDepsHelper = import ./mk-pnpm-deps.nix { inherit pkgs pnpm; };
+  inheritRootPatchedDependenciesScript = pkgs.writeText "inherit-root-patched-dependencies.cjs" ''
+    const fs = require("node:fs");
+    const path = require("node:path");
+
+    const [authorityDir, installDir] = process.argv.slice(2);
+    if (!authorityDir || !installDir) {
+      console.error("usage: inherit-root-patched-dependencies.cjs <authority-dir> <install-dir>");
+      process.exit(1);
+    }
+
+    const stripYamlQuotes = (key) =>
+      key.startsWith("'") && key.endsWith("'") ? key.slice(1, -1) : key;
+
+    const parsePackageNameVersion = (packageKey) => {
+      const atIndex = packageKey.startsWith("@")
+        ? packageKey.indexOf("@", 1)
+        : packageKey.indexOf("@");
+      if (atIndex === -1) return undefined;
+      return {
+        name: packageKey.slice(0, atIndex),
+        version: packageKey.slice(atIndex + 1),
+      };
+    };
+
+    const findTopLevelSection = (lines, sectionName) => {
+      const startIndex = lines.findIndex((line) => line === sectionName + ":");
+      if (startIndex === -1) return undefined;
+      let endIndex = lines.length;
+      for (let index = startIndex + 1; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (line.trim() !== "" && /^\S/.test(line)) {
+          endIndex = index;
+          break;
+        }
+      }
+      return { startIndex, endIndex };
+    };
+
+    const parsePatchedDependencies = (lockfile) => {
+      const lines = lockfile.split("\n");
+      const section = findTopLevelSection(lines, "patchedDependencies");
+      if (section === undefined) return [];
+
+      const entries = [];
+      let index = section.startIndex + 1;
+      while (index < section.endIndex) {
+        const match = lines[index].match(/^  (.+?):\s*$/);
+        if (match === null) {
+          index += 1;
+          continue;
+        }
+
+        const key = stripYamlQuotes(match[1]);
+        const parsed = parsePackageNameVersion(key);
+        let hash;
+        let patchPath;
+        index += 1;
+        while (index < section.endIndex && lines[index].startsWith("    ")) {
+          const hashMatch = lines[index].match(/^    hash:\s*(.+)$/);
+          const pathMatch = lines[index].match(/^    path:\s*(.+)$/);
+          if (hashMatch !== null) hash = hashMatch[1].trim();
+          if (pathMatch !== null) patchPath = pathMatch[1].trim();
+          index += 1;
+        }
+
+        if (parsed !== undefined && hash !== undefined && patchPath !== undefined) {
+          entries.push({ key, ...parsed, hash, path: patchPath });
+        }
+      }
+
+      return entries;
+    };
+
+    const parseExistingPatchedDependencyKeys = (lockfile) => {
+      const lines = lockfile.split("\n");
+      const section = findTopLevelSection(lines, "patchedDependencies");
+      if (section === undefined) return new Set();
+      return new Set(
+        lines
+          .slice(section.startIndex + 1, section.endIndex)
+          .map((line) => line.match(/^  (.+?):/))
+          .filter((match) => match !== null)
+          .map((match) => stripYamlQuotes(match[1]))
+      );
+    };
+
+    const insertPatchedDependencyLockEntries = (lockfile, entries) => {
+      if (entries.length === 0) return lockfile;
+      const lines = lockfile.split("\n");
+      const section = findTopLevelSection(lines, "patchedDependencies");
+      const rendered = entries.flatMap((entry) => [
+        "  '" + entry.key + "':",
+        "    hash: " + entry.hash,
+        "    path: .root-patches/" + entry.path,
+      ]);
+
+      if (section !== undefined) {
+        lines.splice(section.endIndex, 0, ...rendered);
+        return lines.join("\n");
+      }
+
+      const importersIndex = lines.findIndex((line) => line === "importers:");
+      const insertionIndex = importersIndex === -1 ? lines.length : importersIndex;
+      lines.splice(insertionIndex, 0, "patchedDependencies:", ...rendered, "");
+      return lines.join("\n");
+    };
+
+    const rewriteLockfilePatchVersions = (lockfile, entries) => {
+      if (entries.length === 0) return lockfile;
+      const byNameVersion = new Map(entries.map((entry) => [entry.name + "@" + entry.version, entry]));
+      const lines = lockfile.split("\n");
+      const importers = findTopLevelSection(lines, "importers");
+      if (importers !== undefined) {
+        let currentDependencyName;
+        for (let index = importers.startIndex + 1; index < importers.endIndex; index += 1) {
+          const dependencyMatch = lines[index].match(/^      (.+):$/);
+          if (dependencyMatch !== null) {
+            currentDependencyName = stripYamlQuotes(dependencyMatch[1]);
+            continue;
+          }
+
+          const versionMatch = lines[index].match(/^        version: ([^\s(]+)(.*)$/);
+          if (versionMatch === null || currentDependencyName === undefined) continue;
+          const entry = byNameVersion.get(currentDependencyName + "@" + versionMatch[1]);
+          if (entry === undefined || versionMatch[2].includes("patch_hash=")) continue;
+          lines[index] = "        version: " + versionMatch[1] + "(patch_hash=" + entry.hash + ")" + versionMatch[2];
+        }
+      }
+
+      const snapshots = findTopLevelSection(lines, "snapshots");
+      if (snapshots !== undefined) {
+        for (let index = snapshots.startIndex + 1; index < snapshots.endIndex; index += 1) {
+          const snapshotMatch = lines[index].match(/^  (.+?):(.*)$/);
+          if (snapshotMatch === null) continue;
+          const key = stripYamlQuotes(snapshotMatch[1]);
+          const parsed = parsePackageNameVersion(key);
+          if (parsed === undefined) continue;
+          const entry = byNameVersion.get(parsed.name + "@" + parsed.version);
+          if (entry === undefined || key.includes("patch_hash=")) continue;
+          lines[index] = "  '" + entry.key + "(patch_hash=" + entry.hash + ")':" + snapshotMatch[2];
+        }
+      }
+
+      return lines.join("\n");
+    };
+
+    const insertWorkspacePatchEntries = (workspaceYaml, entries) => {
+      if (entries.length === 0) return workspaceYaml;
+      const lines = workspaceYaml.split("\n");
+      const section = findTopLevelSection(lines, "patchedDependencies");
+      const rendered = entries.map((entry) => "  '" + entry.key + "': .root-patches/" + entry.path);
+
+      if (section !== undefined) {
+        lines.splice(section.endIndex, 0, ...rendered);
+        return lines.join("\n");
+      }
+
+      const insertionIndex = (() => {
+        const preferred = ["allowUnusedPatches:", "packageExtensions:", "peerDependencyRules:", "allowBuilds:", "supportedArchitectures:"];
+        for (const header of preferred) {
+          const index = lines.findIndex((line) => line === header);
+          if (index !== -1) return index;
+        }
+        return lines.length;
+      })();
+      lines.splice(insertionIndex, 0, "patchedDependencies:", ...rendered, "");
+      return lines.join("\n");
+    };
+
+    const rootLockfile = fs.readFileSync(path.join(authorityDir, "pnpm-lock.yaml"), "utf8");
+    const targetRoot = installDir;
+    const targetLockfilePath = path.join(targetRoot, "pnpm-lock.yaml");
+    const targetWorkspaceYamlPath = path.join(targetRoot, "pnpm-workspace.yaml");
+    const targetLockfile = fs.readFileSync(targetLockfilePath, "utf8");
+    const targetWorkspaceYaml = fs.readFileSync(targetWorkspaceYamlPath, "utf8");
+    const existingKeys = parseExistingPatchedDependencyKeys(targetLockfile);
+    const inheritedEntries = parsePatchedDependencies(rootLockfile).filter(
+      (entry) =>
+        !existingKeys.has(entry.key) &&
+        targetLockfile.includes(entry.key) &&
+        fs.existsSync(path.join(targetRoot, ".root-patches", entry.path))
+    );
+
+    if (inheritedEntries.length === 0) {
+      fs.rmSync(path.join(targetRoot, ".root-patches"), { recursive: true, force: true });
+      process.exit(0);
+    }
+
+    const nextTargetLockfile = rewriteLockfilePatchVersions(
+      insertPatchedDependencyLockEntries(targetLockfile, inheritedEntries),
+      inheritedEntries
+    );
+    const nextTargetWorkspaceYaml = insertWorkspacePatchEntries(targetWorkspaceYaml, inheritedEntries);
+
+    fs.writeFileSync(targetLockfilePath, nextTargetLockfile);
+    fs.writeFileSync(targetWorkspaceYamlPath, nextTargetWorkspaceYaml);
+    console.error(
+      "workspace-prep: phase=inherit-root-patched-dependencies install_root=" +
+        installDir +
+        " count=" +
+        inheritedEntries.length +
+        " packages=" +
+        inheritedEntries.map((entry) => entry.key).join(",")
+    );
+  '';
 
   coerceSourceRoot =
     sourceRoot:
@@ -36,6 +241,18 @@ let
 
   workspaceRootPath = coerceSourceRoot workspaceRoot;
 
+  sourcePathFilter =
+    path: type:
+    let
+      name = baseNameOf path;
+    in
+    !(builtins.elem name [
+      ".direnv"
+      ".git"
+      "node_modules"
+    ])
+    && !(name == "result" && type == "symlink");
+
   normalizeSourceRoot =
     prefix: sourceRoot:
     let
@@ -43,6 +260,7 @@ let
       normalizedName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] prefix);
       sanitizedPath = builtins.path {
         path = rawPath;
+        filter = sourcePathFilter;
         name = normalizedName;
       };
     in
@@ -96,6 +314,7 @@ let
       snapshotName = lib.strings.sanitizeDerivationName (lib.replaceStrings [ "/" ] [ "-" ] namePrefix);
       sanitizedPath = builtins.path {
         path = path;
+        filter = sourcePathFilter;
         name = snapshotName;
       };
     in
@@ -381,10 +600,7 @@ let
     let
       parent = builtins.dirOf relPath;
     in
-    if parent == "." then
-      ''mkdir -p "$out"''
-    else
-      ''mkdir -p "$out/${parent}"'';
+    if parent == "." then ''mkdir -p "$out"'' else ''mkdir -p "$out/${parent}"'';
 
   copyFileCmd =
     relPath:
@@ -583,6 +799,16 @@ let
           mkdir -p "$out"
         ''
         + stageExternalInstallRootManifestOnlyCmd root
+        + copyResolvedPatchFilesCmd {
+          sourcePrefix = "";
+          workspaceYamlContent = rootPnpmWorkspaceYaml;
+          targetPrefix = "${root.installDir}/.root-patches";
+        }
+        + ''
+          mkdir -p "$out/.root-patch-authority"
+          cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-lock.yaml"))} "$out/.root-patch-authority/pnpm-lock.yaml"
+          cp ${lib.escapeShellArg (toString (absoluteFileSourcePathFor "pnpm-workspace.yaml"))} "$out/.root-patch-authority/pnpm-workspace.yaml"
+        ''
       );
       lockfilePath = installRootScopedPath root.installDir "pnpm-lock.yaml";
       depsBuild = pnpmDepsHelper.mkDeps {
@@ -596,6 +822,8 @@ let
         frozenLockfile = true;
         preInstall = ''
           chmod -R +w .
+          ${pkgs.nodejs}/bin/node ${inheritRootPatchedDependenciesScript} .root-patch-authority ${lib.escapeShellArg root.installDir}
+          rm -rf .root-patch-authority
         '';
         pnpmDepsHash = depsBuildHashForInstallRoot root.installDir;
       };
@@ -800,7 +1028,10 @@ let
       '';
 
   nativeNodePackageEntries = builtins.concatStringsSep "\n" (
-    map (nativePackage: "${lib.escapeShellArg nativePackage.name}\t${lib.escapeShellArg nativePackage.package}") nativeNodePackages
+    map (
+      nativePackage:
+      "${lib.escapeShellArg nativePackage.name}\t${lib.escapeShellArg nativePackage.package}"
+    ) nativeNodePackages
   );
 
   linkNativeNodePackagesScript =
@@ -809,7 +1040,9 @@ let
     else
       let
         externalRootNodeModulesDirs = builtins.concatStringsSep "\n" (
-          map (root: ''native_node_modules_dirs+=("$NIX_BUILD_TOP/workspace/${root.installDir}/node_modules")'') externalInstallRoots
+          map (
+            root: ''native_node_modules_dirs+=("$NIX_BUILD_TOP/workspace/${root.installDir}/node_modules")''
+          ) externalInstallRoots
         );
       in
       ''
@@ -824,14 +1057,13 @@ let
           for node_modules_dir in "''${native_node_modules_dirs[@]}"; do
             [ -d "$node_modules_dir" ] || continue
             target="$node_modules_dir/$native_package_name"
+            chmod u+w "$node_modules_dir" "$(dirname "$target")" 2>/dev/null || true
             mkdir -p "$(dirname "$target")"
             rm -rf "$target"
             ln -s "$native_package_path" "$target"
           done
           log_cli_phase "link-native-node-package" "package=$native_package_name"
-        done <<'NATIVE_NODE_PACKAGES'
-        ${nativeNodePackageEntries}
-        NATIVE_NODE_PACKAGES
+        done < <(printf '%s\n' ${lib.escapeShellArg nativeNodePackageEntries})
 
         log_cli_phase "link-native-node-packages" "duration=$(timer_elapsed "$nativePackageLinkStartedAt")s packages=$native_package_count node_modules_dirs=''${#native_node_modules_dirs[@]}"
       '';
@@ -908,7 +1140,7 @@ pkgs.stdenv.mkDerivation {
     chmod -R +w workspace
     log_cli_phase "workspace-copy" "duration=$(timer_elapsed "$workspaceCopyStartedAt")s"
 
-    ${builtins.concatStringsSep "\nchmod -R +w workspace\n" (
+    ${builtins.concatStringsSep "\n" (
       map (
         root:
         pnpmDepsHelper.mkRestoreScript {
@@ -918,7 +1150,8 @@ pkgs.stdenv.mkDerivation {
         }
       ) depsInstallRoots
     )}
-    chmod -R +w workspace
+    chmod u+w workspace workspace/.npmrc 2>/dev/null || true
+    chmod -R u+w workspace/${packageDir} 2>/dev/null || true
 
     ${dedupPnpmScript}
 
@@ -967,7 +1200,7 @@ pkgs.stdenv.mkDerivation {
     if [ -n "${smokeTestArgsStr}" ]; then
       echo "Running smoke test..."
       smokeStartedAt=$(timer_now)
-      ./output/${binaryName} ${smokeTestArgsStr}
+      NODE_PATH="$NIX_BUILD_TOP/workspace/node_modules" ./output/${binaryName} ${smokeTestArgsStr}
       log_cli_phase "smoke-test" "duration=$(timer_elapsed "$smokeStartedAt")s args=${lib.escapeShellArg (builtins.concatStringsSep " " smokeTestArgs)}"
     fi
 
