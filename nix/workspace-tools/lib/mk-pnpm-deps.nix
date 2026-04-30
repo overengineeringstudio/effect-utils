@@ -774,8 +774,13 @@ in
         restoreRoot=${lib.escapeShellArg target}/${lib.escapeShellArg label}
       fi
       if [ -d "$restoreRoot" ]; then
+        chmod -R u+w "$restoreRoot" 2>/dev/null || true
         ${pkgs.findutils}/bin/find "$restoreRoot" -name node_modules -prune \
           -exec ${pkgs.bash}/bin/bash -c 'for path do if [ -L "$path" ] || [ ! -d "$path" ]; then rm -f "$path"; else chmod -R u+w "$path" 2>/dev/null || true; rm -rf "$path"; fi; done' bash {} +
+        (
+          cd ${deps}
+          ${pkgs.findutils}/bin/find . -mindepth 1 -maxdepth 1 -exec ${pkgs.bash}/bin/bash -c 'root="$1"; shift; for path do rm -rf "$root/''${path#./}"; done' bash "$restoreRoot" {} +
+        )
       fi
 
       ${pkgs.gnutar}/bin/tar \
