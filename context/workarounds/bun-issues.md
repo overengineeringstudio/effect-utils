@@ -56,6 +56,17 @@ This aligns with our pnpm pattern - see "Bun Workspace Pattern" section below.
 
 ## Additional Blocking Issues
 
+### Resolved Runtime Issues
+
+#### BUN-04: Concurrent dynamic import TDZ
+
+- [Concurrent dynamic import with top-level await triggers temporal dead zone](https://github.com/oven-sh/bun/issues/20489)
+- Fixed by [oven-sh/bun#29393](https://github.com/oven-sh/bun/pull/29393), shipped in Bun `1.3.14`.
+
+`effect-utils` overlays nixpkgs' Bun package to `1.3.14-canary.1+ca9e0896c` while no stable `bun-v1.3.14` release asset exists. The overlay uses fixed-output hashes for the GitHub canary release assets.
+
+`@overeng/tui-stories` keeps a runtime compatibility gate for downstreams that provide their own Bun: Bun `<1.3.14` imports story modules sequentially; Bun `>=1.3.14` and non-Bun runtimes import concurrently.
+
 ### BUN-03: Bun patchedDependencies bug
 
 - [Patching falls over when using local path dependencies](https://github.com/oven-sh/bun/issues/13531)

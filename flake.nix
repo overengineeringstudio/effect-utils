@@ -29,11 +29,17 @@
       # lastModified is the git commit timestamp (Unix seconds)
       commitTs = self.sourceInfo.lastModified or 0;
       dirty = self.sourceInfo ? dirtyShortRev;
+      # TODO: Drop this overlay once nixpkgs ships a stable Bun version with
+      # oven-sh/bun#29393 (>= 1.3.14).
+      bunOverlay = import ./nix/bun-overlay.nix;
     in
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ bunOverlay ];
+        };
         mkBunCli = import ./nix/workspace-tools/lib/mk-bun-cli.nix { inherit pkgs; };
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         rootPath = self.outPath;
@@ -105,6 +111,7 @@
       in
       {
         packages = cliPackages // {
+          bun = pkgs.bun;
           cli-build-stamp = cliBuildStamp.package;
           effect-tsgo = tsgo.packages.${system}.effect-tsgo;
           genie-dirty = cliPackagesDirty.genie;
@@ -147,6 +154,8 @@
       }
     )
     // {
+      overlays.default = bunOverlay;
+
       # Devenv modules for importing into other repos
       devenvModules = {
         # `dt` command wrapper for devenv tasks with shell completions
