@@ -1062,10 +1062,12 @@ let
           ''
             ext_pnpm="workspace/${root.installDir}/node_modules/.pnpm"
             if [ -d "$ext_pnpm" ]; then
+              chmod u+w "$ext_pnpm" 2>/dev/null || true
               for entry in "$ext_pnpm"/*/; do
                 [ -d "$entry" ] || continue
                 entry_name="$(basename "$entry")"
                 if [ -d "$agg_pnpm/$entry_name" ] && [ ! -L "''${entry%/}" ]; then
+                  chmod -R u+w "''${entry%/}" 2>/dev/null || true
                   rm -rf "''${entry%/}"
                   ln -s "${relPrefix}/$entry_name" "''${entry%/}"
                   dedup_count=$((dedup_count + 1))
