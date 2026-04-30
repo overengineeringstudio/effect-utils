@@ -270,6 +270,80 @@ run_downstream_pure_eval_regression() {
   echo "Timing: downstream-pure-eval $(( $(date +%s) - start ))s"
 }
 
+run_inherit_root_patched_dependencies_regression() {
+  local start
+  start="$(date +%s)"
+
+  echo "Check: inherit-root-patched-dependencies scalar lockfile and selector handling"
+  local script
+  script="$(
+    cd "$ROOT" &&
+      nix build --no-link --no-write-lock-file --print-out-paths ".#packages.$SYSTEM.genie.passthru.inheritRootPatchedDependenciesScript"
+  )"
+
+  local fixture
+  fixture="$(mktemp -d "${TMPDIR:-/tmp}/mk-pnpm-cli-patches.XXXXXX")"
+  mkdir -p "$fixture/authority/patches" "$fixture/target/.root-patches/patches"
+  cat >"$fixture/authority/pnpm-workspace.yaml" <<'YAML'
+packages: []
+
+patchedDependencies:
+  foo@1.2.3: patches/foo.patch
+  foo@1.2.30: patches/foo-1.2.30.patch
+  peer-pkg@2.0.0: patches/peer.patch
+YAML
+  cat >"$fixture/authority/pnpm-lock.yaml" <<'YAML'
+lockfileVersion: '9.0'
+
+patchedDependencies:
+  foo@1.2.3: hash-foo
+  foo@1.2.30: hash-foo-30
+  peer-pkg@2.0.0: hash-peer
+
+importers:
+  .: {}
+YAML
+  cat >"$fixture/target/pnpm-workspace.yaml" <<'YAML'
+packages: []
+YAML
+  cat >"$fixture/target/pnpm-lock.yaml" <<'YAML'
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      foo:
+        specifier: 1.2.30
+        version: 1.2.30
+      peer-pkg:
+        specifier: 2.0.0
+        version: 2.0.0(peer@1.0.0)
+
+snapshots:
+  foo@1.2.30: {}
+  peer-pkg@2.0.0(peer@1.0.0): {}
+YAML
+  touch \
+    "$fixture/target/.root-patches/patches/foo.patch" \
+    "$fixture/target/.root-patches/patches/foo-1.2.30.patch" \
+    "$fixture/target/.root-patches/patches/peer.patch"
+
+  node "$script" "$fixture/authority" "$fixture/target"
+
+  if grep -q "'foo@1.2.3'" "$fixture/target/pnpm-lock.yaml"; then
+    echo "error: inherited prefix-matched patch foo@1.2.3 for target foo@1.2.30" >&2
+    exit 1
+  fi
+  grep -q "'foo@1.2.30': hash-foo-30" "$fixture/target/pnpm-lock.yaml"
+  grep -q "'peer-pkg@2.0.0': hash-peer" "$fixture/target/pnpm-lock.yaml"
+  grep -q "version: 2.0.0(patch_hash=hash-peer)(peer@1.0.0)" "$fixture/target/pnpm-lock.yaml"
+  grep -q "'peer-pkg@2.0.0(patch_hash=hash-peer)(peer@1.0.0)':" "$fixture/target/pnpm-lock.yaml"
+  grep -q "'peer-pkg@2.0.0': .root-patches/patches/peer.patch" "$fixture/target/pnpm-workspace.yaml"
+  rm -rf "$fixture"
+
+  echo "Timing: inherit-root-patched-dependencies $(( $(date +%s) - start ))s"
+}
+
 if [ "$SKIP_GENIE" -eq 0 ]; then
   build_and_smoke "genie" "genie"
 fi
@@ -279,6 +353,7 @@ if [ "$SKIP_MEGAREPO" -eq 0 ]; then
 fi
 
 if [ "$SKIP_DOWNSTREAM" -eq 0 ]; then
+  run_inherit_root_patched_dependencies_regression
   prepare_downstream_workspace
   run_downstream_pure_eval_regression
   run_downstream_regression "genie" "genie"

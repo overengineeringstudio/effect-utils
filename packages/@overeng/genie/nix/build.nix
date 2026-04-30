@@ -37,7 +37,12 @@ pkgs.runCommand "genie"
     nativeBuildInputs = [ pkgs.makeWrapper ];
     meta.mainProgram = "genie";
     passthru = {
-      inherit (unwrapped.passthru) depsBuildEntries depsBuildsByInstallRoot installRoots;
+      inherit (unwrapped.passthru)
+        depsBuildEntries
+        depsBuildsByInstallRoot
+        inheritRootPatchedDependenciesScript
+        installRoots
+        ;
     };
   }
   ''

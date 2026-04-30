@@ -196,27 +196,27 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
 
   buildPhase = ''
-        set -euo pipefail
-        runHook preBuild
+    set -euo pipefail
+    runHook preBuild
 
-        cp -r ${buildSrc} workspace
-        chmod -R +w workspace
-        ${pnpmDepsHelper.mkRestoreScript {
-          deps = pnpmDeps;
-          target = "workspace";
-        }}
-        cd workspace
+    cp -r ${buildSrc} workspace
+    chmod -R +w workspace
+    ${pnpmDepsHelper.mkRestoreScript {
+      deps = pnpmDeps;
+      target = "workspace";
+    }}
+    cd workspace
 
-        cd ${packageDir}
-        chmod +w .
+    cd ${packageDir}
+    chmod +w .
 
-        # Bundle into single JS file.
-        # --external jiti: eslint's config loader uses jiti for dynamic imports, but
-        # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
-        # to exclude. This avoids bundling issues with jiti's native module resolution.
-        bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
+    # Bundle into single JS file.
+    # --external jiti: eslint's config loader uses jiti for dynamic imports, but
+    # oxlint's JS plugin runtime never invokes the config loader, so jiti is safe
+    # to exclude. This avoids bundling issues with jiti's native module resolution.
+    bun build src/mod.ts --bundle --target=bun --external jiti --outfile=plugin.js
 
-        runHook postBuild
+    runHook postBuild
   '';
 
   checkPhase = ''
