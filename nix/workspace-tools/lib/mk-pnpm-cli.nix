@@ -42,9 +42,13 @@ let
         ? packageKey.indexOf("@", 1)
         : packageKey.indexOf("@");
       if (atIndex === -1) return undefined;
+      const version = packageKey.slice(atIndex + 1);
+      const suffixIndex = version.indexOf("(");
       return {
         name: packageKey.slice(0, atIndex),
-        version: packageKey.slice(atIndex + 1),
+        version,
+        baseVersion: suffixIndex === -1 ? version : version.slice(0, suffixIndex),
+        suffix: suffixIndex === -1 ? "" : version.slice(suffixIndex),
       };
     };
 
@@ -62,15 +66,30 @@ let
       return { startIndex, endIndex };
     };
 
-    const parsePatchedDependencies = (lockfile) => {
+    const parseWorkspacePatchedDependencyPaths = (workspaceYaml) => {
+      const lines = workspaceYaml.split("\n");
+      const section = findTopLevelSection(lines, "patchedDependencies");
+      if (section === undefined) return new Map();
+
+      return new Map(
+        lines
+          .slice(section.startIndex + 1, section.endIndex)
+          .map((line) => line.match(/^  (.+?):\s*(.+)$/))
+          .filter((match) => match !== null)
+          .map((match) => [stripYamlQuotes(match[1]), match[2].trim()])
+      );
+    };
+
+    const parsePatchedDependencies = (lockfile, workspaceYaml) => {
       const lines = lockfile.split("\n");
       const section = findTopLevelSection(lines, "patchedDependencies");
       if (section === undefined) return [];
 
+      const workspacePaths = parseWorkspacePatchedDependencyPaths(workspaceYaml);
       const entries = [];
       let index = section.startIndex + 1;
       while (index < section.endIndex) {
-        const match = lines[index].match(/^  (.+?):\s*$/);
+        const match = lines[index].match(/^  (.+?):\s*(.*)$/);
         if (match === null) {
           index += 1;
           continue;
@@ -78,8 +97,8 @@ let
 
         const key = stripYamlQuotes(match[1]);
         const parsed = parsePackageNameVersion(key);
-        let hash;
-        let patchPath;
+        let hash = match[2].trim() === "" ? undefined : match[2].trim();
+        let patchPath = workspacePaths.get(key);
         index += 1;
         while (index < section.endIndex && lines[index].startsWith("    ")) {
           const hashMatch = lines[index].match(/^    hash:\s*(.+)$/);
@@ -110,14 +129,50 @@ let
       );
     };
 
+    const parseLockfileSelectors = (lockfile) => {
+      const lines = lockfile.split("\n");
+      const selectors = [];
+
+      for (const sectionName of ["packages", "snapshots"]) {
+        const section = findTopLevelSection(lines, sectionName);
+        if (section === undefined) continue;
+        for (let index = section.startIndex + 1; index < section.endIndex; index += 1) {
+          const match = lines[index].match(/^  (.+?):/);
+          if (match !== null) selectors.push(stripYamlQuotes(match[1]));
+        }
+      }
+
+      const importers = findTopLevelSection(lines, "importers");
+      if (importers !== undefined) {
+        let currentDependencyName;
+        for (let index = importers.startIndex + 1; index < importers.endIndex; index += 1) {
+          const dependencyMatch = lines[index].match(/^      (.+):$/);
+          if (dependencyMatch !== null) {
+            currentDependencyName = stripYamlQuotes(dependencyMatch[1]);
+            continue;
+          }
+
+          const versionMatch = lines[index].match(/^        version: ([^\s]+).*$/);
+          if (versionMatch !== null && currentDependencyName !== undefined) {
+            selectors.push(currentDependencyName + "@" + versionMatch[1]);
+          }
+        }
+      }
+
+      return selectors;
+    };
+
+    const selectorMatchesEntry = (selector, entry) => {
+      const parsed = parsePackageNameVersion(selector);
+      return parsed !== undefined && parsed.name === entry.name && parsed.baseVersion === entry.version;
+    };
+
     const insertPatchedDependencyLockEntries = (lockfile, entries) => {
       if (entries.length === 0) return lockfile;
       const lines = lockfile.split("\n");
       const section = findTopLevelSection(lines, "patchedDependencies");
       const rendered = entries.flatMap((entry) => [
-        "  '" + entry.key + "':",
-        "    hash: " + entry.hash,
-        "    path: .root-patches/" + entry.path,
+        "  '" + entry.key + "': " + entry.hash,
       ]);
 
       if (section !== undefined) {
@@ -161,9 +216,9 @@ let
           const key = stripYamlQuotes(snapshotMatch[1]);
           const parsed = parsePackageNameVersion(key);
           if (parsed === undefined) continue;
-          const entry = byNameVersion.get(parsed.name + "@" + parsed.version);
+          const entry = byNameVersion.get(parsed.name + "@" + parsed.baseVersion);
           if (entry === undefined || key.includes("patch_hash=")) continue;
-          lines[index] = "  '" + entry.key + "(patch_hash=" + entry.hash + ")':" + snapshotMatch[2];
+          lines[index] = "  '" + parsed.name + "@" + parsed.baseVersion + "(patch_hash=" + entry.hash + ")" + parsed.suffix + "':" + snapshotMatch[2];
         }
       }
 
@@ -194,16 +249,18 @@ let
     };
 
     const rootLockfile = fs.readFileSync(path.join(authorityDir, "pnpm-lock.yaml"), "utf8");
+    const rootWorkspaceYaml = fs.readFileSync(path.join(authorityDir, "pnpm-workspace.yaml"), "utf8");
     const targetRoot = installDir;
     const targetLockfilePath = path.join(targetRoot, "pnpm-lock.yaml");
     const targetWorkspaceYamlPath = path.join(targetRoot, "pnpm-workspace.yaml");
     const targetLockfile = fs.readFileSync(targetLockfilePath, "utf8");
     const targetWorkspaceYaml = fs.readFileSync(targetWorkspaceYamlPath, "utf8");
     const existingKeys = parseExistingPatchedDependencyKeys(targetLockfile);
-    const inheritedEntries = parsePatchedDependencies(rootLockfile).filter(
+    const targetSelectors = parseLockfileSelectors(targetLockfile);
+    const inheritedEntries = parsePatchedDependencies(rootLockfile, rootWorkspaceYaml).filter(
       (entry) =>
         !existingKeys.has(entry.key) &&
-        targetLockfile.includes(entry.key) &&
+        targetSelectors.some((selector) => selectorMatchesEntry(selector, entry)) &&
         fs.existsSync(path.join(targetRoot, ".root-patches", entry.path))
     );
 
@@ -1085,7 +1142,7 @@ pkgs.stdenv.mkDerivation {
   dontFixup = true;
   passthru = {
     depsSrc = rootDepsSrc;
-    inherit depsSrcByInstallRoot depsBuildsByInstallRoot;
+    inherit depsSrcByInstallRoot depsBuildsByInstallRoot inheritRootPatchedDependenciesScript;
     installRoots = map (root: {
       inherit (root) attrName installDir lockfilePath;
       memberDirs = installRootMemberDirs root;
