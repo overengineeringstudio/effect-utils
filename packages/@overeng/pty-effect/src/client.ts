@@ -326,7 +326,23 @@ const withEnvOverrides = <A, E, R>({
   }).pipe(Effect.flatMap((saved) => effect.pipe(Effect.ensuring(restore(saved)))))
 }
 
-const resolvePtyServerModulePath = () => require.resolve('@myobie/pty/server')
+/**
+ * Locate `@myobie/pty/server` for the spawned daemon child.
+ *
+ * Honors `PTY_SERVER_MODULE_PATH` first so consumers can pin the path
+ * explicitly. This is required when the consumer is a single-file
+ * `bun build --compile` binary: `require.resolve('@myobie/pty/server')`
+ * inside the bundle returns a `bunfs:` path that the spawned `node`
+ * child can't read, so the spawn fails with
+ * `Cannot find module '@myobie/pty/server' from '/$bunfs/root/<bin>'`.
+ * The wrapper script around the bundle sets the env var to a real
+ * on-disk path materialized in `node_modules/@myobie/pty/dist/server.js`.
+ *
+ * TODO(upstream): push this env-var override into a future
+ * `@overeng/pty-effect` release so consumers don't need to patch.
+ */
+const resolvePtyServerModulePath = () =>
+  process.env['PTY_SERVER_MODULE_PATH'] ?? require.resolve('@myobie/pty/server')
 
 const spawnDaemonViaNode = (spec: PtyDaemonSpec) =>
   wrapPromise({
