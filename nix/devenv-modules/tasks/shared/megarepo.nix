@@ -42,7 +42,7 @@ let
     # Rewrite the manifest atomically so a failed `mr ls` never leaves behind
     # an empty file that would make the warm-path output proof vacuous.
     mr ls --output json \
-      | ${jq} -r 'select(._tag == "Success") | .value.members[].name' \
+      | ${jq} -r '${mrLsMemberNamesJq}' \
       | while IFS= read -r member; do
           [ -n "$member" ] || continue
           case ",''${MEGAREPO_SKIP_MEMBERS:-}," in

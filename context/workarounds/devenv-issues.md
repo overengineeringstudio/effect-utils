@@ -144,7 +144,7 @@ devenv's PTY task runner sends two echo sentinels and reads until both are found
 
 - Emit OTEL shell-entry notices through `devenv.messages` task output.
 - Reuse the exported Grafana link env in `otel-trace` for on-demand reopening.
-- Keep a TODO to return to the `v2.0.7` tag once that release is available.
+- Use the upstream `v2.1` tag, which includes the task message support this flow needs.
 
 ---
 
@@ -246,10 +246,6 @@ Git hooks run in a subprocess that doesn't inherit the direnv environment.
   - When #2415 is fixed: can use native OTLP export to observability platforms
   - Remove manual JSON trace post-processing from CI pipelines
   - Update R10 status in this document to reflect full compliance
-
-- **DEVENV-05 follow-up (tagged release contains #2661):**
-  - Replace the temporary commit pin with the `v2.0.7` tag
-  - Remove the temporary pin note from `devenv.yaml` / CI docs
 
 - **COMPAT-01 improved (web coding agent support):**
   - When Claude Code Web adds Nix domains to allowlist: update status, remove "Full internet" workaround

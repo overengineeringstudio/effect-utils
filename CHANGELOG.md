@@ -100,10 +100,9 @@ All notable changes to this project will be documented in this file.
   - Replaces setup fingerprint tool-version probes with resolved tool-identity hashing so warm shells do not pay `pnpm`, `genie`, or `mr` CLI startup just to validate unchanged setup inputs
   - Speeds up warm task status paths by using direct `mr status`, fingerprint-based `genie:run` caching, a one-process `pnpm:install` projection hash that preserves the previous structural guarantees, and a `ts:emit` graph that excludes `noEmit` references at emit time
   - Hardens the fast paths by making the outer cache only track setup inputs while each task still verifies its own outputs before skipping
-- **devenv/otel**: pin `devenv` temporarily to the post-#2661 upstream commit and move OTEL shell-entry notices onto `devenv.messages`
+- **devenv/otel**: update `devenv` to the upstream `v2.1` tag and move OTEL shell-entry notices onto `devenv.messages`
   - Resolves OTEL mode, dashboard sync, and Grafana trace-link construction in a dedicated shell-entry task instead of ad-hoc `enterShell` output
   - Auto-displays the OTEL shell-entry message through upstream task messages while keeping `otel-trace` as a lightweight re-open helper
-  - Adds a TODO to switch the temporary commit pin back to the `v2.0.7` tag once it is released
   - Scrubs ambient task trace context before emitting `devenv/shell:entry` so the shell root span cannot self-parent or collide with later `dt` root spans
   - Emits `devenv/shell:entry` via the pinned store path for `otel-span` so tracing still works before `enterShell` PATH mutations are fully visible
 - **@overeng/genie**: Validate GitHub Actions `runs-on` labels before emitting workflow YAML

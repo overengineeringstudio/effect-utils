@@ -197,6 +197,7 @@ let
       # ordered line stream that the previous bash implementation produced.
       NODE_MODULES_HELPER_MODE="projection-hash" \
       PNPM_ROOT_MODULES_YAML="node_modules/.modules.yaml" \
+      PNPM_GVS_LINKS_DIR="$(resolve_gvs_links_dir)" \
       NODE_MODULES_DIRS="$(printf '%s\n' node_modules ${nodeModulesPaths})" \
       ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript}
     }

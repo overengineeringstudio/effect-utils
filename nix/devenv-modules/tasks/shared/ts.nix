@@ -54,64 +54,64 @@ let
       "pnpm:install"
     ];
   emitTsconfigHelper = ''
-    generate_emit_tsconfig() {
-      local source_tsconfig="$1"
-      local target_tsconfig="$2"
+        generate_emit_tsconfig() {
+          local source_tsconfig="$1"
+          local target_tsconfig="$2"
 
-      # `tsc --build --dry --noCheck` still treats `noEmit` references as emit
-      # work, which made `ts:emit` look perpetually stale. Build a filtered
-      # graph just for this task instead of mutating the checked-in config.
-      ${pkgs.nodejs}/bin/node - "$source_tsconfig" "$target_tsconfig" <<'NODE'
-const fs = require('node:fs')
-const path = require('node:path')
+          # `tsc --build --dry --noCheck` still treats `noEmit` references as emit
+          # work, which made `ts:emit` look perpetually stale. Build a filtered
+          # graph just for this task instead of mutating the checked-in config.
+          ${pkgs.nodejs}/bin/node - "$source_tsconfig" "$target_tsconfig" <<'NODE'
+    const fs = require('node:fs')
+    const path = require('node:path')
 
-const [sourceTsconfig, targetTsconfig] = process.argv.slice(2)
+    const [sourceTsconfig, targetTsconfig] = process.argv.slice(2)
 
-const loadTypescript = () => {
-  try {
-    return require(require.resolve('typescript', { paths: [path.dirname(sourceTsconfig), process.cwd()] }))
-  } catch (error) {
-    throw new Error(
-      'Unable to resolve TypeScript while preparing ts:emit: ' +
-        String(error?.message ?? error)
-    )
-  }
-}
-
-const typescript = loadTypescript()
-
-const readTsconfig = (filePath) => {
-  const parsed = typescript.readConfigFile(filePath, (path) => fs.readFileSync(path, 'utf8'))
-  if (parsed.error) {
-    const message = typeof parsed.error.messageText === 'string'
-      ? parsed.error.messageText
-      : JSON.stringify(parsed.error.messageText)
-    throw new Error('Failed to parse ' + filePath + ': ' + message)
-  }
-  return parsed.config
-}
-
-const resolveReferenceTsconfig = (referencePath) => {
-  const resolvedPath = path.resolve(baseDir, referencePath)
-  return path.extname(resolvedPath) ? resolvedPath : path.join(resolvedPath, 'tsconfig.json')
-}
-
-const rootConfig = readTsconfig(sourceTsconfig)
-const baseDir = path.dirname(sourceTsconfig)
-
-rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
-  const refTsconfig = resolveReferenceTsconfig(reference.path)
-  if (!fs.existsSync(refTsconfig)) {
-    return true
-  }
-
-  const refConfig = readTsconfig(refTsconfig)
-  return refConfig.compilerOptions?.noEmit !== true
-})
-
-fs.writeFileSync(targetTsconfig, JSON.stringify(rootConfig))
-NODE
+    const loadTypescript = () => {
+      try {
+        return require(require.resolve('typescript', { paths: [path.dirname(sourceTsconfig), process.cwd()] }))
+      } catch (error) {
+        throw new Error(
+          'Unable to resolve TypeScript while preparing ts:emit: ' +
+            String(error?.message ?? error)
+        )
+      }
     }
+
+    const typescript = loadTypescript()
+
+    const readTsconfig = (filePath) => {
+      const parsed = typescript.readConfigFile(filePath, (path) => fs.readFileSync(path, 'utf8'))
+      if (parsed.error) {
+        const message = typeof parsed.error.messageText === 'string'
+          ? parsed.error.messageText
+          : JSON.stringify(parsed.error.messageText)
+        throw new Error('Failed to parse ' + filePath + ': ' + message)
+      }
+      return parsed.config
+    }
+
+    const resolveReferenceTsconfig = (referencePath) => {
+      const resolvedPath = path.resolve(baseDir, referencePath)
+      return path.extname(resolvedPath) ? resolvedPath : path.join(resolvedPath, 'tsconfig.json')
+    }
+
+    const rootConfig = readTsconfig(sourceTsconfig)
+    const baseDir = path.dirname(sourceTsconfig)
+
+    rootConfig.references = (rootConfig.references ?? []).filter((reference) => {
+      const refTsconfig = resolveReferenceTsconfig(reference.path)
+      if (!fs.existsSync(refTsconfig)) {
+        return true
+      }
+
+      const refConfig = readTsconfig(refTsconfig)
+      return refConfig.compilerOptions?.noEmit !== true
+    })
+
+    fs.writeFileSync(targetTsconfig, JSON.stringify(rootConfig))
+    NODE
+        }
   '';
 
   # Script that runs tsc with --extendedDiagnostics --verbose,

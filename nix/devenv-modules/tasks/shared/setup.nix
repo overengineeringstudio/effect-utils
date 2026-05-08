@@ -387,7 +387,8 @@ in
       # Required tasks are hard dependencies; optional tasks use @completed so
       # failures don't block shell entry.
       "devenv:enterShell" = {
-        after = setupRequiredTasks
+        after =
+          setupRequiredTasks
           ++ (map (t: "${t}@completed") setupOptionalTasks)
           ++ lib.optionals (setupTasks != [ ]) [ "${setupRecordCacheTaskName}@completed" ];
       };

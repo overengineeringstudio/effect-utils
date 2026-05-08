@@ -24,7 +24,7 @@ extract_task_script() {
   local module_args="${4:-packages = [ ];}"
   local task_name="${5:-pnpm:install}"
 
-  nix eval --impure --raw --expr "
+  nix-instantiate --eval --strict --json --expr "
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
@@ -41,7 +41,7 @@ extract_task_script() {
         config = { devenv.root = \"$workspace_root\"; };
       };
     in (builtins.getAttr \"${task_name}\" module.tasks).${attr}
-  " > "$output_path"
+  " | jq -r . > "$output_path"
   chmod +x "$output_path"
 }
 
@@ -52,7 +52,7 @@ extract_shared_task_script() {
   local package_name="$4"
   local output_path="$5"
 
-  nix eval --impure --raw --expr "
+  nix-instantiate --eval --strict --json --expr "
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
@@ -83,7 +83,7 @@ extract_shared_task_script() {
         ];
       };
     in evaluated.config.tasks.\"${task_name}\".exec
-  " > "$output_path"
+  " | jq -r . > "$output_path"
   chmod +x "$output_path"
 }
 
@@ -94,7 +94,12 @@ rewrite_unrealized_tool_paths() {
   # the referenced helper packages. Patch the generated absolute store paths to
   # temp-local shims so the test only exercises task behavior, not derivation
   # realisation.
-  perl -0pi -e 's#/nix/store/[^"\s]*/bin/flock#'"$tmpdir"'/bin/flock#g; s#/nix/store/[^"\s]*/bin/node#node#g' "$script_path"
+  perl -0pi -e '
+    s#/nix/store/[^"\s]*/bin/flock#'"$tmpdir"'/bin/flock#g;
+    s#/nix/store/[^"\s]*/bin/node#node#g;
+    s#/nix/store/[^"\s]*-pnpm-task-helpers\.sh#'"$ROOT"'/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh#g;
+    s#/nix/store/[^"\s]*-check-node-modules-projection-health\.cjs#'"$ROOT"'/nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs#g;
+  ' "$script_path"
 }
 
 echo "Running pnpm task smoke test..."
@@ -373,6 +378,7 @@ echo "Test 9: outer cache hit misses when a projected symlink disappears"
   set -e
   unset DEVENV_SETUP_OUTER_CACHE_HIT
   assert_exit_code 1 "$exit_code" "outer-hit status should miss when a projected symlink disappears"
+  bash "$tmpdir/pnpm-install.exec.sh"
 )
 
 echo "Test 10: status still hits when PNPM_HOME changes but store-dir stays shared"

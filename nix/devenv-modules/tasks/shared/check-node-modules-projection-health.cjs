@@ -128,6 +128,8 @@ const runProjectionHash = () => {
     hash.update('\n')
   }
 
+  appendLine(`gvs-links-dir ${process.env.PNPM_GVS_LINKS_DIR || ''}`)
+
   for (const nodeModulesDir of moduleDirs) {
     if (fs.existsSync(nodeModulesDir) && fs.statSync(nodeModulesDir).isDirectory()) {
       appendLine(`dir ${nodeModulesDir}`)

@@ -390,11 +390,21 @@ let
           echo "[otel] ERROR: extraDashboards is not supported in OTEL_MODE=system" >&2
           return 1
         fi
-        if ! otel dash sync \
-          --source "${allDashboards}" \
-          --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
-          echo "[otel] ERROR: otel dash sync failed" >&2
-          return 1
+        _otel_project_name="$(basename "''${DEVENV_ROOT:-devenv}")"
+        if otel dash sync --help >/dev/null 2>&1; then
+          if ! otel dash sync \
+            --source "${allDashboards}" \
+            --target "$OTEL_STATE_DIR/dashboards" >/dev/null 2>&1; then
+            echo "[otel] WARN: otel dash sync failed; continuing without refreshing dashboards" >&2
+          fi
+        elif otel dash restore --help >/dev/null 2>&1; then
+          if ! otel dash restore \
+            --project "$_otel_project_name" \
+            --from "${allDashboards}" >/dev/null 2>&1; then
+            echo "[otel] WARN: otel dash restore failed; continuing without refreshing dashboards" >&2
+          fi
+        else
+          echo "[otel] WARN: otel CLI does not support dashboard restore/sync; continuing without refreshing dashboards" >&2
         fi
         _otel_mode_msg="[otel] Using system-level OTEL stack (mode=$OTEL_MODE)"
       else
@@ -681,10 +691,11 @@ in
       lib.optionals (builtins.hasAttr "devenv:files:cleanup" config.tasks) [ "devenv:files:cleanup" ]
       ++ lib.optionals (builtins.hasAttr "devenv:files" config.tasks) [ "devenv:files" ]
       ++ [ "otel:shell-env" ]
-      ++ lib.optionals (builtins.hasAttr "setup:record-cache" config.tasks) [ "setup:record-cache@completed" ]
+      ++ lib.optionals (builtins.hasAttr "setup:record-cache" config.tasks) [
+        "setup:record-cache@completed"
+      ]
       ++ lib.optionals (
-        !(builtins.hasAttr "setup:record-cache" config.tasks)
-        && builtins.hasAttr "setup:gate" config.tasks
+        !(builtins.hasAttr "setup:record-cache" config.tasks) && builtins.hasAttr "setup:gate" config.tasks
       ) [ "setup:gate" ];
   };
 
