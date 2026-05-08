@@ -173,23 +173,12 @@ describe('PtyClient client wrapper', () => {
     ])
   })
 
-  it('uses the PTY server module under node when running inside Bun', async () => {
+  it('passes a Node launcher to upstream spawnDaemon when running inside Bun', async () => {
     const originalBun = process.versions.bun
     const originalNodeBin = process.env.NODE_BIN
-    const waitForSocket = vi.fn(
-      async (_name: string, _timeoutMs: number, earlyCheck?: () => void) => {
-        earlyCheck?.()
-      },
-    )
-    const child = Object.assign(new EventEmitter(), {
-      pid: 4242,
-      stderr: Object.assign(new EventEmitter(), { unref: vi.fn() }),
-      unref: vi.fn(),
-    })
-    const spawn = vi.fn(() => child)
+    const spawnDaemon = vi.fn(async () => undefined)
 
-    vi.doMock('@myobie/pty/client', () => makeClientMock({ waitForSocket }))
-    vi.doMock('node:child_process', () => ({ spawn }))
+    vi.doMock('@myobie/pty/client', () => makeClientMock({ spawnDaemon }))
 
     Object.defineProperty(process.versions, 'bun', {
       configurable: true,
@@ -209,7 +198,6 @@ describe('PtyClient client wrapper', () => {
             args: ['-c', 'true'],
             cwd: '/tmp',
             displayCommand: 'shell test',
-            env: { PTY_EFFECT_TEST_VALUE: 'from-bun-test' },
             tags: { owner: 'forge' },
             size: { rows: 40, cols: 120 },
           })
@@ -217,35 +205,8 @@ describe('PtyClient client wrapper', () => {
       )
 
       expect(result).toBeUndefined()
-      expect(spawn).toHaveBeenCalledTimes(1)
-      const firstCall = spawn.mock.calls.at(0) as ReadonlyArray<unknown> | undefined
-      expect(firstCall).toBeDefined()
-      if (firstCall === undefined) throw new Error('missing spawn call')
-      const command = firstCall[0]
-      const args = firstCall[1]
-      const options = firstCall[2]
-      if (typeof command !== 'string') throw new Error('expected spawn command')
-      if (Array.isArray(args) === false) throw new Error('expected spawn args')
-      if (options === null || typeof options !== 'object') throw new Error('expected spawn options')
-      expect(command).toBe('node-from-test')
-      expect(args).toHaveLength(1)
-      const serverArg = args[0]
-      expect(serverArg).toBeDefined()
-      if (typeof serverArg !== 'string') throw new Error('expected server module path')
-      expect(serverArg).toContain('@myobie/pty')
-      const spawnOptions = options as {
-        readonly detached: boolean
-        readonly stdio: ReadonlyArray<string>
-        readonly env: Record<string, string>
-      }
-      expect(spawnOptions.detached).toBe(true)
-      expect(spawnOptions.stdio).toEqual(['ignore', 'ignore', 'pipe'])
-      expect(spawnOptions.env.PTY_EFFECT_TEST_VALUE).toBe('from-bun-test')
-      const rawConfig = spawnOptions.env.PTY_SERVER_CONFIG
-      expect(rawConfig).toBeDefined()
-      if (rawConfig === undefined) throw new Error('expected PTY_SERVER_CONFIG')
-      const config = JSON.parse(rawConfig)
-      expect(config).toEqual({
+      expect(spawnDaemon).toHaveBeenCalledTimes(1)
+      expect(spawnDaemon).toHaveBeenCalledWith({
         name: 'unit-bun',
         command: 'sh',
         args: ['-c', 'true'],
@@ -253,12 +214,10 @@ describe('PtyClient client wrapper', () => {
         cwd: '/tmp',
         rows: 40,
         cols: 120,
-        ephemeral: false,
         tags: { owner: 'forge' },
+        launcher: { command: 'node-from-test' },
       })
-      expect(waitForSocket).toHaveBeenCalledWith('unit-bun', 3_000, expect.any(Function))
     } finally {
-      vi.unmock('node:child_process')
       if (originalBun === undefined) {
         delete process.versions.bun
       } else {
