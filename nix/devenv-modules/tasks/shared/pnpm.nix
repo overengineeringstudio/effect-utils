@@ -430,7 +430,7 @@ let
         ${ensureLocalPnpmStoreDirFn}
         export npm_config_manage_package_manager_versions=false
         pnpm install --fix-lockfile --config.confirmModulesPurge=false --config.store-dir="$npm_config_store_dir"
-        echo "Repo-root lockfile updated. Run 'dt nix:hash' to update Nix hashes."
+        echo "Repo-root lockfile updated. Refresh Nix FOD hashes with the repo workflow."
       '';
     };
 

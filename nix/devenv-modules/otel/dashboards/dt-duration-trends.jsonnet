@@ -14,7 +14,7 @@
 //   - lint:check (linting)
 //   - test:run (test execution)
 //   - mr:fetch-apply (repo synchronization)
-//   - nix:build, nix:check, nix:hash (Nix operations)
+//   - nix:build, nix:check (Nix operations)
 //   - tsc per-project breakdown (from extendedDiagnostics spans)
 local g = import 'g.libsonnet';
 local lib = import 'lib.libsonnet';
@@ -280,7 +280,6 @@ g.dashboard.new('dt Task Duration Trends')
   ),
 
   at(
-    taskDurationPanel('nix:hash:* (p50 / p95 / p99)', 'nix:hash:.*'),
     16, y.nixContent, 8, 8,
   ),
 

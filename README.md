@@ -123,8 +123,8 @@ dt nix:check
 After `pnpm-lock.yaml` changes:
 
 ```bash
-dt nix:hash:genie
-dt nix:hash
+refresh Nix FOD hashes for genie
+refresh all stale Nix FOD hashes with your repo workflow
 ```
 
 ## Quick Start

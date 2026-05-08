@@ -18,7 +18,7 @@ let
     binaryName = "notion";
     packageDir = "packages/@overeng/notion-cli";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:notion-cli` — do not edit manually.
+    # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
         hash = "sha256-XXK2ihjQfTtOa8FSqWkcUugDpnKQic7Ra/X0CCRjGao=";

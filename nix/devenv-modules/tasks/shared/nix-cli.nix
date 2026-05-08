@@ -1,4 +1,4 @@
-# Nix CLI build, hash management, and flake validation tasks
+# Nix CLI build, FOD validation, and flake validation tasks
 #
 # Usage in devenv.nix:
 #   imports = [
@@ -15,8 +15,6 @@
 #   ];
 #
 # Provides:
-#   - nix:hash - Update all hashes (pnpmDepsHash + lockfileHash + packageJsonDepsHash) for all CLI packages
-#   - nix:hash:<name> - Update all hashes for specific package
 #   - nix:build - Build all CLI packages
 #   - nix:build:<name> - Build specific package
 #   - nix:check - Check if any CLI hashes are stale (full build per package)
@@ -78,283 +76,6 @@ let
         fi
       fi
     }
-
-    update_hash_in_file() {
-      local hashKey="$1"
-      local newValue="$2"
-      local hashSourcePath="$3"
-      local packageName="$4"
-
-      export HASH_KEY="$hashKey"
-      export HASH_VALUE="$newValue"
-      export PKG_NAME="$packageName"
-
-      if grep -qE "(^|[[:space:]])(\"$packageName\"|$packageName)\\s*=" "$hashSourcePath"; then
-        ${pkgs.perl}/bin/perl -0777 -i -pe '
-          my $pkg = $ENV{"PKG_NAME"};
-          my $key = $ENV{"HASH_KEY"};
-          my $val = $ENV{"HASH_VALUE"};
-          my $attr = qr/(?:\Q$pkg\E|"\Q$pkg\E")/;
-
-          if (/($attr\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"sha256-[^"]+"/s) {
-            s/($attr\s*=\s*\{.*?\b\Q$key\E\s*=\s*)"sha256-[^"]+"/$1"$val"/s;
-          } else {
-            die "Could not find scoped hash $key for package $pkg in $ARGV\n";
-          }
-        ' "$hashSourcePath"
-        return
-      fi
-
-      if grep -qE "$hashKey\s*=\s*if\s+pkgs\.stdenv\.isDarwin" "$hashSourcePath"; then
-        if [[ "$(uname -s)" == "Darwin" ]]; then
-          echo "  (platform-specific: updating Darwin/then branch)"
-          ${pkgs.perl}/bin/perl -0777 -i -pe '
-            my $key = $ENV{"HASH_KEY"};
-            my $val = $ENV{"HASH_VALUE"};
-            s/(\b\Q$key\E\s*=\s*if\s+pkgs\.stdenv\.isDarwin\s+then\s+)"sha256-[^"]+"/$1"$val"/gs;
-          ' "$hashSourcePath"
-        else
-          echo "  (platform-specific: updating Linux/else branch)"
-          ${pkgs.perl}/bin/perl -0777 -i -pe '
-            my $key = $ENV{"HASH_KEY"};
-            my $val = $ENV{"HASH_VALUE"};
-            s/(\b\Q$key\E\s*=\s*if\s+pkgs\.stdenv\.isDarwin\s+then\s+"sha256-[^"]+"\s+else\s+)"sha256-[^"]+"/$1"$val"/gs;
-          ' "$hashSourcePath"
-        fi
-      else
-        if [ "$hashKey" = "bunDepsHash" ] || [ "$hashKey" = "pnpmDepsHash" ]; then
-          if ${pkgs.perl}/bin/perl -0777 -ne '
-            exit 0 if /depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/s;
-            exit 1;
-          ' "$hashSourcePath"; then
-            ${pkgs.perl}/bin/perl -0777 -i -pe '
-              my $val = $ENV{"HASH_VALUE"};
-              s/(depsBuilds\s*=\s*\{.*?"\."\s*=\s*\{.*?\bhash\s*=\s*)(?:"sha256-[^"]+"|pkgs\.lib\.fakeHash|lib\.fakeHash)/$1 . qq{"$val"}/se;
-            ' "$hashSourcePath"
-            return
-          fi
-        fi
-
-        ${pkgs.perl}/bin/perl -0777 -i -pe '
-          my $key = $ENV{"HASH_KEY"};
-          my $val = $ENV{"HASH_VALUE"};
-          s/\b\Q$key\E\s*=\s*"sha256-[^"]+"/$key = "$val"/g;
-        ' "$hashSourcePath"
-      fi
-    }
-  '';
-  # Script to update all hashes in the declared hashSource file
-  # Handles pnpmDepsHash/bunDepsHash, lockfileHash, and packageJsonDepsHash
-  # Iteratively updates hashes until build succeeds
-  updateHashScript = pkgs.writeShellScript "update-all-hashes" ''
-        set -euo pipefail
-
-        flakeRef="$1"
-        hashSource="$2"
-        name="$3"
-        lockfile="$4"
-        packageJson="''${5-}"
-
-        FAKE_HASH="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-        MAX_ITERATIONS=20
-
-        ${hashSourceHelpers}
-
-        # Helper to update lockfileHash and packageJsonDepsHash in the hash source
-        update_fingerprint_hashes() {
-          if [ -n "$lockfile" ] && [ -f "$lockfile" ]; then
-            # Update lockfileHash
-            newLockfileHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$lockfile")"
-            if [ -n "$(read_hash_from_file "lockfileHash" "$hashSource" "$name")" ]; then
-              update_hash_in_file "lockfileHash" "$newLockfileHash" "$hashSource" "$name"
-              echo "Updated lockfileHash to $newLockfileHash"
-            fi
-
-            # Update packageJsonDepsHash (package.json deps fingerprint)
-            if [ -z "$packageJson" ]; then
-              packageJson="$(dirname "$lockfile")/package.json"
-            fi
-            if [ -f "$packageJson" ] && [ -n "$(read_hash_from_file "packageJsonDepsHash" "$hashSource" "$name")" ]; then
-              tmpDeps=$(mktemp)
-              ${pkgs.jq}/bin/jq -cS '{dependencies, devDependencies, peerDependencies}' "$packageJson" > "$tmpDeps"
-              newPackageJsonDepsHash="sha256-$(${pkgs.nix}/bin/nix-hash --type sha256 --base64 "$tmpDeps")"
-              rm "$tmpDeps"
-              update_hash_in_file "packageJsonDepsHash" "$newPackageJsonDepsHash" "$hashSource" "$name"
-              echo "Updated packageJsonDepsHash to $newPackageJsonDepsHash"
-            fi
-          fi
-        }
-
-        extract_got_hash() {
-          echo "$1" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true
-        }
-
-        extract_actual_hash() {
-          echo "$1" | grep -oE 'actual:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true
-        }
-
-        extract_hash_mismatches() {
-          printf '%s\n' "$1" | ${pkgs.perl}/bin/perl -ne '
-            if (/hash mismatch in fixed-output derivation \x27([^\x27]+)\x27/) {
-              $drv = $1;
-              next;
-            }
-            if (defined $drv && /got:\s+(sha256-[A-Za-z0-9+\/=]+)/) {
-              print "$drv\t$1\n";
-              undef $drv;
-            }
-          '
-        }
-
-        local_dep_dir_from_drv_path() {
-          local drvPath="$1"
-          local encodedDir
-
-          encodedDir=$(printf '%s\n' "$drvPath" | grep -oE "packages-[a-zA-Z0-9_-]+-pnpm-deps" | head -1 | ${pkgs.gnused}/bin/sed 's/-pnpm-deps$//' || true)
-          if [ -z "$encodedDir" ]; then
-            return 0
-          fi
-
-          printf '%s\n' "$encodedDir" | ${pkgs.gnused}/bin/sed 's/--/\/@/g; s/-/\//g'
-        }
-
-        echo "Checking $name ($flakeRef)..."
-
-        update_fingerprint_hashes
-
-        echo "Some hashes are stale, updating..."
-
-        # Determine the main hash key (bunDepsHash or pnpmDepsHash)
-        mainHashKey="bunDepsHash"
-        if [ -n "$(read_hash_from_file "pnpmDepsHash" "$hashSource" "$name")" ]; then
-          mainHashKey="pnpmDepsHash"
-        fi
-
-        currentMainHash="$(read_hash_from_file "$mainHashKey" "$hashSource" "$name")"
-        restoreMainHashOnExit=false
-        success=false
-
-        restore_main_hash() {
-          if [ "$restoreMainHashOnExit" != true ] || [ "$success" = true ]; then
-            return
-          fi
-
-          if [ -n "$currentMainHash" ] && [ "$currentMainHash" != "$FAKE_HASH" ]; then
-            echo "Restoring $mainHashKey to $currentMainHash"
-            update_hash_in_file "$mainHashKey" "$currentMainHash" "$hashSource" "$name"
-          fi
-        }
-
-        trap restore_main_hash EXIT
-
-        if [ -n "$currentMainHash" ] && [ "$currentMainHash" != "$FAKE_HASH" ]; then
-          echo "Resetting $mainHashKey to trigger a fresh fixed-output hash check..."
-          update_hash_in_file "$mainHashKey" "$FAKE_HASH" "$hashSource" "$name"
-          restoreMainHashOnExit=true
-        fi
-
-        updated_any=false
-        iteration=0
-
-        while [ $iteration -lt $MAX_ITERATIONS ]; do
-          iteration=$((iteration + 1))
-          echo ""
-          echo "=== Iteration $iteration ==="
-
-          set +e
-          output=$(${pkgs.nix}/bin/nix build "$flakeRef" --no-link --keep-going --option substituters "https://cache.nixos.org" 2>&1)
-          status=$?
-          set -e
-
-          if [ $status -eq 0 ]; then
-            echo ""
-            if [ "$updated_any" = true ]; then
-              echo "✓ $name: all hashes updated successfully"
-            else
-              echo "✓ $name: all hashes up to date"
-            fi
-            update_fingerprint_hashes
-            success=true
-            exit 0
-          fi
-
-          hashMismatches=$(extract_hash_mismatches "$output")
-          actualHash=$(extract_actual_hash "$output")
-
-          if [ -n "$actualHash" ] && [ -n "$(read_hash_from_file "lockfileHash" "$hashSource" "$name")" ]; then
-            update_hash_in_file "lockfileHash" "$actualHash" "$hashSource" "$name"
-            echo "Updated lockfileHash to $actualHash"
-            updated_any=true
-            continue
-          fi
-
-          if [ -z "$hashMismatches" ]; then
-            # No hash mismatch found - check for stale pnpm dependency preparation.
-            # This happens when pnpm-lock.yaml changed but the old hash still "works"
-            # long enough for pnpm to fail while materializing the prepared tree.
-            if echo "$output" | grep -qiE "ERR_PNPM_NO_OFFLINE_TARBALL|ERR_PNPM_TARBALL_INTEGRITY|lockfile:.*manifest:"; then
-              echo "Detected stale pnpmDepsHash (prepared pnpm install tree is stale)"
-              echo "Resetting $mainHashKey to trigger complete re-materialization..."
-
-              # Set fake hash to force Nix to re-fetch and report correct hash
-              update_hash_in_file "$mainHashKey" "$FAKE_HASH" "$hashSource" "$name"
-
-              updated_any=true
-              continue  # Next iteration will get the correct hash from mismatch error
-            fi
-
-            # Genuine build failure - not a hash issue
-            echo "✗ $name: build failed but no hash mismatch found"
-            echo "$output"
-            exit 1
-          fi
-
-          seenTargets=$(mktemp)
-          while IFS=$'\t' read -r mismatchDrv mismatchHash; do
-            if [ -z "$mismatchDrv" ] || [ -z "$mismatchHash" ]; then
-              continue
-            fi
-
-            localDepDir=$(local_dep_dir_from_drv_path "$mismatchDrv")
-            if [ -n "$localDepDir" ]; then
-              target="local:$localDepDir"
-              if grep -Fxq "$target" "$seenTargets"; then
-                continue
-              fi
-              echo "$target" >> "$seenTargets"
-
-              echo "Updating localDeps hash for $localDepDir to $mismatchHash..."
-
-              export LOCAL_DEP_DIR="$localDepDir"
-              export NEW_HASH="$mismatchHash"
-              ${pkgs.perl}/bin/perl -0777 -i -pe '
-                my $dir = $ENV{"LOCAL_DEP_DIR"};
-                my $hash = $ENV{"NEW_HASH"};
-                s/(\{\s*dir\s*=\s*"\Q$dir\E"\s*;\s*hash\s*=\s*)"sha256-[^"]+"/$1"$hash"/g;
-              ' "$hashSource"
-
-              updated_any=true
-              continue
-            fi
-
-            target="main"
-            if grep -Fxq "$target" "$seenTargets"; then
-              continue
-            fi
-            echo "$target" >> "$seenTargets"
-
-            echo "Updating $mainHashKey to $mismatchHash..."
-            update_hash_in_file "$mainHashKey" "$mismatchHash" "$hashSource" "$name"
-            restoreMainHashOnExit=false
-            updated_any=true
-          done <<EOF
-    $hashMismatches
-    EOF
-          rm -f "$seenTargets"
-        done
-
-        echo "✗ $name: exceeded max iterations ($MAX_ITERATIONS), something is wrong"
-        exit 1
   '';
 
   # Script to check if hash is stale (for CI)
@@ -383,7 +104,7 @@ let
       if [ -z "$storedLockfileHash" ]; then
         echo "⚠ $name: no lockfileHash in hashSource, skipping lockfile check"
       elif [ "$currentLockfileHash" != "$storedLockfileHash" ]; then
-        echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
+        echo "✗ $name: lockfile changed (refresh Nix FOD hashes for $name)"
         echo "  stored:  $storedLockfileHash"
         echo "  current: $currentLockfileHash"
         exit 1
@@ -400,7 +121,7 @@ let
         if [ -z "$storedPackageJsonDepsHash" ]; then
           echo "⚠ $name: no packageJsonDepsHash in hashSource, skipping deps check"
         elif [ "$currentPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
-          echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
+          echo "✗ $name: package.json deps changed (run: pnpm install, then refresh Nix FOD hashes for $name)"
           echo "  stored:  $storedPackageJsonDepsHash"
           echo "  current: $currentPackageJsonDepsHash"
           exit 1
@@ -444,7 +165,7 @@ let
       ' | head -1 || true)
       gotHash=$(echo "$output" | grep -oE 'got:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
       expectedHash=$(echo "$output" | grep -oE 'specified:\s+sha256-[A-Za-z0-9+/=]+' | grep -oE 'sha256-[A-Za-z0-9+/=]+' | head -1 || true)
-      echo "✗ $name: deps hash is stale (run: dt nix:hash:$name)"
+      echo "✗ $name: deps hash is stale (refresh Nix FOD hashes for $name)"
       if [ -n "$expectedHash" ]; then
         echo "  expected: $expectedHash"
       fi
@@ -475,13 +196,13 @@ let
     fi
 
     if echo "$output" | grep -q 'lockfileHash is stale'; then
-      echo "✗ $name: lockfileHash is stale (run: dt nix:hash:$name)"
+      echo "✗ $name: lockfileHash is stale (refresh Nix FOD hashes for $name)"
       exit 1
     fi
 
     # Check for custom bun.lock staleness
     if echo "$output" | grep -q 'deps hash is stale'; then
-      echo "✗ $name: lockfile changed, deps hash is stale (run: dt nix:hash:$name)"
+      echo "✗ $name: lockfile changed, deps hash is stale (refresh Nix FOD hashes for $name)"
       exit 1
     fi
 
@@ -491,7 +212,7 @@ let
       echo ""
       echo "To fix:"
       echo "  1. Run: dt pnpm:update     # Update the repo-root pnpm lockfile"
-      echo "  2. Run: dt nix:hash:$name  # Update Nix hashes"
+      echo "  2. Refresh Nix FOD hashes for $name"
       echo "  3. Commit: pnpm-lock.yaml changes and hashSource updates"
       echo ""
       exit 1
@@ -501,7 +222,7 @@ let
       echo "✗ $name: prepared pnpm install tree is stale or incomplete"
       echo ""
       echo "To fix:"
-      echo "  1. Run: dt nix:hash:$name  # Refresh pnpmDepsHash and prepared install tree"
+      echo "  1. Refresh prepared install FODs for $name"
       echo "  2. If lockfiles changed: dt pnpm:update"
       echo ""
       exit 1
@@ -542,7 +263,7 @@ let
       if [ -z "$storedLockfileHash" ]; then
         echo "⚠ $name: no lockfileHash in hashSource, skipping lockfile check"
       elif [ "$currentLockfileHash" != "$storedLockfileHash" ]; then
-        echo "✗ $name: lockfile changed (run: dt nix:hash:$name)"
+        echo "✗ $name: lockfile changed (refresh Nix FOD hashes for $name)"
         echo "  stored:  $storedLockfileHash"
         echo "  current: $currentLockfileHash"
         failed=true
@@ -561,7 +282,7 @@ let
       if [ -z "$storedPackageJsonDepsHash" ]; then
         echo "⚠ $name: no packageJsonDepsHash in hashSource, skipping deps check"
       elif [ "$currentPackageJsonDepsHash" != "$storedPackageJsonDepsHash" ]; then
-        echo "✗ $name: package.json deps changed (run: pnpm install && dt nix:hash:$name)"
+        echo "✗ $name: package.json deps changed (run: pnpm install, then refresh Nix FOD hashes for $name)"
         echo "  stored:  $storedPackageJsonDepsHash"
         echo "  current: $currentPackageJsonDepsHash"
         failed=true
@@ -593,17 +314,6 @@ let
       bash "$testFile"
     done
   '';
-
-  # Generate per-package tasks
-  mkHashTask = pkg: {
-    "nix:hash:${pkg.name}" = {
-      description = "Update Nix hashes for ${pkg.name}";
-      exec = trace.exec "nix:hash:${pkg.name}" "${updateHashScript} '${pkg.flakeRef}' '${pkg.hashSource}' '${pkg.name}' '${pkg.lockfile or ""}' '${pkg.packageJson or ""}'";
-      # pnpm:install refreshes the repo-root install state from the
-      # authoritative root lockfile before we recompute hashes.
-      after = [ "pnpm:install" ];
-    };
-  };
 
   mkBuildTask = pkg: {
     "nix:build:${pkg.name}" = {
@@ -641,8 +351,7 @@ in
 lib.mkIf hasPackages {
   tasks = lib.mkMerge (
     # Per-package tasks
-    (map mkHashTask cliPackages)
-    ++ (map mkBuildTask cliPackages)
+    (map mkBuildTask cliPackages)
     ++ (map mkCheckTask cliPackages)
     ++ (map mkQuickCheckTask packagesWithLockfile)
     ++
@@ -652,11 +361,6 @@ lib.mkIf hasPackages {
           "nix:test" = {
             description = "Run nix-cli tooling tests";
             exec = trace.exec "nix:test" "${nixTestsScript}";
-          };
-
-          "nix:hash" = {
-            description = "Update all Nix hashes for all CLI packages";
-            after = map (p: "nix:hash:${p.name}") cliPackages;
           };
 
           "nix:build" = {

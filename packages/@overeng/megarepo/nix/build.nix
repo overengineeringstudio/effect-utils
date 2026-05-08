@@ -21,7 +21,7 @@ let
     binaryName = "mr";
     packageDir = "packages/@overeng/megarepo";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:megarepo` — do not edit manually.
+    # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
         hash = "sha256-3CS4PQWD2EcV0TUWWnhH4iM73XaymhYbz8/PlMZQgk4=";
