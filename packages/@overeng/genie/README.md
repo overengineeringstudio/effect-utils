@@ -63,7 +63,7 @@ in
 dt nix:build:genie
 
 # After repo-root pnpm-lock.yaml changes (updates dependency hash)
-dt nix:hash:genie
+refresh Nix FOD hashes for genie with the repo workflow
 
 # Build all CLI packages (optional)
 dt nix:build

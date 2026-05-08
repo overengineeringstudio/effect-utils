@@ -18,7 +18,7 @@ let
     binaryName = "tui-stories";
     packageDir = "packages/@overeng/tui-stories";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:tui-stories` — do not edit manually.
+    # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
         hash = "sha256-arpU/d9vFOKJ8wif82Ki6cOmfaMeZNbxBNJfTN66R/U=";

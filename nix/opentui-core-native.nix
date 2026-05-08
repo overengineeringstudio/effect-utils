@@ -30,12 +30,13 @@ let
   tarball = pkgs.fetchurl {
     inherit (spec) url hash;
   };
-  package = pkgs.runCommand (lib.strings.sanitizeDerivationName spec.name)
-    { nativeBuildInputs = [ pkgs.gnutar ]; }
-    ''
-      mkdir -p "$out"
-      tar -xzf ${tarball} --strip-components=1 -C "$out"
-    '';
+  package =
+    pkgs.runCommand (lib.strings.sanitizeDerivationName spec.name)
+      { nativeBuildInputs = [ pkgs.gnutar ]; }
+      ''
+        mkdir -p "$out"
+        tar -xzf ${tarball} --strip-components=1 -C "$out"
+      '';
 in
 {
   inherit (spec) name;

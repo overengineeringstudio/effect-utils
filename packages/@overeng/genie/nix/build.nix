@@ -22,7 +22,7 @@ let
     binaryName = "genie";
     packageDir = "packages/@overeng/genie";
     workspaceRoot = src;
-    # Managed by `dt nix:hash:genie` — do not edit manually.
+    # Managed by the repo FOD refresh workflow — do not edit manually.
     depsBuilds = {
       "." = {
         hash = "sha256-gvNaFg6BvYxKeG4veyeANwfDqltTXS43trSuJpm9r44=";
