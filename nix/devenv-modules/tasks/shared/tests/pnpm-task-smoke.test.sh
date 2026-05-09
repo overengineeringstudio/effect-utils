@@ -24,7 +24,7 @@ extract_task_script() {
   local module_args="${4:-packages = [ ];}"
   local task_name="${5:-pnpm:install}"
 
-  nix eval --impure --raw --expr "
+  nix-instantiate --eval --strict --json --expr "
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
@@ -41,7 +41,7 @@ extract_task_script() {
         config = { devenv.root = \"$workspace_root\"; };
       };
     in (builtins.getAttr \"${task_name}\" module.tasks).${attr}
-  " > "$output_path"
+  " | jq -r . > "$output_path"
   chmod +x "$output_path"
 }
 
@@ -52,7 +52,7 @@ extract_shared_task_script() {
   local package_name="$4"
   local output_path="$5"
 
-  nix eval --impure --raw --expr "
+  nix-instantiate --eval --strict --json --expr "
     let
       flake = builtins.getFlake (toString $ROOT);
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
@@ -83,7 +83,7 @@ extract_shared_task_script() {
         ];
       };
     in evaluated.config.tasks.\"${task_name}\".exec
-  " > "$output_path"
+  " | jq -r . > "$output_path"
   chmod +x "$output_path"
 }
 
@@ -94,7 +94,12 @@ rewrite_unrealized_tool_paths() {
   # the referenced helper packages. Patch the generated absolute store paths to
   # temp-local shims so the test only exercises task behavior, not derivation
   # realisation.
-  perl -0pi -e 's#/nix/store/[^"\s]*/bin/flock#'"$tmpdir"'/bin/flock#g; s#/nix/store/[^"\s]*/bin/node#node#g' "$script_path"
+  perl -0pi -e '
+    s#/nix/store/[^"\s]*/bin/flock#'"$tmpdir"'/bin/flock#g;
+    s#/nix/store/[^"\s]*/bin/node#node#g;
+    s#/nix/store/[^"\s]*-pnpm-task-helpers\.sh#'"$ROOT"'/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh#g;
+    s#/nix/store/[^"\s]*-check-node-modules-projection-health\.cjs#'"$ROOT"'/nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs#g;
+  ' "$script_path"
 }
 
 echo "Running pnpm task smoke test..."
@@ -157,8 +162,20 @@ if [ "${1:-}" = "install" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
     exit 42
   fi
-  mkdir -p node_modules
+  mkdir -p node_modules vendor/pkg-v1
   touch node_modules/.install-ok
+  printf '{"name":"pkg","version":"1.0.0"}\n' > vendor/pkg-v1/package.json
+  ln -snf ../vendor/pkg-v1 node_modules/pkg
+  # The warm-path status now fingerprints the root projection metadata that
+  # pnpm always writes on a real install. Keep the smoke fixture aligned with
+  # that contract so the test still exercises the task logic instead of
+  # failing on an unrealistically incomplete fake install.
+  cat > node_modules/.modules.yaml <<'YAML'
+hoistPattern: []
+nodeLinker: isolated
+storeDir: /tmp/fake-pnpm-store
+virtualStoreDir: node_modules/.pnpm
+YAML
   exit 0
 fi
 echo "unexpected fake pnpm invocation: $*" >&2
@@ -259,7 +276,9 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-install.exec.sh"
   test -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
+  test -f "$workspace/.direnv/task-cache/pnpm-install/projection-state.hash"
   test -d "$workspace/node_modules"
+  test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
@@ -280,7 +299,48 @@ echo "Test 3: status hits after install with same GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after install"
 )
 
-echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
+echo "Test 4: outer cache hit still misses when projection metadata is missing"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  rm -f node_modules/.modules.yaml
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  unset DEVENV_SETUP_OUTER_CACHE_HIT
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when .modules.yaml is missing"
+)
+
+echo "Test 5: exec restores projection metadata after a miss"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  bash "$tmpdir/pnpm-install.exec.sh"
+  test -f "$workspace/node_modules/.modules.yaml"
+)
+
+echo "Test 6: outer cache hit misses when a projected package symlink breaks"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  mkdir -p node_modules/@scope
+  ln -s ../missing-package node_modules/@scope/broken
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  unset DEVENV_SETUP_OUTER_CACHE_HIT
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when a projected symlink is broken"
+  rm node_modules/@scope/broken
+)
+
+echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -292,7 +352,7 @@ echo "Test 4: exec defaults PNPM_HOME to a workspace-local projection"
   grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
-echo "Test 5: status hits after install with the default GVS path"
+echo "Test 8: status hits after install with the default GVS path"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -304,7 +364,24 @@ echo "Test 5: status hits after install with the default GVS path"
   assert_exit_code 0 "$exit_code" "status should hit after default-PNPM_HOME install"
 )
 
-echo "Test 6: status still hits when PNPM_HOME changes but store-dir stays shared"
+echo "Test 9: outer cache hit misses when a projected symlink disappears"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  export PNPM_HOME="$workspace/.pnpm-home-a"
+  export DEVENV_SETUP_OUTER_CACHE_HIT=1
+  bash "$tmpdir/pnpm-install.exec.sh"
+  rm -f node_modules/pkg
+  set +e
+  bash "$tmpdir/pnpm-install.status.sh"
+  exit_code=$?
+  set -e
+  unset DEVENV_SETUP_OUTER_CACHE_HIT
+  assert_exit_code 1 "$exit_code" "outer-hit status should miss when a projected symlink disappears"
+  bash "$tmpdir/pnpm-install.exec.sh"
+)
+
+echo "Test 10: status still hits when PNPM_HOME changes but store-dir stays shared"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -316,7 +393,7 @@ echo "Test 6: status still hits when PNPM_HOME changes but store-dir stays share
   assert_exit_code 0 "$exit_code" "status should hit when only PNPM_HOME changes"
 )
 
-echo "Test 7: status misses after effective store-dir changes"
+echo "Test 11: status misses after effective store-dir changes"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -329,10 +406,10 @@ echo "Test 7: status misses after effective store-dir changes"
   assert_exit_code 1 "$exit_code" "status should miss when store-dir changes"
 )
 
-echo "Test 8: exec invoked pnpm install"
+echo "Test 12: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 9: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
+echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -349,7 +426,7 @@ echo "Test 9: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shar
   grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
-echo "Test 10: nested workspace status hits after nested install"
+echo "Test 14: nested workspace status hits after nested install"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -363,7 +440,7 @@ echo "Test 10: nested workspace status hits after nested install"
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
 
-echo "Test 11: install flags and pre-install hooks are applied"
+echo "Test 15: install flags and pre-install hooks are applied"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -377,7 +454,7 @@ echo "Test 11: install flags and pre-install hooks are applied"
   grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.direnv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
 )
 
-echo "Test 12: CI install failures preserve and classify the pnpm log"
+echo "Test 16: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -401,21 +478,21 @@ echo "Test 12: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 13: generated test task runs vitest without pnpm exec"
+echo "Test 17: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 14: generated storybook task runs storybook without pnpm exec"
+echo "Test 18: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 15: clean leaves shared GVS links intact"
+echo "Test 19: clean leaves shared GVS links intact"
 (
   cd "$workspace"
   mkdir -p "$workspace/.direnv/pnpm-store/v11/links/shared-pkg"

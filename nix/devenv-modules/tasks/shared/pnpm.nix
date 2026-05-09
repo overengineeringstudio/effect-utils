@@ -68,7 +68,7 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./pnpm-task-helpers.sh
   );
-  nodeModulesProjectionHealthScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
+  nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
 
@@ -182,11 +182,24 @@ let
       gvs_links_dir="$(resolve_gvs_links_dir)"
 
       {
+        printf '%s\n' ${lib.escapeShellArg pkgs.pnpm.version}
         printf '%s\n' "$workspace_state_hash"
         printf '%s\n' "''${gvs_links_dir:-}"
         printf '%s\n' ${lib.escapeShellArg (builtins.toJSON installFlags)}
         printf '%s\n' ${lib.escapeShellArg preInstall}
       } | compute_hash
+    }
+  '';
+  computeProjectionStateHashFn = ''
+    compute_projection_state_hash() {
+      # Keep the warm-path fingerprint semantics identical while avoiding the
+      # shell pipeline's per-link process overhead. The helper hashes the same
+      # ordered line stream that the previous bash implementation produced.
+      NODE_MODULES_HELPER_MODE="projection-hash" \
+      PNPM_ROOT_MODULES_YAML="node_modules/.modules.yaml" \
+      PNPM_GVS_LINKS_DIR="$(resolve_gvs_links_dir)" \
+      NODE_MODULES_DIRS="$(printf '%s\n' node_modules ${nodeModulesPaths})" \
+      ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript}
     }
   '';
 
@@ -284,6 +297,7 @@ let
         # manifests. The fingerprint also includes the active GVS projection
         # root because pnpm 11 bakes absolute paths into `links/`.
         hash_file="${cacheRoot}/install-state.hash"
+        projection_hash_file="${cacheRoot}/projection-state.hash"
 
         lockfile="${cacheRoot}/pnpm-install.lock"
         exec 200>"$lockfile"
@@ -315,6 +329,7 @@ let
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
+        ${computeProjectionStateHashFn}
         ${preInstall}
         ${runPnpmInstallFn}
 
@@ -357,7 +372,7 @@ let
           fi
         fi
 
-        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
+        if [ "$_purged_node_modules" != true ] && ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is stale, purging install state"
           purge_node_modules node_modules ${nodeModulesPaths}
           if [ -n "''${_gvs_links_dir:-}" ]; then
@@ -379,7 +394,7 @@ let
           run_pnpm_install
         fi
 
-        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
+        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
           echo "[pnpm] node_modules projection is still unhealthy after install" >&2
           exit 1
         fi
@@ -391,6 +406,9 @@ let
 
         cache_value="$(compute_install_state_hash)"
         ${cache.writeCacheFile ''"$hash_file"''}
+
+        cache_value="$(compute_projection_state_hash)"
+        ${cache.writeCacheFile ''"$projection_hash_file"''}
       '';
       status = trace.status installTaskName "hash" ''
         set -euo pipefail
@@ -399,19 +417,37 @@ let
         ${ensureLocalPnpmHomeFn}
         ${ensureLocalPnpmStoreDirFn}
         hash_file="${cacheRoot}/install-state.hash"
+        projection_hash_file="${cacheRoot}/projection-state.hash"
 
-        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ]; then
+        if [ ! -d node_modules ] || [ ! -f pnpm-lock.yaml ] || [ ! -f "$hash_file" ] || [ ! -f "$projection_hash_file" ] || [ ! -f node_modules/.modules.yaml ]; then
           exit 1
+        fi
+
+        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          # Keep shell entry fast by reusing the cached install-state proof and
+          # only re-validating the realized projection structure here. The full
+          # semantic health check still runs in the exec path before install can
+          # be treated as clean again.
+          ${computeProjectionStateHashFn}
+          current_projection_hash="$(compute_projection_state_hash)"
+          stored_projection_hash="$(cat "$projection_hash_file")"
+          if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
+            exit 1
+          fi
+          exit 0
         fi
 
         ${computeWorkspaceStateHash}
         ${computeInstallStateHashFn}
+        ${computeProjectionStateHashFn}
         current_hash="$(compute_install_state_hash)"
+        current_projection_hash="$(compute_projection_state_hash)"
         stored_hash="$(cat "$hash_file")"
-        if ! check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionHealthScript} ${healthCheckNodeModulesPaths}; then
+        stored_projection_hash="$(cat "$projection_hash_file")"
+        if [ "$current_hash" != "$stored_hash" ]; then
           exit 1
         fi
-        if [ "$current_hash" != "$stored_hash" ]; then
+        if [ "$current_projection_hash" != "$stored_projection_hash" ]; then
           exit 1
         fi
         exit 0
