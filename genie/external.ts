@@ -10,6 +10,7 @@
 import {
   defineCatalog,
   definePatchedDependencies,
+  defineRepoContext,
   githubRuleset,
   githubWorkflow,
   megarepoJson,
@@ -29,6 +30,7 @@ import {
   type PatchesRegistry,
   type PnpmSettings,
   type PnpmWorkspaceData,
+  type RepoContext,
   type ScriptValue,
   type TSConfigArgs,
   type TSConfigCompilerOptions,
@@ -50,6 +52,7 @@ import type { PnpmPackageClosureConfig } from '../packages/@overeng/genie/src/ru
 export {
   defineCatalog,
   definePatchedDependencies,
+  defineRepoContext,
   githubRuleset,
   githubWorkflow,
   megarepoJson,
@@ -72,6 +75,7 @@ export type {
   PnpmPackageClosureConfig,
   PnpmSettings,
   PnpmWorkspaceData,
+  RepoContext,
   ScriptValue,
   TSConfigArgs,
   TSConfigCompilerOptions,
