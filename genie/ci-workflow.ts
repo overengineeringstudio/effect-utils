@@ -482,6 +482,9 @@ measure() {
   local name="$1"
   local trace_file="$2"
   shift 2
+  case "$trace_file" in
+    '$ARTIFACT_DIR'*) trace_file="${dollar}{ARTIFACT_DIR}${dollar}{trace_file#'$ARTIFACT_DIR'}" ;;
+  esac
   local stdout="$ARTIFACT_DIR/$name.stdout"
   local stderr="$ARTIFACT_DIR/$name.stderr"
   local started ended status duration_ms
