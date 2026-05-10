@@ -639,7 +639,6 @@ export {
   devenvPerfArtifactStep,
   devenvPerfBenchmarkStep,
   devenvPerfJob,
-  devenvPerfWorkflow,
   pnpmStateSetupStep,
   restorePnpmStateStep,
   savePnpmStateStep,
