@@ -593,20 +593,6 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
   } as const
 }
 
-export const devenvPerfWorkflow = (
-  opts?: Omit<DevenvPerfJobOptions, 'artifactName'> & { readonly name?: string },
-) =>
-  ciWorkflow({
-    name: opts?.name ?? 'Devenv Perf',
-    on: {
-      workflow_dispatch: {},
-      schedule: [{ cron: '17 3 * * *' }],
-    },
-    jobs: {
-      'devenv-perf': devenvPerfJob(opts),
-    },
-  })
-
 const evictOutPathShellLines = [
   '      if nix path-info "$outPath" >/dev/null 2>&1; then',
   '        echo "evicting cached: $(basename "$outPath")"',

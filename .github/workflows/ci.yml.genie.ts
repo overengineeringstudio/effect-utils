@@ -14,6 +14,7 @@ import {
   savePnpmStateStep,
   standardCIEnv,
   ciWorkflow,
+  devenvPerfJob,
   namespaceRunner,
   validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
@@ -251,6 +252,14 @@ const NETLIFY_SITE = 'overeng-utils'
 
 // Non-required jobs (separate from CIJobName — not required status checks)
 const extraJobs: Record<string, any> = {
+  'devenv-perf': devenvPerfJob({
+    runsOn: namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    setupSteps: baseSteps,
+    taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
+  }),
   /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
   'test-integration-notion': {
     'runs-on': namespaceRunner({
