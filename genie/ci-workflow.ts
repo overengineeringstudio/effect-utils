@@ -578,7 +578,7 @@ jq -n \
     observations: (
       $timings[0]
       | map({
-          name: "devenv." + .name + ".duration",
+          name: ("devenv." + .name + ".duration"),
           unit: "seconds",
           value: (.durationMs / 1000),
           dimensions: {
