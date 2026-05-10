@@ -10,6 +10,10 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const generatedDevenvPerfWorkflowSource = readFileSync(
+  new URL(['../../../../../../.github/workflows', 'devenv-perf.yml'].join('/'), import.meta.url),
+  'utf8',
+)
 const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
@@ -260,5 +264,31 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain('project: VercelProject')
     expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
     expect(vercelDeploySource).toContain('vercelDeployStep(project, opts.runDevenvTasksBefore)')
+  })
+})
+
+describe('ci workflow devenv perf helpers', () => {
+  it('exposes a reusable devenv perf workflow helper', () => {
+    expect(ciWorkflowSource).toContain('export const devenvPerfJob')
+    expect(ciWorkflowSource).toContain('export const devenvPerfWorkflow')
+    expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
+  })
+
+  it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
+    expect(generatedDevenvPerfWorkflowSource).toContain('OTEL_SERVICE_NAME: devenv-perf-ci')
+    expect(generatedDevenvPerfWorkflowSource).toContain("measure 'shell_eval_traced'")
+    expect(generatedDevenvPerfWorkflowSource).toContain('--trace-output')
+    expect(generatedDevenvPerfWorkflowSource).toContain(
+      '$ARTIFACT_DIR/traces/shell_eval_traced.json',
+    )
+    expect(generatedDevenvPerfWorkflowSource).toContain("measure 'shell_eval_warm'")
+    expect(generatedDevenvPerfWorkflowSource).toContain("measure 'tasks_list'")
+  })
+
+  it('writes a stable summary artifact for regression tracking', () => {
+    expect(generatedDevenvPerfWorkflowSource).toContain('schemaVersion: $schemaVersion')
+    expect(generatedDevenvPerfWorkflowSource).toContain('checks: ($timings[0] | map')
+    expect(generatedDevenvPerfWorkflowSource).toContain('Upload devenv perf artifacts')
+    expect(generatedDevenvPerfWorkflowSource).toContain('retention-days: 30')
   })
 })

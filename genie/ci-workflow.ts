@@ -348,6 +348,265 @@ export const runDevenvTasksBefore = (...args: [string, ...string[]]) =>
     label: `devenv tasks run ${args.join(' ')} --mode before`,
   })
 
+export type DevenvPerfProbe = {
+  readonly name: string
+  readonly command: readonly [string, ...string[]]
+  readonly traceOutput?: string
+}
+
+type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
+
+export type DevenvPerfJobOptions = {
+  readonly runsOn?: readonly string[]
+  readonly artifactDir?: string
+  readonly artifactName?: string
+  readonly setupSteps?: readonly DevenvPerfSetupStep[]
+  readonly env?: Record<string, string>
+  readonly taskProbes?: readonly string[]
+  readonly probes?: readonly DevenvPerfProbe[]
+  readonly retentionDays?: number
+}
+
+const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
+  const args = probe.command.map(shellSingleQuote).join(' ')
+  const trace = probe.traceOutput ?? ''
+  return `measure ${shellSingleQuote(probe.name)} ${shellSingleQuote(trace)} ${args}`
+}
+
+const defaultDevenvPerfTaskProbe = (task: string): DevenvPerfProbe => ({
+  name: `task_${task.replaceAll(':', '_')}`,
+  command: [
+    '$DEVENV_BIN',
+    'tasks',
+    'run',
+    task,
+    '--mode',
+    'before',
+    '--no-tui',
+    '--show-output',
+  ],
+})
+
+const renderDevenvPerfScript = (opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>) => {
+  const probes: readonly DevenvPerfProbe[] = [
+    {
+      name: 'shell_eval_traced',
+      command: [
+        '$DEVENV_BIN',
+        '--trace-output',
+        '$trace_file',
+        '--trace-format',
+        'json',
+        'shell',
+        '--no-reload',
+        '--',
+        'true',
+      ],
+      traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
+    },
+    { name: 'shell_eval_warm', command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'] },
+    { name: 'tasks_list', command: ['$DEVENV_BIN', 'tasks', 'list'] },
+    { name: 'processes_help', command: ['$DEVENV_BIN', 'processes', '--help'] },
+    ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
+    ...opts.probes,
+  ]
+
+  return String.raw`set -euo pipefail
+
+mkdir -p "$ARTIFACT_DIR/traces"
+
+{
+  printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'repository=%s\n' "${dollar}{GITHUB_REPOSITORY:-unknown}"
+  printf 'ref=%s\n' "${dollar}{GITHUB_REF:-unknown}"
+  printf 'sha=%s\n' "${dollar}{GITHUB_SHA:-unknown}"
+  printf 'runner_name=%s\n' "${dollar}{RUNNER_NAME:-unknown}"
+  printf 'runner_os=%s\n' "${dollar}{RUNNER_OS:-unknown}"
+  printf 'runner_arch=%s\n' "${dollar}{RUNNER_ARCH:-unknown}"
+  printf 'devenv_rev=%s\n' "${dollar}{DEVENV_REV:-unknown}"
+  printf 'otel_service_name=%s\n' "${dollar}{OTEL_SERVICE_NAME:-unknown}"
+  df -h / /nix 2>/dev/null || df -h /
+  ps -eo pid,ppid,stat,etime,pcpu,pmem,comm,args 2>/dev/null \
+    | grep -E 'devenv direnv-export|nix-daemon|nix build|nix flake|github-runner' \
+    | grep -v grep || true
+} >"$ARTIFACT_DIR/host-context.txt"
+
+printf '[' >"$ARTIFACT_DIR/timings.json"
+first=1
+
+json_append_timing() {
+  local name="$1"
+  local status="$2"
+  local duration_ms="$3"
+  local stdout="$4"
+  local stderr="$5"
+  local trace="$6"
+
+  if [ "$first" -eq 0 ]; then
+    printf ',' >>"$ARTIFACT_DIR/timings.json"
+  fi
+  first=0
+
+  jq -cn \
+    --arg name "$name" \
+    --argjson status "$status" \
+    --argjson durationMs "$duration_ms" \
+    --arg stdout "$stdout" \
+    --arg stderr "$stderr" \
+    --arg trace "$trace" \
+    '{name:$name,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+    >>"$ARTIFACT_DIR/timings.json"
+}
+
+measure() {
+  local name="$1"
+  local trace_file="$2"
+  shift 2
+  local stdout="$ARTIFACT_DIR/$name.stdout"
+  local stderr="$ARTIFACT_DIR/$name.stderr"
+  local started ended status duration_ms
+
+  mkdir -p "$(dirname "$trace_file")"
+  started="$(date +%s%3N)"
+  set +e
+  expanded=()
+  for arg in "$@"; do
+    case "$arg" in
+      '$DEVENV_BIN') expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}") ;;
+      '$ARTIFACT_DIR'*) expanded+=("${dollar}{ARTIFACT_DIR}${dollar}{arg#'$ARTIFACT_DIR'}") ;;
+      '$trace_file') expanded+=("file:$trace_file") ;;
+      *) expanded+=("$arg") ;;
+    esac
+  done
+  "${dollar}{expanded[@]}" >"$stdout" 2>"$stderr"
+  status=$?
+  set -e
+  ended="$(date +%s%3N)"
+  duration_ms=$((ended - started))
+
+  json_append_timing "$name" "$status" "$duration_ms" "$stdout" "$stderr" "$trace_file"
+
+  if [ "$status" -ne 0 ]; then
+    echo "::error::$name failed after ${dollar}{duration_ms}ms; stderr tail follows"
+    tail -80 "$stderr" || true
+    return "$status"
+  fi
+}
+
+${probes.map(devenvPerfProbeLine).join('\n')}
+
+printf ']\n' >>"$ARTIFACT_DIR/timings.json"
+
+jq . "$ARTIFACT_DIR/timings.json" >"$ARTIFACT_DIR/timings.pretty.json"
+jq -n \
+  --slurpfile timings "$ARTIFACT_DIR/timings.json" \
+  --arg schemaVersion "1" \
+  --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
+  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
+  --arg sha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
+  --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \
+  --arg runnerArch "${dollar}{RUNNER_ARCH:-unknown}" \
+  --arg devenvRev "${dollar}{DEVENV_REV:-unknown}" \
+  --arg otelServiceName "${dollar}{OTEL_SERVICE_NAME:-unknown}" \
+  '{
+    schemaVersion: $schemaVersion,
+    generatedAt: $generatedAt,
+    repository: $repository,
+    ref: $ref,
+    sha: $sha,
+    runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch },
+    devenv: { rev: $devenvRev },
+    otel: { serviceName: $otelServiceName },
+    checks: ($timings[0] | map({ key: .name, value: . }) | from_entries)
+  }' >"$ARTIFACT_DIR/summary.json"
+
+if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "### Devenv perf"
+    echo ""
+    echo "| Probe | Status | Duration |"
+    echo "| --- | ---: | ---: |"
+    jq -r '.[] | "| \(.name) | \(.status) | \(.durationMs) ms |"' "$ARTIFACT_DIR/timings.json"
+    echo ""
+    echo "- Artifact directory: \`$ARTIFACT_DIR\`"
+    echo "- OTEL service: \`${dollar}{OTEL_SERVICE_NAME:-unknown}\`"
+  } >>"$GITHUB_STEP_SUMMARY"
+fi
+
+cat "$ARTIFACT_DIR/timings.pretty.json"
+`
+}
+
+export const devenvPerfBenchmarkStep = (opts?: Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>) =>
+  ({
+    name: 'Benchmark devenv surfaces',
+    shell: 'bash',
+    run: renderDevenvPerfScript({
+      taskProbes: opts?.taskProbes ?? [],
+      probes: opts?.probes ?? [],
+    }),
+  }) as const
+
+export const devenvPerfArtifactStep = (
+  opts?: Pick<DevenvPerfJobOptions, 'artifactDir' | 'artifactName' | 'retentionDays'>,
+) =>
+  ({
+    name: 'Upload devenv perf artifacts',
+    if: 'always()',
+    uses: 'actions/upload-artifact@v4',
+    with: {
+      name:
+        opts?.artifactName ??
+        'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
+      path: opts?.artifactDir ?? 'tmp/devenv-perf-ci',
+      'if-no-files-found': 'error',
+      'retention-days': opts?.retentionDays ?? 30,
+    },
+  }) as const
+
+export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
+  const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+
+  return {
+    'runs-on': opts?.runsOn ?? linuxX64Runner,
+    defaults: bashShellDefaults,
+    env: {
+      ...standardCIEnv,
+      ARTIFACT_DIR: artifactDir,
+      OTEL_SERVICE_NAME: 'devenv-perf-ci',
+      ...(opts?.env ?? {}),
+    },
+    steps: [
+      ...(opts?.setupSteps ?? [checkoutStep(), installNixStep(), preparePinnedDevenvStep, validateNixStoreStep]),
+      devenvPerfBenchmarkStep({
+        taskProbes: opts?.taskProbes,
+        probes: opts?.probes,
+      }),
+      devenvPerfArtifactStep({
+        artifactDir,
+        artifactName: opts?.artifactName,
+        retentionDays: opts?.retentionDays,
+      }),
+    ],
+  } as const
+}
+
+export const devenvPerfWorkflow = (
+  opts?: Omit<DevenvPerfJobOptions, 'artifactName'> & { readonly name?: string },
+) =>
+  ciWorkflow({
+    name: opts?.name ?? 'Devenv Perf',
+    on: {
+      workflow_dispatch: {},
+      schedule: [{ cron: '17 3 * * *' }],
+    },
+    jobs: {
+      'devenv-perf': devenvPerfJob(opts),
+    },
+  })
+
 const evictOutPathShellLines = [
   '      if nix path-info "$outPath" >/dev/null 2>&1; then',
   '        echo "evicting cached: $(basename "$outPath")"',
