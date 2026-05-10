@@ -64,7 +64,7 @@ let
       ${deployTask.mkRequiredEnvCheck {
         envName = "VERCEL_TOKEN";
         errorMessage = "Error: VERCEL_TOKEN is not set.";
-        hint = "Set it via: export VERCEL_TOKEN=$(op read 'op://...')";
+        hint = "Run through: secrets-run --reason 'deploy Vercel preview' -- dt vercel:deploy:<target>";
       }}
       ${deployTask.mkRequiredEnvCheck {
         envName = orgIdEnv;

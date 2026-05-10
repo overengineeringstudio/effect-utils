@@ -304,7 +304,7 @@ let
       name = baseNameOf path;
     in
     !(builtins.elem name [
-      ".direnv"
+      ".devenv"
       ".git"
       "node_modules"
     ])

@@ -823,7 +823,6 @@ my-megarepo/                    # Git repo (the megarepo itself)
 ├── megarepo.kdl
 ├── megarepo.lock               # Committed for CI reproducibility
 ├── devenv.nix                  # Devenv configuration
-├── .envrc                      # Simple: use devenv
 └── repos/
     ├── effect -> ~/.megarepo/github.com/effect-ts/effect/refs/heads/main/
     ├── local-lib/              # Local path: actual directory, not symlink
@@ -999,16 +998,13 @@ After a lock-writing or lock-applying command, the flake.lock will be updated to
 
 ## Shell Integration
 
-### With direnv (recommended)
+### With devenv hook
 
-Use devenv for shell integration:
+Use devenv 2.1+ native auto-activation for shell integration:
 
 ```bash
-# .envrc
-source_env_if_exists .envrc.local
-if has devenv && test -f devenv.nix; then
-    use devenv
-fi
+devenv hook fish | source
+devenv allow
 ```
 
 ### Manual

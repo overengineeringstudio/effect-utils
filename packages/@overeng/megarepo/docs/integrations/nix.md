@@ -69,9 +69,9 @@ Using GitHub URLs ensures:
 2. Portable across local dev and CI
 3. Explicit versioning via git refs
 
-## Local Development Override Pattern
+## Local Development
 
-You can use GitHub URLs in `devenv.yaml` for CI compatibility while overriding inputs locally via `.envrc` for development:
+Use GitHub URLs in `devenv.yaml` for standalone and CI compatibility. For local cross-repo iteration, compose the repos with megarepo and let lock sync move the consumer lock files to the sibling member commits.
 
 ### 1. devenv.yaml (committed, CI-compatible)
 
@@ -81,36 +81,33 @@ inputs:
     url: github:overengineeringstudio/effect-utils?dir=nix/playwright-flake
 ```
 
-### 2. .envrc (local only, gitignored)
+### 2. Megarepo lock sync
 
 ```bash
-# Override flake inputs for local development
-export DEVENV_NIX_FLAGS="--override-input playwright path:$(pwd)/repos/effect-utils/nix/playwright-flake"
+mr apply --all
+# edit repos/effect-utils
+mr lock --all
 ```
 
 This pattern gives you:
 
 - **CI**: Uses GitHub URL (works without symlinks)
-- **Local dev**: Uses resolved local path (live updates)
+- **Local dev**: Uses the composed sibling commit recorded in `megarepo.lock`
 
 ### Notes
 
-- The `$(pwd)` resolves to an absolute path, bypassing the symlink issue
-- Add `.envrc` to `.gitignore` to keep overrides local
-- You can override multiple inputs by chaining flags:
-  ```bash
-  export DEVENV_NIX_FLAGS="--override-input foo path:... --override-input bar path:..."
-  ```
+- Do not use per-shell `--override-input` for normal megarepo iteration.
+- `devenv shell` should evaluate from checked-in lock files, so shell entry does not secretly change dependency identity.
 
 ## Trade-offs
 
-| Approach                     | Pros                                  | Cons                              |
-| ---------------------------- | ------------------------------------- | --------------------------------- |
-| GitHub URL                   | Works everywhere, explicit versioning | Can't test local changes directly |
-| GitHub URL + .envrc override | Best of both worlds                   | Requires local .envrc setup       |
-| Local path                   | Live updates during dev               | Fails through megarepo symlinks   |
+| Approach               | Pros                                  | Cons                              |
+| ---------------------- | ------------------------------------- | --------------------------------- |
+| GitHub URL             | Works everywhere, explicit versioning | Can't test local changes directly |
+| GitHub URL + lock sync | Local iteration with CI parity        | Requires composing the megarepo   |
+| Local path             | Live updates during dev               | Fails through megarepo symlinks   |
 
-For flakes you're actively developing, use the `.envrc` override pattern or keep them in the same repo.
+For flakes you're actively developing, use megarepo lock sync or keep them in the same repo.
 
 ## Nix Lock Sync
 

@@ -68,7 +68,7 @@ export const InfoLogs: Story = {
         <Box flexDirection="column">
           <LogLine type="info" message="Syncing livestore from github.com/livestore/livestore" />
           <LogLine type="info" message="Generated flake.nix" />
-          <LogLine type="info" message="Generated .envrc" />
+          <LogLine type="info" message="Generated workspace" />
         </Box>
       )}
       initialState={null}

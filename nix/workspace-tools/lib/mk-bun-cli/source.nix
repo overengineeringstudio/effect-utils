@@ -29,8 +29,8 @@ let
   # Keep the staged workspace lean (skip caches, outputs, and node_modules).
   defaultExcludedSourceNames = [
     ".git"
-    ".direnv"
     ".devenv"
+    ".direnv"
     ".cache"
     ".turbo"
     ".next"

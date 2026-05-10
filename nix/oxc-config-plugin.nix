@@ -106,7 +106,6 @@ let
 
   sourceExclusions = [
     ".git"
-    ".direnv"
     ".devenv"
     ".cache"
     ".turbo"

@@ -109,7 +109,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 workspace="$tmpdir/workspace"
-mkdir -p "$workspace/.direnv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
+mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
 
 cat > "$workspace/package.json" <<'EOF'
 {"name":"smoke-workspace","private":true}
@@ -275,14 +275,14 @@ echo "Test 2: exec runs fake pnpm and populates cache"
   export PNPM_HOME="$workspace/.pnpm-home-a"
   : > "$tmpdir/flock.log"
   bash "$tmpdir/pnpm-install.exec.sh"
-  test -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
-  test -f "$workspace/.direnv/task-cache/pnpm-install/projection-state.hash"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/projection-state.hash"
   test -d "$workspace/node_modules"
   test -f "$workspace/node_modules/.modules.yaml"
   grep -qxF "flock -w 600 200" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 201" "$tmpdir/flock.log"
   grep -qxF "flock -w 600 202" "$tmpdir/flock.log"
-  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.direnv/pnpm-store --force" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.devenv/pnpm-store --force" "$tmpdir/pnpm.log"
   grep -qF ".effect-utils-pnpm-install.lock" "$tmpdir/pnpm-install.exec.sh"
   grep -qF ".effect-utils-pnpm-store.lock" "$tmpdir/pnpm-install.exec.sh"
 )
@@ -347,9 +347,9 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   unset PNPM_HOME
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install.exec.sh"
-  grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
 echo "Test 8: status hits after install with the default GVS path"
@@ -418,12 +418,12 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and sha
   unset npm_config_store_dir
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-nested.exec.sh"
-  test -f "$workspace/.direnv/task-cache/pnpm-install/nested/install-state.hash"
+  test -f "$workspace/.devenv/task-cache/pnpm-install/nested/install-state.hash"
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_HOME=$workspace/.direnv/pnpm-home/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.direnv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
 )
 
 echo "Test 14: nested workspace status hits after nested install"
@@ -451,7 +451,7 @@ echo "Test 15: install flags and pre-install hooks are applied"
   : > "$tmpdir/pnpm.log"
   bash "$tmpdir/pnpm-install-flags.exec.sh"
   test -f .preinstall-marker
-  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.direnv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
+  grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.devenv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
 )
 
 echo "Test 16: CI install failures preserve and classify the pnpm log"
@@ -464,7 +464,7 @@ echo "Test 16: CI install failures preserve and classify the pnpm log"
   unset PNPM_HOME
   unset PNPM_STORE_DIR
   unset npm_config_store_dir
-  rm -f "$workspace/.direnv/task-cache/pnpm-install/install-state.hash"
+  rm -f "$workspace/.devenv/task-cache/pnpm-install/install-state.hash"
   set +e
   output="$(bash "$tmpdir/pnpm-install.exec.sh" 2>&1)"
   exit_code=$?
@@ -495,10 +495,10 @@ echo "Test 18: generated storybook task runs storybook without pnpm exec"
 echo "Test 19: clean leaves shared GVS links intact"
 (
   cd "$workspace"
-  mkdir -p "$workspace/.direnv/pnpm-store/v11/links/shared-pkg"
+  mkdir -p "$workspace/.devenv/pnpm-store/v11/links/shared-pkg"
   mkdir -p "$workspace/node_modules" "$workspace/packages/demo/node_modules"
   bash "$tmpdir/pnpm-clean.exec.sh"
-  test -d "$workspace/.direnv/pnpm-store/v11/links/shared-pkg"
+  test -d "$workspace/.devenv/pnpm-store/v11/links/shared-pkg"
   test ! -e "$workspace/node_modules"
   test ! -e "$workspace/packages/demo/node_modules"
 )

@@ -39,6 +39,7 @@ let
     pnpm = import ./nix/devenv-modules/tasks/shared/pnpm.nix;
     megarepo = import ./nix/devenv-modules/tasks/shared/megarepo.nix;
     nix-cli = import ./nix/devenv-modules/tasks/shared/nix-cli.nix;
+    secretspec = import ./nix/devenv-modules/tasks/shared/secretspec.nix;
     context = ./nix/devenv-modules/tasks/shared/context.nix;
   };
   # Use bun source entrypoints for in-repo CLIs in devenv (flake builds stay strict).
@@ -360,6 +361,7 @@ in
     })
     # Nix CLI build and hash management
     (taskModules.nix-cli { cliPackages = nixCliPackages; })
+    (taskModules.secretspec { })
     # Local task: Validate allPackages matches filesystem packages (effect-utils specific)
     ./nix/devenv-modules/tasks/local/workspace-check.nix
     # Notion integration tests (requires NOTION_TOKEN)

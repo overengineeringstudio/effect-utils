@@ -1,7 +1,7 @@
 # Task cache helpers
 #
 # Shared caching rules:
-# - Cache root: ${config.devenv.root}/.direnv/task-cache
+# - Cache root: ${config.devenv.root}/.devenv/task-cache
 # - Cache files are plain text fingerprints (git SHA, content hashes, etc).
 # - Updates must be atomic (temp file + rename) to avoid partial writes.
 # - Callers set `cache_value` before using `writeCacheFile`.
@@ -13,7 +13,7 @@
 # - Cache files stay local and disposable; correctness never depends on them.
 { config }:
 let
-  cacheRoot = "${config.devenv.root}/.direnv/task-cache";
+  cacheRoot = "${config.devenv.root}/.devenv/task-cache";
   mkCachePath = subPath: "${cacheRoot}/${subPath}";
   writeCacheFile = pathExpr: ''
     tmp_file="$(mktemp)"

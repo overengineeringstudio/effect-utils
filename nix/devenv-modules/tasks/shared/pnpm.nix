@@ -47,10 +47,10 @@ let
     if workspaceRoot == "." then config.devenv.root else "${config.devenv.root}/${workspaceRoot}";
   defaultPnpmHome =
     if workspaceRoot == "." then
-      "${config.devenv.root}/.direnv/pnpm-home"
+      "${config.devenv.root}/.devenv/pnpm-home"
     else
-      "${config.devenv.root}/.direnv/pnpm-home/${workspaceCacheName}";
-  defaultPnpmStoreDir = "${config.devenv.root}/.direnv/pnpm-store";
+      "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
+  defaultPnpmStoreDir = "${config.devenv.root}/.devenv/pnpm-store";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -504,7 +504,7 @@ in
   packages = cliGuard.fromTasks allTasks;
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
-    export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.direnv/pnpm-home}"
+    export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"
     export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-${defaultPnpmStoreDir}}"
     export npm_config_store_dir="''${npm_config_store_dir:-$PNPM_STORE_DIR}"
     export npm_config_cache="$HOME/.cache/pnpm"
