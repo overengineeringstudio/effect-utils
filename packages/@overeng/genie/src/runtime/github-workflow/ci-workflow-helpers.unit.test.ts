@@ -292,7 +292,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('--argjson schemaVersion 1')
     expect(generatedCiWorkflowYamlSource).toContain('effect-utils-ci-measurement')
     expect(generatedCiWorkflowYamlSource).toContain('devenv." + .name + ".duration')
-    expect(generatedCiWorkflowYamlSource).toContain('target: { kind: "devenv", name: "dev-shell", system: $targetSystem }')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'target: { kind: "devenv", name: "dev-shell", system: $targetSystem }',
+    )
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
