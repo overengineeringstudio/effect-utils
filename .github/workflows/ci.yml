@@ -2309,6 +2309,7 @@ jobs:
               case "$arg" in
                 '$DEVENV_BIN') expanded+=("${DEVENV_BIN:?DEVENV_BIN not set}") ;;
                 '$ARTIFACT_DIR'*) expanded+=("${ARTIFACT_DIR}${arg#'$ARTIFACT_DIR'}") ;;
+                'json:file:$trace_file') expanded+=("json:file:$trace_file") ;;
                 '$trace_file') expanded+=("file:$trace_file") ;;
                 *) expanded+=("$arg") ;;
               esac
@@ -2328,7 +2329,7 @@ jobs:
             fi
           }
 
-          measure 'shell_eval_traced' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '$DEVENV_BIN' '--trace-output' '$trace_file' '--trace-format' 'json' 'shell' '--no-reload' '--' 'true'
+          measure 'shell_eval_traced' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '$DEVENV_BIN' '--trace-to' 'json:file:$trace_file' 'shell' '--no-reload' '--' 'true'
           measure 'shell_eval_warm' '' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'true'
           measure 'tasks_list' '' '$DEVENV_BIN' 'tasks' 'list'
           measure 'processes_help' '' '$DEVENV_BIN' 'processes' '--help'

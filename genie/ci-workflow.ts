@@ -415,10 +415,8 @@ const renderDevenvPerfScript = (
       name: 'shell_eval_traced',
       command: [
         '$DEVENV_BIN',
-        '--trace-output',
-        '$trace_file',
-        '--trace-format',
-        'json',
+        '--trace-to',
+        'json:file:$trace_file',
         'shell',
         '--no-reload',
         '--',
@@ -496,6 +494,7 @@ measure() {
     case "$arg" in
       '$DEVENV_BIN') expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}") ;;
       '$ARTIFACT_DIR'*) expanded+=("${dollar}{ARTIFACT_DIR}${dollar}{arg#'$ARTIFACT_DIR'}") ;;
+      'json:file:$trace_file') expanded+=("json:file:$trace_file") ;;
       '$trace_file') expanded+=("file:$trace_file") ;;
       *) expanded+=("$arg") ;;
     esac
