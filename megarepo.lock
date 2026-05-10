@@ -4,9 +4,9 @@
     "effect": {
       "url": "https://github.com/effect-ts/effect",
       "ref": "main",
-      "commit": "39c934c1476be389f7469433910fdf30fc4dad82",
+      "commit": "3585f25110fca7af6aeec3f59c3fc05b20c8d316",
       "pinned": false,
-      "lockedAt": "2026-04-23T08:46:53.308Z"
+      "lockedAt": "2026-05-10T03:09:13.625Z"
     }
   }
 }

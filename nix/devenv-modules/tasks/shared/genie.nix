@@ -19,7 +19,7 @@ let
   genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
     MEGAREPO_STORE = megarepoStoreEnv;
   };
-  cacheRoot = ".direnv/task-cache/genie-run";
+  cacheRoot = ".devenv/task-cache/genie-run";
   stateFile = "${cacheRoot}/state.hash";
   generatedFilesFile = "${cacheRoot}/generated-files.txt";
   collectGenieGeneratedFiles = ''
@@ -29,7 +29,6 @@ let
       ${pkgs.ripgrep}/bin/rg -l \
         --glob '!tmp/**' \
         --glob '!.git/**' \
-        --glob '!.direnv/**' \
         --glob '!.devenv/**' \
         --glob '!node_modules/**' \
         '^// Source: .*\.genie\.ts|^# Source: .*\.genie\.ts' . || true
@@ -49,7 +48,6 @@ let
           -type f \
           -name '*.genie.ts' \
           -not -path './.git/*' \
-          -not -path './.direnv/*' \
           -not -path './.devenv/*' \
           -not -path './node_modules/*' \
           -print

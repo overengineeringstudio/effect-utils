@@ -60,7 +60,7 @@ let
         ${deployTask.mkRequiredEnvCheck {
           envName = "NETLIFY_AUTH_TOKEN";
           errorMessage = "Error: NETLIFY_AUTH_TOKEN is not set.";
-          hint = "Set it via: export NETLIFY_AUTH_TOKEN=$(op read 'op://...')";
+          hint = "Run through: secrets-run --reason 'deploy Netlify preview' -- dt netlify:deploy:<target>";
         }}
 
         deploy_dir="${pkg.path}/storybook-static"

@@ -2,6 +2,6 @@
 
 ## Tooling
 
-- [ ] Otel support for nix builds
+- [x] Otel support for nix builds
 - [ ] local, fast, self-contained otel stack
-- [ ] direnv built into devenv https://github.com/cachix/devenv/issues/2061
+- [ ] devenv native auto-activation https://github.com/cachix/devenv/issues/2061

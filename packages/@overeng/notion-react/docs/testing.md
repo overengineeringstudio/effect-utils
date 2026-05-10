@@ -70,7 +70,7 @@ Required environment variables:
 
 Missing either env var silently skips the whole E2E suite via
 `describe.skipIf(SKIP_E2E)`. Both are typically sourced from
-`packages/@overeng/notion-react/.envrc.local` via `direnv`.
+`secretspec.toml` / `secrets-run` from the repo shell.
 
 #### E2E sub-suites
 
@@ -108,12 +108,7 @@ Missing either env var silently skips the whole E2E suite via
 
 ## Pointing at a different Notion workspace
 
-Create or update `packages/@overeng/notion-react/.envrc.local`:
-
-```sh
-export NOTION_TOKEN="secret_..."
-export NOTION_TEST_PARENT_PAGE_ID="..."
-```
+Export `NOTION_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` in the local shell, or add op-proxy references for them under `[x-op-proxy.refs]` in `secretspec.toml`.
 
 Notes:
 
@@ -122,7 +117,7 @@ Notes:
   parent page via "Add connections" in Notion.
 - The parent page must be reachable by the integration; scratch pages
   inherit its permissions.
-- `direnv allow` after editing `.envrc.local`.
+- Run live tests through `secrets-run --reason "run notion-react live tests" -- <command>`.
 
 ## What the E2E harness proves (and does not)
 

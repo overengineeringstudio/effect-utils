@@ -23,7 +23,7 @@ export const baseOxlintIgnorePatterns = [
   '**/.astro/**',
   '**/.nitro/**',
   '**/.tanstack/**',
-  '**/.direnv/**',
+  '**/.devenv/**',
   '**/tmp/**',
   '**/playwright-report/**',
   '**/test-results/**',

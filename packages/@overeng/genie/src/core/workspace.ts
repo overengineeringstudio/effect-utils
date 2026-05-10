@@ -10,7 +10,6 @@ const DEFAULT_SKIP_DIRS = new Set([
   '.pnpm',
   '.pnpm-store',
   '.git',
-  '.direnv',
   '.devenv',
   'dist',
   'tmp',

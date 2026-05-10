@@ -28,7 +28,7 @@ export const TEST_PARENT_PAGE_ID = process.env.NOTION_TEST_PARENT_PAGE_ID ?? ''
 export const assertEnv = (env: NodeJS.ProcessEnv = process.env): void => {
   if (!env.NOTION_TOKEN) {
     throw new Error(
-      'NOTION_TOKEN is not set. See packages/@overeng/notion-react/.envrc.local for the expected value.',
+      'NOTION_TOKEN is not set. See packages/@overeng/notion-react/devenv.local.nix for the expected value.',
     )
   }
   if (!env.NOTION_TEST_PARENT_PAGE_ID) {

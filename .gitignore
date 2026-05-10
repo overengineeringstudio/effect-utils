@@ -15,8 +15,6 @@ node_modules
 dist
 
 # Direnv
-.direnv
-.envrc.*
 repos/
 
 # Devenv
@@ -45,3 +43,5 @@ blob-report
 # Devenv generated / internal
 /devenv-swift-git-hooks
 .pnpm-home
+
+devenv.local.*

@@ -33,7 +33,7 @@ let
   bootstrapOnlyArgs = lib.concatMapStringsSep " " (
     member: "--only ${lib.escapeShellArg member}"
   ) bootstrapMembers;
-  cacheRoot = ".direnv/task-cache/mr-apply";
+  cacheRoot = ".devenv/task-cache/mr-apply";
   membersFile = "${cacheRoot}/members.txt";
   recordWorkspaceMembers = ''
     set -o pipefail

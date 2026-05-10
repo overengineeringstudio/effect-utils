@@ -85,8 +85,7 @@ export default packageJson(
       'storybook:build': 'storybook build',
       // Integration + e2e tests hit the live Notion API. Both require
       // `NOTION_TOKEN` and `NOTION_TEST_PARENT_PAGE_ID` (tests skip silently
-      // when either is missing). Source the package-local `.envrc.local`
-      // via direnv or run `op-proxy` inline. See helpers.ts for details.
+      // when either is missing). Load the package-local `devenv.local.nix` through devenv or run `op-proxy` inline. See helpers.ts for details.
       'test:integration': 'vitest run --config vitest.integration.config.ts',
       'test:integration:e2e': 'vitest run --config vitest.integration.config.ts e2e',
     },

@@ -78,7 +78,7 @@ const MixedResultsRender = (args: StoryArgs) => {
       results: exampleSyncResults,
       members: exampleSyncResults.map((r) => r.name),
       nestedMegarepos: [MEMBERS.devTools],
-      generatedFiles: ['flake.nix', '.envrc'],
+      generatedFiles: ['flake.nix'],
     }),
     [args.dryRun, args.all, args.verbose, args.force],
   )

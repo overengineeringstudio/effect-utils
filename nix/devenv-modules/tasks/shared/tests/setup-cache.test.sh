@@ -61,7 +61,7 @@ echo ""
 test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 
-cache_root="$test_dir/.direnv/task-cache"
+cache_root="$test_dir/.devenv/task-cache"
 fingerprint_file="$cache_root/setup-fingerprint"
 
 mkdir -p "$cache_root"

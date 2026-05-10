@@ -107,7 +107,6 @@ copy_repo() {
   local dest="$2"
   local excludes=(
     ".git"
-    ".direnv"
     ".devenv"
     ".cache"
     ".turbo"

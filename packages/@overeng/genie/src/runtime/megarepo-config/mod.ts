@@ -54,7 +54,7 @@ export type VscodeGeneratorConfig = {
    * Environment variable name to read the workspace color from at generation time.
    * This allows per-worktree colors without changing megarepo.json.
    *
-   * Example: Set `colorEnvVar: "MEGAREPO_COLOR"` in config, then in .envrc.local:
+   * Example: Set `colorEnvVar: "MEGAREPO_COLOR"` in config, then in devenv.local.nix:
    *   export MEGAREPO_COLOR="#372d8e"
    *
    * Takes precedence over the `color` field if both are set.

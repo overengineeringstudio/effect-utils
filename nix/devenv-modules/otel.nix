@@ -441,9 +441,9 @@ let
     detect_otel_shell_entry_state() {
       # Detect cold vs warm start (setup-git-hash written by setup.nix)
       _cold_start="false"
-      if [ ! -f .direnv/task-cache/setup-git-hash ]; then
+      if [ ! -f .devenv/task-cache/setup-git-hash ]; then
         _cold_start="true"
-      elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .direnv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
+      elif [ "$(git rev-parse HEAD 2>/dev/null || echo no-git)" != "$(cat .devenv/task-cache/setup-git-hash 2>/dev/null || echo "")" ]; then
         _cold_start="true"
       fi
 
@@ -453,7 +453,7 @@ let
       # Missing paths are tolerated here because input files can legitimately
       # disappear between eval and shell startup while the user is editing.
       _reload_trigger="unknown"
-      _otel_mtime_snapshot=".direnv/otel-watch-mtimes"
+      _otel_mtime_snapshot=".devenv/otel-watch-mtimes"
       if [ -f ".devenv/input-paths.txt" ]; then
         _otel_current=$(
           while IFS= read -r _otel_path; do
@@ -476,7 +476,7 @@ let
           )
           _reload_trigger="''${_otel_changed:-unknown}"
         fi
-        ${pkgs.coreutils}/bin/mkdir -p .direnv
+        ${pkgs.coreutils}/bin/mkdir -p .devenv
         echo "$_otel_current" > "$_otel_mtime_snapshot"
       fi
     }
@@ -862,7 +862,7 @@ in
       # ambient PATH, so the shell-entry task works before GNU tools are added.
       _test_shell_entry_state_without_path() {
         local workdir="$_tmp/shell-entry-state-no-path"
-        mkdir -p "$workdir/.devenv" "$workdir/.direnv"
+        mkdir -p "$workdir/.devenv"
         echo "$workdir/foo.nix" > "$workdir/.devenv/input-paths.txt"
         echo "x = 1;" > "$workdir/foo.nix"
 
@@ -872,7 +872,7 @@ in
           detect_otel_shell_entry_state
           [ "$_cold_start" = "true" ] || return 1
           [ "$_reload_trigger" = "initial" ] || return 1
-          [ -f ".direnv/otel-watch-mtimes" ] || return 1
+          [ -f ".devenv/otel-watch-mtimes" ] || return 1
         )
       }
       _check "shell-entry state detection without PATH" _test_shell_entry_state_without_path
@@ -881,7 +881,7 @@ in
       # between eval and shell startup instead of failing the shell-entry task.
       _test_shell_entry_state_missing_paths() {
         local workdir="$_tmp/shell-entry-state-missing-paths"
-        mkdir -p "$workdir/.devenv" "$workdir/.direnv"
+        mkdir -p "$workdir/.devenv"
         echo "$workdir/foo.nix" > "$workdir/.devenv/input-paths.txt"
         echo "$workdir/missing.nix" >> "$workdir/.devenv/input-paths.txt"
         echo "x = 1;" > "$workdir/foo.nix"
@@ -891,7 +891,7 @@ in
           export PATH="/nonexistent"
           detect_otel_shell_entry_state
           [ "$_reload_trigger" = "initial" ] || return 1
-          [ -f ".direnv/otel-watch-mtimes" ] || return 1
+          [ -f ".devenv/otel-watch-mtimes" ] || return 1
         )
       }
       _check "shell-entry state detection with missing paths" _test_shell_entry_state_missing_paths

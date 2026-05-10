@@ -22,7 +22,6 @@ emit_dir_state() {
   find "$dir" \
     \( \
       -name .git -o \
-      -name .direnv -o \
       -name .devenv -o \
       -name .turbo -o \
       -name .cache -o \

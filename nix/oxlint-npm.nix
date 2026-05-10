@@ -22,7 +22,7 @@
 #
 # 2. Update `version` below to the new version number
 #
-# 3. Calculate new hashes (run in /tmp to avoid direnv issues):
+# 3. Calculate new hashes (run in /tmp to avoid devenv cache issues):
 #    cd /tmp
 #    VERSION=1.39.0  # <-- set to new version
 #
@@ -40,7 +40,7 @@
 # 4. Update hashes in this file (mainPackage.hash and platformPackages.*.hash)
 #
 # 5. Reload devenv and verify:
-#    direnv reload
+#    rm -rf .devenv
 #    oxlint --version
 #    mono lint  # should show "WARNING: JS plugins are experimental..."
 #

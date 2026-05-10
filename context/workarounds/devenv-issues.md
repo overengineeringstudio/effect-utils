@@ -233,7 +233,7 @@ Git hooks run in a subprocess that doesn't inherit the direnv environment.
 **Potential fixes:**
 
 - Use an absolute Nix store path for `dt` in the hook entry (like beads does)
-- Wrap the hook entry to source direnv: `direnv exec . dt check:quick`
+- Use `devenv shell -- dt check:quick` when a hook or agent runs outside an already-activated shell.
 - Use a wrapper script that resolves `dt` from the devenv profile
 
 **Current workaround:** Use `--no-verify` when committing from Claude Code

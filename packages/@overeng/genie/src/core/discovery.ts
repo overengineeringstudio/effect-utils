@@ -92,7 +92,7 @@ export const ensureImportMapResolver = Effect.sync(() => {
 const shouldSkipDirectory = (name: string): boolean => {
   if (name === 'node_modules' || name === 'dist' || name === 'tmp') return true
   if (name === '.pnpm' || name === '.pnpm-store' || name === '.pnpm-home') return true
-  if (name === '.git' || name === '.devenv' || name === '.direnv') return true
+  if (name === '.git' || name === '.devenv') return true
   // Megarepo member root (symlinked peer repos).
   if (name === 'repos') return true
   // Nix build output symlink (points to /nix/store/...)
