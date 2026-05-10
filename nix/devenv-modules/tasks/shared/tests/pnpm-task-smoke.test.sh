@@ -409,7 +409,7 @@ echo "Test 11: status misses after effective store-dir changes"
 echo "Test 12: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
+echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and store-dir"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -422,8 +422,8 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and sha
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store/nested" "$tmpdir/pnpm.log"
 )
 
 echo "Test 14: nested workspace status hits after nested install"

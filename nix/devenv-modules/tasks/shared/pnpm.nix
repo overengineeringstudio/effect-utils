@@ -50,7 +50,11 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  defaultPnpmStoreDir = "${config.devenv.root}/.devenv/pnpm-store";
+  defaultPnpmStoreDir =
+    if workspaceRoot == "." then
+      "${config.devenv.root}/.devenv/pnpm-store"
+    else
+      "${config.devenv.root}/.devenv/pnpm-store/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
