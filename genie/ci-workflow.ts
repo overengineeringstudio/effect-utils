@@ -368,6 +368,20 @@ export const ciMeasurementMetrics = {
   nixClosureBucketNarSize: 'nix.closure.bucket.nar_size',
 } as const
 
+export type NixClosureMeasurementBucket = {
+  readonly name: string
+  readonly pathRegex: string
+}
+
+export type NixClosureMeasurementStepOptions = {
+  readonly installable: string
+  readonly targetName?: string
+  readonly targetSystem?: string
+  readonly artifactDir?: string
+  readonly artifactFile?: string
+  readonly buckets?: readonly NixClosureMeasurementBucket[]
+}
+
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
 export type DevenvPerfJobOptions = {
@@ -755,6 +769,131 @@ export const devenvPerfArtifactStep = (
       'retention-days': opts?.retentionDays ?? 30,
     },
   }) as const
+
+export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions) => {
+  const artifactDir = opts.artifactDir ?? 'tmp/ci-measurements'
+  const artifactFile = opts.artifactFile ?? '$ARTIFACT_DIR/measurements.json'
+  const targetName = opts.targetName ?? opts.installable
+  const buckets = JSON.stringify(opts.buckets ?? [])
+  const targetSystemAssignment =
+    opts.targetSystem === undefined
+      ? `target_system="${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}"`
+      : `target_system=${shellSingleQuote(opts.targetSystem)}`
+
+  return {
+    name: `Measure Nix closure: ${targetName}`,
+    shell: 'bash',
+    env: {
+      ARTIFACT_DIR: artifactDir,
+      RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
+    },
+    run: String.raw`set -euo pipefail
+
+mkdir -p "$ARTIFACT_DIR"
+installable=${shellSingleQuote(opts.installable)}
+target_name=${shellSingleQuote(targetName)}
+artifact_file=${shellSingleQuote(artifactFile)}
+${targetSystemAssignment}
+
+out_path="$(nix build --no-link --print-out-paths "$installable")"
+path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
+paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
+
+nix path-info --recursive --json "$out_path" >"$path_info"
+jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0) })' "$path_info" >"$paths_file"
+
+jq -n \
+  --slurpfile paths "$paths_file" \
+  --argjson schemaVersion 1 \
+  --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
+  --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
+  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
+  --arg headSha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg baseSha "${dollar}{GITHUB_BASE_SHA:-}" \
+  --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
+  --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \
+  --arg runnerArch "${dollar}{RUNNER_ARCH:-unknown}" \
+  --arg runnerClass "${dollar}{RUNNER_CLASS:-unknown}" \
+  --arg githubRunId "${dollar}{GITHUB_RUN_ID:-unknown}" \
+  --arg githubRunAttempt "${dollar}{GITHUB_RUN_ATTEMPT:-unknown}" \
+  --arg githubJob "${dollar}{GITHUB_JOB:-unknown}" \
+  --arg taskId "${dollar}{CROSSTASK_TASK_ID:-}" \
+  --arg taskAttemptId "${dollar}{CROSSTASK_ATTEMPT_ID:-}" \
+  --arg traceId "${dollar}{TRACE_ID:-}" \
+  --arg targetName "$target_name" \
+  --arg targetSystem "$target_system" \
+  --arg outPath "$out_path" \
+  --argjson buckets ${shellSingleQuote(buckets)} \
+  '
+    ($paths[0] // []) as $closurePaths
+    | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
+    | ($closurePaths | length) as $pathCount
+    | ($buckets | map(
+        . as $bucket
+        | {
+            name: "nix.closure.bucket.nar_size",
+            unit: "bytes",
+            value: (
+              $closurePaths
+              | map(select(.path | test($bucket.pathRegex)) | .narSize)
+              | add // 0
+            ),
+            dimensions: { bucket: $bucket.name }
+          }
+      )) as $bucketObservations
+    | {
+        schemaVersion: $schemaVersion,
+        generatedAt: $generatedAt,
+        producer: { name: "effect-utils-ci-measurement", version: 1 },
+        subject: {
+          repo: $repository,
+          branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
+          ref: $ref,
+          headSha: $headSha,
+          baseSha: $baseSha
+        },
+        execution: {
+          provider: (if ($githubRunId != "" and $githubRunId != "unknown") then "github-actions" else "local" end),
+          workflow: "CI",
+          job: $githubJob,
+          runId: $githubRunId,
+          runAttempt: $githubRunAttempt,
+          taskId: $taskId,
+          attemptId: $taskAttemptId,
+          traceId: $traceId,
+          runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
+        },
+        target: { kind: "nix-closure", name: $targetName, system: $targetSystem },
+        observations: ([
+          {
+            name: "nix.closure.nar_size",
+            unit: "bytes",
+            value: $totalNarSize,
+            dimensions: { bucket: "total" }
+          },
+          {
+            name: "nix.closure.path_count",
+            unit: "count",
+            value: $pathCount,
+            dimensions: { bucket: "total" }
+          }
+        ] + $bucketObservations),
+        artifacts: [
+          { name: "nix-closure-path-info", path: "nix-closure-path-info.json", contentType: "application/json" },
+          { name: "nix-closure-paths", path: "nix-closure-paths.json", contentType: "application/json" }
+        ],
+        details: {
+          outPath: $outPath,
+          topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])
+        }
+      }
+  ' >"$artifact_file"
+
+cat "$artifact_file"
+`,
+  } as const
+}
 
 export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
   const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'

@@ -273,6 +273,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('export const devenvPerfBenchmarkStep')
     expect(ciWorkflowSource).toContain('export const devenvPerfArtifactStep')
     expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
+    expect(ciWorkflowSource).toContain('export const nixClosureMeasurementStep')
+    expect(ciWorkflowSource).toContain('export type NixClosureMeasurementBucket')
   })
 
   it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
@@ -300,6 +302,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
     expect(ciWorkflowSource).toContain('nix.closure.path_count')
     expect(ciWorkflowSource).toContain('nix.closure.bucket.nar_size')
+    expect(ciWorkflowSource).toContain('target: { kind: "nix-closure"')
+    expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
+    expect(ciWorkflowSource).toContain(
+      'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
+    )
     expect(generatedCiWorkflowYamlSource).not.toContain('dev3')
     expect(generatedCiWorkflowYamlSource).toContain('perf-comparison.json')
     expect(generatedCiWorkflowYamlSource).toContain('DEVENV_PERF_REGRESSION_MODE')
