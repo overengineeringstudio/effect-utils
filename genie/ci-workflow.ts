@@ -354,6 +354,20 @@ export type DevenvPerfProbe = {
   readonly traceOutput?: string
 }
 
+export type CiMeasurementObservation = {
+  readonly name: string
+  readonly unit: string
+  readonly value: number
+  readonly dimensions?: Record<string, string | number | boolean | null>
+}
+
+export const ciMeasurementMetrics = {
+  devenvProbeDuration: 'devenv.<probe>.duration',
+  nixClosureNarSize: 'nix.closure.nar_size',
+  nixClosurePathCount: 'nix.closure.path_count',
+  nixClosureBucketNarSize: 'nix.closure.bucket.nar_size',
+} as const
+
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
 export type DevenvPerfJobOptions = {
@@ -365,6 +379,7 @@ export type DevenvPerfJobOptions = {
   readonly taskProbes?: readonly string[]
   readonly probes?: readonly DevenvPerfProbe[]
   readonly retentionDays?: number
+  readonly regressionMode?: 'off' | 'warn' | 'fail'
 }
 
 const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
@@ -375,19 +390,12 @@ const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
 
 const defaultDevenvPerfTaskProbe = (task: string): DevenvPerfProbe => ({
   name: `task_${task.replaceAll(':', '_')}`,
-  command: [
-    '$DEVENV_BIN',
-    'tasks',
-    'run',
-    task,
-    '--mode',
-    'before',
-    '--no-tui',
-    '--show-output',
-  ],
+  command: ['$DEVENV_BIN', 'tasks', 'run', task, '--mode', 'before', '--no-tui', '--show-output'],
 })
 
-const renderDevenvPerfScript = (opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>) => {
+const renderDevenvPerfScript = (
+  opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>,
+) => {
   const probes: readonly DevenvPerfProbe[] = [
     {
       name: 'shell_eval_traced',
@@ -522,6 +530,180 @@ jq -n \
     checks: ($timings[0] | map({ key: .name, value: . }) | from_entries)
   }' >"$ARTIFACT_DIR/summary.json"
 
+jq -n \
+  --slurpfile timings "$ARTIFACT_DIR/timings.json" \
+  --argjson schemaVersion 1 \
+  --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
+  --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
+  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
+  --arg headSha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg baseSha "${dollar}{GITHUB_BASE_SHA:-}" \
+  --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
+  --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \
+  --arg runnerArch "${dollar}{RUNNER_ARCH:-unknown}" \
+  --arg runnerClass "${dollar}{RUNNER_CLASS:-unknown}" \
+  --arg githubRunId "${dollar}{GITHUB_RUN_ID:-unknown}" \
+  --arg githubRunAttempt "${dollar}{GITHUB_RUN_ATTEMPT:-unknown}" \
+  --arg githubJob "${dollar}{GITHUB_JOB:-unknown}" \
+  --arg taskId "${dollar}{CROSSTASK_TASK_ID:-}" \
+  --arg taskAttemptId "${dollar}{CROSSTASK_ATTEMPT_ID:-}" \
+  --arg traceId "${dollar}{TRACE_ID:-}" \
+  --arg devenvRev "${dollar}{DEVENV_REV:-unknown}" \
+  --arg otelServiceName "${dollar}{OTEL_SERVICE_NAME:-unknown}" \
+  --arg targetSystem "${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}" \
+  '{
+    schemaVersion: $schemaVersion,
+    generatedAt: $generatedAt,
+    producer: { name: "effect-utils-ci-measurement", version: 1 },
+    subject: {
+      repo: $repository,
+      branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
+      ref: $ref,
+      headSha: $headSha,
+      baseSha: $baseSha
+    },
+    execution: {
+      provider: (if ($githubRunId != "" and $githubRunId != "unknown") then "github-actions" else "local" end),
+      workflow: "CI",
+      job: $githubJob,
+      runId: $githubRunId,
+      runAttempt: $githubRunAttempt,
+      taskId: $taskId,
+      attemptId: $taskAttemptId,
+      traceId: $traceId,
+      runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
+    },
+    target: { kind: "devenv", name: "dev-shell", system: $targetSystem },
+    observations: (
+      $timings[0]
+      | map({
+          name: "devenv." + .name + ".duration",
+          unit: "seconds",
+          value: (.durationMs / 1000),
+          dimensions: {
+            probe: .name,
+            status: .status,
+            devenvRev: $devenvRev,
+            otelServiceName: $otelServiceName
+          }
+        })
+    ),
+    artifacts: [
+      { name: "host-context", path: "host-context.txt", contentType: "text/plain" },
+      { name: "timings", path: "timings.json", contentType: "application/json" },
+      { name: "summary", path: "summary.json", contentType: "application/json" },
+      { name: "shell-eval-trace", path: "traces/shell_eval_traced.json", contentType: "application/json" }
+    ],
+    details: {
+      stdoutStderrByProbe: (
+        $timings[0]
+        | map({ key: .name, value: { stdout: .stdout, stderr: .stderr, trace: .trace } })
+        | from_entries
+      )
+    }
+  }' >"$ARTIFACT_DIR/measurements.json"
+
+compare_baseline() {
+  local baseline_path="${dollar}{DEVENV_PERF_BASELINE_SUMMARY:-$ARTIFACT_DIR/baseline/summary.json}"
+  local mode="${dollar}{DEVENV_PERF_REGRESSION_MODE:-warn}"
+
+  if [ "$mode" = "off" ]; then
+    jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" '{schemaVersion:$schemaVersion, status:$status, mode:$mode, checks:{}}' >"$ARTIFACT_DIR/perf-comparison.json"
+    return 0
+  fi
+
+  if [ ! -f "$baseline_path" ]; then
+    jq -n \
+      --argjson schemaVersion 1 \
+      --arg status baseline_missing \
+      --arg mode "$mode" \
+      --arg baseline "$baseline_path" \
+      '{schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baseline, checks:{}}' \
+      >"$ARTIFACT_DIR/perf-comparison.json"
+    echo "::notice::devenv perf baseline not found at $baseline_path; recorded current measurements only"
+    return 0
+  fi
+
+  jq -n \
+    --slurpfile current "$ARTIFACT_DIR/summary.json" \
+    --slurpfile baseline "$baseline_path" \
+    --argjson schemaVersion 1 \
+    --arg mode "$mode" \
+    --arg baselinePath "$baseline_path" \
+    '
+      def budget($name):
+        if $name == "shell_eval_traced" then
+          {warnRatio:1.25, failRatio:1.5, warnMs:1500, failMs:3000}
+        elif $name == "shell_eval_warm" then
+          {warnRatio:1.5, failRatio:2.0, warnMs:500, failMs:1000}
+        elif $name == "tasks_list" or $name == "processes_help" then
+          {warnRatio:2.0, failRatio:3.0, warnMs:250, failMs:1000}
+        else
+          {warnRatio:1.5, failRatio:2.0, warnMs:1000, failMs:3000}
+        end;
+      def classify($name; $current; $baseline):
+        budget($name) as $b
+        | ($current - $baseline) as $delta
+        | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+        | if $baseline <= 0 then "unknown"
+          elif ($delta > $b.failMs and $current > ($baseline * $b.failRatio)) then "fail"
+          elif ($delta > $b.warnMs and $current > ($baseline * $b.warnRatio)) then "warn"
+          else "pass"
+          end as $status
+        | {status:$status, currentMs:$current, baselineMs:$baseline, deltaMs:$delta, ratio:$ratio, budget:$b};
+      ($current[0].checks // {}) as $currentChecks
+      | ($baseline[0].checks // {}) as $baselineChecks
+      | (
+          $currentChecks
+          | to_entries
+          | map(
+              .key as $name
+              | .value as $current
+              | ($baselineChecks[$name] // null) as $base
+              | {
+                  key: $name,
+                  value:
+                    if $base == null then
+                      {status:"missing_baseline", currentMs:$current.durationMs}
+                    elif ($current.status != 0) then
+                      {status:"current_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
+                    elif ($base.status != 0) then
+                      {status:"baseline_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
+                    else
+                      classify($name; $current.durationMs; $base.durationMs)
+                    end
+                }
+            )
+          | from_entries
+        ) as $checks
+      | (
+          if any($checks[]; .status == "fail") then "fail"
+          elif any($checks[]; .status == "warn") then "warn"
+          elif any($checks[]; .status == "missing_baseline") then "partial"
+          else "pass"
+          end
+        ) as $status
+      | {schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baselinePath, checks:$checks}
+    ' >"$ARTIFACT_DIR/perf-comparison.json"
+
+  local status
+  status="$(jq -r '.status' "$ARTIFACT_DIR/perf-comparison.json")"
+  case "$status:$mode" in
+    fail:fail)
+      echo "::error::devenv perf regression detected"
+      jq . "$ARTIFACT_DIR/perf-comparison.json"
+      return 1
+      ;;
+    fail:*|warn:*)
+      echo "::warning::devenv perf regression threshold exceeded"
+      jq . "$ARTIFACT_DIR/perf-comparison.json"
+      ;;
+  esac
+}
+
+compare_baseline
+
 if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### Devenv perf"
@@ -532,6 +714,12 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
     echo ""
     echo "- Artifact directory: \`$ARTIFACT_DIR\`"
     echo "- OTEL service: \`${dollar}{OTEL_SERVICE_NAME:-unknown}\`"
+    echo ""
+    echo "#### Regression comparison"
+    echo ""
+    if [ -f "$ARTIFACT_DIR/perf-comparison.json" ]; then
+      jq -r '["- Status: " + .status, "- Mode: " + .mode, "- Baseline: " + (.baseline // "none")] | .[]' "$ARTIFACT_DIR/perf-comparison.json"
+    fi
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
@@ -539,7 +727,9 @@ cat "$ARTIFACT_DIR/timings.pretty.json"
 `
 }
 
-export const devenvPerfBenchmarkStep = (opts?: Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>) =>
+export const devenvPerfBenchmarkStep = (
+  opts?: Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>,
+) =>
   ({
     name: 'Benchmark devenv surfaces',
     shell: 'bash',
@@ -576,10 +766,17 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
       ...standardCIEnv,
       ARTIFACT_DIR: artifactDir,
       OTEL_SERVICE_NAME: 'devenv-perf-ci',
+      DEVENV_PERF_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
+      RUNNER_CLASS: (opts?.runsOn ?? linuxX64Runner).join(','),
       ...(opts?.env ?? {}),
     },
     steps: [
-      ...(opts?.setupSteps ?? [checkoutStep(), installNixStep(), preparePinnedDevenvStep, validateNixStoreStep]),
+      ...(opts?.setupSteps ?? [
+        checkoutStep(),
+        installNixStep(),
+        preparePinnedDevenvStep,
+        validateNixStoreStep,
+      ]),
       devenvPerfBenchmarkStep({
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
