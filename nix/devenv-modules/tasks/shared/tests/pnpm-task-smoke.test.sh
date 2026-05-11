@@ -409,7 +409,7 @@ echo "Test 11: status misses after effective store-dir changes"
 echo "Test 12: exec invoked pnpm install"
 grep -q "^install " "$tmpdir/pnpm.log"
 
-echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and shared store-dir"
+echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and store-dir"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -422,8 +422,8 @@ echo "Test 13: nested workspace exec uses its own cwd, cache, PNPM_HOME, and sha
   test -d "$workspace/nested/node_modules"
   grep -qxF "PWD=$workspace/nested" "$tmpdir/pnpm.log"
   grep -qxF "PNPM_HOME=$workspace/.devenv/pnpm-home/nested" "$tmpdir/pnpm.log"
-  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
-  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store" "$tmpdir/pnpm.log"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.devenv/pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.devenv/pnpm-store/nested" "$tmpdir/pnpm.log"
 )
 
 echo "Test 14: nested workspace status hits after nested install"
@@ -440,7 +440,20 @@ echo "Test 14: nested workspace status hits after nested install"
   assert_exit_code 0 "$exit_code" "nested status should hit after nested install"
 )
 
-echo "Test 15: install flags and pre-install hooks are applied"
+echo "Test 15: nested workspace suffixes an inherited store-dir"
+(
+  cd "$workspace"
+  export HOME="$tmpdir/home"
+  unset PNPM_HOME
+  export PNPM_STORE_DIR="$workspace/.inherited-pnpm-store"
+  unset npm_config_store_dir
+  : > "$tmpdir/pnpm.log"
+  bash "$tmpdir/pnpm-install-nested.exec.sh"
+  grep -qxF "PNPM_STORE_DIR=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
+  grep -qxF "npm_config_store_dir=$workspace/.inherited-pnpm-store/nested" "$tmpdir/pnpm.log"
+)
+
+echo "Test 16: install flags and pre-install hooks are applied"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -454,7 +467,7 @@ echo "Test 15: install flags and pre-install hooks are applied"
   grep -qxF "install --config.confirmModulesPurge=false --config.store-dir=$workspace/.devenv/pnpm-store --ignore-scripts --config.public-hoist-pattern=*" "$tmpdir/pnpm.log"
 )
 
-echo "Test 16: CI install failures preserve and classify the pnpm log"
+echo "Test 17: CI install failures preserve and classify the pnpm log"
 (
   cd "$workspace"
   export HOME="$tmpdir/home"
@@ -478,21 +491,21 @@ echo "Test 16: CI install failures preserve and classify the pnpm log"
   grep -qF "Socket timeout" <<< "$output"
 )
 
-echo "Test 17: generated test task runs vitest without pnpm exec"
+echo "Test 18: generated test task runs vitest without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/test-demo.exec.sh")"
   [ "$output" = "vitest-shim:run" ]
 )
 
-echo "Test 18: generated storybook task runs storybook without pnpm exec"
+echo "Test 19: generated storybook task runs storybook without pnpm exec"
 (
   cd "$workspace/packages/demo"
   output="$(bash "$tmpdir/storybook-demo.exec.sh")"
   [ "$output" = "storybook-shim:build" ]
 )
 
-echo "Test 19: clean leaves shared GVS links intact"
+echo "Test 20: clean leaves shared GVS links intact"
 (
   cd "$workspace"
   mkdir -p "$workspace/.devenv/pnpm-store/v11/links/shared-pkg"

@@ -50,7 +50,11 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  defaultPnpmStoreDir = "${config.devenv.root}/.devenv/pnpm-store";
+  defaultPnpmStoreDir =
+    if workspaceRoot == "." then
+      "${config.devenv.root}/.devenv/pnpm-store"
+    else
+      "${config.devenv.root}/.devenv/pnpm-store/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -140,8 +144,20 @@ let
     fi
   '';
   ensureLocalPnpmStoreDirFn = ''
-    if [ -n "''${npm_config_store_dir:-}" ]; then
+    if [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "''${npm_config_store_dir:-}" ]; then
+      case "$npm_config_store_dir" in
+        */${workspaceCacheName}) ;;
+        *) export npm_config_store_dir="$npm_config_store_dir/${workspaceCacheName}" ;;
+      esac
+      export PNPM_STORE_DIR="$npm_config_store_dir"
+    elif [ -n "''${npm_config_store_dir:-}" ]; then
       export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-$npm_config_store_dir}"
+    elif [ ${lib.escapeShellArg workspaceRoot} != "." ] && [ -n "''${PNPM_STORE_DIR:-}" ]; then
+      case "$PNPM_STORE_DIR" in
+        */${workspaceCacheName}) ;;
+        *) export PNPM_STORE_DIR="$PNPM_STORE_DIR/${workspaceCacheName}" ;;
+      esac
+      export npm_config_store_dir="$PNPM_STORE_DIR"
     elif [ -n "''${PNPM_STORE_DIR:-}" ]; then
       export npm_config_store_dir="$PNPM_STORE_DIR"
     else

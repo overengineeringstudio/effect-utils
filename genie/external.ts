@@ -636,6 +636,9 @@ export {
   cachixStep,
   cachixBinaryCache,
   devenvBinaryCache,
+  devenvPerfArtifactStep,
+  devenvPerfBenchmarkStep,
+  devenvPerfJob,
   pnpmStateSetupStep,
   restorePnpmStateStep,
   savePnpmStateStep,
@@ -651,6 +654,8 @@ export {
   syncMegarepoWorkspaceStep,
   applyMegarepoLockStep,
   RUNNER_PROFILES,
+  type DevenvPerfJobOptions,
+  type DevenvPerfProbe,
   type NixBinaryCache,
   type RunnerProfile,
 } from './ci-workflow.ts'

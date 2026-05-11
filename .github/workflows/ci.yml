@@ -2078,6 +2078,498 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
+  devenv-perf:
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    defaults:
+      run:
+        shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      GITHUB_TOKEN: ${{ github.token }}
+      ARTIFACT_DIR: tmp/devenv-perf-ci
+      OTEL_SERVICE_NAME: devenv-perf-ci
+      DEVENV_PERF_REGRESSION_MODE: warn
+      RUNNER_CLASS: 'namespace-profile-linux-x86-64,namespace-features:github.run-id=${{ github.run_id }}'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://devenv.cachix.org
+            extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
+            access-tokens = github.com=${{ github.token }}
+          summarize: true
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Use pinned devenv from lock
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Isolate pnpm state
+        shell: bash
+        run: |
+          echo "PNPM_STORE_DIR=${{ runner.temp }}/pnpm-store/${{ github.job }}" >> "$GITHUB_ENV"
+          echo "PNPM_HOME=${{ github.workspace }}/.pnpm-home" >> "$GITHUB_ENV"
+      - id: restore-pnpm-state
+        name: Restore pnpm state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ github.workspace }}/.pnpm-home
+            ${{ runner.temp }}/pnpm-store/${{ github.job }}
+          key: "pnpm-state-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/pnpm-lock.yaml') }}"
+      - name: Resolve devenv
+        run: |
+          DEVENV_REV=$(jq -r .nodes.devenv.locked.rev devenv.lock)
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            echo '::error::devenv.lock missing .nodes.devenv.locked.rev'
+            exit 1
+          fi
+
+          resolve_devenv() {
+            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+          }
+
+          # Temporary: capture diagnostics dir for #272 root-cause analysis.
+          DIAG_ROOT="${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-${GITHUB_JOB:-job}-${RUNNER_OS:-unknown}-${GITHUB_RUN_ATTEMPT:-0}"
+          mkdir -p "$DIAG_ROOT"
+          echo "NIX_STORE_DIAGNOSTICS_DIR=$DIAG_ROOT" >> "$GITHUB_ENV"
+
+          {
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_name=${RUNNER_NAME:-unknown}"
+            echo "runner_os=${RUNNER_OS:-unknown}"
+            echo "runner_arch=${RUNNER_ARCH:-unknown}"
+            echo "github_job=${GITHUB_JOB:-unknown}"
+            echo "github_run_id=${GITHUB_RUN_ID:-unknown}"
+            echo "nix_user_conf_files=${NIX_USER_CONF_FILES:-}"
+            nix --version || true
+          } > "$DIAG_ROOT/environment.txt" 2>&1
+
+          if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2)); then
+            echo "::error::resolve_devenv failed. Last 30 lines of log:"
+            tail -30 "$DIAG_ROOT/resolve-devenv.log" || true
+            exit 1
+          fi
+          DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+
+          # Fast validity check on the devenv store path (~1-2s vs ~25s for devenv info).
+          if ! nix-store --check-validity "$DEVENV_OUT" 2>/dev/null; then
+            echo "::warning::devenv store path invalid, repairing targeted path..."
+            nix-store --repair-path "$DEVENV_OUT" > "$DIAG_ROOT/nix-store-verify-repair.log" 2>&1 || true
+            rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/nix/eval-cache-* ~/.cache/nix/eval-cache-*
+            if ! DEVENV_OUT=$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv-post-repair.log" >&2)); then
+              echo "::error::resolve_devenv failed after repair. Last 30 lines of log:"
+              tail -30 "$DIAG_ROOT/resolve-devenv-post-repair.log" || true
+              exit 1
+            fi
+            DEVENV_BIN="$DEVENV_OUT/bin/devenv"
+          fi
+
+          echo "DEVENV_BIN=$DEVENV_BIN" >> "$GITHUB_ENV"
+          "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
+        shell: bash
+      - name: Evict cached pnpm deps for oxlint-npm
+        shell: bash
+        run: |
+          targetRef='.#oxlint-npm'
+          entriesJson=$(mktemp)
+          if nix eval --json "$targetRef.passthru.depsBuildEntries" >"$entriesJson" 2>/dev/null; then
+            while IFS=$'\t' read -r attrName drv; do
+              [ -n "$drv" ] || continue
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  if ! nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+            done < <(jq -r '.[] | [.attrName, (.drvPath // "")] | @tsv' "$entriesJson")
+          else
+            topDrv=$(nix path-info --derivation "$targetRef" 2>/dev/null || true)
+            if [ -n "$topDrv" ]; then
+              while IFS= read -r drv; do
+                [ -n "$drv" ] || continue
+                attrName=""
+              while IFS= read -r outPath; do
+                [ -n "$outPath" ] || continue
+                if nix path-info "$outPath" >/dev/null 2>&1; then
+                  echo "evicting cached: $(basename "$outPath")"
+                  if ! nix store delete --ignore-liveness "$outPath" >/dev/null 2>&1; then
+                    echo "::error::failed to evict cached pnpm-deps output: $outPath"
+                    exit 1
+                  fi
+                  if nix path-info "$outPath" >/dev/null 2>&1; then
+                    echo "::error::cached pnpm-deps output still present after eviction: $outPath"
+                    exit 1
+                  fi
+                fi
+              done < <(nix-store -q --outputs "$drv" 2>/dev/null || true)
+              done < <(nix-store -qR "$topDrv" 2>/dev/null | grep "pnpm-deps-[a-z0-9-]*-v[0-9].*\.drv$" || true)
+            fi
+          fi
+          rm -f "$entriesJson"
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - name: Benchmark devenv surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$ARTIFACT_DIR/traces"
+
+          {
+            printf 'timestamp_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf 'repository=%s\n' "${GITHUB_REPOSITORY:-unknown}"
+            printf 'ref=%s\n' "${GITHUB_REF:-unknown}"
+            printf 'sha=%s\n' "${GITHUB_SHA:-unknown}"
+            printf 'runner_name=%s\n' "${RUNNER_NAME:-unknown}"
+            printf 'runner_os=%s\n' "${RUNNER_OS:-unknown}"
+            printf 'runner_arch=%s\n' "${RUNNER_ARCH:-unknown}"
+            printf 'devenv_rev=%s\n' "${DEVENV_REV:-unknown}"
+            printf 'otel_service_name=%s\n' "${OTEL_SERVICE_NAME:-unknown}"
+            df -h / /nix 2>/dev/null || df -h /
+            ps -eo pid,ppid,stat,etime,pcpu,pmem,comm,args 2>/dev/null \
+              | grep -E 'devenv direnv-export|nix-daemon|nix build|nix flake|github-runner' \
+              | grep -v grep || true
+          } >"$ARTIFACT_DIR/host-context.txt"
+
+          printf '[' >"$ARTIFACT_DIR/timings.json"
+          first=1
+
+          json_append_timing() {
+            local name="$1"
+            local status="$2"
+            local duration_ms="$3"
+            local stdout="$4"
+            local stderr="$5"
+            local trace="$6"
+
+            if [ "$first" -eq 0 ]; then
+              printf ',' >>"$ARTIFACT_DIR/timings.json"
+            fi
+            first=0
+
+            jq -cn \
+              --arg name "$name" \
+              --argjson status "$status" \
+              --argjson durationMs "$duration_ms" \
+              --arg stdout "$stdout" \
+              --arg stderr "$stderr" \
+              --arg trace "$trace" \
+              '{name:$name,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+              >>"$ARTIFACT_DIR/timings.json"
+          }
+
+          measure() {
+            local name="$1"
+            local trace_file="$2"
+            shift 2
+            case "$trace_file" in
+              '$ARTIFACT_DIR'*) trace_file="${ARTIFACT_DIR}${trace_file#'$ARTIFACT_DIR'}" ;;
+            esac
+            local stdout="$ARTIFACT_DIR/$name.stdout"
+            local stderr="$ARTIFACT_DIR/$name.stderr"
+            local started ended status duration_ms
+
+            mkdir -p "$(dirname "$trace_file")"
+            started="$(date +%s%3N)"
+            set +e
+            expanded=()
+            for arg in "$@"; do
+              case "$arg" in
+                '$DEVENV_BIN') expanded+=("${DEVENV_BIN:?DEVENV_BIN not set}") ;;
+                '$ARTIFACT_DIR'*) expanded+=("${ARTIFACT_DIR}${arg#'$ARTIFACT_DIR'}") ;;
+                'json:file:$trace_file') expanded+=("json:file:$trace_file") ;;
+                '$trace_file') expanded+=("file:$trace_file") ;;
+                *) expanded+=("$arg") ;;
+              esac
+            done
+            "${expanded[@]}" >"$stdout" 2>"$stderr"
+            status=$?
+            set -e
+            ended="$(date +%s%3N)"
+            duration_ms=$((ended - started))
+
+            json_append_timing "$name" "$status" "$duration_ms" "$stdout" "$stderr" "$trace_file"
+
+            if [ "$status" -ne 0 ]; then
+              echo "::error::$name failed after ${duration_ms}ms; stderr tail follows"
+              tail -80 "$stderr" || true
+              return "$status"
+            fi
+          }
+
+          measure 'shell_eval_traced' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '$DEVENV_BIN' '--trace-to' 'json:file:$trace_file' 'shell' '--no-reload' '--' 'true'
+          measure 'shell_eval_warm' '' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'true'
+          measure 'tasks_list' '' '$DEVENV_BIN' 'tasks' 'list'
+          measure 'processes_help' '' '$DEVENV_BIN' 'processes' '--help'
+          measure 'task_pnpm_install' '' '$DEVENV_BIN' 'tasks' 'run' 'pnpm:install' '--mode' 'before' '--no-tui' '--show-output'
+          measure 'task_genie_run' '' '$DEVENV_BIN' 'tasks' 'run' 'genie:run' '--mode' 'before' '--no-tui' '--show-output'
+          measure 'task_check_quick' '' '$DEVENV_BIN' 'tasks' 'run' 'check:quick' '--mode' 'before' '--no-tui' '--show-output'
+
+          printf ']\n' >>"$ARTIFACT_DIR/timings.json"
+
+          jq . "$ARTIFACT_DIR/timings.json" >"$ARTIFACT_DIR/timings.pretty.json"
+          jq -n \
+            --slurpfile timings "$ARTIFACT_DIR/timings.json" \
+            --arg schemaVersion "1" \
+            --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repository "${GITHUB_REPOSITORY:-unknown}" \
+            --arg ref "${GITHUB_REF:-unknown}" \
+            --arg sha "${GITHUB_SHA:-unknown}" \
+            --arg runnerName "${RUNNER_NAME:-unknown}" \
+            --arg runnerOs "${RUNNER_OS:-unknown}" \
+            --arg runnerArch "${RUNNER_ARCH:-unknown}" \
+            --arg devenvRev "${DEVENV_REV:-unknown}" \
+            --arg otelServiceName "${OTEL_SERVICE_NAME:-unknown}" \
+            '{
+              schemaVersion: $schemaVersion,
+              generatedAt: $generatedAt,
+              repository: $repository,
+              ref: $ref,
+              sha: $sha,
+              runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch },
+              devenv: { rev: $devenvRev },
+              otel: { serviceName: $otelServiceName },
+              checks: ($timings[0] | map({ key: .name, value: . }) | from_entries)
+            }' >"$ARTIFACT_DIR/summary.json"
+
+          jq -n \
+            --slurpfile timings "$ARTIFACT_DIR/timings.json" \
+            --argjson schemaVersion 1 \
+            --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg repository "${GITHUB_REPOSITORY:-unknown}" \
+            --arg branchKind "${GITHUB_EVENT_NAME:-unknown}" \
+            --arg ref "${GITHUB_REF:-unknown}" \
+            --arg headSha "${GITHUB_SHA:-unknown}" \
+            --arg baseSha "${GITHUB_BASE_SHA:-}" \
+            --arg runnerName "${RUNNER_NAME:-unknown}" \
+            --arg runnerOs "${RUNNER_OS:-unknown}" \
+            --arg runnerArch "${RUNNER_ARCH:-unknown}" \
+            --arg runnerClass "${RUNNER_CLASS:-unknown}" \
+            --arg githubRunId "${GITHUB_RUN_ID:-unknown}" \
+            --arg githubRunAttempt "${GITHUB_RUN_ATTEMPT:-unknown}" \
+            --arg githubJob "${GITHUB_JOB:-unknown}" \
+            --arg taskId "${CROSSTASK_TASK_ID:-}" \
+            --arg taskAttemptId "${CROSSTASK_ATTEMPT_ID:-}" \
+            --arg traceId "${TRACE_ID:-}" \
+            --arg devenvRev "${DEVENV_REV:-unknown}" \
+            --arg otelServiceName "${OTEL_SERVICE_NAME:-unknown}" \
+            --arg targetSystem "${DEVENV_SYSTEM:-${RUNNER_OS:-unknown}}" \
+            '{
+              schemaVersion: $schemaVersion,
+              generatedAt: $generatedAt,
+              producer: { name: "effect-utils-ci-measurement", version: 1 },
+              subject: {
+                repo: $repository,
+                branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
+                ref: $ref,
+                headSha: $headSha,
+                baseSha: $baseSha
+              },
+              execution: {
+                provider: (if ($githubRunId != "" and $githubRunId != "unknown") then "github-actions" else "local" end),
+                workflow: "CI",
+                job: $githubJob,
+                runId: $githubRunId,
+                runAttempt: $githubRunAttempt,
+                taskId: $taskId,
+                attemptId: $taskAttemptId,
+                traceId: $traceId,
+                runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
+              },
+              target: { kind: "devenv", name: "dev-shell", system: $targetSystem },
+              observations: (
+                $timings[0]
+                | map({
+                    name: ("devenv." + .name + ".duration"),
+                    unit: "seconds",
+                    value: (.durationMs / 1000),
+                    dimensions: {
+                      probe: .name,
+                      status: .status,
+                      devenvRev: $devenvRev,
+                      otelServiceName: $otelServiceName
+                    }
+                  })
+              ),
+              artifacts: [
+                { name: "host-context", path: "host-context.txt", contentType: "text/plain" },
+                { name: "timings", path: "timings.json", contentType: "application/json" },
+                { name: "summary", path: "summary.json", contentType: "application/json" },
+                { name: "shell-eval-trace", path: "traces/shell_eval_traced.json", contentType: "application/json" }
+              ],
+              details: {
+                stdoutStderrByProbe: (
+                  $timings[0]
+                  | map({ key: .name, value: { stdout: .stdout, stderr: .stderr, trace: .trace } })
+                  | from_entries
+                )
+              }
+            }' >"$ARTIFACT_DIR/measurements.json"
+
+          compare_baseline() {
+            local baseline_path="${DEVENV_PERF_BASELINE_SUMMARY:-$ARTIFACT_DIR/baseline/summary.json}"
+            local mode="${DEVENV_PERF_REGRESSION_MODE:-warn}"
+
+            if [ "$mode" = "off" ]; then
+              jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" '{schemaVersion:$schemaVersion, status:$status, mode:$mode, checks:{}}' >"$ARTIFACT_DIR/perf-comparison.json"
+              return 0
+            fi
+
+            if [ ! -f "$baseline_path" ]; then
+              jq -n \
+                --argjson schemaVersion 1 \
+                --arg status baseline_missing \
+                --arg mode "$mode" \
+                --arg baseline "$baseline_path" \
+                '{schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baseline, checks:{}}' \
+                >"$ARTIFACT_DIR/perf-comparison.json"
+              echo "::notice::devenv perf baseline not found at $baseline_path; recorded current measurements only"
+              return 0
+            fi
+
+            jq -n \
+              --slurpfile current "$ARTIFACT_DIR/summary.json" \
+              --slurpfile baseline "$baseline_path" \
+              --argjson schemaVersion 1 \
+              --arg mode "$mode" \
+              --arg baselinePath "$baseline_path" \
+              '
+                def budget($name):
+                  if $name == "shell_eval_traced" then
+                    {warnRatio:1.25, failRatio:1.5, warnMs:1500, failMs:3000}
+                  elif $name == "shell_eval_warm" then
+                    {warnRatio:1.5, failRatio:2.0, warnMs:500, failMs:1000}
+                  elif $name == "tasks_list" or $name == "processes_help" then
+                    {warnRatio:2.0, failRatio:3.0, warnMs:250, failMs:1000}
+                  else
+                    {warnRatio:1.5, failRatio:2.0, warnMs:1000, failMs:3000}
+                  end;
+                def classify($name; $current; $baseline):
+                  budget($name) as $b
+                  | ($current - $baseline) as $delta
+                  | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+                  | if $baseline <= 0 then "unknown"
+                    elif ($delta > $b.failMs and $current > ($baseline * $b.failRatio)) then "fail"
+                    elif ($delta > $b.warnMs and $current > ($baseline * $b.warnRatio)) then "warn"
+                    else "pass"
+                    end as $status
+                  | {status:$status, currentMs:$current, baselineMs:$baseline, deltaMs:$delta, ratio:$ratio, budget:$b};
+                ($current[0].checks // {}) as $currentChecks
+                | ($baseline[0].checks // {}) as $baselineChecks
+                | (
+                    $currentChecks
+                    | to_entries
+                    | map(
+                        .key as $name
+                        | .value as $current
+                        | ($baselineChecks[$name] // null) as $base
+                        | {
+                            key: $name,
+                            value:
+                              if $base == null then
+                                {status:"missing_baseline", currentMs:$current.durationMs}
+                              elif ($current.status != 0) then
+                                {status:"current_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
+                              elif ($base.status != 0) then
+                                {status:"baseline_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
+                              else
+                                classify($name; $current.durationMs; $base.durationMs)
+                              end
+                          }
+                      )
+                    | from_entries
+                  ) as $checks
+                | (
+                    if any($checks[]; .status == "fail") then "fail"
+                    elif any($checks[]; .status == "warn") then "warn"
+                    elif any($checks[]; .status == "missing_baseline") then "partial"
+                    else "pass"
+                    end
+                  ) as $status
+                | {schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baselinePath, checks:$checks}
+              ' >"$ARTIFACT_DIR/perf-comparison.json"
+
+            local status
+            status="$(jq -r '.status' "$ARTIFACT_DIR/perf-comparison.json")"
+            case "$status:$mode" in
+              fail:fail)
+                echo "::error::devenv perf regression detected"
+                jq . "$ARTIFACT_DIR/perf-comparison.json"
+                return 1
+                ;;
+              fail:*|warn:*)
+                echo "::warning::devenv perf regression threshold exceeded"
+                jq . "$ARTIFACT_DIR/perf-comparison.json"
+                ;;
+            esac
+          }
+
+          compare_baseline
+
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### Devenv perf"
+              echo ""
+              echo "| Probe | Status | Duration |"
+              echo "| --- | ---: | ---: |"
+              jq -r '.[] | "| \(.name) | \(.status) | \(.durationMs) ms |"' "$ARTIFACT_DIR/timings.json"
+              echo ""
+              echo "- Artifact directory: \`$ARTIFACT_DIR\`"
+              echo "- OTEL service: \`${OTEL_SERVICE_NAME:-unknown}\`"
+              echo ""
+              echo "#### Regression comparison"
+              echo ""
+              if [ -f "$ARTIFACT_DIR/perf-comparison.json" ]; then
+                jq -r '["- Status: " + .status, "- Mode: " + .mode, "- Baseline: " + (.baseline // "none")] | .[]' "$ARTIFACT_DIR/perf-comparison.json"
+              fi
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+          cat "$ARTIFACT_DIR/timings.pretty.json"
+
+      - name: Upload devenv perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          path: tmp/devenv-perf-ci
+          if-no-files-found: error
+          retention-days: 30
   test-integration-notion:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']

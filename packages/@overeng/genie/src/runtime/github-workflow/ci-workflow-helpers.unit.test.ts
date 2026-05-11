@@ -10,6 +10,10 @@ const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
 )
+const generatedCiWorkflowYamlSource = readFileSync(
+  new URL(['../../../../../../.github/workflows', 'ci.yml'].join('/'), import.meta.url),
+  'utf8',
+)
 const vercelDeploySource = readFileSync(
   new URL(['../../../../../../genie/deploy-preview', 'vercel.ts'].join('/'), import.meta.url),
   'utf8',
@@ -260,5 +264,54 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain('project: VercelProject')
     expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
     expect(vercelDeploySource).toContain('vercelDeployStep(project, opts.runDevenvTasksBefore)')
+  })
+})
+
+describe('ci workflow devenv perf helpers', () => {
+  it('exposes reusable devenv perf CI job helpers', () => {
+    expect(ciWorkflowSource).toContain('export const devenvPerfJob')
+    expect(ciWorkflowSource).toContain('export const devenvPerfBenchmarkStep')
+    expect(ciWorkflowSource).toContain('export const devenvPerfArtifactStep')
+    expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
+    expect(ciWorkflowSource).toContain('export const nixClosureMeasurementStep')
+    expect(ciWorkflowSource).toContain('export type NixClosureMeasurementBucket')
+  })
+
+  it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
+    expect(generatedCiWorkflowYamlSource).toContain('devenv-perf:')
+    expect(generatedCiWorkflowYamlSource).toContain('OTEL_SERVICE_NAME: devenv-perf-ci')
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_traced'")
+    expect(generatedCiWorkflowYamlSource).toContain('--trace-to')
+    expect(generatedCiWorkflowYamlSource).toContain('json:file:$trace_file')
+    expect(generatedCiWorkflowYamlSource).toContain('$ARTIFACT_DIR/traces/shell_eval_traced.json')
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm'")
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list'")
+  })
+
+  it('writes a stable summary artifact for regression tracking', () => {
+    expect(generatedCiWorkflowYamlSource).toContain('schemaVersion: $schemaVersion')
+    expect(generatedCiWorkflowYamlSource).toContain('checks: ($timings[0] | map')
+    expect(generatedCiWorkflowYamlSource).toContain('measurements.json')
+    expect(generatedCiWorkflowYamlSource).toContain('--argjson schemaVersion 1')
+    expect(generatedCiWorkflowYamlSource).toContain('effect-utils-ci-measurement')
+    expect(generatedCiWorkflowYamlSource).toContain('devenv." + .name + ".duration')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'target: { kind: "devenv", name: "dev-shell", system: $targetSystem }',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
+    expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
+    expect(ciWorkflowSource).toContain('nix.closure.nar_size')
+    expect(ciWorkflowSource).toContain('nix.closure.path_count')
+    expect(ciWorkflowSource).toContain('nix.closure.bucket.nar_size')
+    expect(ciWorkflowSource).toContain('target: { kind: "nix-closure"')
+    expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
+    expect(ciWorkflowSource).toContain(
+      'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
+    )
+    expect(generatedCiWorkflowYamlSource).not.toContain('dev3')
+    expect(generatedCiWorkflowYamlSource).toContain('perf-comparison.json')
+    expect(generatedCiWorkflowYamlSource).toContain('DEVENV_PERF_REGRESSION_MODE')
+    expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
+    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
   })
 })
