@@ -263,6 +263,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
+    artifactName: 'devenv-perf',
     setupSteps: baseSteps,
     taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
   }),
