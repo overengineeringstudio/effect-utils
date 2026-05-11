@@ -2243,6 +2243,55 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
+      - name: 'Download previous artifact: devenv-perf'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_ARTIFACT_NAME: devenv-perf
+          BASELINE_OUTPUT_DIR: tmp/devenv-perf-ci/baseline
+          BASELINE_WORKFLOW_NAME: ${{ github.workflow }}
+          BASELINE_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$BASELINE_OUTPUT_DIR"
+
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "::notice::gh is not available; skipping previous artifact download"
+            exit 0
+          fi
+
+          repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+          workflow="${BASELINE_WORKFLOW_NAME:-CI}"
+          branch="${BASELINE_BRANCH:-${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-main}}}"
+
+          run_id="$(
+            gh run list \
+              --repo "$repo" \
+              --workflow "$workflow" \
+              --branch "$branch" \
+              --event push \
+              --status success \
+              --json databaseId,headSha \
+              --limit 20 \
+              --jq '[.[] | select(.headSha != env.GITHUB_SHA)][0].databaseId // empty'
+          )"
+
+          if [ -z "$run_id" ]; then
+            echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
+            exit 0
+          fi
+
+          if ! gh run download "$run_id" \
+            --repo "$repo" \
+            --name "$BASELINE_ARTIFACT_NAME" \
+            --dir "$BASELINE_OUTPUT_DIR"; then
+            echo "::notice::baseline run $run_id has no artifact named $BASELINE_ARTIFACT_NAME"
+            exit 0
+          fi
+
+          echo "Downloaded baseline artifact $BASELINE_ARTIFACT_NAME from run $run_id into $BASELINE_OUTPUT_DIR"
+
       - name: Benchmark devenv surfaces
         shell: bash
         run: |
@@ -2566,7 +2615,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+          name: devenv-perf
           path: tmp/devenv-perf-ci
           if-no-files-found: error
           retention-days: 30

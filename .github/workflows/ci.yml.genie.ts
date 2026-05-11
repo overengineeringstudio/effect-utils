@@ -84,10 +84,10 @@ const verifyOtelShellEntryStep = {
     'command -v script >/dev/null 2>&1',
     'tmp_log="$(mktemp)"',
     `printf 'printf "OTEL_MODE=%%s\\n" "$OTEL_MODE"\nprintf "OTEL_GRAFANA_LINK_URL=%%s\\n" "$OTEL_GRAFANA_LINK_URL"\nexit\n' | script -qefc '"${'${DEVENV_BIN:?DEVENV_BIN not set}'}" shell --no-reload' "$tmp_log"`,
-    "grep -q '\\[otel\\] Using .* OTEL stack' \"$tmp_log\"",
-    "grep -q '\\[otel\\] Start with: devenv up' \"$tmp_log\"",
-    "grep -q '^OTEL_MODE=' \"$tmp_log\"",
-    "grep -q '^OTEL_GRAFANA_LINK_URL=http' \"$tmp_log\"",
+    'grep -q \'\\[otel\\] Using .* OTEL stack\' "$tmp_log"',
+    'grep -q \'\\[otel\\] Start with: devenv up\' "$tmp_log"',
+    'grep -q \'^OTEL_MODE=\' "$tmp_log"',
+    'grep -q \'^OTEL_GRAFANA_LINK_URL=http\' "$tmp_log"',
     'rm -f "$tmp_log"',
   ].join('\n'),
 } as const
@@ -208,10 +208,13 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
 
 // Jobs keyed by CIJobName for type safety with required status checks
 const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPlatformJob>> = {
-  typecheck: job({
-    name: 'Type check',
-    run: runDevenvTasksBefore('ts:check:strict'),
-  }, [verifyOtelShellEntryStep]),
+  typecheck: job(
+    {
+      name: 'Type check',
+      run: runDevenvTasksBefore('ts:check:strict'),
+    },
+    [verifyOtelShellEntryStep],
+  ),
   lint: job({
     name: 'Format + lint',
     run: runDevenvTasksBefore('lint:check'),
@@ -257,6 +260,7 @@ const extraJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
+    artifactName: 'devenv-perf',
     setupSteps: baseSteps,
     taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
   }),

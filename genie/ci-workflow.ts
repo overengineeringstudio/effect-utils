@@ -382,12 +382,48 @@ export type NixClosureMeasurementStepOptions = {
   readonly buckets?: readonly NixClosureMeasurementBucket[]
 }
 
+export type GitHubPreviousArtifactStepOptions = {
+  readonly artifactName: string
+  readonly outputDir: string
+  readonly workflowName?: string
+  readonly branch?: string
+  readonly tokenExpression?: string
+}
+
+export type CiMeasurementsComparisonStepOptions = {
+  readonly currentDir?: string
+  readonly baselineDir?: string
+  readonly outputFile?: string
+  readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly prComment?: {
+    readonly enabled?: boolean
+    readonly title?: string
+    readonly maxRows?: number
+    readonly maxHistory?: number
+    readonly tokenExpression?: string
+  }
+}
+
+export type CiMeasurementsArtifactStepOptions = {
+  readonly artifactName: string
+  readonly path: string
+  readonly retentionDays?: number
+}
+
+/** Job-level permissions required to post/update CI measurement PR comments with `github.token`. */
+export const ciMeasurementsCommentPermissions = {
+  contents: 'read',
+  issues: 'write',
+  'pull-requests': 'read',
+} as const
+
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
 export type DevenvPerfJobOptions = {
   readonly runsOn?: readonly string[]
   readonly artifactDir?: string
   readonly artifactName?: string
+  readonly baselineArtifactName?: string
   readonly setupSteps?: readonly DevenvPerfSetupStep[]
   readonly env?: Record<string, string>
   readonly taskProbes?: readonly string[]
@@ -755,6 +791,59 @@ export const devenvPerfBenchmarkStep = (
     }),
   }) as const
 
+export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactStepOptions) =>
+  ({
+    name: `Download previous artifact: ${opts.artifactName}`,
+    shell: 'bash',
+    env: {
+      GH_TOKEN: opts.tokenExpression ?? '${{ github.token }}',
+      BASELINE_ARTIFACT_NAME: opts.artifactName,
+      BASELINE_OUTPUT_DIR: opts.outputDir,
+      BASELINE_WORKFLOW_NAME: opts.workflowName ?? '${{ github.workflow }}',
+      BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
+    },
+    run: String.raw`set -euo pipefail
+
+mkdir -p "$BASELINE_OUTPUT_DIR"
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "::notice::gh is not available; skipping previous artifact download"
+  exit 0
+fi
+
+repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
+branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
+
+run_id="$(
+  gh run list \
+    --repo "$repo" \
+    --workflow "$workflow" \
+    --branch "$branch" \
+    --event push \
+    --status success \
+    --json databaseId,headSha \
+    --limit 20 \
+    --jq '[.[] | select(.headSha != env.GITHUB_SHA)][0].databaseId // empty'
+)"
+
+if [ -z "$run_id" ]; then
+  echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
+  exit 0
+fi
+
+if ! gh run download "$run_id" \
+  --repo "$repo" \
+  --name "$BASELINE_ARTIFACT_NAME" \
+  --dir "$BASELINE_OUTPUT_DIR"; then
+  echo "::notice::baseline run $run_id has no artifact named $BASELINE_ARTIFACT_NAME"
+  exit 0
+fi
+
+echo "Downloaded baseline artifact $BASELINE_ARTIFACT_NAME from run $run_id into $BASELINE_OUTPUT_DIR"
+`,
+  }) as const
+
 export const devenvPerfArtifactStep = (
   opts?: Pick<DevenvPerfJobOptions, 'artifactDir' | 'artifactName' | 'retentionDays'>,
 ) =>
@@ -769,6 +858,19 @@ export const devenvPerfArtifactStep = (
       path: opts?.artifactDir ?? 'tmp/devenv-perf-ci',
       'if-no-files-found': 'error',
       'retention-days': opts?.retentionDays ?? 30,
+    },
+  }) as const
+
+export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptions) =>
+  ({
+    name: `Upload CI measurements: ${opts.artifactName}`,
+    if: 'always()',
+    uses: 'actions/upload-artifact@v4',
+    with: {
+      name: opts.artifactName,
+      path: opts.path,
+      'if-no-files-found': 'error',
+      'retention-days': opts.retentionDays ?? 30,
     },
   }) as const
 
@@ -796,6 +898,10 @@ installable=${shellSingleQuote(opts.installable)}
 target_name=${shellSingleQuote(targetName)}
 artifact_file=${shellSingleQuote(artifactFile)}
 ${targetSystemAssignment}
+
+case "$artifact_file" in
+  '$ARTIFACT_DIR'*) artifact_file="${dollar}{ARTIFACT_DIR}${dollar}{artifact_file#'$ARTIFACT_DIR'}" ;;
+esac
 
 out_path="$(nix build --no-link --print-out-paths "$installable")"
 path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
@@ -897,8 +1003,617 @@ cat "$artifact_file"
   } as const
 }
 
+export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOptions) =>
+  ({
+    name: 'Compare CI measurements with baseline',
+    shell: 'bash',
+    env: {
+      CI_MEASUREMENT_CURRENT_DIR: opts?.currentDir ?? 'tmp/ci-measurements/current',
+      CI_MEASUREMENT_BASELINE_DIR: opts?.baselineDir ?? 'tmp/ci-measurements/baseline',
+      CI_MEASUREMENT_COMPARISON_FILE:
+        opts?.outputFile ?? 'tmp/ci-measurements/measurement-comparison.json',
+      CI_MEASUREMENT_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
+      CI_MEASUREMENT_PR_COMMENT_ENABLED: opts?.prComment?.enabled === true ? 'true' : 'false',
+      CI_MEASUREMENT_PR_COMMENT_TITLE: opts?.prComment?.title ?? 'CI Measurements',
+      CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: String(opts?.prComment?.maxRows ?? 10),
+      CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: String(opts?.prComment?.maxHistory ?? 20),
+      ...(opts?.prComment?.tokenExpression === undefined
+        ? {}
+        : { GH_TOKEN: opts.prComment.tokenExpression }),
+    },
+    run: String.raw`set -euo pipefail
+
+current_dir="${dollar}{CI_MEASUREMENT_CURRENT_DIR:?CI_MEASUREMENT_CURRENT_DIR not set}"
+baseline_dir="${dollar}{CI_MEASUREMENT_BASELINE_DIR:?CI_MEASUREMENT_BASELINE_DIR not set}"
+comparison_file="${dollar}{CI_MEASUREMENT_COMPARISON_FILE:?CI_MEASUREMENT_COMPARISON_FILE not set}"
+mode="${dollar}{CI_MEASUREMENT_REGRESSION_MODE:-warn}"
+
+mkdir -p "$(dirname "$comparison_file")"
+
+if [ "$mode" = "off" ]; then
+  jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" \
+    '{schemaVersion:$schemaVersion,status:$status,mode:$mode,comparisons:{}}' \
+    >"$comparison_file"
+  exit 0
+fi
+
+current_index="$(mktemp)"
+baseline_index="$(mktemp)"
+find "$current_dir" -name measurements.json -type f -print | sort >"$current_index" || true
+find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
+
+if [ ! -s "$current_index" ]; then
+  echo "::error::no current measurements.json files found under $current_dir"
+  exit 1
+fi
+
+current_json="$comparison_file.current.json"
+baseline_json="$comparison_file.baseline.json"
+xargs -r jq -s '.' <"$current_index" >"$current_json"
+if [ -s "$baseline_index" ]; then
+  xargs -r jq -s '.' <"$baseline_index" >"$baseline_json"
+else
+  printf '[]\n' >"$baseline_json"
+fi
+
+jq -n \
+  --slurpfile current "$current_json" \
+  --slurpfile baseline "$baseline_json" \
+  --argjson schemaVersion 1 \
+  --arg mode "$mode" \
+  --arg currentDir "$current_dir" \
+  --arg baselineDir "$baseline_dir" \
+  '
+    def stable_dimensions:
+      (.dimensions // {})
+      | to_entries
+      | sort_by(.key)
+      | map("\(.key)=\(.value|tostring)")
+      | join(",");
+
+    def observation_key($doc):
+      [
+        ($doc.target.kind // "unknown"),
+        ($doc.target.name // "unknown"),
+        ($doc.target.system // "unknown"),
+        (.name // "unknown"),
+        (.unit // "unknown"),
+        stable_dimensions
+      ]
+      | join("|");
+
+    def observations_by_key($docs):
+      reduce $docs[]? as $doc
+        ({};
+          reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
+            (.;
+              . + {
+                ($obs | observation_key($doc)): {
+                  target: $doc.target,
+                  observation: $obs,
+                  generatedAt: $doc.generatedAt
+                }
+              }
+            )
+        );
+
+    def budget($metric; $unit):
+      if $metric == "nix.closure.nar_size" then
+        {warnRatio:1.10, failRatio:1.25, warnAbs:52428800, failAbs:209715200}
+      elif $metric == "nix.closure.bucket.nar_size" then
+        {warnRatio:1.15, failRatio:1.35, warnAbs:52428800, failAbs:209715200}
+      elif $metric == "nix.closure.path_count" then
+        {warnRatio:1.10, failRatio:1.25, warnAbs:100, failAbs:500}
+      elif $unit == "seconds" then
+        {warnRatio:1.25, failRatio:1.50, warnAbs:1.5, failAbs:3.0}
+      else
+        {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
+      end;
+
+    def classify($metric; $unit; $current; $baseline):
+      budget($metric; $unit) as $b
+      | ($current - $baseline) as $delta
+      | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+      | if $baseline <= 0 then "unknown"
+        elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
+        elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
+        else "pass"
+        end as $status
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b};
+
+    ($current[0] // []) as $currentDocs
+    | ($baseline[0] // []) as $baselineDocs
+    | observations_by_key($currentDocs) as $currentObs
+    | observations_by_key($baselineDocs) as $baselineObs
+    | (
+        $currentObs
+        | to_entries
+        | map(
+            .key as $key
+            | .value as $current
+            | ($baselineObs[$key] // null) as $base
+            | {
+                key: $key,
+                value:
+                  if $base == null then
+                    {
+                      status:"missing_baseline",
+                      current:$current.observation.value,
+                      target:$current.target,
+                      observation:$current.observation
+                    }
+                  else
+                    classify(
+                      $current.observation.name;
+                      $current.observation.unit;
+                      $current.observation.value;
+                      $base.observation.value
+                    ) + {
+                      target:$current.target,
+                      observation:$current.observation
+                    }
+                  end
+              }
+          )
+        | from_entries
+      ) as $comparisons
+    | (
+        if any($comparisons[]; .status == "fail") then "fail"
+        elif any($comparisons[]; .status == "warn") then "warn"
+        elif any($comparisons[]; .status == "missing_baseline") then "partial"
+        else "pass"
+        end
+      ) as $status
+    | {
+        schemaVersion:$schemaVersion,
+        status:$status,
+        mode:$mode,
+        currentDir:$currentDir,
+        baselineDir:$baselineDir,
+        comparisons:$comparisons
+      }
+  ' >"$comparison_file"
+
+status="$(jq -r '.status' "$comparison_file")"
+annotation_kind="warning"
+if [ "$status:$mode" = "fail:fail" ]; then
+  annotation_kind="error"
+fi
+
+jq -r --arg annotationKind "$annotation_kind" '
+  def format_number:
+    if . == null then "n/a"
+    elif type == "number" then
+      if . == floor then tostring else ((. * 1000 | round) / 1000 | tostring) end
+    else tostring
+    end;
+
+  def format_value($unit):
+    if . == null then "n/a"
+    elif $unit == "bytes" then
+      if . >= 1073741824 then (((. / 1073741824) * 10 | round) / 10 | tostring) + " GiB"
+      elif . >= 1048576 then (((. / 1048576) * 10 | round) / 10 | tostring) + " MiB"
+      elif . >= 1024 then (((. / 1024) * 10 | round) / 10 | tostring) + " KiB"
+      else tostring + " B"
+      end
+    elif $unit == "seconds" then format_number + " s"
+    else format_number + " " + ($unit // "")
+    end;
+
+  def format_delta($unit):
+    if . == null then "n/a"
+    else
+      (if . >= 0 then "+" else "-" end)
+      + ((. | abs) | format_value($unit))
+    end;
+
+  def format_ratio:
+    if . == null then "n/a"
+    else (((. - 1) * 1000 | round) / 10 | tostring) + "%"
+    end;
+
+  .comparisons
+  | to_entries
+  | map(.value)
+  | map(select(.status == "fail" or .status == "warn"))
+  | sort_by(-( .delta // 0 ))
+  | .[:10]
+  | .[]
+  | . as $comparison
+  | "::" + $annotationKind + " title=CI measurement regression::"
+    + ($comparison.target.name // "unknown")
+    + " "
+    + ($comparison.observation.name // "unknown")
+    + ": "
+    + (($comparison.baseline // null) | format_value($comparison.observation.unit))
+    + " -> "
+    + (($comparison.current // null) | format_value($comparison.observation.unit))
+    + " ("
+    + (($comparison.delta // null) | format_delta($comparison.observation.unit))
+    + ", "
+    + ($comparison.ratio | format_ratio)
+          + ")"
+' "$comparison_file"
+
+exit_code=0
+case "$status:$mode" in
+  fail:fail)
+    echo "::error::CI measurement regression detected"
+    jq . "$comparison_file"
+    exit_code=1
+    ;;
+  fail:*|warn:*)
+    echo "::warning::CI measurement regression threshold exceeded"
+    jq . "$comparison_file"
+    ;;
+  partial:*)
+    echo "::notice::CI measurement baseline is incomplete; recorded current measurements only"
+    ;;
+esac
+
+if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "### CI measurement comparison"
+    echo ""
+    jq -r '
+      def format_number:
+        if . == null then "n/a"
+        elif type == "number" then
+          if . == floor then tostring else ((. * 1000 | round) / 1000 | tostring) end
+        else tostring
+        end;
+
+      def format_value($unit):
+        if . == null then "n/a"
+        elif $unit == "bytes" then
+          if . >= 1073741824 then (((. / 1073741824) * 10 | round) / 10 | tostring) + " GiB"
+          elif . >= 1048576 then (((. / 1048576) * 10 | round) / 10 | tostring) + " MiB"
+          elif . >= 1024 then (((. / 1024) * 10 | round) / 10 | tostring) + " KiB"
+          else tostring + " B"
+          end
+        elif $unit == "seconds" then format_number + " s"
+        else format_number + " " + ($unit // "")
+        end;
+
+      def format_delta($unit):
+        if . == null then "n/a"
+        else
+          (if . >= 0 then "+" else "-" end)
+          + ((. | abs) | format_value($unit))
+        end;
+
+      def format_ratio:
+        if . == null then "n/a"
+        else (((. - 1) * 1000 | round) / 10 | tostring) + "%"
+        end;
+
+      def dimensions:
+        (.observation.dimensions // {})
+        | to_entries
+        | sort_by(.key)
+        | map("\(.key)=\(.value|tostring)")
+        | join("<br>");
+
+      def rank:
+        if .status == "fail" then 0
+        elif .status == "warn" then 1
+        elif .status == "missing_baseline" then 2
+        else 3
+        end;
+
+      def table_rows:
+        .comparisons
+        | to_entries
+        | map(.value)
+        | sort_by(rank, -(.delta // 0))
+        | .[:20]
+        | map(
+            . as $comparison
+            | "| \($comparison.status) | \($comparison.target.name // "unknown") | \($comparison.observation.name // "unknown") | "
+              + (($comparison | dimensions) // "-")
+              + " | "
+              + (($comparison.baseline // null) | format_value($comparison.observation.unit))
+              + " | "
+              + (($comparison.current // null) | format_value($comparison.observation.unit))
+              + " | "
+              + (($comparison.delta // null) | format_delta($comparison.observation.unit))
+              + " | "
+              + ($comparison.ratio | format_ratio)
+              + " |"
+          );
+
+      [
+        "- Status: " + .status,
+        "- Mode: " + .mode,
+        "- Baseline: " + .baselineDir,
+        "",
+        "| Status | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"
+      ]
+      + table_rows
+      | .[]
+    ' "$comparison_file"
+  } >>"$GITHUB_STEP_SUMMARY"
+fi
+
+if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "::notice::gh is not available; skipping CI measurement PR comment"
+    exit 0
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "::notice::jq is not available; skipping CI measurement PR comment"
+    exit 0
+  fi
+
+  if [ -z "${dollar}{GH_TOKEN:-${dollar}{GITHUB_TOKEN:-}}" ]; then
+    echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+    exit 0
+  fi
+
+  event_path="${dollar}{GITHUB_EVENT_PATH:-}"
+  pr_number=""
+  if [ -n "$event_path" ] && [ -f "$event_path" ]; then
+    pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
+  fi
+
+  if [ -z "$pr_number" ]; then
+    echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+    exit 0
+  fi
+
+  repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+  comments_json="$(mktemp)"
+  comment_body="$(mktemp)"
+  comment_id_file="$(mktemp)"
+
+  gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"
+
+  cat > /tmp/render-ci-measurement-comment.mjs <<'EOF'
+import { readFileSync, writeFileSync } from 'node:fs'
+
+const [
+  comparisonPath,
+  commentsPath,
+  bodyPath,
+  commentIdPath,
+] = process.argv.slice(2)
+
+const title = process.env.CI_MEASUREMENT_PR_COMMENT_TITLE || 'CI Measurements'
+const maxRows = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_ROWS || '10', 10)
+const maxHistory = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY || '20', 10)
+const repo = process.env.GITHUB_REPOSITORY || 'unknown'
+const runId = process.env.GITHUB_RUN_ID || ''
+const runAttempt = process.env.GITHUB_RUN_ATTEMPT || ''
+const sha = process.env.GITHUB_SHA || ''
+const headSha = process.env.GITHUB_HEAD_SHA || sha
+const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
+const workflow = process.env.GITHUB_WORKFLOW || 'CI'
+const job = process.env.GITHUB_JOB || ''
+
+const marker = '<!-- ci-measurement-comment:managed -->'
+const statePrefix = '<!-- ci-measurement-comment:state\n'
+const stateSuffix = '\n-->'
+const stateTag = 'ci-measurement-comment-state'
+const schemaVersion = 1
+
+const comparison = JSON.parse(readFileSync(comparisonPath, 'utf8'))
+const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
+if (!Array.isArray(comments)) throw new Error('comments response must be an array')
+
+const existing = comments.find((comment) => {
+  return typeof comment?.body === 'string' && (
+    comment.body.includes(marker) || comment.body.startsWith('## ' + title)
+  )
+})
+
+const extractState = (body) => {
+  if (typeof body !== 'string') return undefined
+  const start = body.indexOf(statePrefix)
+  if (start === -1) return undefined
+  const end = body.indexOf(stateSuffix, start + statePrefix.length)
+  if (end === -1) return undefined
+  try {
+    const parsed = JSON.parse(body.slice(start + statePrefix.length, end))
+    if (parsed && parsed._tag === stateTag && Array.isArray(parsed.runs)) return parsed
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
+const formatNumber = (value) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
+  if (Number.isInteger(value)) return String(value)
+  return String(Math.round(value * 1000) / 1000)
+}
+
+const formatValue = (value, unit) => {
+  if (value === null || value === undefined) return 'n/a'
+  if (unit === 'bytes') {
+    if (value >= 1073741824) return formatNumber(Math.round((value / 1073741824) * 10) / 10) + ' GiB'
+    if (value >= 1048576) return formatNumber(Math.round((value / 1048576) * 10) / 10) + ' MiB'
+    if (value >= 1024) return formatNumber(Math.round((value / 1024) * 10) / 10) + ' KiB'
+    return formatNumber(value) + ' B'
+  }
+  if (unit === 'seconds') return formatNumber(value) + ' s'
+  return formatNumber(value) + (unit ? ' ' + unit : '')
+}
+
+const formatDelta = (value, unit) => {
+  if (value === null || value === undefined) return 'n/a'
+  const sign = value >= 0 ? '+' : '-'
+  return sign + formatValue(Math.abs(value), unit)
+}
+
+const formatRatio = (value) => {
+  if (value === null || value === undefined) return 'n/a'
+  return formatNumber(Math.round((value - 1) * 1000) / 10) + '%'
+}
+
+const escapeCell = (value) => String(value ?? '-').replaceAll('|', '\\|').replaceAll('\n', '<br>')
+
+const dimensions = (comparison) => {
+  const entries = Object.entries(comparison.observation?.dimensions || {})
+  if (entries.length === 0) return '-'
+  return entries
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => key + '=' + String(value))
+    .join('<br>')
+}
+
+const rank = (comparison) => {
+  if (comparison.status === 'fail') return 0
+  if (comparison.status === 'warn') return 1
+  if (comparison.status === 'missing_baseline') return 2
+  return 3
+}
+
+const allRows = Object.values(comparison.comparisons || {})
+  .sort((left, right) => {
+    const byRank = rank(left) - rank(right)
+    if (byRank !== 0) return byRank
+    return (right.delta || 0) - (left.delta || 0)
+  })
+
+const visibleRows = allRows
+  .filter((row) => row.status !== 'pass')
+  .slice(0, Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10)
+
+const tableRow = (row) => {
+  const unit = row.observation?.unit
+  return [
+    row.status,
+    row.target?.name || 'unknown',
+    row.observation?.name || 'unknown',
+    dimensions(row),
+    formatValue(row.baseline, unit),
+    formatValue(row.current, unit),
+    formatDelta(row.delta, unit),
+    formatRatio(row.ratio),
+  ].map(escapeCell).join(' | ')
+}
+
+const table = (rows) => {
+  if (rows.length === 0) return 'No measurement regressions detected.'
+  return [
+    '| Status | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
+    '| --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
+    ...rows.map((row) => '| ' + tableRow(row) + ' |'),
+  ].join('\n')
+}
+
+const statusWord = comparison.status || 'unknown'
+const runUrl = runId ? serverUrl + '/' + repo + '/actions/runs/' + runId : undefined
+const shortSha = (headSha || sha || 'unknown').slice(0, 7)
+const generatedAt = new Date().toISOString()
+const existingState = extractState(existing?.body)
+const currentRun = {
+  commitSha: headSha || sha || 'unknown',
+  shortSha,
+  generatedAt,
+  status: statusWord,
+  mode: comparison.mode || 'unknown',
+  runUrl,
+  runAttempt,
+  workflow,
+  job,
+  visibleRows: visibleRows.map((row) => ({
+    status: row.status,
+    target: row.target?.name || 'unknown',
+    observation: row.observation?.name || 'unknown',
+    dimensions: dimensions(row).replaceAll('<br>', ', '),
+    baseline: formatValue(row.baseline, row.observation?.unit),
+    current: formatValue(row.current, row.observation?.unit),
+    delta: formatDelta(row.delta, row.observation?.unit),
+    ratio: formatRatio(row.ratio),
+  })),
+}
+
+const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha)
+const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
+const state = {
+  _tag: stateTag,
+  schemaVersion,
+  title,
+  runs: [currentRun, ...previousRuns].slice(0, historyLimit),
+}
+
+const historyRows = state.runs.slice(1).map((run) => {
+  const link = run.runUrl ? '[' + run.shortSha + '](' + run.runUrl + ')' : run.shortSha
+  const top = Array.isArray(run.visibleRows) && run.visibleRows.length > 0
+    ? run.visibleRows.slice(0, 3).map((row) => row.status + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
+    : 'No regressions'
+  return '| ' + [link, run.status, run.mode, top].map(escapeCell).join(' | ') + ' |'
+})
+
+const runLink = runUrl ? '[workflow run](' + runUrl + ')' : 'workflow run unavailable'
+const summaryLines = [
+  '## ' + title,
+  '',
+  '- Status: ' + statusWord,
+  '- Mode: ' + (comparison.mode || 'unknown'),
+  '- Commit: ' + shortSha,
+  '- Run: ' + runLink,
+  '- Baseline: ' + (comparison.baselineDir || 'n/a'),
+  '',
+  table(visibleRows),
+  '',
+  '<details>',
+  '<summary>All measurements</summary>',
+  '',
+  table(allRows),
+  '',
+  '</details>',
+]
+
+if (historyRows.length > 0) {
+  summaryLines.push(
+    '',
+    '<details>',
+    '<summary>Previous runs</summary>',
+    '',
+    '| Commit | Status | Mode | Top changes |',
+    '| --- | --- | --- | --- |',
+    ...historyRows,
+    '',
+    '</details>',
+  )
+}
+
+summaryLines.push('', marker, statePrefix + JSON.stringify(state, null, 2) + stateSuffix)
+
+writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
+writeFileSync(commentIdPath, existing?.id ? String(existing.id) : '')
+EOF
+
+  nix run nixpkgs#bun -- /tmp/render-ci-measurement-comment.mjs \
+    "$comparison_file" \
+    "$comments_json" \
+    "$comment_body" \
+    "$comment_id_file"
+
+  comment_id="$(cat "$comment_id_file")"
+  if [ -n "$comment_id" ]; then
+    gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null
+  else
+    gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null
+  fi
+fi
+
+if [ "$exit_code" -ne 0 ]; then
+  exit "$exit_code"
+fi
+`,
+  }) as const
+
 export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
   const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+  const artifactName =
+    opts?.artifactName ??
+    'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+  const baselineArtifactName = opts?.baselineArtifactName ?? opts?.artifactName
 
   return {
     'runs-on': opts?.runsOn ?? linuxX64Runner,
@@ -918,13 +1633,21 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
         preparePinnedDevenvStep,
         validateNixStoreStep,
       ]),
+      ...(baselineArtifactName === undefined
+        ? []
+        : [
+            downloadPreviousGitHubArtifactStep({
+              artifactName: baselineArtifactName,
+              outputDir: `${artifactDir}/baseline`,
+            }),
+          ]),
       devenvPerfBenchmarkStep({
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
       }),
       devenvPerfArtifactStep({
         artifactDir,
-        artifactName: opts?.artifactName,
+        artifactName,
         retentionDays: opts?.retentionDays,
       }),
     ],

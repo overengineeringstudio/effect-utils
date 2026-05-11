@@ -275,6 +275,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
     expect(ciWorkflowSource).toContain('export const nixClosureMeasurementStep')
     expect(ciWorkflowSource).toContain('export type NixClosureMeasurementBucket')
+    expect(ciWorkflowSource).toContain('export const downloadPreviousGitHubArtifactStep')
+    expect(ciWorkflowSource).toContain('export const compareCiMeasurementsStep')
+    expect(ciWorkflowSource).toContain('export const ciMeasurementsArtifactStep')
   })
 
   it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
@@ -304,6 +307,18 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('nix.closure.path_count')
     expect(ciWorkflowSource).toContain('nix.closure.bucket.nar_size')
     expect(ciWorkflowSource).toContain('target: { kind: "nix-closure"')
+    expect(ciWorkflowSource).toContain(
+      'artifact_file="${dollar}{ARTIFACT_DIR}${dollar}{artifact_file#',
+    )
+    expect(ciWorkflowSource).toContain(
+      '| Status | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
+    )
+    expect(ciWorkflowSource).toContain('title=CI measurement regression')
+    expect(ciWorkflowSource).toContain('CI_MEASUREMENT_PR_COMMENT_ENABLED')
+    expect(ciWorkflowSource).toContain('ciMeasurementsCommentPermissions')
+    expect(ciWorkflowSource).toContain('ci-measurement-comment:managed')
+    expect(ciWorkflowSource).toContain('ci-measurement-comment-state')
+    expect(ciWorkflowSource).toContain('Previous runs')
     expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
     expect(ciWorkflowSource).toContain(
       'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
@@ -311,7 +326,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain('dev3')
     expect(generatedCiWorkflowYamlSource).toContain('perf-comparison.json')
     expect(generatedCiWorkflowYamlSource).toContain('DEVENV_PERF_REGRESSION_MODE')
+    expect(generatedCiWorkflowYamlSource).toContain('Download previous artifact: devenv-perf')
+    expect(generatedCiWorkflowYamlSource).toContain('gh run list')
+    expect(generatedCiWorkflowYamlSource).toContain('gh run download')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
+    expect(generatedCiWorkflowYamlSource).toContain('name: devenv-perf')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
   })
 })
