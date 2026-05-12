@@ -2084,7 +2084,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     defaults:
       run:
         shell: bash
@@ -2991,9 +2991,13 @@ jobs:
               comment_tmp_dir="$(mktemp -d)"
               renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
 
-              gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"
+              if ! gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"; then
+                echo "::notice::unable to list PR comments; skipping CI measurement PR comment"
+                can_render_pr_comment=false
+              fi
 
-              cat > "$renderer_script" <<'EOF'
+              if [ "$can_render_pr_comment" = "true" ]; then
+                cat > "$renderer_script" <<'EOF'
           import { readFileSync, writeFileSync } from 'node:fs'
 
           const [
@@ -3209,17 +3213,22 @@ jobs:
           writeFileSync(commentIdPath, existing?.id ? String(existing.id) : '')
           EOF
 
-              node "$renderer_script" \
-                "$comparison_file" \
-                "$comments_json" \
-                "$comment_body" \
-                "$comment_id_file"
+                node "$renderer_script" \
+                  "$comparison_file" \
+                  "$comments_json" \
+                  "$comment_body" \
+                  "$comment_id_file"
 
-              comment_id="$(cat "$comment_id_file")"
-              if [ -n "$comment_id" ]; then
-                gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null
-              else
-                gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null
+                comment_id="$(cat "$comment_id_file")"
+                if [ -n "$comment_id" ]; then
+                  if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null; then
+                    echo "::notice::unable to update CI measurement PR comment"
+                  fi
+                else
+                  if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null; then
+                    echo "::notice::unable to create CI measurement PR comment"
+                  fi
+                fi
               fi
             fi
           fi
