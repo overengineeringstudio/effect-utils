@@ -318,6 +318,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('ciMeasurementsCommentPermissions')
     expect(ciWorkflowSource).toContain('filtered_current_index="$(mktemp)"')
     expect(ciWorkflowSource).toContain('index($0, baseline_prefix) != 1')
+    expect(ciWorkflowSource).toContain('value: (')
     expect(ciWorkflowSource).toContain('can_render_pr_comment=false')
     expect(ciWorkflowSource).toContain('comment_tmp_dir="$(mktemp -d)"')
     expect(ciWorkflowSource).toContain(

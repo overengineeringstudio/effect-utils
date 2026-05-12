@@ -719,7 +719,7 @@ compare_baseline() {
               | ($baselineChecks[$name] // null) as $base
               | {
                   key: $name,
-                  value:
+                  value: (
                     if $base == null then
                       {status:"missing_baseline", currentMs:$current.durationMs}
                     elif ($current.status != 0) then
@@ -729,6 +729,7 @@ compare_baseline() {
                     else
                       classify($name; $current.durationMs; $base.durationMs)
                     end
+                  )
                 }
             )
           | from_entries
@@ -1146,7 +1147,7 @@ jq -n \
             | ($baselineObs[$key] // null) as $base
             | {
                 key: $key,
-                value:
+                value: (
                   if $base == null then
                     {
                       status:"missing_baseline",
@@ -1165,6 +1166,7 @@ jq -n \
                       observation:$current.observation
                     }
                   end
+                )
               }
           )
         | from_entries
