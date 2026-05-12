@@ -80,6 +80,7 @@ export const standardCIEnv = {
   FORCE_SETUP: '1',
   CI: 'true',
   GITHUB_TOKEN: '${{ github.token }}',
+  GITHUB_HEAD_SHA: '${{ github.event.pull_request.head.sha || github.sha }}',
 } as const
 
 /**
