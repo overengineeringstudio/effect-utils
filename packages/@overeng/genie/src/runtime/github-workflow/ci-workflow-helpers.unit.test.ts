@@ -2,10 +2,18 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-const ciWorkflowSource = readFileSync(
-  new URL(['../../../../../../genie', 'ci-workflow.ts'].join('/'), import.meta.url),
-  'utf8',
-)
+const ciWorkflowSource = [
+  'ci-workflow.ts',
+  'ci-workflow/shared.ts',
+  'ci-workflow/setup.ts',
+  'ci-workflow/measurements.ts',
+  'ci-workflow/megarepo.ts',
+  'ci-workflow/deploy.ts',
+]
+  .map((file) =>
+    readFileSync(new URL(['../../../../../../genie', file].join('/'), import.meta.url), 'utf8'),
+  )
+  .join('\n')
 const generatedWorkflowSource = readFileSync(
   new URL(['../../../../../../.github/workflows', 'ci.yml.genie.ts'].join('/'), import.meta.url),
   'utf8',
@@ -74,7 +82,7 @@ const validateNixStoreStepSource = extractSourceBlock(
 const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
-  '/**\n * Resolve the devenv binary and do a fast store-path validity check.',
+  'export type DefaultRefPolicyCheckStepOptions = {',
 )
 const installMegarepoStepSource = extractSourceBlock(
   ciWorkflowSource,
