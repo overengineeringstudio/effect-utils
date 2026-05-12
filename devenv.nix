@@ -238,6 +238,7 @@ let
       port = 6014;
     }
   ];
+  packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
 in
 {
   imports = [
@@ -276,7 +277,7 @@ in
     (taskModules.netlify {
       siteName = "overeng-utils";
       siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
-      packages = packagesWithStorybook;
+      packages = packagesWithNetlifyPreview;
     })
     (taskModules.lint-oxc {
       lintPaths = [

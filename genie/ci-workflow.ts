@@ -161,7 +161,13 @@ if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
 fi`
 
 const resolveDevenvFnScript = `resolve_devenv() {
-  nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+  nix build \\
+    --accept-flake-config \\
+    --option extra-substituters ${devenvBinaryCache.uri} \\
+    --option extra-trusted-public-keys ${devenvBinaryCache.publicKey} \\
+    --no-link \\
+    --print-out-paths \\
+    "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
 const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
@@ -909,7 +915,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
       OTEL_SERVICE_NAME: 'devenv-perf-ci',
       DEVENV_PERF_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
       RUNNER_CLASS: (opts?.runsOn ?? linuxX64Runner).join(','),
-      ...(opts?.env ?? {}),
+      ...opts?.env,
     },
     steps: [
       ...(opts?.setupSteps ?? [
