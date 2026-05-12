@@ -700,11 +700,13 @@ compare_baseline() {
         budget($name) as $b
         | ($current - $baseline) as $delta
         | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
-        | if $baseline <= 0 then "unknown"
-          elif ($delta > $b.failMs and $current > ($baseline * $b.failRatio)) then "fail"
-          elif ($delta > $b.warnMs and $current > ($baseline * $b.warnRatio)) then "warn"
-          else "pass"
-          end as $status
+        | (
+            if $baseline <= 0 then "unknown"
+            elif ($delta > $b.failMs and $current > ($baseline * $b.failRatio)) then "fail"
+            elif ($delta > $b.warnMs and $current > ($baseline * $b.warnRatio)) then "warn"
+            else "pass"
+            end
+          ) as $status
         | {status:$status, currentMs:$current, baselineMs:$baseline, deltaMs:$delta, ratio:$ratio, budget:$b};
       ($current[0].checks // {}) as $currentChecks
       | ($baseline[0].checks // {}) as $baselineChecks
@@ -1122,11 +1124,13 @@ jq -n \
       budget($metric; $unit) as $b
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
-      | if $baseline <= 0 then "unknown"
-        elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
-        elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
-        else "pass"
-        end as $status
+      | (
+          if $baseline <= 0 then "unknown"
+          elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
+          elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
+          else "pass"
+          end
+        ) as $status
       | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b};
 
     ($current[0] // []) as $currentDocs
@@ -1345,40 +1349,45 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
 fi
 
 if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+  can_render_pr_comment=true
+
   if ! command -v gh >/dev/null 2>&1; then
     echo "::notice::gh is not available; skipping CI measurement PR comment"
-    exit 0
+    can_render_pr_comment=false
   fi
 
   if ! command -v jq >/dev/null 2>&1; then
     echo "::notice::jq is not available; skipping CI measurement PR comment"
-    exit 0
+    can_render_pr_comment=false
   fi
 
   if [ -z "${dollar}{GH_TOKEN:-${dollar}{GITHUB_TOKEN:-}}" ]; then
     echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
-    exit 0
+    can_render_pr_comment=false
   fi
 
   event_path="${dollar}{GITHUB_EVENT_PATH:-}"
   pr_number=""
-  if [ -n "$event_path" ] && [ -f "$event_path" ]; then
+  if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
     pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
   fi
 
-  if [ -z "$pr_number" ]; then
+  if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
     echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
-    exit 0
+    can_render_pr_comment=false
   fi
 
-  repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
-  comments_json="$(mktemp)"
-  comment_body="$(mktemp)"
-  comment_id_file="$(mktemp)"
+  if [ "$can_render_pr_comment" = "true" ]; then
+    repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+    comments_json="$(mktemp)"
+    comment_body="$(mktemp)"
+    comment_id_file="$(mktemp)"
+    comment_tmp_dir="$(mktemp -d)"
+    renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
 
-  gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"
+    gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"
 
-  cat > /tmp/render-ci-measurement-comment.mjs <<'EOF'
+    cat > "$renderer_script" <<'EOF'
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const [
@@ -1411,9 +1420,7 @@ const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
 if (!Array.isArray(comments)) throw new Error('comments response must be an array')
 
 const existing = comments.find((comment) => {
-  return typeof comment?.body === 'string' && (
-    comment.body.includes(marker) || comment.body.startsWith('## ' + title)
-  )
+  return typeof comment?.body === 'string' && comment.body.includes(marker)
 })
 
 const extractState = (body) => {
@@ -1596,17 +1603,18 @@ writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
 writeFileSync(commentIdPath, existing?.id ? String(existing.id) : '')
 EOF
 
-  nix run nixpkgs#bun -- /tmp/render-ci-measurement-comment.mjs \
-    "$comparison_file" \
-    "$comments_json" \
-    "$comment_body" \
-    "$comment_id_file"
+    node "$renderer_script" \
+      "$comparison_file" \
+      "$comments_json" \
+      "$comment_body" \
+      "$comment_id_file"
 
-  comment_id="$(cat "$comment_id_file")"
-  if [ -n "$comment_id" ]; then
-    gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null
-  else
-    gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null
+    comment_id="$(cat "$comment_id_file")"
+    if [ -n "$comment_id" ]; then
+      gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null
+    else
+      gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null
+    fi
   fi
 fi
 

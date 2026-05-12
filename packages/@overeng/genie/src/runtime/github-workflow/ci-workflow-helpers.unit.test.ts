@@ -318,6 +318,16 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('ciMeasurementsCommentPermissions')
     expect(ciWorkflowSource).toContain('filtered_current_index="$(mktemp)"')
     expect(ciWorkflowSource).toContain('index($0, baseline_prefix) != 1')
+    expect(ciWorkflowSource).toContain('can_render_pr_comment=false')
+    expect(ciWorkflowSource).toContain('comment_tmp_dir="$(mktemp -d)"')
+    expect(ciWorkflowSource).toContain(
+      'renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"',
+    )
+    expect(ciWorkflowSource).toContain('node "$renderer_script"')
+    expect(ciWorkflowSource).not.toContain(
+      'nix run nixpkgs#bun -- /tmp/render-ci-measurement-comment.mjs',
+    )
+    expect(ciWorkflowSource).not.toContain('comment.body.startsWith')
     expect(ciWorkflowSource).toContain('ci-measurement-comment:managed')
     expect(ciWorkflowSource).toContain('ci-measurement-comment-state')
     expect(ciWorkflowSource).toContain('Previous runs')
