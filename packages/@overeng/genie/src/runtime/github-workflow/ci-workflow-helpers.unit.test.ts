@@ -352,8 +352,13 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('perf-comparison.json')
     expect(generatedCiWorkflowYamlSource).toContain('DEVENV_PERF_REGRESSION_MODE')
     expect(generatedCiWorkflowYamlSource).toContain('Download previous artifact: devenv-perf')
+    expect(generatedCiWorkflowYamlSource).toContain("BASELINE_SEED_RUN_IDS: '25710204667'")
     expect(generatedCiWorkflowYamlSource).toContain('gh run list')
     expect(generatedCiWorkflowYamlSource).toContain('gh run download')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'starts with(env.BASELINE_ARTIFACT_NAME + "-")'.replace('starts with', 'startswith'),
+    )
+    expect(generatedCiWorkflowYamlSource).toContain('baseline-provenance.json')
     expect(generatedCiWorkflowYamlSource).toContain('Compare CI measurements with baseline')
     expect(generatedCiWorkflowYamlSource).toContain(
       'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
@@ -363,5 +368,21 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
     expect(generatedCiWorkflowYamlSource).toContain('name: devenv-perf')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
+    expect(ciWorkflowSource).toContain('export type GitHubPreviousArtifactStepOptions')
+    expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
+    expect(ciWorkflowSource).toContain(
+      '["devenvRev", "otelServiceName", "status"] | index($key) | not',
+    )
+    expect(ciWorkflowSource).toContain("allRows.filter((row) => typeof row.baseline === 'number')")
+    expect(ciWorkflowSource).toContain('| Probe | Baseline | Current | Change | Result |')
+    expect(ciWorkflowSource).toContain(
+      "formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio)",
+    )
+    expect(ciWorkflowSource).toContain('Chart: bars are baseline, line is current.')
+    expect(ciWorkflowSource).toContain('xychart-beta')
+    expect(ciWorkflowSource).toContain("bar [' + baselineValues + ']")
+    expect(ciWorkflowSource).toContain("line [' + currentValues + ']")
   })
 })

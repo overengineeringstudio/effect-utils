@@ -2359,6 +2359,7 @@ jobs:
           BASELINE_OUTPUT_DIR: tmp/devenv-perf-ci/baseline
           BASELINE_WORKFLOW_NAME: ${{ github.workflow }}
           BASELINE_BRANCH: ${{ github.base_ref || github.ref_name }}
+          BASELINE_SEED_RUN_IDS: '25710204667'
         run: |
           set -euo pipefail
 
@@ -2373,7 +2374,7 @@ jobs:
           workflow="${BASELINE_WORKFLOW_NAME:-CI}"
           branch="${BASELINE_BRANCH:-${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-main}}}"
 
-          run_id="$(
+          candidate_runs="$(
             gh run list \
               --repo "$repo" \
               --workflow "$workflow" \
@@ -2382,23 +2383,71 @@ jobs:
               --status success \
               --json databaseId,headSha \
               --limit 20 \
-              --jq '[.[] | select(.headSha != env.GITHUB_SHA)][0].databaseId // empty'
+              --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
           )"
 
-          if [ -z "$run_id" ]; then
+          candidate_runs="$candidate_runs
+          $BASELINE_SEED_RUN_IDS"
+
+          run_id=""
+          artifact_name=""
+          artifact_id=""
+          for candidate_run in $candidate_runs; do
+            if [ -z "$candidate_run" ]; then
+              continue
+            fi
+
+            artifact_json="$(
+              gh api "repos/$repo/actions/runs/$candidate_run/artifacts" \
+                --jq '.artifacts
+                  | map(select(.expired == false))
+                  | map(select(.name == env.BASELINE_ARTIFACT_NAME or (.name | startswith(env.BASELINE_ARTIFACT_NAME + "-"))))
+                  | sort_by(.created_at // "")
+                  | reverse
+                  | .[0] // empty'
+            )"
+
+            if [ -n "$artifact_json" ]; then
+              run_id="$candidate_run"
+              artifact_name="$(printf '%s' "$artifact_json" | jq -r '.name')"
+              artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
+              break
+            fi
+          done
+
+          if [ -z "$run_id" ] || [ -z "$artifact_name" ]; then
             echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
             exit 0
           fi
 
           if ! gh run download "$run_id" \
             --repo "$repo" \
-            --name "$BASELINE_ARTIFACT_NAME" \
+            --name "$artifact_name" \
             --dir "$BASELINE_OUTPUT_DIR"; then
-            echo "::notice::baseline run $run_id has no artifact named $BASELINE_ARTIFACT_NAME"
+            echo "::notice::failed to download baseline artifact $artifact_name from run $run_id"
             exit 0
           fi
 
-          echo "Downloaded baseline artifact $BASELINE_ARTIFACT_NAME from run $run_id into $BASELINE_OUTPUT_DIR"
+          jq -n \
+            --argjson schemaVersion 1 \
+            --arg repository "$repo" \
+            --arg workflow "$workflow" \
+            --arg branch "$branch" \
+            --arg runId "$run_id" \
+            --arg artifactName "$artifact_name" \
+            --arg artifactId "$artifact_id" \
+            '{
+              schemaVersion: $schemaVersion,
+              source: "github-actions-artifact",
+              repository: $repository,
+              workflow: $workflow,
+              branch: $branch,
+              runId: $runId,
+              artifactName: $artifactName,
+              artifactId: $artifactId
+            }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
+
+          echo "Downloaded baseline artifact $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"
 
       - name: Benchmark devenv surfaces
         shell: bash
@@ -2783,9 +2832,10 @@ jobs:
             --arg currentDir "$current_dir" \
             --arg baselineDir "$baseline_dir" \
             '
-              def stable_dimensions:
+              def identity_dimensions:
                 (.dimensions // {})
                 | to_entries
+                | map(select(.key as $key | ["devenvRev", "otelServiceName", "status"] | index($key) | not))
                 | sort_by(.key)
                 | map("\(.key)=\(.value|tostring)")
                 | join(",");
@@ -2797,7 +2847,7 @@ jobs:
                   ($doc.target.system // "unknown"),
                   (.name // "unknown"),
                   (.unit // "unknown"),
-                  stable_dimensions
+                  identity_dimensions
                 ]
                 | join("|");
 
@@ -2895,6 +2945,15 @@ jobs:
                   comparisons:$comparisons
                 }
             ' >"$comparison_file"
+
+          baseline_provenance_file="$baseline_dir/baseline-provenance.json"
+          if [ -f "$baseline_provenance_file" ]; then
+            comparison_with_provenance="$(mktemp)"
+            jq --slurpfile baselineProvenance "$baseline_provenance_file" \
+              '. + {baselineProvenance: ($baselineProvenance[0] // null)}' \
+              "$comparison_file" >"$comparison_with_provenance"
+            mv "$comparison_with_provenance" "$comparison_file"
+          fi
 
           status="$(jq -r '.status' "$comparison_file")"
           annotation_kind="warning"
@@ -3183,6 +3242,29 @@ jobs:
 
           const escapeCell = (value) => String(value ?? '-').replaceAll('|', '\\|').replaceAll('\n', '<br>')
 
+          const humanProbe = (row) => {
+            const probe = row.observation?.dimensions?.probe
+            const name = row.observation?.name || 'unknown'
+            const labels = {
+              shell_eval_traced: 'Shell eval with OTEL trace',
+              shell_eval_warm: 'Warm shell eval',
+              tasks_list: 'devenv tasks list',
+              processes_help: 'devenv processes --help',
+              task_pnpm_install: 'pnpm:install',
+              task_genie_run: 'genie:run',
+              task_check_quick: 'check:quick',
+            }
+            if (probe && labels[probe]) return labels[probe]
+            if (name.startsWith('devenv.') && name.endsWith('.duration')) {
+              return name.slice('devenv.'.length, -'.duration'.length).replaceAll('_', ' ')
+            }
+            return name
+          }
+
+          const chartLabel = (row) => {
+            return humanProbe(row).replaceAll('"', '').slice(0, 28)
+          }
+
           const dimensions = (comparison) => {
             const entries = Object.entries(comparison.observation?.dimensions || {})
             if (entries.length === 0) return '-'
@@ -3206,9 +3288,13 @@ jobs:
               return (right.delta || 0) - (left.delta || 0)
             })
 
-          const visibleRows = allRows
-            .filter((row) => row.status !== 'pass')
-            .slice(0, Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10)
+          const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
+          const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
+          const hasComparableBaseline = comparableRows.length > 0
+          const visibleRows = (hasComparableBaseline
+            ? allRows.filter((row) => typeof row.baseline === 'number')
+            : allRows.slice().sort((left, right) => (right.current || 0) - (left.current || 0))
+          ).slice(0, visibleLimit)
 
           const tableRow = (row) => {
             const unit = row.observation?.unit
@@ -3224,6 +3310,35 @@ jobs:
             ].map(escapeCell).join(' | ')
           }
 
+          const comparisonTable = (rows) => {
+            if (rows.length === 0) return 'No measurement regressions detected.'
+            return [
+              '| Probe | Baseline | Current | Change | Result |',
+              '| --- | ---: | ---: | ---: | --- |',
+              ...rows.map((row) => {
+                const unit = row.observation?.unit
+                return '| ' + [
+                  humanProbe(row),
+                  formatValue(row.baseline, unit),
+                  formatValue(row.current, unit),
+                  formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
+                  row.status,
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const currentOnlyTable = (rows) => {
+            if (rows.length === 0) return 'No current measurements found.'
+            return [
+              '| Probe | Current |',
+              '| --- | ---: |',
+              ...rows.map((row) => {
+                return '| ' + [humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
           const table = (rows) => {
             if (rows.length === 0) return 'No measurement regressions detected.'
             return [
@@ -3231,6 +3346,43 @@ jobs:
               '| --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
               ...rows.map((row) => '| ' + tableRow(row) + ' |'),
             ].join('\n')
+          }
+
+          const mermaidChart = (rows) => {
+            const chartRows = rows
+              .filter((row) => row.observation?.unit === 'seconds' && typeof row.current === 'number')
+              .filter((row) => !hasComparableBaseline || typeof row.baseline === 'number')
+              .slice(0, 6)
+
+            if (chartRows.length === 0) return ''
+
+            const maxValue = Math.max(
+              1,
+              ...chartRows.map((row) => row.current || 0),
+              ...chartRows.map((row) => row.baseline || 0),
+            )
+            const yMax = Math.ceil(maxValue * 1.15)
+            const labels = chartRows.map((row) => '"' + chartLabel(row) + '"').join(', ')
+            const currentValues = chartRows.map((row) => formatNumber(row.current || 0)).join(', ')
+            const baselineValues = chartRows.map((row) => formatNumber(row.baseline || 0)).join(', ')
+
+            const lines = [
+              '\`\`\`mermaid',
+              'xychart-beta',
+              '  title "Devenv timings"',
+              '  x-axis [' + labels + ']',
+              '  y-axis "seconds" 0 --> ' + yMax,
+            ]
+
+            if (hasComparableBaseline) {
+              lines.push('  bar [' + baselineValues + ']')
+              lines.push('  line [' + currentValues + ']')
+            } else {
+              lines.push('  bar [' + currentValues + ']')
+            }
+
+            lines.push('\`\`\`')
+            return lines.join('\n')
           }
 
           const statusWord = comparison.status || 'unknown'
@@ -3278,6 +3430,12 @@ jobs:
           })
 
           const runLink = runUrl ? '[workflow run](' + runUrl + ')' : 'workflow run unavailable'
+          const baselineProvenance = comparison.baselineProvenance
+          const baselineLabel = baselineProvenance?.runId
+            ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')'
+            : 'not available'
+          const headlineTable = hasComparableBaseline ? comparisonTable(visibleRows) : currentOnlyTable(visibleRows)
+          const chart = mermaidChart(visibleRows.length > 0 ? visibleRows : allRows)
           const summaryLines = [
             '## ' + title,
             '',
@@ -3285,9 +3443,15 @@ jobs:
             '- Mode: ' + (comparison.mode || 'unknown'),
             '- Commit: ' + shortSha,
             '- Run: ' + runLink,
-            '- Baseline: ' + (comparison.baselineDir || 'n/a'),
+            '- Baseline: ' + baselineLabel,
             '',
-            table(visibleRows),
+            hasComparableBaseline
+              ? 'Chart: bars are baseline, line is current.'
+              : 'No compatible baseline was available, so this run shows current measurements only.',
+            '',
+            chart,
+            '',
+            headlineTable,
             '',
             '<details>',
             '<summary>All measurements</summary>',

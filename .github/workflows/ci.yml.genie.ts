@@ -265,6 +265,7 @@ const extraJobs: Record<string, any> = {
       runId: '${{ github.run_id }}',
     }),
     artifactName: 'devenv-perf',
+    baselineSeedRunIds: ['25710204667'],
     setupSteps: baseSteps,
     taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
     prComment: {
