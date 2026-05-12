@@ -31,6 +31,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -494,6 +495,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -838,6 +840,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -1182,6 +1185,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -1526,6 +1530,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -1679,6 +1684,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -1937,6 +1943,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -2176,6 +2183,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       ARTIFACT_DIR: tmp/devenv-perf-ci
       OTEL_SERVICE_NAME: devenv-perf-ci
       DEVENV_PERF_REGRESSION_MODE: warn
@@ -3351,6 +3359,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
     steps:
       - uses: actions/checkout@v6
@@ -3696,6 +3705,7 @@ jobs:
       FORCE_SETUP: '1'
       CI: 'true'
       GITHUB_TOKEN: ${{ github.token }}
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v6
