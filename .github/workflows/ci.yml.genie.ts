@@ -138,11 +138,14 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
+const jobTimeoutMinutes = 30
+
 const job = (step: { name: string; run: string }, extraSteps: readonly any[] = []) => ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
   }),
+  'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -167,6 +170,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
+  'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -198,6 +202,7 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
+  'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -258,20 +263,24 @@ const NETLIFY_SITE = 'overeng-utils'
 
 // Non-required jobs (separate from CIJobName — not required status checks)
 const extraJobs: Record<string, any> = {
-  'devenv-perf': devenvPerfJob({
-    runsOn: namespaceRunner({
-      profile: 'namespace-profile-linux-x86-64',
-      runId: '${{ github.run_id }}',
+  'devenv-perf': {
+    ...devenvPerfJob({
+      runsOn: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
+      setupSteps: baseSteps,
+      taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
     }),
-    setupSteps: baseSteps,
-    taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
-  }),
+    'timeout-minutes': jobTimeoutMinutes,
+  },
   /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
   'test-integration-notion': {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
+    'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
@@ -297,6 +306,7 @@ const deployJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
+    'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
     permissions: {
       contents: 'read',
@@ -342,7 +352,8 @@ export default ciWorkflow({
     ...deployJobs,
     'notify-alignment': notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
-      needs: Object.keys(jobs),
+      needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
+      runner: ['namespace-profile-linux-x86-64', 'namespace-features:github.run-id=${{ github.run_id }}'],
     }),
   },
 } satisfies GitHubWorkflowArgs)

@@ -24,6 +24,7 @@ jobs:
   typecheck:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -487,6 +488,7 @@ jobs:
   lint:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -831,6 +833,7 @@ jobs:
       matrix:
         runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
     runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1175,6 +1178,7 @@ jobs:
       matrix:
         runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
     runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1519,6 +1523,7 @@ jobs:
       matrix:
         runner: [namespace-profile-linux-x86-64, namespace-profile-macos-arm64]
     runs-on: ['${{ matrix.runner }}', 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1672,6 +1677,7 @@ jobs:
   pnpm-builder-contract:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -1930,6 +1936,7 @@ jobs:
   pnpm-regression:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -2666,9 +2673,11 @@ jobs:
           path: tmp/devenv-perf-ci
           if-no-files-found: error
           retention-days: 30
+    timeout-minutes: 30
   test-integration-notion:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -3011,6 +3020,7 @@ jobs:
   deploy-storybooks:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -3826,7 +3836,9 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
   notify-alignment:
-    runs-on: [sh-linux-x64, nix]
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
     needs:
       - typecheck
       - lint
@@ -3835,10 +3847,19 @@ jobs:
       - nix-fod-check
       - pnpm-builder-contract
       - pnpm-regression
+      - deploy-storybooks
     if: (github.ref == 'refs/heads/main') && github.event_name == 'push'
     steps:
       - name: Dispatch alignment to coordinator
         env:
           GH_TOKEN: ${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}
-        run: "export NIX_CONFIG=\"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}access-tokens = github.com=${GH_TOKEN}\" && printf '{\"event_type\":\"upstream-changed\",\"client_payload\":{\"source_repo\":\"%s\",\"source_sha\":\"%s\"}}' \"${{ github.repository }}\" \"${{ github.sha }}\" | nix run nixpkgs#gh -- api repos/schickling/megarepo-all/dispatches --input -"
+        run: |
+          payload=$(printf '{"event_type":"upstream-changed","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${{ github.repository }}" "${{ github.sha }}")
+          curl --fail-with-body --silent --show-error --request POST \
+            --url "https://api.github.com/repos/schickling/megarepo-all/dispatches" \
+            --header "Accept: application/vnd.github+json" \
+            --header "Content-Type: application/json" \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data "$payload"
         shell: bash
