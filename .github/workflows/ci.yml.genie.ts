@@ -22,6 +22,7 @@ import {
   netlifyStorybookCommentStep,
   pnpmStateSetupStep,
   validateNixStoreStep,
+  ciMeasurementsCommentPermissions,
 } from '../../genie/ci-workflow.ts'
 import { type CIJobName } from '../../genie/ci.ts'
 import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
@@ -263,6 +264,13 @@ const extraJobs: Record<string, any> = {
     artifactName: 'devenv-perf',
     setupSteps: baseSteps,
     taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
+    prComment: {
+      enabled: true,
+      title: 'Devenv Performance',
+      maxRows: 8,
+      maxHistory: 20,
+    },
+    permissions: ciMeasurementsCommentPermissions,
   }),
   /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
   'test-integration-notion': {

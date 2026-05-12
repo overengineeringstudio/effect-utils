@@ -430,6 +430,8 @@ export type DevenvPerfJobOptions = {
   readonly probes?: readonly DevenvPerfProbe[]
   readonly retentionDays?: number
   readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
+  readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
 }
 
 const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
@@ -1041,6 +1043,12 @@ current_index="$(mktemp)"
 baseline_index="$(mktemp)"
 find "$current_dir" -name measurements.json -type f -print | sort >"$current_index" || true
 find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
+if [ "$current_dir" != "$baseline_dir" ]; then
+  filtered_current_index="$(mktemp)"
+  awk -v baseline_prefix="$baseline_dir/" 'index($0, baseline_prefix) != 1 { print }' \
+    "$current_index" >"$filtered_current_index"
+  mv "$filtered_current_index" "$current_index"
+fi
 
 if [ ! -s "$current_index" ]; then
   echo "::error::no current measurements.json files found under $current_dir"
@@ -1617,6 +1625,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
 
   return {
     'runs-on': opts?.runsOn ?? linuxX64Runner,
+    ...(opts?.permissions === undefined ? {} : { permissions: opts.permissions }),
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
@@ -1644,6 +1653,13 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
       devenvPerfBenchmarkStep({
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
+      }),
+      compareCiMeasurementsStep({
+        currentDir: artifactDir,
+        baselineDir: `${artifactDir}/baseline`,
+        outputFile: `${artifactDir}/measurement-comparison.json`,
+        regressionMode: opts?.regressionMode ?? 'warn',
+        prComment: opts?.prComment,
       }),
       devenvPerfArtifactStep({
         artifactDir,

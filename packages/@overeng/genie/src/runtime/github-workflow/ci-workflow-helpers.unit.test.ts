@@ -316,6 +316,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('title=CI measurement regression')
     expect(ciWorkflowSource).toContain('CI_MEASUREMENT_PR_COMMENT_ENABLED')
     expect(ciWorkflowSource).toContain('ciMeasurementsCommentPermissions')
+    expect(ciWorkflowSource).toContain('filtered_current_index="$(mktemp)"')
+    expect(ciWorkflowSource).toContain('index($0, baseline_prefix) != 1')
     expect(ciWorkflowSource).toContain('ci-measurement-comment:managed')
     expect(ciWorkflowSource).toContain('ci-measurement-comment-state')
     expect(ciWorkflowSource).toContain('Previous runs')
@@ -329,6 +331,12 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('Download previous artifact: devenv-perf')
     expect(generatedCiWorkflowYamlSource).toContain('gh run list')
     expect(generatedCiWorkflowYamlSource).toContain('gh run download')
+    expect(generatedCiWorkflowYamlSource).toContain('Compare CI measurements with baseline')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain("CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'")
+    expect(generatedCiWorkflowYamlSource).toContain('issues: write')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
     expect(generatedCiWorkflowYamlSource).toContain('name: devenv-perf')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
