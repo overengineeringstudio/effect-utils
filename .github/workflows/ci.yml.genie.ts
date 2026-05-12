@@ -2,6 +2,7 @@ import {
   RUNNER_PROFILES,
   type RunnerProfile,
   bashShellDefaults,
+  cachixCliBuildStep,
   cachixStep,
   checkoutStep,
   notifyAlignmentJob,
@@ -30,6 +31,7 @@ import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runti
 const baseSteps = [
   checkoutStep(),
   installNixStep(),
+  cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   preparePinnedDevenvStep,
   pnpmStateSetupStep,
@@ -181,6 +183,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 const strictNixJobBaseSteps = [
   checkoutStep(),
   installNixStep(),
+  cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
   validateNixStoreStep,
 ] as const

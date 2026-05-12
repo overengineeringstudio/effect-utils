@@ -254,6 +254,18 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain("uses: 'cachix/cachix-action@v17' as const")
   })
 
+  it('provides cachix CLI from /nix/store on PATH instead of mutating the runner nix profile', () => {
+    expect(ciWorkflowSource).toContain('export const cachixCliBuildStep')
+    expect(ciWorkflowSource).toContain('nix build --no-link --print-out-paths nixpkgs#cachix')
+    expect(ciWorkflowSource).toContain('echo "$out/bin" >> "$GITHUB_PATH"')
+  })
+
+  it('keeps cachixStep free of installCommand so cachix-action short-circuits via PATH', () => {
+    const cachixStepSource = extractSourceBlock(ciWorkflowSource, 'export const cachixStep', '})\n')
+    expect(cachixStepSource).not.toContain('installCommand')
+    expect(cachixStepSource).not.toContain('nix profile install')
+  })
+
   it('uses the Nix-provided Netlify CLI for parallel deploy safety', () => {
     expect(netlifyTaskModuleSource).toContain('netlify = "${pkgs.netlify-cli}/bin/netlify";')
     expect(netlifyTaskModuleSource).not.toContain('bunx netlify-cli@24.11.3')

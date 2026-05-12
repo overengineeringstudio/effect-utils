@@ -633,6 +633,7 @@ export const testFilesOxlintOverride = {
 export {
   bashShellDefaults,
   checkoutStep,
+  cachixCliBuildStep,
   cachixStep,
   cachixBinaryCache,
   devenvBinaryCache,

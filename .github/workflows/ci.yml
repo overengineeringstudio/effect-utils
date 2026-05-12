@@ -44,6 +44,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -81,7 +87,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -496,6 +508,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -533,7 +551,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -829,6 +853,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -866,7 +896,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -1162,6 +1198,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1199,7 +1241,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -1495,6 +1543,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1509,7 +1563,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -1637,6 +1697,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1674,7 +1740,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -1884,6 +1956,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1921,7 +1999,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -2116,6 +2200,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -2153,7 +2243,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -3277,6 +3373,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -3314,7 +3416,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.
@@ -3611,6 +3719,12 @@ jobs:
             extra-trusted-public-keys = devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw=
             access-tokens = github.com=${{ github.token }}
           summarize: true
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -3648,7 +3762,13 @@ jobs:
           fi
 
           resolve_devenv() {
-            nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+            nix build \
+              --accept-flake-config \
+              --option extra-substituters https://devenv.cachix.org \
+              --option extra-trusted-public-keys devenv.cachix.org-1:w1cLUi8dv3hnoSPGAuibQv+f9TZLr6cv/Hm9XgU50cw= \
+              --no-link \
+              --print-out-paths \
+              "github:cachix/devenv/$DEVENV_REV#devenv"
           }
 
           # Temporary: capture diagnostics dir for #272 root-cause analysis.

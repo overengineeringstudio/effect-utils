@@ -162,7 +162,13 @@ if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
 fi`
 
 const resolveDevenvFnScript = `resolve_devenv() {
-  nix build --no-link --print-out-paths "github:cachix/devenv/$DEVENV_REV#devenv"
+  nix build \\
+    --accept-flake-config \\
+    --option extra-substituters ${devenvBinaryCache.uri} \\
+    --option extra-trusted-public-keys ${devenvBinaryCache.publicKey} \\
+    --no-link \\
+    --print-out-paths \\
+    "github:cachix/devenv/$DEVENV_REV#devenv"
 }`
 
 const shellSingleQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`
@@ -1653,7 +1659,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
       OTEL_SERVICE_NAME: 'devenv-perf-ci',
       DEVENV_PERF_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
       RUNNER_CLASS: (opts?.runsOn ?? linuxX64Runner).join(','),
-      ...(opts?.env ?? {}),
+      ...opts?.env,
     },
     steps: [
       ...(opts?.setupSteps ?? [
@@ -1952,7 +1958,25 @@ export const installNixStep = (opts?: {
   },
 })
 
-/** Enable a Cachix binary cache */
+/**
+ * Provide the cachix CLI to subsequent steps from a /nix/store output.
+ *
+ * Must run before `cachixStep` in the same job. cachix-action's
+ * `which.sync('cachix', { nothrow: true })` short-circuit then skips its
+ * built-in installer, so the binary stays a /nix/store path and the runner's
+ * nix profile is never mutated.
+ */
+export const cachixCliBuildStep = {
+  name: 'Provide cachix CLI from nixpkgs',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'out=$(nix build --no-link --print-out-paths nixpkgs#cachix)',
+    'echo "$out/bin" >> "$GITHUB_PATH"',
+  ].join('\n'),
+} as const
+
+/** Enable a Cachix binary cache. Requires `cachixCliBuildStep` earlier in the job. */
 export const cachixStep = (opts: { name: string; authToken?: string }) => ({
   name: 'Enable Cachix cache',
   uses: 'cachix/cachix-action@v17' as const,
