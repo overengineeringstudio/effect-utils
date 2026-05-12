@@ -1193,7 +1193,25 @@ export const installNixStep = (opts?: {
   },
 })
 
-/** Enable a Cachix binary cache */
+/**
+ * Provide the cachix CLI to subsequent steps from a /nix/store output.
+ *
+ * Must run before `cachixStep` in the same job. cachix-action's
+ * `which.sync('cachix', { nothrow: true })` short-circuit then skips its
+ * built-in installer, so the binary stays a /nix/store path and the runner's
+ * nix profile is never mutated.
+ */
+export const cachixCliBuildStep = {
+  name: 'Provide cachix CLI from nixpkgs',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'out=$(nix build --no-link --print-out-paths nixpkgs#cachix)',
+    'echo "$out/bin" >> "$GITHUB_PATH"',
+  ].join('\n'),
+} as const
+
+/** Enable a Cachix binary cache. Requires `cachixCliBuildStep` earlier in the job. */
 export const cachixStep = (opts: { name: string; authToken?: string }) => ({
   name: 'Enable Cachix cache',
   uses: 'cachix/cachix-action@v17' as const,
