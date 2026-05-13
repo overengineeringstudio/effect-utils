@@ -2173,7 +2173,7 @@ jobs:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     permissions:
-      contents: read
+      contents: write
       issues: write
       pull-requests: write
     defaults:
@@ -2782,6 +2782,7 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
+          CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
         run: |
           set -euo pipefail
 
@@ -3153,6 +3154,7 @@ jobs:
               comment_id_file="$(mktemp)"
               comment_tmp_dir="$(mktemp -d)"
               renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
+              chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"
 
               if ! gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"; then
                 echo "::notice::unable to list PR comments; skipping CI measurement PR comment"
@@ -3160,6 +3162,22 @@ jobs:
               fi
 
               if [ "$can_render_pr_comment" = "true" ]; then
+                asset_branch="${CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH:-ci-measurement-assets}"
+                asset_title="$(printf '%s' "${CI_MEASUREMENT_PR_COMMENT_TITLE:-ci-measurements}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+                if [ -z "$asset_title" ]; then
+                  asset_title="ci-measurements"
+                fi
+                asset_head_sha="${GITHUB_HEAD_SHA:-${GITHUB_SHA:-unknown}}"
+                asset_run_id="${GITHUB_RUN_ID:-local}"
+                asset_run_attempt="${GITHUB_RUN_ATTEMPT:-0}"
+                asset_path="ci-measurements/pr-$pr_number/${asset_head_sha}/run-${asset_run_id}-attempt-${asset_run_attempt}/${asset_title}.svg"
+                if [ "${GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
+                  chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_path"
+                else
+                  chart_url="${GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_path"
+                fi
+                export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+
                 cat > "$renderer_script" <<'EOF'
           import { readFileSync, writeFileSync } from 'node:fs'
 
@@ -3168,6 +3186,7 @@ jobs:
             commentsPath,
             bodyPath,
             commentIdPath,
+            chartPath,
           ] = process.argv.slice(2)
 
           const title = process.env.CI_MEASUREMENT_PR_COMMENT_TITLE || 'CI Measurements'
@@ -3181,6 +3200,7 @@ jobs:
           const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
           const workflow = process.env.GITHUB_WORKFLOW || 'CI'
           const job = process.env.GITHUB_JOB || ''
+          const chartUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_URL || ''
 
           const marker = '<!-- ci-measurement-comment:managed -->'
           const statePrefix = '<!-- ci-measurement-comment:state\n'
@@ -3261,8 +3281,19 @@ jobs:
             return name
           }
 
-          const chartLabel = (row) => {
-            return humanProbe(row).replaceAll('"', '').slice(0, 28)
+          const chartProbe = (row) => {
+            const probe = row.observation?.dimensions?.probe
+            const labels = {
+              shell_eval_traced: 'Shell eval with OTEL trace',
+              shell_eval_warm: 'Warm shell eval',
+              tasks_list: 'devenv tasks list',
+              processes_help: 'processes --help',
+              task_pnpm_install: 'pnpm:install',
+              task_genie_run: 'genie:run',
+              task_check_quick: 'check:quick',
+            }
+            if (probe && labels[probe]) return labels[probe]
+            return humanProbe(row)
           }
 
           const dimensions = (comparison) => {
@@ -3348,41 +3379,82 @@ jobs:
             ].join('\n')
           }
 
-          const mermaidChart = (rows) => {
+          const renderPerfChangeSvg = (rows) => {
             const chartRows = rows
-              .filter((row) => row.observation?.unit === 'seconds' && typeof row.current === 'number')
-              .filter((row) => !hasComparableBaseline || typeof row.baseline === 'number')
-              .slice(0, 6)
+              .filter((row) => row.observation?.unit === 'seconds')
+              .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
+              .filter((row) => typeof row.ratio === 'number')
+              .sort((left, right) => ((left.ratio || 1) - 1) - ((right.ratio || 1) - 1))
+              .slice(0, visibleLimit)
 
             if (chartRows.length === 0) return ''
 
-            const maxValue = Math.max(
-              1,
-              ...chartRows.map((row) => row.current || 0),
-              ...chartRows.map((row) => row.baseline || 0),
-            )
-            const yMax = Math.ceil(maxValue * 1.15)
-            const labels = chartRows.map((row) => '"' + chartLabel(row) + '"').join(', ')
-            const currentValues = chartRows.map((row) => formatNumber(row.current || 0)).join(', ')
-            const baselineValues = chartRows.map((row) => formatNumber(row.baseline || 0)).join(', ')
+            const percentages = chartRows.map((row) => ((row.ratio || 1) - 1) * 100)
+            const minPct = Math.min(-1, ...percentages)
+            const maxPct = Math.max(1, ...percentages)
+            const lower = Math.floor(minPct)
+            const upper = Math.ceil(maxPct)
+            const span = upper - lower || 1
 
-            const lines = [
-              '\`\`\`mermaid',
-              'xychart-beta',
-              '  title "Devenv timings"',
-              '  x-axis [' + labels + ']',
-              '  y-axis "seconds" 0 --> ' + yMax,
+            const width = 900
+            const rowHeight = 42
+            const height = 96 + chartRows.length * rowHeight + 34
+            const labelX = 238
+            const plotX = 260
+            const plotWidth = 342
+            const percentX = 626
+            const nominalX = 704
+            const topY = 78
+            const barHeight = 18
+            const zeroX = plotX + ((0 - lower) / span) * plotWidth
+            const truncate = (value, maxLength) => {
+              const text = String(value)
+              if (text.length <= maxLength) return text
+              if (maxLength <= 1) return text.slice(0, maxLength)
+              return text.slice(0, Math.max(0, maxLength - 3)) + '...'
+            }
+            const escapeXml = (value) => String(value)
+              .replaceAll('&', '&amp;')
+              .replaceAll('<', '&lt;')
+              .replaceAll('>', '&gt;')
+              .replaceAll('"', '&quot;')
+
+            const svg = [
+              '<?xml version="1.0" encoding="UTF-8"?>',
+              '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
+              '<rect width="' + width + '" height="' + height + '" rx="10" fill="#050b1f"/>',
+              '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#e5e7eb">Perf change vs baseline (%)</text>',
+              '<text x="' + plotX + '" y="55" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#20d6a3">faster</text>',
+              '<text x="' + (plotX + plotWidth) + '" y="55" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#fb6b6b">slower</text>',
+              '<text x="' + nominalX + '" y="55" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">baseline -> current</text>',
+              '<line x1="' + zeroX.toFixed(1) + '" y1="66" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke="#ef4444" stroke-width="1.2" opacity="0.85"/>',
             ]
 
-            if (hasComparableBaseline) {
-              lines.push('  bar [' + baselineValues + ']')
-              lines.push('  line [' + currentValues + ']')
-            } else {
-              lines.push('  bar [' + currentValues + ']')
+            for (const [index, row] of chartRows.entries()) {
+              const pct = ((row.ratio || 1) - 1) * 100
+              const y = topY + index * rowHeight
+              const valueWidth = Math.max(2, Math.abs(pct) / span * plotWidth)
+              const x = pct < 0 ? zeroX - valueWidth : zeroX
+              const color = pct < 0 ? '#20d6a3' : '#fb6b6b'
+              const formattedPct = (pct > 0 ? '+' : '') + formatNumber(Math.round(pct * 10) / 10) + '%'
+              const label = chartProbe(row)
+              const nominal = formatValue(row.baseline, row.observation?.unit).replaceAll(' ', '') + ' -> ' + formatValue(row.current, row.observation?.unit).replaceAll(' ', '')
+
+              svg.push(
+                '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#cbd5e1"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 30)) + '</text>',
+                '<rect x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5" fill="#111827"/>',
+                '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '"/>',
+                '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
+                '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#94a3b8"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 24)) + '</text>',
+              )
             }
 
-            lines.push('\`\`\`')
-            return lines.join('\n')
+            svg.push(
+              '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#94a3b8">0%</text>',
+              '</svg>',
+            )
+
+            return svg.join('\n')
           }
 
           const statusWord = comparison.status || 'unknown'
@@ -3435,7 +3507,11 @@ jobs:
             ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')'
             : 'not available'
           const headlineTable = hasComparableBaseline ? comparisonTable(visibleRows) : currentOnlyTable(visibleRows)
-          const chart = mermaidChart(visibleRows.length > 0 ? visibleRows : allRows)
+          const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
+          if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
+          const chartMarkdown = chartUrl && chartSvg
+            ? '![Perf change vs baseline chart](' + chartUrl + ')'
+            : ''
           const summaryLines = [
             '## ' + title,
             '',
@@ -3446,10 +3522,10 @@ jobs:
             '- Baseline: ' + baselineLabel,
             '',
             hasComparableBaseline
-              ? 'Chart: bars are baseline, line is current.'
+              ? 'Chart: performance change versus baseline. Green is faster, red is slower.'
               : 'No compatible baseline was available, so this run shows current measurements only.',
             '',
-            chart,
+            chartMarkdown,
             '',
             headlineTable,
             '',
@@ -3485,7 +3561,33 @@ jobs:
                   "$comparison_file" \
                   "$comments_json" \
                   "$comment_body" \
-                  "$comment_id_file"
+                  "$comment_id_file" \
+                  "$chart_file"
+
+                if [ -s "$chart_file" ]; then
+                  if ! gh api "repos/$repo/git/ref/heads/$asset_branch" >/dev/null 2>&1; then
+                    default_branch_sha="$(gh api "repos/$repo/git/ref/heads/${GITHUB_BASE_REF:-main}" --jq '.object.sha' 2>/dev/null || true)"
+                    if [ -z "$default_branch_sha" ]; then
+                      default_branch_sha="${GITHUB_SHA:-}"
+                    fi
+                    if [ -n "$default_branch_sha" ]; then
+                      gh api "repos/$repo/git/refs" \
+                        --method POST \
+                        --field ref="refs/heads/$asset_branch" \
+                        --field sha="$default_branch_sha" >/dev/null || true
+                    fi
+                  fi
+
+                  chart_content="$(base64 <"$chart_file" | tr -d '\n')"
+                  if ! gh api "repos/$repo/contents/$asset_path" \
+                    --method PUT \
+                    --field message="Update CI measurement chart for PR #$pr_number" \
+                    --field content="$chart_content" \
+                    --field branch="$asset_branch" >/dev/null; then
+                    echo "::notice::unable to upload CI measurement chart asset"
+                    sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+                  fi
+                fi
 
                 comment_id="$(cat "$comment_id_file")"
                 if [ -n "$comment_id" ]; then

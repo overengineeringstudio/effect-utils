@@ -328,11 +328,15 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('title=CI measurement regression')
     expect(ciWorkflowSource).toContain('CI_MEASUREMENT_PR_COMMENT_ENABLED')
     expect(ciWorkflowSource).toContain('ciMeasurementsCommentPermissions')
+    expect(ciWorkflowSource).toContain("contents: 'write'")
     expect(ciWorkflowSource).toContain('filtered_current_index="$(mktemp)"')
     expect(ciWorkflowSource).toContain('index($0, baseline_prefix) != 1')
     expect(ciWorkflowSource).toContain('value: (')
     expect(ciWorkflowSource).toContain('can_render_pr_comment=false')
     expect(ciWorkflowSource).toContain('comment_tmp_dir="$(mktemp -d)"')
+    expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
+    expect(ciWorkflowSource).toContain('CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH')
+    expect(ciWorkflowSource).toContain('ci-measurement-assets')
     expect(ciWorkflowSource).toContain(
       'renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"',
     )
@@ -380,9 +384,14 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       "formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio)",
     )
-    expect(ciWorkflowSource).toContain('Chart: bars are baseline, line is current.')
-    expect(ciWorkflowSource).toContain('xychart-beta')
-    expect(ciWorkflowSource).toContain("bar [' + baselineValues + ']")
-    expect(ciWorkflowSource).toContain("line [' + currentValues + ']")
+    expect(ciWorkflowSource).toContain(
+      'Chart: performance change versus baseline. Green is faster, red is slower.',
+    )
+    expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
+    expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')
+    expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
+    expect(ciWorkflowSource).toContain('https://raw.githubusercontent.com')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_path"')
+    expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
   })
 })
