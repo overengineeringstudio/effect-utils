@@ -333,7 +333,8 @@ const includesTags = ({
 }: {
   readonly actual: Readonly<Record<string, string>> | undefined
   readonly expected: Readonly<Record<string, string>>
-}) => actual !== undefined && Object.entries(expected).every(([key, value]) => actual[key] === value)
+}) =>
+  actual !== undefined && Object.entries(expected).every(([key, value]) => actual[key] === value)
 
 const wait = (input: { readonly signal: AbortSignal; readonly millis: number }) =>
   new Promise<void>((resolve, reject) => {
