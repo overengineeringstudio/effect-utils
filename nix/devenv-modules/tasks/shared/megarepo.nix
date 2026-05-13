@@ -182,7 +182,7 @@ let
           exit 0
         fi
 
-        mr apply ${bootstrapOnlyArgs}
+        mr apply --worktree-mode commit ${bootstrapOnlyArgs}
       '';
       status = trace.status "mr:bootstrap" "path" ''
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
