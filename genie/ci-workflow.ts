@@ -49,13 +49,22 @@ export {
 } from './ci-workflow/shared.ts'
 export {
   ciMeasurementMetrics,
+  ciMeasurementsArtifactStep,
+  ciMeasurementsCommentPermissions,
+  compareCiMeasurementsStep,
+  downloadPreviousGitHubArtifactStep,
   devenvPerfArtifactStep,
   devenvPerfBenchmarkStep,
   devenvPerfJob,
   nixClosureMeasurementStep,
+  type CiMeasurementDescriptor,
   type CiMeasurementObservation,
+  type CiMeasurementsArtifactStepOptions,
+  type CiMeasurementsComparisonStepOptions,
   type DevenvPerfJobOptions,
   type DevenvPerfProbe,
+  type DevenvPerfTaskProbe,
+  type GitHubPreviousArtifactStepOptions,
   type NixClosureMeasurementBucket,
   type NixClosureMeasurementStepOptions,
 } from './ci-workflow/measurements.ts'

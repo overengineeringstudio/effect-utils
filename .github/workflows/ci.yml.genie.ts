@@ -15,6 +15,7 @@ import {
   savePnpmStateStep,
   standardCIEnv,
   ciWorkflow,
+  ciMeasurementsCommentPermissions,
   devenvPerfJob,
   namespaceRunner,
   validateColdPnpmDepsStep,
@@ -269,8 +270,56 @@ const extraJobs: Record<string, any> = {
         profile: 'namespace-profile-linux-x86-64',
         runId: '${{ github.run_id }}',
       }),
+      artifactName: 'devenv-perf',
+      baselineSeedRunIds: ['25710204667'],
       setupSteps: baseSteps,
-      taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
+      taskProbes: [
+        {
+          task: 'pnpm:install',
+          label: 'pnpm install task',
+          group: 'workspace setup',
+          description: 'Runs the cached pnpm install devenv task.',
+        },
+        {
+          task: 'genie:run',
+          label: 'Genie run task',
+          group: 'genie',
+          description: 'Runs the normal devenv genie:run task including its declared dependencies.',
+        },
+        {
+          task: 'check:quick',
+          label: 'Quick check task',
+          group: 'quality gates',
+          description: 'Runs the fast local quality gate through devenv.',
+        },
+      ],
+      probes: [
+        {
+          id: 'genie_check_direct',
+          label: 'Genie check direct',
+          group: 'genie',
+          description:
+            'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.',
+          command: [
+            '$DEVENV_BIN',
+            'shell',
+            '--no-reload',
+            '--',
+            'bun',
+            'packages/@overeng/genie/bin/genie.tsx',
+            '--output',
+            'ci-plain',
+            '--check',
+          ],
+        },
+      ],
+      permissions: ciMeasurementsCommentPermissions,
+      prComment: {
+        enabled: true,
+        title: 'Devenv Performance',
+        maxRows: 8,
+        maxHistory: 20,
+      },
     }),
     'timeout-minutes': jobTimeoutMinutes,
   },
@@ -353,7 +402,10 @@ export default ciWorkflow({
     'notify-alignment': notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
       needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
-      runner: ['namespace-profile-linux-x86-64', 'namespace-features:github.run-id=${{ github.run_id }}'],
+      runner: [
+        'namespace-profile-linux-x86-64',
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ],
     }),
   },
 } satisfies GitHubWorkflowArgs)
