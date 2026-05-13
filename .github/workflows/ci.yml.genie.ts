@@ -300,6 +300,7 @@ const extraJobs: Record<string, any> = {
           group: 'genie',
           description:
             'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.',
+          repetitions: 3,
           command: [
             '$DEVENV_BIN',
             'shell',
