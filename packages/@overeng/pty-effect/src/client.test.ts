@@ -188,7 +188,8 @@ describe('PtyClient', () => {
             size: { rows: 24, cols: 80 },
           })
 
-          expect(session.initialScreen).toContain(`ENV:${marker}`)
+          const screen = yield* session.waitForText({ needle: `ENV:${marker}` })
+          expect(screen.text).toContain(`ENV:${marker}`)
         } finally {
           if (previous === undefined) delete process.env.PTY_EFFECT_TEST_VALUE
           else process.env.PTY_EFFECT_TEST_VALUE = previous

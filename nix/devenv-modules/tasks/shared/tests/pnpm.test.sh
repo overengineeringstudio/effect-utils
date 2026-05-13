@@ -40,27 +40,22 @@ make_projection_fixture() {
   local root="$1"
   local with_dep="$2"
   local dep_blocks_package_json_export="${3:-0}"
+  local dep_name="${4:-dep}"
 
   mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
   mkdir -p "$root/node_modules"
-  cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/package.json" <<'EOF'
-{"name":"pkg","dependencies":{"dep":"1.0.0"}}
-EOF
+  printf '{"name":"pkg","dependencies":{"%s":"1.0.0"}}\n' "$dep_name" > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/package.json"
   ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
 
   if [ "$with_dep" = "1" ]; then
-    mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep"
+    mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/$dep_name"
     if [ "$dep_blocks_package_json_export" = "1" ]; then
-      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
-{"name":"dep","exports":{".":"./index.js"}}
-EOF
-      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/index.js" <<'EOF'
+      printf '{"name":"%s","exports":{".":"./index.js"}}\n' "$dep_name" > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/$dep_name/package.json"
+      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/$dep_name/index.js" <<'EOF'
 module.exports = {}
 EOF
     else
-      cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/dep/package.json" <<'EOF'
-{"name":"dep"}
-EOF
+      printf '{"name":"%s"}\n' "$dep_name" > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/$dep_name/package.json"
     fi
   fi
 }
@@ -277,7 +272,25 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing dep"
 
-echo "Test 14: Broken node_modules symlink is rejected before projection checks"
+echo "Test 14: Projection health handles dependency names that are also Node builtins"
+builtin_dep_dir="$test_dir/builtin-dep"
+make_projection_fixture "$builtin_dep_dir" 1 0 events
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$builtin_dep_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health resolves installed builtin-name deps"
+
+echo "Test 15: Projection health still fails when builtin-name dependency is missing"
+missing_builtin_dep_dir="$test_dir/missing-builtin-dep"
+make_projection_fixture "$missing_builtin_dep_dir" 0 0 events
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_builtin_dep_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 1 "$exit_code" "projection health detects missing builtin-name dep"
+
+echo "Test 16: Broken node_modules symlink is rejected before projection checks"
 broken_dir="$test_dir/broken"
 mkdir -p "$broken_dir/node_modules"
 ln -s ../missing "$broken_dir/node_modules/broken"
@@ -287,7 +300,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "broken symlink is rejected"
 
-echo "Test 15: Projection health fails when a package export target is missing"
+echo "Test 17: Projection health fails when a package export target is missing"
 missing_export_dir="$test_dir/missing-export"
 make_missing_export_fixture "$missing_export_dir"
 set +e
@@ -296,7 +309,7 @@ exit_code=$?
 set -e
 assert_exit_code 1 "$exit_code" "projection health detects missing package export target"
 
-echo "Test 16: Projection health ignores unshipped conditional export targets"
+echo "Test 18: Projection health ignores unshipped conditional export targets"
 unshipped_export_dir="$test_dir/unshipped-export"
 make_unshipped_conditional_export_fixture "$unshipped_export_dir"
 set +e
@@ -305,7 +318,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores export targets outside package files"
 
-echo "Test 17: Projection health ignores missing declaration-only export targets"
+echo "Test 19: Projection health ignores missing declaration-only export targets"
 missing_type_dir="$test_dir/missing-type-export"
 make_missing_type_export_fixture "$missing_type_dir"
 set +e

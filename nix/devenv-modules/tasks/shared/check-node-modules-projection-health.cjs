@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
-const { createRequire } = require('module')
+const Module = require('module')
+const { createRequire } = Module
 const crypto = require('crypto')
 
 const mode = process.env.NODE_MODULES_HELPER_MODE || 'health'
@@ -47,9 +48,10 @@ const collectHealthEntryPaths = (nodeModulesDir) => {
   return result
 }
 
-const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
+const resolveDependencyPackageRoot = ({ packageJsonPath, requireFromPkg, dependencyName }) => {
   const packagePath = dependencyName.split('/')
-  const searchPaths = requireFromPkg.resolve.paths(dependencyName) ?? []
+  const searchPaths =
+    requireFromPkg.resolve.paths(dependencyName) ?? Module._nodeModulePaths(path.dirname(packageJsonPath))
 
   for (const searchPath of searchPaths) {
     const dependencyRoot = path.join(searchPath, ...packagePath)
@@ -216,6 +218,7 @@ const runHealthCheck = () => {
       for (const dependencyName of dependencyNames) {
         if (
           resolveDependencyPackageRoot({
+            packageJsonPath,
             requireFromPkg,
             dependencyName,
           }) === undefined
