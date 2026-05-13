@@ -7,6 +7,8 @@ import { defaultActionlintConfig, linuxX64Runner } from './ci-workflow.ts'
 export const autoReviewWorkflow = ({
   author = 'schickling-assistant',
   reviewer = 'schickling',
+  runner = linuxX64Runner,
+  timeoutMinutes = 30,
 } = {}) =>
   githubWorkflow({
     actionlint: defaultActionlintConfig,
@@ -22,12 +24,21 @@ export const autoReviewWorkflow = ({
     jobs: {
       'request-review': {
         if: `github.event.pull_request.user.login == '${author}' && github.event.pull_request.draft == false`,
-        'runs-on': linuxX64Runner,
+        'runs-on': runner,
+        'timeout-minutes': timeoutMinutes,
         steps: [
           {
             name: `Request review from ${reviewer}`,
             env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' },
-            run: `nix shell nixpkgs#gh --command gh pr edit \${{ github.event.pull_request.number }} --repo \${{ github.repository }} --add-reviewer ${reviewer}`,
+            run: [
+              `curl --fail-with-body --silent --show-error --request POST \\`,
+              `  --url "https://api.github.com/repos/\${{ github.repository }}/pulls/\${{ github.event.pull_request.number }}/requested_reviewers" \\`,
+              `  --header "Accept: application/vnd.github+json" \\`,
+              `  --header "Content-Type: application/json" \\`,
+              `  --header "Authorization: Bearer \${GH_TOKEN}" \\`,
+              `  --header "X-GitHub-Api-Version: 2022-11-28" \\`,
+              `  --data '{"reviewers":["${reviewer}"]}'`,
+            ].join('\n'),
           },
         ],
       },

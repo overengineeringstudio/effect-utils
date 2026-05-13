@@ -93,6 +93,7 @@ export type DefaultRefPolicyCheckStepOptions = {
   readonly defaultRef?: string
   readonly defaultRefs?: Readonly<Record<string, string>>
   readonly verifyReachable?: boolean
+  readonly normalizeGitBranchRefs?: boolean
 }
 
 const defaultRefPolicyCheckScript = String.raw`const fs = require('node:fs')
@@ -109,7 +110,9 @@ const violations = []
 
 const repoKey = (repo) => repo.owner.toLowerCase() + '/' + repo.repo.toLowerCase()
 const isFirstParty = (repo) => firstPartyOwners.has(repo.owner.toLowerCase())
-const expectedRefFor = (repo) => defaultRefs.get(repoKey(repo)) || defaultRef
+const normalizeGitBranchRefs = process.env.NORMALIZE_GIT_BRANCH_REFS === '1'
+const normalizeRef = (ref) => normalizeGitBranchRefs && ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref
+const expectedRefFor = (repo) => normalizeRef(defaultRefs.get(repoKey(repo)) || defaultRef)
 
 const githubRepoFromUrl = (url) => {
   const match = url.match(/github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?(?:[#?].*)?$/)
@@ -162,12 +165,13 @@ const parseGithubLikeRef = (value) => {
 const addRefViolation = ({ file, repo, ref, field, inputName, memberName }) => {
   if (!repo || !ref || !isFirstParty(repo)) return
   const expectedRef = expectedRefFor(repo)
-  if (ref === expectedRef) return
+  const normalizedRef = normalizeRef(ref)
+  if (normalizedRef === expectedRef) return
   violations.push({
     type: 'ref',
     file,
     repo: repoKey(repo),
-    ref,
+    ref: normalizedRef,
     expectedRef,
     field,
     inputName,
@@ -438,6 +442,7 @@ export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions
     DEFAULT_REF: opts.defaultRef ?? 'main',
     DEFAULT_REFS_JSON: JSON.stringify(opts.defaultRefs ?? {}),
     VERIFY_REACHABLE: opts.verifyReachable === true ? '1' : '0',
+    NORMALIZE_GIT_BRANCH_REFS: opts.normalizeGitBranchRefs === true ? '1' : '0',
   },
   run: `node <<'NODE'\n${defaultRefPolicyCheckScript}\nNODE`,
   shell: 'bash',

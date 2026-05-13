@@ -15,6 +15,7 @@ import {
   savePnpmStateStep,
   standardCIEnv,
   ciWorkflow,
+  ciMeasurementsCommentPermissions,
   devenvPerfJob,
   namespaceRunner,
   validateColdPnpmDepsStep,
@@ -138,11 +139,14 @@ const nixDiagnosticsSummaryStep = {
   ].join('\n'),
 } as const
 
+const jobTimeoutMinutes = 30
+
 const job = (step: { name: string; run: string }, extraSteps: readonly any[] = []) => ({
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
   }),
+  'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -167,6 +171,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
+  'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -198,6 +203,7 @@ const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsS
     profile: '${{ matrix.runner }}' as RunnerProfile,
     runId: '${{ github.run_id }}',
   }),
+  'timeout-minutes': jobTimeoutMinutes,
   defaults: bashShellDefaults,
   env: standardCIEnv,
   steps: [
@@ -258,20 +264,72 @@ const NETLIFY_SITE = 'overeng-utils'
 
 // Non-required jobs (separate from CIJobName — not required status checks)
 const extraJobs: Record<string, any> = {
-  'devenv-perf': devenvPerfJob({
-    runsOn: namespaceRunner({
-      profile: 'namespace-profile-linux-x86-64',
-      runId: '${{ github.run_id }}',
+  'devenv-perf': {
+    ...devenvPerfJob({
+      runsOn: namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+      }),
+      artifactName: 'devenv-perf',
+      baselineSeedRunIds: ['25710204667'],
+      setupSteps: baseSteps,
+      taskProbes: [
+        {
+          task: 'pnpm:install',
+          label: 'pnpm install task',
+          group: 'workspace setup',
+          description: 'Runs the cached pnpm install devenv task.',
+        },
+        {
+          task: 'genie:run',
+          label: 'Genie run task',
+          group: 'genie',
+          description: 'Runs the normal devenv genie:run task including its declared dependencies.',
+        },
+        {
+          task: 'check:quick',
+          label: 'Quick check task',
+          group: 'quality gates',
+          description: 'Runs the fast local quality gate through devenv.',
+        },
+      ],
+      probes: [
+        {
+          id: 'genie_check_direct',
+          label: 'Genie check direct',
+          group: 'genie',
+          description:
+            'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.',
+          command: [
+            '$DEVENV_BIN',
+            'shell',
+            '--no-reload',
+            '--',
+            'bun',
+            'packages/@overeng/genie/bin/genie.tsx',
+            '--output',
+            'ci-plain',
+            '--check',
+          ],
+        },
+      ],
+      permissions: ciMeasurementsCommentPermissions,
+      prComment: {
+        enabled: true,
+        title: 'Devenv Performance',
+        maxRows: 8,
+        maxHistory: 20,
+      },
     }),
-    setupSteps: baseSteps,
-    taskProbes: ['pnpm:install', 'genie:run', 'check:quick'],
-  }),
+    'timeout-minutes': jobTimeoutMinutes,
+  },
   /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
   'test-integration-notion': {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
+    'timeout-minutes': jobTimeoutMinutes,
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
@@ -297,6 +355,7 @@ const deployJobs: Record<string, any> = {
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
     }),
+    'timeout-minutes': jobTimeoutMinutes,
     // No `needs` — run in parallel with other jobs for faster feedback
     permissions: {
       contents: 'read',
@@ -342,7 +401,11 @@ export default ciWorkflow({
     ...deployJobs,
     'notify-alignment': notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
-      needs: Object.keys(jobs),
+      needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
+      runner: [
+        'namespace-profile-linux-x86-64',
+        'namespace-features:github.run-id=${{ github.run_id }}',
+      ],
     }),
   },
 } satisfies GitHubWorkflowArgs)

@@ -96,8 +96,6 @@ export const deployCommentStep = (opts: {
  * Step that dispatches `upstream-changed` repository_dispatch to a target repo.
  * Add this to upstream CI workflows so merges to main trigger downstream alignment.
  *
- * Uses `nix run nixpkgs#gh` since self-hosted runners have Nix installed.
- *
  * Requires `MEGAREPO_ALIGNMENT_TOKEN` secret (fine-grained PAT with Contents + Pull Requests write).
  */
 export const dispatchAlignmentStep = (opts: {
@@ -109,9 +107,15 @@ export const dispatchAlignmentStep = (opts: {
   name: 'Dispatch alignment to coordinator',
   env: { GH_TOKEN: '${{ secrets.MEGAREPO_ALIGNMENT_TOKEN }}' },
   run: [
-    `export NIX_CONFIG="${"${NIX_CONFIG:+$NIX_CONFIG$'\\n'}"}access-tokens = github.com=${'${GH_TOKEN}'}"`,
-    `printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}" | nix run nixpkgs#gh -- api repos/${opts.targetRepo}/dispatches --input -`,
-  ].join(' && '),
+    `payload=$(printf '{"event_type":"${opts.eventType ?? 'upstream-changed'}","client_payload":{"source_repo":"%s","source_sha":"%s"}}' "${'${{ github.repository }}'}" "${'${{ github.sha }}'}")`,
+    `curl --fail-with-body --silent --show-error --request POST \\`,
+    `  --url "https://api.github.com/repos/${opts.targetRepo}/dispatches" \\`,
+    `  --header "Accept: application/vnd.github+json" \\`,
+    `  --header "Content-Type: application/json" \\`,
+    `  --header "Authorization: Bearer ${'${GH_TOKEN}'}" \\`,
+    `  --header "X-GitHub-Api-Version: 2022-11-28" \\`,
+    `  --data "$payload"`,
+  ].join('\n'),
   shell: 'bash',
 })
 
@@ -122,10 +126,13 @@ export const dispatchAlignmentStep = (opts: {
 export const notifyAlignmentJob = (opts: {
   targetRepo: string
   needs: readonly string[]
+  runner?: readonly string[]
+  timeoutMinutes?: number
   /** Branches that trigger notification (default: main only) */
   branches?: readonly string[]
 }) => ({
-  'runs-on': linuxX64Runner,
+  'runs-on': opts.runner ?? linuxX64Runner,
+  'timeout-minutes': opts.timeoutMinutes ?? 30,
   needs: [...opts.needs],
   if: `(${(opts.branches ?? ['main']).map((b) => `github.ref == 'refs/heads/${b}'`).join(' || ')}) && github.event_name == 'push'`,
   steps: [dispatchAlignmentStep({ targetRepo: opts.targetRepo })],

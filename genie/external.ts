@@ -655,8 +655,10 @@ export {
   syncMegarepoWorkspaceStep,
   applyMegarepoLockStep,
   RUNNER_PROFILES,
+  type CiMeasurementDescriptor,
   type DevenvPerfJobOptions,
   type DevenvPerfProbe,
+  type DevenvPerfTaskProbe,
   type NixBinaryCache,
   type RunnerProfile,
 } from './ci-workflow.ts'

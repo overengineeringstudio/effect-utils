@@ -8,6 +8,7 @@ const ciWorkflowSource = [
   'ci-workflow/setup.ts',
   'ci-workflow/measurements.ts',
   'ci-workflow/megarepo.ts',
+  'ci-workflow/merge-queue.ts',
   'ci-workflow/deploy.ts',
 ]
   .map((file) =>
@@ -83,6 +84,16 @@ const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
   'export type DefaultRefPolicyCheckStepOptions = {',
+)
+const defaultRefPolicyCheckStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export type DefaultRefPolicyCheckStepOptions = {',
+  '/** Fail when first-party megarepo/flake/devenv inputs target non-default refs. */',
+)
+const mergeQueueSource = extractSourceBlock(
+  ciWorkflowSource,
+  "export const mergeQueueAdmissionLabel = 'mq:ci-admitted' as const",
+  'export const mergeQueueSemanticGateJob = ({',
 )
 const installMegarepoStepSource = extractSourceBlock(
   ciWorkflowSource,
@@ -212,6 +223,71 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(megarepoTaskModuleSource).toContain('(.value.members // .value.value.members // [])')
     expect(megarepoTaskModuleSource).not.toContain('.value.members[].name')
   })
+
+  it('normalizes GitHub branch refs through an explicit default-ref policy option', () => {
+    expect(defaultRefPolicyCheckStepSource).toContain('normalizeGitBranchRefs?: boolean')
+    expect(defaultRefPolicyCheckStepSource).toContain('NORMALIZE_GIT_BRANCH_REFS')
+    expect(defaultRefPolicyCheckStepSource).toContain("ref.startsWith('refs/heads/')")
+  })
+})
+
+describe('ci workflow merge queue helpers', () => {
+  it('centralizes the Hypermerge semantic required checks and admission label expressions', () => {
+    expect(mergeQueueSource).toContain('mergeQueueRequiredCIJobs')
+    expect(mergeQueueSource).toContain('mq/admission')
+    expect(mergeQueueSource).toContain('pr/quality')
+    expect(mergeQueueSource).toContain('pr/topology')
+    expect(mergeQueueSource).toContain('pr/freshness')
+    expect(mergeQueueSource).toContain('pr/contract')
+    expect(mergeQueueSource).toContain('mq:ci-admitted')
+  })
+
+  it('preserves label control-event concurrency for scarce self-hosted runners', () => {
+    expect(mergeQueueSource).toContain('mergeQueueWorkflowConcurrency')
+    expect(mergeQueueSource).toContain('mergeQueueWorkflowOn')
+    expect(mergeQueueSource).toContain('merge_group: null')
+    expect(mergeQueueSource).toContain("format('label-{0}', github.event.label.name)")
+    expect(mergeQueueSource).toContain(
+      "github.event.action != 'labeled' && github.event.action != 'unlabeled'",
+    )
+  })
+
+  it('exports reusable admission and semantic gate jobs', () => {
+    expect(ciWorkflowSource).toContain('export const mergeQueueAdmissionGateJob')
+    expect(ciWorkflowSource).toContain('export const mergeQueueAdmittedJob')
+    expect(ciWorkflowSource).toContain('export const mergeQueueSemanticGateJob')
+    expect(ciWorkflowSource).toContain('export const mergeQueueSemanticGateJobs')
+    expect(ciWorkflowSource).toContain('trustNeedsAdmission: true')
+    expect(ciWorkflowSource).toContain('requiredGateCheckName(name)')
+  })
+
+  it('hardens dynamic semantic gate names and admission-job permissions', async () => {
+    const { mergeQueueAdmittedJob, mergeQueueWorkflowOn, requiredGateCheckName } = (await import(
+      // oxlint-disable-next-line import/no-dynamic-require
+      new URL('../../../../../../genie/ci-workflow.ts', import.meta.url).href
+    )) as any
+
+    expect(requiredGateCheckName("pr/quality's gate")).toBe(
+      "${{ ((github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || (github.event.action == 'labeled' && github.event.label.name == 'mq:ci-admitted')) && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'mq:ci-admitted') || (github.event.action == 'labeled' && github.event.label.name == 'mq:ci-admitted')))) && 'pr/quality''s gate' || 'pr/quality''s gate (control event)' }}",
+    )
+
+    const runsOn = ['sh-linux-x64', 'nix'] as const
+    const admittedJob = mergeQueueAdmittedJob({
+      runsOn,
+      permissions: { actions: 'read' },
+      steps: [{ name: 'Proof', run: 'true' }],
+    })
+
+    expect(admittedJob['runs-on']).toEqual(['sh-linux-x64', 'nix'])
+    expect(admittedJob['runs-on']).not.toBe(runsOn)
+    expect(admittedJob.permissions).toEqual({
+      actions: 'read',
+      contents: 'read',
+      issues: 'read',
+      'pull-requests': 'read',
+    })
+    expect(mergeQueueWorkflowOn()).toMatchObject({ merge_group: null })
+  })
 })
 
 describe('ci workflow shared auth helpers', () => {
@@ -287,12 +363,23 @@ describe('ci workflow shared auth helpers', () => {
   })
 })
 
+describe('ci workflow standard job helpers', () => {
+  it('centralizes self-hosted devenv task job composition', () => {
+    expect(ciWorkflowSource).toContain('export const devenvTaskStep')
+    expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')
+    expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPrepSteps(prep)')
+    expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPostSteps(post)')
+  })
+})
+
 describe('ci workflow devenv perf helpers', () => {
   it('exposes reusable devenv perf CI job helpers', () => {
     expect(ciWorkflowSource).toContain('export const devenvPerfJob')
     expect(ciWorkflowSource).toContain('export const devenvPerfBenchmarkStep')
     expect(ciWorkflowSource).toContain('export const devenvPerfArtifactStep')
+    expect(ciWorkflowSource).toContain('export type CiMeasurementDescriptor')
     expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
+    expect(ciWorkflowSource).toContain('export type DevenvPerfTaskProbe')
     expect(ciWorkflowSource).toContain('export const nixClosureMeasurementStep')
     expect(ciWorkflowSource).toContain('export type NixClosureMeasurementBucket')
   })
@@ -300,12 +387,14 @@ describe('ci workflow devenv perf helpers', () => {
   it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
     expect(generatedCiWorkflowYamlSource).toContain('devenv-perf:')
     expect(generatedCiWorkflowYamlSource).toContain('OTEL_SERVICE_NAME: devenv-perf-ci')
-    expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_traced'")
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "measure 'shell_eval_traced' 'Shell eval with OTEL trace'",
+    )
     expect(generatedCiWorkflowYamlSource).toContain('--trace-to')
     expect(generatedCiWorkflowYamlSource).toContain('json:file:$trace_file')
     expect(generatedCiWorkflowYamlSource).toContain('$ARTIFACT_DIR/traces/shell_eval_traced.json')
-    expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm'")
-    expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list'")
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm' 'Warm shell eval'")
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list' 'devenv tasks list'")
   })
 
   it('writes a stable summary artifact for regression tracking', () => {
@@ -314,16 +403,19 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('measurements.json')
     expect(generatedCiWorkflowYamlSource).toContain('--argjson schemaVersion 1')
     expect(generatedCiWorkflowYamlSource).toContain('effect-utils-ci-measurement')
-    expect(generatedCiWorkflowYamlSource).toContain('devenv." + .name + ".duration')
+    expect(generatedCiWorkflowYamlSource).toContain('devenv." + .id + ".duration')
     expect(generatedCiWorkflowYamlSource).toContain(
-      'target: { kind: "devenv", name: "dev-shell", system: $targetSystem }',
+      'target: { kind: "devenv", id: "dev-shell", name: "dev-shell", label: "Dev shell", group: "devenv", system: $targetSystem }',
     )
+    expect(generatedCiWorkflowYamlSource).toContain('probeLabel: .label')
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
     expect(ciWorkflowSource).toContain('nix.closure.path_count')
     expect(ciWorkflowSource).toContain('nix.closure.bucket.nar_size')
-    expect(ciWorkflowSource).toContain('target: { kind: "nix-closure"')
+    expect(ciWorkflowSource).toContain(
+      'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, system: $targetSystem }',
+    )
     expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
     expect(ciWorkflowSource).toContain(
       'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
@@ -331,7 +423,29 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain('dev3')
     expect(generatedCiWorkflowYamlSource).toContain('perf-comparison.json')
     expect(generatedCiWorkflowYamlSource).toContain('DEVENV_PERF_REGRESSION_MODE')
+    expect(generatedCiWorkflowYamlSource).toContain("CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'")
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain("BASELINE_SEED_RUN_IDS: '25710204667'")
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
+    expect(ciWorkflowSource).toContain("contents: 'write'")
+    expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
+    expect(ciWorkflowSource).toContain(
+      '["devenvRev", "otelServiceName", "status", "probeLabel"] | index($key) | not',
+    )
+    expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
+    expect(ciWorkflowSource).toContain(
+      'Chart: performance change versus baseline. Green is faster, red is slower.',
+    )
+    expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
+    expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')
+    expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
+    expect(ciWorkflowSource).toContain('https://raw.githubusercontent.com')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_path"')
+    expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
   })
 })
