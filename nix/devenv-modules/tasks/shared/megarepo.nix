@@ -217,7 +217,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr fetch --apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
+        mr fetch --apply --worktree-mode commit${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:fetch-apply" "binary" mrStatusCheck;
@@ -247,7 +247,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
-        mr apply${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
+        mr apply --worktree-mode commit${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
       status = trace.status "mr:apply" "binary" mrStatusCheck;
