@@ -1072,11 +1072,17 @@ jq -n \
       end;
     def abs_value: if . < 0 then -. else . end;
 
-    def classify($metric; $unit; $current; $baseline; $currentSamples; $baselineSources):
+    def classify($metric; $unit; $current; $baseline; $baselineMin; $baselineMax; $currentSamples; $baselineSources):
       budget($metric; $unit) as $b
       | noise_floor($metric; $unit) as $noise
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+      | (
+          $baselineMin != null
+          and $baselineMax != null
+          and $current >= $baselineMin
+          and $current <= $baselineMax
+        ) as $withinBaselineRange
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
@@ -1087,7 +1093,8 @@ jq -n \
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "noise_floor"
-          elif ($baselineSources < 3 and $currentSamples < 3 and $status == "pass") then "low_sample_count"
+          elif ($withinBaselineRange and $status == "pass") then "within_baseline_range"
+          elif (($baselineSources < 3 or $currentSamples < 3) and $status == "pass") then "low_sample_count"
           elif $status == "pass" then "within_budget"
           else "threshold_exceeded"
           end
@@ -1095,6 +1102,7 @@ jq -n \
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "unchanged"
+          elif ($withinBaselineRange and $status == "pass") then "unchanged"
           elif $delta < 0 then "improved"
           else "regressed"
           end
@@ -1130,6 +1138,8 @@ jq -n \
                       $currentValue.observation.unit;
                       $currentValue.value;
                       $baselineValue.value;
+                      $baselineValue.min;
+                      $baselineValue.max;
                       $currentValue.sampleCount;
                       $baselineValue.sourceCount
                     ) + {
@@ -1358,6 +1368,7 @@ const formatResult = (row) => {
   if (row.status === 'warn') return 'yellow regression'
   if (row.status === 'missing_baseline') return 'gray no baseline'
   if (row.confidence === 'noise_floor') return 'gray noise floor'
+  if (row.confidence === 'within_baseline_range') return 'gray within range'
   if (row.confidence === 'low_sample_count') return 'gray low confidence'
   if (row.direction === 'improved') return 'green improved'
   return 'gray unchanged'
@@ -1615,7 +1626,7 @@ const summaryLines = [
   '- Baseline: ' + baselineLabel,
   '',
   hasComparableBaseline
-    ? 'Chart: performance change versus baseline median. Green is faster, red is slower.'
+    ? 'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.'
     : 'No compatible baseline was available, so this run shows current measurements only.',
   '',
   chartMarkdown,

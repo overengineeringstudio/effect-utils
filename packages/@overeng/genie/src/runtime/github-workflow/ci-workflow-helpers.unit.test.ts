@@ -414,6 +414,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('sampleCount: (.statistics.sampleCount // 1)')
     expect(generatedCiWorkflowYamlSource).toContain('baselineSources')
     expect(generatedCiWorkflowYamlSource).toContain('low_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('within_baseline_range')
+    expect(generatedCiWorkflowYamlSource).toContain('$baselineSources < 3 or $currentSamples < 3')
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
@@ -445,7 +447,7 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
     expect(ciWorkflowSource).toContain(
-      'Chart: performance change versus baseline median. Green is faster, red is slower.',
+      'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.',
     )
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
     expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')
