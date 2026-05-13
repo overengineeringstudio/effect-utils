@@ -429,6 +429,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
     expect(ciWorkflowSource).toContain('nix.closure.path_count')
     expect(ciWorkflowSource).toContain('nix.closure.bucket.nar_size')
+    expect(ciWorkflowSource).toContain('artifact_file=${artifactFileAssignment}')
+    expect(ciWorkflowSource).not.toContain('artifact_file=${shellSingleQuote(artifactFile)}')
     expect(ciWorkflowSource).toContain(
       'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, system: $targetSystem }',
     )

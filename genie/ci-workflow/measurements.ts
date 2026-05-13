@@ -792,7 +792,10 @@ export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptio
 
 export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions) => {
   const artifactDir = opts.artifactDir ?? 'tmp/ci-measurements'
-  const artifactFile = opts.artifactFile ?? '$ARTIFACT_DIR/measurements.json'
+  const artifactFileAssignment =
+    opts.artifactFile === undefined
+      ? '"$ARTIFACT_DIR/measurements.json"'
+      : shellSingleQuote(opts.artifactFile)
   const targetName = opts.targetName ?? opts.installable
   const targetId = opts.targetId ?? targetName
   const targetLabel = opts.targetLabel ?? targetName
@@ -818,7 +821,7 @@ target_id=${shellSingleQuote(targetId)}
 target_name=${shellSingleQuote(targetName)}
 target_label=${shellSingleQuote(targetLabel)}
 target_group=${shellSingleQuote(targetGroup)}
-artifact_file=${shellSingleQuote(artifactFile)}
+artifact_file=${artifactFileAssignment}
 ${targetSystemAssignment}
 
 out_path="$(nix build --no-link --print-out-paths "$installable")"
