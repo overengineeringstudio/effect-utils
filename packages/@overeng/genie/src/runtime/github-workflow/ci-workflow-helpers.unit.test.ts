@@ -388,13 +388,16 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('devenv-perf:')
     expect(generatedCiWorkflowYamlSource).toContain('OTEL_SERVICE_NAME: devenv-perf-ci')
     expect(generatedCiWorkflowYamlSource).toContain(
-      "measure 'shell_eval_traced' 'Shell eval with OTEL trace'",
+      "measure 'shell_eval_traced' 'Shell eval with OTEL trace' 'devenv shell' 'Evaluates the dev shell with native devenv JSON tracing enabled.' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '1'",
     )
     expect(generatedCiWorkflowYamlSource).toContain('--trace-to')
     expect(generatedCiWorkflowYamlSource).toContain('json:file:$trace_file')
     expect(generatedCiWorkflowYamlSource).toContain('$ARTIFACT_DIR/traces/shell_eval_traced.json')
     expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm' 'Warm shell eval'")
     expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list' 'devenv tasks list'")
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "'Loads the devenv processes command help path.' '' '5'",
+    )
   })
 
   it('writes a stable summary artifact for regression tracking', () => {
@@ -408,6 +411,19 @@ describe('ci workflow devenv perf helpers', () => {
       'target: { kind: "devenv", id: "dev-shell", name: "dev-shell", label: "Dev shell", group: "devenv", system: $targetSystem }',
     )
     expect(generatedCiWorkflowYamlSource).toContain('probeLabel: .label')
+    expect(generatedCiWorkflowYamlSource).toContain('sampleCount: (.statistics.sampleCount // 1)')
+    expect(generatedCiWorkflowYamlSource).toContain('baselineSources')
+    expect(generatedCiWorkflowYamlSource).toContain('low_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('within_baseline_range')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'if $confidence == "threshold_exceeded" then $thresholdStatus',
+    )
+    expect(ciWorkflowSource).toContain(
+      "if (row.confidence === 'low_sample_count') return 'gray needs repeat'",
+    )
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
@@ -435,11 +451,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(
-      '["devenvRev", "otelServiceName", "status", "probeLabel"] | index($key) | not',
+      '["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount"] | index($key) | not',
     )
     expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
     expect(ciWorkflowSource).toContain(
-      'Chart: performance change versus baseline. Green is faster, red is slower.',
+      'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.',
     )
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
     expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')

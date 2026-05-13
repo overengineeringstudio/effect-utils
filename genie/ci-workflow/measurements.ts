@@ -23,6 +23,7 @@ export type CiMeasurementDescriptor = {
 export type DevenvPerfProbe = CiMeasurementDescriptor & {
   readonly command: readonly [string, ...string[]]
   readonly traceOutput?: string
+  readonly repetitions?: number
 }
 
 export type CiMeasurementObservation = {
@@ -66,6 +67,7 @@ export type GitHubPreviousArtifactStepOptions = {
   readonly workflowName?: string
   readonly branch?: string
   readonly seedRunIds?: readonly string[]
+  readonly maxRuns?: number
   readonly tokenExpression?: string
 }
 
@@ -106,6 +108,7 @@ export type DevenvPerfTaskProbe =
       readonly label?: string
       readonly group?: string
       readonly description?: string
+      readonly repetitions?: number
     }
 
 export type DevenvPerfJobOptions = {
@@ -114,6 +117,7 @@ export type DevenvPerfJobOptions = {
   readonly artifactName?: string
   readonly baselineArtifactName?: string
   readonly baselineSeedRunIds?: readonly string[]
+  readonly baselineMaxRuns?: number
   readonly setupSteps?: readonly DevenvPerfSetupStep[]
   readonly env?: Record<string, string>
   readonly taskProbes?: readonly DevenvPerfTaskProbe[]
@@ -127,7 +131,8 @@ export type DevenvPerfJobOptions = {
 const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
   const args = probe.command.map(shellSingleQuote).join(' ')
   const trace = probe.traceOutput ?? ''
-  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${args}`
+  const repetitions = Math.max(1, Math.floor(probe.repetitions ?? 1))
+  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(repetitions))} ${args}`
 }
 
 const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe => {
@@ -136,11 +141,13 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
   const label = typeof probe === 'string' ? undefined : probe.label
   const group = typeof probe === 'string' ? undefined : probe.group
   const description = typeof probe === 'string' ? undefined : probe.description
+  const repetitions = typeof probe === 'string' ? undefined : probe.repetitions
   return {
     id: id ?? `task_${task.replaceAll(':', '_')}`,
     label: label ?? task,
     group: group ?? 'devenv tasks',
     description: description ?? `Runs the devenv task '${task}' in before mode without the TUI.`,
+    repetitions,
     command: ['$DEVENV_BIN', 'tasks', 'run', task, '--mode', 'before', '--no-tui', '--show-output'],
   }
 }
@@ -170,6 +177,7 @@ const renderDevenvPerfScript = (
       label: 'Warm shell eval',
       group: 'devenv shell',
       description: 'Evaluates a warm dev shell without reloading direnv state.',
+      repetitions: 3,
       command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
     },
     {
@@ -177,6 +185,7 @@ const renderDevenvPerfScript = (
       label: 'devenv tasks list',
       group: 'devenv cli',
       description: 'Lists devenv tasks to measure task graph loading overhead.',
+      repetitions: 5,
       command: ['$DEVENV_BIN', 'tasks', 'list'],
     },
     {
@@ -184,6 +193,7 @@ const renderDevenvPerfScript = (
       label: 'devenv processes --help',
       group: 'devenv cli',
       description: 'Loads the devenv processes command help path.',
+      repetitions: 5,
       command: ['$DEVENV_BIN', 'processes', '--help'],
     },
     ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
@@ -202,8 +212,15 @@ mkdir -p "$ARTIFACT_DIR/traces"
   printf 'runner_name=%s\n' "${dollar}{RUNNER_NAME:-unknown}"
   printf 'runner_os=%s\n' "${dollar}{RUNNER_OS:-unknown}"
   printf 'runner_arch=%s\n' "${dollar}{RUNNER_ARCH:-unknown}"
+  printf 'runner_class=%s\n' "${dollar}{RUNNER_CLASS:-unknown}"
+  printf 'cpu_count=%s\n' "$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || printf unknown)"
+  printf 'load_average=%s\n' "$(cat /proc/loadavg 2>/dev/null || uptime 2>/dev/null || printf unknown)"
+  printf 'memory=%s\n' "$(free -h 2>/dev/null | tr '\n' ';' || printf unknown)"
+  printf 'cpu_model=%s\n' "$(awk -F ': ' '/model name|Hardware|Processor/ { print $2; exit }' /proc/cpuinfo 2>/dev/null || printf unknown)"
   printf 'devenv_rev=%s\n' "${dollar}{DEVENV_REV:-unknown}"
   printf 'otel_service_name=%s\n' "${dollar}{OTEL_SERVICE_NAME:-unknown}"
+  nix store ping 2>/dev/null || true
+  nix config show substituters trusted-substituters builders max-jobs cores 2>/dev/null || true
   df -h / /nix 2>/dev/null || df -h /
   ps -eo pid,ppid,stat,etime,pcpu,pmem,comm,args 2>/dev/null \
     | grep -E 'devenv direnv-export|nix-daemon|nix build|nix flake|github-runner' \
@@ -223,6 +240,7 @@ json_append_timing() {
   local stdout="$7"
   local stderr="$8"
   local trace="$9"
+  local samples_file="$ARTIFACT_DIR/$id.samples.json"
 
   if [ "$first" -eq 0 ]; then
     printf ',' >>"$ARTIFACT_DIR/timings.json"
@@ -230,6 +248,7 @@ json_append_timing() {
   first=0
 
   jq -cn \
+    --slurpfile samples "$samples_file" \
     --arg id "$id" \
     --arg label "$label" \
     --arg group "$group" \
@@ -239,7 +258,28 @@ json_append_timing() {
     --arg stdout "$stdout" \
     --arg stderr "$stderr" \
     --arg trace "$trace" \
-    '{id:$id,name:$id,label:$label,group:(if $group == "" then null else $group end),description:(if $description == "" then null else $description end),status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+    '($samples[0] // []) as $sampleList
+    | ($sampleList | map(select(.status == 0) | .durationMs)) as $successfulDurations
+    | {
+        id:$id,
+        name:$id,
+        label:$label,
+        group:(if $group == "" then null else $group end),
+        description:(if $description == "" then null else $description end),
+        status:$status,
+        durationMs:$durationMs,
+        stdout:$stdout,
+        stderr:$stderr,
+        trace:(if $trace == "" then null else $trace end),
+        statistics: {
+          sampleCount: ($sampleList | length),
+          successfulSampleCount: ($successfulDurations | length),
+          minDurationMs: ($successfulDurations | min),
+          maxDurationMs: ($successfulDurations | max),
+          medianDurationMs: $durationMs
+        },
+        samples:$sampleList
+      }' \
     >>"$ARTIFACT_DIR/timings.json"
 }
 
@@ -249,34 +289,84 @@ measure() {
   local group="$3"
   local description="$4"
   local trace_file="$5"
-  shift 5
+  local repetitions="$6"
+  shift 6
   case "$trace_file" in
     '$ARTIFACT_DIR'*) trace_file="${dollar}{ARTIFACT_DIR}${dollar}{trace_file#'$ARTIFACT_DIR'}" ;;
   esac
   local stdout="$ARTIFACT_DIR/$id.stdout"
   local stderr="$ARTIFACT_DIR/$id.stderr"
+  local samples_file="$ARTIFACT_DIR/$id.samples.json"
   local started ended status duration_ms
 
   mkdir -p "$(dirname "$trace_file")"
-  started="$(date +%s%3N)"
-  set +e
-  expanded=()
-  for arg in "$@"; do
-    case "$arg" in
-      '$DEVENV_BIN') expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}") ;;
-      '$ARTIFACT_DIR'*) expanded+=("${dollar}{ARTIFACT_DIR}${dollar}{arg#'$ARTIFACT_DIR'}") ;;
-      'json:file:$trace_file') expanded+=("json:file:$trace_file") ;;
-      '$trace_file') expanded+=("file:$trace_file") ;;
-      *) expanded+=("$arg") ;;
-    esac
-  done
-  "${dollar}{expanded[@]}" >"$stdout" 2>"$stderr"
-  status=$?
-  set -e
-  ended="$(date +%s%3N)"
-  duration_ms=$((ended - started))
+  if ! [[ "$repetitions" =~ ^[0-9]+$ ]] || [ "$repetitions" -lt 1 ]; then
+    repetitions=1
+  fi
 
-  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$stdout" "$stderr" "$trace_file"
+  printf '[' >"$samples_file"
+  local sample_first=1
+  local sample_index sample_stdout sample_stderr sample_trace expanded
+  for sample_index in $(seq 1 "$repetitions"); do
+    sample_stdout="$ARTIFACT_DIR/$id.$sample_index.stdout"
+    sample_stderr="$ARTIFACT_DIR/$id.$sample_index.stderr"
+    sample_trace=""
+    if [ -n "$trace_file" ]; then
+      sample_trace="$trace_file"
+      if [ "$repetitions" -gt 1 ]; then
+        sample_trace="${dollar}{trace_file%.*}.$sample_index.${dollar}{trace_file##*.}"
+      fi
+    fi
+
+    started="$(date +%s%3N)"
+    set +e
+    expanded=()
+    for arg in "$@"; do
+      case "$arg" in
+        '$DEVENV_BIN') expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}") ;;
+        '$ARTIFACT_DIR'*) expanded+=("${dollar}{ARTIFACT_DIR}${dollar}{arg#'$ARTIFACT_DIR'}") ;;
+        'json:file:$trace_file') expanded+=("json:file:$sample_trace") ;;
+        '$trace_file') expanded+=("file:$sample_trace") ;;
+        *) expanded+=("$arg") ;;
+      esac
+    done
+    "${dollar}{expanded[@]}" >"$sample_stdout" 2>"$sample_stderr"
+    status=$?
+    set -e
+    ended="$(date +%s%3N)"
+    duration_ms=$((ended - started))
+
+    if [ "$sample_first" -eq 0 ]; then
+      printf ',' >>"$samples_file"
+    fi
+    sample_first=0
+    jq -cn \
+      --argjson index "$sample_index" \
+      --argjson status "$status" \
+      --argjson durationMs "$duration_ms" \
+      --arg stdout "$sample_stdout" \
+      --arg stderr "$sample_stderr" \
+      --arg trace "$sample_trace" \
+      '{index:$index,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+      >>"$samples_file"
+
+    stdout="$sample_stdout"
+    stderr="$sample_stderr"
+    trace_file="$sample_trace"
+
+    if [ "$status" -ne 0 ]; then
+      break
+    fi
+  done
+  printf ']\n' >>"$samples_file"
+
+  status="$(jq -r 'map(.status) | max // 0' "$samples_file")"
+  duration_ms="$(jq -r 'map(select(.status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(.durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
+
+  cp "$stdout" "$ARTIFACT_DIR/$id.stdout" 2>/dev/null || true
+  cp "$stderr" "$ARTIFACT_DIR/$id.stderr" 2>/dev/null || true
+
+  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file"
 
   if [ "$status" -ne 0 ]; then
     echo "::error::$id failed after ${dollar}{duration_ms}ms; stderr tail follows"
@@ -368,10 +458,18 @@ jq -n \
           name: ("devenv." + .id + ".duration"),
           unit: "seconds",
           value: (.durationMs / 1000),
+          statistics: {
+            sampleCount: (.statistics.sampleCount // 1),
+            successfulSampleCount: (.statistics.successfulSampleCount // (if .status == 0 then 1 else 0 end)),
+            min: ((.statistics.minDurationMs // .durationMs) / 1000),
+            max: ((.statistics.maxDurationMs // .durationMs) / 1000),
+            median: ((.statistics.medianDurationMs // .durationMs) / 1000)
+          },
           dimensions: {
             probe: .id,
             probeLabel: .label,
             status: .status,
+            sampleCount: (.statistics.sampleCount // 1),
             devenvRev: $devenvRev,
             otelServiceName: $otelServiceName
           }
@@ -541,6 +639,7 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
       BASELINE_WORKFLOW_NAME: opts.workflowName ?? '${{ github.workflow }}',
       BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
       BASELINE_SEED_RUN_IDS: opts.seedRunIds?.join(' ') ?? '',
+      BASELINE_MAX_RUNS: String(opts.maxRuns ?? 5),
     },
     run: String.raw`set -euo pipefail
 
@@ -570,12 +669,28 @@ candidate_runs="$(
 candidate_runs="$candidate_runs
 $BASELINE_SEED_RUN_IDS"
 
+max_runs="${dollar}{BASELINE_MAX_RUNS:-5}"
+if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
+  max_runs=1
+fi
+
 run_id=""
 artifact_name=""
 artifact_id=""
+downloaded_runs_file="$BASELINE_OUTPUT_DIR/baseline-runs.jsonl"
+seen_runs_file="$BASELINE_OUTPUT_DIR/baseline-seen-runs.txt"
+: >"$downloaded_runs_file"
+: >"$seen_runs_file"
 for candidate_run in $candidate_runs; do
   if [ -z "$candidate_run" ]; then
     continue
+  fi
+  if grep -qxF "$candidate_run" "$seen_runs_file"; then
+    continue
+  fi
+  printf '%s\n' "$candidate_run" >>"$seen_runs_file"
+  if [ "$(wc -l <"$downloaded_runs_file" | tr -d ' ')" -ge "$max_runs" ]; then
+    break
   fi
 
   artifact_json="$(
@@ -589,10 +704,29 @@ for candidate_run in $candidate_runs; do
   )"
 
   if [ -n "$artifact_json" ]; then
-    run_id="$candidate_run"
-    artifact_name="$(printf '%s' "$artifact_json" | jq -r '.name')"
-    artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
-    break
+    current_artifact_name="$(printf '%s' "$artifact_json" | jq -r '.name')"
+    current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
+    current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
+    mkdir -p "$current_output_dir"
+    if gh run download "$candidate_run" \
+      --repo "$repo" \
+      --name "$current_artifact_name" \
+      --dir "$current_output_dir"; then
+      if [ -z "$run_id" ]; then
+        run_id="$candidate_run"
+        artifact_name="$current_artifact_name"
+        artifact_id="$current_artifact_id"
+      fi
+      jq -cn \
+        --arg runId "$candidate_run" \
+        --arg artifactName "$current_artifact_name" \
+        --arg artifactId "$current_artifact_id" \
+        --arg path "run-$candidate_run" \
+        '{runId:$runId, artifactName:$artifactName, artifactId:$artifactId, path:$path}' \
+        >>"$downloaded_runs_file"
+    else
+      echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run"
+    fi
   fi
 done
 
@@ -601,15 +735,8 @@ if [ -z "$run_id" ] || [ -z "$artifact_name" ]; then
   exit 0
 fi
 
-if ! gh run download "$run_id" \
-  --repo "$repo" \
-  --name "$artifact_name" \
-  --dir "$BASELINE_OUTPUT_DIR"; then
-  echo "::notice::failed to download baseline artifact $artifact_name from run $run_id"
-  exit 0
-fi
-
 jq -n \
+  --slurpfile runs "$downloaded_runs_file" \
   --argjson schemaVersion 1 \
   --arg repository "$repo" \
   --arg workflow "$workflow" \
@@ -625,10 +752,11 @@ jq -n \
     branch: $branch,
     runId: $runId,
     artifactName: $artifactName,
-    artifactId: $artifactId
+    artifactId: $artifactId,
+    runs: $runs
   }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
 
-echo "Downloaded baseline artifact $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"
+echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact(s), latest $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"
 `,
   }) as const
 
@@ -844,7 +972,7 @@ fi
 
 current_index="$(mktemp)"
 baseline_index="$(mktemp)"
-find "$current_dir" -name measurements.json -type f -print | sort >"$current_index" || true
+find "$current_dir" -path "$baseline_dir" -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
 find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
 
 if [ ! -s "$current_index" ]; then
@@ -872,7 +1000,7 @@ jq -n \
     def identity_dimensions:
       (.dimensions // {})
       | to_entries
-      | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel"] | index($key) | not))
+      | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount"] | index($key) | not))
       | sort_by(.key)
       | map("\(.key)=\(.value|tostring)")
       | join(",");
@@ -887,20 +1015,41 @@ jq -n \
         identity_dimensions
       ] | join("|");
 
+    def median:
+      sort as $sorted
+      | ($sorted | length) as $count
+      | if $count == 0 then null
+        elif ($count % 2) == 1 then $sorted[($count / 2 | floor)]
+        else (($sorted[($count / 2 - 1)] + $sorted[($count / 2)]) / 2)
+        end;
+
     def observations_by_key($docs):
       reduce $docs[]? as $doc
         ({};
           reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
             (.;
-              . + {
-                ($obs | observation_key($doc)): {
+              ($obs | observation_key($doc)) as $key
+              | .[$key] = ((.[$key] // []) + [{
                   target: $doc.target,
                   observation: $obs,
                   generatedAt: $doc.generatedAt
-                }
-              }
+                }])
             )
         );
+
+    def observation_stats($items):
+      ($items | map(.observation.value)) as $values
+      | ($items | map(.observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
+      | {
+          target: ($items[0].target // {}),
+          observation: ($items[-1].observation // {}),
+          value: ($values | median),
+          min: ($values | min),
+          max: ($values | max),
+          sourceCount: ($items | length),
+          sampleCount: $sampleCount,
+          generatedAt: ($items[-1].generatedAt // null)
+        };
 
     def budget($metric; $unit):
       if $metric == "nix.closure.nar_size" then
@@ -915,21 +1064,59 @@ jq -n \
         {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
       end;
 
-    def classify($metric; $unit; $current; $baseline):
+    def noise_floor($metric; $unit):
+      if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" then 10485760
+      elif $metric == "nix.closure.path_count" then 10
+      elif $unit == "seconds" then 0.1
+      else 0
+      end;
+    def abs_value: if . < 0 then -. else . end;
+
+    def classify($metric; $unit; $current; $baseline; $baselineMin; $baselineMax; $currentSamples; $baselineSources):
       budget($metric; $unit) as $b
+      | noise_floor($metric; $unit) as $noise
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+      | (
+          $baselineMin != null
+          and $baselineMax != null
+          and $current >= $baselineMin
+          and $current <= $baselineMax
+        ) as $withinBaselineRange
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
           elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
           else "pass"
           end
+        ) as $thresholdStatus
+      | (
+          if $baseline <= 0 then "unknown"
+          elif ($delta | abs_value) <= $noise then "noise_floor"
+          elif ($withinBaselineRange and $thresholdStatus == "pass") then "within_baseline_range"
+          elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"
+          elif $thresholdStatus == "pass" then "within_budget"
+          else "threshold_exceeded"
+          end
+        ) as $confidence
+      | (
+          if $confidence == "threshold_exceeded" then $thresholdStatus
+          elif $thresholdStatus == "unknown" then "unknown"
+          else "pass"
+          end
         ) as $status
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b};
+      | (
+          if $baseline <= 0 then "unknown"
+          elif ($delta | abs_value) <= $noise then "unchanged"
+          elif ($withinBaselineRange and $thresholdStatus == "pass") then "unchanged"
+          elif $delta < 0 then "improved"
+          else "regressed"
+          end
+        ) as $direction
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,confidence:$confidence,direction:$direction};
 
-    (observations_by_key($current[0])) as $currentObs
-    | (observations_by_key($baseline[0])) as $baselineObs
+    (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
+    | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
     | (
         $currentObs
         | to_entries
@@ -945,17 +1132,29 @@ jq -n \
                       status: "missing_baseline",
                       target: $currentValue.target,
                       observation: $currentValue.observation,
-                      current: $currentValue.observation.value
+                      current: $currentValue.value,
+                      currentSamples: $currentValue.sampleCount,
+                      baselineSources: 0,
+                      confidence: "missing_baseline",
+                      direction: "unknown"
                     }
                   else
                     classify(
                       $currentValue.observation.name;
                       $currentValue.observation.unit;
-                      $currentValue.observation.value;
-                      $baselineValue.observation.value
+                      $currentValue.value;
+                      $baselineValue.value;
+                      $baselineValue.min;
+                      $baselineValue.max;
+                      $currentValue.sampleCount;
+                      $baselineValue.sourceCount
                     ) + {
                       target: $currentValue.target,
-                      observation: $currentValue.observation
+                      observation: $currentValue.observation,
+                      currentSamples: $currentValue.sampleCount,
+                      baselineSources: $baselineValue.sourceCount,
+                      baselineMin: $baselineValue.min,
+                      baselineMax: $baselineValue.max
                     }
                   end
                 )
@@ -1170,6 +1369,17 @@ const formatRatio = (value) => {
   return formatNumber(Math.round((value - 1) * 1000) / 10) + '%'
 }
 
+const formatResult = (row) => {
+  if (row.confidence === 'low_sample_count') return 'gray needs repeat'
+  if (row.status === 'fail') return 'red regression'
+  if (row.status === 'warn') return 'yellow regression'
+  if (row.status === 'missing_baseline') return 'gray no baseline'
+  if (row.confidence === 'noise_floor') return 'gray noise floor'
+  if (row.confidence === 'within_baseline_range') return 'gray within range'
+  if (row.direction === 'improved') return 'green improved'
+  return 'gray unchanged'
+}
+
 const escapeCell = (value) => String(value ?? '-').replaceAll('|', '\\|').replaceAll('\n', '<br>')
 const escapeXml = (value) => String(value)
   .replaceAll('&', '&amp;')
@@ -1245,16 +1455,20 @@ const visibleRows = (hasComparableBaseline
 const comparisonTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Probe | Baseline | Current | Change | Result |',
-    '| --- | ---: | ---: | ---: | --- |',
+    '| Probe | Baseline | Current | Change | Result | Confidence |',
+    '| --- | ---: | ---: | ---: | --- | --- |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
+      const baselineRange = typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
+        ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
+        : ''
       return '| ' + [
         humanProbe(row),
-        formatValue(row.baseline, unit),
+        formatValue(row.baseline, unit) + baselineRange,
         formatValue(row.current, unit),
         formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
-        row.status,
+        formatResult(row),
+        (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
       ].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
@@ -1401,7 +1615,8 @@ const historyRows = state.runs.slice(1).map((run) => {
 const runLink = runUrl ? '[workflow run](' + runUrl + ')' : 'workflow run unavailable'
 const baselineProvenance = comparison.baselineProvenance
 const baselineLabel = baselineProvenance?.runId
-  ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')'
+  ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')' +
+    (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
   : 'not available'
 const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
 if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
@@ -1417,7 +1632,7 @@ const summaryLines = [
   '- Baseline: ' + baselineLabel,
   '',
   hasComparableBaseline
-    ? 'Chart: performance change versus baseline. Green is faster, red is slower.'
+    ? 'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.'
     : 'No compatible baseline was available, so this run shows current measurements only.',
   '',
   chartMarkdown,
@@ -1523,6 +1738,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
               artifactName: baselineArtifactName,
               outputDir: `${artifactDir}/baseline`,
               seedRunIds: opts?.baselineSeedRunIds,
+              maxRuns: opts?.baselineMaxRuns,
             }),
           ]),
       devenvPerfBenchmarkStep({
