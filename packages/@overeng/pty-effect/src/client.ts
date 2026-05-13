@@ -327,6 +327,42 @@ const withEnvOverrides = <A, E, R>({
   }).pipe(Effect.flatMap((saved) => effect.pipe(Effect.ensuring(restore(saved)))))
 }
 
+const includesTags = (
+  actual: Readonly<Record<string, string>> | undefined,
+  expected: Readonly<Record<string, string>>,
+) => actual !== undefined && Object.entries(expected).every(([key, value]) => actual[key] === value)
+
+const waitForPersistedTags = (input: {
+  readonly name: PtyName
+  readonly tags: Readonly<Record<string, string>>
+}) =>
+  wrapPromise({
+    method: 'spawnDaemon.waitForPersistedTags',
+    reason: 'ConnectFailed',
+    name: input.name,
+    thunk: async (signal) => {
+      const deadline = Date.now() + 3_000
+      while (true) {
+        const session = await upstreamGetSession(input.name)
+        if (includesTags(session?.metadata?.tags, input.tags)) return
+        if (Date.now() >= deadline) {
+          throw new Error(`Timed out waiting for persisted tags on session "${input.name}"`)
+        }
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(resolve, 50)
+          signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timeout)
+              reject(signal.reason)
+            },
+            { once: true },
+          )
+        })
+      }
+    },
+  })
+
 const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
   Effect.gen(function* () {
     yield* validateNameOrFail(spec.name)
@@ -339,6 +375,9 @@ const spawnDaemon = (spec: PtyDaemonSpec): Effect.Effect<void, PtyError> =>
         thunk: () => upstreamSpawnDaemon(buildSpawnOpts(spec)),
       }),
     })
+    if (spec.tags !== undefined && Object.keys(spec.tags).length > 0) {
+      yield* waitForPersistedTags({ name: spec.name, tags: spec.tags })
+    }
   }).pipe(Effect.withSpan('pty-client.spawnDaemon', { attributes: { 'span.label': spec.name } }))
 
 const peek = (input: {
