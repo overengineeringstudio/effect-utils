@@ -206,7 +206,7 @@ const runHealthCheck = () => {
       }
 
       const packageJsonPath = path.join(realPath, 'package.json')
-      const logicalPackageJsonPath = path.join(entryPath, 'package.json')
+      const logicalPackageJsonPath = path.resolve(entryPath, 'package.json')
       if (!fs.existsSync(packageJsonPath)) continue
 
       const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
