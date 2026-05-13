@@ -98,6 +98,16 @@ EOF
   ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 }
 
+make_external_store_link_fixture() {
+  local root="$1"
+  local package_root="$test_dir/external-store/pkg"
+
+  mkdir -p "$package_root" "$root/node_modules/dep" "$root/node_modules"
+  printf '{"name":"pkg","dependencies":{"dep":"1.0.0"}}\n' > "$package_root/package.json"
+  printf '{"name":"dep"}\n' > "$root/node_modules/dep/package.json"
+  ln -s "$package_root" "$root/node_modules/pkg"
+}
+
 make_bin_fixture() {
   local root="$1"
 
@@ -326,6 +336,15 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_type_dir/no
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores type-only export targets"
+
+echo "Test 20: Projection health resolves deps from logical node_modules link path"
+external_store_dir="$test_dir/external-store-link"
+make_external_store_link_fixture "$external_store_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$external_store_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health resolves deps from the workspace link path"
 
 echo ""
 echo "All pnpm task helper tests passed"

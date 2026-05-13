@@ -48,10 +48,15 @@ const collectHealthEntryPaths = (nodeModulesDir) => {
   return result
 }
 
-const resolveDependencyPackageRoot = ({ packageJsonPath, requireFromPkg, dependencyName }) => {
+const resolveDependencyPackageRoot = ({ packageJsonPaths, dependencyName }) => {
   const packagePath = dependencyName.split('/')
-  const searchPaths =
-    requireFromPkg.resolve.paths(dependencyName) ?? Module._nodeModulePaths(path.dirname(packageJsonPath))
+  const searchPaths = packageJsonPaths.flatMap((packageJsonPath) => {
+    const requireFromPkg = createRequire(packageJsonPath)
+    return (
+      requireFromPkg.resolve.paths(dependencyName) ??
+      Module._nodeModulePaths(path.dirname(packageJsonPath))
+    )
+  })
 
   for (const searchPath of searchPaths) {
     const dependencyRoot = path.join(searchPath, ...packagePath)
@@ -201,6 +206,7 @@ const runHealthCheck = () => {
       }
 
       const packageJsonPath = path.join(realPath, 'package.json')
+      const logicalPackageJsonPath = path.join(entryPath, 'package.json')
       if (!fs.existsSync(packageJsonPath)) continue
 
       const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
@@ -214,12 +220,10 @@ const runHealthCheck = () => {
       const dependencyNames = Object.keys(pkg.dependencies ?? {})
       if (dependencyNames.length === 0) continue
 
-      const requireFromPkg = createRequire(packageJsonPath)
       for (const dependencyName of dependencyNames) {
         if (
           resolveDependencyPackageRoot({
-            packageJsonPath,
-            requireFromPkg,
+            packageJsonPaths: [logicalPackageJsonPath, packageJsonPath],
             dependencyName,
           }) === undefined
         ) {
