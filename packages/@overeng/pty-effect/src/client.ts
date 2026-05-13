@@ -327,10 +327,26 @@ const withEnvOverrides = <A, E, R>({
   }).pipe(Effect.flatMap((saved) => effect.pipe(Effect.ensuring(restore(saved)))))
 }
 
-const includesTags = (
-  actual: Readonly<Record<string, string>> | undefined,
-  expected: Readonly<Record<string, string>>,
-) => actual !== undefined && Object.entries(expected).every(([key, value]) => actual[key] === value)
+const includesTags = ({
+  actual,
+  expected,
+}: {
+  readonly actual: Readonly<Record<string, string>> | undefined
+  readonly expected: Readonly<Record<string, string>>
+}) => actual !== undefined && Object.entries(expected).every(([key, value]) => actual[key] === value)
+
+const wait = (input: { readonly signal: AbortSignal; readonly millis: number }) =>
+  new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(resolve, input.millis)
+    input.signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timeout)
+        reject(input.signal.reason)
+      },
+      { once: true },
+    )
+  })
 
 const waitForPersistedTags = (input: {
   readonly name: PtyName
@@ -342,24 +358,15 @@ const waitForPersistedTags = (input: {
     name: input.name,
     thunk: async (signal) => {
       const deadline = Date.now() + 3_000
-      while (true) {
+      const poll = async (): Promise<void> => {
         const session = await upstreamGetSession(input.name)
-        if (includesTags(session?.metadata?.tags, input.tags)) return
+        if (includesTags({ actual: session?.metadata?.tags, expected: input.tags }) === true) return
         if (Date.now() >= deadline) {
           throw new Error(`Timed out waiting for persisted tags on session "${input.name}"`)
         }
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(resolve, 50)
-          signal.addEventListener(
-            'abort',
-            () => {
-              clearTimeout(timeout)
-              reject(signal.reason)
-            },
-            { once: true },
-          )
-        })
+        return wait({ signal, millis: 50 }).then(poll)
       }
+      return poll()
     },
   })
 
