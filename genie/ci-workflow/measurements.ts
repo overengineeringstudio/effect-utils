@@ -1089,20 +1089,26 @@ jq -n \
           elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
           else "pass"
           end
-        ) as $status
+        ) as $thresholdStatus
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "noise_floor"
-          elif ($withinBaselineRange and $status == "pass") then "within_baseline_range"
+          elif ($withinBaselineRange and $thresholdStatus == "pass") then "within_baseline_range"
           elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"
-          elif $status == "pass" then "within_budget"
+          elif $thresholdStatus == "pass" then "within_budget"
           else "threshold_exceeded"
           end
         ) as $confidence
       | (
+          if $confidence == "threshold_exceeded" then $thresholdStatus
+          elif $thresholdStatus == "unknown" then "unknown"
+          else "pass"
+          end
+        ) as $status
+      | (
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "unchanged"
-          elif ($withinBaselineRange and $status == "pass") then "unchanged"
+          elif ($withinBaselineRange and $thresholdStatus == "pass") then "unchanged"
           elif $delta < 0 then "improved"
           else "regressed"
           end

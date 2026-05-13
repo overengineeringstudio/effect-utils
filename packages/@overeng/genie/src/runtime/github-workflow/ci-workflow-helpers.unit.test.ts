@@ -418,6 +418,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain(
       'elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"',
     )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'if $confidence == "threshold_exceeded" then $thresholdStatus',
+    )
     expect(ciWorkflowSource).toContain(
       "if (row.confidence === 'low_sample_count') return 'gray needs repeat'",
     )
