@@ -2665,6 +2665,283 @@ jobs:
 
           cat "$ARTIFACT_DIR/timings.pretty.json"
 
+      - name: Compare CI measurements with baseline
+        shell: bash
+        env:
+          CI_MEASUREMENT_CURRENT_DIR: tmp/devenv-perf-ci
+          CI_MEASUREMENT_BASELINE_DIR: tmp/devenv-perf-ci/baseline
+          CI_MEASUREMENT_COMPARISON_FILE: tmp/devenv-perf-ci/measurement-comparison.json
+          CI_MEASUREMENT_REGRESSION_MODE: warn
+          CI_MEASUREMENT_PR_COMMENT_ENABLED: 'false'
+          CI_MEASUREMENT_PR_COMMENT_TITLE: CI Measurements
+          CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '10'
+          CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
+        run: |
+          set -euo pipefail
+
+          current_dir="${CI_MEASUREMENT_CURRENT_DIR:?CI_MEASUREMENT_CURRENT_DIR not set}"
+          baseline_dir="${CI_MEASUREMENT_BASELINE_DIR:?CI_MEASUREMENT_BASELINE_DIR not set}"
+          comparison_file="${CI_MEASUREMENT_COMPARISON_FILE:?CI_MEASUREMENT_COMPARISON_FILE not set}"
+          mode="${CI_MEASUREMENT_REGRESSION_MODE:-warn}"
+          mkdir -p "$(dirname "$comparison_file")"
+
+          if [ "$mode" = "off" ]; then
+            jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" \
+              '{schemaVersion:$schemaVersion,status:$status,mode:$mode,comparisons:{}}' \
+              >"$comparison_file"
+            exit 0
+          fi
+
+          current_index="$(mktemp)"
+          baseline_index="$(mktemp)"
+          find "$current_dir" -name measurements.json -type f -print | sort >"$current_index" || true
+          find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
+
+          if [ ! -s "$current_index" ]; then
+            echo "::error::no current measurements.json files found under $current_dir"
+            exit 1
+          fi
+
+          current_json="$comparison_file.current.json"
+          baseline_json="$comparison_file.baseline.json"
+          xargs -r jq -s '.' <"$current_index" >"$current_json"
+          if [ -s "$baseline_index" ]; then
+            xargs -r jq -s '.' <"$baseline_index" >"$baseline_json"
+          else
+            printf '[]\n' >"$baseline_json"
+          fi
+
+          jq -n \
+            --slurpfile current "$current_json" \
+            --slurpfile baseline "$baseline_json" \
+            --argjson schemaVersion 1 \
+            --arg mode "$mode" \
+            --arg currentDir "$current_dir" \
+            --arg baselineDir "$baseline_dir" \
+            '
+              def stable_dimensions:
+                (.dimensions // {})
+                | to_entries
+                | sort_by(.key)
+                | map("\(.key)=\(.value|tostring)")
+                | join(",");
+
+              def observation_key($doc):
+                [
+                  ($doc.target.kind // "unknown"),
+                  ($doc.target.name // "unknown"),
+                  ($doc.target.system // "unknown"),
+                  (.name // "unknown"),
+                  (.unit // "unknown"),
+                  stable_dimensions
+                ] | join("|");
+
+              def observations_by_key($docs):
+                reduce $docs[]? as $doc
+                  ({};
+                    reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
+                      (.;
+                        . + {
+                          ($obs | observation_key($doc)): {
+                            target: $doc.target,
+                            observation: $obs,
+                            generatedAt: $doc.generatedAt
+                          }
+                        }
+                      )
+                  );
+
+              def budget($metric; $unit):
+                if $metric == "nix.closure.nar_size" then
+                  {warnRatio:1.10, failRatio:1.25, warnAbs:52428800, failAbs:209715200}
+                elif $metric == "nix.closure.bucket.nar_size" then
+                  {warnRatio:1.15, failRatio:1.35, warnAbs:52428800, failAbs:209715200}
+                elif $metric == "nix.closure.path_count" then
+                  {warnRatio:1.10, failRatio:1.25, warnAbs:100, failAbs:500}
+                elif $unit == "seconds" then
+                  {warnRatio:1.25, failRatio:1.50, warnAbs:1.5, failAbs:3.0}
+                else
+                  {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
+                end;
+
+              def classify($metric; $unit; $current; $baseline):
+                budget($metric; $unit) as $b
+                | ($current - $baseline) as $delta
+                | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+                | (
+                    if $baseline <= 0 then "unknown"
+                    elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
+                    elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
+                    else "pass"
+                    end
+                  ) as $status
+                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b};
+
+              (observations_by_key($current[0])) as $currentObs
+              | (observations_by_key($baseline[0])) as $baselineObs
+              | (
+                  $currentObs
+                  | to_entries
+                  | map(
+                      .key as $key
+                      | .value as $currentValue
+                      | ($baselineObs[$key] // null) as $baselineValue
+                      | {
+                          key: $key,
+                          value: (
+                            if $baselineValue == null then
+                              {
+                                status: "missing_baseline",
+                                target: $currentValue.target,
+                                observation: $currentValue.observation,
+                                current: $currentValue.observation.value
+                              }
+                            else
+                              classify(
+                                $currentValue.observation.name;
+                                $currentValue.observation.unit;
+                                $currentValue.observation.value;
+                                $baselineValue.observation.value
+                              ) + {
+                                target: $currentValue.target,
+                                observation: $currentValue.observation
+                              }
+                            end
+                          )
+                        }
+                    )
+                  | from_entries
+                ) as $comparisons
+              | (
+                  if any($comparisons[]?; .status == "fail") then "fail"
+                  elif any($comparisons[]?; .status == "warn") then "warn"
+                  elif any($comparisons[]?; .status == "missing_baseline") then "partial"
+                  else "pass"
+                  end
+                ) as $status
+              | {
+                  schemaVersion:$schemaVersion,
+                  status:$status,
+                  mode:$mode,
+                  currentDir:$currentDir,
+                  baselineDir:$baselineDir,
+                  comparisons:$comparisons
+                }
+            ' >"$comparison_file"
+
+          status="$(jq -r '.status' "$comparison_file")"
+          exit_code=0
+          case "$status:$mode" in
+            fail:fail)
+              echo "::error::CI measurement regression detected"
+              exit_code=1
+              ;;
+            fail:*|warn:*)
+              echo "::warning::CI measurement regression threshold exceeded"
+              ;;
+            partial:*)
+              echo "::notice::CI measurement baseline is missing for one or more observations"
+              ;;
+          esac
+
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### ${CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
+              echo ""
+              jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
+              echo ""
+              echo "| Status | Target | Observation | Current | Baseline | Delta | Ratio |"
+              echo "| --- | --- | --- | ---: | ---: | ---: | ---: |"
+              jq -r '
+                .comparisons
+                | to_entries
+                | sort_by(
+                    if .value.status == "fail" then 0
+                    elif .value.status == "warn" then 1
+                    elif .value.status == "missing_baseline" then 2
+                    else 3
+                    end
+                  )
+                | .[:20]
+                | .[]
+                | .value as $v
+                | [
+                    $v.status,
+                    (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+                    ($v.observation.name // "unknown"),
+                    (($v.current // $v.observation.value // 0) | tostring),
+                    (($v.baseline // "") | tostring),
+                    (($v.delta // "") | tostring),
+                    (if $v.ratio == null or $v.ratio == "" then "" else (($v.ratio * 100 | round / 100) | tostring) end)
+                  ]
+                | "| " + (map(gsub("\\|"; "\\\\|")) | join(" | ")) + " |"
+              ' "$comparison_file"
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] &&
+             [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] &&
+             command -v gh >/dev/null 2>&1; then
+            repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+            pr_number="$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH:?GITHUB_EVENT_PATH not set}")"
+            if [ -n "$pr_number" ]; then
+              marker="<!-- effect-utils-ci-measurements:${CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements} -->"
+              comment_body="$(mktemp)"
+              {
+                echo "## ${CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
+                echo ""
+                jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
+                echo ""
+                echo "| Status | Target | Observation | Delta | Ratio |"
+                echo "| --- | --- | --- | ---: | ---: |"
+                jq -r --argjson maxRows "${CI_MEASUREMENT_PR_COMMENT_MAX_ROWS:-10}" '
+                  .comparisons
+                  | to_entries
+                  | sort_by(
+                      if .value.status == "fail" then 0
+                      elif .value.status == "warn" then 1
+                      elif .value.status == "missing_baseline" then 2
+                      else 3
+                      end
+                    )
+                  | .[:$maxRows]
+                  | .[]
+                  | .value as $v
+                  | [
+                      $v.status,
+                      (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+                      ($v.observation.name // "unknown"),
+                      (($v.delta // "") | tostring),
+                      (if $v.ratio == null or $v.ratio == "" then "" else (($v.ratio * 100 | round / 100) | tostring) end)
+                    ]
+                  | "| " + (map(gsub("\\|"; "\\\\|")) | join(" | ")) + " |"
+                ' "$comparison_file"
+                echo ""
+                echo "$marker"
+              } >"$comment_body"
+
+              existing_id="$(
+                gh api "repos/$repo/issues/$pr_number/comments" \
+                  --paginate \
+                  --jq '.[] | select(.body | contains("'"$marker"'")) | .id' \
+                  | head -1
+              )"
+              if [ -n "$existing_id" ]; then
+                gh api "repos/$repo/issues/comments/$existing_id" \
+                  --method PATCH \
+                  --field body="$(cat "$comment_body")" >/dev/null || true
+              else
+                gh api "repos/$repo/issues/$pr_number/comments" \
+                  --method POST \
+                  --field body="$(cat "$comment_body")" >/dev/null || true
+              fi
+            fi
+          fi
+
+          if [ "$exit_code" -ne 0 ]; then
+            exit "$exit_code"
+          fi
+
       - name: Upload devenv perf artifacts
         if: always()
         uses: actions/upload-artifact@v4

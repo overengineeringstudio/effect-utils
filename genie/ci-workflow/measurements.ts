@@ -47,18 +47,56 @@ export type NixClosureMeasurementStepOptions = {
   readonly buckets?: readonly NixClosureMeasurementBucket[]
 }
 
+export type GitHubPreviousArtifactStepOptions = {
+  readonly artifactName: string
+  readonly outputDir: string
+  readonly workflowName?: string
+  readonly branch?: string
+  readonly tokenExpression?: string
+}
+
+export type CiMeasurementsComparisonStepOptions = {
+  readonly currentDir?: string
+  readonly baselineDir?: string
+  readonly outputFile?: string
+  readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly prComment?: {
+    readonly enabled?: boolean
+    readonly title?: string
+    readonly maxRows?: number
+    readonly maxHistory?: number
+    readonly tokenExpression?: string
+  }
+}
+
+export type CiMeasurementsArtifactStepOptions = {
+  readonly artifactName: string
+  readonly path: string
+  readonly retentionDays?: number
+}
+
+/** Job-level permissions required when CI measurement comparison posts PR comments. */
+export const ciMeasurementsCommentPermissions = {
+  contents: 'read',
+  issues: 'write',
+  'pull-requests': 'write',
+} as const
+
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 
 export type DevenvPerfJobOptions = {
   readonly runsOn?: readonly string[]
   readonly artifactDir?: string
   readonly artifactName?: string
+  readonly baselineArtifactName?: string
   readonly setupSteps?: readonly DevenvPerfSetupStep[]
   readonly env?: Record<string, string>
   readonly taskProbes?: readonly string[]
   readonly probes?: readonly DevenvPerfProbe[]
   readonly retentionDays?: number
   readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
+  readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
 }
 
 const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
@@ -420,6 +458,59 @@ export const devenvPerfBenchmarkStep = (
     }),
   }) as const
 
+export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactStepOptions) =>
+  ({
+    name: `Download previous artifact: ${opts.artifactName}`,
+    shell: 'bash',
+    env: {
+      GH_TOKEN: opts.tokenExpression ?? '${{ github.token }}',
+      BASELINE_ARTIFACT_NAME: opts.artifactName,
+      BASELINE_OUTPUT_DIR: opts.outputDir,
+      BASELINE_WORKFLOW_NAME: opts.workflowName ?? '${{ github.workflow }}',
+      BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
+    },
+    run: String.raw`set -euo pipefail
+
+mkdir -p "$BASELINE_OUTPUT_DIR"
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "::notice::gh is not available; skipping previous artifact download"
+  exit 0
+fi
+
+repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
+branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
+
+run_id="$(
+  gh run list \
+    --repo "$repo" \
+    --workflow "$workflow" \
+    --branch "$branch" \
+    --event push \
+    --status success \
+    --json databaseId,headSha \
+    --limit 20 \
+    --jq '[.[] | select(.headSha != env.GITHUB_SHA)][0].databaseId // empty'
+)"
+
+if [ -z "$run_id" ]; then
+  echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
+  exit 0
+fi
+
+if ! gh run download "$run_id" \
+  --repo "$repo" \
+  --name "$BASELINE_ARTIFACT_NAME" \
+  --dir "$BASELINE_OUTPUT_DIR"; then
+  echo "::notice::baseline run $run_id has no artifact named $BASELINE_ARTIFACT_NAME"
+  exit 0
+fi
+
+echo "Downloaded baseline artifact $BASELINE_ARTIFACT_NAME from run $run_id into $BASELINE_OUTPUT_DIR"
+`,
+  }) as const
+
 export const devenvPerfArtifactStep = (
   opts?: Pick<DevenvPerfJobOptions, 'artifactDir' | 'artifactName' | 'retentionDays'>,
 ) =>
@@ -434,6 +525,19 @@ export const devenvPerfArtifactStep = (
       path: opts?.artifactDir ?? 'tmp/devenv-perf-ci',
       'if-no-files-found': 'error',
       'retention-days': opts?.retentionDays ?? 30,
+    },
+  }) as const
+
+export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptions) =>
+  ({
+    name: `Upload CI measurements: ${opts.artifactName}`,
+    if: 'always()',
+    uses: 'actions/upload-artifact@v4',
+    with: {
+      name: opts.artifactName,
+      path: opts.path,
+      'if-no-files-found': 'error',
+      'retention-days': opts.retentionDays ?? 30,
     },
   }) as const
 
@@ -562,11 +666,301 @@ cat "$artifact_file"
   } as const
 }
 
+export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOptions) =>
+  ({
+    name: 'Compare CI measurements with baseline',
+    shell: 'bash',
+    env: {
+      CI_MEASUREMENT_CURRENT_DIR: opts?.currentDir ?? 'tmp/ci-measurements/current',
+      CI_MEASUREMENT_BASELINE_DIR: opts?.baselineDir ?? 'tmp/ci-measurements/baseline',
+      CI_MEASUREMENT_COMPARISON_FILE:
+        opts?.outputFile ?? 'tmp/ci-measurements/measurement-comparison.json',
+      CI_MEASUREMENT_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
+      CI_MEASUREMENT_PR_COMMENT_ENABLED: opts?.prComment?.enabled === true ? 'true' : 'false',
+      CI_MEASUREMENT_PR_COMMENT_TITLE: opts?.prComment?.title ?? 'CI Measurements',
+      CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: String(opts?.prComment?.maxRows ?? 10),
+      CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: String(opts?.prComment?.maxHistory ?? 20),
+      ...(opts?.prComment?.tokenExpression === undefined
+        ? {}
+        : { GH_TOKEN: opts.prComment.tokenExpression }),
+    },
+    run: String.raw`set -euo pipefail
+
+current_dir="${dollar}{CI_MEASUREMENT_CURRENT_DIR:?CI_MEASUREMENT_CURRENT_DIR not set}"
+baseline_dir="${dollar}{CI_MEASUREMENT_BASELINE_DIR:?CI_MEASUREMENT_BASELINE_DIR not set}"
+comparison_file="${dollar}{CI_MEASUREMENT_COMPARISON_FILE:?CI_MEASUREMENT_COMPARISON_FILE not set}"
+mode="${dollar}{CI_MEASUREMENT_REGRESSION_MODE:-warn}"
+mkdir -p "$(dirname "$comparison_file")"
+
+if [ "$mode" = "off" ]; then
+  jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" \
+    '{schemaVersion:$schemaVersion,status:$status,mode:$mode,comparisons:{}}' \
+    >"$comparison_file"
+  exit 0
+fi
+
+current_index="$(mktemp)"
+baseline_index="$(mktemp)"
+find "$current_dir" -name measurements.json -type f -print | sort >"$current_index" || true
+find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
+
+if [ ! -s "$current_index" ]; then
+  echo "::error::no current measurements.json files found under $current_dir"
+  exit 1
+fi
+
+current_json="$comparison_file.current.json"
+baseline_json="$comparison_file.baseline.json"
+xargs -r jq -s '.' <"$current_index" >"$current_json"
+if [ -s "$baseline_index" ]; then
+  xargs -r jq -s '.' <"$baseline_index" >"$baseline_json"
+else
+  printf '[]\n' >"$baseline_json"
+fi
+
+jq -n \
+  --slurpfile current "$current_json" \
+  --slurpfile baseline "$baseline_json" \
+  --argjson schemaVersion 1 \
+  --arg mode "$mode" \
+  --arg currentDir "$current_dir" \
+  --arg baselineDir "$baseline_dir" \
+  '
+    def stable_dimensions:
+      (.dimensions // {})
+      | to_entries
+      | sort_by(.key)
+      | map("\(.key)=\(.value|tostring)")
+      | join(",");
+
+    def observation_key($doc):
+      [
+        ($doc.target.kind // "unknown"),
+        ($doc.target.name // "unknown"),
+        ($doc.target.system // "unknown"),
+        (.name // "unknown"),
+        (.unit // "unknown"),
+        stable_dimensions
+      ] | join("|");
+
+    def observations_by_key($docs):
+      reduce $docs[]? as $doc
+        ({};
+          reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
+            (.;
+              . + {
+                ($obs | observation_key($doc)): {
+                  target: $doc.target,
+                  observation: $obs,
+                  generatedAt: $doc.generatedAt
+                }
+              }
+            )
+        );
+
+    def budget($metric; $unit):
+      if $metric == "nix.closure.nar_size" then
+        {warnRatio:1.10, failRatio:1.25, warnAbs:52428800, failAbs:209715200}
+      elif $metric == "nix.closure.bucket.nar_size" then
+        {warnRatio:1.15, failRatio:1.35, warnAbs:52428800, failAbs:209715200}
+      elif $metric == "nix.closure.path_count" then
+        {warnRatio:1.10, failRatio:1.25, warnAbs:100, failAbs:500}
+      elif $unit == "seconds" then
+        {warnRatio:1.25, failRatio:1.50, warnAbs:1.5, failAbs:3.0}
+      else
+        {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
+      end;
+
+    def classify($metric; $unit; $current; $baseline):
+      budget($metric; $unit) as $b
+      | ($current - $baseline) as $delta
+      | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+      | (
+          if $baseline <= 0 then "unknown"
+          elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
+          elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
+          else "pass"
+          end
+        ) as $status
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b};
+
+    (observations_by_key($current[0])) as $currentObs
+    | (observations_by_key($baseline[0])) as $baselineObs
+    | (
+        $currentObs
+        | to_entries
+        | map(
+            .key as $key
+            | .value as $currentValue
+            | ($baselineObs[$key] // null) as $baselineValue
+            | {
+                key: $key,
+                value: (
+                  if $baselineValue == null then
+                    {
+                      status: "missing_baseline",
+                      target: $currentValue.target,
+                      observation: $currentValue.observation,
+                      current: $currentValue.observation.value
+                    }
+                  else
+                    classify(
+                      $currentValue.observation.name;
+                      $currentValue.observation.unit;
+                      $currentValue.observation.value;
+                      $baselineValue.observation.value
+                    ) + {
+                      target: $currentValue.target,
+                      observation: $currentValue.observation
+                    }
+                  end
+                )
+              }
+          )
+        | from_entries
+      ) as $comparisons
+    | (
+        if any($comparisons[]?; .status == "fail") then "fail"
+        elif any($comparisons[]?; .status == "warn") then "warn"
+        elif any($comparisons[]?; .status == "missing_baseline") then "partial"
+        else "pass"
+        end
+      ) as $status
+    | {
+        schemaVersion:$schemaVersion,
+        status:$status,
+        mode:$mode,
+        currentDir:$currentDir,
+        baselineDir:$baselineDir,
+        comparisons:$comparisons
+      }
+  ' >"$comparison_file"
+
+status="$(jq -r '.status' "$comparison_file")"
+exit_code=0
+case "$status:$mode" in
+  fail:fail)
+    echo "::error::CI measurement regression detected"
+    exit_code=1
+    ;;
+  fail:*|warn:*)
+    echo "::warning::CI measurement regression threshold exceeded"
+    ;;
+  partial:*)
+    echo "::notice::CI measurement baseline is missing for one or more observations"
+    ;;
+esac
+
+if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "### ${dollar}{CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
+    echo ""
+    jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
+    echo ""
+    echo "| Status | Target | Observation | Current | Baseline | Delta | Ratio |"
+    echo "| --- | --- | --- | ---: | ---: | ---: | ---: |"
+    jq -r '
+      .comparisons
+      | to_entries
+      | sort_by(
+          if .value.status == "fail" then 0
+          elif .value.status == "warn" then 1
+          elif .value.status == "missing_baseline" then 2
+          else 3
+          end
+        )
+      | .[:20]
+      | .[]
+      | .value as $v
+      | [
+          $v.status,
+          (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+          ($v.observation.name // "unknown"),
+          (($v.current // $v.observation.value // 0) | tostring),
+          (($v.baseline // "") | tostring),
+          (($v.delta // "") | tostring),
+          (if $v.ratio == null or $v.ratio == "" then "" else (($v.ratio * 100 | round / 100) | tostring) end)
+        ]
+      | "| " + (map(gsub("\\|"; "\\\\|")) | join(" | ")) + " |"
+    ' "$comparison_file"
+  } >>"$GITHUB_STEP_SUMMARY"
+fi
+
+if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] &&
+   [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ] &&
+   command -v gh >/dev/null 2>&1; then
+  repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+  pr_number="$(jq -r '.pull_request.number // empty' "${dollar}{GITHUB_EVENT_PATH:?GITHUB_EVENT_PATH not set}")"
+  if [ -n "$pr_number" ]; then
+    marker="<!-- effect-utils-ci-measurements:${dollar}{CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements} -->"
+    comment_body="$(mktemp)"
+    {
+      echo "## ${dollar}{CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
+      echo ""
+      jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
+      echo ""
+      echo "| Status | Target | Observation | Delta | Ratio |"
+      echo "| --- | --- | --- | ---: | ---: |"
+      jq -r --argjson maxRows "${dollar}{CI_MEASUREMENT_PR_COMMENT_MAX_ROWS:-10}" '
+        .comparisons
+        | to_entries
+        | sort_by(
+            if .value.status == "fail" then 0
+            elif .value.status == "warn" then 1
+            elif .value.status == "missing_baseline" then 2
+            else 3
+            end
+          )
+        | .[:$maxRows]
+        | .[]
+        | .value as $v
+        | [
+            $v.status,
+            (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+            ($v.observation.name // "unknown"),
+            (($v.delta // "") | tostring),
+            (if $v.ratio == null or $v.ratio == "" then "" else (($v.ratio * 100 | round / 100) | tostring) end)
+          ]
+        | "| " + (map(gsub("\\|"; "\\\\|")) | join(" | ")) + " |"
+      ' "$comparison_file"
+      echo ""
+      echo "$marker"
+    } >"$comment_body"
+
+    existing_id="$(
+      gh api "repos/$repo/issues/$pr_number/comments" \
+        --paginate \
+        --jq '.[] | select(.body | contains("'"$marker"'")) | .id' \
+        | head -1
+    )"
+    if [ -n "$existing_id" ]; then
+      gh api "repos/$repo/issues/comments/$existing_id" \
+        --method PATCH \
+        --field body="$(cat "$comment_body")" >/dev/null || true
+    else
+      gh api "repos/$repo/issues/$pr_number/comments" \
+        --method POST \
+        --field body="$(cat "$comment_body")" >/dev/null || true
+    fi
+  fi
+fi
+
+if [ "$exit_code" -ne 0 ]; then
+  exit "$exit_code"
+fi
+`,
+  }) as const
+
 export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
   const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+  const artifactName =
+    opts?.artifactName ??
+    'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
+  const baselineArtifactName = opts?.baselineArtifactName ?? opts?.artifactName
 
   return {
     'runs-on': opts?.runsOn ?? linuxX64Runner,
+    ...(opts?.permissions === undefined ? {} : { permissions: opts.permissions }),
     defaults: bashShellDefaults,
     env: {
       ...standardCIEnv,
@@ -583,13 +977,28 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
         preparePinnedDevenvStep,
         validateNixStoreStep,
       ]),
+      ...(baselineArtifactName === undefined
+        ? []
+        : [
+            downloadPreviousGitHubArtifactStep({
+              artifactName: baselineArtifactName,
+              outputDir: `${artifactDir}/baseline`,
+            }),
+          ]),
       devenvPerfBenchmarkStep({
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
       }),
+      compareCiMeasurementsStep({
+        currentDir: artifactDir,
+        baselineDir: `${artifactDir}/baseline`,
+        outputFile: `${artifactDir}/measurement-comparison.json`,
+        regressionMode: opts?.regressionMode ?? 'warn',
+        prComment: opts?.prComment,
+      }),
       devenvPerfArtifactStep({
         artifactDir,
-        artifactName: opts?.artifactName,
+        artifactName,
         retentionDays: opts?.retentionDays,
       }),
     ],

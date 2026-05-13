@@ -261,11 +261,32 @@ describe('ci workflow merge queue helpers', () => {
     expect(ciWorkflowSource).toContain('requiredGateCheckName(name)')
   })
 
-  it('hardens dynamic semantic gate names and admission-job permissions', () => {
-    expect(mergeQueueSource).toContain('githubExpressionStringLiteral')
-    expect(mergeQueueSource).toContain('annotationLine')
-    expect(mergeQueueSource).toContain('mergeRequiredAdmissionPermissions')
-    expect(mergeQueueSource).toContain("'pull-requests'")
+  it('hardens dynamic semantic gate names and admission-job permissions', async () => {
+    const { mergeQueueAdmittedJob, mergeQueueWorkflowOn, requiredGateCheckName } = (await import(
+      // oxlint-disable-next-line import/no-dynamic-require
+      new URL('../../../../../../genie/ci-workflow.ts', import.meta.url).href
+    )) as any
+
+    expect(requiredGateCheckName("pr/quality's gate")).toBe(
+      "${{ ((github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') || (github.event.action == 'labeled' && github.event.label.name == 'mq:ci-admitted')) && (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'mq:ci-admitted') || (github.event.action == 'labeled' && github.event.label.name == 'mq:ci-admitted')))) && 'pr/quality''s gate' || 'pr/quality''s gate (control event)' }}",
+    )
+
+    const runsOn = ['sh-linux-x64', 'nix'] as const
+    const admittedJob = mergeQueueAdmittedJob({
+      runsOn,
+      permissions: { actions: 'read' },
+      steps: [{ name: 'Proof', run: 'true' }],
+    })
+
+    expect(admittedJob['runs-on']).toEqual(['sh-linux-x64', 'nix'])
+    expect(admittedJob['runs-on']).not.toBe(runsOn)
+    expect(admittedJob.permissions).toEqual({
+      actions: 'read',
+      contents: 'read',
+      issues: 'read',
+      'pull-requests': 'read',
+    })
+    expect(mergeQueueWorkflowOn()).toMatchObject({ merge_group: null })
   })
 })
 
