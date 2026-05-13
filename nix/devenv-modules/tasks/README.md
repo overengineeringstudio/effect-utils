@@ -44,6 +44,7 @@ imports = [
 - `ts.nix` - TypeScript tasks (`ts:check`, `ts:check:strict`, build/watch/clean helpers)
   - `ts:check:strict` inherits repo-local `ts:check.after` hooks so strict CI stays aligned with consumer generators
 - `bun.nix` - Bun tasks (legacy)
+- `beads.nix` - Beads sync tasks and commit-correlation hook (expects `bd` from PATH or an explicit package/command)
 - `context.nix` - Context directory tasks
 - `lint-genie.nix` - Genie lint tasks
 - `worktree-guard.nix` - Git hook: prevent commits on default branch (optionally enforce linked worktrees)

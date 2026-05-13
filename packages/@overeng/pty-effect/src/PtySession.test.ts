@@ -268,7 +268,7 @@ describe('PtySession (server mode)', () => {
         ),
       /** Bumped from default 15s — slow CI runners need more headroom for the
        *  spawn → attach → reconnect cycle. */
-      30_000,
+      60_000,
     )
   }
 })

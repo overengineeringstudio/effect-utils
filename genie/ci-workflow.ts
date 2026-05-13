@@ -48,14 +48,21 @@ export {
   type RunnerProfile,
 } from './ci-workflow/shared.ts'
 export {
+  ciMeasurementsArtifactStep,
+  ciMeasurementsCommentPermissions,
   ciMeasurementMetrics,
+  compareCiMeasurementsStep,
   devenvPerfArtifactStep,
   devenvPerfBenchmarkStep,
   devenvPerfJob,
+  downloadPreviousGitHubArtifactStep,
   nixClosureMeasurementStep,
+  type CiMeasurementsArtifactStepOptions,
+  type CiMeasurementsComparisonStepOptions,
   type CiMeasurementObservation,
   type DevenvPerfJobOptions,
   type DevenvPerfProbe,
+  type GitHubPreviousArtifactStepOptions,
   type NixClosureMeasurementBucket,
   type NixClosureMeasurementStepOptions,
 } from './ci-workflow/measurements.ts'
