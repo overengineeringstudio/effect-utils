@@ -8,6 +8,7 @@ const ciWorkflowSource = [
   'ci-workflow/setup.ts',
   'ci-workflow/measurements.ts',
   'ci-workflow/megarepo.ts',
+  'ci-workflow/merge-queue.ts',
   'ci-workflow/deploy.ts',
 ]
   .map((file) =>
@@ -83,6 +84,16 @@ const applyMegarepoLockStepSource = extractSourceBlock(
   ciWorkflowSource,
   'export const applyMegarepoLockStep = (opts?: { skip?: string[] }) => {',
   'export type DefaultRefPolicyCheckStepOptions = {',
+)
+const defaultRefPolicyCheckStepSource = extractSourceBlock(
+  ciWorkflowSource,
+  'export type DefaultRefPolicyCheckStepOptions = {',
+  '/** Fail when first-party megarepo/flake/devenv inputs target non-default refs. */',
+)
+const mergeQueueSource = extractSourceBlock(
+  ciWorkflowSource,
+  "export const mergeQueueAdmissionLabel = 'mq:ci-admitted' as const",
+  'export const mergeQueueSemanticGateJob = ({',
 )
 const installMegarepoStepSource = extractSourceBlock(
   ciWorkflowSource,
@@ -212,6 +223,50 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(megarepoTaskModuleSource).toContain('(.value.members // .value.value.members // [])')
     expect(megarepoTaskModuleSource).not.toContain('.value.members[].name')
   })
+
+  it('normalizes GitHub branch refs through an explicit default-ref policy option', () => {
+    expect(defaultRefPolicyCheckStepSource).toContain('normalizeGitBranchRefs?: boolean')
+    expect(defaultRefPolicyCheckStepSource).toContain('NORMALIZE_GIT_BRANCH_REFS')
+    expect(defaultRefPolicyCheckStepSource).toContain("ref.startsWith('refs/heads/')")
+  })
+})
+
+describe('ci workflow merge queue helpers', () => {
+  it('centralizes the Hypermerge semantic required checks and admission label expressions', () => {
+    expect(mergeQueueSource).toContain('mergeQueueRequiredCIJobs')
+    expect(mergeQueueSource).toContain('mq/admission')
+    expect(mergeQueueSource).toContain('pr/quality')
+    expect(mergeQueueSource).toContain('pr/topology')
+    expect(mergeQueueSource).toContain('pr/freshness')
+    expect(mergeQueueSource).toContain('pr/contract')
+    expect(mergeQueueSource).toContain('mq:ci-admitted')
+  })
+
+  it('preserves label control-event concurrency for scarce self-hosted runners', () => {
+    expect(mergeQueueSource).toContain('mergeQueueWorkflowConcurrency')
+    expect(mergeQueueSource).toContain('mergeQueueWorkflowOn')
+    expect(mergeQueueSource).toContain('merge_group: null')
+    expect(mergeQueueSource).toContain("format('label-{0}', github.event.label.name)")
+    expect(mergeQueueSource).toContain(
+      "github.event.action != 'labeled' && github.event.action != 'unlabeled'",
+    )
+  })
+
+  it('exports reusable admission and semantic gate jobs', () => {
+    expect(ciWorkflowSource).toContain('export const mergeQueueAdmissionGateJob')
+    expect(ciWorkflowSource).toContain('export const mergeQueueAdmittedJob')
+    expect(ciWorkflowSource).toContain('export const mergeQueueSemanticGateJob')
+    expect(ciWorkflowSource).toContain('export const mergeQueueSemanticGateJobs')
+    expect(ciWorkflowSource).toContain('trustNeedsAdmission: true')
+    expect(ciWorkflowSource).toContain('requiredGateCheckName(name)')
+  })
+
+  it('hardens dynamic semantic gate names and admission-job permissions', () => {
+    expect(mergeQueueSource).toContain('githubExpressionStringLiteral')
+    expect(mergeQueueSource).toContain('annotationLine')
+    expect(mergeQueueSource).toContain('mergeRequiredAdmissionPermissions')
+    expect(mergeQueueSource).toContain("'pull-requests'")
+  })
 })
 
 describe('ci workflow shared auth helpers', () => {
@@ -284,6 +339,15 @@ describe('ci workflow shared auth helpers', () => {
     expect(ciWorkflowSource).toContain('project: VercelProject')
     expect(vercelDeploySource).toContain('opts.deployStepDecorator?.(')
     expect(vercelDeploySource).toContain('vercelDeployStep(project, opts.runDevenvTasksBefore)')
+  })
+})
+
+describe('ci workflow standard job helpers', () => {
+  it('centralizes self-hosted devenv task job composition', () => {
+    expect(ciWorkflowSource).toContain('export const devenvTaskStep')
+    expect(ciWorkflowSource).toContain('export const standardSelfHostedDevenvTaskJob')
+    expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPrepSteps(prep)')
+    expect(ciWorkflowSource).toContain('standardSelfHostedPnpmCiPostSteps(post)')
   })
 })
 

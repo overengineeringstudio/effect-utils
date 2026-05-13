@@ -1,6 +1,8 @@
+import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import type { RunnerProfile } from '../ci.ts'
 import { applyMegarepoLockStep } from './megarepo.ts'
 import {
+  bashShellDefaults,
   cachixHostsFromBinaryCaches,
   devenvBinaryCache,
   jobLocalCiDiagnosticsDir,
@@ -10,12 +12,17 @@ import {
   nixBinaryCachesExtraConf,
   resolveDevenvFnScript,
   resolveDevenvRevScript,
+  linuxX64Runner,
   runDevenvTasksBefore,
   shellSingleQuote,
+  standardCIEnv,
   workspaceLocalNixCachePath,
   workspaceLocalNixCacheRoot,
   type NixBinaryCache,
 } from './shared.ts'
+
+type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
+type WorkflowStep = WorkflowJob['steps'][number]
 
 const evictOutPathShellLines = [
   '      if nix path-info "$outPath" >/dev/null 2>&1; then',
@@ -637,6 +644,47 @@ export const standardSelfHostedPnpmCiPostSteps = (opts?: {
     saveNixCacheStep(opts?.saveNixCache),
     ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
   ] as const
+
+export const devenvTaskStep = (name: string, ...args: [string, ...string[]]) => ({
+  name,
+  run: runDevenvTasksBefore(...args),
+})
+
+export type StandardSelfHostedDevenvTaskJobOptions = Omit<
+  WorkflowJob,
+  'runs-on' | 'defaults' | 'env' | 'steps'
+> & {
+  readonly runsOn?: string | readonly string[]
+  readonly defaults?: WorkflowJob['defaults']
+  readonly env?: Record<string, string>
+  readonly prepSteps?: readonly WorkflowStep[]
+  readonly postSteps?: readonly WorkflowStep[]
+  readonly prep?: Parameters<typeof standardSelfHostedPnpmCiPrepSteps>[0]
+  readonly post?: Parameters<typeof standardSelfHostedPnpmCiPostSteps>[0]
+  readonly step: WorkflowStep
+}
+
+export const standardSelfHostedDevenvTaskJob = ({
+  runsOn = linuxX64Runner,
+  defaults = bashShellDefaults,
+  env = standardCIEnv,
+  prepSteps,
+  postSteps,
+  prep,
+  post,
+  step,
+  ...jobOptions
+}: StandardSelfHostedDevenvTaskJobOptions): WorkflowJob => ({
+  'runs-on': Array.isArray(runsOn) ? [...runsOn] : runsOn,
+  defaults,
+  env,
+  steps: [
+    ...(prepSteps ?? standardSelfHostedPnpmCiPrepSteps(prep)),
+    step,
+    ...(postSteps ?? standardSelfHostedPnpmCiPostSteps(post)),
+  ],
+  ...jobOptions,
+})
 
 /**
  * Upload CI diagnostics captured during the pnpm install / runner-pressure
