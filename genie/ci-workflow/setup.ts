@@ -675,7 +675,7 @@ export const standardSelfHostedDevenvTaskJob = ({
   step,
   ...jobOptions
 }: StandardSelfHostedDevenvTaskJobOptions): WorkflowJob => ({
-  'runs-on': Array.isArray(runsOn) ? [...runsOn] : runsOn,
+  'runs-on': typeof runsOn === 'string' ? runsOn : [...runsOn],
   defaults,
   env,
   steps: [

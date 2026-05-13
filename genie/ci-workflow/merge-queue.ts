@@ -190,7 +190,7 @@ export const mergeQueueAdmittedJob = ({
   ...jobOptions
 }: MergeQueueAdmittedJobOptions): WorkflowJob => ({
   if: nonScheduleRequiredGateIf,
-  'runs-on': Array.isArray(runsOn) ? [...runsOn] : runsOn,
+  'runs-on': typeof runsOn === 'string' ? runsOn : [...runsOn],
   permissions: mergeRequiredAdmissionPermissions(permissions),
   steps: [
     mergeQueueAdmissionStep({
@@ -217,7 +217,7 @@ export const mergeQueueAdmissionGateJob = ({
 }: MergeQueueAdmissionGateJobOptions = {}): WorkflowJob => ({
   name: 'mq/admission',
   if: nonScheduleRequiredGateIf,
-  'runs-on': Array.isArray(runsOn) ? [...runsOn] : runsOn,
+  'runs-on': typeof runsOn === 'string' ? runsOn : [...runsOn],
   'timeout-minutes': timeoutMinutes,
   permissions: defaultMergeQueuePermissions,
   steps: [mergeQueueAdmissionStep(stepOptions)],
@@ -252,7 +252,7 @@ export const mergeQueueSemanticGateJob = ({
 }: MergeQueueSemanticGateJobOptions): WorkflowJob => ({
   name: requiredGateCheckName(name),
   if: nonScheduleRequiredGateIf,
-  'runs-on': Array.isArray(runsOn) ? [...runsOn] : runsOn,
+  'runs-on': typeof runsOn === 'string' ? runsOn : [...runsOn],
   'timeout-minutes': timeoutMinutes,
   permissions: defaultMergeQueuePermissions,
   needs: [...needs],
