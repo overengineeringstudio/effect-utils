@@ -1094,7 +1094,7 @@ jq -n \
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "noise_floor"
           elif ($withinBaselineRange and $status == "pass") then "within_baseline_range"
-          elif (($baselineSources < 3 or $currentSamples < 3) and $status == "pass") then "low_sample_count"
+          elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"
           elif $status == "pass" then "within_budget"
           else "threshold_exceeded"
           end
@@ -1364,12 +1364,12 @@ const formatRatio = (value) => {
 }
 
 const formatResult = (row) => {
+  if (row.confidence === 'low_sample_count') return 'gray needs repeat'
   if (row.status === 'fail') return 'red regression'
   if (row.status === 'warn') return 'yellow regression'
   if (row.status === 'missing_baseline') return 'gray no baseline'
   if (row.confidence === 'noise_floor') return 'gray noise floor'
   if (row.confidence === 'within_baseline_range') return 'gray within range'
-  if (row.confidence === 'low_sample_count') return 'gray low confidence'
   if (row.direction === 'improved') return 'green improved'
   return 'gray unchanged'
 }
