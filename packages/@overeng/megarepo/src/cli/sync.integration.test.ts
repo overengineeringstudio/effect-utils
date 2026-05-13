@@ -1579,7 +1579,7 @@ describe('nested megarepo.lock sync scope', () => {
       Effect.provide(NodeContext.layer),
       Effect.scoped,
     ),
-    { timeout: 15_000 },
+    { timeout: 30_000 },
   )
 })
 

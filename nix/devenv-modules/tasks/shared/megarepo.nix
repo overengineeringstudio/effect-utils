@@ -394,5 +394,8 @@ in
       # Repos that source-import genie helpers from bootstrap members should ensure
       # those members exist before any genie-backed task runs.
       "genie:prepare".after = lib.mkAfter [ "mr:bootstrap" ];
+      # Full workspace apply mutates the same composed repos tree as bootstrap.
+      # Keep the two materialization tasks ordered when check:all fans out.
+      "mr:apply".after = lib.mkAfter [ "mr:bootstrap" ];
     };
 }
