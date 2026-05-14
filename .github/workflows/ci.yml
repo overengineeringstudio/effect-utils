@@ -3174,18 +3174,37 @@ jobs:
 
           if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
             can_render_pr_comment=true
-            if ! command -v gh >/dev/null 2>&1 && command -v nix >/dev/null 2>&1; then
-              if gh_out="$(nix build --no-link --print-out-paths nixpkgs#gh 2>/dev/null)"; then
-                export PATH="$gh_out/bin:$PATH"
+
+            ensure_ci_measurement_tool() {
+              tool_name="$1"
+              nix_attr="$2"
+              if command -v "$tool_name" >/dev/null 2>&1; then
+                return 0
               fi
-            fi
-            if ! command -v gh >/dev/null 2>&1; then
+              if ! command -v nix >/dev/null 2>&1; then
+                return 1
+              fi
+              if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+                export PATH="$tool_out/bin:$PATH"
+              fi
+              command -v "$tool_name" >/dev/null 2>&1
+            }
+
+            if ! ensure_ci_measurement_tool gh gh; then
               echo "::notice::gh is not available; skipping CI measurement PR comment"
               can_render_pr_comment=false
             fi
-            if ! command -v jq >/dev/null 2>&1; then
-              echo "::notice::jq is not available; skipping CI measurement PR comment"
+            if ! ensure_ci_measurement_tool node nodejs; then
+              echo "::notice::node is not available; skipping CI measurement PR comment"
               can_render_pr_comment=false
+            fi
+            if ! command -v jq >/dev/null 2>&1; then
+              if ensure_ci_measurement_tool jq jq; then
+                :
+              else
+                echo "::notice::jq is not available; skipping CI measurement PR comment"
+                can_render_pr_comment=false
+              fi
             fi
             if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
               echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
