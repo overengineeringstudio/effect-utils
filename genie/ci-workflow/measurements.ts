@@ -20,10 +20,23 @@ export type CiMeasurementDescriptor = {
   readonly description?: string
 }
 
+export type CiMeasurementGatePolicy = {
+  readonly enabled?: boolean
+  readonly minBaselineSources?: number
+  readonly minCurrentSamples?: number
+  readonly noiseFloor?: number
+  readonly warnRatio?: number
+  readonly failRatio?: number
+  readonly warnAbs?: number
+  readonly failAbs?: number
+}
+
 export type DevenvPerfProbe = CiMeasurementDescriptor & {
   readonly command: readonly [string, ...string[]]
   readonly traceOutput?: string
+  readonly warmupRepetitions?: number
   readonly repetitions?: number
+  readonly gate?: CiMeasurementGatePolicy
 }
 
 export type CiMeasurementObservation = {
@@ -108,7 +121,9 @@ export type DevenvPerfTaskProbe =
       readonly label?: string
       readonly group?: string
       readonly description?: string
+      readonly warmupRepetitions?: number
       readonly repetitions?: number
+      readonly gate?: CiMeasurementGatePolicy
     }
 
 export type DevenvPerfJobOptions = {
@@ -128,11 +143,57 @@ export type DevenvPerfJobOptions = {
   readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
 }
 
+const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy => {
+  if (probeId === 'shell_eval_traced') {
+    return {
+      enabled: false,
+      minBaselineSources: 10,
+      minCurrentSamples: 3,
+      warnRatio: 1.25,
+      failRatio: 1.5,
+      warnAbs: 1.5,
+      failAbs: 3,
+      noiseFloor: 0.5,
+    }
+  }
+  if (probeId === 'tasks_list' || probeId === 'processes_help') {
+    return {
+      enabled: true,
+      minBaselineSources: 10,
+      minCurrentSamples: 5,
+      warnRatio: 2,
+      failRatio: 3,
+      warnAbs: 0.25,
+      failAbs: 1,
+      noiseFloor: 0.1,
+    }
+  }
+  return {
+    enabled: true,
+    minBaselineSources: 10,
+    minCurrentSamples: 5,
+    warnRatio: 1.1,
+    failRatio: 1.2,
+    warnAbs: 0.25,
+    failAbs: 0.5,
+    noiseFloor: 0.1,
+  }
+}
+
+const devenvPerfGatePolicy = (probe: Pick<DevenvPerfProbe, 'id' | 'gate'>) => ({
+  ...defaultDevenvPerfGatePolicy(probe.id),
+  ...probe.gate,
+})
+
 const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
   const args = probe.command.map(shellSingleQuote).join(' ')
   const trace = probe.traceOutput ?? ''
-  const repetitions = Math.max(1, Math.floor(probe.repetitions ?? 1))
-  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(repetitions))} ${args}`
+  const gatePolicy = devenvPerfGatePolicy(probe)
+  const defaultRepetitions = gatePolicy.enabled ? gatePolicy.minCurrentSamples : 1
+  const repetitions = Math.max(1, Math.floor(probe.repetitions ?? defaultRepetitions))
+  const defaultWarmupRepetitions = gatePolicy.enabled && repetitions > 1 ? 1 : 0
+  const warmupRepetitions = Math.max(0, Math.floor(probe.warmupRepetitions ?? defaultWarmupRepetitions))
+  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(warmupRepetitions))} ${shellSingleQuote(String(repetitions))} ${shellSingleQuote(JSON.stringify(gatePolicy))} ${args}`
 }
 
 const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe => {
@@ -141,13 +202,17 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
   const label = typeof probe === 'string' ? undefined : probe.label
   const group = typeof probe === 'string' ? undefined : probe.group
   const description = typeof probe === 'string' ? undefined : probe.description
+  const warmupRepetitions = typeof probe === 'string' ? undefined : probe.warmupRepetitions
   const repetitions = typeof probe === 'string' ? undefined : probe.repetitions
+  const gate = typeof probe === 'string' ? undefined : probe.gate
   return {
     id: id ?? `task_${task.replaceAll(':', '_')}`,
     label: label ?? task,
     group: group ?? 'devenv tasks',
     description: description ?? `Runs the devenv task '${task}' in before mode without the TUI.`,
+    warmupRepetitions,
     repetitions,
+    gate,
     command: ['$DEVENV_BIN', 'tasks', 'run', task, '--mode', 'before', '--no-tui', '--show-output'],
   }
 }
@@ -177,7 +242,8 @@ const renderDevenvPerfScript = (
       label: 'Warm shell eval',
       group: 'devenv shell',
       description: 'Evaluates a warm dev shell without reloading direnv state.',
-      repetitions: 3,
+      warmupRepetitions: 1,
+      repetitions: 5,
       command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
     },
     {
@@ -185,7 +251,8 @@ const renderDevenvPerfScript = (
       label: 'devenv tasks list',
       group: 'devenv cli',
       description: 'Lists devenv tasks to measure task graph loading overhead.',
-      repetitions: 5,
+      warmupRepetitions: 1,
+      repetitions: 9,
       command: ['$DEVENV_BIN', 'tasks', 'list'],
     },
     {
@@ -193,7 +260,8 @@ const renderDevenvPerfScript = (
       label: 'devenv processes --help',
       group: 'devenv cli',
       description: 'Loads the devenv processes command help path.',
-      repetitions: 5,
+      warmupRepetitions: 1,
+      repetitions: 9,
       command: ['$DEVENV_BIN', 'processes', '--help'],
     },
     ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
@@ -240,6 +308,7 @@ json_append_timing() {
   local stdout="$7"
   local stderr="$8"
   local trace="$9"
+  local gate_policy="${dollar}{10}"
   local samples_file="$ARTIFACT_DIR/$id.samples.json"
 
   if [ "$first" -eq 0 ]; then
@@ -254,13 +323,15 @@ json_append_timing() {
     --arg group "$group" \
     --arg description "$description" \
     --argjson status "$status" \
-    --argjson durationMs "$duration_ms" \
-    --arg stdout "$stdout" \
-    --arg stderr "$stderr" \
-    --arg trace "$trace" \
-    '($samples[0] // []) as $sampleList
-    | ($sampleList | map(select(.status == 0) | .durationMs)) as $successfulDurations
-    | {
+      --argjson durationMs "$duration_ms" \
+      --arg stdout "$stdout" \
+      --arg stderr "$stderr" \
+      --arg trace "$trace" \
+      --argjson gatePolicy "$gate_policy" \
+      '($samples[0] // []) as $sampleList
+      | ($sampleList | map(select(.phase != "warmup" and .status == 0) | .durationMs)) as $successfulDurations
+      | ($sampleList | map(select(.phase == "warmup"))) as $warmupSamples
+      | {
         id:$id,
         name:$id,
         label:$label,
@@ -270,9 +341,12 @@ json_append_timing() {
         durationMs:$durationMs,
         stdout:$stdout,
         stderr:$stderr,
-        trace:(if $trace == "" then null else $trace end),
-        statistics: {
+          trace:(if $trace == "" then null else $trace end),
+          gatePolicy:$gatePolicy,
+          statistics: {
           sampleCount: ($sampleList | length),
+          warmupCount: ($warmupSamples | length),
+          measuredSampleCount: (($sampleList | length) - ($warmupSamples | length)),
           successfulSampleCount: ($successfulDurations | length),
           minDurationMs: ($successfulDurations | min),
           maxDurationMs: ($successfulDurations | max),
@@ -287,10 +361,12 @@ measure() {
   local id="$1"
   local label="$2"
   local group="$3"
-  local description="$4"
-  local trace_file="$5"
-  local repetitions="$6"
-  shift 6
+    local description="$4"
+    local trace_file="$5"
+    local warmup_repetitions="$6"
+    local repetitions="$7"
+    local gate_policy="$8"
+    shift 8
   case "$trace_file" in
     '$ARTIFACT_DIR'*) trace_file="${dollar}{ARTIFACT_DIR}${dollar}{trace_file#'$ARTIFACT_DIR'}" ;;
   esac
@@ -303,11 +379,22 @@ measure() {
   if ! [[ "$repetitions" =~ ^[0-9]+$ ]] || [ "$repetitions" -lt 1 ]; then
     repetitions=1
   fi
+  if ! [[ "$warmup_repetitions" =~ ^[0-9]+$ ]] || [ "$warmup_repetitions" -lt 0 ]; then
+    warmup_repetitions=0
+  fi
 
   printf '[' >"$samples_file"
   local sample_first=1
-  local sample_index sample_stdout sample_stderr sample_trace expanded
-  for sample_index in $(seq 1 "$repetitions"); do
+  local sample_index measured_index total_repetitions phase sample_stdout sample_stderr sample_trace expanded
+  total_repetitions=$((warmup_repetitions + repetitions))
+  for sample_index in $(seq 1 "$total_repetitions"); do
+    if [ "$sample_index" -le "$warmup_repetitions" ]; then
+      phase="warmup"
+      measured_index=""
+    else
+      phase="measured"
+      measured_index=$((sample_index - warmup_repetitions))
+    fi
     sample_stdout="$ARTIFACT_DIR/$id.$sample_index.stdout"
     sample_stderr="$ARTIFACT_DIR/$id.$sample_index.stderr"
     sample_trace=""
@@ -342,12 +429,14 @@ measure() {
     sample_first=0
     jq -cn \
       --argjson index "$sample_index" \
+      --arg measuredIndex "$measured_index" \
+      --arg phase "$phase" \
       --argjson status "$status" \
       --argjson durationMs "$duration_ms" \
       --arg stdout "$sample_stdout" \
       --arg stderr "$sample_stderr" \
       --arg trace "$sample_trace" \
-      '{index:$index,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+      '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
       >>"$samples_file"
 
     stdout="$sample_stdout"
@@ -361,12 +450,12 @@ measure() {
   printf ']\n' >>"$samples_file"
 
   status="$(jq -r 'map(.status) | max // 0' "$samples_file")"
-  duration_ms="$(jq -r 'map(select(.status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(.durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
+  duration_ms="$(jq -r 'map(select(.phase != "warmup" and .status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(.durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
 
   cp "$stdout" "$ARTIFACT_DIR/$id.stdout" 2>/dev/null || true
   cp "$stderr" "$ARTIFACT_DIR/$id.stderr" 2>/dev/null || true
 
-  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file"
+  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file" "$gate_policy"
 
   if [ "$status" -ne 0 ]; then
     echo "::error::$id failed after ${dollar}{duration_ms}ms; stderr tail follows"
@@ -429,7 +518,11 @@ jq -n \
   '{
     schemaVersion: $schemaVersion,
     generatedAt: $generatedAt,
-    producer: { name: "effect-utils-ci-measurement", version: 1 },
+    producer: {
+      name: "effect-utils-ci-measurement",
+      version: 2,
+      measurementProtocol: "devenv-perf-warm-median-v2"
+    },
     subject: {
       repo: $repository,
       branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
@@ -457,9 +550,12 @@ jq -n \
           group: .group,
           name: ("devenv." + .id + ".duration"),
           unit: "seconds",
-          value: (.durationMs / 1000),
-          statistics: {
+            value: (.durationMs / 1000),
+            policy: .gatePolicy,
+            statistics: {
             sampleCount: (.statistics.sampleCount // 1),
+            warmupCount: (.statistics.warmupCount // 0),
+            measuredSampleCount: (.statistics.measuredSampleCount // (.statistics.sampleCount // 1)),
             successfulSampleCount: (.statistics.successfulSampleCount // (if .status == 0 then 1 else 0 end)),
             min: ((.statistics.minDurationMs // .durationMs) / 1000),
             max: ((.statistics.maxDurationMs // .durationMs) / 1000),
@@ -470,6 +566,11 @@ jq -n \
             probeLabel: .label,
             status: .status,
             sampleCount: (.statistics.sampleCount // 1),
+            warmupCount: (.statistics.warmupCount // 0),
+            measuredSampleCount: (.statistics.measuredSampleCount // (.statistics.sampleCount // 1)),
+            measurementProtocol: "devenv-perf-warm-median-v2",
+            aggregation: "median",
+            phase: "warm",
             devenvRev: $devenvRev,
             otelServiceName: $otelServiceName
           }
@@ -490,109 +591,6 @@ jq -n \
     }
   }' >"$ARTIFACT_DIR/measurements.json"
 
-compare_baseline() {
-  local baseline_path="${dollar}{DEVENV_PERF_BASELINE_SUMMARY:-$ARTIFACT_DIR/baseline/summary.json}"
-  local mode="${dollar}{DEVENV_PERF_REGRESSION_MODE:-warn}"
-
-  if [ "$mode" = "off" ]; then
-    jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" '{schemaVersion:$schemaVersion, status:$status, mode:$mode, checks:{}}' >"$ARTIFACT_DIR/perf-comparison.json"
-    return 0
-  fi
-
-  if [ ! -f "$baseline_path" ]; then
-    jq -n \
-      --argjson schemaVersion 1 \
-      --arg status baseline_missing \
-      --arg mode "$mode" \
-      --arg baseline "$baseline_path" \
-      '{schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baseline, checks:{}}' \
-      >"$ARTIFACT_DIR/perf-comparison.json"
-    echo "::notice::devenv perf baseline not found at $baseline_path; recorded current measurements only"
-    return 0
-  fi
-
-  jq -n \
-    --slurpfile current "$ARTIFACT_DIR/summary.json" \
-    --slurpfile baseline "$baseline_path" \
-    --argjson schemaVersion 1 \
-    --arg mode "$mode" \
-    --arg baselinePath "$baseline_path" \
-    '
-      def budget($name):
-        if $name == "shell_eval_traced" then
-          {warnRatio:1.25, failRatio:1.5, warnMs:1500, failMs:3000}
-        elif $name == "shell_eval_warm" then
-          {warnRatio:1.5, failRatio:2.0, warnMs:500, failMs:1000}
-        elif $name == "tasks_list" or $name == "processes_help" then
-          {warnRatio:2.0, failRatio:3.0, warnMs:250, failMs:1000}
-        else
-          {warnRatio:1.5, failRatio:2.0, warnMs:1000, failMs:3000}
-        end;
-      def classify($name; $current; $baseline):
-        budget($name) as $b
-        | ($current - $baseline) as $delta
-        | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
-        | (
-            if $baseline <= 0 then "unknown"
-            elif ($delta > $b.failMs and $current > ($baseline * $b.failRatio)) then "fail"
-            elif ($delta > $b.warnMs and $current > ($baseline * $b.warnRatio)) then "warn"
-            else "pass"
-            end
-          ) as $status
-        | {status:$status, currentMs:$current, baselineMs:$baseline, deltaMs:$delta, ratio:$ratio, budget:$b};
-      ($current[0].checks // {}) as $currentChecks
-      | ($baseline[0].checks // {}) as $baselineChecks
-      | (
-          $currentChecks
-          | to_entries
-          | map(
-              .key as $name
-              | .value as $current
-              | ($baselineChecks[$name] // null) as $base
-              | {
-                  key: $name,
-                  value: (
-                    if $base == null then
-                      {status:"missing_baseline", currentMs:$current.durationMs}
-                    elif ($current.status != 0) then
-                      {status:"current_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
-                    elif ($base.status != 0) then
-                      {status:"baseline_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
-                    else
-                      classify($name; $current.durationMs; $base.durationMs)
-                    end
-                  )
-                }
-            )
-          | from_entries
-        ) as $checks
-      | (
-          if any($checks[]; .status == "fail") then "fail"
-          elif any($checks[]; .status == "warn") then "warn"
-          elif any($checks[]; .status == "missing_baseline") then "partial"
-          else "pass"
-          end
-        ) as $status
-      | {schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baselinePath, checks:$checks}
-    ' >"$ARTIFACT_DIR/perf-comparison.json"
-
-  local status
-  status="$(jq -r '.status' "$ARTIFACT_DIR/perf-comparison.json")"
-  case "$status:$mode" in
-    fail:fail)
-      echo "::error::devenv perf regression detected"
-      jq . "$ARTIFACT_DIR/perf-comparison.json"
-      return 1
-      ;;
-    fail:*|warn:*)
-      echo "::warning::devenv perf regression threshold exceeded"
-      jq . "$ARTIFACT_DIR/perf-comparison.json"
-      ;;
-  esac
-}
-
-compare_baseline
-
 if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### Devenv perf"
@@ -603,12 +601,6 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
     echo ""
     echo "- Artifact directory: \`$ARTIFACT_DIR\`"
     echo "- OTEL service: \`${dollar}{OTEL_SERVICE_NAME:-unknown}\`"
-    echo ""
-    echo "#### Regression comparison"
-    echo ""
-    if [ -f "$ARTIFACT_DIR/perf-comparison.json" ]; then
-      jq -r '["- Status: " + .status, "- Mode: " + .mode, "- Baseline: " + (.baseline // "none")] | .[]' "$ARTIFACT_DIR/perf-comparison.json"
-    fi
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
@@ -976,7 +968,10 @@ fi
 current_index="$(mktemp)"
 baseline_index="$(mktemp)"
 find "$current_dir" -path "$baseline_dir" -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
-find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
+{
+  find "$baseline_dir" -maxdepth 1 -name measurements.json -type f -print
+  find "$baseline_dir" -mindepth 2 -maxdepth 2 -name measurements.json -type f -print
+} | sort -u >"$baseline_index" || true
 
 if [ ! -s "$current_index" ]; then
   echo "::error::no current measurements.json files found under $current_dir"
@@ -1003,7 +998,7 @@ jq -n \
     def identity_dimensions:
       (.dimensions // {})
       | to_entries
-      | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount"] | index($key) | not))
+      | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount", "measuredSampleCount"] | index($key) | not))
       | sort_by(.key)
       | map("\(.key)=\(.value|tostring)")
       | join(",");
@@ -1026,6 +1021,13 @@ jq -n \
         else (($sorted[($count / 2 - 1)] + $sorted[($count / 2)]) / 2)
         end;
 
+    def percentile($p):
+      sort as $sorted
+      | ($sorted | length) as $count
+      | if $count == 0 then null
+        else $sorted[(($p * ($count - 1)) | floor)]
+        end;
+
     def observations_by_key($docs):
       reduce $docs[]? as $doc
         ({};
@@ -1042,13 +1044,14 @@ jq -n \
 
     def observation_stats($items):
       ($items | map(.observation.value)) as $values
-      | ($items | map(.observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
+      | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
       | {
           target: ($items[0].target // {}),
           observation: ($items[-1].observation // {}),
           value: ($values | median),
           min: ($values | min),
           max: ($values | max),
+          p95: ($values | percentile(0.95)),
           sourceCount: ($items | length),
           sampleCount: $sampleCount,
           generatedAt: ($items[-1].generatedAt // null)
@@ -1062,7 +1065,7 @@ jq -n \
       elif $metric == "nix.closure.path_count" then
         {warnRatio:1.10, failRatio:1.25, warnAbs:100, failAbs:500}
       elif $unit == "seconds" then
-        {warnRatio:1.25, failRatio:1.50, warnAbs:1.5, failAbs:3.0}
+        {warnRatio:1.10, failRatio:1.20, warnAbs:0.25, failAbs:0.5}
       else
         {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
       end;
@@ -1073,11 +1076,24 @@ jq -n \
       elif $unit == "seconds" then 0.1
       else 0
       end;
-    def abs_value: if . < 0 then -. else . end;
-
-    def classify($metric; $unit; $current; $baseline; $baselineMin; $baselineMax; $currentSamples; $baselineSources):
+    def default_policy($metric; $unit):
       budget($metric; $unit) as $b
       | noise_floor($metric; $unit) as $noise
+      | $b + {
+          enabled:true,
+          minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" then 3 else 10 end),
+          minCurrentSamples:(if $unit == "seconds" then 3 else 1 end),
+          noiseFloor:$noise
+        };
+    def observation_policy($obs):
+      default_policy($obs.name // "unknown"; $obs.unit // "unknown") + ($obs.policy // {});
+    def policy_enabled($policy):
+      if ($policy | has("enabled")) then $policy.enabled else true end;
+    def abs_value: if . < 0 then -. else . end;
+
+    def classify($metric; $unit; $policy; $current; $baseline; $baselineMin; $baselineMax; $baselineP95; $currentSamples; $baselineSources):
+      $policy as $b
+      | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
       | (
@@ -1094,16 +1110,33 @@ jq -n \
           end
         ) as $thresholdStatus
       | (
+          policy_enabled($policy) == true
+          and $baseline > 0
+          and $baselineSources >= ($policy.minBaselineSources // 1)
+          and $currentSamples >= ($policy.minCurrentSamples // 1)
+        ) as $gateable
+      | (
+          if (policy_enabled($policy) != true) then "disabled"
+          elif $baseline <= 0 then "missing_baseline"
+          elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+          elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+          else "eligible"
+          end
+        ) as $gateReason
+      | (
           if $baseline <= 0 then "unknown"
+          elif (policy_enabled($policy) != true) then "diagnostic"
           elif ($delta | abs_value) <= $noise then "noise_floor"
           elif ($withinBaselineRange and $thresholdStatus == "pass") then "within_baseline_range"
-          elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"
+          elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+          elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
           elif $thresholdStatus == "pass" then "within_budget"
+          elif ($baselineP95 != null and $current <= $baselineP95) then "within_baseline_distribution"
           else "threshold_exceeded"
           end
         ) as $confidence
       | (
-          if $confidence == "threshold_exceeded" then $thresholdStatus
+          if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus
           elif $thresholdStatus == "unknown" then "unknown"
           else "pass"
           end
@@ -1116,7 +1149,7 @@ jq -n \
           else "regressed"
           end
         ) as $direction
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,confidence:$confidence,direction:$direction};
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -1135,30 +1168,36 @@ jq -n \
                       status: "missing_baseline",
                       target: $currentValue.target,
                       observation: $currentValue.observation,
-                      current: $currentValue.value,
-                      currentSamples: $currentValue.sampleCount,
-                      baselineSources: 0,
-                      confidence: "missing_baseline",
-                      direction: "unknown"
-                    }
-                  else
-                    classify(
-                      $currentValue.observation.name;
-                      $currentValue.observation.unit;
-                      $currentValue.value;
-                      $baselineValue.value;
-                      $baselineValue.min;
-                      $baselineValue.max;
-                      $currentValue.sampleCount;
-                      $baselineValue.sourceCount
-                    ) + {
+                        current: $currentValue.value,
+                        currentSamples: $currentValue.sampleCount,
+                        baselineSources: 0,
+                        gatePolicy: ($currentValue.observation | observation_policy(.)),
+                        gateable: false,
+                        gateReason: "missing_baseline",
+                        confidence: "missing_baseline",
+                        direction: "unknown"
+                      }
+                    else
+                      classify(
+                        $currentValue.observation.name;
+                        $currentValue.observation.unit;
+                        ($currentValue.observation | observation_policy(.));
+                        $currentValue.value;
+                        $baselineValue.value;
+                        $baselineValue.min;
+                        $baselineValue.max;
+                        $baselineValue.p95;
+                        $currentValue.sampleCount;
+                        $baselineValue.sourceCount
+                      ) + {
                       target: $currentValue.target,
                       observation: $currentValue.observation,
-                      currentSamples: $currentValue.sampleCount,
-                      baselineSources: $baselineValue.sourceCount,
-                      baselineMin: $baselineValue.min,
-                      baselineMax: $baselineValue.max
-                    }
+                        currentSamples: $currentValue.sampleCount,
+                        baselineSources: $baselineValue.sourceCount,
+                        baselineMin: $baselineValue.min,
+                        baselineMax: $baselineValue.max,
+                        baselineP95: $baselineValue.p95
+                      }
                   end
                 )
               }
@@ -1168,7 +1207,7 @@ jq -n \
     | (
         if any($comparisons[]?; .status == "fail") then "fail"
         elif any($comparisons[]?; .status == "warn") then "warn"
-        elif any($comparisons[]?; .status == "missing_baseline") then "partial"
+        elif any($comparisons[]?; .status == "missing_baseline" and (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)) then "partial"
         else "pass"
         end
       ) as $status
@@ -1212,8 +1251,8 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
     echo ""
     jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
     echo ""
-    echo "| Status | Target | Observation | Current | Baseline | Delta | Ratio |"
-    echo "| --- | --- | --- | ---: | ---: | ---: | ---: |"
+    echo "| Status | Gate | Target | Observation | Current | Baseline | Delta | Ratio |"
+    echo "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"
     jq -r '
       .comparisons
       | to_entries
@@ -1227,9 +1266,10 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
       | .[:20]
       | .[]
       | .value as $v
-      | [
-          $v.status,
-          (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+        | [
+            $v.status,
+            (if ($v.gateable // false) then "yes" else ($v.gateReason // "no") end),
+            (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
           ($v.observation.name // "unknown"),
           (($v.current // $v.observation.value // 0) | tostring),
           (($v.baseline // "") | tostring),
@@ -1373,14 +1413,23 @@ const formatRatio = (value) => {
 }
 
 const formatResult = (row) => {
-  if (row.confidence === 'low_sample_count') return 'gray needs repeat'
+  if (row.confidence === 'low_baseline_count') return 'gray needs baseline'
+  if (row.confidence === 'low_current_sample_count') return 'gray needs repeat'
+  if (row.confidence === 'diagnostic') return 'gray diagnostic'
   if (row.status === 'fail') return 'red regression'
   if (row.status === 'warn') return 'yellow regression'
   if (row.status === 'missing_baseline') return 'gray no baseline'
   if (row.confidence === 'noise_floor') return 'gray noise floor'
   if (row.confidence === 'within_baseline_range') return 'gray within range'
+  if (row.confidence === 'within_baseline_distribution') return 'gray within p95'
   if (row.direction === 'improved') return 'green improved'
   return 'gray unchanged'
+}
+
+const formatGate = (row) => {
+  if (row.gateable) return 'yes'
+  const reason = row.gateReason || row.confidence || 'unknown'
+  return 'no<br><sub>' + reason + '</sub>'
 }
 
 const escapeCell = (value) => String(value ?? '-').replaceAll('|', '\\|').replaceAll('\n', '<br>')
@@ -1447,6 +1496,14 @@ const allRows = Object.values(comparison.comparisons || {}).sort((left, right) =
   if (byRank !== 0) return byRank
   return (right.delta || 0) - (left.delta || 0)
 })
+const protocolLabel = (() => {
+  const protocols = new Set(
+    allRows
+      .map((row) => row.observation?.dimensions?.measurementProtocol)
+      .filter((value) => typeof value === 'string' && value.length > 0),
+  )
+  return protocols.size > 0 ? Array.from(protocols).join(', ') : 'legacy'
+})()
 const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
 const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
 const hasComparableBaseline = comparableRows.length > 0
@@ -1458,8 +1515,8 @@ const visibleRows = (hasComparableBaseline
 const comparisonTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Probe | Baseline | Current | Change | Result | Confidence |',
-    '| --- | ---: | ---: | ---: | --- | --- |',
+    '| Probe | Baseline | Current | Change | Result | Gate | Confidence |',
+    '| --- | ---: | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
       const baselineRange = typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
@@ -1471,6 +1528,7 @@ const comparisonTable = (rows) => {
         formatValue(row.current, unit),
         formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
         formatResult(row),
+        formatGate(row),
         (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
       ].map(escapeCell).join(' | ') + ' |'
     }),
@@ -1491,12 +1549,13 @@ const currentOnlyTable = (rows) => {
 const allMeasurementsTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Status | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
-    '| --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
+    '| Status | Gate | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
+    '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
       return '| ' + [
         row.status,
+        row.gateable ? 'yes' : (row.gateReason || 'no'),
         row.target?.label || row.target?.name || 'unknown',
         row.observation?.label || row.observation?.name || 'unknown',
         dimensions(row),
@@ -1633,6 +1692,7 @@ const summaryLines = [
   '- Commit: ' + shortSha,
   '- Run: ' + runLink,
   '- Baseline: ' + baselineLabel,
+  '- Protocol: ' + protocolLabel,
   '',
   hasComparableBaseline
     ? 'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.'
@@ -1723,7 +1783,6 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
       ...standardCIEnv,
       ARTIFACT_DIR: artifactDir,
       OTEL_SERVICE_NAME: 'devenv-perf-ci',
-      DEVENV_PERF_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
       RUNNER_CLASS: (opts?.runsOn ?? linuxX64Runner).join(','),
       ...opts?.env,
     },

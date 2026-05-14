@@ -255,6 +255,7 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
     name: 'pnpm regression suite',
     run: [
       'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+      'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
       'bash nix/workspace-tools/lib/mk-pnpm-cli/tests/run.sh --skip-genie --skip-megarepo --skip-devenv-shell --skip-downstream-megarepo',
     ].join('\n'),
   }),
@@ -272,6 +273,8 @@ const extraJobs: Record<string, any> = {
       }),
       artifactName: 'devenv-perf',
       baselineSeedRunIds: ['25710204667'],
+      baselineMaxRuns: 20,
+      regressionMode: 'fail',
       setupSteps: baseSteps,
       taskProbes: [
         {
@@ -279,18 +282,24 @@ const extraJobs: Record<string, any> = {
           label: 'pnpm install task',
           group: 'workspace setup',
           description: 'Runs the cached pnpm install devenv task.',
+          warmupRepetitions: 1,
+          repetitions: 5,
         },
         {
           task: 'genie:run',
           label: 'Genie run task',
           group: 'genie',
           description: 'Runs the normal devenv genie:run task including its declared dependencies.',
+          warmupRepetitions: 1,
+          repetitions: 5,
         },
         {
           task: 'check:quick',
           label: 'Quick check task',
           group: 'quality gates',
           description: 'Runs the fast local quality gate through devenv.',
+          warmupRepetitions: 1,
+          repetitions: 5,
         },
       ],
       probes: [
@@ -300,7 +309,8 @@ const extraJobs: Record<string, any> = {
           group: 'genie',
           description:
             'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.',
-          repetitions: 3,
+          warmupRepetitions: 1,
+          repetitions: 5,
           command: [
             '$DEVENV_BIN',
             'shell',
