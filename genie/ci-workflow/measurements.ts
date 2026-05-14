@@ -1283,6 +1283,11 @@ fi
 
 if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
   can_render_pr_comment=true
+  if ! command -v gh >/dev/null 2>&1 && command -v nix >/dev/null 2>&1; then
+    if gh_out="$(nix build --no-link --print-out-paths nixpkgs#gh 2>/dev/null)"; then
+      export PATH="$gh_out/bin:$PATH"
+    fi
+  fi
   if ! command -v gh >/dev/null 2>&1; then
     echo "::notice::gh is not available; skipping CI measurement PR comment"
     can_render_pr_comment=false
