@@ -1666,12 +1666,18 @@ const currentRun = {
 const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha)
 const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
 const state = { _tag: stateTag, schemaVersion, title, runs: [currentRun, ...previousRuns].slice(0, historyLimit) }
+const gateModeLabel = (mode) => {
+  if (mode === 'fail') return 'enforced'
+  if (mode === 'warn') return 'advisory'
+  if (mode === 'off') return 'off'
+  return mode || 'unknown'
+}
 const historyRows = state.runs.slice(1).map((run) => {
   const link = run.runUrl ? '[' + run.shortSha + '](' + run.runUrl + ')' : run.shortSha
   const top = Array.isArray(run.visibleRows) && run.visibleRows.length > 0
     ? run.visibleRows.slice(0, 3).map((row) => row.status + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
     : 'No regressions'
-  return '| ' + [link, run.status, run.mode, top].map(escapeCell).join(' | ') + ' |'
+  return '| ' + [link, run.status, gateModeLabel(run.mode), top].map(escapeCell).join(' | ') + ' |'
 })
 
 const runLink = runUrl ? '[workflow run](' + runUrl + ')' : 'workflow run unavailable'
@@ -1688,7 +1694,7 @@ const summaryLines = [
   '## ' + title,
   '',
   '- Status: ' + statusWord,
-  '- Mode: ' + (comparison.mode || 'unknown'),
+  '- Gate: ' + gateModeLabel(comparison.mode),
   '- Commit: ' + shortSha,
   '- Run: ' + runLink,
   '- Baseline: ' + baselineLabel,
@@ -1716,7 +1722,7 @@ if (historyRows.length > 0) {
     '<details>',
     '<summary>Previous runs</summary>',
     '',
-    '| Commit | Status | Mode | Top changes |',
+    '| Commit | Status | Gate | Top changes |',
     '| --- | --- | --- | --- |',
     ...historyRows,
     '',
