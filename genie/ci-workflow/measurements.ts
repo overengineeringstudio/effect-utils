@@ -1249,7 +1249,7 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### ${dollar}{CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
     echo ""
-    jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
+    jq -r '"- Status: " + .status + "\n- Gate: " + (if .mode == "fail" then "enforced" elif .mode == "warn" then "advisory" elif .mode == "off" then "off" else (.mode // "unknown") end) + "\n- Baseline: " + .baselineDir' "$comparison_file"
     echo ""
     echo "| Status | Gate | Target | Observation | Current | Baseline | Delta | Ratio |"
     echo "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"
