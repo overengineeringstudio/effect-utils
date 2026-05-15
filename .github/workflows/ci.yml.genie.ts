@@ -15,6 +15,10 @@ import {
   savePnpmStateStep,
   standardCIEnv,
   ciWorkflow,
+  ciMeasurementBaselineCheckoutStep,
+  ciMeasurementBaselineWorkflowDispatchInputs,
+  ciMeasurementNotBaselineBackfillPredicate,
+  ciMeasurementSubjectEnv,
   ciMeasurementsCommentPermissions,
   devenvPerfJob,
   namespaceRunner,
@@ -30,6 +34,7 @@ import { type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runti
 
 const baseSteps = [
   checkoutStep(),
+  ciMeasurementBaselineCheckoutStep,
   installNixStep(),
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
@@ -140,8 +145,10 @@ const nixDiagnosticsSummaryStep = {
 } as const
 
 const jobTimeoutMinutes = 30
+const normalCiIf = `\${{ ${ciMeasurementNotBaselineBackfillPredicate} }}`
 
 const job = (step: { name: string; run: string }, extraSteps: readonly any[] = []) => ({
+  if: normalCiIf,
   'runs-on': namespaceRunner({
     profile: 'namespace-profile-linux-x86-64',
     runId: '${{ github.run_id }}',
@@ -161,6 +168,7 @@ const job = (step: { name: string; run: string }, extraSteps: readonly any[] = [
 })
 
 const multiPlatformJob = (step: { name: string; run: string }) => ({
+  if: normalCiIf,
   strategy: {
     'fail-fast': false,
     matrix: {
@@ -186,6 +194,7 @@ const multiPlatformJob = (step: { name: string; run: string }) => ({
 
 const strictNixJobBaseSteps = [
   checkoutStep(),
+  ciMeasurementBaselineCheckoutStep,
   installNixStep(),
   cachixCliBuildStep,
   cachixStep({ name: 'overeng-effect-utils', authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}' }),
@@ -193,6 +202,7 @@ const strictNixJobBaseSteps = [
 ] as const
 
 const multiPlatformStrictNixJob = (step: ReturnType<typeof validateColdPnpmDepsStep>) => ({
+  if: normalCiIf,
   strategy: {
     'fail-fast': false,
     matrix: {
@@ -275,6 +285,7 @@ const extraJobs: Record<string, any> = {
       baselineSeedRunIds: ['25710204667'],
       baselineMaxRuns: 20,
       regressionMode: 'fail',
+      env: ciMeasurementSubjectEnv,
       setupSteps: baseSteps,
       taskProbes: [
         {
@@ -336,6 +347,7 @@ const extraJobs: Record<string, any> = {
   },
   /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
   'test-integration-notion': {
+    if: normalCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -362,6 +374,7 @@ const extraJobs: Record<string, any> = {
 
 const deployJobs: Record<string, any> = {
   'deploy-storybooks': {
+    if: normalCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -396,6 +409,7 @@ export default ciWorkflow({
     pull_request: { branches: ['main'] },
     workflow_dispatch: {
       inputs: {
+        ...ciMeasurementBaselineWorkflowDispatchInputs,
         debug_force_nix_diagnostics_failure: {
           description:
             'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary',
@@ -410,13 +424,16 @@ export default ciWorkflow({
     ...jobs,
     ...extraJobs,
     ...deployJobs,
-    'notify-alignment': notifyAlignmentJob({
-      targetRepo: 'schickling/megarepo-all',
-      needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
-      runner: [
-        'namespace-profile-linux-x86-64',
-        'namespace-features:github.run-id=${{ github.run_id }}',
-      ],
-    }),
+    'notify-alignment': {
+      ...notifyAlignmentJob({
+        targetRepo: 'schickling/megarepo-all',
+        needs: [...Object.keys(jobs), ...Object.keys(deployJobs)],
+        runner: [
+          'namespace-profile-linux-x86-64',
+          'namespace-features:github.run-id=${{ github.run_id }}',
+        ],
+      }),
+      if: normalCiIf,
+    },
   },
 } satisfies GitHubWorkflowArgs)

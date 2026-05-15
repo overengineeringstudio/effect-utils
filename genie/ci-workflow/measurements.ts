@@ -112,6 +112,45 @@ export const ciMeasurementsCommentPermissions = {
   'pull-requests': 'write',
 } as const
 
+/** Workflow-dispatch inputs used to recreate measurement baselines for older commits. */
+export const ciMeasurementBaselineWorkflowDispatchInputs = {
+  measurement_baseline_ref: {
+    description:
+      'Optional ref/SHA to checkout before running CI measurement jobs. Used to backfill comparable baseline artifacts.',
+    required: false,
+    default: '',
+    type: 'string',
+  },
+  measurement_baseline_label: {
+    description: 'Optional human label for a measurement baseline backfill run, for example PR number.',
+    required: false,
+    default: '',
+    type: 'string',
+  },
+} as const
+
+export const ciMeasurementBaselineBackfillPredicate =
+  "github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != ''" as const
+export const ciMeasurementNotBaselineBackfillPredicate =
+  `!(${ciMeasurementBaselineBackfillPredicate})` as const
+
+/** Conditional checkout step that replaces the default checkout with the baseline subject. */
+export const ciMeasurementBaselineCheckoutStep = {
+  name: 'Checkout CI measurement baseline ref',
+  if: `\${{ ${ciMeasurementBaselineBackfillPredicate} }}`,
+  uses: 'actions/checkout@v6',
+  with: {
+    ref: '${{ inputs.measurement_baseline_ref }}',
+  },
+} as const
+
+/** Subject metadata env for measurement artifacts produced by a baseline backfill run. */
+export const ciMeasurementSubjectEnv = {
+  CI_MEASUREMENT_SUBJECT_REF: '${{ inputs.measurement_baseline_ref || github.ref }}',
+  CI_MEASUREMENT_SUBJECT_SHA: '${{ inputs.measurement_baseline_ref || github.sha }}',
+  CI_MEASUREMENT_SUBJECT_LABEL: '${{ inputs.measurement_baseline_label }}',
+} as const
+
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
 export type DevenvPerfTaskProbe =
   | string
@@ -499,8 +538,8 @@ jq -n \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
-  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
-  --arg headSha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg ref "${dollar}{CI_MEASUREMENT_SUBJECT_REF:-${dollar}{GITHUB_REF:-unknown}}" \
+  --arg headSha "${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
   --arg baseSha "${dollar}{GITHUB_BASE_SHA:-}" \
   --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
   --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \
@@ -829,8 +868,8 @@ jq -n \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
-  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
-  --arg headSha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg ref "${dollar}{CI_MEASUREMENT_SUBJECT_REF:-${dollar}{GITHUB_REF:-unknown}}" \
+  --arg headSha "${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
   --arg baseSha "${dollar}{GITHUB_BASE_SHA:-}" \
   --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
   --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \

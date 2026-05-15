@@ -49,6 +49,11 @@ export {
 } from './ci-workflow/shared.ts'
 export {
   ciMeasurementMetrics,
+  ciMeasurementBaselineBackfillPredicate,
+  ciMeasurementBaselineCheckoutStep,
+  ciMeasurementBaselineWorkflowDispatchInputs,
+  ciMeasurementNotBaselineBackfillPredicate,
+  ciMeasurementSubjectEnv,
   ciMeasurementsArtifactStep,
   ciMeasurementsCommentPermissions,
   compareCiMeasurementsStep,
