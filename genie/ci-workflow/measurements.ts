@@ -149,6 +149,8 @@ export const ciMeasurementSubjectEnv = {
   CI_MEASUREMENT_SUBJECT_REF: '${{ inputs.measurement_baseline_ref || github.ref }}',
   CI_MEASUREMENT_SUBJECT_SHA: '${{ inputs.measurement_baseline_ref || github.sha }}',
   CI_MEASUREMENT_SUBJECT_LABEL: '${{ inputs.measurement_baseline_label }}',
+  CI_MEASUREMENT_ALLOW_PROBE_FAILURES:
+    "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}",
 } as const
 
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
@@ -502,9 +504,15 @@ measure() {
   json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file" "$gate_policy"
 
   if [ "$status" -ne 0 ]; then
-    echo "::error::$id failed after ${dollar}{duration_ms}ms; stderr tail follows"
+    if [ "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" = "1" ]; then
+      echo "::warning::$id failed after ${dollar}{duration_ms}ms; keeping earlier successful baseline probes and excluding this failed probe from numeric observations"
+    else
+      echo "::error::$id failed after ${dollar}{duration_ms}ms; stderr tail follows"
+    fi
     tail -80 "$stderr" || true
-    return "$status"
+    if [ "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" != "1" ]; then
+      return "$status"
+    fi
   fi
 }
 
@@ -588,6 +596,7 @@ jq -n \
     target: { kind: "devenv", id: "dev-shell", name: "dev-shell", label: "Dev shell", group: "devenv", system: $targetSystem },
     observations: (
       $timings[0]
+      | map(select(.status == 0))
       | map({
           id: ("devenv." + .id + ".duration"),
           label: .label,
