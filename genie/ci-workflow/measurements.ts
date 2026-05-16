@@ -855,7 +855,7 @@ target_group=${shellSingleQuote(targetGroup)}
 artifact_file=${artifactFileAssignment}
 ${targetSystemAssignment}
 
-out_path="$(nix build --no-link --print-out-paths "$installable")"
+out_path="$(nix build --no-update-lock-file --no-link --print-out-paths "$installable")"
 path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
 paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
 
