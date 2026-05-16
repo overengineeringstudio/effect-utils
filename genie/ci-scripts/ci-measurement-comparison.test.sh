@@ -86,8 +86,9 @@ write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 legacy "$policy
 run_compare
 actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
 actual_gate="$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")"
-if [ "$actual_status" != "partial" ] || [ "$actual_gate" != "missing_baseline" ]; then
-  echo "expected protocol mismatch to be missing_baseline; got status=$actual_status gate=$actual_gate" >&2
+actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "partial" ] || [ "$actual_gate" != "missing_baseline" ] || [ "$actual_enforceable" != "false" ]; then
+  echo "expected protocol mismatch to be missing_baseline and unenforceable; got status=$actual_status gate=$actual_gate enforceable=$actual_enforceable" >&2
   exit 1
 fi
 
@@ -97,8 +98,9 @@ write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-war
 run_compare
 actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
 actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
-if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ]; then
-  echo "expected confirmed regression to fail; got status=$actual_status row=$actual_row" >&2
+actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_enforceable" != "true" ]; then
+  echo "expected confirmed regression to fail and be enforceable; got status=$actual_status row=$actual_row enforceable=$actual_enforceable" >&2
   exit 1
 fi
 
@@ -110,8 +112,11 @@ run_compare
 actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
 actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
 actual_gate="$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")"
-if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "low_baseline_count" ]; then
-  echo "expected low baseline count to be partial but not a regression; got status=$actual_status row=$actual_row gate=$actual_gate" >&2
+actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
+actual_gateable_count="$(jq -r '.readiness.gateableCount' "$tmp_dir/comparison.json")"
+actual_enabled_count="$(jq -r '.readiness.enabledCount' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "low_baseline_count" ] || [ "$actual_enforceable" != "false" ] || [ "$actual_gateable_count" != "0" ] || [ "$actual_enabled_count" != "1" ]; then
+  echo "expected low baseline count to be partial but not enforceable; got status=$actual_status row=$actual_row gate=$actual_gate enforceable=$actual_enforceable readiness=$actual_gateable_count/$actual_enabled_count" >&2
   exit 1
 fi
 

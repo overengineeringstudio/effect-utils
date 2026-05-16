@@ -415,6 +415,10 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('baselineSources')
     expect(generatedCiWorkflowYamlSource).toContain('low_baseline_count')
     expect(generatedCiWorkflowYamlSource).toContain('low_current_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('readiness:$readiness')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'enforceable: (.enabledCount == .gateableCount)',
+    )
     expect(generatedCiWorkflowYamlSource).toContain('within_baseline_range')
     expect(generatedCiWorkflowYamlSource).toContain(
       'elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"',
@@ -471,6 +475,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.',
     )
+    expect(ciWorkflowSource).toContain("'- Readiness: ' + readinessLabel")
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
     expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')
     expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')

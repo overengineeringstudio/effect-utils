@@ -1306,10 +1306,25 @@ jq -n \
         else "pass"
         end
       ) as $status
+    | (
+        [$comparisons[]?]
+        | {
+            enabledCount: (map(select((if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end))) | length),
+            gateableCount: (map(select(.gateable == true)) | length),
+            missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
+            lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
+            lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length)
+          }
+        | . + {
+            nonGateableCount: (.enabledCount - .gateableCount),
+            enforceable: (.enabledCount == .gateableCount)
+          }
+      ) as $readiness
     | {
         schemaVersion:$schemaVersion,
         status:$status,
         mode:$mode,
+        readiness:$readiness,
         currentDir:$currentDir,
         baselineDir:$baselineDir,
         comparisons:$comparisons
@@ -1758,6 +1773,10 @@ const renderPerfChangeSvg = (rows) => {
 }
 
 const statusWord = comparison.status || 'unknown'
+const readiness = comparison.readiness || {}
+const readinessLabel = readiness.enforceable
+  ? 'enforceable'
+  : 'partial (' + (readiness.gateableCount ?? 0) + '/' + (readiness.enabledCount ?? 0) + ' enabled observations gateable)'
 const runUrl = runId ? serverUrl + '/' + repo + '/actions/runs/' + runId : undefined
 const shortSha = (headSha || sha || 'unknown').slice(0, 7)
 const existingState = extractState(existing?.body)
@@ -1817,6 +1836,7 @@ const summaryLines = [
   '- Commit: ' + shortSha,
   '- Run: ' + runLink,
   '- Baseline: ' + baselineLabel,
+  '- Readiness: ' + readinessLabel,
   '- Protocol: ' + protocolLabel,
   '',
   hasComparableBaseline
