@@ -266,13 +266,7 @@ const renderDevenvPerfScript = (
       group: 'devenv shell',
       description: 'Evaluates the dev shell with native devenv JSON tracing enabled.',
       command: [
-        '$DEVENV_BIN',
-        '--trace-to',
-        'json:file:$trace_file',
-        'shell',
-        '--no-reload',
-        '--',
-        'true',
+        '$DEVENV_SHELL_TRACE_COMMAND',
       ],
       traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
     },
@@ -450,6 +444,17 @@ measure() {
     for arg in "$@"; do
       case "$arg" in
         '$DEVENV_BIN') expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}") ;;
+        '$DEVENV_SHELL_TRACE_COMMAND')
+          if "${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" --help 2>&1 | grep -q -- '--trace-to'; then
+            expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" "--trace-to" "json:file:$sample_trace" "shell" "--no-reload" "--" "true")
+          elif "${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" --help 2>&1 | grep -q -- '--trace-format'; then
+            expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" "--trace-format" "json" "shell" "--no-reload" "--" "true")
+            sample_trace=""
+          else
+            expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" "shell" "--no-reload" "--" "true")
+            sample_trace=""
+          fi
+          ;;
         '$ARTIFACT_DIR'*) expanded+=("${dollar}{ARTIFACT_DIR}${dollar}{arg#'$ARTIFACT_DIR'}") ;;
         'json:file:$trace_file') expanded+=("json:file:$sample_trace") ;;
         '$trace_file') expanded+=("file:$sample_trace") ;;

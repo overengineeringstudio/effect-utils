@@ -2684,6 +2684,17 @@ jobs:
               for arg in "$@"; do
                 case "$arg" in
                   '$DEVENV_BIN') expanded+=("${DEVENV_BIN:?DEVENV_BIN not set}") ;;
+                  '$DEVENV_SHELL_TRACE_COMMAND')
+                    if "${DEVENV_BIN:?DEVENV_BIN not set}" --help 2>&1 | grep -q -- '--trace-to'; then
+                      expanded+=("${DEVENV_BIN:?DEVENV_BIN not set}" "--trace-to" "json:file:$sample_trace" "shell" "--no-reload" "--" "true")
+                    elif "${DEVENV_BIN:?DEVENV_BIN not set}" --help 2>&1 | grep -q -- '--trace-format'; then
+                      expanded+=("${DEVENV_BIN:?DEVENV_BIN not set}" "--trace-format" "json" "shell" "--no-reload" "--" "true")
+                      sample_trace=""
+                    else
+                      expanded+=("${DEVENV_BIN:?DEVENV_BIN not set}" "shell" "--no-reload" "--" "true")
+                      sample_trace=""
+                    fi
+                    ;;
                   '$ARTIFACT_DIR'*) expanded+=("${ARTIFACT_DIR}${arg#'$ARTIFACT_DIR'}") ;;
                   'json:file:$trace_file') expanded+=("json:file:$sample_trace") ;;
                   '$trace_file') expanded+=("file:$sample_trace") ;;
@@ -2737,7 +2748,7 @@ jobs:
             fi
           }
 
-          measure 'shell_eval_traced' 'Shell eval with OTEL trace' 'devenv shell' 'Evaluates the dev shell with native devenv JSON tracing enabled.' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '0' '1' '{"enabled":false,"minBaselineSources":10,"minCurrentSamples":3,"warnRatio":1.25,"failRatio":1.5,"warnAbs":1.5,"failAbs":3,"noiseFloor":0.5}' '$DEVENV_BIN' '--trace-to' 'json:file:$trace_file' 'shell' '--no-reload' '--' 'true'
+          measure 'shell_eval_traced' 'Shell eval with OTEL trace' 'devenv shell' 'Evaluates the dev shell with native devenv JSON tracing enabled.' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '0' '1' '{"enabled":false,"minBaselineSources":10,"minCurrentSamples":3,"warnRatio":1.25,"failRatio":1.5,"warnAbs":1.5,"failAbs":3,"noiseFloor":0.5}' '$DEVENV_SHELL_TRACE_COMMAND'
           measure 'shell_eval_warm' 'Warm shell eval' 'devenv shell' 'Evaluates a warm dev shell without reloading direnv state.' '' '1' '5' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'true'
           measure 'tasks_list' 'devenv tasks list' 'devenv cli' 'Lists devenv tasks to measure task graph loading overhead.' '' '1' '9' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":2,"failRatio":3,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1}' '$DEVENV_BIN' 'tasks' 'list'
           measure 'processes_help' 'devenv processes --help' 'devenv cli' 'Loads the devenv processes command help path.' '' '1' '9' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":2,"failRatio":3,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1}' '$DEVENV_BIN' 'processes' '--help'
