@@ -690,17 +690,23 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
 
 mkdir -p "$BASELINE_OUTPUT_DIR"
 
-if ! command -v gh >/dev/null 2>&1; then
-  echo "::notice::gh is not available; skipping previous artifact download"
-  exit 0
+if command -v gh >/dev/null 2>&1; then
+  GH_BIN="$(command -v gh)"
+else
+  echo "::notice::gh is not on PATH; resolving GitHub CLI through Nix"
+  if ! GH_BIN="$(nix build --no-link --print-out-paths nixpkgs#gh 2>/dev/null)/bin/gh"; then
+    echo "::notice::unable to resolve GitHub CLI through Nix; skipping previous artifact download"
+    exit 0
+  fi
 fi
+echo "Using GitHub CLI: $GH_BIN"
 
 repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
 branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
 
 candidate_runs="$(
-  gh run list \
+  "$GH_BIN" run list \
     --repo "$repo" \
     --workflow "$workflow" \
     --branch "$branch" \
@@ -739,7 +745,7 @@ for candidate_run in $candidate_runs; do
   fi
 
   artifact_json="$(
-    gh api "repos/$repo/actions/runs/$candidate_run/artifacts" \
+    "$GH_BIN" api "repos/$repo/actions/runs/$candidate_run/artifacts" \
       | jq --arg artifactName "$BASELINE_ARTIFACT_NAME" '.artifacts
         | map(select(.expired == false))
         | map(select(.name == $artifactName or (.name | startswith($artifactName + "-"))))
@@ -753,7 +759,7 @@ for candidate_run in $candidate_runs; do
     current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
     current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
     mkdir -p "$current_output_dir"
-    if gh run download "$candidate_run" \
+    if "$GH_BIN" run download "$candidate_run" \
       --repo "$repo" \
       --name "$current_artifact_name" \
       --dir "$current_output_dir"; then
