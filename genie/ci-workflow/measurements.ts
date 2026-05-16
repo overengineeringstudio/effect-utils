@@ -1029,8 +1029,7 @@ current_index="$(mktemp)"
 baseline_index="$(mktemp)"
 find "$current_dir" -path "$baseline_dir" -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
 {
-  find "$baseline_dir" -maxdepth 1 -name measurements.json -type f -print
-  find "$baseline_dir" -mindepth 2 -maxdepth 2 -name measurements.json -type f -print
+  find "$baseline_dir" -name measurements.json -type f -print
 } | sort -u >"$baseline_index" || true
 
 if [ ! -s "$current_index" ]; then
