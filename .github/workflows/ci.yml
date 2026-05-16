@@ -3697,7 +3697,12 @@ jobs:
               ratio: formatRatio(row.ratio),
             })),
           }
-          const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha)
+          const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visibleRows.some((row) =>
+            row.status !== 'missing_baseline' &&
+            row.baseline !== 'n/a' &&
+            row.ratio !== 'n/a'
+          )
+          const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha && hasComparableHistory(run))
           const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
           const state = { _tag: stateTag, schemaVersion, title, runs: [currentRun, ...previousRuns].slice(0, historyLimit) }
           const gateModeLabel = (mode) => {
