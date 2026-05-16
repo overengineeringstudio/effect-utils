@@ -2422,6 +2422,8 @@ jobs:
           BASELINE_BRANCH: ${{ github.base_ref || github.ref_name }}
           BASELINE_SEED_RUNS_JSON: '[{"runId":"25959801150","label":"PR #655","sha":"df0420cd0397ffc6928d3c6ccc9c23052d6bc255","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959802067","label":"PR #657","sha":"62833cba5d83b1c13462728edeafa684e61c006f","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959802958","label":"PR #656","sha":"21029998522a0e9435df151259611650fb948a20","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959803805","label":"PR #651","sha":"95515f971b27ef279e39c982f52e46cf9e8270e9","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959804678","label":"PR #654","sha":"58e96b9a2b87b3703de6920b6d9571f3805d0171","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959805512","label":"PR #653","sha":"d1cca16339f19d7e1a27b001edc4c2c7ecd13dc4","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959806473","label":"PR #652","sha":"acd6c63f5e235e7e5f2710fc62b2231e0ba904a6","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959807303","label":"PR #648","sha":"a5a07703ff951fb7396a40844e9491d88ed40edf","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959808097","label":"PR #649","sha":"360ff47c59a206064711dfcb6c610afd0e6b0d53","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959808775","label":"PR #647","sha":"8d1810b2c359ae95f245e56329018aab5020f8c0","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959809449","label":"PR #646","sha":"89e1396766ccd2a813680acd440cb78f540ca6c1","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959810069","label":"PR #643","sha":"239715520370436901a3f2218d162dc7b12f4b4c","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959810666","label":"PR #641","sha":"6b3751b4684ba45f496f1a1bff8b86ef6ba8275b","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959811321","label":"PR #640","sha":"fed50ae2502ac0a65395bbef5af43fcf384d5d04","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959811864","label":"PR #639","sha":"0e03df2c6f20e4d154f286fd69a4e2980d21a12d","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959812634","label":"PR #636","sha":"7efdbee4b571f2c80f5b6173bc9a84b51fbef5eb","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959813189","label":"PR #638","sha":"350d1b98baa943dcae63412eeffded7b5160bc8a","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959813761","label":"PR #637","sha":"f25336193b9f6b042eb027eca27acc4cc75a69d6","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959814335","label":"PR #634","sha":"4ba441d4ad8b6c49e9ee03d9cdfd2f04a129b714","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."},{"runId":"25959814835","label":"PR #632","sha":"1ad5fd735c7f45ad5e07c8033e5b68a642ada69c","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."}]'
           BASELINE_MAX_RUNS: '20'
+          BASELINE_MAX_CANDIDATE_RUNS: '60'
+          BASELINE_REQUIRED_OBSERVATIONS_JSON: '[{"id":"devenv.shell_eval_warm.duration","minSources":10},{"id":"devenv.tasks_list.duration","minSources":10},{"id":"devenv.processes_help.duration","minSources":10},{"id":"devenv.task_pnpm_install.duration","minSources":10},{"id":"devenv.task_genie_run.duration","minSources":10},{"id":"devenv.task_check_quick.duration","minSources":10},{"id":"devenv.genie_check_direct.duration","minSources":10}]'
         run: |
           set -euo pipefail
 
@@ -2442,13 +2444,25 @@ jobs:
           workflow="${BASELINE_WORKFLOW_NAME:-CI}"
           branch="${BASELINE_BRANCH:-${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-main}}}"
           seed_runs_file="$BASELINE_OUTPUT_DIR/baseline-seed-runs.json"
+          required_observations_file="$BASELINE_OUTPUT_DIR/baseline-required-observations.json"
           printf '%s' "${BASELINE_SEED_RUNS_JSON:-[]}" >"$seed_runs_file"
+          printf '%s' "${BASELINE_REQUIRED_OBSERVATIONS_JSON:-[]}" >"$required_observations_file"
           if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.runId | type == "string")) else false end' \
             "$seed_runs_file" >/dev/null; then
             echo "::error::BASELINE_SEED_RUNS_JSON must be an array of objects with string runId fields"
             exit 1
           fi
+          if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.id | type == "string") and (.minSources | type == "number")) else false end' \
+            "$required_observations_file" >/dev/null; then
+            echo "::error::BASELINE_REQUIRED_OBSERVATIONS_JSON must be an array of objects with string id and numeric minSources fields"
+            exit 1
+          fi
           seed_run_ids="$(jq -r '.[].runId' "$seed_runs_file")"
+          required_observation_count="$(jq 'length' "$required_observations_file")"
+          max_candidate_runs="${BASELINE_MAX_CANDIDATE_RUNS:-${BASELINE_MAX_RUNS:-5}}"
+          if ! [[ "$max_candidate_runs" =~ ^[0-9]+$ ]] || [ "$max_candidate_runs" -lt 1 ]; then
+            max_candidate_runs=1
+          fi
 
           candidate_runs="$(
             "$GH_BIN" run list \
@@ -2458,7 +2472,7 @@ jobs:
               --event push \
               --status success \
               --json databaseId,headSha \
-              --limit 20 \
+              --limit "$max_candidate_runs" \
               --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
           )"
 
@@ -2469,6 +2483,45 @@ jobs:
           if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
             max_runs=1
           fi
+
+          write_baseline_observation_counts() {
+            local measurement_index="$BASELINE_OUTPUT_DIR/baseline-measurement-files.txt"
+            local counts_file="$BASELINE_OUTPUT_DIR/baseline-observation-counts.json"
+            find "$BASELINE_OUTPUT_DIR" \
+              -mindepth 2 \
+              -maxdepth 2 \
+              -name measurements.json \
+              -type f \
+              -print \
+              | sort >"$measurement_index" || true
+
+            if [ -s "$measurement_index" ]; then
+              xargs -r jq -s \
+                --slurpfile required "$required_observations_file" \
+                '
+                  ([.[] | (.observations // [])[]? | select(.value | type == "number") | .id] | sort | group_by(.) | map({id: .[0], sources: length})) as $counts
+                  | ($required[0] // []) as $requiredRows
+                  | {
+                      counts: $counts,
+                      required: (
+                        $requiredRows
+                        | map(. as $requiredRow | ($counts | map(select(.id == $requiredRow.id)) | .[0].sources // 0) as $actual | $requiredRow + {sources:$actual, satisfied:($actual >= $requiredRow.minSources)})
+                      )
+                    }
+                ' <"$measurement_index" >"$counts_file"
+            else
+              jq -n --slurpfile required "$required_observations_file" \
+                '{counts: [], required: (($required[0] // []) | map(. + {sources:0, satisfied:false}))}' >"$counts_file"
+            fi
+          }
+
+          baseline_requirements_satisfied() {
+            if [ "$required_observation_count" -eq 0 ]; then
+              return 1
+            fi
+            write_baseline_observation_counts
+            jq -e '.required | all(.satisfied == true)' "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" >/dev/null
+          }
 
           run_id=""
           artifact_name=""
@@ -2484,7 +2537,14 @@ jobs:
             if grep -qxF "$candidate_run" "$seen_runs_file"; then
               continue
             fi
-            if [ "$(wc -l <"$downloaded_runs_file" | tr -d ' ')" -ge "$max_runs" ]; then
+            downloaded_count="$(wc -l <"$downloaded_runs_file" | tr -d ' ')"
+            if [ "$downloaded_count" -ge "$max_runs" ]; then
+              if baseline_requirements_satisfied; then
+                break
+              fi
+              echo "::notice::downloaded $downloaded_count baseline artifact(s), but required observation counts are not satisfied yet; continuing through bounded candidate history"
+            fi
+            if [ "$(wc -l <"$seen_runs_file" | tr -d ' ')" -ge "$max_candidate_runs" ]; then
               break
             fi
             printf '%s\n' "$candidate_run" >>"$seen_runs_file"
@@ -2526,6 +2586,8 @@ jobs:
             fi
           done
 
+          write_baseline_observation_counts
+
           if [ -z "$run_id" ] || [ -z "$artifact_name" ]; then
             echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
             exit 0
@@ -2534,6 +2596,7 @@ jobs:
           jq -n \
             --slurpfile runs "$downloaded_runs_file" \
             --slurpfile seedRuns "$seed_runs_file" \
+            --slurpfile observationCounts "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" \
             --argjson schemaVersion 1 \
             --arg repository "$repo" \
             --arg workflow "$workflow" \
@@ -2551,7 +2614,8 @@ jobs:
               artifactName: $artifactName,
               artifactId: $artifactId,
               seedRuns: ($seedRuns[0] // []),
-              runs: $runs
+              runs: $runs,
+              observationCounts: ($observationCounts[0] // null)
             }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
 
           echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact(s), latest $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"

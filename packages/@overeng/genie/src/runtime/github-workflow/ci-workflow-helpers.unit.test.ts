@@ -458,6 +458,15 @@ describe('ci workflow devenv perf helpers', () => {
       'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
     )
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_SEED_RUNS_JSON:')
+    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_REQUIRED_OBSERVATIONS_JSON:')
+    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_MAX_CANDIDATE_RUNS:')
+    expect(generatedCiWorkflowYamlSource).toContain('"id":"devenv.task_check_quick.duration"')
+    expect(ciWorkflowSource).toContain(
+      'requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]',
+    )
+    expect(ciWorkflowSource).toContain('baselineMaxCandidateRuns?: number')
+    expect(ciWorkflowSource).toContain('baseline_requirements_satisfied')
+    expect(ciWorkflowSource).toContain('observationCounts: ($observationCounts[0] // null)')
     expect(generatedCiWorkflowYamlSource).toContain('"runId":"25959801150"')
     expect(generatedCiWorkflowYamlSource).toContain('"runId":"25959814835"')
     expect(generatedCiWorkflowYamlSource).toContain('"label":"PR #655"')

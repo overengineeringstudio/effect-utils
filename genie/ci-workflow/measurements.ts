@@ -82,6 +82,8 @@ export type GitHubPreviousArtifactStepOptions = {
   readonly seedRuns?: readonly CiMeasurementBaselineSeedRun[]
   readonly seedRunIds?: readonly string[]
   readonly maxRuns?: number
+  readonly maxCandidateRuns?: number
+  readonly requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]
   readonly tokenExpression?: string
 }
 
@@ -92,6 +94,11 @@ export type CiMeasurementBaselineSeedRun = {
   readonly source?: 'manual-backfill' | 'main-history' | 'pr-history' | string
   readonly artifacts?: readonly string[]
   readonly notes?: string
+}
+
+export type CiMeasurementRequiredBaselineObservation = {
+  readonly id: string
+  readonly minSources: number
 }
 
 export type CiMeasurementsComparisonStepOptions = {
@@ -186,6 +193,7 @@ export type DevenvPerfJobOptions = {
   readonly baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]
   readonly baselineSeedRunIds?: readonly string[]
   readonly baselineMaxRuns?: number
+  readonly baselineMaxCandidateRuns?: number
   readonly setupSteps?: readonly DevenvPerfSetupStep[]
   readonly env?: Record<string, string>
   readonly taskProbes?: readonly DevenvPerfTaskProbe[]
@@ -270,50 +278,66 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
   }
 }
 
+const devenvPerfProbes = (
+  opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>,
+): readonly DevenvPerfProbe[] => [
+  {
+    id: 'shell_eval_traced',
+    label: 'Shell eval with OTEL trace',
+    group: 'devenv shell',
+    description: 'Evaluates the dev shell with native devenv JSON tracing enabled.',
+    command: [
+      '$DEVENV_SHELL_TRACE_COMMAND',
+    ],
+    traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
+  },
+  {
+    id: 'shell_eval_warm',
+    label: 'Warm shell eval',
+    group: 'devenv shell',
+    description: 'Evaluates a warm dev shell without reloading direnv state.',
+    warmupRepetitions: 1,
+    repetitions: 5,
+    command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
+  },
+  {
+    id: 'tasks_list',
+    label: 'devenv tasks list',
+    group: 'devenv cli',
+    description: 'Lists devenv tasks to measure task graph loading overhead.',
+    warmupRepetitions: 1,
+    repetitions: 9,
+    command: ['$DEVENV_BIN', 'tasks', 'list'],
+  },
+  {
+    id: 'processes_help',
+    label: 'devenv processes --help',
+    group: 'devenv cli',
+    description: 'Loads the devenv processes command help path.',
+    warmupRepetitions: 1,
+    repetitions: 9,
+    command: ['$DEVENV_BIN', 'processes', '--help'],
+  },
+  ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
+  ...opts.probes,
+]
+
+const devenvPerfRequiredBaselineObservations = (
+  probes: readonly DevenvPerfProbe[],
+): readonly CiMeasurementRequiredBaselineObservation[] =>
+  probes
+    .map((probe) => ({
+      id: `devenv.${probe.id}.duration`,
+      minSources: devenvPerfGatePolicy(probe).minBaselineSources ?? 1,
+      enabled: devenvPerfGatePolicy(probe).enabled ?? true,
+    }))
+    .filter((probe) => probe.enabled)
+    .map(({ id, minSources }) => ({ id, minSources }))
+
 const renderDevenvPerfScript = (
   opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>,
 ) => {
-  const probes: readonly DevenvPerfProbe[] = [
-    {
-      id: 'shell_eval_traced',
-      label: 'Shell eval with OTEL trace',
-      group: 'devenv shell',
-      description: 'Evaluates the dev shell with native devenv JSON tracing enabled.',
-      command: [
-        '$DEVENV_SHELL_TRACE_COMMAND',
-      ],
-      traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
-    },
-    {
-      id: 'shell_eval_warm',
-      label: 'Warm shell eval',
-      group: 'devenv shell',
-      description: 'Evaluates a warm dev shell without reloading direnv state.',
-      warmupRepetitions: 1,
-      repetitions: 5,
-      command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
-    },
-    {
-      id: 'tasks_list',
-      label: 'devenv tasks list',
-      group: 'devenv cli',
-      description: 'Lists devenv tasks to measure task graph loading overhead.',
-      warmupRepetitions: 1,
-      repetitions: 9,
-      command: ['$DEVENV_BIN', 'tasks', 'list'],
-    },
-    {
-      id: 'processes_help',
-      label: 'devenv processes --help',
-      group: 'devenv cli',
-      description: 'Loads the devenv processes command help path.',
-      warmupRepetitions: 1,
-      repetitions: 9,
-      command: ['$DEVENV_BIN', 'processes', '--help'],
-    },
-    ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
-    ...opts.probes,
-  ]
+  const probes = devenvPerfProbes(opts)
 
   return String.raw`set -euo pipefail
 
@@ -695,6 +719,9 @@ const ciMeasurementBaselineSeedRunsJson = (opts: GitHubPreviousArtifactStepOptio
       [],
   )
 
+const ciMeasurementRequiredObservationsJson = (opts: GitHubPreviousArtifactStepOptions) =>
+  JSON.stringify(opts.requiredObservations ?? [])
+
 export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactStepOptions) =>
   ({
     name: `Download previous artifact: ${opts.artifactName}`,
@@ -707,6 +734,8 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
       BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
       BASELINE_SEED_RUNS_JSON: ciMeasurementBaselineSeedRunsJson(opts),
       BASELINE_MAX_RUNS: String(opts.maxRuns ?? 5),
+      BASELINE_MAX_CANDIDATE_RUNS: String(opts.maxCandidateRuns ?? Math.max((opts.maxRuns ?? 5) * 3, 20)),
+      BASELINE_REQUIRED_OBSERVATIONS_JSON: ciMeasurementRequiredObservationsJson(opts),
     },
     run: String.raw`set -euo pipefail
 
@@ -727,13 +756,25 @@ repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
 branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
 seed_runs_file="$BASELINE_OUTPUT_DIR/baseline-seed-runs.json"
+required_observations_file="$BASELINE_OUTPUT_DIR/baseline-required-observations.json"
 printf '%s' "${dollar}{BASELINE_SEED_RUNS_JSON:-[]}" >"$seed_runs_file"
+printf '%s' "${dollar}{BASELINE_REQUIRED_OBSERVATIONS_JSON:-[]}" >"$required_observations_file"
 if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.runId | type == "string")) else false end' \
   "$seed_runs_file" >/dev/null; then
   echo "::error::BASELINE_SEED_RUNS_JSON must be an array of objects with string runId fields"
   exit 1
 fi
+if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.id | type == "string") and (.minSources | type == "number")) else false end' \
+  "$required_observations_file" >/dev/null; then
+  echo "::error::BASELINE_REQUIRED_OBSERVATIONS_JSON must be an array of objects with string id and numeric minSources fields"
+  exit 1
+fi
 seed_run_ids="$(jq -r '.[].runId' "$seed_runs_file")"
+required_observation_count="$(jq 'length' "$required_observations_file")"
+max_candidate_runs="${dollar}{BASELINE_MAX_CANDIDATE_RUNS:-${dollar}{BASELINE_MAX_RUNS:-5}}"
+if ! [[ "$max_candidate_runs" =~ ^[0-9]+$ ]] || [ "$max_candidate_runs" -lt 1 ]; then
+  max_candidate_runs=1
+fi
 
 candidate_runs="$(
   "$GH_BIN" run list \
@@ -743,7 +784,7 @@ candidate_runs="$(
     --event push \
     --status success \
     --json databaseId,headSha \
-    --limit 20 \
+    --limit "$max_candidate_runs" \
     --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
 )"
 
@@ -754,6 +795,45 @@ max_runs="${dollar}{BASELINE_MAX_RUNS:-5}"
 if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
   max_runs=1
 fi
+
+write_baseline_observation_counts() {
+  local measurement_index="$BASELINE_OUTPUT_DIR/baseline-measurement-files.txt"
+  local counts_file="$BASELINE_OUTPUT_DIR/baseline-observation-counts.json"
+  find "$BASELINE_OUTPUT_DIR" \
+    -mindepth 2 \
+    -maxdepth 2 \
+    -name measurements.json \
+    -type f \
+    -print \
+    | sort >"$measurement_index" || true
+
+  if [ -s "$measurement_index" ]; then
+    xargs -r jq -s \
+      --slurpfile required "$required_observations_file" \
+      '
+        ([.[] | (.observations // [])[]? | select(.value | type == "number") | .id] | sort | group_by(.) | map({id: .[0], sources: length})) as $counts
+        | ($required[0] // []) as $requiredRows
+        | {
+            counts: $counts,
+            required: (
+              $requiredRows
+              | map(. as $requiredRow | ($counts | map(select(.id == $requiredRow.id)) | .[0].sources // 0) as $actual | $requiredRow + {sources:$actual, satisfied:($actual >= $requiredRow.minSources)})
+            )
+          }
+      ' <"$measurement_index" >"$counts_file"
+  else
+    jq -n --slurpfile required "$required_observations_file" \
+      '{counts: [], required: (($required[0] // []) | map(. + {sources:0, satisfied:false}))}' >"$counts_file"
+  fi
+}
+
+baseline_requirements_satisfied() {
+  if [ "$required_observation_count" -eq 0 ]; then
+    return 1
+  fi
+  write_baseline_observation_counts
+  jq -e '.required | all(.satisfied == true)' "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" >/dev/null
+}
 
 run_id=""
 artifact_name=""
@@ -769,7 +849,14 @@ for candidate_run in $candidate_runs; do
   if grep -qxF "$candidate_run" "$seen_runs_file"; then
     continue
   fi
-  if [ "$(wc -l <"$downloaded_runs_file" | tr -d ' ')" -ge "$max_runs" ]; then
+  downloaded_count="$(wc -l <"$downloaded_runs_file" | tr -d ' ')"
+  if [ "$downloaded_count" -ge "$max_runs" ]; then
+    if baseline_requirements_satisfied; then
+      break
+    fi
+    echo "::notice::downloaded $downloaded_count baseline artifact(s), but required observation counts are not satisfied yet; continuing through bounded candidate history"
+  fi
+  if [ "$(wc -l <"$seen_runs_file" | tr -d ' ')" -ge "$max_candidate_runs" ]; then
     break
   fi
   printf '%s\n' "$candidate_run" >>"$seen_runs_file"
@@ -811,6 +898,8 @@ for candidate_run in $candidate_runs; do
   fi
 done
 
+write_baseline_observation_counts
+
 if [ -z "$run_id" ] || [ -z "$artifact_name" ]; then
   echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
   exit 0
@@ -819,6 +908,7 @@ fi
 jq -n \
   --slurpfile runs "$downloaded_runs_file" \
   --slurpfile seedRuns "$seed_runs_file" \
+  --slurpfile observationCounts "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" \
   --argjson schemaVersion 1 \
   --arg repository "$repo" \
   --arg workflow "$workflow" \
@@ -836,7 +926,8 @@ jq -n \
     artifactName: $artifactName,
     artifactId: $artifactId,
     seedRuns: ($seedRuns[0] // []),
-    runs: $runs
+    runs: $runs,
+    observationCounts: ($observationCounts[0] // null)
   }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
 
 echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact(s), latest $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"
@@ -1924,6 +2015,10 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
     opts?.artifactName ??
     'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
   const baselineArtifactName = opts?.baselineArtifactName ?? opts?.artifactName
+  const probes = devenvPerfProbes({
+    taskProbes: opts?.taskProbes ?? [],
+    probes: opts?.probes ?? [],
+  })
 
   return {
     'runs-on': opts?.runsOn ?? linuxX64Runner,
@@ -1952,6 +2047,8 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
               seedRuns: opts?.baselineSeedRuns,
               seedRunIds: opts?.baselineSeedRunIds,
               maxRuns: opts?.baselineMaxRuns,
+              maxCandidateRuns: opts?.baselineMaxCandidateRuns,
+              requiredObservations: devenvPerfRequiredBaselineObservations(probes),
             }),
           ]),
       devenvPerfBenchmarkStep({
