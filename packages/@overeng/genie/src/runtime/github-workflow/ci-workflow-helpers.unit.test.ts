@@ -453,12 +453,16 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain(
       'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
     )
-    expect(generatedCiWorkflowYamlSource).toContain("BASELINE_SEED_RUN_IDS: '25710204667'")
+    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_SEED_RUNS_JSON:')
+    expect(generatedCiWorkflowYamlSource).toContain('"runId":"25710204667"')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
     expect(ciWorkflowSource).toContain("contents: 'write'")
+    expect(ciWorkflowSource).toContain('seedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('seedRuns: ($seedRuns[0] // [])')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(
       '["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount", "measuredSampleCount"] | index($key) | not',
