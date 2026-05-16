@@ -458,7 +458,10 @@ describe('ci workflow devenv perf helpers', () => {
       'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
     )
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_SEED_RUNS_JSON:')
-    expect(generatedCiWorkflowYamlSource).toContain('"runId":"25710204667"')
+    expect(generatedCiWorkflowYamlSource).toContain('"runId":"25959801150"')
+    expect(generatedCiWorkflowYamlSource).toContain('"runId":"25959814835"')
+    expect(generatedCiWorkflowYamlSource).toContain('"label":"PR #655"')
+    expect(generatedCiWorkflowYamlSource).toContain('"label":"PR #632"')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
     expect(ciWorkflowSource).toContain("contents: 'write'")
