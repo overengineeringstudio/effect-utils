@@ -2420,7 +2420,7 @@ jobs:
           BASELINE_OUTPUT_DIR: tmp/devenv-perf-ci/baseline
           BASELINE_WORKFLOW_NAME: ${{ github.workflow }}
           BASELINE_BRANCH: ${{ github.base_ref || github.ref_name }}
-          BASELINE_SEED_RUN_IDS: '25710204667'
+          BASELINE_SEED_RUNS_JSON: '[{"runId":"25710204667","source":"manual-backfill","artifacts":["devenv-perf"],"notes":"Known comparable v2 devenv performance baseline."}]'
           BASELINE_MAX_RUNS: '20'
         run: |
           set -euo pipefail
@@ -2441,6 +2441,14 @@ jobs:
           repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
           workflow="${BASELINE_WORKFLOW_NAME:-CI}"
           branch="${BASELINE_BRANCH:-${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-main}}}"
+          seed_runs_file="$BASELINE_OUTPUT_DIR/baseline-seed-runs.json"
+          printf '%s' "${BASELINE_SEED_RUNS_JSON:-[]}" >"$seed_runs_file"
+          if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.runId | type == "string")) else false end' \
+            "$seed_runs_file" >/dev/null; then
+            echo "::error::BASELINE_SEED_RUNS_JSON must be an array of objects with string runId fields"
+            exit 1
+          fi
+          seed_run_ids="$(jq -r '.[].runId' "$seed_runs_file")"
 
           candidate_runs="$(
             "$GH_BIN" run list \
@@ -2454,7 +2462,7 @@ jobs:
               --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
           )"
 
-          candidate_runs="$BASELINE_SEED_RUN_IDS
+          candidate_runs="$seed_run_ids
           $candidate_runs"
 
           max_runs="${BASELINE_MAX_RUNS:-5}"
@@ -2525,6 +2533,7 @@ jobs:
 
           jq -n \
             --slurpfile runs "$downloaded_runs_file" \
+            --slurpfile seedRuns "$seed_runs_file" \
             --argjson schemaVersion 1 \
             --arg repository "$repo" \
             --arg workflow "$workflow" \
@@ -2541,6 +2550,7 @@ jobs:
               runId: $runId,
               artifactName: $artifactName,
               artifactId: $artifactId,
+              seedRuns: ($seedRuns[0] // []),
               runs: $runs
             }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
 
@@ -3183,7 +3193,12 @@ jobs:
               | (
                   if any($comparisons[]?; .status == "fail") then "fail"
                   elif any($comparisons[]?; .status == "warn") then "warn"
-                  elif any($comparisons[]?; .status == "missing_baseline" and (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)) then "partial"
+                  elif any($comparisons[]?;
+                    (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
+                    and (.gateReason == "missing_baseline"
+                      or .gateReason == "low_baseline_count"
+                      or .gateReason == "low_current_sample_count")
+                  ) then "partial"
                   else "pass"
                   end
                 ) as $status
@@ -3217,7 +3232,7 @@ jobs:
               echo "::warning::CI measurement regression threshold exceeded"
               ;;
             partial:*)
-              echo "::notice::CI measurement baseline is missing for one or more observations"
+              echo "::notice::CI measurement comparison is partial because one or more enabled observations are not gateable"
               ;;
           esac
 

@@ -282,7 +282,14 @@ const extraJobs: Record<string, any> = {
         runId: '${{ github.run_id }}',
       }),
       artifactName: 'devenv-perf',
-      baselineSeedRunIds: ['25710204667'],
+      baselineSeedRuns: [
+        {
+          runId: '25710204667',
+          source: 'manual-backfill',
+          artifacts: ['devenv-perf'],
+          notes: 'Known comparable v2 devenv performance baseline.',
+        },
+      ],
       baselineMaxRuns: 20,
       regressionMode: 'fail',
       env: ciMeasurementSubjectEnv,

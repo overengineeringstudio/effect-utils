@@ -102,4 +102,17 @@ if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ]; then
   exit 1
 fi
 
+low_baseline_policy='{"enabled":true,"minBaselineSources":2,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 10.5 devenv-perf-warm-median-v2 "$low_baseline_policy"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$low_baseline_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_gate="$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "low_baseline_count" ]; then
+  echo "expected low baseline count to be partial but not a regression; got status=$actual_status row=$actual_row gate=$actual_gate" >&2
+  exit 1
+fi
+
 echo "ci-measurement-comparison tests passed"

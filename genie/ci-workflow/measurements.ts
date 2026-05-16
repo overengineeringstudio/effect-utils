@@ -79,9 +79,19 @@ export type GitHubPreviousArtifactStepOptions = {
   readonly outputDir: string
   readonly workflowName?: string
   readonly branch?: string
+  readonly seedRuns?: readonly CiMeasurementBaselineSeedRun[]
   readonly seedRunIds?: readonly string[]
   readonly maxRuns?: number
   readonly tokenExpression?: string
+}
+
+export type CiMeasurementBaselineSeedRun = {
+  readonly runId: string
+  readonly label?: string
+  readonly sha?: string
+  readonly source?: 'manual-backfill' | 'main-history' | 'pr-history' | string
+  readonly artifacts?: readonly string[]
+  readonly notes?: string
 }
 
 export type CiMeasurementsComparisonStepOptions = {
@@ -173,6 +183,7 @@ export type DevenvPerfJobOptions = {
   readonly artifactDir?: string
   readonly artifactName?: string
   readonly baselineArtifactName?: string
+  readonly baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]
   readonly baselineSeedRunIds?: readonly string[]
   readonly baselineMaxRuns?: number
   readonly setupSteps?: readonly DevenvPerfSetupStep[]
@@ -674,6 +685,16 @@ export const devenvPerfBenchmarkStep = (
     }),
   }) as const
 
+const ciMeasurementBaselineSeedRunsJson = (opts: GitHubPreviousArtifactStepOptions) =>
+  JSON.stringify(
+    opts.seedRuns ??
+      opts.seedRunIds?.map((runId) => ({
+        runId,
+        source: 'manual-backfill',
+      })) ??
+      [],
+  )
+
 export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactStepOptions) =>
   ({
     name: `Download previous artifact: ${opts.artifactName}`,
@@ -684,7 +705,7 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
       BASELINE_OUTPUT_DIR: opts.outputDir,
       BASELINE_WORKFLOW_NAME: opts.workflowName ?? '${{ github.workflow }}',
       BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
-      BASELINE_SEED_RUN_IDS: opts.seedRunIds?.join(' ') ?? '',
+      BASELINE_SEED_RUNS_JSON: ciMeasurementBaselineSeedRunsJson(opts),
       BASELINE_MAX_RUNS: String(opts.maxRuns ?? 5),
     },
     run: String.raw`set -euo pipefail
@@ -705,6 +726,14 @@ echo "Using GitHub CLI: $GH_BIN"
 repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
 branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
+seed_runs_file="$BASELINE_OUTPUT_DIR/baseline-seed-runs.json"
+printf '%s' "${dollar}{BASELINE_SEED_RUNS_JSON:-[]}" >"$seed_runs_file"
+if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.runId | type == "string")) else false end' \
+  "$seed_runs_file" >/dev/null; then
+  echo "::error::BASELINE_SEED_RUNS_JSON must be an array of objects with string runId fields"
+  exit 1
+fi
+seed_run_ids="$(jq -r '.[].runId' "$seed_runs_file")"
 
 candidate_runs="$(
   "$GH_BIN" run list \
@@ -718,7 +747,7 @@ candidate_runs="$(
     --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
 )"
 
-candidate_runs="$BASELINE_SEED_RUN_IDS
+candidate_runs="$seed_run_ids
 $candidate_runs"
 
 max_runs="${dollar}{BASELINE_MAX_RUNS:-5}"
@@ -789,6 +818,7 @@ fi
 
 jq -n \
   --slurpfile runs "$downloaded_runs_file" \
+  --slurpfile seedRuns "$seed_runs_file" \
   --argjson schemaVersion 1 \
   --arg repository "$repo" \
   --arg workflow "$workflow" \
@@ -805,6 +835,7 @@ jq -n \
     runId: $runId,
     artifactName: $artifactName,
     artifactId: $artifactId,
+    seedRuns: ($seedRuns[0] // []),
     runs: $runs
   }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
 
@@ -1266,7 +1297,12 @@ jq -n \
     | (
         if any($comparisons[]?; .status == "fail") then "fail"
         elif any($comparisons[]?; .status == "warn") then "warn"
-        elif any($comparisons[]?; .status == "missing_baseline" and (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)) then "partial"
+        elif any($comparisons[]?;
+          (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
+          and (.gateReason == "missing_baseline"
+            or .gateReason == "low_baseline_count"
+            or .gateReason == "low_current_sample_count")
+        ) then "partial"
         else "pass"
         end
       ) as $status
@@ -1300,7 +1336,7 @@ case "$status:$mode" in
     echo "::warning::CI measurement regression threshold exceeded"
     ;;
   partial:*)
-    echo "::notice::CI measurement baseline is missing for one or more observations"
+    echo "::notice::CI measurement comparison is partial because one or more enabled observations are not gateable"
     ;;
 esac
 
@@ -1888,6 +1924,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
             downloadPreviousGitHubArtifactStep({
               artifactName: baselineArtifactName,
               outputDir: `${artifactDir}/baseline`,
+              seedRuns: opts?.baselineSeedRuns,
               seedRunIds: opts?.baselineSeedRunIds,
               maxRuns: opts?.baselineMaxRuns,
             }),
