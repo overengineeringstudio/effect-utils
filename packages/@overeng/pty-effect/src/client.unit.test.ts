@@ -177,8 +177,15 @@ describe('PtyClient client wrapper', () => {
     const originalBun = process.versions.bun
     const originalNodeBin = process.env.NODE_BIN
     const spawnDaemon = vi.fn(async () => undefined)
+    const getSession = vi.fn(async () => ({
+      metadata: { tags: { owner: 'forge' } },
+      name: 'unit-bun',
+      pid: 1,
+      socketPath: '/tmp/unit-bun.sock',
+      status: 'running',
+    }))
 
-    vi.doMock('@myobie/pty/client', () => makeClientMock({ spawnDaemon }))
+    vi.doMock('@myobie/pty/client', () => makeClientMock({ getSession, spawnDaemon }))
 
     Object.defineProperty(process.versions, 'bun', {
       configurable: true,
@@ -217,6 +224,7 @@ describe('PtyClient client wrapper', () => {
         tags: { owner: 'forge' },
         launcher: { command: 'node-from-test' },
       })
+      expect(getSession).toHaveBeenCalledWith('unit-bun')
     } finally {
       if (originalBun === undefined) {
         delete process.versions.bun
