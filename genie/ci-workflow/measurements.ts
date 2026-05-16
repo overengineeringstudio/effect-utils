@@ -718,8 +718,8 @@ candidate_runs="$(
     --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
 )"
 
-candidate_runs="$candidate_runs
-$BASELINE_SEED_RUN_IDS"
+candidate_runs="$BASELINE_SEED_RUN_IDS
+$candidate_runs"
 
 max_runs="${dollar}{BASELINE_MAX_RUNS:-5}"
 if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
