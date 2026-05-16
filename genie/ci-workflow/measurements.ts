@@ -740,10 +740,10 @@ for candidate_run in $candidate_runs; do
   if grep -qxF "$candidate_run" "$seen_runs_file"; then
     continue
   fi
-  printf '%s\n' "$candidate_run" >>"$seen_runs_file"
   if [ "$(wc -l <"$downloaded_runs_file" | tr -d ' ')" -ge "$max_runs" ]; then
     break
   fi
+  printf '%s\n' "$candidate_run" >>"$seen_runs_file"
 
   artifact_json="$(
     "$GH_BIN" api "repos/$repo/actions/runs/$candidate_run/artifacts" \
