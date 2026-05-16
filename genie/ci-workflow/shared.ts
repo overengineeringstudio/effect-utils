@@ -60,7 +60,7 @@ export const standardCIEnv = {
  */
 export const ciWorkflowConcurrency = {
   group:
-    '${{ github.workflow }}-${{ github.event.pull_request.number || inputs.measurement_baseline_ref || github.ref }}',
+    '${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.measurement_baseline_ref || github.ref }}',
   'cancel-in-progress': true,
 } as const
 
