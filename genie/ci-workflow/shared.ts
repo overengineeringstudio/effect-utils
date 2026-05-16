@@ -54,9 +54,13 @@ export const standardCIEnv = {
  * The group key intentionally does not include the job name so a new push
  * cancels the entire older workflow run rather than letting stale sibling jobs
  * continue consuming runner capacity.
+ *
+ * Measurement baseline backfills are keyed by their subject ref so several
+ * historical refs can be backfilled without canceling each other.
  */
 export const ciWorkflowConcurrency = {
-  group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+  group:
+    '${{ github.workflow }}-${{ github.event.pull_request.number || inputs.measurement_baseline_ref || github.ref }}',
   'cancel-in-progress': true,
 } as const
 

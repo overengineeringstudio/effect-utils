@@ -2,7 +2,7 @@
 # Source: ci.yml.genie.ts
 
 concurrency:
-  group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
+  group: '${{ github.workflow }}-${{ github.event.pull_request.number || inputs.measurement_baseline_ref || github.ref }}'
   cancel-in-progress: true
 
 name: CI
