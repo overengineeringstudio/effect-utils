@@ -2226,6 +2226,7 @@ jobs:
     runs-on:
       [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
     permissions:
+      actions: read
       contents: write
       issues: write
       pull-requests: write

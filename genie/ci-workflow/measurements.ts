@@ -107,6 +107,7 @@ export type CiMeasurementsArtifactStepOptions = {
 
 /** Job-level permissions required when CI measurement comparison posts PR comments. */
 export const ciMeasurementsCommentPermissions = {
+  actions: 'read',
   contents: 'write',
   issues: 'write',
   'pull-requests': 'write',
