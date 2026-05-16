@@ -2476,9 +2476,9 @@ jobs:
 
             artifact_json="$(
               gh api "repos/$repo/actions/runs/$candidate_run/artifacts" \
-                --jq '.artifacts
+                | jq --arg artifactName "$BASELINE_ARTIFACT_NAME" '.artifacts
                   | map(select(.expired == false))
-                  | map(select(.name == env.BASELINE_ARTIFACT_NAME or (.name | startswith(env.BASELINE_ARTIFACT_NAME + "-"))))
+                  | map(select(.name == $artifactName or (.name | startswith($artifactName + "-"))))
                   | sort_by(.created_at // "")
                   | reverse
                   | .[0] // empty'
