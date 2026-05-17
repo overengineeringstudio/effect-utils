@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="514" viewBox="0 0 1040 514">
+<rect width="1040" height="514" rx="8" fill="#ffffff"/>
+<rect x="0.5" y="0.5" width="1039" height="513" rx="7.5" fill="none" stroke="#e5e7eb"/>
+<text x="520" y="28" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#111827">Perf change vs baseline</text>
+<text x="520" y="48" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">Bars show percent change; meaning explains whether the number is actionable.</text>
+<text x="252" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#059669">faster</text>
+<text x="572" y="72" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#dc2626">slower</text>
+<text x="672" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">baseline -> current</text>
+<text x="804" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">meaning</text>
+<line x1="440.5" y1="82" x2="440.5" y2="480" stroke="#9ca3af" stroke-width="1.1" opacity="0.9"/>
+<text x="230" y="105" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>Genie run task</title>Genie run task</text>
+<rect x="252" y="92" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="253.6" y="92" width="186.9" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="105" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">-42.6%</text>
+<text x="672" y="105" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>2.601s -&gt; 1.492s</title>2.601s -&gt; 1.492s</text>
+<text x="804" y="105" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the observed baseline range.</title>Normal variance</text>
+<text x="230" y="151" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>pnpm install task</title>pnpm install task</text>
+<rect x="252" y="138" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="355.3" y="138" width="85.2" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="151" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">-19.4%</text>
+<text x="672" y="151" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>0.852s -&gt; 0.686s</title>0.852s -&gt; 0.686s</text>
+<text x="804" y="151" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the observed baseline range.</title>Normal variance</text>
+<text x="230" y="197" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>Warm shell eval</title>Warm shell eval</text>
+<rect x="252" y="184" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="362.6" y="184" width="77.8" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="197" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">-17.8%</text>
+<text x="672" y="197" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>4.311s -&gt; 3.545s</title>4.311s -&gt; 3.545s</text>
+<text x="804" y="197" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the observed baseline range.</title>Normal variance</text>
+<text x="230" y="243" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>Genie check direct</title>Genie check direct</text>
+<rect x="252" y="230" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="416.5" y="230" width="24.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="243" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">-5.5%</text>
+<text x="672" y="243" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>7.448s -&gt; 7.041s</title>7.448s -&gt; 7.041s</text>
+<text x="804" y="243" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the observed baseline range.</title>Normal variance</text>
+<text x="230" y="289" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>Shell eval with OTEL trace</title>Shell eval with OTEL trace</text>
+<rect x="252" y="276" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="440.5" y="276" width="55.3" height="18" rx="5" fill="#a78bfa" opacity="1" stroke-dasharray="3 3"/>
+<text x="596" y="289" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#a78bfa">+12.6%</text>
+<text x="672" y="289" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>71.828s -&gt; 80.885s</title>71.828s -&gt; 80.885s</text>
+<text x="804" y="289" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#a78bfa"><title>Shown for investigation, but intentionally excluded from gating.</title>Diagnostic only</text>
+<text x="230" y="335" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>devenv tasks list</title>devenv tasks list</text>
+<rect x="252" y="322" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="440.5" y="322" width="96.2" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="335" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">+22%</text>
+<text x="672" y="335" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>0.041s -&gt; 0.05s</title>0.041s -&gt; 0.05s</text>
+<text x="804" y="335" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text x="230" y="381" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>Quick check task</title>Quick check task</text>
+<rect x="252" y="368" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="440.5" y="368" width="111.8" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="381" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">+25.5%</text>
+<text x="672" y="381" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>2.921s -&gt; 3.666s</title>2.921s -&gt; 3.666s</text>
+<text x="804" y="381" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the historical baseline distribution.</title>Within historical p95</text>
+<text x="230" y="427" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>devenv processes --help</title>devenv processes --help</text>
+<rect x="252" y="414" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="440.5" y="414" width="128.9" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="427" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#94a3b8">+29.4%</text>
+<text x="672" y="427" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>0.017s -&gt; 0.022s</title>0.017s -&gt; 0.022s</text>
+<text x="804" y="427" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text x="440.5" y="498" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#64748b">0%</text>
+</svg>
