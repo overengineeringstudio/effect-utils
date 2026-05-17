@@ -136,9 +136,26 @@ let
     }
   '';
 
+  checkWorkspaceMembersScript = ''
+    set -o pipefail
+    [ -d ./repos ] || exit 1
+
+    ${loadCheckSkipMembersScript}
+
+    members=$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}') || exit 1
+    for member in $members; do
+      if should_skip_member "$member"; then
+        continue
+      fi
+      if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
+        exit 1
+      fi
+    done
+  '';
+
   mrLsMemberNamesJq = ''
     select(._tag == "Success")
-    | (.value.members // .value.value.members // [])
+    | (.members // .value.members // .value.value.members // [])
     | .[].name
   '';
 
@@ -150,20 +167,11 @@ let
     fi
 
     if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-      [ -d ./repos ] || exit 1
-      [ -f ${lib.escapeShellArg membersFile} ] || exit 1
-      while IFS= read -r member; do
-        [ -n "$member" ] || continue
-        if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
-          exit 1
-        fi
-      done < ${lib.escapeShellArg membersFile}
+      ${checkWorkspaceMembersScript}
       exit 0
     fi
 
-    if [ ! -d ./repos ]; then
-      exit 1
-    fi
+    ${checkWorkspaceMembersScript}
 
     status_json=$(mr status --output json 2>/dev/null) || exit 1
     echo "$status_json" | ${jq} -e '(.workspaceSyncNeeded // false) == false' >/dev/null 2>&1
@@ -259,29 +267,11 @@ let
       after = [ "mr:apply" ];
       # Check that repos dir exists and all members have symlinks
       status = trace.status "mr:check" "path" ''
-        set -o pipefail
         if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
           exit 0
         fi
 
-        # Check that repos directory exists
-        if [ ! -d ./repos ]; then
-          exit 1
-        fi
-
-        ${loadCheckSkipMembersScript}
-
-        # Verify all configured members have symlinks in repos/
-        members=$(mr ls --output json | ${jq} -r '${mrLsMemberNamesJq}') || exit 1
-        for member in $members; do
-          if should_skip_member "$member"; then
-            continue
-          fi
-          if [ ! -L "./repos/$member" ] && [ ! -d "./repos/$member" ]; then
-            exit 1
-          fi
-        done
-
+        ${checkWorkspaceMembersScript}
         exit 0
       '';
       exec = trace.exec "mr:check" ''
