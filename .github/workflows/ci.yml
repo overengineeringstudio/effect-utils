@@ -3506,18 +3506,79 @@ jobs:
             return formatNumber(Math.round((value - 1) * 1000) / 10) + '%'
           }
 
-          const formatResult = (row) => {
-            if (row.confidence === 'low_baseline_count') return 'gray needs baseline'
-            if (row.confidence === 'low_current_sample_count') return 'gray needs repeat'
-            if (row.confidence === 'diagnostic') return 'gray diagnostic'
-            if (row.status === 'fail') return 'red regression'
-            if (row.status === 'warn') return 'yellow regression'
-            if (row.status === 'missing_baseline') return 'gray no baseline'
-            if (row.confidence === 'noise_floor') return 'gray noise floor'
-            if (row.confidence === 'within_baseline_range') return 'gray within range'
-            if (row.confidence === 'within_baseline_distribution') return 'gray within p95'
-            if (row.direction === 'improved') return 'green improved'
-            return 'gray unchanged'
+          const interpretation = (row) => {
+            if (row.confidence === 'low_baseline_count') return {
+              label: 'Needs more baseline',
+              detail: 'Not enough compatible baseline runs to make this gate trustworthy.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'low_current_sample_count') return {
+              label: 'Needs repeat',
+              detail: 'Current run has too few successful measured samples.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'diagnostic') return {
+              label: 'Diagnostic only',
+              detail: 'Shown for investigation, but intentionally excluded from gating.',
+              tone: 'diagnostic',
+              color: '#a78bfa',
+            }
+            if (row.status === 'fail') return {
+              label: 'Regression - blocks merge',
+              detail: 'Slower than the configured fail threshold with enough samples.',
+              tone: 'bad',
+              color: '#ef4444',
+            }
+            if (row.status === 'warn') return {
+              label: 'Regression - review',
+              detail: 'Slower than the configured warning threshold.',
+              tone: 'warn',
+              color: '#f59e0b',
+            }
+            if (row.status === 'missing_baseline') return {
+              label: 'No baseline yet',
+              detail: 'Current value is measured, but no comparable baseline exists.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'noise_floor') return {
+              label: 'Too small to matter',
+              detail: 'The absolute change is below the noise floor for this metric.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'within_baseline_range') return {
+              label: 'Normal variance',
+              detail: 'Current value is inside the observed baseline range.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'within_baseline_distribution') return {
+              label: 'Within historical p95',
+              detail: 'Current value is inside the historical baseline distribution.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.direction === 'improved') return {
+              label: 'Meaningfully faster',
+              detail: 'Faster than baseline by more than the noise floor and outside normal range.',
+              tone: 'good',
+              color: '#10b981',
+            }
+            if (row.direction === 'regressed') return {
+              label: 'Slightly slower, ok',
+              detail: 'Slower than baseline but still inside the configured budget.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            return {
+              label: 'Unchanged',
+              detail: 'No meaningful movement from baseline.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
           }
 
           const formatGate = (row) => {
@@ -3609,19 +3670,20 @@ jobs:
           const comparisonTable = (rows) => {
             if (rows.length === 0) return 'No measurement regressions detected.'
             return [
-              '| Probe | Baseline | Current | Change | Result | Gate | Confidence |',
+              '| Probe | Baseline | Current | Change | Meaning | Gate | Evidence |',
               '| --- | ---: | ---: | ---: | --- | --- | --- |',
               ...rows.map((row) => {
                 const unit = row.observation?.unit
                 const baselineRange = typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
                   ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
                   : ''
+                const meaning = interpretation(row)
                 return '| ' + [
                   humanProbe(row),
                   formatValue(row.baseline, unit) + baselineRange,
                   formatValue(row.current, unit),
                   formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
-                  formatResult(row),
+                  meaning.label + '<br><sub>' + meaning.detail + '</sub>',
                   formatGate(row),
                   (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
                 ].map(escapeCell).join(' | ') + ' |'
@@ -3684,27 +3746,31 @@ jobs:
             const lower = Math.floor(minPct)
             const upper = Math.ceil(maxPct)
             const span = upper - lower || 1
-            const width = 900
-            const rowHeight = 42
-            const height = 96 + chartRows.length * rowHeight + 34
-            const labelX = 238
-            const plotX = 260
-            const plotWidth = 342
-            const percentX = 626
-            const nominalX = 704
-            const topY = 78
+            const width = 1040
+            const rowHeight = 46
+            const height = 112 + chartRows.length * rowHeight + 34
+            const labelX = 230
+            const plotX = 252
+            const plotWidth = 320
+            const percentX = 596
+            const nominalX = 672
+            const meaningX = 804
+            const topY = 92
             const barHeight = 18
             const zeroX = plotX + ((0 - lower) / span) * plotWidth
 
             const svg = [
               '<?xml version="1.0" encoding="UTF-8"?>',
               '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
-              '<rect width="' + width + '" height="' + height + '" rx="10" fill="#050b1f"/>',
-              '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#e5e7eb">Perf change vs baseline (%)</text>',
-              '<text x="' + plotX + '" y="55" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#20d6a3">faster</text>',
-              '<text x="' + (plotX + plotWidth) + '" y="55" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#fb6b6b">slower</text>',
-              '<text x="' + nominalX + '" y="55" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">baseline -> current</text>',
-              '<line x1="' + zeroX.toFixed(1) + '" y1="66" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke="#ef4444" stroke-width="1.2" opacity="0.85"/>',
+              '<rect width="' + width + '" height="' + height + '" rx="8" fill="#ffffff"/>',
+              '<rect x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5" fill="none" stroke="#e5e7eb"/>',
+              '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#111827">Perf change vs baseline</text>',
+              '<text x="' + width / 2 + '" y="48" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">Bars show percent change; meaning explains whether the number is actionable.</text>',
+              '<text x="' + plotX + '" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#059669">faster</text>',
+              '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#dc2626">slower</text>',
+              '<text x="' + nominalX + '" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">baseline -> current</text>',
+              '<text x="' + meaningX + '" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">meaning</text>',
+              '<line x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke="#9ca3af" stroke-width="1.1" opacity="0.9"/>',
             ]
 
             for (const [index, row] of chartRows.entries()) {
@@ -3712,21 +3778,25 @@ jobs:
               const y = topY + index * rowHeight
               const valueWidth = Math.max(2, Math.abs(pct) / span * plotWidth)
               const x = pct < 0 ? zeroX - valueWidth : zeroX
-              const color = pct < 0 ? '#20d6a3' : '#fb6b6b'
+              const meaning = interpretation(row)
+              const color = meaning.color
               const formattedPct = (pct > 0 ? '+' : '') + formatNumber(Math.round(pct * 10) / 10) + '%'
               const label = chartProbe(row)
               const nominal = formatValue(row.baseline, row.observation?.unit).replaceAll(' ', '') + ' -> ' + formatValue(row.current, row.observation?.unit).replaceAll(' ', '')
+              const barOpacity = meaning.tone === 'neutral' ? '0.65' : '1'
+              const dash = meaning.tone === 'diagnostic' ? ' stroke-dasharray="3 3"' : ''
               svg.push(
-                '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#cbd5e1"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 30)) + '</text>',
-                '<rect x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5" fill="#111827"/>',
-                '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '"/>',
+                '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
+                '<rect x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5" fill="#f1f5f9"/>',
+                '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '" opacity="' + barOpacity + '"' + dash + '/>',
                 '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
-                '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#94a3b8"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 24)) + '</text>',
+                '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
+                '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
               )
             }
 
             svg.push(
-              '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#94a3b8">0%</text>',
+              '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#64748b">0%</text>',
               '</svg>',
             )
             return svg.join('\n')
@@ -3754,6 +3824,7 @@ jobs:
               status: row.status,
               target: row.target?.label || row.target?.name || 'unknown',
               observation: row.observation?.label || row.observation?.name || 'unknown',
+              meaning: interpretation(row).label,
               dimensions: dimensions(row).replaceAll('<br>', ', '),
               baseline: formatValue(row.baseline, row.observation?.unit),
               current: formatValue(row.current, row.observation?.unit),
@@ -3778,7 +3849,7 @@ jobs:
           const historyRows = state.runs.slice(1).map((run) => {
             const link = run.runUrl ? '[' + run.shortSha + '](' + run.runUrl + ')' : run.shortSha
             const top = Array.isArray(run.visibleRows) && run.visibleRows.length > 0
-              ? run.visibleRows.slice(0, 3).map((row) => row.status + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
+              ? run.visibleRows.slice(0, 3).map((row) => (row.meaning || row.status) + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
               : 'No regressions'
             return '| ' + [link, run.status, gateModeLabel(run.mode), top].map(escapeCell).join(' | ') + ' |'
           })
@@ -3805,7 +3876,7 @@ jobs:
             '- Protocol: ' + protocolLabel,
             '',
             hasComparableBaseline
-              ? 'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.'
+              ? 'Chart: bars show percentage change; the meaning labels explain whether the movement is actionable, noise, normal variance, or diagnostic.'
               : 'No compatible baseline was available, so this run shows current measurements only.',
             '',
             chartMarkdown,

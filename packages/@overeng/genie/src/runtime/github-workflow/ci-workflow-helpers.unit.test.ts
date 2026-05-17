@@ -429,12 +429,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain(
       'if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus',
     )
-    expect(ciWorkflowSource).toContain(
-      "if (row.confidence === 'low_baseline_count') return 'gray needs baseline'",
-    )
-    expect(ciWorkflowSource).toContain(
-      "if (row.confidence === 'low_current_sample_count') return 'gray needs repeat'",
-    )
+    expect(ciWorkflowSource).toContain("label: 'Needs more baseline'")
+    expect(ciWorkflowSource).toContain("label: 'Needs repeat'")
+    expect(ciWorkflowSource).toContain("label: 'Too small to matter'")
+    expect(ciWorkflowSource).toContain("label: 'Normal variance'")
+    expect(ciWorkflowSource).toContain("label: 'Meaningfully faster'")
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
@@ -485,11 +484,17 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
     expect(ciWorkflowSource).toContain(
-      'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.',
+      'Chart: bars show percentage change; the meaning labels explain whether the movement is actionable, noise, normal variance, or diagnostic.',
+    )
+    expect(ciWorkflowSource).toContain(
+      '| Probe | Baseline | Current | Change | Meaning | Gate | Evidence |',
     )
     expect(ciWorkflowSource).toContain("'- Readiness: ' + readinessLabel")
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
-    expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')
+    expect(ciWorkflowSource).toContain('Perf change vs baseline')
+    expect(ciWorkflowSource).toContain(
+      'Bars show percent change; meaning explains whether the number is actionable.',
+    )
     expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
     expect(ciWorkflowSource).toContain('https://raw.githubusercontent.com')
     expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_path"')
