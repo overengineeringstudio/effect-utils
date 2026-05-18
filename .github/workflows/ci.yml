@@ -3777,15 +3777,35 @@ jobs:
             const svg = [
               '<?xml version="1.0" encoding="UTF-8"?>',
               '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
-              '<rect width="' + width + '" height="' + height + '" rx="8" fill="#ffffff"/>',
-              '<rect x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5" fill="none" stroke="#e5e7eb"/>',
-              '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700" fill="#111827">Perf change vs baseline</text>',
-              '<text x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11" fill="#64748b">Bars show percent change; meaning explains whether the number is actionable.</text>',
+              '<style>',
+              '  .chart-bg { fill: #ffffff; }',
+              '  .chart-border { fill: none; stroke: #d0d7de; }',
+              '  .chart-title { fill: #24292f; }',
+              '  .chart-muted { fill: #57606a; }',
+              '  .chart-axis { stroke: #8c959f; }',
+              '  .chart-label { fill: #24292f; }',
+              '  .chart-value { fill: #57606a; }',
+              '  .chart-track { fill: #f6f8fa; }',
+              '  @media (prefers-color-scheme: dark) {',
+              '    .chart-bg { fill: #0d1117; }',
+              '    .chart-border { stroke: #30363d; }',
+              '    .chart-title { fill: #f0f6fc; }',
+              '    .chart-muted { fill: #8b949e; }',
+              '    .chart-axis { stroke: #8b949e; }',
+              '    .chart-label { fill: #c9d1d9; }',
+              '    .chart-value { fill: #8b949e; }',
+              '    .chart-track { fill: #21262d; }',
+              '  }',
+              '</style>',
+              '<rect class="chart-bg" width="' + width + '" height="' + height + '" rx="8"/>',
+              '<rect class="chart-border" x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5"/>',
+              '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Perf change vs baseline</text>',
+              '<text class="chart-muted" x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">Bars show percent change; meaning explains whether the number is actionable.</text>',
               '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">faster</text>',
               '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">slower</text>',
-              '<text x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#64748b">baseline -> current</text>',
-              '<text x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#64748b">meaning</text>',
-              '<line x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke="#9ca3af" stroke-width="1.1" opacity="0.9"/>',
+              '<text class="chart-muted" x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11">baseline -> current</text>',
+              '<text class="chart-muted" x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11">meaning</text>',
+              '<line class="chart-axis" x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke-width="1.1" opacity="0.9"/>',
             ]
 
             for (const [index, row] of chartRows.entries()) {
@@ -3801,17 +3821,17 @@ jobs:
               const barOpacity = meaning.tone === 'neutral' ? '0.65' : '1'
               const dash = meaning.tone === 'diagnostic' ? ' stroke-dasharray="3 3"' : ''
               svg.push(
-                '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
-                '<rect x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5" fill="#f1f5f9"/>',
+                '<text class="chart-label" x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
+                '<rect class="chart-track" x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5"/>',
                 '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '" opacity="' + barOpacity + '"' + dash + '/>',
                 '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
-                '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
+                '<text class="chart-value" x="' + nominalX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
                 '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
               )
             }
 
             svg.push(
-              '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#64748b">0%</text>',
+              '<text class="chart-muted" x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10">0%</text>',
               '</svg>',
             )
             return svg.join('\n')

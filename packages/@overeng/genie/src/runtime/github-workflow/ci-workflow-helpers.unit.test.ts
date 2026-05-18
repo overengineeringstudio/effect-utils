@@ -498,6 +498,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'Bars show percent change; meaning explains whether the number is actionable.',
     )
+    expect(ciWorkflowSource).toContain('@media (prefers-color-scheme: dark)')
+    expect(ciWorkflowSource).toContain('.chart-bg { fill: #0d1117; }')
     expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
     expect(ciWorkflowSource).toContain('[SVG source]')
     expect(ciWorkflowSource).toContain('ensure_ci_measurement_tool resvg resvg')
