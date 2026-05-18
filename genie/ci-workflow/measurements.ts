@@ -1546,7 +1546,9 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
     comment_body="$comment_tmp_dir/comment.md"
     comment_id_file="$comment_tmp_dir/comment-id.txt"
     chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"
+    chart_dark_file="$comment_tmp_dir/perf-change-vs-baseline-dark.svg"
     chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"
+    chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"
     renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
 
     if ! gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"; then
@@ -1565,29 +1567,35 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
       asset_run_attempt="${dollar}{GITHUB_RUN_ATTEMPT:-0}"
       asset_svg_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
       asset_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.png"
+      asset_dark_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}-dark.png"
       public_asset_command="${dollar}{CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND:-}"
       repo_private="$(gh api "repos/$repo" --jq '.private // false' 2>/dev/null || printf 'true')"
       if [ "${dollar}{GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
         github_raw_chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
+        github_raw_chart_dark_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_dark_png_path"
         github_raw_chart_source_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_svg_path"
       else
         github_raw_chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_png_path"
+        github_raw_chart_dark_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_dark_png_path"
         github_raw_chart_source_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_svg_path"
       fi
       if [ "$repo_private" = "true" ]; then
         chart_url=""
+        chart_dark_url=""
         chart_source_url=""
       else
         chart_url="$github_raw_chart_url"
+        chart_dark_url="$github_raw_chart_dark_url"
         chart_source_url="$github_raw_chart_source_url"
       fi
       export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+      export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL="$chart_dark_url"
       export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
 
       cat > "$renderer_script" <<'EOF'
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const [comparisonPath, commentsPath, bodyPath, commentIdPath, chartPath] = process.argv.slice(2)
+const [comparisonPath, commentsPath, bodyPath, commentIdPath, chartPath, chartDarkPath] = process.argv.slice(2)
 const title = process.env.CI_MEASUREMENT_PR_COMMENT_TITLE || 'CI Measurements'
 const maxRows = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_ROWS || '10', 10)
 const maxHistory = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY || '20', 10)
@@ -1600,6 +1608,7 @@ const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
 const workflow = process.env.GITHUB_WORKFLOW || 'CI'
 const job = process.env.GITHUB_JOB || ''
 const chartUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_URL || ''
+const chartDarkUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL || ''
 const chartSourceUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL || ''
 
 const marker = '<!-- ci-measurement-comment:managed -->'
@@ -1885,7 +1894,7 @@ const truncate = (value, maxLength) => {
   return text.slice(0, Math.max(0, maxLength - 3)) + '...'
 }
 
-const renderPerfChangeSvg = (rows) => {
+const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
   const chartRows = rows
     .filter((row) => row.observation?.unit === 'seconds')
     .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
@@ -1912,29 +1921,47 @@ const renderPerfChangeSvg = (rows) => {
   const topY = 92
   const barHeight = 18
   const zeroX = plotX + ((0 - lower) / span) * plotWidth
+  const themeCss = theme === 'dark'
+    ? [
+        '  .chart-bg { fill: #0d1117; }',
+        '  .chart-border { fill: none; stroke: #30363d; }',
+        '  .chart-title { fill: #f0f6fc; }',
+        '  .chart-muted { fill: #8b949e; }',
+        '  .chart-axis { stroke: #8b949e; }',
+        '  .chart-label { fill: #c9d1d9; }',
+        '  .chart-value { fill: #8b949e; }',
+        '  .chart-track { fill: #21262d; }',
+      ]
+    : [
+        '  .chart-bg { fill: #ffffff; }',
+        '  .chart-border { fill: none; stroke: #d0d7de; }',
+        '  .chart-title { fill: #24292f; }',
+        '  .chart-muted { fill: #57606a; }',
+        '  .chart-axis { stroke: #8c959f; }',
+        '  .chart-label { fill: #24292f; }',
+        '  .chart-value { fill: #57606a; }',
+        '  .chart-track { fill: #f6f8fa; }',
+        ...(theme === 'adaptive'
+          ? [
+              '  @media (prefers-color-scheme: dark) {',
+              '    .chart-bg { fill: #0d1117; }',
+              '    .chart-border { stroke: #30363d; }',
+              '    .chart-title { fill: #f0f6fc; }',
+              '    .chart-muted { fill: #8b949e; }',
+              '    .chart-axis { stroke: #8b949e; }',
+              '    .chart-label { fill: #c9d1d9; }',
+              '    .chart-value { fill: #8b949e; }',
+              '    .chart-track { fill: #21262d; }',
+              '  }',
+            ]
+          : []),
+      ]
 
   const svg = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
     '<style>',
-    '  .chart-bg { fill: #ffffff; }',
-    '  .chart-border { fill: none; stroke: #d0d7de; }',
-    '  .chart-title { fill: #24292f; }',
-    '  .chart-muted { fill: #57606a; }',
-    '  .chart-axis { stroke: #8c959f; }',
-    '  .chart-label { fill: #24292f; }',
-    '  .chart-value { fill: #57606a; }',
-    '  .chart-track { fill: #f6f8fa; }',
-    '  @media (prefers-color-scheme: dark) {',
-    '    .chart-bg { fill: #0d1117; }',
-    '    .chart-border { stroke: #30363d; }',
-    '    .chart-title { fill: #f0f6fc; }',
-    '    .chart-muted { fill: #8b949e; }',
-    '    .chart-axis { stroke: #8b949e; }',
-    '    .chart-label { fill: #c9d1d9; }',
-    '    .chart-value { fill: #8b949e; }',
-    '    .chart-track { fill: #21262d; }',
-    '  }',
+    ...themeCss,
     '</style>',
     '<rect class="chart-bg" width="' + width + '" height="' + height + '" rx="8"/>',
     '<rect class="chart-border" x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5"/>',
@@ -2035,9 +2062,20 @@ const baselineLabel = baselineProvenance?.runId
     (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
   : 'not available'
 const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
+const chartDarkSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows, 'dark') : ''
 if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
-const chartMarkdown = chartUrl && chartSvg
-  ? '![Perf change vs baseline chart](' + chartUrl + ')' +
+if (chartDarkPath && chartDarkSvg) writeFileSync(chartDarkPath, chartDarkSvg)
+const chartImageMarkdown = chartUrl && chartSvg
+  ? (chartDarkUrl
+      ? '<picture>\n' +
+        '  <source media="(prefers-color-scheme: dark)" srcset="' + chartDarkUrl + '">\n' +
+        '  <source media="(prefers-color-scheme: light)" srcset="' + chartUrl + '">\n' +
+        '  <img alt="Perf change vs baseline chart" src="' + chartUrl + '">\n' +
+        '</picture>'
+      : '![Perf change vs baseline chart](' + chartUrl + ')')
+  : ''
+const chartMarkdown = chartImageMarkdown
+  ? chartImageMarkdown +
     (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
   : ''
 
@@ -2087,19 +2125,23 @@ writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
 writeFileSync(commentIdPath, existing?.id ? String(existing.id) : '')
 EOF
 
-      node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file"
+      node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
 
       if [ -s "$chart_file" ]; then
         if ensure_ci_measurement_tool resvg resvg; then
-          resvg_args=(--background '#ffffff')
+          resvg_font_args=()
           if command -v nix >/dev/null 2>&1; then
             if font_out="$(nix build --no-link --print-out-paths nixpkgs#dejavu_fonts 2>/dev/null)"; then
-              resvg_args+=(--use-fonts-dir "$font_out/share/fonts/truetype")
+              resvg_font_args+=(--use-fonts-dir "$font_out/share/fonts/truetype")
             fi
           fi
-          if ! resvg "${dollar}{resvg_args[@]}" "$chart_file" "$chart_png_file"; then
+          if ! resvg --background '#ffffff' "${dollar}{resvg_font_args[@]}" "$chart_file" "$chart_png_file"; then
             echo "::notice::unable to render CI measurement chart PNG"
             rm -f "$chart_png_file"
+          fi
+          if [ -s "$chart_dark_file" ] && ! resvg --background '#0d1117' "${dollar}{resvg_font_args[@]}" "$chart_dark_file" "$chart_dark_png_file"; then
+            echo "::notice::unable to render dark CI measurement chart PNG"
+            rm -f "$chart_dark_png_file"
           fi
         else
           echo "::notice::resvg is not available; skipping embedded CI measurement chart PNG"
@@ -2126,11 +2168,21 @@ EOF
           if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
             echo "::notice::unable to upload CI measurement chart PNG asset"
             if [ -z "$public_asset_command" ]; then
-              sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+              sed -i.bak '/!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
             fi
           fi
         else
-          sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+          sed -i.bak '/!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+        fi
+        if [ -s "$chart_dark_png_file" ]; then
+          chart_dark_png_content="$(base64 <"$chart_dark_png_file" | tr -d '\n')"
+          if ! gh api "repos/$repo/contents/$asset_dark_png_path" --method PUT --field message="Update dark CI measurement chart PNG for PR #$pr_number" --field content="$chart_dark_png_content" --field branch="$asset_branch" >/dev/null; then
+            echo "::notice::unable to upload dark CI measurement chart PNG asset"
+            if [ -z "$public_asset_command" ]; then
+              export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+              node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+            fi
+          fi
         fi
 
         if [ -n "$public_asset_command" ] && [ -s "$chart_png_file" ]; then
@@ -2141,6 +2193,13 @@ EOF
             echo "::notice::unable to publish CI measurement chart PNG to public asset host"
             export CI_MEASUREMENT_PR_COMMENT_CHART_URL=""
           fi
+          if [ -s "$chart_dark_png_file" ] && public_chart_dark_url="$(bash -c "$public_asset_command" _ "$chart_dark_png_file" png)" && [ -n "$public_chart_dark_url" ]; then
+            chart_dark_url="$public_chart_dark_url"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL="$chart_dark_url"
+          else
+            echo "::notice::unable to publish dark CI measurement chart PNG to public asset host"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+          fi
           if public_chart_source_url="$(bash -c "$public_asset_command" _ "$chart_file" svg)" && [ -n "$public_chart_source_url" ]; then
             chart_source_url="$public_chart_source_url"
             export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
@@ -2148,7 +2207,7 @@ EOF
             echo "::notice::unable to publish CI measurement chart SVG to public asset host"
             export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
           fi
-          node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file"
+          node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
         fi
       fi
 

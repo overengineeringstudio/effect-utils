@@ -487,6 +487,9 @@ describe('ci workflow devenv perf helpers', () => {
       'chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"',
     )
     expect(ciWorkflowSource).toContain(
+      'chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"',
+    )
+    expect(ciWorkflowSource).toContain(
       'Chart: bars show percentage change; the meaning labels explain whether the movement is actionable, noise, normal variance, or diagnostic.',
     )
     expect(ciWorkflowSource).toContain(
@@ -500,7 +503,8 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(ciWorkflowSource).toContain('@media (prefers-color-scheme: dark)')
     expect(ciWorkflowSource).toContain('.chart-bg { fill: #0d1117; }')
-    expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
+    expect(ciWorkflowSource).toContain('<picture>')
+    expect(ciWorkflowSource).toContain('<source media="(prefers-color-scheme: dark)"')
     expect(ciWorkflowSource).toContain('[SVG source]')
     expect(ciWorkflowSource).toContain('ensure_ci_measurement_tool resvg resvg')
     expect(ciWorkflowSource).toContain('nixpkgs#dejavu_fonts')
@@ -510,8 +514,12 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('if [ "$repo_private" = "true" ]; then')
     expect(ciWorkflowSource).toContain('CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND')
     expect(ciWorkflowSource).toContain('bash -c "$public_asset_command" _ "$chart_png_file" png')
+    expect(ciWorkflowSource).toContain(
+      'bash -c "$public_asset_command" _ "$chart_dark_png_file" png',
+    )
     expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_svg_path"')
     expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_png_path"')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_dark_png_path"')
     expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
     expect(ciWorkflowSource).toContain('base64 <"$chart_png_file" | tr -d \'\\n\'')
   })
