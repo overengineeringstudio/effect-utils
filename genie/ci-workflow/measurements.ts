@@ -1490,7 +1490,7 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
-if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${dollar}{CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
   can_render_pr_comment=true
 
   ensure_ci_measurement_tool() {
@@ -1530,9 +1530,9 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
   fi
 
   event_path="${dollar}{GITHUB_EVENT_PATH:-}"
-  pr_number=""
+  pr_number="${dollar}{CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
   if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
-    pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
+    pr_number="${dollar}{pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
   fi
   if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
     echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"

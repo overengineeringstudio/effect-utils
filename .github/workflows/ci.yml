@@ -3351,7 +3351,7 @@ jobs:
             } >>"$GITHUB_STEP_SUMMARY"
           fi
 
-          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
             can_render_pr_comment=true
 
             ensure_ci_measurement_tool() {
@@ -3391,9 +3391,9 @@ jobs:
             fi
 
             event_path="${GITHUB_EVENT_PATH:-}"
-            pr_number=""
+            pr_number="${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
             if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
-              pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
+              pr_number="${pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
             fi
             if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
               echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
