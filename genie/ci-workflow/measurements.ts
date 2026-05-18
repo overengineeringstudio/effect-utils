@@ -25,6 +25,8 @@ export type CiMeasurementGatePolicy = {
   readonly minBaselineSources?: number
   readonly minCurrentSamples?: number
   readonly noiseFloor?: number
+  readonly statisticalToleranceRatio?: number
+  readonly statisticalToleranceAbs?: number
   readonly warnRatio?: number
   readonly failRatio?: number
   readonly warnAbs?: number
@@ -219,6 +221,8 @@ const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy =
       warnAbs: 1.5,
       failAbs: 3,
       noiseFloor: 0.5,
+      statisticalToleranceRatio: 0.2,
+      statisticalToleranceAbs: 1,
     }
   }
   if (probeId === 'tasks_list' || probeId === 'processes_help') {
@@ -226,11 +230,13 @@ const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy =
       enabled: true,
       minBaselineSources: 10,
       minCurrentSamples: 5,
-      warnRatio: 2,
-      failRatio: 3,
-      warnAbs: 0.25,
-      failAbs: 1,
-      noiseFloor: 0.1,
+      warnRatio: 1.25,
+      failRatio: 1.5,
+      warnAbs: 0.05,
+      failAbs: 0.15,
+      noiseFloor: 0.03,
+      statisticalToleranceRatio: 0.1,
+      statisticalToleranceAbs: 0.03,
     }
   }
   return {
@@ -240,8 +246,10 @@ const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy =
     warnRatio: 1.1,
     failRatio: 1.2,
     warnAbs: 0.25,
-    failAbs: 0.5,
+    failAbs: 1,
     noiseFloor: 0.1,
+    statisticalToleranceRatio: 0.1,
+    statisticalToleranceAbs: 0.25,
   }
 }
 
@@ -940,8 +948,9 @@ echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact
 
 export const devenvPerfArtifactStep = (
   opts?: Pick<DevenvPerfJobOptions, 'artifactDir' | 'artifactName' | 'retentionDays'>,
-) =>
-  ({
+) => {
+  const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+  return {
     name: 'Upload devenv perf artifacts',
     if: 'always()',
     uses: 'actions/upload-artifact@v4',
@@ -949,11 +958,12 @@ export const devenvPerfArtifactStep = (
       name:
         opts?.artifactName ??
         'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
-      path: opts?.artifactDir ?? 'tmp/devenv-perf-ci',
+      path: [artifactDir, `!${artifactDir}/baseline/**`].join('\n'),
       'if-no-files-found': 'error',
       'retention-days': opts?.retentionDays ?? 30,
     },
-  }) as const
+  } as const
+}
 
 export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptions) =>
   ({
@@ -962,7 +972,7 @@ export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptio
     uses: 'actions/upload-artifact@v4',
     with: {
       name: opts.artifactName,
-      path: opts.path,
+      path: [opts.path, `!${opts.path}/baseline/**`].join('\n'),
       'if-no-files-found': 'error',
       'retention-days': opts.retentionDays ?? 30,
     },
@@ -1217,6 +1227,8 @@ jq -n \
         else $sorted[(($p * ($count - 1)) | floor)]
         end;
 
+    def abs_value: if . < 0 then -. else . end;
+
     def observations_by_key($docs):
       reduce $docs[]? as $doc
         ({};
@@ -1234,13 +1246,17 @@ jq -n \
     def observation_stats($items):
       ($items | map(.observation.value)) as $values
       | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
+      | ($values | median) as $median
       | {
           target: ($items[0].target // {}),
           observation: ($items[-1].observation // {}),
-          value: ($values | median),
+          value: $median,
           min: ($values | min),
           max: ($values | max),
+          p25: ($values | percentile(0.25)),
+          p75: ($values | percentile(0.75)),
           p95: ($values | percentile(0.95)),
+          mad: ($values | map(. - $median | if . < 0 then -. else . end) | median),
           sourceCount: ($items | length),
           sampleCount: $sampleCount,
           generatedAt: ($items[-1].generatedAt // null)
@@ -1248,15 +1264,15 @@ jq -n \
 
     def budget($metric; $unit):
       if $metric == "nix.closure.nar_size" then
-        {warnRatio:1.10, failRatio:1.25, warnAbs:52428800, failAbs:209715200}
+        {warnRatio:1.05, failRatio:1.10, warnAbs:52428800, failAbs:209715200, statisticalToleranceRatio:0.02, statisticalToleranceAbs:10485760}
       elif $metric == "nix.closure.bucket.nar_size" then
-        {warnRatio:1.15, failRatio:1.35, warnAbs:52428800, failAbs:209715200}
+        {warnRatio:1.10, failRatio:1.20, warnAbs:52428800, failAbs:209715200, statisticalToleranceRatio:0.05, statisticalToleranceAbs:10485760}
       elif $metric == "nix.closure.path_count" then
-        {warnRatio:1.10, failRatio:1.25, warnAbs:100, failAbs:500}
+        {warnRatio:1.05, failRatio:1.10, warnAbs:100, failAbs:500, statisticalToleranceRatio:0.02, statisticalToleranceAbs:10}
       elif $unit == "seconds" then
-        {warnRatio:1.10, failRatio:1.20, warnAbs:0.25, failAbs:0.5}
+        {warnRatio:1.10, failRatio:1.20, warnAbs:0.25, failAbs:1, statisticalToleranceRatio:0.10, statisticalToleranceAbs:0.25}
       else
-        {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
+        {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3, statisticalToleranceRatio:0.10, statisticalToleranceAbs:1}
       end;
 
     def noise_floor($metric; $unit):
@@ -1278,13 +1294,23 @@ jq -n \
       default_policy($obs.name // "unknown"; $obs.unit // "unknown") + ($obs.policy // {});
     def policy_enabled($policy):
       if ($policy | has("enabled")) then $policy.enabled else true end;
-    def abs_value: if . < 0 then -. else . end;
 
-    def classify($metric; $unit; $policy; $current; $baseline; $baselineMin; $baselineMax; $baselineP95; $currentSamples; $baselineSources):
+    def classify($metric; $unit; $policy; $current; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
       $policy as $b
       | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+      | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
+      | ([
+          $noise,
+          (($policy.statisticalToleranceAbs // 0) | tonumber),
+          (if $baseline > 0 then ($baseline * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+          (($baselineMad // 0) * 3),
+          (($iqr // 0) * 1.5)
+        ] | max) as $robustTolerance
+      | ($baseline + $robustTolerance) as $robustUpper
+      | ($baseline - $robustTolerance) as $robustLower
+      | ($current >= $robustLower and $current <= $robustUpper) as $withinRobustBand
       | (
           $baselineMin != null
           and $baselineMax != null
@@ -1316,11 +1342,10 @@ jq -n \
           if $baseline <= 0 then "unknown"
           elif (policy_enabled($policy) != true) then "diagnostic"
           elif ($delta | abs_value) <= $noise then "noise_floor"
-          elif ($withinBaselineRange and $thresholdStatus == "pass") then "within_baseline_range"
           elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
           elif $thresholdStatus == "pass" then "within_budget"
-          elif ($baselineP95 != null and $current <= $baselineP95) then "within_baseline_distribution"
+          elif $withinRobustBand then "within_baseline_distribution"
           else "threshold_exceeded"
           end
         ) as $confidence
@@ -1333,12 +1358,12 @@ jq -n \
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "unchanged"
-          elif ($withinBaselineRange and $thresholdStatus == "pass") then "unchanged"
+          elif ($withinRobustBand and $thresholdStatus == "pass") then "unchanged"
           elif $delta < 0 then "improved"
           else "regressed"
-          end
-        ) as $direction
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction};
+        end
+      ) as $direction
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,withinBaselineRange:$withinBaselineRange};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -1375,7 +1400,10 @@ jq -n \
                         $baselineValue.value;
                         $baselineValue.min;
                         $baselineValue.max;
+                        $baselineValue.p25;
+                        $baselineValue.p75;
                         $baselineValue.p95;
+                        $baselineValue.mad;
                         $currentValue.sampleCount;
                         $baselineValue.sourceCount
                       ) + {
@@ -1385,7 +1413,10 @@ jq -n \
                         baselineSources: $baselineValue.sourceCount,
                         baselineMin: $baselineValue.min,
                         baselineMax: $baselineValue.max,
+                        baselineP25: $baselineValue.p25,
+                        baselineP75: $baselineValue.p75,
                         baselineP95: $baselineValue.p95
+                        ,baselineMad: $baselineValue.mad
                       }
                   end
                 )
@@ -1701,13 +1732,13 @@ const interpretation = (row) => {
   }
   if (row.status === 'fail') return {
     label: 'Regression - blocks merge',
-    detail: 'Slower than the configured fail threshold with enough samples.',
+    detail: 'Worse than the configured fail threshold with enough samples.',
     tone: 'bad',
     color: '#ef4444',
   }
   if (row.status === 'warn') return {
     label: 'Regression - review',
-    detail: 'Slower than the configured warning threshold.',
+    detail: 'Worse than the configured warning threshold.',
     tone: 'warn',
     color: '#f59e0b',
   }
@@ -1724,26 +1755,26 @@ const interpretation = (row) => {
     color: '#94a3b8',
   }
   if (row.confidence === 'within_baseline_range') return {
-    label: 'Normal variance',
-    detail: 'Current value is inside the observed baseline range.',
+    label: 'Historical range only',
+    detail: 'Inside the full historical min/max range, but this range is not used to pass a gate.',
     tone: 'neutral',
     color: '#94a3b8',
   }
   if (row.confidence === 'within_baseline_distribution') return {
-    label: 'Within historical p95',
-    detail: 'Current value is inside the historical baseline distribution.',
+    label: 'Within noise band',
+    detail: 'Current value is inside the robust baseline noise band.',
     tone: 'neutral',
     color: '#94a3b8',
   }
   if (row.direction === 'improved') return {
-    label: 'Meaningfully faster',
-    detail: 'Faster than baseline by more than the noise floor and outside normal range.',
+    label: 'Meaningfully lower',
+    detail: 'Lower than baseline by more than the noise floor and outside normal range.',
     tone: 'good',
     color: '#10b981',
   }
   if (row.direction === 'regressed') return {
-    label: 'Slightly slower, ok',
-    detail: 'Slower than baseline but still inside the configured budget.',
+    label: 'Slightly higher, ok',
+    detail: 'Higher than baseline but still inside the configured budget.',
     tone: 'neutral',
     color: '#94a3b8',
   }
@@ -1848,8 +1879,10 @@ const comparisonTable = (rows) => {
     '| --- | ---: | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
-      const baselineRange = typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
-        ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
+      const baselineRange = typeof row.baselineRobustLower === 'number' && typeof row.baselineRobustUpper === 'number' && row.baselineRobustLower !== row.baselineRobustUpper
+        ? '<br><sub>noise band ' + formatValue(row.baselineRobustLower, unit) + ' - ' + formatValue(row.baselineRobustUpper, unit) + '</sub>'
+        : typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
+          ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
         : ''
       const meaning = interpretation(row)
       return '| ' + [
@@ -1907,7 +1940,6 @@ const truncate = (value, maxLength) => {
 
 const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
   const chartRows = rows
-    .filter((row) => row.observation?.unit === 'seconds')
     .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
     .filter((row) => typeof row.ratio === 'number')
     .sort((left, right) => ((left.ratio || 1) - 1) - ((right.ratio || 1) - 1))
@@ -1976,10 +2008,10 @@ const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
     '</style>',
     '<rect class="chart-bg" width="' + width + '" height="' + height + '" rx="8"/>',
     '<rect class="chart-border" x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5"/>',
-    '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Perf change vs baseline</text>',
+    '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Measurement change vs baseline</text>',
     '<text class="chart-muted" x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">Bars show percent change; meaning explains whether the number is actionable.</text>',
-    '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">faster</text>',
-    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">slower</text>',
+    '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">lower</text>',
+    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">higher</text>',
     '<text class="chart-muted" x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11">baseline -> current</text>',
     '<text class="chart-muted" x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11">meaning</text>',
     '<line class="chart-axis" x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke-width="1.1" opacity="0.9"/>',
@@ -2081,9 +2113,9 @@ const chartImageMarkdown = chartUrl && chartSvg
       ? '<picture>\n' +
         '  <source media="(prefers-color-scheme: dark)" srcset="' + chartDarkUrl + '">\n' +
         '  <source media="(prefers-color-scheme: light)" srcset="' + chartUrl + '">\n' +
-        '  <img alt="Perf change vs baseline chart" src="' + chartUrl + '">\n' +
+        '  <img alt="Measurement change vs baseline chart" src="' + chartUrl + '">\n' +
         '</picture>'
-      : '![Perf change vs baseline chart](' + chartUrl + ')')
+      : '![Measurement change vs baseline chart](' + chartUrl + ')')
   : ''
 const chartMarkdown = chartImageMarkdown
   ? chartImageMarkdown +
@@ -2102,7 +2134,7 @@ const summaryLines = [
   '- Protocol: ' + protocolLabel,
   '',
   hasComparableBaseline
-    ? 'Chart: bars show percentage change; the meaning labels explain whether the movement is actionable, noise, normal variance, or diagnostic.'
+    ? 'Chart: bars show percentage change; gates use both the configured budget and the robust baseline noise band.'
     : 'No compatible baseline was available, so this run shows current measurements only.',
   '',
   chartMarkdown,
@@ -2184,11 +2216,11 @@ EOF
           if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
             echo "::notice::unable to upload CI measurement chart PNG asset"
             if [ -z "$public_asset_command" ]; then
-              sed -i.bak '/!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+              sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
             fi
           fi
         else
-          sed -i.bak '/!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+          sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
         fi
         if [ -s "$chart_dark_png_file" ]; then
           chart_dark_png_content="$(base64 <"$chart_dark_png_file" | tr -d '\n')"
