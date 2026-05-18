@@ -484,6 +484,9 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
     expect(ciWorkflowSource).toContain(
+      'chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"',
+    )
+    expect(ciWorkflowSource).toContain(
       'Chart: bars show percentage change; the meaning labels explain whether the movement is actionable, noise, normal variance, or diagnostic.',
     )
     expect(ciWorkflowSource).toContain(
@@ -496,8 +499,14 @@ describe('ci workflow devenv perf helpers', () => {
       'Bars show percent change; meaning explains whether the number is actionable.',
     )
     expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
+    expect(ciWorkflowSource).toContain('[SVG source]')
+    expect(ciWorkflowSource).toContain('ensure_ci_measurement_tool resvg resvg')
+    expect(ciWorkflowSource).toContain('nixpkgs#dejavu_fonts')
+    expect(ciWorkflowSource).toContain('DejaVu Sans')
     expect(ciWorkflowSource).toContain('https://raw.githubusercontent.com')
-    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_path"')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_svg_path"')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_png_path"')
     expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
+    expect(ciWorkflowSource).toContain('base64 <"$chart_png_file" | tr -d \'\\n\'')
   })
 })

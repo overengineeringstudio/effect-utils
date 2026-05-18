@@ -1538,6 +1538,7 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
     comment_body="$comment_tmp_dir/comment.md"
     comment_id_file="$comment_tmp_dir/comment-id.txt"
     chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"
+    chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"
     renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
 
     if ! gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"; then
@@ -1554,13 +1555,17 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
       asset_head_sha="${dollar}{GITHUB_HEAD_SHA:-${dollar}{GITHUB_SHA:-unknown}}"
       asset_run_id="${dollar}{GITHUB_RUN_ID:-local}"
       asset_run_attempt="${dollar}{GITHUB_RUN_ATTEMPT:-0}"
-      asset_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
+      asset_svg_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
+      asset_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.png"
       if [ "${dollar}{GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
-        chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_path"
+        chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
+        chart_source_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_svg_path"
       else
-        chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_path"
+        chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_png_path"
+        chart_source_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_svg_path"
       fi
       export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+      export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
 
       cat > "$renderer_script" <<'EOF'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -1578,6 +1583,7 @@ const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
 const workflow = process.env.GITHUB_WORKFLOW || 'CI'
 const job = process.env.GITHUB_JOB || ''
 const chartUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_URL || ''
+const chartSourceUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL || ''
 
 const marker = '<!-- ci-measurement-comment:managed -->'
 const statePrefix = '<!-- ci-measurement-comment:state\n'
@@ -1895,12 +1901,12 @@ const renderPerfChangeSvg = (rows) => {
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
     '<rect width="' + width + '" height="' + height + '" rx="8" fill="#ffffff"/>',
     '<rect x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5" fill="none" stroke="#e5e7eb"/>',
-    '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#111827">Perf change vs baseline</text>',
-    '<text x="' + width / 2 + '" y="48" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">Bars show percent change; meaning explains whether the number is actionable.</text>',
-    '<text x="' + plotX + '" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#059669">faster</text>',
-    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#dc2626">slower</text>',
-    '<text x="' + nominalX + '" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">baseline -> current</text>',
-    '<text x="' + meaningX + '" y="72" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">meaning</text>',
+    '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700" fill="#111827">Perf change vs baseline</text>',
+    '<text x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11" fill="#64748b">Bars show percent change; meaning explains whether the number is actionable.</text>',
+    '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">faster</text>',
+    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">slower</text>',
+    '<text x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#64748b">baseline -> current</text>',
+    '<text x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#64748b">meaning</text>',
     '<line x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke="#9ca3af" stroke-width="1.1" opacity="0.9"/>',
   ]
 
@@ -1917,17 +1923,17 @@ const renderPerfChangeSvg = (rows) => {
     const barOpacity = meaning.tone === 'neutral' ? '0.65' : '1'
     const dash = meaning.tone === 'diagnostic' ? ' stroke-dasharray="3 3"' : ''
     svg.push(
-      '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
+      '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
       '<rect x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5" fill="#f1f5f9"/>',
       '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '" opacity="' + barOpacity + '"' + dash + '/>',
-      '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
-      '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#475569"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
-      '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
+      '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
+      '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
+      '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
     )
   }
 
   svg.push(
-    '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#64748b">0%</text>',
+    '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#64748b">0%</text>',
     '</svg>',
   )
   return svg.join('\n')
@@ -1993,7 +1999,10 @@ const baselineLabel = baselineProvenance?.runId
   : 'not available'
 const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
 if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
-const chartMarkdown = chartUrl && chartSvg ? '![Perf change vs baseline chart](' + chartUrl + ')' : ''
+const chartMarkdown = chartUrl && chartSvg
+  ? '![Perf change vs baseline chart](' + chartUrl + ')' +
+    (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
+  : ''
 
 const summaryLines = [
   '## ' + title,
@@ -2044,6 +2053,21 @@ EOF
       node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file"
 
       if [ -s "$chart_file" ]; then
+        if ensure_ci_measurement_tool resvg resvg; then
+          resvg_args=(--background '#ffffff')
+          if command -v nix >/dev/null 2>&1; then
+            if font_out="$(nix build --no-link --print-out-paths nixpkgs#dejavu_fonts 2>/dev/null)"; then
+              resvg_args+=(--use-fonts-dir "$font_out/share/fonts/truetype")
+            fi
+          fi
+          if ! resvg "${dollar}{resvg_args[@]}" "$chart_file" "$chart_png_file"; then
+            echo "::notice::unable to render CI measurement chart PNG"
+            rm -f "$chart_png_file"
+          fi
+        else
+          echo "::notice::resvg is not available; skipping embedded CI measurement chart PNG"
+        fi
+
         if ! gh api "repos/$repo/git/ref/heads/$asset_branch" >/dev/null 2>&1; then
           default_branch_sha="$(gh api "repos/$repo/git/ref/heads/${dollar}{GITHUB_BASE_REF:-main}" --jq '.object.sha' 2>/dev/null || true)"
           if [ -z "$default_branch_sha" ]; then
@@ -2054,8 +2078,17 @@ EOF
           fi
         fi
         chart_content="$(base64 <"$chart_file" | tr -d '\n')"
-        if ! gh api "repos/$repo/contents/$asset_path" --method PUT --field message="Update CI measurement chart for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
-          echo "::notice::unable to upload CI measurement chart asset"
+        if ! gh api "repos/$repo/contents/$asset_svg_path" --method PUT --field message="Update CI measurement chart SVG for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
+          echo "::notice::unable to upload CI measurement chart SVG asset"
+          sed -i.bak '/\[SVG source\]/d' "$comment_body"
+        fi
+        if [ -s "$chart_png_file" ]; then
+          chart_png_content="$(base64 <"$chart_png_file" | tr -d '\n')"
+          if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
+            echo "::notice::unable to upload CI measurement chart PNG asset"
+            sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+          fi
+        else
           sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
         fi
       fi
