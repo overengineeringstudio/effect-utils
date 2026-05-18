@@ -112,6 +112,8 @@ export type CiMeasurementsComparisonStepOptions = {
     readonly maxRows?: number
     readonly maxHistory?: number
     readonly assetBranch?: string
+    readonly publicAssetCommand?: string
+    readonly publicAssetEnv?: Readonly<Record<string, string>>
     readonly tokenExpression?: string
   }
 }
@@ -1126,6 +1128,10 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: String(opts?.prComment?.maxHistory ?? 20),
       CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH:
         opts?.prComment?.assetBranch ?? 'ci-measurement-assets',
+      ...(opts?.prComment?.publicAssetCommand === undefined
+        ? {}
+        : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
+      ...(opts?.prComment?.publicAssetEnv ?? {}),
       ...(opts?.prComment?.tokenExpression === undefined
         ? {}
         : { GH_TOKEN: opts.prComment.tokenExpression }),
@@ -1557,12 +1563,21 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
       asset_run_attempt="${dollar}{GITHUB_RUN_ATTEMPT:-0}"
       asset_svg_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
       asset_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.png"
+      public_asset_command="${dollar}{CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND:-}"
+      repo_private="$(gh api "repos/$repo" --jq '.private // false' 2>/dev/null || printf 'true')"
       if [ "${dollar}{GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
-        chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
-        chart_source_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_svg_path"
+        github_raw_chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
+        github_raw_chart_source_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_svg_path"
       else
-        chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_png_path"
-        chart_source_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_svg_path"
+        github_raw_chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_png_path"
+        github_raw_chart_source_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_svg_path"
+      fi
+      if [ "$repo_private" = "true" ]; then
+        chart_url=""
+        chart_source_url=""
+      else
+        chart_url="$github_raw_chart_url"
+        chart_source_url="$github_raw_chart_source_url"
       fi
       export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
       export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
@@ -2080,16 +2095,38 @@ EOF
         chart_content="$(base64 <"$chart_file" | tr -d '\n')"
         if ! gh api "repos/$repo/contents/$asset_svg_path" --method PUT --field message="Update CI measurement chart SVG for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
           echo "::notice::unable to upload CI measurement chart SVG asset"
-          sed -i.bak '/\[SVG source\]/d' "$comment_body"
+          if [ -z "$public_asset_command" ]; then
+            sed -i.bak '/\[SVG source\]/d' "$comment_body"
+          fi
         fi
         if [ -s "$chart_png_file" ]; then
           chart_png_content="$(base64 <"$chart_png_file" | tr -d '\n')"
           if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
             echo "::notice::unable to upload CI measurement chart PNG asset"
-            sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+            if [ -z "$public_asset_command" ]; then
+              sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+            fi
           fi
         else
           sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+        fi
+
+        if [ -n "$public_asset_command" ] && [ -s "$chart_png_file" ]; then
+          if public_chart_url="$(bash -c "$public_asset_command" _ "$chart_png_file" png)" && [ -n "$public_chart_url" ]; then
+            chart_url="$public_chart_url"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+          else
+            echo "::notice::unable to publish CI measurement chart PNG to public asset host"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_URL=""
+          fi
+          if public_chart_source_url="$(bash -c "$public_asset_command" _ "$chart_file" svg)" && [ -n "$public_chart_source_url" ]; then
+            chart_source_url="$public_chart_source_url"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
+          else
+            echo "::notice::unable to publish CI measurement chart SVG to public asset host"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
+          fi
+          node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file"
         fi
       fi
 
