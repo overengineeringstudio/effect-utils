@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="514" viewBox="0 0 1040 514">
+<rect width="1040" height="514" rx="8" fill="#ffffff"/>
+<rect x="0.5" y="0.5" width="1039" height="513" rx="7.5" fill="none" stroke="#e5e7eb"/>
+<text x="520" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700" fill="#111827">Perf change vs baseline</text>
+<text x="520" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11" fill="#64748b">Bars show percent change; meaning explains whether the number is actionable.</text>
+<text x="252" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">faster</text>
+<text x="572" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">slower</text>
+<text x="672" y="72" font-family="DejaVu Sans" font-size="11" fill="#64748b">baseline -> current</text>
+<text x="804" y="72" font-family="DejaVu Sans" font-size="11" fill="#64748b">meaning</text>
+<line x1="448.4" y1="82" x2="448.4" y2="480" stroke="#9ca3af" stroke-width="1.1" opacity="0.9"/>
+<text x="230" y="105" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>Genie run task</title>Genie run task</text>
+<rect x="252" y="92" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="254.5" y="92" width="193.9" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="105" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">-53.3%</text>
+<text x="672" y="105" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>2.601s -&gt; 1.214s</title>2.601s -&gt; 1.214s</text>
+<text x="804" y="105" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the observed baseline range.</title>Normal variance</text>
+<text x="230" y="151" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>pnpm install task</title>pnpm install task</text>
+<rect x="252" y="138" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="326.9" y="138" width="121.5" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="151" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">-33.4%</text>
+<text x="672" y="151" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>0.852s -&gt; 0.567s</title>0.852s -&gt; 0.567s</text>
+<text x="804" y="151" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the observed baseline range.</title>Normal variance</text>
+<text x="230" y="197" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>Shell eval with OTEL trace</title>Shell eval with OTEL trace</text>
+<rect x="252" y="184" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="439.7" y="184" width="8.6" height="18" rx="5" fill="#a78bfa" opacity="1" stroke-dasharray="3 3"/>
+<text x="596" y="197" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#a78bfa">-2.4%</text>
+<text x="672" y="197" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>71.828s -&gt; 70.123s</title>71.828s -&gt; 70.123s</text>
+<text x="804" y="197" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#a78bfa"><title>Shown for investigation, but intentionally excluded from gating.</title>Diagnostic only</text>
+<text x="230" y="243" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>devenv processes --help</title>devenv processes --help</text>
+<rect x="252" y="230" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="448.4" y="230" width="2.0" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="243" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">0%</text>
+<text x="672" y="243" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>0.017s -&gt; 0.017s</title>0.017s -&gt; 0.017s</text>
+<text x="804" y="243" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text x="230" y="289" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>Quick check task</title>Quick check task</text>
+<rect x="252" y="276" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="448.4" y="276" width="2.7" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="289" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">+0.8%</text>
+<text x="672" y="289" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>2.921s -&gt; 2.943s</title>2.921s -&gt; 2.943s</text>
+<text x="804" y="289" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text x="230" y="335" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>devenv tasks list</title>devenv tasks list</text>
+<rect x="252" y="322" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="448.4" y="322" width="26.6" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="335" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">+7.3%</text>
+<text x="672" y="335" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>0.041s -&gt; 0.044s</title>0.041s -&gt; 0.044s</text>
+<text x="804" y="335" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>The absolute change is below the noise floor for this metric.</title>Too small to matter</text>
+<text x="230" y="381" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>Genie check direct</title>Genie check direct</text>
+<rect x="252" y="368" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="448.4" y="368" width="66.4" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="381" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">+18.2%</text>
+<text x="672" y="381" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>7.448s -&gt; 8.807s</title>7.448s -&gt; 8.807s</text>
+<text x="804" y="381" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the historical baseline distribution.</title>Within historical p95</text>
+<text x="230" y="427" text-anchor="end" font-family="DejaVu Sans" font-size="12" fill="#334155"><title>Warm shell eval</title>Warm shell eval</text>
+<rect x="252" y="414" width="320" height="18" rx="5" fill="#f1f5f9"/>
+<rect x="448.4" y="414" width="121.3" height="18" rx="5" fill="#94a3b8" opacity="0.65"/>
+<text x="596" y="427" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="#94a3b8">+33.3%</text>
+<text x="672" y="427" font-family="DejaVu Sans" font-size="11" fill="#475569"><title>4.311s -&gt; 5.748s</title>4.311s -&gt; 5.748s</text>
+<text x="804" y="427" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="#94a3b8"><title>Current value is inside the historical baseline distribution.</title>Within historical p95</text>
+<text x="448.4" y="498" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#64748b">0%</text>
+</svg>
