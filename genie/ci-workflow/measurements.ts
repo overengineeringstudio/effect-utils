@@ -1615,7 +1615,12 @@ const chartUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_URL || ''
 const chartDarkUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL || ''
 const chartSourceUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL || ''
 
-const marker = '<!-- ci-measurement-comment:managed -->'
+const markerScope = (process.env.CI_MEASUREMENT_PR_COMMENT_MARKER || title)
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '') || 'default'
+const marker = '<!-- ci-measurement-comment:managed:' + markerScope + ' -->'
+const legacyMarker = '<!-- ci-measurement-comment:managed -->'
 const statePrefix = '<!-- ci-measurement-comment:state\n'
 const stateSuffix = '\n-->'
 const stateTag = 'ci-measurement-comment-state'
@@ -1626,7 +1631,9 @@ const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
 if (!Array.isArray(comments)) throw new Error('comments response must be an array')
 
 const existing = comments.find((comment) => {
-  return typeof comment?.body === 'string' && comment.body.includes(marker)
+  if (typeof comment?.body !== 'string') return false
+  return comment.body.includes(marker) ||
+    (comment.body.includes(legacyMarker) && comment.body.includes('## ' + title))
 })
 
 const extractState = (body) => {
