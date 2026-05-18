@@ -1605,6 +1605,8 @@ jq -n \
       | ($baseline - $robustTolerance) as $robustLower
       | ($current + $currentRobustTolerance) as $currentRobustUpper
       | ($current - $currentRobustTolerance) as $currentRobustLower
+      | ([($b.warnAbs // 0), (if $baseline > 0 then ($baseline * (($b.warnRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $warnBudget
+      | ([($b.failAbs // 0), (if $baseline > 0 then ($baseline * (($b.failRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $failBudget
       | (
           ($current >= $robustLower and $current <= $robustUpper)
           or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
@@ -1661,7 +1663,27 @@ jq -n \
           else "regressed"
         end
       ) as $direction
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
+      | (
+          if $baseline <= 0 then null
+          elif (policy_enabled($policy) != true) then 0
+          elif $withinRobustBand then 0
+          elif ($delta | abs_value) <= $noise then 0
+          elif ($confidence == "threshold_exceeded" and $delta > 0) then ([0, ($currentRobustLower - $robustUpper), $delta] | max) / $warnBudget
+          elif ($confidence == "threshold_exceeded" and $delta < 0) then -(([0, ($robustLower - $currentRobustUpper), (-$delta)] | max) / $warnBudget)
+          elif $delta > 0 then ([0, ($currentRobustLower - $robustUpper)] | max) / $warnBudget
+          else -(([0, ($robustLower - $currentRobustUpper)] | max) / $warnBudget)
+          end
+        ) as $semanticImpactScore
+      | (
+          if $semanticImpactScore == null then "unknown"
+          elif $semanticImpactScore == 0 then "neutral"
+          elif $semanticImpactScore >= ($failBudget / $warnBudget) then "fail_boundary"
+          elif $semanticImpactScore >= 1 then "warn_boundary"
+          elif $semanticImpactScore > 0 then "below_warn_boundary"
+          else "improvement"
+          end
+        ) as $semanticImpactKind
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -2012,6 +2034,13 @@ const formatRatio = (value) => {
   return formatNumber(Math.round((value - 1) * 1000) / 10) + '%'
 }
 
+const formatSemanticImpact = (value) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
+  if (Math.abs(value) < 0.005) return '0.00x'
+  const sign = value > 0 ? '+' : ''
+  return sign + formatNumber(Math.round(value * 100) / 100) + 'x'
+}
+
 const interpretation = (row) => {
   if (row.confidence === 'low_baseline_count') return {
     label: 'Needs more baseline',
@@ -2061,7 +2090,7 @@ const interpretation = (row) => {
     tone: 'neutral',
     color: '#94a3b8',
   }
-  if (row.confidence === 'within_baseline_distribution') return {
+  if (row.confidence === 'within_robust_band' || row.confidence === 'within_baseline_distribution') return {
     label: 'Within noise band',
     detail: 'Current and baseline robust noise bands overlap.',
     tone: 'neutral',
@@ -2192,8 +2221,8 @@ const visibleRows = (hasComparableBaseline
 const comparisonTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Group | Measurement | Baseline | Current | Change | Meaning | Gate | Evidence |',
-    '| --- | --- | ---: | ---: | ---: | --- | --- | --- |',
+    '| Group | Measurement | Baseline | Current | Raw change | Impact | Meaning | Gate | Evidence |',
+    '| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
       const baselineRange = typeof row.baselineRobustLower === 'number' && typeof row.baselineRobustUpper === 'number' && row.baselineRobustLower !== row.baselineRobustUpper
@@ -2208,6 +2237,7 @@ const comparisonTable = (rows) => {
         formatValue(row.baseline, unit) + baselineRange,
         formatValue(row.current, unit),
         formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
+        formatSemanticImpact(row.semanticImpactScore),
         meaning.label + '<br><sub>' + meaning.detail + '</sub>',
         formatGate(row),
         (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
@@ -2230,8 +2260,8 @@ const currentOnlyTable = (rows) => {
 const allMeasurementsTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Status | Gate | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
-    '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
+    '| Status | Gate | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio | Impact |',
+    '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
       return '| ' + [
@@ -2244,6 +2274,7 @@ const allMeasurementsTable = (rows) => {
         formatValue(row.current, unit),
         formatDelta(row.delta, unit),
         formatRatio(row.ratio),
+        formatSemanticImpact(row.semanticImpactScore),
       ].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
@@ -2259,16 +2290,16 @@ const truncate = (value, maxLength) => {
 const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
   const chartRows = rows
     .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
-    .filter((row) => typeof row.ratio === 'number')
-    .sort((left, right) => ((left.ratio || 1) - 1) - ((right.ratio || 1) - 1))
+    .filter((row) => typeof row.semanticImpactScore === 'number')
+    .sort((left, right) => (left.semanticImpactScore || 0) - (right.semanticImpactScore || 0))
     .slice(0, visibleLimit)
   if (chartRows.length === 0) return ''
 
-  const percentages = chartRows.map((row) => ((row.ratio || 1) - 1) * 100)
-  const minPct = Math.min(-1, ...percentages)
-  const maxPct = Math.max(1, ...percentages)
-  const lower = Math.floor(minPct)
-  const upper = Math.ceil(maxPct)
+  const impactScores = chartRows.map((row) => row.semanticImpactScore || 0)
+  const minImpact = Math.min(-1, ...impactScores)
+  const maxImpact = Math.max(1, ...impactScores)
+  const lower = Math.floor(minImpact)
+  const upper = Math.ceil(maxImpact)
   const span = upper - lower || 1
   const width = 1040
   const rowHeight = 46
@@ -2276,7 +2307,7 @@ const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
   const labelX = 230
   const plotX = 252
   const plotWidth = 320
-  const percentX = 596
+  const impactX = 596
   const nominalX = 672
   const meaningX = 804
   const topY = 92
@@ -2326,23 +2357,24 @@ const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
     '</style>',
     '<rect class="chart-bg" width="' + width + '" height="' + height + '" rx="8"/>',
     '<rect class="chart-border" x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5"/>',
-    '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Measurement change vs baseline</text>',
-    '<text class="chart-muted" x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">Bars show percent change; meaning explains whether the number is actionable.</text>',
-    '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">lower</text>',
-    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">higher</text>',
+    '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Actionable measurement impact</text>',
+    '<text class="chart-muted" x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">0 means no actionable PR impact; 1x reaches the warning budget.</text>',
+    '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">improved</text>',
+    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">regressed</text>',
+    '<text class="chart-muted" x="' + impactX + '" y="72" font-family="DejaVu Sans" font-size="11">impact</text>',
     '<text class="chart-muted" x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11">baseline -> current</text>',
     '<text class="chart-muted" x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11">meaning</text>',
     '<line class="chart-axis" x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke-width="1.1" opacity="0.9"/>',
   ]
 
   for (const [index, row] of chartRows.entries()) {
-    const pct = ((row.ratio || 1) - 1) * 100
+    const impact = row.semanticImpactScore || 0
     const y = topY + index * rowHeight
-    const valueWidth = Math.max(2, Math.abs(pct) / span * plotWidth)
-    const x = pct < 0 ? zeroX - valueWidth : zeroX
+    const valueWidth = Math.max(2, Math.abs(impact) / span * plotWidth)
+    const x = impact < 0 ? zeroX - valueWidth : zeroX
     const meaning = interpretation(row)
     const color = meaning.color
-    const formattedPct = (pct > 0 ? '+' : '') + formatNumber(Math.round(pct * 10) / 10) + '%'
+    const formattedImpact = formatSemanticImpact(impact)
     const label = chartProbe(row)
     const nominal = formatValue(row.baseline, row.observation?.unit).replaceAll(' ', '') + ' -> ' + formatValue(row.current, row.observation?.unit).replaceAll(' ', '')
     const barOpacity = meaning.tone === 'neutral' ? '0.65' : '1'
@@ -2351,14 +2383,14 @@ const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
       '<text class="chart-label" x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
       '<rect class="chart-track" x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5"/>',
       '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '" opacity="' + barOpacity + '"' + dash + '/>',
-      '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
+      '<text x="' + impactX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedImpact) + '</text>',
       '<text class="chart-value" x="' + nominalX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
       '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
     )
   }
 
   svg.push(
-    '<text class="chart-muted" x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10">0%</text>',
+    '<text class="chart-muted" x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10">0</text>',
     '</svg>',
   )
   return svg.join('\n')
@@ -2392,6 +2424,7 @@ const currentRun = {
     current: formatValue(row.current, row.observation?.unit),
     delta: formatDelta(row.delta, row.observation?.unit),
     ratio: formatRatio(row.ratio),
+    impact: formatSemanticImpact(row.semanticImpactScore),
   })),
 }
 const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visibleRows.some((row) =>
@@ -2452,7 +2485,7 @@ const summaryLines = [
   '- Protocol: ' + protocolLabel,
   '',
   hasComparableBaseline
-    ? 'Chart: bars show percentage change. Gate decisions use configured budgets and robust current/baseline noise bands.'
+    ? 'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.'
     : 'No compatible baseline was available, so this run shows current measurements only.',
   '',
   chartMarkdown,

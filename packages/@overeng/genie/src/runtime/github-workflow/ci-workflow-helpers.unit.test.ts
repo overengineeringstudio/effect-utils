@@ -493,16 +493,16 @@ describe('ci workflow devenv perf helpers', () => {
       'chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"',
     )
     expect(ciWorkflowSource).toContain(
-      'Chart: bars show percentage change. Gate decisions use configured budgets and robust current/baseline noise bands.',
+      'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.',
     )
     expect(ciWorkflowSource).toContain(
-      '| Group | Measurement | Baseline | Current | Change | Meaning | Gate | Evidence |',
+      '| Group | Measurement | Baseline | Current | Raw change | Impact | Meaning | Gate | Evidence |',
     )
     expect(ciWorkflowSource).toContain("'- Readiness: ' + readinessLabel")
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
-    expect(ciWorkflowSource).toContain('Perf change vs baseline')
+    expect(ciWorkflowSource).toContain('Actionable measurement impact')
     expect(ciWorkflowSource).toContain(
-      'Bars show percent change; meaning explains whether the number is actionable.',
+      '0 means no actionable PR impact; 1x reaches the warning budget.',
     )
     expect(ciWorkflowSource).toContain('@media (prefers-color-scheme: dark)')
     expect(ciWorkflowSource).toContain('.chart-bg { fill: #0d1117; }')

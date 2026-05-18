@@ -99,8 +99,10 @@ run_compare
 actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
 actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
 actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
-if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_enforceable" != "true" ]; then
-  echo "expected confirmed regression to fail and be enforceable; got status=$actual_status row=$actual_row enforceable=$actual_enforceable" >&2
+actual_impact="$(jq -r '.comparisons[] | .semanticImpactScore' "$tmp_dir/comparison.json")"
+actual_impact_kind="$(jq -r '.comparisons[] | .semanticImpactKind' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_enforceable" != "true" ] || [ "$actual_impact_kind" != "fail_boundary" ] || ! awk "BEGIN { exit !($actual_impact > 1) }"; then
+  echo "expected confirmed regression to fail and have fail-boundary impact; got status=$actual_status row=$actual_row enforceable=$actual_enforceable impact=$actual_impact kind=$actual_impact_kind" >&2
   exit 1
 fi
 
@@ -119,8 +121,10 @@ actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
 actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
 actual_current_lower="$(jq -r '.comparisons[] | .currentRobustLower' "$tmp_dir/comparison.json")"
 actual_baseline_upper="$(jq -r '.comparisons[] | .baselineRobustUpper' "$tmp_dir/comparison.json")"
-if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_confidence" != "within_robust_band" ] || ! awk "BEGIN { exit !($actual_current_lower <= $actual_baseline_upper) }"; then
-  echo "expected overlapping current/baseline robust bands to pass; got status=$actual_status row=$actual_row confidence=$actual_confidence currentLower=$actual_current_lower baselineUpper=$actual_baseline_upper" >&2
+actual_impact="$(jq -r '.comparisons[] | .semanticImpactScore' "$tmp_dir/comparison.json")"
+actual_impact_kind="$(jq -r '.comparisons[] | .semanticImpactKind' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_confidence" != "within_robust_band" ] || [ "$actual_impact" != "0" ] || [ "$actual_impact_kind" != "neutral" ] || ! awk "BEGIN { exit !($actual_current_lower <= $actual_baseline_upper) }"; then
+  echo "expected overlapping current/baseline robust bands to pass with neutral impact; got status=$actual_status row=$actual_row confidence=$actual_confidence impact=$actual_impact kind=$actual_impact_kind currentLower=$actual_current_lower baselineUpper=$actual_baseline_upper" >&2
   exit 1
 fi
 
