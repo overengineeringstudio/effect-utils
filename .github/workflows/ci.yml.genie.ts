@@ -20,8 +20,12 @@ import {
   ciMeasurementNotBaselineBackfillPredicate,
   ciMeasurementSubjectEnv,
   ciMeasurementsCommentPermissions,
+  ciMeasurementsArtifactStep,
+  compareCiMeasurementsStep,
   devenvPerfJob,
+  downloadPreviousGitHubArtifactStep,
   namespaceRunner,
+  sourceShapeMeasurementStep,
   validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
   netlifyDeployStep,
@@ -272,6 +276,7 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
 }
 
 const NETLIFY_SITE = 'overeng-utils'
+const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
 
 // Non-required jobs (separate from CIJobName — not required status checks)
 const extraJobs: Record<string, any> = {
@@ -374,6 +379,75 @@ const extraJobs: Record<string, any> = {
       },
     }),
     'timeout-minutes': jobTimeoutMinutes,
+  },
+  'source-shape': {
+    if: normalCiIf,
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': jobTimeoutMinutes,
+    defaults: bashShellDefaults,
+    permissions: ciMeasurementsCommentPermissions,
+    env: ciMeasurementSubjectEnv,
+    steps: [
+      checkoutStep(),
+      downloadPreviousGitHubArtifactStep({
+        artifactName: 'source-shape',
+        outputDir: `${sourceShapeMeasurementsDir}/baseline`,
+        maxRuns: 20,
+      }),
+      sourceShapeMeasurementStep({
+        artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
+        targetId: 'effect_utils',
+        targetName: 'effect-utils',
+        targetLabel: 'effect-utils repository',
+        targetGroup: 'source',
+        targetPath: ['source', 'effect-utils'],
+        scopes: [
+          {
+            id: 'genie_ci_workflow',
+            label: 'Genie CI workflow helpers',
+            group: 'source / ci',
+            path: ['source', 'effect-utils', 'genie', 'ci-workflow'],
+            includePaths: ['genie/ci-workflow', '.github/workflows/ci.yml.genie.ts'],
+            includeExtensions: ['.ts'],
+          },
+          {
+            id: 'genie_runtime',
+            label: 'Genie runtime',
+            group: 'source / genie',
+            path: ['source', 'effect-utils', 'packages', 'genie'],
+            includePaths: ['packages/@overeng/genie/src'],
+            includeExtensions: ['.ts', '.tsx'],
+          },
+          {
+            id: 'nix_workspace_tools',
+            label: 'Nix workspace tools',
+            group: 'source / nix',
+            path: ['source', 'effect-utils', 'nix', 'workspace-tools'],
+            includePaths: ['nix/workspace-tools'],
+            includeExtensions: ['.nix'],
+          },
+        ],
+      }),
+      compareCiMeasurementsStep({
+        currentDir: `${sourceShapeMeasurementsDir}/current`,
+        baselineDir: `${sourceShapeMeasurementsDir}/baseline`,
+        outputFile: `${sourceShapeMeasurementsDir}/measurement-comparison.json`,
+        regressionMode: 'warn',
+        prComment: {
+          enabled: true,
+          title: 'Source Shape Measurements',
+          maxRows: 12,
+          maxHistory: 20,
+        },
+      }),
+      ciMeasurementsArtifactStep({
+        artifactName: 'source-shape',
+        path: sourceShapeMeasurementsDir,
+      }),
+    ],
   },
   /** Integration tests for Notion API (requires NOTION_TOKEN secret) */
   'test-integration-notion': {

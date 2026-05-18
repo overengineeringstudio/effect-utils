@@ -2928,6 +2928,7 @@ jobs:
                     id: ("devenv." + .id + ".duration"),
                     label: .label,
                     group: .group,
+                    description: .description,
                     name: ("devenv." + .id + ".duration"),
                     unit: "seconds",
                       value: (.durationMs / 1000),
@@ -2998,6 +2999,7 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -3146,12 +3148,13 @@ jobs:
               def policy_enabled($policy):
                 if ($policy | has("enabled")) then $policy.enabled else true end;
 
-              def classify($metric; $unit; $policy; $current; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
+              def classify($metric; $unit; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
                 $policy as $b
                 | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
                 | ($current - $baseline) as $delta
                 | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
                 | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
+                | (($currentP75 // $current) - ($currentP25 // $current)) as $currentIqr
                 | ([
                     $noise,
                     (($policy.statisticalToleranceAbs // 0) | tonumber),
@@ -3159,9 +3162,21 @@ jobs:
                     (($baselineMad // 0) * 3),
                     (($iqr // 0) * 1.5)
                   ] | max) as $robustTolerance
+                | (if $currentSamples > 1 then ([
+                    $noise,
+                    (($policy.statisticalToleranceAbs // 0) | tonumber),
+                    (if $current > 0 then ($current * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+                    (($currentMad // 0) * 3),
+                    (($currentIqr // 0) * 1.5)
+                  ] | max) else 0 end) as $currentRobustTolerance
                 | ($baseline + $robustTolerance) as $robustUpper
                 | ($baseline - $robustTolerance) as $robustLower
-                | ($current >= $robustLower and $current <= $robustUpper) as $withinRobustBand
+                | ($current + $currentRobustTolerance) as $currentRobustUpper
+                | ($current - $currentRobustTolerance) as $currentRobustLower
+                | (
+                    ($current >= $robustLower and $current <= $robustUpper)
+                    or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
+                  ) as $withinRobustBand
                 | (
                     $baselineMin != null
                     and $baselineMax != null
@@ -3195,8 +3210,8 @@ jobs:
                     elif ($delta | abs_value) <= $noise then "noise_floor"
                     elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
                     elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+                    elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
                     elif $thresholdStatus == "pass" then "within_budget"
-                    elif $withinRobustBand then "within_baseline_distribution"
                     else "threshold_exceeded"
                     end
                   ) as $confidence
@@ -3209,12 +3224,12 @@ jobs:
                 | (
                     if $baseline <= 0 then "unknown"
                     elif ($delta | abs_value) <= $noise then "unchanged"
-                    elif ($withinRobustBand and $thresholdStatus == "pass") then "unchanged"
+                    elif $withinRobustBand then "unchanged"
                     elif $delta < 0 then "improved"
                     else "regressed"
                   end
                 ) as $direction
-                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,withinBaselineRange:$withinBaselineRange};
+                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
 
               (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
               | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -3248,6 +3263,9 @@ jobs:
                                   $currentValue.observation.unit;
                                   ($currentValue.observation | observation_policy(.));
                                   $currentValue.value;
+                                  $currentValue.p25;
+                                  $currentValue.p75;
+                                  $currentValue.mad;
                                   $baselineValue.value;
                                   $baselineValue.min;
                                   $baselineValue.max;
@@ -3613,7 +3631,7 @@ jobs:
             }
             if (row.confidence === 'within_baseline_distribution') return {
               label: 'Within noise band',
-              detail: 'Current value is inside the robust baseline noise band.',
+              detail: 'Current and baseline robust noise bands overlap.',
               tone: 'neutral',
               color: '#94a3b8',
             }
@@ -3668,6 +3686,22 @@ jobs:
               return name.slice('devenv.'.length, -'.duration'.length).replaceAll('_', ' ')
             }
             return name
+          }
+
+          const semanticPath = (row) => {
+            const parts = [
+              ...(Array.isArray(row.target?.path) ? row.target.path : []),
+              row.target?.group,
+              ...(Array.isArray(row.observation?.path) ? row.observation.path : []),
+              row.observation?.group,
+            ].filter((value) => typeof value === 'string' && value.length > 0)
+            const seen = new Set()
+            const unique = parts.filter((part) => {
+              if (seen.has(part)) return false
+              seen.add(part)
+              return true
+            })
+            return unique.length > 0 ? unique.join(' / ') : '-'
           }
 
           const chartProbe = (row) => {
@@ -3726,8 +3760,8 @@ jobs:
           const comparisonTable = (rows) => {
             if (rows.length === 0) return 'No measurement regressions detected.'
             return [
-              '| Probe | Baseline | Current | Change | Meaning | Gate | Evidence |',
-              '| --- | ---: | ---: | ---: | --- | --- | --- |',
+              '| Group | Measurement | Baseline | Current | Change | Meaning | Gate | Evidence |',
+              '| --- | --- | ---: | ---: | ---: | --- | --- | --- |',
               ...rows.map((row) => {
                 const unit = row.observation?.unit
                 const baselineRange = typeof row.baselineRobustLower === 'number' && typeof row.baselineRobustUpper === 'number' && row.baselineRobustLower !== row.baselineRobustUpper
@@ -3737,6 +3771,7 @@ jobs:
                   : ''
                 const meaning = interpretation(row)
                 return '| ' + [
+                  semanticPath(row),
                   humanProbe(row),
                   formatValue(row.baseline, unit) + baselineRange,
                   formatValue(row.current, unit),
@@ -3752,10 +3787,10 @@ jobs:
           const currentOnlyTable = (rows) => {
             if (rows.length === 0) return 'No current measurements found.'
             return [
-              '| Probe | Current |',
-              '| --- | ---: |',
+              '| Group | Measurement | Current |',
+              '| --- | --- | ---: |',
               ...rows.map((row) => {
-                return '| ' + [humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
+                return '| ' + [semanticPath(row), humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
               }),
             ].join('\n')
           }
@@ -3985,7 +4020,7 @@ jobs:
             '- Protocol: ' + protocolLabel,
             '',
             hasComparableBaseline
-              ? 'Chart: bars show percentage change; gates use both the configured budget and the robust baseline noise band.'
+              ? 'Chart: bars show percentage change. Gate decisions use configured budgets and robust current/baseline noise bands.'
               : 'No compatible baseline was available, so this run shows current measurements only.',
             '',
             chartMarkdown,
@@ -4119,12 +4154,14 @@ jobs:
                 fi
 
                 comment_id="$(cat "$comment_id_file")"
+                comment_payload_file="$comment_body.payload.json"
+                node -e "const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))" "$comment_body" "$comment_payload_file"
                 if [ -n "$comment_id" ]; then
-                  if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null; then
+                  if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --input "$comment_payload_file" >/dev/null; then
                     echo "::notice::unable to update CI measurement PR comment"
                   fi
                 else
-                  if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null; then
+                  if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --input "$comment_payload_file" >/dev/null; then
                     echo "::notice::unable to create CI measurement PR comment"
                   fi
                 fi
@@ -4147,6 +4184,1609 @@ jobs:
           if-no-files-found: error
           retention-days: 30
     timeout-minutes: 30
+  source-shape:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+    runs-on:
+      [namespace-profile-linux-x86-64, 'namespace-features:github.run-id=${{ github.run_id }}']
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
+      CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
+      CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
+      CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: 'Download previous artifact: source-shape'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_ARTIFACT_NAME: source-shape
+          BASELINE_OUTPUT_DIR: tmp/source-shape-ci/baseline
+          BASELINE_WORKFLOW_NAME: ${{ github.workflow }}
+          BASELINE_BRANCH: ${{ github.base_ref || github.ref_name }}
+          BASELINE_SEED_RUNS_JSON: '[]'
+          BASELINE_MAX_RUNS: '20'
+          BASELINE_MAX_CANDIDATE_RUNS: '60'
+          BASELINE_REQUIRED_OBSERVATIONS_JSON: '[]'
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$BASELINE_OUTPUT_DIR"
+
+          if command -v gh >/dev/null 2>&1; then
+            GH_BIN="$(command -v gh)"
+          else
+            echo "::notice::gh is not on PATH; resolving GitHub CLI through Nix"
+            if ! GH_BIN="$(nix build --no-link --print-out-paths nixpkgs#gh 2>/dev/null)/bin/gh"; then
+              echo "::notice::unable to resolve GitHub CLI through Nix; skipping previous artifact download"
+              exit 0
+            fi
+          fi
+          echo "Using GitHub CLI: $GH_BIN"
+
+          repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+          workflow="${BASELINE_WORKFLOW_NAME:-CI}"
+          branch="${BASELINE_BRANCH:-${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-main}}}"
+          seed_runs_file="$BASELINE_OUTPUT_DIR/baseline-seed-runs.json"
+          required_observations_file="$BASELINE_OUTPUT_DIR/baseline-required-observations.json"
+          printf '%s' "${BASELINE_SEED_RUNS_JSON:-[]}" >"$seed_runs_file"
+          printf '%s' "${BASELINE_REQUIRED_OBSERVATIONS_JSON:-[]}" >"$required_observations_file"
+          if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.runId | type == "string")) else false end' \
+            "$seed_runs_file" >/dev/null; then
+            echo "::error::BASELINE_SEED_RUNS_JSON must be an array of objects with string runId fields"
+            exit 1
+          fi
+          if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.id | type == "string") and (.minSources | type == "number")) else false end' \
+            "$required_observations_file" >/dev/null; then
+            echo "::error::BASELINE_REQUIRED_OBSERVATIONS_JSON must be an array of objects with string id and numeric minSources fields"
+            exit 1
+          fi
+          seed_run_ids="$(jq -r '.[].runId' "$seed_runs_file")"
+          required_observation_count="$(jq 'length' "$required_observations_file")"
+          max_candidate_runs="${BASELINE_MAX_CANDIDATE_RUNS:-${BASELINE_MAX_RUNS:-5}}"
+          if ! [[ "$max_candidate_runs" =~ ^[0-9]+$ ]] || [ "$max_candidate_runs" -lt 1 ]; then
+            max_candidate_runs=1
+          fi
+
+          candidate_runs="$(
+            "$GH_BIN" run list \
+              --repo "$repo" \
+              --workflow "$workflow" \
+              --branch "$branch" \
+              --event push \
+              --status success \
+              --json databaseId,headSha \
+              --limit "$max_candidate_runs" \
+              --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
+          )"
+
+          candidate_runs="$seed_run_ids
+          $candidate_runs"
+
+          max_runs="${BASELINE_MAX_RUNS:-5}"
+          if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
+            max_runs=1
+          fi
+
+          write_baseline_observation_counts() {
+            local measurement_index="$BASELINE_OUTPUT_DIR/baseline-measurement-files.txt"
+            local counts_file="$BASELINE_OUTPUT_DIR/baseline-observation-counts.json"
+            find "$BASELINE_OUTPUT_DIR" \
+              -mindepth 2 \
+              -maxdepth 2 \
+              -name measurements.json \
+              -type f \
+              -print \
+              | sort >"$measurement_index" || true
+
+            if [ -s "$measurement_index" ]; then
+              xargs -r jq -s \
+                --slurpfile required "$required_observations_file" \
+                '
+                  ([.[] | (.observations // [])[]? | select(.value | type == "number") | .id] | sort | group_by(.) | map({id: .[0], sources: length})) as $counts
+                  | ($required[0] // []) as $requiredRows
+                  | {
+                      counts: $counts,
+                      required: (
+                        $requiredRows
+                        | map(. as $requiredRow | ($counts | map(select(.id == $requiredRow.id)) | .[0].sources // 0) as $actual | $requiredRow + {sources:$actual, satisfied:($actual >= $requiredRow.minSources)})
+                      )
+                    }
+                ' <"$measurement_index" >"$counts_file"
+            else
+              jq -n --slurpfile required "$required_observations_file" \
+                '{counts: [], required: (($required[0] // []) | map(. + {sources:0, satisfied:false}))}' >"$counts_file"
+            fi
+          }
+
+          baseline_requirements_satisfied() {
+            if [ "$required_observation_count" -eq 0 ]; then
+              return 1
+            fi
+            write_baseline_observation_counts
+            jq -e '.required | all(.satisfied == true)' "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" >/dev/null
+          }
+
+          run_id=""
+          artifact_name=""
+          artifact_id=""
+          downloaded_runs_file="$BASELINE_OUTPUT_DIR/baseline-runs.jsonl"
+          seen_runs_file="$BASELINE_OUTPUT_DIR/baseline-seen-runs.txt"
+          : >"$downloaded_runs_file"
+          : >"$seen_runs_file"
+          for candidate_run in $candidate_runs; do
+            if [ -z "$candidate_run" ]; then
+              continue
+            fi
+            if grep -qxF "$candidate_run" "$seen_runs_file"; then
+              continue
+            fi
+            downloaded_count="$(wc -l <"$downloaded_runs_file" | tr -d ' ')"
+            if [ "$downloaded_count" -ge "$max_runs" ]; then
+              if baseline_requirements_satisfied; then
+                break
+              fi
+              echo "::notice::downloaded $downloaded_count baseline artifact(s), but required observation counts are not satisfied yet; continuing through bounded candidate history"
+            fi
+            if [ "$(wc -l <"$seen_runs_file" | tr -d ' ')" -ge "$max_candidate_runs" ]; then
+              break
+            fi
+            printf '%s\n' "$candidate_run" >>"$seen_runs_file"
+
+            artifact_json="$(
+              "$GH_BIN" api "repos/$repo/actions/runs/$candidate_run/artifacts" \
+                | jq --arg artifactName "$BASELINE_ARTIFACT_NAME" '.artifacts
+                  | map(select(.expired == false))
+                  | map(select(.name == $artifactName or (.name | startswith($artifactName + "-"))))
+                  | sort_by(.created_at // "")
+                  | reverse
+                  | .[0] // empty'
+            )"
+
+            if [ -n "$artifact_json" ]; then
+              current_artifact_name="$(printf '%s' "$artifact_json" | jq -r '.name')"
+              current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
+              current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
+              mkdir -p "$current_output_dir"
+              if "$GH_BIN" run download "$candidate_run" \
+                --repo "$repo" \
+                --name "$current_artifact_name" \
+                --dir "$current_output_dir"; then
+                if [ -z "$run_id" ]; then
+                  run_id="$candidate_run"
+                  artifact_name="$current_artifact_name"
+                  artifact_id="$current_artifact_id"
+                fi
+                jq -cn \
+                  --arg runId "$candidate_run" \
+                  --arg artifactName "$current_artifact_name" \
+                  --arg artifactId "$current_artifact_id" \
+                  --arg path "run-$candidate_run" \
+                  '{runId:$runId, artifactName:$artifactName, artifactId:$artifactId, path:$path}' \
+                  >>"$downloaded_runs_file"
+              else
+                echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run"
+              fi
+            fi
+          done
+
+          write_baseline_observation_counts
+
+          if [ -z "$run_id" ] || [ -z "$artifact_name" ]; then
+            echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
+            exit 0
+          fi
+
+          jq -n \
+            --slurpfile runs "$downloaded_runs_file" \
+            --slurpfile seedRuns "$seed_runs_file" \
+            --slurpfile observationCounts "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" \
+            --argjson schemaVersion 1 \
+            --arg repository "$repo" \
+            --arg workflow "$workflow" \
+            --arg branch "$branch" \
+            --arg runId "$run_id" \
+            --arg artifactName "$artifact_name" \
+            --arg artifactId "$artifact_id" \
+            '{
+              schemaVersion: $schemaVersion,
+              source: "github-actions-artifact",
+              repository: $repository,
+              workflow: $workflow,
+              branch: $branch,
+              runId: $runId,
+              artifactName: $artifactName,
+              artifactId: $artifactId,
+              seedRuns: ($seedRuns[0] // []),
+              runs: $runs,
+              observationCounts: ($observationCounts[0] // null)
+            }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
+
+          echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact(s), latest $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"
+
+      - name: 'Measure source shape: effect-utils'
+        shell: bash
+        env:
+          ARTIFACT_DIR: tmp/source-shape-ci/current/effect-utils
+          RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}'
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$ARTIFACT_DIR"
+          target_id='effect_utils'
+          target_name='effect-utils'
+          target_label='effect-utils repository'
+          target_group='source'
+          artifact_file="$ARTIFACT_DIR/measurements.json"
+          target_system="${DEVENV_SYSTEM:-${RUNNER_OS:-unknown}}"
+
+          SCOPES_JSON='[{"id":"genie_ci_workflow","label":"Genie CI workflow helpers","group":"source / ci","path":["source","effect-utils","genie","ci-workflow"],"includePaths":["genie/ci-workflow",".github/workflows/ci.yml.genie.ts"],"includeExtensions":[".ts"]},{"id":"genie_runtime","label":"Genie runtime","group":"source / genie","path":["source","effect-utils","packages","genie"],"includePaths":["packages/@overeng/genie/src"],"includeExtensions":[".ts",".tsx"]},{"id":"nix_workspace_tools","label":"Nix workspace tools","group":"source / nix","path":["source","effect-utils","nix","workspace-tools"],"includePaths":["nix/workspace-tools"],"includeExtensions":[".nix"]}]' \
+          TARGET_PATH_JSON='["source","effect-utils"]' \
+          TARGET_ID="$target_id" \
+          TARGET_NAME="$target_name" \
+          TARGET_LABEL="$target_label" \
+          TARGET_GROUP="$target_group" \
+          TARGET_SYSTEM="$target_system" \
+          node <<'NODE' >"$artifact_file"
+          const cp = require('node:child_process')
+          const fs = require('node:fs')
+          const path = require('node:path')
+
+          const normalize = (value) => {
+            const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+            return normalized === '.' ? '' : normalized
+          }
+          const scopes = JSON.parse(process.env.SCOPES_JSON || '[]')
+          const targetPath = JSON.parse(process.env.TARGET_PATH_JSON || '["source"]')
+          const gitFiles = cp
+            .execFileSync('git', ['ls-files', '-z'], { encoding: 'buffer' })
+            .toString('utf8')
+            .split('\0')
+            .filter(Boolean)
+            .map(normalize)
+
+          const includesPath = (file, candidates) => {
+            if (!Array.isArray(candidates) || candidates.length === 0) return true
+            return candidates.map(normalize).some((candidate) => candidate === '' || file === candidate || file.startsWith(candidate + '/'))
+          }
+
+          const excludesPath = (file, candidates) =>
+            Array.isArray(candidates) &&
+            candidates.map(normalize).some((candidate) => candidate !== '' && (file === candidate || file.startsWith(candidate + '/')))
+
+          const matchesExtension = (file, extensions) => {
+            if (!Array.isArray(extensions) || extensions.length === 0) return true
+            const ext = path.extname(file).toLowerCase()
+            return extensions.map((extension) => extension.toLowerCase()).some((extension) => ext === extension)
+          }
+
+          const countLines = (file) => {
+            const buffer = fs.readFileSync(file)
+            if (buffer.includes(0)) return undefined
+            if (buffer.length === 0) return 0
+            let lines = 0
+            for (const byte of buffer) {
+              if (byte === 10) lines += 1
+            }
+            return buffer[buffer.length - 1] === 10 ? lines : lines + 1
+          }
+
+          const observations = []
+          const scopeSummaries = []
+
+          for (const scope of scopes) {
+            const root = normalize(scope.root || '.')
+            const includePaths = Array.isArray(scope.includePaths) && scope.includePaths.length > 0 ? scope.includePaths : [root]
+            const files = gitFiles
+              .filter((file) => includesPath(file, includePaths))
+              .filter((file) => !excludesPath(file, scope.excludePaths))
+              .filter((file) => matchesExtension(file, scope.includeExtensions))
+
+            let lineCount = 0
+            let measuredFileCount = 0
+            for (const file of files) {
+              const lines = countLines(file)
+              if (lines === undefined) continue
+              lineCount += lines
+              measuredFileCount += 1
+            }
+
+            const group = scope.group || 'source shape'
+            const scopePath = Array.isArray(scope.path) ? scope.path : ['source', scope.id]
+            const policy = scope.gate || { enabled: false, minBaselineSources: 3, minCurrentSamples: 1 }
+            observations.push(
+              {
+                id: 'source.lines',
+                label: scope.label + ' lines',
+                group,
+                path: scopePath,
+                description: 'Tracked non-binary source lines in the configured scope.',
+                name: 'source.lines',
+                unit: 'lines',
+                value: lineCount,
+                dimensions: { scope: scope.id },
+                policy,
+                statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+              },
+              {
+                id: 'source.files',
+                label: scope.label + ' files',
+                group,
+                path: scopePath,
+                description: 'Tracked non-binary source files in the configured scope.',
+                name: 'source.files',
+                unit: 'count',
+                value: measuredFileCount,
+                dimensions: { scope: scope.id },
+                policy,
+                statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+              },
+            )
+            scopeSummaries.push({
+              id: scope.id,
+              label: scope.label,
+              root,
+              includePaths,
+              excludePaths: scope.excludePaths || [],
+              includeExtensions: scope.includeExtensions || [],
+              fileCount: measuredFileCount,
+              lineCount,
+            })
+          }
+
+          const artifact = {
+            schemaVersion: 1,
+            generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+            producer: {
+              name: 'effect-utils-ci-measurement',
+              version: 1,
+              measurementProtocol: 'source-shape-v1',
+            },
+            subject: {
+              repo: process.env.GITHUB_REPOSITORY || 'unknown',
+              branchKind: process.env.GITHUB_EVENT_NAME || 'unknown',
+              ref: process.env.CI_MEASUREMENT_SUBJECT_REF || process.env.GITHUB_REF || 'unknown',
+              headSha: process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_SHA || 'unknown',
+              baseSha: process.env.GITHUB_BASE_SHA || '',
+            },
+            execution: {
+              provider: process.env.GITHUB_RUN_ID && process.env.GITHUB_RUN_ID !== 'unknown' ? 'github-actions' : 'local',
+              workflow: 'CI',
+              job: process.env.GITHUB_JOB || 'unknown',
+              runId: process.env.GITHUB_RUN_ID || 'unknown',
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT || 'unknown',
+              taskId: process.env.CROSSTASK_TASK_ID || '',
+              attemptId: process.env.CROSSTASK_ATTEMPT_ID || '',
+              traceId: process.env.TRACE_ID || '',
+              runner: {
+                name: process.env.RUNNER_NAME || 'unknown',
+                os: process.env.RUNNER_OS || 'unknown',
+                arch: process.env.RUNNER_ARCH || 'unknown',
+                class: process.env.RUNNER_CLASS || 'unknown',
+              },
+            },
+            target: {
+              kind: 'source-shape',
+              id: process.env.TARGET_ID,
+              name: process.env.TARGET_NAME,
+              label: process.env.TARGET_LABEL,
+              group: process.env.TARGET_GROUP,
+              path: targetPath,
+              system: process.env.TARGET_SYSTEM,
+            },
+            observations,
+            details: { scopes: scopeSummaries },
+          }
+
+          process.stdout.write(JSON.stringify(artifact, null, 2) + '\n')
+          NODE
+
+          cat "$artifact_file"
+
+      - name: Compare CI measurements with baseline
+        shell: bash
+        env:
+          CI_MEASUREMENT_CURRENT_DIR: tmp/source-shape-ci/current
+          CI_MEASUREMENT_BASELINE_DIR: tmp/source-shape-ci/baseline
+          CI_MEASUREMENT_COMPARISON_FILE: tmp/source-shape-ci/measurement-comparison.json
+          CI_MEASUREMENT_REGRESSION_MODE: warn
+          CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'
+          CI_MEASUREMENT_PR_COMMENT_TITLE: Source Shape Measurements
+          CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '12'
+          CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
+          CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          export PATH="/run/current-system/sw/bin:/usr/bin:/bin:$PATH"
+
+          current_dir="${CI_MEASUREMENT_CURRENT_DIR:?CI_MEASUREMENT_CURRENT_DIR not set}"
+          baseline_dir="${CI_MEASUREMENT_BASELINE_DIR:?CI_MEASUREMENT_BASELINE_DIR not set}"
+          comparison_file="${CI_MEASUREMENT_COMPARISON_FILE:?CI_MEASUREMENT_COMPARISON_FILE not set}"
+          mode="${CI_MEASUREMENT_REGRESSION_MODE:-warn}"
+          mkdir -p "$(dirname "$comparison_file")"
+
+          if [ "$mode" = "off" ]; then
+            jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" \
+              '{schemaVersion:$schemaVersion,status:$status,mode:$mode,comparisons:{}}' \
+              >"$comparison_file"
+            exit 0
+          fi
+
+          current_index="$(mktemp)"
+          baseline_index="$(mktemp)"
+          find "$current_dir" -name baseline -type d -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
+          {
+            find "$baseline_dir" -name baseline -type d ! -path "$baseline_dir" -prune -o -name measurements.json -type f -print
+          } | sort -u >"$baseline_index" || true
+
+          if [ ! -s "$current_index" ]; then
+            echo "::error::no current measurements.json files found under $current_dir"
+            exit 1
+          fi
+
+          current_json="$comparison_file.current.json"
+          baseline_json="$comparison_file.baseline.json"
+          xargs -r jq -s '.' <"$current_index" >"$current_json"
+          if [ -s "$baseline_index" ]; then
+            xargs -r jq -s '.' <"$baseline_index" >"$baseline_json"
+          else
+            printf '[]\n' >"$baseline_json"
+          fi
+
+          jq -n \
+            --slurpfile current "$current_json" \
+            --slurpfile baseline "$baseline_json" \
+            --argjson schemaVersion 1 \
+            --arg mode "$mode" \
+            --arg currentDir "$current_dir" \
+            --arg baselineDir "$baseline_dir" \
+            '
+              def identity_dimensions:
+                (.dimensions // {})
+                | to_entries
+                | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount", "measuredSampleCount"] | index($key) | not))
+                | sort_by(.key)
+                | map("\(.key)=\(.value|tostring)")
+                | join(",");
+
+              def observation_key($doc):
+                [
+                  ($doc.target.kind // "unknown"),
+                  ($doc.target.id // $doc.target.name // "unknown"),
+                  ($doc.target.system // "unknown"),
+                  (.id // .name // "unknown"),
+                  (.unit // "unknown"),
+                  identity_dimensions
+                ] | join("|");
+
+              def median:
+                sort as $sorted
+                | ($sorted | length) as $count
+                | if $count == 0 then null
+                  elif ($count % 2) == 1 then $sorted[($count / 2 | floor)]
+                  else (($sorted[($count / 2 - 1)] + $sorted[($count / 2)]) / 2)
+                  end;
+
+              def percentile($p):
+                sort as $sorted
+                | ($sorted | length) as $count
+                | if $count == 0 then null
+                  else $sorted[(($p * ($count - 1)) | floor)]
+                  end;
+
+              def abs_value: if . < 0 then -. else . end;
+
+              def observations_by_key($docs):
+                reduce $docs[]? as $doc
+                  ({};
+                    reduce (($doc.observations // [])[]? | select(.value | type == "number")) as $obs
+                      (.;
+                        ($obs | observation_key($doc)) as $key
+                        | .[$key] = ((.[$key] // []) + [{
+                            target: $doc.target,
+                            observation: $obs,
+                            generatedAt: $doc.generatedAt
+                          }])
+                      )
+                  );
+
+              def observation_stats($items):
+                ($items | map(.observation.value)) as $values
+                | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
+                | ($values | median) as $median
+                | {
+                    target: ($items[0].target // {}),
+                    observation: ($items[-1].observation // {}),
+                    value: $median,
+                    min: ($values | min),
+                    max: ($values | max),
+                    p25: ($values | percentile(0.25)),
+                    p75: ($values | percentile(0.75)),
+                    p95: ($values | percentile(0.95)),
+                    mad: ($values | map(. - $median | if . < 0 then -. else . end) | median),
+                    sourceCount: ($items | length),
+                    sampleCount: $sampleCount,
+                    generatedAt: ($items[-1].generatedAt // null)
+                  };
+
+              def budget($metric; $unit):
+                if $metric == "nix.closure.nar_size" then
+                  {warnRatio:1.05, failRatio:1.10, warnAbs:52428800, failAbs:209715200, statisticalToleranceRatio:0.02, statisticalToleranceAbs:10485760}
+                elif $metric == "nix.closure.bucket.nar_size" then
+                  {warnRatio:1.10, failRatio:1.20, warnAbs:52428800, failAbs:209715200, statisticalToleranceRatio:0.05, statisticalToleranceAbs:10485760}
+                elif $metric == "nix.closure.path_count" then
+                  {warnRatio:1.05, failRatio:1.10, warnAbs:100, failAbs:500, statisticalToleranceRatio:0.02, statisticalToleranceAbs:10}
+                elif $unit == "seconds" then
+                  {warnRatio:1.10, failRatio:1.20, warnAbs:0.25, failAbs:1, statisticalToleranceRatio:0.10, statisticalToleranceAbs:0.25}
+                else
+                  {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3, statisticalToleranceRatio:0.10, statisticalToleranceAbs:1}
+                end;
+
+              def noise_floor($metric; $unit):
+                if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" then 10485760
+                elif $metric == "nix.closure.path_count" then 10
+                elif $unit == "seconds" then 0.1
+                else 0
+                end;
+              def default_policy($metric; $unit):
+                budget($metric; $unit) as $b
+                | noise_floor($metric; $unit) as $noise
+                | $b + {
+                    enabled:true,
+                    minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" then 3 else 10 end),
+                    minCurrentSamples:(if $unit == "seconds" then 3 else 1 end),
+                    noiseFloor:$noise
+                  };
+              def observation_policy($obs):
+                default_policy($obs.name // "unknown"; $obs.unit // "unknown") + ($obs.policy // {});
+              def policy_enabled($policy):
+                if ($policy | has("enabled")) then $policy.enabled else true end;
+
+              def classify($metric; $unit; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
+                $policy as $b
+                | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
+                | ($current - $baseline) as $delta
+                | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+                | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
+                | (($currentP75 // $current) - ($currentP25 // $current)) as $currentIqr
+                | ([
+                    $noise,
+                    (($policy.statisticalToleranceAbs // 0) | tonumber),
+                    (if $baseline > 0 then ($baseline * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+                    (($baselineMad // 0) * 3),
+                    (($iqr // 0) * 1.5)
+                  ] | max) as $robustTolerance
+                | (if $currentSamples > 1 then ([
+                    $noise,
+                    (($policy.statisticalToleranceAbs // 0) | tonumber),
+                    (if $current > 0 then ($current * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+                    (($currentMad // 0) * 3),
+                    (($currentIqr // 0) * 1.5)
+                  ] | max) else 0 end) as $currentRobustTolerance
+                | ($baseline + $robustTolerance) as $robustUpper
+                | ($baseline - $robustTolerance) as $robustLower
+                | ($current + $currentRobustTolerance) as $currentRobustUpper
+                | ($current - $currentRobustTolerance) as $currentRobustLower
+                | (
+                    ($current >= $robustLower and $current <= $robustUpper)
+                    or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
+                  ) as $withinRobustBand
+                | (
+                    $baselineMin != null
+                    and $baselineMax != null
+                    and $current >= $baselineMin
+                    and $current <= $baselineMax
+                  ) as $withinBaselineRange
+                | (
+                    if $baseline <= 0 then "unknown"
+                    elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
+                    elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
+                    else "pass"
+                    end
+                  ) as $thresholdStatus
+                | (
+                    policy_enabled($policy) == true
+                    and $baseline > 0
+                    and $baselineSources >= ($policy.minBaselineSources // 1)
+                    and $currentSamples >= ($policy.minCurrentSamples // 1)
+                  ) as $gateable
+                | (
+                    if (policy_enabled($policy) != true) then "disabled"
+                    elif $baseline <= 0 then "missing_baseline"
+                    elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+                    elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+                    else "eligible"
+                    end
+                  ) as $gateReason
+                | (
+                    if $baseline <= 0 then "unknown"
+                    elif (policy_enabled($policy) != true) then "diagnostic"
+                    elif ($delta | abs_value) <= $noise then "noise_floor"
+                    elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+                    elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+                    elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
+                    elif $thresholdStatus == "pass" then "within_budget"
+                    else "threshold_exceeded"
+                    end
+                  ) as $confidence
+                | (
+                    if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus
+                    elif $thresholdStatus == "unknown" then "unknown"
+                    else "pass"
+                    end
+                  ) as $status
+                | (
+                    if $baseline <= 0 then "unknown"
+                    elif ($delta | abs_value) <= $noise then "unchanged"
+                    elif $withinRobustBand then "unchanged"
+                    elif $delta < 0 then "improved"
+                    else "regressed"
+                  end
+                ) as $direction
+                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
+
+              (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
+              | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
+              | (
+                  $currentObs
+                  | to_entries
+                  | map(
+                      .key as $key
+                      | .value as $currentValue
+                      | ($baselineObs[$key] // null) as $baselineValue
+                      | {
+                          key: $key,
+                          value: (
+                            if $baselineValue == null then
+                              {
+                                status: "missing_baseline",
+                                target: $currentValue.target,
+                                observation: $currentValue.observation,
+                                  current: $currentValue.value,
+                                  currentSamples: $currentValue.sampleCount,
+                                  baselineSources: 0,
+                                  gatePolicy: ($currentValue.observation | observation_policy(.)),
+                                  gateable: false,
+                                  gateReason: "missing_baseline",
+                                  confidence: "missing_baseline",
+                                  direction: "unknown"
+                                }
+                              else
+                                classify(
+                                  $currentValue.observation.name;
+                                  $currentValue.observation.unit;
+                                  ($currentValue.observation | observation_policy(.));
+                                  $currentValue.value;
+                                  $currentValue.p25;
+                                  $currentValue.p75;
+                                  $currentValue.mad;
+                                  $baselineValue.value;
+                                  $baselineValue.min;
+                                  $baselineValue.max;
+                                  $baselineValue.p25;
+                                  $baselineValue.p75;
+                                  $baselineValue.p95;
+                                  $baselineValue.mad;
+                                  $currentValue.sampleCount;
+                                  $baselineValue.sourceCount
+                                ) + {
+                                target: $currentValue.target,
+                                observation: $currentValue.observation,
+                                  currentSamples: $currentValue.sampleCount,
+                                  baselineSources: $baselineValue.sourceCount,
+                                  baselineMin: $baselineValue.min,
+                                  baselineMax: $baselineValue.max,
+                                  baselineP25: $baselineValue.p25,
+                                  baselineP75: $baselineValue.p75,
+                                  baselineP95: $baselineValue.p95
+                                  ,baselineMad: $baselineValue.mad
+                                }
+                            end
+                          )
+                        }
+                    )
+                  | from_entries
+                ) as $comparisons
+              | (
+                  if any($comparisons[]?; .status == "fail") then "fail"
+                  elif any($comparisons[]?; .status == "warn") then "warn"
+                  elif any($comparisons[]?;
+                    (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
+                    and (.gateReason == "missing_baseline"
+                      or .gateReason == "low_baseline_count"
+                      or .gateReason == "low_current_sample_count")
+                  ) then "partial"
+                  else "pass"
+                  end
+                ) as $status
+              | (
+                  [$comparisons[]?]
+                  | {
+                      enabledCount: (map(select((if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end))) | length),
+                      gateableCount: (map(select(.gateable == true)) | length),
+                      missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
+                      lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
+                      lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length)
+                    }
+                  | . + {
+                      nonGateableCount: (.enabledCount - .gateableCount),
+                      enforceable: (.enabledCount == .gateableCount)
+                    }
+                ) as $readiness
+              | {
+                  schemaVersion:$schemaVersion,
+                  status:$status,
+                  mode:$mode,
+                  readiness:$readiness,
+                  currentDir:$currentDir,
+                  baselineDir:$baselineDir,
+                  comparisons:$comparisons
+                }
+            ' >"$comparison_file"
+
+          baseline_provenance_file="$baseline_dir/baseline-provenance.json"
+          if [ -f "$baseline_provenance_file" ]; then
+            comparison_with_provenance="$(mktemp)"
+            jq --slurpfile baselineProvenance "$baseline_provenance_file" \
+              '. + {baselineProvenance: ($baselineProvenance[0] // null)}' \
+              "$comparison_file" >"$comparison_with_provenance"
+            mv "$comparison_with_provenance" "$comparison_file"
+          fi
+
+          status="$(jq -r '.status' "$comparison_file")"
+          exit_code=0
+          case "$status:$mode" in
+            fail:fail)
+              echo "::error::CI measurement regression detected"
+              exit_code=1
+              ;;
+            fail:*|warn:*)
+              echo "::warning::CI measurement regression threshold exceeded"
+              ;;
+            partial:*)
+              echo "::notice::CI measurement comparison is partial because one or more enabled observations are not gateable"
+              ;;
+          esac
+
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### ${CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
+              echo ""
+              jq -r '"- Status: " + .status + "\n- Gate: " + (if .mode == "fail" then "enforced" elif .mode == "warn" then "advisory" elif .mode == "off" then "off" else (.mode // "unknown") end) + "\n- Baseline: " + .baselineDir' "$comparison_file"
+              echo ""
+              echo "| Status | Gate | Target | Observation | Current | Baseline | Delta | Ratio |"
+              echo "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"
+              jq -r '
+                .comparisons
+                | to_entries
+                | sort_by(
+                    if .value.status == "fail" then 0
+                    elif .value.status == "warn" then 1
+                    elif .value.status == "missing_baseline" then 2
+                    else 3
+                    end
+                  )
+                | .[:20]
+                | .[]
+                | .value as $v
+                  | [
+                      $v.status,
+                      (if ($v.gateable // false) then "yes" else ($v.gateReason // "no") end),
+                      (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+                    ($v.observation.name // "unknown"),
+                    (($v.current // $v.observation.value // 0) | tostring),
+                    (($v.baseline // "") | tostring),
+                    (($v.delta // "") | tostring),
+                    (if $v.ratio == null or $v.ratio == "" then "" else (($v.ratio * 100 | round / 100) | tostring) end)
+                  ]
+                | "| " + (map(gsub("\\|"; "\\\\|")) | join(" | ")) + " |"
+              ' "$comparison_file"
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
+            can_render_pr_comment=true
+
+            ensure_ci_measurement_tool() {
+              tool_name="$1"
+              nix_attr="$2"
+              if command -v "$tool_name" >/dev/null 2>&1; then
+                return 0
+              fi
+              if ! command -v nix >/dev/null 2>&1; then
+                return 1
+              fi
+              if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+                export PATH="$tool_out/bin:$PATH"
+              fi
+              command -v "$tool_name" >/dev/null 2>&1
+            }
+
+            if ! ensure_ci_measurement_tool gh gh; then
+              echo "::notice::gh is not available; skipping CI measurement PR comment"
+              can_render_pr_comment=false
+            fi
+            if ! ensure_ci_measurement_tool node nodejs; then
+              echo "::notice::node is not available; skipping CI measurement PR comment"
+              can_render_pr_comment=false
+            fi
+            if ! command -v jq >/dev/null 2>&1; then
+              if ensure_ci_measurement_tool jq jq; then
+                :
+              else
+                echo "::notice::jq is not available; skipping CI measurement PR comment"
+                can_render_pr_comment=false
+              fi
+            fi
+            if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
+              echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+              can_render_pr_comment=false
+            fi
+
+            event_path="${GITHUB_EVENT_PATH:-}"
+            pr_number="${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
+            if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
+              pr_number="${pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
+            fi
+            if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
+              echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+              can_render_pr_comment=false
+            fi
+
+            if [ "$can_render_pr_comment" = "true" ]; then
+              repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
+              comment_tmp_dir="$(mktemp -d)"
+              comments_json="$comment_tmp_dir/comments.json"
+              comment_body="$comment_tmp_dir/comment.md"
+              comment_id_file="$comment_tmp_dir/comment-id.txt"
+              chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"
+              chart_dark_file="$comment_tmp_dir/perf-change-vs-baseline-dark.svg"
+              chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"
+              chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"
+              renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
+
+              if ! gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"; then
+                echo "::notice::unable to list PR comments; skipping CI measurement PR comment"
+                can_render_pr_comment=false
+              fi
+
+              if [ "$can_render_pr_comment" = "true" ]; then
+                asset_branch="${CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH:-ci-measurement-assets}"
+                asset_title="$(printf '%s' "${CI_MEASUREMENT_PR_COMMENT_TITLE:-ci-measurements}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+                if [ -z "$asset_title" ]; then
+                  asset_title="ci-measurements"
+                fi
+                asset_head_sha="${CI_MEASUREMENT_SUBJECT_SHA:-${GITHUB_HEAD_SHA:-${GITHUB_SHA:-unknown}}}"
+                asset_run_id="${GITHUB_RUN_ID:-local}"
+                asset_run_attempt="${GITHUB_RUN_ATTEMPT:-0}"
+                asset_svg_path="ci-measurements/pr-$pr_number/${asset_head_sha}/run-${asset_run_id}-attempt-${asset_run_attempt}/${asset_title}.svg"
+                asset_png_path="ci-measurements/pr-$pr_number/${asset_head_sha}/run-${asset_run_id}-attempt-${asset_run_attempt}/${asset_title}.png"
+                asset_dark_png_path="ci-measurements/pr-$pr_number/${asset_head_sha}/run-${asset_run_id}-attempt-${asset_run_attempt}/${asset_title}-dark.png"
+                public_asset_command="${CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND:-}"
+                repo_private="$(gh api "repos/$repo" --jq '.private // false' 2>/dev/null || printf 'true')"
+                require_public_asset=false
+                if [ "$repo_private" = "true" ]; then
+                  require_public_asset=true
+                fi
+                if [ "${GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
+                  github_raw_chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
+                  github_raw_chart_dark_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_dark_png_path"
+                  github_raw_chart_source_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_svg_path"
+                else
+                  github_raw_chart_url="${GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_png_path"
+                  github_raw_chart_dark_url="${GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_dark_png_path"
+                  github_raw_chart_source_url="${GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_svg_path"
+                fi
+                if [ "$repo_private" = "true" ]; then
+                  chart_url=""
+                  chart_dark_url=""
+                  chart_source_url=""
+                else
+                  chart_url="$github_raw_chart_url"
+                  chart_dark_url="$github_raw_chart_dark_url"
+                  chart_source_url="$github_raw_chart_source_url"
+                fi
+                export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+                export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL="$chart_dark_url"
+                export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
+
+                cat > "$renderer_script" <<'EOF'
+          import { readFileSync, writeFileSync } from 'node:fs'
+
+          const [comparisonPath, commentsPath, bodyPath, commentIdPath, chartPath, chartDarkPath] = process.argv.slice(2)
+          const title = process.env.CI_MEASUREMENT_PR_COMMENT_TITLE || 'CI Measurements'
+          const maxRows = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_ROWS || '10', 10)
+          const maxHistory = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY || '20', 10)
+          const repo = process.env.GITHUB_REPOSITORY || 'unknown'
+          const runId = process.env.GITHUB_RUN_ID || ''
+          const runAttempt = process.env.GITHUB_RUN_ATTEMPT || ''
+          const sha = process.env.GITHUB_SHA || ''
+          const headSha = process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_HEAD_SHA || sha
+          const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
+          const workflow = process.env.GITHUB_WORKFLOW || 'CI'
+          const job = process.env.GITHUB_JOB || ''
+          const chartUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_URL || ''
+          const chartDarkUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL || ''
+          const chartSourceUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL || ''
+
+          const markerScope = (process.env.CI_MEASUREMENT_PR_COMMENT_MARKER || title)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'default'
+          const marker = '<!-- ci-measurement-comment:managed:' + markerScope + ' -->'
+          const legacyMarker = '<!-- ci-measurement-comment:managed -->'
+          const statePrefix = '<!-- ci-measurement-comment:state\n'
+          const stateSuffix = '\n-->'
+          const stateTag = 'ci-measurement-comment-state'
+          const schemaVersion = 1
+
+          const comparison = JSON.parse(readFileSync(comparisonPath, 'utf8'))
+          const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
+          if (!Array.isArray(comments)) throw new Error('comments response must be an array')
+
+          const existing = comments.find((comment) => {
+            if (typeof comment?.body !== 'string') return false
+            return comment.body.includes(marker) ||
+              (comment.body.includes(legacyMarker) && comment.body.includes('## ' + title))
+          })
+
+          const extractState = (body) => {
+            if (typeof body !== 'string') return undefined
+            const start = body.indexOf(statePrefix)
+            if (start === -1) return undefined
+            const end = body.indexOf(stateSuffix, start + statePrefix.length)
+            if (end === -1) return undefined
+            try {
+              const parsed = JSON.parse(body.slice(start + statePrefix.length, end))
+              if (parsed && parsed._tag === stateTag && Array.isArray(parsed.runs)) return parsed
+            } catch {
+              return undefined
+            }
+            return undefined
+          }
+
+          const formatNumber = (value) => {
+            if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
+            if (Number.isInteger(value)) return String(value)
+            return String(Math.round(value * 1000) / 1000)
+          }
+
+          const formatValue = (value, unit) => {
+            if (value === null || value === undefined) return 'n/a'
+            if (unit === 'bytes') {
+              if (value >= 1073741824) return formatNumber(Math.round((value / 1073741824) * 10) / 10) + ' GiB'
+              if (value >= 1048576) return formatNumber(Math.round((value / 1048576) * 10) / 10) + ' MiB'
+              if (value >= 1024) return formatNumber(Math.round((value / 1024) * 10) / 10) + ' KiB'
+              return formatNumber(value) + ' B'
+            }
+            if (unit === 'seconds') return formatNumber(value) + ' s'
+            return formatNumber(value) + (unit ? ' ' + unit : '')
+          }
+
+          const formatDelta = (value, unit) => {
+            if (value === null || value === undefined) return 'n/a'
+            const sign = value >= 0 ? '+' : '-'
+            return sign + formatValue(Math.abs(value), unit)
+          }
+
+          const formatRatio = (value) => {
+            if (value === null || value === undefined) return 'n/a'
+            return formatNumber(Math.round((value - 1) * 1000) / 10) + '%'
+          }
+
+          const interpretation = (row) => {
+            if (row.confidence === 'low_baseline_count') return {
+              label: 'Needs more baseline',
+              detail: 'Not enough compatible baseline runs to make this gate trustworthy.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'low_current_sample_count') return {
+              label: 'Needs repeat',
+              detail: 'Current run has too few successful measured samples.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'diagnostic') return {
+              label: 'Diagnostic only',
+              detail: 'Shown for investigation, but intentionally excluded from gating.',
+              tone: 'diagnostic',
+              color: '#a78bfa',
+            }
+            if (row.status === 'fail') return {
+              label: 'Regression - blocks merge',
+              detail: 'Worse than the configured fail threshold with enough samples.',
+              tone: 'bad',
+              color: '#ef4444',
+            }
+            if (row.status === 'warn') return {
+              label: 'Regression - review',
+              detail: 'Worse than the configured warning threshold.',
+              tone: 'warn',
+              color: '#f59e0b',
+            }
+            if (row.status === 'missing_baseline') return {
+              label: 'No baseline yet',
+              detail: 'Current value is measured, but no comparable baseline exists.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'noise_floor') return {
+              label: 'Too small to matter',
+              detail: 'The absolute change is below the noise floor for this metric.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'within_baseline_range') return {
+              label: 'Historical range only',
+              detail: 'Inside the full historical min/max range, but this range is not used to pass a gate.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'within_baseline_distribution') return {
+              label: 'Within noise band',
+              detail: 'Current and baseline robust noise bands overlap.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.direction === 'improved') return {
+              label: 'Meaningfully lower',
+              detail: 'Lower than baseline by more than the noise floor and outside normal range.',
+              tone: 'good',
+              color: '#10b981',
+            }
+            if (row.direction === 'regressed') return {
+              label: 'Slightly higher, ok',
+              detail: 'Higher than baseline but still inside the configured budget.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            return {
+              label: 'Unchanged',
+              detail: 'No meaningful movement from baseline.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+          }
+
+          const formatGate = (row) => {
+            if (row.gateable) return 'yes'
+            const reason = row.gateReason || row.confidence || 'unknown'
+            return 'no<br><sub>' + reason + '</sub>'
+          }
+
+          const escapeCell = (value) => String(value ?? '-').replaceAll('|', '\\|').replaceAll('\n', '<br>')
+          const escapeXml = (value) => String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+
+          const humanProbe = (row) => {
+            if (row.observation?.label) return row.observation.label
+            const probe = row.observation?.dimensions?.probe
+            const name = row.observation?.name || 'unknown'
+            const labels = {
+              shell_eval_traced: 'Shell eval with OTEL trace',
+              shell_eval_warm: 'Warm shell eval',
+              tasks_list: 'devenv tasks list',
+              processes_help: 'devenv processes --help',
+              task_pnpm_install: 'pnpm:install',
+              task_genie_run: 'genie:run',
+              task_check_quick: 'check:quick',
+            }
+            if (probe && labels[probe]) return labels[probe]
+            if (name.startsWith('devenv.') && name.endsWith('.duration')) {
+              return name.slice('devenv.'.length, -'.duration'.length).replaceAll('_', ' ')
+            }
+            return name
+          }
+
+          const semanticPath = (row) => {
+            const parts = [
+              ...(Array.isArray(row.target?.path) ? row.target.path : []),
+              row.target?.group,
+              ...(Array.isArray(row.observation?.path) ? row.observation.path : []),
+              row.observation?.group,
+            ].filter((value) => typeof value === 'string' && value.length > 0)
+            const seen = new Set()
+            const unique = parts.filter((part) => {
+              if (seen.has(part)) return false
+              seen.add(part)
+              return true
+            })
+            return unique.length > 0 ? unique.join(' / ') : '-'
+          }
+
+          const chartProbe = (row) => {
+            if (row.observation?.label) return row.observation.label
+            const probe = row.observation?.dimensions?.probe
+            const labels = {
+              shell_eval_traced: 'Shell eval with OTEL trace',
+              shell_eval_warm: 'Warm shell eval',
+              tasks_list: 'devenv tasks list',
+              processes_help: 'processes --help',
+              task_pnpm_install: 'pnpm:install',
+              task_genie_run: 'genie:run',
+              task_check_quick: 'check:quick',
+            }
+            if (probe && labels[probe]) return labels[probe]
+            return humanProbe(row)
+          }
+
+          const dimensions = (row) => {
+            const entries = Object.entries(row.observation?.dimensions || {})
+            if (entries.length === 0) return '-'
+            return entries
+              .sort(([left], [right]) => left.localeCompare(right))
+              .map(([key, value]) => key + '=' + String(value))
+              .join('<br>')
+          }
+
+          const rank = (row) => {
+            if (row.status === 'fail') return 0
+            if (row.status === 'warn') return 1
+            if (row.status === 'missing_baseline') return 2
+            return 3
+          }
+
+          const allRows = Object.values(comparison.comparisons || {}).sort((left, right) => {
+            const byRank = rank(left) - rank(right)
+            if (byRank !== 0) return byRank
+            return (right.delta || 0) - (left.delta || 0)
+          })
+          const protocolLabel = (() => {
+            const protocols = new Set(
+              allRows
+                .map((row) => row.observation?.dimensions?.measurementProtocol)
+                .filter((value) => typeof value === 'string' && value.length > 0),
+            )
+            return protocols.size > 0 ? Array.from(protocols).join(', ') : 'legacy'
+          })()
+          const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
+          const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
+          const hasComparableBaseline = comparableRows.length > 0
+          const visibleRows = (hasComparableBaseline
+            ? allRows.filter((row) => typeof row.baseline === 'number')
+            : allRows.slice().sort((left, right) => (right.current || 0) - (left.current || 0))
+          ).slice(0, visibleLimit)
+
+          const comparisonTable = (rows) => {
+            if (rows.length === 0) return 'No measurement regressions detected.'
+            return [
+              '| Group | Measurement | Baseline | Current | Change | Meaning | Gate | Evidence |',
+              '| --- | --- | ---: | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                const unit = row.observation?.unit
+                const baselineRange = typeof row.baselineRobustLower === 'number' && typeof row.baselineRobustUpper === 'number' && row.baselineRobustLower !== row.baselineRobustUpper
+                  ? '<br><sub>noise band ' + formatValue(row.baselineRobustLower, unit) + ' - ' + formatValue(row.baselineRobustUpper, unit) + '</sub>'
+                  : typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
+                    ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
+                  : ''
+                const meaning = interpretation(row)
+                return '| ' + [
+                  semanticPath(row),
+                  humanProbe(row),
+                  formatValue(row.baseline, unit) + baselineRange,
+                  formatValue(row.current, unit),
+                  formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
+                  meaning.label + '<br><sub>' + meaning.detail + '</sub>',
+                  formatGate(row),
+                  (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const currentOnlyTable = (rows) => {
+            if (rows.length === 0) return 'No current measurements found.'
+            return [
+              '| Group | Measurement | Current |',
+              '| --- | --- | ---: |',
+              ...rows.map((row) => {
+                return '| ' + [semanticPath(row), humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const allMeasurementsTable = (rows) => {
+            if (rows.length === 0) return 'No measurement regressions detected.'
+            return [
+              '| Status | Gate | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
+              '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
+              ...rows.map((row) => {
+                const unit = row.observation?.unit
+                return '| ' + [
+                  row.status,
+                  row.gateable ? 'yes' : (row.gateReason || 'no'),
+                  row.target?.label || row.target?.name || 'unknown',
+                  row.observation?.label || row.observation?.name || 'unknown',
+                  dimensions(row),
+                  formatValue(row.baseline, unit),
+                  formatValue(row.current, unit),
+                  formatDelta(row.delta, unit),
+                  formatRatio(row.ratio),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const truncate = (value, maxLength) => {
+            const text = String(value)
+            if (text.length <= maxLength) return text
+            if (maxLength <= 1) return text.slice(0, maxLength)
+            return text.slice(0, Math.max(0, maxLength - 3)) + '...'
+          }
+
+          const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
+            const chartRows = rows
+              .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
+              .filter((row) => typeof row.ratio === 'number')
+              .sort((left, right) => ((left.ratio || 1) - 1) - ((right.ratio || 1) - 1))
+              .slice(0, visibleLimit)
+            if (chartRows.length === 0) return ''
+
+            const percentages = chartRows.map((row) => ((row.ratio || 1) - 1) * 100)
+            const minPct = Math.min(-1, ...percentages)
+            const maxPct = Math.max(1, ...percentages)
+            const lower = Math.floor(minPct)
+            const upper = Math.ceil(maxPct)
+            const span = upper - lower || 1
+            const width = 1040
+            const rowHeight = 46
+            const height = 112 + chartRows.length * rowHeight + 34
+            const labelX = 230
+            const plotX = 252
+            const plotWidth = 320
+            const percentX = 596
+            const nominalX = 672
+            const meaningX = 804
+            const topY = 92
+            const barHeight = 18
+            const zeroX = plotX + ((0 - lower) / span) * plotWidth
+            const themeCss = theme === 'dark'
+              ? [
+                  '  .chart-bg { fill: #0d1117; }',
+                  '  .chart-border { fill: none; stroke: #30363d; }',
+                  '  .chart-title { fill: #f0f6fc; }',
+                  '  .chart-muted { fill: #8b949e; }',
+                  '  .chart-axis { stroke: #8b949e; }',
+                  '  .chart-label { fill: #c9d1d9; }',
+                  '  .chart-value { fill: #8b949e; }',
+                  '  .chart-track { fill: #21262d; }',
+                ]
+              : [
+                  '  .chart-bg { fill: #ffffff; }',
+                  '  .chart-border { fill: none; stroke: #d0d7de; }',
+                  '  .chart-title { fill: #24292f; }',
+                  '  .chart-muted { fill: #57606a; }',
+                  '  .chart-axis { stroke: #8c959f; }',
+                  '  .chart-label { fill: #24292f; }',
+                  '  .chart-value { fill: #57606a; }',
+                  '  .chart-track { fill: #f6f8fa; }',
+                  ...(theme === 'adaptive'
+                    ? [
+                        '  @media (prefers-color-scheme: dark) {',
+                        '    .chart-bg { fill: #0d1117; }',
+                        '    .chart-border { stroke: #30363d; }',
+                        '    .chart-title { fill: #f0f6fc; }',
+                        '    .chart-muted { fill: #8b949e; }',
+                        '    .chart-axis { stroke: #8b949e; }',
+                        '    .chart-label { fill: #c9d1d9; }',
+                        '    .chart-value { fill: #8b949e; }',
+                        '    .chart-track { fill: #21262d; }',
+                        '  }',
+                      ]
+                    : []),
+                ]
+
+            const svg = [
+              '<?xml version="1.0" encoding="UTF-8"?>',
+              '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
+              '<style>',
+              ...themeCss,
+              '</style>',
+              '<rect class="chart-bg" width="' + width + '" height="' + height + '" rx="8"/>',
+              '<rect class="chart-border" x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5"/>',
+              '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Measurement change vs baseline</text>',
+              '<text class="chart-muted" x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">Bars show percent change; meaning explains whether the number is actionable.</text>',
+              '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">lower</text>',
+              '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">higher</text>',
+              '<text class="chart-muted" x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11">baseline -> current</text>',
+              '<text class="chart-muted" x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11">meaning</text>',
+              '<line class="chart-axis" x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke-width="1.1" opacity="0.9"/>',
+            ]
+
+            for (const [index, row] of chartRows.entries()) {
+              const pct = ((row.ratio || 1) - 1) * 100
+              const y = topY + index * rowHeight
+              const valueWidth = Math.max(2, Math.abs(pct) / span * plotWidth)
+              const x = pct < 0 ? zeroX - valueWidth : zeroX
+              const meaning = interpretation(row)
+              const color = meaning.color
+              const formattedPct = (pct > 0 ? '+' : '') + formatNumber(Math.round(pct * 10) / 10) + '%'
+              const label = chartProbe(row)
+              const nominal = formatValue(row.baseline, row.observation?.unit).replaceAll(' ', '') + ' -> ' + formatValue(row.current, row.observation?.unit).replaceAll(' ', '')
+              const barOpacity = meaning.tone === 'neutral' ? '0.65' : '1'
+              const dash = meaning.tone === 'diagnostic' ? ' stroke-dasharray="3 3"' : ''
+              svg.push(
+                '<text class="chart-label" x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
+                '<rect class="chart-track" x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5"/>',
+                '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '" opacity="' + barOpacity + '"' + dash + '/>',
+                '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
+                '<text class="chart-value" x="' + nominalX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
+                '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
+              )
+            }
+
+            svg.push(
+              '<text class="chart-muted" x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10">0%</text>',
+              '</svg>',
+            )
+            return svg.join('\n')
+          }
+
+          const statusWord = comparison.status || 'unknown'
+          const readiness = comparison.readiness || {}
+          const readinessLabel = readiness.enforceable
+            ? 'enforceable'
+            : 'partial (' + (readiness.gateableCount ?? 0) + '/' + (readiness.enabledCount ?? 0) + ' enabled observations gateable)'
+          const runUrl = runId ? serverUrl + '/' + repo + '/actions/runs/' + runId : undefined
+          const shortSha = (headSha || sha || 'unknown').slice(0, 7)
+          const existingState = extractState(existing?.body)
+          const currentRun = {
+            commitSha: headSha || sha || 'unknown',
+            shortSha,
+            generatedAt: new Date().toISOString(),
+            status: statusWord,
+            mode: comparison.mode || 'unknown',
+            runUrl,
+            runAttempt,
+            workflow,
+            job,
+            visibleRows: visibleRows.map((row) => ({
+              status: row.status,
+              target: row.target?.label || row.target?.name || 'unknown',
+              observation: row.observation?.label || row.observation?.name || 'unknown',
+              meaning: interpretation(row).label,
+              dimensions: dimensions(row).replaceAll('<br>', ', '),
+              baseline: formatValue(row.baseline, row.observation?.unit),
+              current: formatValue(row.current, row.observation?.unit),
+              delta: formatDelta(row.delta, row.observation?.unit),
+              ratio: formatRatio(row.ratio),
+            })),
+          }
+          const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visibleRows.some((row) =>
+            row.status !== 'missing_baseline' &&
+            row.baseline !== 'n/a' &&
+            row.ratio !== 'n/a'
+          )
+          const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha && hasComparableHistory(run))
+          const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
+          const state = { _tag: stateTag, schemaVersion, title, runs: [currentRun, ...previousRuns].slice(0, historyLimit) }
+          const gateModeLabel = (mode) => {
+            if (mode === 'fail') return 'enforced'
+            if (mode === 'warn') return 'advisory'
+            if (mode === 'off') return 'off'
+            return mode || 'unknown'
+          }
+          const historyRows = state.runs.slice(1).map((run) => {
+            const link = run.runUrl ? '[' + run.shortSha + '](' + run.runUrl + ')' : run.shortSha
+            const top = Array.isArray(run.visibleRows) && run.visibleRows.length > 0
+              ? run.visibleRows.slice(0, 3).map((row) => (row.meaning || row.status) + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
+              : 'No regressions'
+            return '| ' + [link, run.status, gateModeLabel(run.mode), top].map(escapeCell).join(' | ') + ' |'
+          })
+
+          const runLink = runUrl ? '[workflow run](' + runUrl + ')' : 'workflow run unavailable'
+          const baselineProvenance = comparison.baselineProvenance
+          const baselineLabel = baselineProvenance?.runId
+            ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')' +
+              (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
+            : 'not available'
+          const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
+          const chartDarkSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows, 'dark') : ''
+          if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
+          if (chartDarkPath && chartDarkSvg) writeFileSync(chartDarkPath, chartDarkSvg)
+          const chartImageMarkdown = chartUrl && chartSvg
+            ? (chartDarkUrl
+                ? '<picture>\n' +
+                  '  <source media="(prefers-color-scheme: dark)" srcset="' + chartDarkUrl + '">\n' +
+                  '  <source media="(prefers-color-scheme: light)" srcset="' + chartUrl + '">\n' +
+                  '  <img alt="Measurement change vs baseline chart" src="' + chartUrl + '">\n' +
+                  '</picture>'
+                : '![Measurement change vs baseline chart](' + chartUrl + ')')
+            : ''
+          const chartMarkdown = chartImageMarkdown
+            ? chartImageMarkdown +
+              (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
+            : ''
+
+          const summaryLines = [
+            '## ' + title,
+            '',
+            '- Status: ' + statusWord,
+            '- Gate: ' + gateModeLabel(comparison.mode),
+            '- Commit: ' + shortSha,
+            '- Run: ' + runLink,
+            '- Baseline: ' + baselineLabel,
+            '- Readiness: ' + readinessLabel,
+            '- Protocol: ' + protocolLabel,
+            '',
+            hasComparableBaseline
+              ? 'Chart: bars show percentage change. Gate decisions use configured budgets and robust current/baseline noise bands.'
+              : 'No compatible baseline was available, so this run shows current measurements only.',
+            '',
+            chartMarkdown,
+            '',
+            hasComparableBaseline ? comparisonTable(visibleRows) : currentOnlyTable(visibleRows),
+            '',
+            '<details>',
+            '<summary>All measurements</summary>',
+            '',
+            allMeasurementsTable(allRows),
+            '',
+            '</details>',
+          ]
+
+          if (historyRows.length > 0) {
+            summaryLines.push(
+              '',
+              '<details>',
+              '<summary>Previous runs</summary>',
+              '',
+              '| Commit | Status | Gate | Top changes |',
+              '| --- | --- | --- | --- |',
+              ...historyRows,
+              '',
+              '</details>',
+            )
+          }
+
+          summaryLines.push('', marker, statePrefix + JSON.stringify(state, null, 2) + stateSuffix)
+          writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
+          writeFileSync(commentIdPath, existing?.id ? String(existing.id) : '')
+          EOF
+
+                node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+
+                if [ -s "$chart_file" ]; then
+                  if [ "$require_public_asset" = "true" ] && [ -z "$public_asset_command" ]; then
+                    echo "::error::CI measurement chart was rendered for a private repository, but CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND is not configured. Private raw GitHub URLs cannot be embedded in PR comments."
+                    exit 1
+                  fi
+
+                  if ensure_ci_measurement_tool resvg resvg; then
+                    resvg_font_args=()
+                    if command -v nix >/dev/null 2>&1; then
+                      if font_out="$(nix build --no-link --print-out-paths nixpkgs#dejavu_fonts 2>/dev/null)"; then
+                        resvg_font_args+=(--use-fonts-dir "$font_out/share/fonts/truetype")
+                      fi
+                    fi
+                    if ! resvg --background '#ffffff' "${resvg_font_args[@]}" "$chart_file" "$chart_png_file"; then
+                      echo "::notice::unable to render CI measurement chart PNG"
+                      rm -f "$chart_png_file"
+                    fi
+                    if [ -s "$chart_dark_file" ] && ! resvg --background '#0d1117' "${resvg_font_args[@]}" "$chart_dark_file" "$chart_dark_png_file"; then
+                      echo "::notice::unable to render dark CI measurement chart PNG"
+                      rm -f "$chart_dark_png_file"
+                    fi
+                  else
+                    echo "::notice::resvg is not available; skipping embedded CI measurement chart PNG"
+                  fi
+
+                  if ! gh api "repos/$repo/git/ref/heads/$asset_branch" >/dev/null 2>&1; then
+                    default_branch_sha="$(gh api "repos/$repo/git/ref/heads/${GITHUB_BASE_REF:-main}" --jq '.object.sha' 2>/dev/null || true)"
+                    if [ -z "$default_branch_sha" ]; then
+                      default_branch_sha="${GITHUB_SHA:-}"
+                    fi
+                    if [ -n "$default_branch_sha" ]; then
+                      gh api "repos/$repo/git/refs" --method POST --field ref="refs/heads/$asset_branch" --field sha="$default_branch_sha" >/dev/null || true
+                    fi
+                  fi
+                  chart_content="$(base64 <"$chart_file" | tr -d '\n')"
+                  if ! gh api "repos/$repo/contents/$asset_svg_path" --method PUT --field message="Update CI measurement chart SVG for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
+                    echo "::notice::unable to upload CI measurement chart SVG asset"
+                    if [ -z "$public_asset_command" ]; then
+                      sed -i.bak '/\[SVG source\]/d' "$comment_body"
+                    fi
+                  fi
+                  if [ -s "$chart_png_file" ]; then
+                    chart_png_content="$(base64 <"$chart_png_file" | tr -d '\n')"
+                    if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
+                      echo "::notice::unable to upload CI measurement chart PNG asset"
+                      if [ -z "$public_asset_command" ]; then
+                        sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+                      fi
+                    fi
+                  else
+                    sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+                  fi
+                  if [ -s "$chart_dark_png_file" ]; then
+                    chart_dark_png_content="$(base64 <"$chart_dark_png_file" | tr -d '\n')"
+                    if ! gh api "repos/$repo/contents/$asset_dark_png_path" --method PUT --field message="Update dark CI measurement chart PNG for PR #$pr_number" --field content="$chart_dark_png_content" --field branch="$asset_branch" >/dev/null; then
+                      echo "::notice::unable to upload dark CI measurement chart PNG asset"
+                      if [ -z "$public_asset_command" ]; then
+                        export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+                        node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+                      fi
+                    fi
+                  fi
+
+                  if [ -n "$public_asset_command" ] && [ -s "$chart_png_file" ]; then
+                    if public_chart_url="$(bash -c "$public_asset_command" _ "$chart_png_file" png)" && [ -n "$public_chart_url" ]; then
+                      chart_url="$public_chart_url"
+                      export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+                    else
+                      echo "::notice::unable to publish CI measurement chart PNG to public asset host"
+                      export CI_MEASUREMENT_PR_COMMENT_CHART_URL=""
+                    fi
+                    if [ -s "$chart_dark_png_file" ] && public_chart_dark_url="$(bash -c "$public_asset_command" _ "$chart_dark_png_file" png)" && [ -n "$public_chart_dark_url" ]; then
+                      chart_dark_url="$public_chart_dark_url"
+                      export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL="$chart_dark_url"
+                    else
+                      echo "::notice::unable to publish dark CI measurement chart PNG to public asset host"
+                      export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+                    fi
+                    if public_chart_source_url="$(bash -c "$public_asset_command" _ "$chart_file" svg)" && [ -n "$public_chart_source_url" ]; then
+                      chart_source_url="$public_chart_source_url"
+                      export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
+                    else
+                      echo "::notice::unable to publish CI measurement chart SVG to public asset host"
+                      export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
+                    fi
+                    if [ "$require_public_asset" = "true" ] && [ -z "$chart_url" ]; then
+                      echo "::error::unable to publish CI measurement chart PNG to a public asset host for private repository $repo"
+                      exit 1
+                    fi
+                    if [ "$require_public_asset" = "true" ] && [ -s "$chart_dark_png_file" ] && [ -z "$chart_dark_url" ]; then
+                      echo "::error::unable to publish dark CI measurement chart PNG to a public asset host for private repository $repo"
+                      exit 1
+                    fi
+                    node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+                  fi
+                fi
+
+                comment_id="$(cat "$comment_id_file")"
+                comment_payload_file="$comment_body.payload.json"
+                node -e "const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))" "$comment_body" "$comment_payload_file"
+                if [ -n "$comment_id" ]; then
+                  if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --input "$comment_payload_file" >/dev/null; then
+                    echo "::notice::unable to update CI measurement PR comment"
+                  fi
+                else
+                  if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --input "$comment_payload_file" >/dev/null; then
+                    echo "::notice::unable to create CI measurement PR comment"
+                  fi
+                fi
+              fi
+            fi
+          fi
+
+          if [ "$exit_code" -ne 0 ]; then
+            exit "$exit_code"
+          fi
+
+      - name: 'Upload CI measurements: source-shape'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-shape
+          path: |
+            tmp/source-shape-ci
+            !tmp/source-shape-ci/baseline/**
+          if-no-files-found: error
+          retention-days: 30
   test-integration-notion:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
     runs-on:
@@ -5253,14 +6893,15 @@ jobs:
           if [ ! -s /tmp/storybook-preview-comment.md ]; then
             exit 0
           fi
+          node -e "const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))" /tmp/storybook-preview-comment.md /tmp/storybook-preview-comment-payload.json
           export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}access-tokens = github.com=${GH_TOKEN}"
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             exit 0
           fi
           if [ -n "$comment_id" ]; then
-            nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/comments/$comment_id" --method PATCH --field body="$(cat /tmp/storybook-preview-comment.md)" >/dev/null
+            nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/comments/$comment_id" --method PATCH --input /tmp/storybook-preview-comment-payload.json >/dev/null
           else
-            nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --method POST --field body="$(cat /tmp/storybook-preview-comment.md)" >/dev/null
+            nix run nixpkgs#gh -- api "repos/$GH_REPO/issues/${{ github.event.pull_request.number }}/comments" --method POST --input /tmp/storybook-preview-comment-payload.json >/dev/null
           fi
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}

@@ -104,6 +104,26 @@ if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_e
   exit 1
 fi
 
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/run-1/measurements.json" 5.1 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/current/run-2/measurements.json" 5.2 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/current/run-3/measurements.json" 7.0 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/current/run-4/measurements.json" 7.2 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/current/run-5/measurements.json" 7.4 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 4.0 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/baseline/run-2/measurements.json" 4.2 devenv-perf-warm-median-v2 "$policy"
+write_measurement "$tmp_dir/baseline/run-3/measurements.json" 4.4 devenv-perf-warm-median-v2 "$policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
+actual_current_lower="$(jq -r '.comparisons[] | .currentRobustLower' "$tmp_dir/comparison.json")"
+actual_baseline_upper="$(jq -r '.comparisons[] | .baselineRobustUpper' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_confidence" != "within_robust_band" ] || ! awk "BEGIN { exit !($actual_current_lower <= $actual_baseline_upper) }"; then
+  echo "expected overlapping current/baseline robust bands to pass; got status=$actual_status row=$actual_row confidence=$actual_confidence currentLower=$actual_current_lower baselineUpper=$actual_baseline_upper" >&2
+  exit 1
+fi
+
 low_baseline_policy='{"enabled":true,"minBaselineSources":2,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/measurements.json" 10.5 devenv-perf-warm-median-v2 "$low_baseline_policy"

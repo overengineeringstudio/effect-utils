@@ -429,11 +429,14 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain(
       'if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus',
     )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"',
+    )
     expect(ciWorkflowSource).toContain("label: 'Needs more baseline'")
     expect(ciWorkflowSource).toContain("label: 'Needs repeat'")
     expect(ciWorkflowSource).toContain("label: 'Too small to matter'")
-    expect(ciWorkflowSource).toContain("label: 'Normal variance'")
-    expect(ciWorkflowSource).toContain("label: 'Meaningfully faster'")
+    expect(ciWorkflowSource).toContain("label: 'Within noise band'")
+    expect(ciWorkflowSource).toContain("label: 'Meaningfully lower'")
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
@@ -490,10 +493,10 @@ describe('ci workflow devenv perf helpers', () => {
       'chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"',
     )
     expect(ciWorkflowSource).toContain(
-      'Chart: bars show percentage change; the meaning labels explain whether the movement is actionable, noise, normal variance, or diagnostic.',
+      'Chart: bars show percentage change. Gate decisions use configured budgets and robust current/baseline noise bands.',
     )
     expect(ciWorkflowSource).toContain(
-      '| Probe | Baseline | Current | Change | Meaning | Gate | Evidence |',
+      '| Group | Measurement | Baseline | Current | Change | Meaning | Gate | Evidence |',
     )
     expect(ciWorkflowSource).toContain("'- Readiness: ' + readinessLabel")
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')

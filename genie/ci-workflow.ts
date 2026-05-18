@@ -62,6 +62,7 @@ export {
   devenvPerfBenchmarkStep,
   devenvPerfJob,
   nixClosureMeasurementStep,
+  sourceShapeMeasurementStep,
   type CiMeasurementDescriptor,
   type CiMeasurementObservation,
   type CiMeasurementsArtifactStepOptions,
@@ -72,6 +73,8 @@ export {
   type GitHubPreviousArtifactStepOptions,
   type NixClosureMeasurementBucket,
   type NixClosureMeasurementStepOptions,
+  type SourceShapeMeasurementScope,
+  type SourceShapeMeasurementStepOptions,
 } from './ci-workflow/measurements.ts'
 export {
   appendGitHubAccessTokenToNixConfigStep,

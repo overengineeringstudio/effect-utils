@@ -17,6 +17,7 @@ export type CiMeasurementDescriptor = {
   readonly id: string
   readonly label: string
   readonly group?: string
+  readonly path?: readonly string[]
   readonly description?: string
 }
 
@@ -45,10 +46,67 @@ export type CiMeasurementObservation = {
   readonly id?: string
   readonly label?: string
   readonly group?: string
+  readonly path?: readonly string[]
+  readonly description?: string
   readonly name: string
-  readonly unit: string
+  readonly unit: CiMeasurementUnit
   readonly value: number
   readonly dimensions?: Record<string, string | number | boolean | null>
+  readonly policy?: CiMeasurementGatePolicy
+  readonly statistics?: {
+    readonly sampleCount?: number
+    readonly measuredSampleCount?: number
+    readonly min?: number
+    readonly max?: number
+    readonly median?: number
+    readonly p25?: number
+    readonly p75?: number
+    readonly p95?: number
+  }
+}
+
+export type CiMeasurementUnit =
+  | 'seconds'
+  | 'milliseconds'
+  | 'bytes'
+  | 'count'
+  | 'lines'
+  | 'score'
+  | 'ratio'
+  | 'percent'
+  | (string & {})
+
+export type CiMeasurementTarget = {
+  readonly kind: string
+  readonly id: string
+  readonly name?: string
+  readonly label?: string
+  readonly group?: string
+  readonly path?: readonly string[]
+  readonly system?: string
+}
+
+export type CiMeasurementArtifact = {
+  readonly schemaVersion: number
+  readonly generatedAt: string
+  readonly producer: {
+    readonly name: string
+    readonly version: number
+    readonly measurementProtocol: string
+  }
+  readonly subject?: {
+    readonly ref?: string
+    readonly sha?: string
+    readonly label?: string
+  }
+  readonly target: CiMeasurementTarget
+  readonly observations: readonly CiMeasurementObservation[]
+  readonly attachments?: readonly {
+    readonly name: string
+    readonly path: string
+    readonly contentType?: string
+  }[]
+  readonly summary?: unknown
 }
 
 export const ciMeasurementMetrics = {
@@ -56,6 +114,9 @@ export const ciMeasurementMetrics = {
   nixClosureNarSize: 'nix.closure.nar_size',
   nixClosurePathCount: 'nix.closure.path_count',
   nixClosureBucketNarSize: 'nix.closure.bucket.nar_size',
+  sourceLines: 'source.lines',
+  sourceFiles: 'source.files',
+  codeComplexity: 'code.complexity',
 } as const
 
 export type NixClosureMeasurementBucket = {
@@ -74,6 +135,26 @@ export type NixClosureMeasurementStepOptions = {
   readonly artifactDir?: string
   readonly artifactFile?: string
   readonly buckets?: readonly NixClosureMeasurementBucket[]
+}
+
+export type SourceShapeMeasurementScope = CiMeasurementDescriptor & {
+  readonly root?: string
+  readonly includePaths?: readonly string[]
+  readonly excludePaths?: readonly string[]
+  readonly includeExtensions?: readonly string[]
+  readonly gate?: CiMeasurementGatePolicy
+}
+
+export type SourceShapeMeasurementStepOptions = {
+  readonly targetId?: string
+  readonly targetName?: string
+  readonly targetLabel?: string
+  readonly targetGroup?: string
+  readonly targetPath?: readonly string[]
+  readonly targetSystem?: string
+  readonly artifactDir?: string
+  readonly artifactFile?: string
+  readonly scopes: readonly [SourceShapeMeasurementScope, ...SourceShapeMeasurementScope[]]
 }
 
 export type GitHubPreviousArtifactStepOptions = {
@@ -649,6 +730,7 @@ jq -n \
           id: ("devenv." + .id + ".duration"),
           label: .label,
           group: .group,
+          description: .description,
           name: ("devenv." + .id + ".duration"),
           unit: "seconds",
             value: (.durationMs / 1000),
@@ -1056,6 +1138,7 @@ jq -n \
             id: "nix.closure.bucket.nar_size",
             label: (($bucket.label // $bucket.name) + " closure size"),
             group: "nix closure buckets",
+            description: ("NAR size contributed by closure paths matching " + $bucket.pathRegex),
             unit: "bytes",
             value: (
               $closurePaths
@@ -1093,6 +1176,7 @@ jq -n \
             id: "nix.closure.nar_size",
             label: "Total closure size",
             group: "nix closure",
+            description: "Total NAR size for all paths in the resolved Nix closure.",
             name: "nix.closure.nar_size",
             unit: "bytes",
             value: $totalNarSize,
@@ -1102,6 +1186,7 @@ jq -n \
             id: "nix.closure.path_count",
             label: "Total closure path count",
             group: "nix closure",
+            description: "Number of store paths in the resolved Nix closure.",
             name: "nix.closure.path_count",
             unit: "count",
             value: $pathCount,
@@ -1118,6 +1203,206 @@ jq -n \
         }
       }
   ' >"$artifact_file"
+
+cat "$artifact_file"
+`,
+  } as const
+}
+
+export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptions) => {
+  const artifactDir = opts.artifactDir ?? 'tmp/ci-measurements'
+  const artifactFileAssignment =
+    opts.artifactFile === undefined
+      ? '"$ARTIFACT_DIR/measurements.json"'
+      : shellSingleQuote(opts.artifactFile)
+  const targetName = opts.targetName ?? 'source shape'
+  const targetId = opts.targetId ?? targetName
+  const targetLabel = opts.targetLabel ?? targetName
+  const targetGroup = opts.targetGroup ?? 'source shape'
+  const targetPath = JSON.stringify(opts.targetPath ?? ['source'])
+  const scopes = JSON.stringify(opts.scopes)
+  const targetSystemAssignment =
+    opts.targetSystem === undefined
+      ? `target_system="${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}"`
+      : `target_system=${shellSingleQuote(opts.targetSystem)}`
+
+  return {
+    name: `Measure source shape: ${targetName}`,
+    shell: 'bash',
+    env: {
+      ARTIFACT_DIR: artifactDir,
+      RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
+    },
+    run: String.raw`set -euo pipefail
+
+mkdir -p "$ARTIFACT_DIR"
+target_id=${shellSingleQuote(targetId)}
+target_name=${shellSingleQuote(targetName)}
+target_label=${shellSingleQuote(targetLabel)}
+target_group=${shellSingleQuote(targetGroup)}
+artifact_file=${artifactFileAssignment}
+${targetSystemAssignment}
+
+SCOPES_JSON=${shellSingleQuote(scopes)} \
+TARGET_PATH_JSON=${shellSingleQuote(targetPath)} \
+TARGET_ID="$target_id" \
+TARGET_NAME="$target_name" \
+TARGET_LABEL="$target_label" \
+TARGET_GROUP="$target_group" \
+TARGET_SYSTEM="$target_system" \
+node <<'NODE' >"$artifact_file"
+const cp = require('node:child_process')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const normalize = (value) => {
+  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  return normalized === '.' ? '' : normalized
+}
+const scopes = JSON.parse(process.env.SCOPES_JSON || '[]')
+const targetPath = JSON.parse(process.env.TARGET_PATH_JSON || '["source"]')
+const gitFiles = cp
+  .execFileSync('git', ['ls-files', '-z'], { encoding: 'buffer' })
+  .toString('utf8')
+  .split('\0')
+  .filter(Boolean)
+  .map(normalize)
+
+const includesPath = (file, candidates) => {
+  if (!Array.isArray(candidates) || candidates.length === 0) return true
+  return candidates.map(normalize).some((candidate) => candidate === '' || file === candidate || file.startsWith(candidate + '/'))
+}
+
+const excludesPath = (file, candidates) =>
+  Array.isArray(candidates) &&
+  candidates.map(normalize).some((candidate) => candidate !== '' && (file === candidate || file.startsWith(candidate + '/')))
+
+const matchesExtension = (file, extensions) => {
+  if (!Array.isArray(extensions) || extensions.length === 0) return true
+  const ext = path.extname(file).toLowerCase()
+  return extensions.map((extension) => extension.toLowerCase()).some((extension) => ext === extension)
+}
+
+const countLines = (file) => {
+  const buffer = fs.readFileSync(file)
+  if (buffer.includes(0)) return undefined
+  if (buffer.length === 0) return 0
+  let lines = 0
+  for (const byte of buffer) {
+    if (byte === 10) lines += 1
+  }
+  return buffer[buffer.length - 1] === 10 ? lines : lines + 1
+}
+
+const observations = []
+const scopeSummaries = []
+
+for (const scope of scopes) {
+  const root = normalize(scope.root || '.')
+  const includePaths = Array.isArray(scope.includePaths) && scope.includePaths.length > 0 ? scope.includePaths : [root]
+  const files = gitFiles
+    .filter((file) => includesPath(file, includePaths))
+    .filter((file) => !excludesPath(file, scope.excludePaths))
+    .filter((file) => matchesExtension(file, scope.includeExtensions))
+
+  let lineCount = 0
+  let measuredFileCount = 0
+  for (const file of files) {
+    const lines = countLines(file)
+    if (lines === undefined) continue
+    lineCount += lines
+    measuredFileCount += 1
+  }
+
+  const group = scope.group || 'source shape'
+  const scopePath = Array.isArray(scope.path) ? scope.path : ['source', scope.id]
+  const policy = scope.gate || { enabled: false, minBaselineSources: 3, minCurrentSamples: 1 }
+  observations.push(
+    {
+      id: 'source.lines',
+      label: scope.label + ' lines',
+      group,
+      path: scopePath,
+      description: 'Tracked non-binary source lines in the configured scope.',
+      name: 'source.lines',
+      unit: 'lines',
+      value: lineCount,
+      dimensions: { scope: scope.id },
+      policy,
+      statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+    },
+    {
+      id: 'source.files',
+      label: scope.label + ' files',
+      group,
+      path: scopePath,
+      description: 'Tracked non-binary source files in the configured scope.',
+      name: 'source.files',
+      unit: 'count',
+      value: measuredFileCount,
+      dimensions: { scope: scope.id },
+      policy,
+      statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+    },
+  )
+  scopeSummaries.push({
+    id: scope.id,
+    label: scope.label,
+    root,
+    includePaths,
+    excludePaths: scope.excludePaths || [],
+    includeExtensions: scope.includeExtensions || [],
+    fileCount: measuredFileCount,
+    lineCount,
+  })
+}
+
+const artifact = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  producer: {
+    name: 'effect-utils-ci-measurement',
+    version: 1,
+    measurementProtocol: 'source-shape-v1',
+  },
+  subject: {
+    repo: process.env.GITHUB_REPOSITORY || 'unknown',
+    branchKind: process.env.GITHUB_EVENT_NAME || 'unknown',
+    ref: process.env.CI_MEASUREMENT_SUBJECT_REF || process.env.GITHUB_REF || 'unknown',
+    headSha: process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_SHA || 'unknown',
+    baseSha: process.env.GITHUB_BASE_SHA || '',
+  },
+  execution: {
+    provider: process.env.GITHUB_RUN_ID && process.env.GITHUB_RUN_ID !== 'unknown' ? 'github-actions' : 'local',
+    workflow: 'CI',
+    job: process.env.GITHUB_JOB || 'unknown',
+    runId: process.env.GITHUB_RUN_ID || 'unknown',
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT || 'unknown',
+    taskId: process.env.CROSSTASK_TASK_ID || '',
+    attemptId: process.env.CROSSTASK_ATTEMPT_ID || '',
+    traceId: process.env.TRACE_ID || '',
+    runner: {
+      name: process.env.RUNNER_NAME || 'unknown',
+      os: process.env.RUNNER_OS || 'unknown',
+      arch: process.env.RUNNER_ARCH || 'unknown',
+      class: process.env.RUNNER_CLASS || 'unknown',
+    },
+  },
+  target: {
+    kind: 'source-shape',
+    id: process.env.TARGET_ID,
+    name: process.env.TARGET_NAME,
+    label: process.env.TARGET_LABEL,
+    group: process.env.TARGET_GROUP,
+    path: targetPath,
+    system: process.env.TARGET_SYSTEM,
+  },
+  observations,
+  details: { scopes: scopeSummaries },
+}
+
+process.stdout.write(JSON.stringify(artifact, null, 2) + '\n')
+NODE
 
 cat "$artifact_file"
 `,
@@ -1144,9 +1429,9 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
         ? {}
         : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
       ...(opts?.prComment?.publicAssetEnv ?? {}),
-      ...(opts?.prComment?.tokenExpression === undefined
-        ? {}
-        : { GH_TOKEN: opts.prComment.tokenExpression }),
+      ...(opts?.prComment?.enabled === true
+        ? { GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}' }
+        : {}),
     },
     run: String.raw`set -euo pipefail
 
@@ -1295,12 +1580,13 @@ jq -n \
     def policy_enabled($policy):
       if ($policy | has("enabled")) then $policy.enabled else true end;
 
-    def classify($metric; $unit; $policy; $current; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
+    def classify($metric; $unit; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
       $policy as $b
       | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
       | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
+      | (($currentP75 // $current) - ($currentP25 // $current)) as $currentIqr
       | ([
           $noise,
           (($policy.statisticalToleranceAbs // 0) | tonumber),
@@ -1308,9 +1594,21 @@ jq -n \
           (($baselineMad // 0) * 3),
           (($iqr // 0) * 1.5)
         ] | max) as $robustTolerance
+      | (if $currentSamples > 1 then ([
+          $noise,
+          (($policy.statisticalToleranceAbs // 0) | tonumber),
+          (if $current > 0 then ($current * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+          (($currentMad // 0) * 3),
+          (($currentIqr // 0) * 1.5)
+        ] | max) else 0 end) as $currentRobustTolerance
       | ($baseline + $robustTolerance) as $robustUpper
       | ($baseline - $robustTolerance) as $robustLower
-      | ($current >= $robustLower and $current <= $robustUpper) as $withinRobustBand
+      | ($current + $currentRobustTolerance) as $currentRobustUpper
+      | ($current - $currentRobustTolerance) as $currentRobustLower
+      | (
+          ($current >= $robustLower and $current <= $robustUpper)
+          or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
+        ) as $withinRobustBand
       | (
           $baselineMin != null
           and $baselineMax != null
@@ -1344,8 +1642,8 @@ jq -n \
           elif ($delta | abs_value) <= $noise then "noise_floor"
           elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+          elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
           elif $thresholdStatus == "pass" then "within_budget"
-          elif $withinRobustBand then "within_baseline_distribution"
           else "threshold_exceeded"
           end
         ) as $confidence
@@ -1358,12 +1656,12 @@ jq -n \
       | (
           if $baseline <= 0 then "unknown"
           elif ($delta | abs_value) <= $noise then "unchanged"
-          elif ($withinRobustBand and $thresholdStatus == "pass") then "unchanged"
+          elif $withinRobustBand then "unchanged"
           elif $delta < 0 then "improved"
           else "regressed"
         end
       ) as $direction
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,withinBaselineRange:$withinBaselineRange};
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -1397,6 +1695,9 @@ jq -n \
                         $currentValue.observation.unit;
                         ($currentValue.observation | observation_policy(.));
                         $currentValue.value;
+                        $currentValue.p25;
+                        $currentValue.p75;
+                        $currentValue.mad;
                         $baselineValue.value;
                         $baselineValue.min;
                         $baselineValue.max;
@@ -1762,7 +2063,7 @@ const interpretation = (row) => {
   }
   if (row.confidence === 'within_baseline_distribution') return {
     label: 'Within noise band',
-    detail: 'Current value is inside the robust baseline noise band.',
+    detail: 'Current and baseline robust noise bands overlap.',
     tone: 'neutral',
     color: '#94a3b8',
   }
@@ -1817,6 +2118,22 @@ const humanProbe = (row) => {
     return name.slice('devenv.'.length, -'.duration'.length).replaceAll('_', ' ')
   }
   return name
+}
+
+const semanticPath = (row) => {
+  const parts = [
+    ...(Array.isArray(row.target?.path) ? row.target.path : []),
+    row.target?.group,
+    ...(Array.isArray(row.observation?.path) ? row.observation.path : []),
+    row.observation?.group,
+  ].filter((value) => typeof value === 'string' && value.length > 0)
+  const seen = new Set()
+  const unique = parts.filter((part) => {
+    if (seen.has(part)) return false
+    seen.add(part)
+    return true
+  })
+  return unique.length > 0 ? unique.join(' / ') : '-'
 }
 
 const chartProbe = (row) => {
@@ -1875,8 +2192,8 @@ const visibleRows = (hasComparableBaseline
 const comparisonTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Probe | Baseline | Current | Change | Meaning | Gate | Evidence |',
-    '| --- | ---: | ---: | ---: | --- | --- | --- |',
+    '| Group | Measurement | Baseline | Current | Change | Meaning | Gate | Evidence |',
+    '| --- | --- | ---: | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
       const baselineRange = typeof row.baselineRobustLower === 'number' && typeof row.baselineRobustUpper === 'number' && row.baselineRobustLower !== row.baselineRobustUpper
@@ -1886,6 +2203,7 @@ const comparisonTable = (rows) => {
         : ''
       const meaning = interpretation(row)
       return '| ' + [
+        semanticPath(row),
         humanProbe(row),
         formatValue(row.baseline, unit) + baselineRange,
         formatValue(row.current, unit),
@@ -1901,10 +2219,10 @@ const comparisonTable = (rows) => {
 const currentOnlyTable = (rows) => {
   if (rows.length === 0) return 'No current measurements found.'
   return [
-    '| Probe | Current |',
-    '| --- | ---: |',
+    '| Group | Measurement | Current |',
+    '| --- | --- | ---: |',
     ...rows.map((row) => {
-      return '| ' + [humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
+      return '| ' + [semanticPath(row), humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
 }
@@ -2134,7 +2452,7 @@ const summaryLines = [
   '- Protocol: ' + protocolLabel,
   '',
   hasComparableBaseline
-    ? 'Chart: bars show percentage change; gates use both the configured budget and the robust baseline noise band.'
+    ? 'Chart: bars show percentage change. Gate decisions use configured budgets and robust current/baseline noise bands.'
     : 'No compatible baseline was available, so this run shows current measurements only.',
   '',
   chartMarkdown,
@@ -2268,12 +2586,14 @@ EOF
       fi
 
       comment_id="$(cat "$comment_id_file")"
+      comment_payload_file="$comment_body.payload.json"
+      node -e "const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))" "$comment_body" "$comment_payload_file"
       if [ -n "$comment_id" ]; then
-        if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null; then
+        if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --input "$comment_payload_file" >/dev/null; then
           echo "::notice::unable to update CI measurement PR comment"
         fi
       else
-        if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null; then
+        if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --input "$comment_payload_file" >/dev/null; then
           echo "::notice::unable to create CI measurement PR comment"
         fi
       fi
