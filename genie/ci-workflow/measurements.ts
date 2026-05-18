@@ -1570,6 +1570,10 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${
       asset_dark_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}-dark.png"
       public_asset_command="${dollar}{CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND:-}"
       repo_private="$(gh api "repos/$repo" --jq '.private // false' 2>/dev/null || printf 'true')"
+      require_public_asset=false
+      if [ "$repo_private" = "true" ]; then
+        require_public_asset=true
+      fi
       if [ "${dollar}{GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
         github_raw_chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
         github_raw_chart_dark_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_dark_png_path"
@@ -2128,6 +2132,11 @@ EOF
       node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
 
       if [ -s "$chart_file" ]; then
+        if [ "$require_public_asset" = "true" ] && [ -z "$public_asset_command" ]; then
+          echo "::error::CI measurement chart was rendered for a private repository, but CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND is not configured. Private raw GitHub URLs cannot be embedded in PR comments."
+          exit 1
+        fi
+
         if ensure_ci_measurement_tool resvg resvg; then
           resvg_font_args=()
           if command -v nix >/dev/null 2>&1; then
@@ -2206,6 +2215,14 @@ EOF
           else
             echo "::notice::unable to publish CI measurement chart SVG to public asset host"
             export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
+          fi
+          if [ "$require_public_asset" = "true" ] && [ -z "$chart_url" ]; then
+            echo "::error::unable to publish CI measurement chart PNG to a public asset host for private repository $repo"
+            exit 1
+          fi
+          if [ "$require_public_asset" = "true" ] && [ -s "$chart_dark_png_file" ] && [ -z "$chart_dark_url" ]; then
+            echo "::error::unable to publish dark CI measurement chart PNG to a public asset host for private repository $repo"
+            exit 1
           fi
           node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
         fi
