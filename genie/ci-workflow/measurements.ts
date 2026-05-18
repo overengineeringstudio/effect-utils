@@ -166,8 +166,10 @@ export const ciMeasurementBaselineCheckoutStep = {
 
 /** Subject metadata env for measurement artifacts produced by a baseline backfill run. */
 export const ciMeasurementSubjectEnv = {
-  CI_MEASUREMENT_SUBJECT_REF: '${{ inputs.measurement_baseline_ref || github.ref }}',
-  CI_MEASUREMENT_SUBJECT_SHA: '${{ inputs.measurement_baseline_ref || github.sha }}',
+  CI_MEASUREMENT_SUBJECT_REF:
+    '${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}',
+  CI_MEASUREMENT_SUBJECT_SHA:
+    '${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}',
   CI_MEASUREMENT_SUBJECT_LABEL: '${{ inputs.measurement_baseline_label }}',
   CI_MEASUREMENT_ALLOW_PROBE_FAILURES:
     "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}",
@@ -1558,7 +1560,7 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
       if [ -z "$asset_title" ]; then
         asset_title="ci-measurements"
       fi
-      asset_head_sha="${dollar}{GITHUB_HEAD_SHA:-${dollar}{GITHUB_SHA:-unknown}}"
+      asset_head_sha="${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_HEAD_SHA:-${dollar}{GITHUB_SHA:-unknown}}}"
       asset_run_id="${dollar}{GITHUB_RUN_ID:-local}"
       asset_run_attempt="${dollar}{GITHUB_RUN_ATTEMPT:-0}"
       asset_svg_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
@@ -1593,7 +1595,7 @@ const repo = process.env.GITHUB_REPOSITORY || 'unknown'
 const runId = process.env.GITHUB_RUN_ID || ''
 const runAttempt = process.env.GITHUB_RUN_ATTEMPT || ''
 const sha = process.env.GITHUB_SHA || ''
-const headSha = process.env.GITHUB_HEAD_SHA || sha
+const headSha = process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_HEAD_SHA || sha
 const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
 const workflow = process.env.GITHUB_WORKFLOW || 'CI'
 const job = process.env.GITHUB_JOB || ''
