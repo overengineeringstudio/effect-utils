@@ -73,6 +73,12 @@ This keeps probe-specific collection code separate from the reusable regression
 system. A new probe should not fork comparison, markdown rendering, or asset
 publication logic.
 
+The reusable engine boundary is specified in
+[ci-measurement-engine.md](./ci-measurement-engine.md). The long-term direction
+is to keep this artifact and comment contract as the source of truth while
+moving comparison and rendering out of generated shell/jq snippets into a typed
+native CLI.
+
 ## Gate Semantics
 
 Deterministic observations use `comparisonMode: "budget"`.
@@ -243,3 +249,19 @@ Reports must distinguish raw movement from actionable evidence.
 
 This prevents a large historical wall-clock delta from looking like a proven
 PR regression when the measurement lacks causal evidence.
+
+## External Tools
+
+External benchmarking tools may complement this system, but they do not replace
+the merge-gate contract.
+
+- Bencher-like systems may store historical trends, apply threshold models, and
+  provide dashboards.
+- CodSpeed-like instrumentation may be useful for language-level benchmark
+  suites whose execution model matches the tool.
+- OTEL backends remain diagnostic evidence for explaining where time went.
+- GitHub comments remain the human review surface for PR decisions.
+
+For wall-clock PR gates, the authoritative evidence is still same-run paired
+base/head samples emitted in `measurements.json`. For deterministic quantities,
+the authoritative evidence is the comparable value and its configured budget.
