@@ -408,7 +408,6 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': jobTimeoutMinutes,
   },
   'source-shape': {
-    if: normalCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -419,11 +418,15 @@ const extraJobs: Record<string, any> = {
     env: ciMeasurementSubjectEnv,
     steps: [
       checkoutStep(),
-      downloadPreviousGitHubArtifactStep({
-        artifactName: 'source-shape',
-        outputDir: `${sourceShapeMeasurementsDir}/baseline`,
-        maxRuns: 20,
-      }),
+      ciMeasurementBaselineCheckoutStep,
+      {
+        ...downloadPreviousGitHubArtifactStep({
+          artifactName: 'source-shape',
+          outputDir: `${sourceShapeMeasurementsDir}/baseline`,
+          maxRuns: 20,
+        }),
+        if: normalCiIf,
+      },
       sourceShapeMeasurementStep({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
         targetId: 'effect_utils',
@@ -458,18 +461,21 @@ const extraJobs: Record<string, any> = {
           },
         ],
       }),
-      compareCiMeasurementsStep({
-        currentDir: `${sourceShapeMeasurementsDir}/current`,
-        baselineDir: `${sourceShapeMeasurementsDir}/baseline`,
-        outputFile: `${sourceShapeMeasurementsDir}/measurement-comparison.json`,
-        regressionMode: 'warn',
-        prComment: {
-          enabled: true,
-          title: 'Source Shape Measurements',
-          maxRows: 12,
-          maxHistory: 20,
-        },
-      }),
+      {
+        ...compareCiMeasurementsStep({
+          currentDir: `${sourceShapeMeasurementsDir}/current`,
+          baselineDir: `${sourceShapeMeasurementsDir}/baseline`,
+          outputFile: `${sourceShapeMeasurementsDir}/measurement-comparison.json`,
+          regressionMode: 'warn',
+          prComment: {
+            enabled: true,
+            title: 'Source Shape Measurements',
+            maxRows: 12,
+            maxHistory: 20,
+          },
+        }),
+        if: normalCiIf,
+      },
       ciMeasurementsArtifactStep({
         artifactName: 'source-shape',
         path: sourceShapeMeasurementsDir,
