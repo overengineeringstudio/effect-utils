@@ -423,6 +423,17 @@ const extraJobs: Record<string, any> = {
         ...downloadPreviousGitHubArtifactStep({
           artifactName: 'source-shape',
           outputDir: `${sourceShapeMeasurementsDir}/baseline`,
+          seedRuns: [
+            {
+              runId: '26085158592',
+              label: 'main baseline',
+              sha: 'ce7cf8f8ebfaa1da6c7e9122cd195a5f95ce2fca',
+              source: 'manual-backfill',
+              artifacts: ['source-shape'],
+              notes:
+                'Backfilled with the current measurement workflow for the effect-utils #658 rollout.',
+            },
+          ],
           maxRuns: 20,
         }),
         if: normalCiIf,

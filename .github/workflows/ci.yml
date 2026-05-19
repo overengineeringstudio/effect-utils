@@ -4603,7 +4603,7 @@ jobs:
           BASELINE_OUTPUT_DIR: tmp/source-shape-ci/baseline
           BASELINE_WORKFLOW_NAME: ${{ github.workflow }}
           BASELINE_BRANCH: ${{ github.base_ref || github.ref_name }}
-          BASELINE_SEED_RUNS_JSON: '[]'
+          BASELINE_SEED_RUNS_JSON: '[{"runId":"26085158592","label":"main baseline","sha":"ce7cf8f8ebfaa1da6c7e9122cd195a5f95ce2fca","source":"manual-backfill","artifacts":["source-shape"],"notes":"Backfilled with the current measurement workflow for the effect-utils #658 rollout."}]'
           BASELINE_MAX_RUNS: '20'
           BASELINE_MAX_CANDIDATE_RUNS: '60'
           BASELINE_REQUIRED_OBSERVATIONS_JSON: '[]'
