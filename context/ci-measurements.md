@@ -17,6 +17,20 @@ Active.
 The class is part of the observation contract through `measurementKind`.
 The comparison policy is part of the gate contract through `comparisonMode`.
 
+`measurementKind` defines the physical meaning of the number. `comparisonMode`
+defines how the number is compared. A producer may only combine them when the
+semantics match:
+
+| `measurementKind` | Gateable `comparisonMode` | Baseline Meaning                              | Uncertainty Model                         |
+| ----------------- | ------------------------- | --------------------------------------------- | ----------------------------------------- |
+| `deterministic`   | `budget`                  | Same target on a comparable ref               | None by default; exact value plus budget. |
+| `wall-clock`      | `paired`                  | Same PR run, same runner, base/head pairs     | Per-pair delta band.                      |
+| `wall-clock`      | `historical`              | Previous comparable successful artifacts      | Advisory robust bands only.               |
+| `diagnostic`      | none                      | Optional context artifact or trace attachment | Not gateable.                             |
+
+Historical comparison is not a substitute for paired wall-clock evidence.
+Budget comparison is not a substitute for owner-approved semantic budgets.
+
 ## Observation Contract
 
 Every observation has a stable `id`, human `label`, semantic `group`/`path`,
@@ -37,6 +51,26 @@ numeric `value`, `unit`, `measurementKind`, and a gate `policy`.
   }
 }
 ```
+
+Observation IDs are public API. They should be stable, dotted names whose
+prefix names the domain and whose suffix names the measured quantity, for
+example `devenv.shell_eval_warm.duration`, `nix.closure.nar_size`, or
+`source.lines`. Labels are review UI, not identity. Paths and groups may change
+to improve hierarchy, but IDs should only change when the measurement protocol
+or semantic target changes.
+
+New measurement producers should emit the shared artifact format directly:
+
+```text
+producer adapter
+  -> typed observation(s)
+  -> shared comparison policy
+  -> shared report/comment/SVG projection
+```
+
+This keeps probe-specific collection code separate from the reusable regression
+system. A new probe should not fork comparison, markdown rendering, or asset
+publication logic.
 
 ## Gate Semantics
 
@@ -119,6 +153,55 @@ budgets and semantic buckets. A closure-size regression is actionable because
 the same installable and lock graph should produce a stable closure.
 Source-shape or complexity growth is an architecture signal and should remain
 advisory unless a repo defines an explicit owner-approved budget.
+
+Deterministic budgets should prefer absolute units when the user impact is
+absolute, such as bytes or path counts, and relative thresholds when scale is
+the meaningful signal. A deterministic row may show historical values for
+review context, but the pass/fail decision is the budget decision.
+
+## Policy Lifecycle
+
+Each observation should move through explicit policy stages:
+
+| Stage        | Use Case                                      | Merge Behavior                                      |
+| ------------ | --------------------------------------------- | --------------------------------------------------- |
+| `diagnostic` | New metric, trace attachment, host context    | Render only.                                        |
+| `advisory`   | Historical trend before calibration is mature | Comment and warn, but do not block merge.           |
+| `gateable`   | Calibrated wall-clock or deterministic budget | Block only when the measurement class proves it.    |
+| `required`   | Stable semantic invariant                     | Repo branch protection may depend on the gate name. |
+
+Wall-clock probes should start advisory until paired evidence and a noise
+profile exist for that repo/runner. Deterministic probes can become gateable
+earlier when their target identity and budget are explicit.
+
+## Baseline Model
+
+Baselines are comparable evidence, not arbitrary previous numbers.
+
+| Measurement Class | Baseline Source                                      | Backfill Rule                                         |
+| ----------------- | ---------------------------------------------------- | ----------------------------------------------------- |
+| `deterministic`   | Current main artifacts or manually seeded exact runs | Backfill past merged PRs when introducing the metric. |
+| `wall-clock`      | Same-run paired base checkout for PR gates           | Historical backfill is trend context only.            |
+| `diagnostic`      | Trace or host artifact for the same run              | No baseline required.                                 |
+
+Manual baseline seeds must record the source run, ref, SHA, and reason. Seeded
+data is acceptable when it was produced by the same probe protocol and target
+identity; it is not acceptable to copy a chart value into the baseline store.
+
+## State-of-the-Art Alignment
+
+The design follows current continuous benchmarking practice:
+
+- Wall-clock gates need repeated measurements, warmup, and uncertainty, not
+  single raw timing deltas.
+- Paired base/head runs reduce runner-load, cache, and time-drift bias.
+- Outliers and wide variance reduce confidence instead of being silently
+  averaged away.
+- Diagnostic traces explain regressions; they do not define the canonical
+  numeric result.
+- Human review should show raw values, nominal deltas, percent deltas, and an
+  actionable impact scale so large noisy movements are not mistaken for proven
+  PR regressions.
 
 ## Visualization
 
