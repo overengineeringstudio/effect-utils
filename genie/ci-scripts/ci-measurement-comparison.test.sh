@@ -123,6 +123,23 @@ if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actua
 fi
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$paired_policy"
+jq '.observations[0].comparison = { mode: "paired", baseline: 12.95, pairedSampleCount: 5 } | .observations[0].statistics.pairedSampleCount = 5' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
+mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$paired_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_gate="$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")"
+actual_baseline="$(jq -r '.comparisons[] | .baseline' "$tmp_dir/comparison.json")"
+actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "eligible" ] || [ "$actual_baseline" != "12.95" ] || [ "$actual_enforceable" != "true" ]; then
+  echo "expected paired current artifact baseline to override historical baseline; got status=$actual_status row=$actual_row gate=$actual_gate baseline=$actual_baseline enforceable=$actual_enforceable" >&2
+  exit 1
+fi
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/run-1/measurements.json" 5.1 devenv-perf-warm-median-v2 "$policy"
 write_measurement "$tmp_dir/current/run-2/measurements.json" 5.2 devenv-perf-warm-median-v2 "$policy"
 write_measurement "$tmp_dir/current/run-3/measurements.json" 7.0 devenv-perf-warm-median-v2 "$policy"

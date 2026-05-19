@@ -47,6 +47,11 @@ relative budgets. Historical variance is not treated as statistical evidence.
 Wall-clock observations use `comparisonMode: "paired"` for enforced gates.
 They need same-run base/head evidence before they can block a merge. Historical
 baselines remain useful for trend context, but they do not prove PR causality.
+For PR runs, the wall-clock producer checks out the PR base commit in a sibling
+worktree and alternates measured pair order (`head -> base`, then
+`base -> head`) to reduce cache and time drift bias. The current artifact
+stores the paired baseline median and paired sample count, and the comparison
+engine uses that embedded paired baseline for the gate.
 
 Historical wall-clock comparison may be used as an advisory transition mode.
 It can warn, visualize trends, and guide investigation, but it must not be the

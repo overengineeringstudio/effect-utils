@@ -56,6 +56,11 @@ export type CiMeasurementObservation = {
   readonly value: number
   readonly dimensions?: Record<string, string | number | boolean | null>
   readonly policy?: CiMeasurementGatePolicy
+  readonly comparison?: {
+    readonly mode?: 'budget' | 'historical' | 'paired' | (string & {})
+    readonly baseline?: number
+    readonly pairedSampleCount?: number
+  }
   readonly statistics?: {
     readonly sampleCount?: number
     readonly measuredSampleCount?: number
@@ -66,6 +71,9 @@ export type CiMeasurementObservation = {
     readonly p75?: number
     readonly p95?: number
     readonly pairedSampleCount?: number
+    readonly pairedBaselineMedian?: number
+    readonly pairedCurrentMedian?: number
+    readonly pairedDeltaMedian?: number
   }
 }
 
@@ -442,6 +450,43 @@ const renderDevenvPerfScript = (
 
   return String.raw`set -euo pipefail
 
+ARTIFACT_DIR="$(mkdir -p "$ARTIFACT_DIR" && cd "$ARTIFACT_DIR" && pwd -P)"
+CI_MEASUREMENT_HEAD_DIR="${dollar}{CI_MEASUREMENT_HEAD_DIR:-$PWD}"
+CI_MEASUREMENT_BASE_DIR="${dollar}{CI_MEASUREMENT_BASE_DIR:-${dollar}{RUNNER_TEMP:-/tmp}/ci-measurement-base}"
+CI_MEASUREMENT_PAIRED_ENABLED=0
+
+prepare_paired_base_worktree() {
+  if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+    return 0
+  fi
+  if [ -n "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" ]; then
+    return 0
+  fi
+  if [ ! -f "${dollar}{GITHUB_EVENT_PATH:-}" ]; then
+    return 0
+  fi
+
+  local base_sha
+  base_sha="$(jq -r '.pull_request.base.sha // empty' "$GITHUB_EVENT_PATH")"
+  if [ -z "$base_sha" ]; then
+    echo "::notice::paired wall-clock baseline unavailable: pull_request.base.sha missing"
+    return 0
+  fi
+
+  rm -rf "$CI_MEASUREMENT_BASE_DIR"
+  git worktree prune >/dev/null 2>&1 || true
+  if git fetch --no-tags --depth=1 origin "$base_sha" \
+    && git worktree add --detach "$CI_MEASUREMENT_BASE_DIR" "$base_sha" >/dev/null; then
+    CI_MEASUREMENT_PAIRED_ENABLED=1
+    echo "::notice::paired wall-clock baseline prepared at $CI_MEASUREMENT_BASE_DIR ($base_sha)"
+  else
+    echo "::warning::paired wall-clock baseline unavailable: failed to prepare base worktree $base_sha"
+    CI_MEASUREMENT_PAIRED_ENABLED=0
+  fi
+}
+
+prepare_paired_base_worktree
+
 mkdir -p "$ARTIFACT_DIR/traces"
 
 {
@@ -501,8 +546,22 @@ json_append_timing() {
       --arg trace "$trace" \
       --argjson gatePolicy "$gate_policy" \
       '($samples[0] // []) as $sampleList
-      | ($sampleList | map(select(.phase != "warmup" and .status == 0) | .durationMs)) as $successfulDurations
-      | ($sampleList | map(select(.phase == "warmup"))) as $warmupSamples
+      | ($sampleList | map(select((.subject // "head") == "head" and .phase != "warmup" and .status == 0) | .durationMs)) as $successfulDurations
+      | ($sampleList | map(select((.subject // "head") == "head" and .phase == "warmup"))) as $warmupSamples
+      | ($sampleList | map(select((.subject // "head") == "head" and .phase == "measured" and .status == 0 and .pairIndex != null))) as $headSamples
+      | ($sampleList | map(select(.subject == "base" and .phase == "measured" and .status == 0 and .pairIndex != null))) as $baseSamples
+      | (
+          $headSamples
+          | map(. as $head | $baseSamples[]? | select(.pairIndex == $head.pairIndex) | {
+              pairIndex: $head.pairIndex,
+              currentDurationMs: $head.durationMs,
+              baselineDurationMs: .durationMs,
+              deltaMs: ($head.durationMs - .durationMs)
+            })
+        ) as $pairedSamples
+      | ($pairedSamples | map(.currentDurationMs)) as $pairedCurrentDurations
+      | ($pairedSamples | map(.baselineDurationMs)) as $pairedBaselineDurations
+      | ($pairedSamples | map(.deltaMs)) as $pairedDeltaDurations
       | {
         id:$id,
         name:$id,
@@ -518,11 +577,19 @@ json_append_timing() {
           statistics: {
           sampleCount: ($sampleList | length),
           warmupCount: ($warmupSamples | length),
-          measuredSampleCount: (($sampleList | length) - ($warmupSamples | length)),
+          measuredSampleCount: (
+            $sampleList
+            | map(select((.subject // "head") == "head" and .phase != "warmup"))
+            | length
+          ),
           successfulSampleCount: ($successfulDurations | length),
           minDurationMs: ($successfulDurations | min),
           maxDurationMs: ($successfulDurations | max),
-          medianDurationMs: $durationMs
+          medianDurationMs: $durationMs,
+          pairedSampleCount: ($pairedSamples | length),
+          pairedCurrentMedianDurationMs: (if ($pairedCurrentDurations | length) == 0 then null else ($pairedCurrentDurations | sort | .[(length - 1) / 2 | floor]) end),
+          pairedBaselineMedianDurationMs: (if ($pairedBaselineDurations | length) == 0 then null else ($pairedBaselineDurations | sort | .[(length - 1) / 2 | floor]) end),
+          pairedDeltaMedianDurationMs: (if ($pairedDeltaDurations | length) == 0 then null else ($pairedDeltaDurations | sort | .[(length - 1) / 2 | floor]) end)
         },
         samples:$sampleList
       }' \
@@ -577,8 +644,6 @@ measure() {
       fi
     fi
 
-    started="$(date +%s%3N)"
-    set +e
     expanded=()
     for arg in "$@"; do
       case "$arg" in
@@ -600,7 +665,43 @@ measure() {
         *) expanded+=("$arg") ;;
       esac
     done
-    "${dollar}{expanded[@]}" >"$sample_stdout" 2>"$sample_stderr"
+
+    local base_ran_before_head=0 base_stdout base_stderr base_started base_ended base_status base_duration_ms
+    if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ $((measured_index % 2)) -eq 0 ]; then
+      base_ran_before_head=1
+      base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
+      base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
+      base_started="$(date +%s%3N)"
+      set +e
+      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      base_status=$?
+      set -e
+      base_ended="$(date +%s%3N)"
+      base_duration_ms=$((base_ended - base_started))
+
+      if [ "$sample_first" -eq 0 ]; then
+        printf ',' >>"$samples_file"
+      fi
+      sample_first=0
+      jq -cn \
+        --argjson index "$sample_index" \
+        --arg measuredIndex "$measured_index" \
+        --argjson status "$base_status" \
+        --argjson durationMs "$base_duration_ms" \
+        --arg stdout "$base_stdout" \
+        --arg stderr "$base_stderr" \
+        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"base-head"}' \
+        >>"$samples_file"
+
+      if [ "$base_status" -ne 0 ]; then
+        echo "::warning::$id paired baseline sample $measured_index failed after ${dollar}{base_duration_ms}ms; this pair is excluded from wall-clock gating"
+        tail -40 "$base_stderr" || true
+      fi
+    fi
+
+    started="$(date +%s%3N)"
+    set +e
+    (cd "$CI_MEASUREMENT_HEAD_DIR" && "${dollar}{expanded[@]}") >"$sample_stdout" 2>"$sample_stderr"
     status=$?
     set -e
     ended="$(date +%s%3N)"
@@ -619,8 +720,37 @@ measure() {
       --arg stdout "$sample_stdout" \
       --arg stderr "$sample_stderr" \
       --arg trace "$sample_trace" \
-      '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+      --arg order "$(if [ "$phase" = "measured" ] && [ "$base_ran_before_head" -eq 1 ]; then printf base-head; else printf head-base; fi)" \
+      '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),pairIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),subject:"head",phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end),order:(if $phase == "measured" then $order else null end)}' \
       >>"$samples_file"
+
+    if [ "$phase" = "measured" ] && [ "$status" -eq 0 ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$base_ran_before_head" -eq 0 ]; then
+      base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
+      base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
+      base_started="$(date +%s%3N)"
+      set +e
+      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      base_status=$?
+      set -e
+      base_ended="$(date +%s%3N)"
+      base_duration_ms=$((base_ended - base_started))
+
+      printf ',' >>"$samples_file"
+      jq -cn \
+        --argjson index "$sample_index" \
+        --arg measuredIndex "$measured_index" \
+        --argjson status "$base_status" \
+        --argjson durationMs "$base_duration_ms" \
+        --arg stdout "$base_stdout" \
+        --arg stderr "$base_stderr" \
+        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"head-base"}' \
+        >>"$samples_file"
+
+      if [ "$base_status" -ne 0 ]; then
+        echo "::warning::$id paired baseline sample $measured_index failed after ${dollar}{base_duration_ms}ms; this pair is excluded from wall-clock gating"
+        tail -40 "$base_stderr" || true
+      fi
+    fi
 
     stdout="$sample_stdout"
     stderr="$sample_stderr"
@@ -632,8 +762,8 @@ measure() {
   done
   printf ']\n' >>"$samples_file"
 
-  status="$(jq -r 'map(.status) | max // 0' "$samples_file")"
-  duration_ms="$(jq -r 'map(select(.phase != "warmup" and .status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(.durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
+  status="$(jq -r 'map(select((.subject // "head") == "head") | .status) | max // 0' "$samples_file")"
+  duration_ms="$(jq -r 'map(select((.subject // "head") == "head" and .phase != "warmup" and .status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(select((.subject // "head") == "head") | .durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
 
   cp "$stdout" "$ARTIFACT_DIR/$id.stdout" 2>/dev/null || true
   cp "$stderr" "$ARTIFACT_DIR/$id.stderr" 2>/dev/null || true
@@ -742,16 +872,45 @@ jq -n \
           measurementKind: (if (.gatePolicy.enabled == false) then "diagnostic" else "wall-clock" end),
           name: ("devenv." + .id + ".duration"),
           unit: "seconds",
-            value: (.durationMs / 1000),
-            policy: .gatePolicy,
-            statistics: {
+          value: (.durationMs / 1000),
+          policy: .gatePolicy,
+          comparison: {
+            mode: (.gatePolicy.comparisonMode // "historical"),
+            pairedSampleCount: (.statistics.pairedSampleCount // 0),
+            baseline: (
+              if (.statistics.pairedBaselineMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedBaselineMedianDurationMs / 1000)
+              end
+            )
+          },
+          statistics: {
             sampleCount: (.statistics.sampleCount // 1),
             warmupCount: (.statistics.warmupCount // 0),
             measuredSampleCount: (.statistics.measuredSampleCount // (.statistics.sampleCount // 1)),
             successfulSampleCount: (.statistics.successfulSampleCount // (if .status == 0 then 1 else 0 end)),
             min: ((.statistics.minDurationMs // .durationMs) / 1000),
             max: ((.statistics.maxDurationMs // .durationMs) / 1000),
-            median: ((.statistics.medianDurationMs // .durationMs) / 1000)
+            median: ((.statistics.medianDurationMs // .durationMs) / 1000),
+            pairedSampleCount: (.statistics.pairedSampleCount // 0),
+            pairedCurrentMedian: (
+              if (.statistics.pairedCurrentMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedCurrentMedianDurationMs / 1000)
+              end
+            ),
+            pairedBaselineMedian: (
+              if (.statistics.pairedBaselineMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedBaselineMedianDurationMs / 1000)
+              end
+            ),
+            pairedDeltaMedian: (
+              if (.statistics.pairedDeltaMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMedianDurationMs / 1000)
+              end
+            )
           },
           dimensions: {
             probe: .id,
@@ -760,6 +919,13 @@ jq -n \
             sampleCount: (.statistics.sampleCount // 1),
             warmupCount: (.statistics.warmupCount // 0),
             measuredSampleCount: (.statistics.measuredSampleCount // (.statistics.sampleCount // 1)),
+            pairedSampleCount: (.statistics.pairedSampleCount // 0),
+            pairedOrderProtocol: (
+              if (.statistics.pairedSampleCount // 0) > 0
+              then "alternating-head-base"
+              else null
+              end
+            ),
             measurementProtocol: "devenv-perf-warm-median-v2",
             aggregation: "median",
             phase: "warm",
@@ -1544,6 +1710,7 @@ jq -n \
 
     def observation_stats($items):
       ($items | map(.observation.value)) as $values
+      | ($items | map(.observation.comparison.baseline // empty)) as $pairedBaselineValues
       | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
       | ($values | median) as $median
       | {
@@ -1560,6 +1727,7 @@ jq -n \
           sourceCount: ($items | length),
           sampleCount: $sampleCount,
           pairedSampleCount: ($items | map(.observation.statistics.pairedSampleCount // .observation.comparison.pairedSampleCount // 0) | add // 0),
+          pairedBaselineValue: (if ($pairedBaselineValues | length) == 0 then null else ($pairedBaselineValues | median) end),
           generatedAt: ($items[-1].generatedAt // null)
         };
 
@@ -1717,10 +1885,23 @@ jq -n \
             .key as $key
             | .value as $currentValue
             | ($baselineObs[$key] // null) as $baselineValue
+            | ($currentValue.observation | observation_policy(.)) as $policy
+            | ($policy.comparisonMode // (if ($currentValue.observation.measurementKind // $currentValue.measurementKind) == "deterministic" or ($currentValue.observation.unit // "") != "seconds" then "budget" elif ($currentValue.observation.measurementKind // $currentValue.measurementKind) == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
+            | ($currentValue.pairedBaselineValue // null) as $pairedBaselineValue
+            | (if $comparisonMode == "paired" and $pairedBaselineValue != null then {
+                value: $pairedBaselineValue,
+                min: $pairedBaselineValue,
+                max: $pairedBaselineValue,
+                p25: $pairedBaselineValue,
+                p75: $pairedBaselineValue,
+                p95: $pairedBaselineValue,
+                mad: 0,
+                sourceCount: $currentValue.pairedSampleCount
+              } else $baselineValue end) as $effectiveBaselineValue
             | {
                 key: $key,
                 value: (
-                  if $baselineValue == null then
+                  if $effectiveBaselineValue == null then
                     {
                       status: "missing_baseline",
                       target: $currentValue.target,
@@ -1728,7 +1909,8 @@ jq -n \
                         current: $currentValue.value,
                         currentSamples: $currentValue.sampleCount,
                         baselineSources: 0,
-                        gatePolicy: ($currentValue.observation | observation_policy(.)),
+                        gatePolicy: $policy,
+                        comparisonMode: $comparisonMode,
                         gateable: false,
                         gateReason: "missing_baseline",
                         confidence: "missing_baseline",
@@ -1739,32 +1921,32 @@ jq -n \
                         $currentValue.observation.name;
                         $currentValue.observation.unit;
                         ($currentValue.observation.measurementKind // $currentValue.measurementKind);
-                        ($currentValue.observation | observation_policy(.));
+                        $policy;
                         $currentValue.value;
                         $currentValue.p25;
                         $currentValue.p75;
                         $currentValue.mad;
-                        $baselineValue.value;
-                        $baselineValue.min;
-                        $baselineValue.max;
-                        $baselineValue.p25;
-                        $baselineValue.p75;
-                        $baselineValue.p95;
-                        $baselineValue.mad;
+                        $effectiveBaselineValue.value;
+                        $effectiveBaselineValue.min;
+                        $effectiveBaselineValue.max;
+                        $effectiveBaselineValue.p25;
+                        $effectiveBaselineValue.p75;
+                        $effectiveBaselineValue.p95;
+                        $effectiveBaselineValue.mad;
                         $currentValue.sampleCount;
-                        $baselineValue.sourceCount;
+                        $effectiveBaselineValue.sourceCount;
                         $currentValue.pairedSampleCount
                       ) + {
                       target: $currentValue.target,
                       observation: $currentValue.observation,
                         currentSamples: $currentValue.sampleCount,
-                        baselineSources: $baselineValue.sourceCount,
-                        baselineMin: $baselineValue.min,
-                        baselineMax: $baselineValue.max,
-                        baselineP25: $baselineValue.p25,
-                        baselineP75: $baselineValue.p75,
-                        baselineP95: $baselineValue.p95
-                        ,baselineMad: $baselineValue.mad
+                        baselineSources: $effectiveBaselineValue.sourceCount,
+                        baselineMin: $effectiveBaselineValue.min,
+                        baselineMax: $effectiveBaselineValue.max,
+                        baselineP25: $effectiveBaselineValue.p25,
+                        baselineP75: $effectiveBaselineValue.p75,
+                        baselineP95: $effectiveBaselineValue.p95
+                        ,baselineMad: $effectiveBaselineValue.mad
                       }
                   end
                 )
