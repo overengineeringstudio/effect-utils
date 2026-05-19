@@ -23,8 +23,10 @@ export type CiMeasurementDescriptor = {
 
 export type CiMeasurementGatePolicy = {
   readonly enabled?: boolean
+  readonly comparisonMode?: 'budget' | 'historical' | 'paired'
   readonly minBaselineSources?: number
   readonly minCurrentSamples?: number
+  readonly minPairedSamples?: number
   readonly noiseFloor?: number
   readonly statisticalToleranceRatio?: number
   readonly statisticalToleranceAbs?: number
@@ -48,6 +50,7 @@ export type CiMeasurementObservation = {
   readonly group?: string
   readonly path?: readonly string[]
   readonly description?: string
+  readonly measurementKind?: 'deterministic' | 'wall-clock' | 'diagnostic' | (string & {})
   readonly name: string
   readonly unit: CiMeasurementUnit
   readonly value: number
@@ -62,6 +65,7 @@ export type CiMeasurementObservation = {
     readonly p25?: number
     readonly p75?: number
     readonly p95?: number
+    readonly pairedSampleCount?: number
   }
 }
 
@@ -309,6 +313,8 @@ const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy =
   if (probeId === 'tasks_list' || probeId === 'processes_help') {
     return {
       enabled: true,
+      comparisonMode: 'paired',
+      minPairedSamples: 7,
       minBaselineSources: 10,
       minCurrentSamples: 5,
       warnRatio: 1.25,
@@ -322,6 +328,8 @@ const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy =
   }
   return {
     enabled: true,
+    comparisonMode: 'paired',
+    minPairedSamples: 5,
     minBaselineSources: 10,
     minCurrentSamples: 5,
     warnRatio: 1.1,
@@ -731,6 +739,7 @@ jq -n \
           label: .label,
           group: .group,
           description: .description,
+          measurementKind: (if (.gatePolicy.enabled == false) then "diagnostic" else "wall-clock" end),
           name: ("devenv." + .id + ".duration"),
           unit: "seconds",
             value: (.durationMs / 1000),
@@ -1139,6 +1148,7 @@ jq -n \
             label: (($bucket.label // $bucket.name) + " closure size"),
             group: "nix closure buckets",
             description: ("NAR size contributed by closure paths matching " + $bucket.pathRegex),
+            measurementKind: "deterministic",
             unit: "bytes",
             value: (
               $closurePaths
@@ -1178,6 +1188,7 @@ jq -n \
             group: "nix closure",
             description: "Total NAR size for all paths in the resolved Nix closure.",
             name: "nix.closure.nar_size",
+            measurementKind: "deterministic",
             unit: "bytes",
             value: $totalNarSize,
             dimensions: { bucket: "total" }
@@ -1188,6 +1199,7 @@ jq -n \
             group: "nix closure",
             description: "Number of store paths in the resolved Nix closure.",
             name: "nix.closure.path_count",
+            measurementKind: "deterministic",
             unit: "count",
             value: $pathCount,
             dimensions: { bucket: "total" }
@@ -1324,6 +1336,7 @@ for (const scope of scopes) {
       group,
       path: scopePath,
       description: 'Tracked non-binary source lines in the configured scope.',
+      measurementKind: 'deterministic',
       name: 'source.lines',
       unit: 'lines',
       value: lineCount,
@@ -1337,6 +1350,7 @@ for (const scope of scopes) {
       group,
       path: scopePath,
       description: 'Tracked non-binary source files in the configured scope.',
+      measurementKind: 'deterministic',
       name: 'source.files',
       unit: 'count',
       value: measuredFileCount,
@@ -1535,6 +1549,7 @@ jq -n \
       | {
           target: ($items[0].target // {}),
           observation: ($items[-1].observation // {}),
+          measurementKind: ($items[-1].observation.measurementKind // null),
           value: $median,
           min: ($values | min),
           max: ($values | max),
@@ -1544,6 +1559,7 @@ jq -n \
           mad: ($values | map(. - $median | if . < 0 then -. else . end) | median),
           sourceCount: ($items | length),
           sampleCount: $sampleCount,
+          pairedSampleCount: ($items | map(.observation.statistics.pairedSampleCount // .observation.comparison.pairedSampleCount // 0) | add // 0),
           generatedAt: ($items[-1].generatedAt // null)
         };
 
@@ -1571,8 +1587,10 @@ jq -n \
       | noise_floor($metric; $unit) as $noise
       | $b + {
           enabled:true,
-          minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" then 3 else 10 end),
+          comparisonMode:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then "budget" else "historical" end),
+          minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then 1 else 10 end),
           minCurrentSamples:(if $unit == "seconds" then 3 else 1 end),
+          minPairedSamples:(if $unit == "seconds" then 5 else 0 end),
           noiseFloor:$noise
         };
     def observation_policy($obs):
@@ -1580,8 +1598,9 @@ jq -n \
     def policy_enabled($policy):
       if ($policy | has("enabled")) then $policy.enabled else true end;
 
-    def classify($metric; $unit; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
+    def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples):
       $policy as $b
+      | ($policy.comparisonMode // (if $measurementKind == "deterministic" or $unit != "seconds" then "budget" elif $measurementKind == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
       | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
@@ -1629,12 +1648,14 @@ jq -n \
           and $baseline > 0
           and $baselineSources >= ($policy.minBaselineSources // 1)
           and $currentSamples >= ($policy.minCurrentSamples // 1)
+          and (if $comparisonMode == "paired" then $pairedSamples >= ($policy.minPairedSamples // 1) else true end)
         ) as $gateable
       | (
           if (policy_enabled($policy) != true) then "disabled"
           elif $baseline <= 0 then "missing_baseline"
           elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+          elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
           else "eligible"
           end
         ) as $gateReason
@@ -1644,7 +1665,8 @@ jq -n \
           elif ($delta | abs_value) <= $noise then "noise_floor"
           elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
-          elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
+          elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+          elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
           elif $thresholdStatus == "pass" then "within_budget"
           else "threshold_exceeded"
           end
@@ -1684,7 +1706,7 @@ jq -n \
           else "improvement"
           end
         ) as $semanticImpactKind
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -1716,6 +1738,7 @@ jq -n \
                       classify(
                         $currentValue.observation.name;
                         $currentValue.observation.unit;
+                        ($currentValue.observation.measurementKind // $currentValue.measurementKind);
                         ($currentValue.observation | observation_policy(.));
                         $currentValue.value;
                         $currentValue.p25;
@@ -1729,7 +1752,8 @@ jq -n \
                         $baselineValue.p95;
                         $baselineValue.mad;
                         $currentValue.sampleCount;
-                        $baselineValue.sourceCount
+                        $baselineValue.sourceCount;
+                        $currentValue.pairedSampleCount
                       ) + {
                       target: $currentValue.target,
                       observation: $currentValue.observation,
@@ -1755,7 +1779,8 @@ jq -n \
           (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
           and (.gateReason == "missing_baseline"
             or .gateReason == "low_baseline_count"
-            or .gateReason == "low_current_sample_count")
+            or .gateReason == "low_current_sample_count"
+            or .gateReason == "low_paired_sample_count")
         ) then "partial"
         else "pass"
         end
@@ -1767,7 +1792,8 @@ jq -n \
             gateableCount: (map(select(.gateable == true)) | length),
             missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
             lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
-            lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length)
+            lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
+            lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length)
           }
         | . + {
             nonGateableCount: (.enabledCount - .gateableCount),
@@ -2059,6 +2085,12 @@ const interpretation = (row) => {
   if (row.confidence === 'low_current_sample_count') return {
     label: 'Needs repeat',
     detail: 'Current run has too few successful measured samples.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'low_paired_sample_count') return {
+    label: 'Needs paired evidence',
+    detail: 'Wall-clock gates require same-run base/head samples before they can block merges.',
     tone: 'neutral',
     color: '#94a3b8',
   }

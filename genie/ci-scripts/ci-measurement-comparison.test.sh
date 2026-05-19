@@ -66,6 +66,7 @@ run_compare() {
 }
 
 policy='{"enabled":true,"minBaselineSources":1,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
+paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":1,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 emit_compare_script
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
@@ -103,6 +104,21 @@ actual_impact="$(jq -r '.comparisons[] | .semanticImpactScore' "$tmp_dir/compari
 actual_impact_kind="$(jq -r '.comparisons[] | .semanticImpactKind' "$tmp_dir/comparison.json")"
 if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_enforceable" != "true" ] || [ "$actual_impact_kind" != "fail_boundary" ] || ! awk "BEGIN { exit !($actual_impact > 1) }"; then
   echo "expected confirmed regression to fail and have fail-boundary impact; got status=$actual_status row=$actual_row enforceable=$actual_enforceable impact=$actual_impact kind=$actual_impact_kind" >&2
+  exit 1
+fi
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$paired_policy"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$paired_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_gate="$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")"
+actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
+actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
+actual_low_paired="$(jq -r '.readiness.lowPairedSampleCount' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "low_paired_sample_count" ] || [ "$actual_confidence" != "low_paired_sample_count" ] || [ "$actual_enforceable" != "false" ] || [ "$actual_low_paired" != "1" ]; then
+  echo "expected paired wall-clock policy without paired evidence to be partial/non-enforceable; got status=$actual_status row=$actual_row gate=$actual_gate confidence=$actual_confidence enforceable=$actual_enforceable lowPaired=$actual_low_paired" >&2
   exit 1
 fi
 

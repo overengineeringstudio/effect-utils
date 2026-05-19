@@ -2837,13 +2837,13 @@ jobs:
           }
 
           measure 'shell_eval_traced' 'Shell eval with OTEL trace' 'devenv shell' 'Evaluates the dev shell with native devenv JSON tracing enabled.' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '0' '1' '{"enabled":false,"minBaselineSources":10,"minCurrentSamples":3,"warnRatio":1.25,"failRatio":1.5,"warnAbs":1.5,"failAbs":3,"noiseFloor":0.5,"statisticalToleranceRatio":0.2,"statisticalToleranceAbs":1}' '$DEVENV_SHELL_TRACE_COMMAND'
-          measure 'shell_eval_warm' 'Warm shell eval' 'devenv shell' 'Evaluates a warm dev shell without reloading direnv state.' '' '1' '5' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'true'
-          measure 'tasks_list' 'devenv tasks list' 'devenv cli' 'Lists devenv tasks to measure task graph loading overhead.' '' '1' '9' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.25,"failRatio":1.5,"warnAbs":0.05,"failAbs":0.15,"noiseFloor":0.03,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.03}' '$DEVENV_BIN' 'tasks' 'list'
-          measure 'processes_help' 'devenv processes --help' 'devenv cli' 'Loads the devenv processes command help path.' '' '1' '9' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.25,"failRatio":1.5,"warnAbs":0.05,"failAbs":0.15,"noiseFloor":0.03,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.03}' '$DEVENV_BIN' 'processes' '--help'
-          measure 'task_pnpm_install' 'pnpm install task' 'workspace setup' 'Runs the cached pnpm install devenv task.' '' '1' '5' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'tasks' 'run' 'pnpm:install' '--mode' 'before' '--no-tui' '--show-output'
-          measure 'task_genie_run' 'Genie run task' 'genie' 'Runs the normal devenv genie:run task including its declared dependencies.' '' '1' '5' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'tasks' 'run' 'genie:run' '--mode' 'before' '--no-tui' '--show-output'
-          measure 'task_check_quick' 'Quick check task' 'quality gates' 'Runs the fast local quality gate through devenv.' '' '1' '5' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'tasks' 'run' 'check:quick' '--mode' 'before' '--no-tui' '--show-output'
-          measure 'genie_check_direct' 'Genie check direct' 'genie' 'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.' '' '1' '5' '{"enabled":true,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'bun' 'packages/@overeng/genie/bin/genie.tsx' '--output' 'ci-plain' '--check'
+          measure 'shell_eval_warm' 'Warm shell eval' 'devenv shell' 'Evaluates a warm dev shell without reloading direnv state.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'true'
+          measure 'tasks_list' 'devenv tasks list' 'devenv cli' 'Lists devenv tasks to measure task graph loading overhead.' '' '1' '9' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":7,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.25,"failRatio":1.5,"warnAbs":0.05,"failAbs":0.15,"noiseFloor":0.03,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.03}' '$DEVENV_BIN' 'tasks' 'list'
+          measure 'processes_help' 'devenv processes --help' 'devenv cli' 'Loads the devenv processes command help path.' '' '1' '9' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":7,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.25,"failRatio":1.5,"warnAbs":0.05,"failAbs":0.15,"noiseFloor":0.03,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.03}' '$DEVENV_BIN' 'processes' '--help'
+          measure 'task_pnpm_install' 'pnpm install task' 'workspace setup' 'Runs the cached pnpm install devenv task.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'tasks' 'run' 'pnpm:install' '--mode' 'before' '--no-tui' '--show-output'
+          measure 'task_genie_run' 'Genie run task' 'genie' 'Runs the normal devenv genie:run task including its declared dependencies.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'tasks' 'run' 'genie:run' '--mode' 'before' '--no-tui' '--show-output'
+          measure 'task_check_quick' 'Quick check task' 'quality gates' 'Runs the fast local quality gate through devenv.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'tasks' 'run' 'check:quick' '--mode' 'before' '--no-tui' '--show-output'
+          measure 'genie_check_direct' 'Genie check direct' 'genie' 'Runs Genie directly in check mode to isolate generator runtime from devenv task dependency overhead.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'bun' 'packages/@overeng/genie/bin/genie.tsx' '--output' 'ci-plain' '--check'
 
           printf ']\n' >>"$ARTIFACT_DIR/timings.json"
 
@@ -2929,6 +2929,7 @@ jobs:
                     label: .label,
                     group: .group,
                     description: .description,
+                    measurementKind: (if (.gatePolicy.enabled == false) then "diagnostic" else "wall-clock" end),
                     name: ("devenv." + .id + ".duration"),
                     unit: "seconds",
                       value: (.durationMs / 1000),
@@ -2993,7 +2994,7 @@ jobs:
           CI_MEASUREMENT_CURRENT_DIR: tmp/devenv-perf-ci
           CI_MEASUREMENT_BASELINE_DIR: tmp/devenv-perf-ci/baseline
           CI_MEASUREMENT_COMPARISON_FILE: tmp/devenv-perf-ci/measurement-comparison.json
-          CI_MEASUREMENT_REGRESSION_MODE: fail
+          CI_MEASUREMENT_REGRESSION_MODE: warn
           CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'
           CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
@@ -3103,6 +3104,7 @@ jobs:
                 | {
                     target: ($items[0].target // {}),
                     observation: ($items[-1].observation // {}),
+                    measurementKind: ($items[-1].observation.measurementKind // null),
                     value: $median,
                     min: ($values | min),
                     max: ($values | max),
@@ -3112,6 +3114,7 @@ jobs:
                     mad: ($values | map(. - $median | if . < 0 then -. else . end) | median),
                     sourceCount: ($items | length),
                     sampleCount: $sampleCount,
+                    pairedSampleCount: ($items | map(.observation.statistics.pairedSampleCount // .observation.comparison.pairedSampleCount // 0) | add // 0),
                     generatedAt: ($items[-1].generatedAt // null)
                   };
 
@@ -3139,8 +3142,10 @@ jobs:
                 | noise_floor($metric; $unit) as $noise
                 | $b + {
                     enabled:true,
-                    minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" then 3 else 10 end),
+                    comparisonMode:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then "budget" else "historical" end),
+                    minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then 1 else 10 end),
                     minCurrentSamples:(if $unit == "seconds" then 3 else 1 end),
+                    minPairedSamples:(if $unit == "seconds" then 5 else 0 end),
                     noiseFloor:$noise
                   };
               def observation_policy($obs):
@@ -3148,8 +3153,9 @@ jobs:
               def policy_enabled($policy):
                 if ($policy | has("enabled")) then $policy.enabled else true end;
 
-              def classify($metric; $unit; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
+              def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples):
                 $policy as $b
+                | ($policy.comparisonMode // (if $measurementKind == "deterministic" or $unit != "seconds" then "budget" elif $measurementKind == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
                 | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
                 | ($current - $baseline) as $delta
                 | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
@@ -3197,12 +3203,14 @@ jobs:
                     and $baseline > 0
                     and $baselineSources >= ($policy.minBaselineSources // 1)
                     and $currentSamples >= ($policy.minCurrentSamples // 1)
+                    and (if $comparisonMode == "paired" then $pairedSamples >= ($policy.minPairedSamples // 1) else true end)
                   ) as $gateable
                 | (
                     if (policy_enabled($policy) != true) then "disabled"
                     elif $baseline <= 0 then "missing_baseline"
                     elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
                     elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+                    elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
                     else "eligible"
                     end
                   ) as $gateReason
@@ -3212,7 +3220,8 @@ jobs:
                     elif ($delta | abs_value) <= $noise then "noise_floor"
                     elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
                     elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
-                    elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
+                    elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+                    elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
                     elif $thresholdStatus == "pass" then "within_budget"
                     else "threshold_exceeded"
                     end
@@ -3252,7 +3261,7 @@ jobs:
                     else "improvement"
                     end
                   ) as $semanticImpactKind
-                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
+                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples};
 
               (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
               | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -3284,6 +3293,7 @@ jobs:
                                 classify(
                                   $currentValue.observation.name;
                                   $currentValue.observation.unit;
+                                  ($currentValue.observation.measurementKind // $currentValue.measurementKind);
                                   ($currentValue.observation | observation_policy(.));
                                   $currentValue.value;
                                   $currentValue.p25;
@@ -3297,7 +3307,8 @@ jobs:
                                   $baselineValue.p95;
                                   $baselineValue.mad;
                                   $currentValue.sampleCount;
-                                  $baselineValue.sourceCount
+                                  $baselineValue.sourceCount;
+                                  $currentValue.pairedSampleCount
                                 ) + {
                                 target: $currentValue.target,
                                 observation: $currentValue.observation,
@@ -3323,7 +3334,8 @@ jobs:
                     (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
                     and (.gateReason == "missing_baseline"
                       or .gateReason == "low_baseline_count"
-                      or .gateReason == "low_current_sample_count")
+                      or .gateReason == "low_current_sample_count"
+                      or .gateReason == "low_paired_sample_count")
                   ) then "partial"
                   else "pass"
                   end
@@ -3335,7 +3347,8 @@ jobs:
                       gateableCount: (map(select(.gateable == true)) | length),
                       missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
                       lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
-                      lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length)
+                      lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
+                      lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length)
                     }
                   | . + {
                       nonGateableCount: (.enabledCount - .gateableCount),
@@ -3627,6 +3640,12 @@ jobs:
             if (row.confidence === 'low_current_sample_count') return {
               label: 'Needs repeat',
               detail: 'Current run has too few successful measured samples.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'low_paired_sample_count') return {
+              label: 'Needs paired evidence',
+              detail: 'Wall-clock gates require same-run base/head samples before they can block merges.',
               tone: 'neutral',
               color: '#94a3b8',
             }
@@ -4551,6 +4570,7 @@ jobs:
                 group,
                 path: scopePath,
                 description: 'Tracked non-binary source lines in the configured scope.',
+                measurementKind: 'deterministic',
                 name: 'source.lines',
                 unit: 'lines',
                 value: lineCount,
@@ -4564,6 +4584,7 @@ jobs:
                 group,
                 path: scopePath,
                 description: 'Tracked non-binary source files in the configured scope.',
+                measurementKind: 'deterministic',
                 name: 'source.files',
                 unit: 'count',
                 value: measuredFileCount,
@@ -4749,6 +4770,7 @@ jobs:
                 | {
                     target: ($items[0].target // {}),
                     observation: ($items[-1].observation // {}),
+                    measurementKind: ($items[-1].observation.measurementKind // null),
                     value: $median,
                     min: ($values | min),
                     max: ($values | max),
@@ -4758,6 +4780,7 @@ jobs:
                     mad: ($values | map(. - $median | if . < 0 then -. else . end) | median),
                     sourceCount: ($items | length),
                     sampleCount: $sampleCount,
+                    pairedSampleCount: ($items | map(.observation.statistics.pairedSampleCount // .observation.comparison.pairedSampleCount // 0) | add // 0),
                     generatedAt: ($items[-1].generatedAt // null)
                   };
 
@@ -4785,8 +4808,10 @@ jobs:
                 | noise_floor($metric; $unit) as $noise
                 | $b + {
                     enabled:true,
-                    minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" then 3 else 10 end),
+                    comparisonMode:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then "budget" else "historical" end),
+                    minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then 1 else 10 end),
                     minCurrentSamples:(if $unit == "seconds" then 3 else 1 end),
+                    minPairedSamples:(if $unit == "seconds" then 5 else 0 end),
                     noiseFloor:$noise
                   };
               def observation_policy($obs):
@@ -4794,8 +4819,9 @@ jobs:
               def policy_enabled($policy):
                 if ($policy | has("enabled")) then $policy.enabled else true end;
 
-              def classify($metric; $unit; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources):
+              def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples):
                 $policy as $b
+                | ($policy.comparisonMode // (if $measurementKind == "deterministic" or $unit != "seconds" then "budget" elif $measurementKind == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
                 | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
                 | ($current - $baseline) as $delta
                 | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
@@ -4843,12 +4869,14 @@ jobs:
                     and $baseline > 0
                     and $baselineSources >= ($policy.minBaselineSources // 1)
                     and $currentSamples >= ($policy.minCurrentSamples // 1)
+                    and (if $comparisonMode == "paired" then $pairedSamples >= ($policy.minPairedSamples // 1) else true end)
                   ) as $gateable
                 | (
                     if (policy_enabled($policy) != true) then "disabled"
                     elif $baseline <= 0 then "missing_baseline"
                     elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
                     elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+                    elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
                     else "eligible"
                     end
                   ) as $gateReason
@@ -4858,7 +4886,8 @@ jobs:
                     elif ($delta | abs_value) <= $noise then "noise_floor"
                     elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
                     elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
-                    elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
+                    elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+                    elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
                     elif $thresholdStatus == "pass" then "within_budget"
                     else "threshold_exceeded"
                     end
@@ -4898,7 +4927,7 @@ jobs:
                     else "improvement"
                     end
                   ) as $semanticImpactKind
-                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange};
+                | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples};
 
               (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
               | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -4930,6 +4959,7 @@ jobs:
                                 classify(
                                   $currentValue.observation.name;
                                   $currentValue.observation.unit;
+                                  ($currentValue.observation.measurementKind // $currentValue.measurementKind);
                                   ($currentValue.observation | observation_policy(.));
                                   $currentValue.value;
                                   $currentValue.p25;
@@ -4943,7 +4973,8 @@ jobs:
                                   $baselineValue.p95;
                                   $baselineValue.mad;
                                   $currentValue.sampleCount;
-                                  $baselineValue.sourceCount
+                                  $baselineValue.sourceCount;
+                                  $currentValue.pairedSampleCount
                                 ) + {
                                 target: $currentValue.target,
                                 observation: $currentValue.observation,
@@ -4969,7 +5000,8 @@ jobs:
                     (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
                     and (.gateReason == "missing_baseline"
                       or .gateReason == "low_baseline_count"
-                      or .gateReason == "low_current_sample_count")
+                      or .gateReason == "low_current_sample_count"
+                      or .gateReason == "low_paired_sample_count")
                   ) then "partial"
                   else "pass"
                   end
@@ -4981,7 +5013,8 @@ jobs:
                       gateableCount: (map(select(.gateable == true)) | length),
                       missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
                       lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
-                      lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length)
+                      lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
+                      lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length)
                     }
                   | . + {
                       nonGateableCount: (.enabledCount - .gateableCount),
@@ -5273,6 +5306,12 @@ jobs:
             if (row.confidence === 'low_current_sample_count') return {
               label: 'Needs repeat',
               detail: 'Current run has too few successful measured samples.',
+              tone: 'neutral',
+              color: '#94a3b8',
+            }
+            if (row.confidence === 'low_paired_sample_count') return {
+              label: 'Needs paired evidence',
+              detail: 'Wall-clock gates require same-run base/head samples before they can block merges.',
               tone: 'neutral',
               color: '#94a3b8',
             }

@@ -319,7 +319,10 @@ const extraJobs: Record<string, any> = {
         })),
       ],
       baselineMaxRuns: 20,
-      regressionMode: 'fail',
+      // Wall-clock measurements are advisory until they have paired same-run
+      // base/head evidence. Deterministic measurements such as closure sizes
+      // can still use budget-style gates in consuming repos.
+      regressionMode: 'warn',
       env: ciMeasurementSubjectEnv,
       setupSteps: baseSteps,
       taskProbes: [

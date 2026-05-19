@@ -415,6 +415,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('baselineSources')
     expect(generatedCiWorkflowYamlSource).toContain('low_baseline_count')
     expect(generatedCiWorkflowYamlSource).toContain('low_current_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('low_paired_sample_count')
     expect(generatedCiWorkflowYamlSource).toContain('readiness:$readiness')
     expect(generatedCiWorkflowYamlSource).toContain(
       'enforceable: (.enabledCount == .gateableCount)',
@@ -430,10 +431,11 @@ describe('ci workflow devenv perf helpers', () => {
       'if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      'elif ($thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"',
+      'elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"',
     )
     expect(ciWorkflowSource).toContain("label: 'Needs more baseline'")
     expect(ciWorkflowSource).toContain("label: 'Needs repeat'")
+    expect(ciWorkflowSource).toContain("label: 'Needs paired evidence'")
     expect(ciWorkflowSource).toContain("label: 'Too small to matter'")
     expect(ciWorkflowSource).toContain("label: 'Within noise band'")
     expect(ciWorkflowSource).toContain("label: 'Meaningfully lower'")
