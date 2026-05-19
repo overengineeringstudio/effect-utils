@@ -1888,6 +1888,7 @@ jq -n \
           ($current >= $robustLower and $current <= $robustUpper)
           or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
         ) as $withinRobustBand
+      | ($comparisonMode == "historical" and $measurementKind != "deterministic") as $canUseRobustBandSuppression
       | (
           $baselineMin != null
           and $baselineMax != null
@@ -1931,7 +1932,7 @@ jq -n \
           elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
           elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
           elif $comparisonMode == "paired" and $thresholdStatus == "pass" and $evidenceDelta > $warnBudget then "paired_uncertain"
-          elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
+          elif ($canUseRobustBandSuppression and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
           elif $thresholdStatus == "pass" then "within_budget"
           else "threshold_exceeded"
           end
@@ -1949,7 +1950,7 @@ jq -n \
           elif $comparisonMode == "paired" and $evidenceDelta < 0 then "improved"
           elif $comparisonMode == "paired" then "regressed"
           elif ($delta | abs_value) <= $noise then "unchanged"
-          elif $withinRobustBand then "unchanged"
+          elif $canUseRobustBandSuppression and $withinRobustBand then "unchanged"
           elif $delta < 0 then "improved"
           else "regressed"
         end
@@ -1961,7 +1962,7 @@ jq -n \
           elif $comparisonMode == "paired" and ($evidenceDelta | abs_value) <= $noise then 0
           elif $comparisonMode == "paired" and $evidenceDelta > 0 then ([0, $evidenceDeltaLower] | max) / $warnBudget
           elif $comparisonMode == "paired" then -(([0, (-$evidenceDeltaUpper)] | max) / $warnBudget)
-          elif $withinRobustBand then 0
+          elif $canUseRobustBandSuppression and $withinRobustBand then 0
           elif ($delta | abs_value) <= $noise then 0
           elif ($confidence == "threshold_exceeded" and $delta > 0) then ([0, ($currentRobustLower - $robustUpper), $delta] | max) / $warnBudget
           elif ($confidence == "threshold_exceeded" and $delta < 0) then -(([0, ($robustLower - $currentRobustUpper), (-$delta)] | max) / $warnBudget)

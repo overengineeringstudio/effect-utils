@@ -42,7 +42,10 @@ numeric `value`, `unit`, `measurementKind`, and a gate `policy`.
 
 Deterministic observations use `comparisonMode: "budget"`.
 They require a comparable baseline and then evaluate configured absolute and
-relative budgets. Historical variance is not treated as statistical evidence.
+relative budgets. Historical variance is context only; it does not neutralize
+a budget-exceeding deterministic movement. This keeps Nix closure sizes,
+source-shape counts, lines of code, complexity scores, and similar structural
+measurements separate from wall-clock noise handling.
 
 Wall-clock observations use `comparisonMode: "paired"` for enforced gates.
 They need same-run base/head evidence before they can block a merge. Historical
@@ -64,7 +67,9 @@ evidence for a regression.
 
 Historical wall-clock comparison may be used as an advisory transition mode.
 It can warn, visualize trends, and guide investigation, but it must not be the
-required merge gate for noisy runner-dependent timings.
+required merge gate for noisy runner-dependent timings. Robust baseline/current
+bands may suppress historical wall-clock noise; they are not applied as a
+semantic escape hatch for deterministic budget rows.
 
 Diagnostic observations set `enabled: false` or `measurementKind: "diagnostic"`.
 They appear in reports, but their impact is rendered as `diagnostic` and they
@@ -82,7 +87,9 @@ probe execution
 
 The artifact is the source of truth. OTEL traces and host context are evidence
 attachments, not the canonical numeric store. PR comments are projections of
-the artifact and can be regenerated.
+the artifact and can be regenerated. New measurement families should add
+producer adapters that emit this artifact contract; comparison, policy
+evaluation, charting, and comment rendering stay shared.
 
 ## Wall-Clock Soundness
 
@@ -106,11 +113,12 @@ the row is partial/advisory even if the historical raw delta is large.
 
 Nix closure size, source shape, code complexity, lines of code, and file counts
 are deterministic or near-deterministic structural measurements. They are not
-wall-clock performance probes and must not use paired timing statistics. They
-should use explicit budgets and semantic buckets. A closure-size regression is
-actionable because the same installable and lock graph should produce a stable
-closure. Source-shape or complexity growth is an architecture signal and should
-remain advisory unless a repo defines an explicit owner-approved budget.
+wall-clock performance probes and must not use paired timing statistics or
+historical timing-style robust-band suppression. They should use explicit
+budgets and semantic buckets. A closure-size regression is actionable because
+the same installable and lock graph should produce a stable closure.
+Source-shape or complexity growth is an architecture signal and should remain
+advisory unless a repo defines an explicit owner-approved budget.
 
 ## Visualization
 

@@ -210,6 +210,42 @@ if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_c
   exit 1
 fi
 
+deterministic_policy='{"enabled":true,"comparisonMode":"budget","minBaselineSources":1,"minCurrentSamples":1,"warnRatio":1.01,"failRatio":1.02,"warnAbs":10,"failAbs":20,"noiseFloor":0,"statisticalToleranceAbs":1000,"statisticalToleranceRatio":0}'
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 130 devenv-perf-warm-median-v2 "$deterministic_policy"
+jq '.observations[0].id = "nix.closure.nar_size"
+  | .observations[0].name = "nix.closure.nar_size"
+  | .observations[0].label = "Nix closure size"
+  | .observations[0].unit = "bytes"
+  | .observations[0].measurementKind = "deterministic"
+  | .observations[0].statistics.sampleCount = 1
+  | .observations[0].statistics.measuredSampleCount = 1
+  | .observations[0].statistics.successfulSampleCount = 1' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
+mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 100 devenv-perf-warm-median-v2 "$deterministic_policy"
+jq '.observations[0].id = "nix.closure.nar_size"
+  | .observations[0].name = "nix.closure.nar_size"
+  | .observations[0].label = "Nix closure size"
+  | .observations[0].unit = "bytes"
+  | .observations[0].measurementKind = "deterministic"
+  | .observations[0].statistics.sampleCount = 1
+  | .observations[0].statistics.measuredSampleCount = 1
+  | .observations[0].statistics.successfulSampleCount = 1' \
+  "$tmp_dir/baseline/run-1/measurements.json" >"$tmp_dir/baseline/run-1/measurements.updated.json"
+mv "$tmp_dir/baseline/run-1/measurements.updated.json" "$tmp_dir/baseline/run-1/measurements.json"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
+actual_impact="$(jq -r '.comparisons[] | .semanticImpactScore' "$tmp_dir/comparison.json")"
+actual_impact_kind="$(jq -r '.comparisons[] | .semanticImpactKind' "$tmp_dir/comparison.json")"
+actual_within_band="$(jq -r '.comparisons[] | .withinBaselineRange' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_confidence" != "threshold_exceeded" ] || [ "$actual_impact_kind" != "fail_boundary" ] || ! awk "BEGIN { exit !($actual_impact > 1) }"; then
+  echo "expected deterministic budget regression to fail even when robust tolerance is wide; got status=$actual_status row=$actual_row confidence=$actual_confidence impact=$actual_impact kind=$actual_impact_kind withinBaselineRange=$actual_within_band" >&2
+  exit 1
+fi
+
 low_baseline_policy='{"enabled":true,"minBaselineSources":2,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/measurements.json" 10.5 devenv-perf-warm-median-v2 "$low_baseline_policy"
