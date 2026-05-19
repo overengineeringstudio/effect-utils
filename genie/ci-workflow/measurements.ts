@@ -74,6 +74,11 @@ export type CiMeasurementObservation = {
     readonly pairedBaselineMedian?: number
     readonly pairedCurrentMedian?: number
     readonly pairedDeltaMedian?: number
+    readonly pairedDeltaMin?: number
+    readonly pairedDeltaMax?: number
+    readonly pairedDeltaP25?: number
+    readonly pairedDeltaP75?: number
+    readonly pairedDeltaMad?: number
   }
 }
 
@@ -454,6 +459,7 @@ ARTIFACT_DIR="$(mkdir -p "$ARTIFACT_DIR" && cd "$ARTIFACT_DIR" && pwd -P)"
 CI_MEASUREMENT_HEAD_DIR="${dollar}{CI_MEASUREMENT_HEAD_DIR:-$PWD}"
 CI_MEASUREMENT_BASE_DIR="${dollar}{CI_MEASUREMENT_BASE_DIR:-${dollar}{RUNNER_TEMP:-/tmp}/ci-measurement-base}"
 CI_MEASUREMENT_PAIRED_ENABLED=0
+CI_MEASUREMENT_ORDER_SEED="${dollar}{CI_MEASUREMENT_ORDER_SEED:-${dollar}{GITHUB_RUN_ID:-local}-${dollar}{GITHUB_RUN_ATTEMPT:-0}-${dollar}{GITHUB_SHA:-unknown}}"
 
 prepare_paired_base_worktree() {
   if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
@@ -545,7 +551,20 @@ json_append_timing() {
       --arg stderr "$stderr" \
       --arg trace "$trace" \
       --argjson gatePolicy "$gate_policy" \
-      '($samples[0] // []) as $sampleList
+      'def median:
+        sort as $sorted
+        | ($sorted | length) as $count
+        | if $count == 0 then null
+          elif ($count % 2) == 1 then $sorted[($count / 2 | floor)]
+          else (($sorted[($count / 2 - 1)] + $sorted[($count / 2)]) / 2)
+          end;
+      def percentile($p):
+        sort as $sorted
+        | ($sorted | length) as $count
+        | if $count == 0 then null
+          else $sorted[(($p * ($count - 1)) | floor)]
+          end;
+      ($samples[0] // []) as $sampleList
       | ($sampleList | map(select((.subject // "head") == "head" and .phase != "warmup" and .status == 0) | .durationMs)) as $successfulDurations
       | ($sampleList | map(select((.subject // "head") == "head" and .phase == "warmup"))) as $warmupSamples
       | ($sampleList | map(select((.subject // "head") == "head" and .phase == "measured" and .status == 0 and .pairIndex != null))) as $headSamples
@@ -562,6 +581,7 @@ json_append_timing() {
       | ($pairedSamples | map(.currentDurationMs)) as $pairedCurrentDurations
       | ($pairedSamples | map(.baselineDurationMs)) as $pairedBaselineDurations
       | ($pairedSamples | map(.deltaMs)) as $pairedDeltaDurations
+      | ($pairedDeltaDurations | median) as $pairedDeltaMedian
       | {
         id:$id,
         name:$id,
@@ -587,9 +607,18 @@ json_append_timing() {
           maxDurationMs: ($successfulDurations | max),
           medianDurationMs: $durationMs,
           pairedSampleCount: ($pairedSamples | length),
-          pairedCurrentMedianDurationMs: (if ($pairedCurrentDurations | length) == 0 then null else ($pairedCurrentDurations | sort | .[(length - 1) / 2 | floor]) end),
-          pairedBaselineMedianDurationMs: (if ($pairedBaselineDurations | length) == 0 then null else ($pairedBaselineDurations | sort | .[(length - 1) / 2 | floor]) end),
-          pairedDeltaMedianDurationMs: (if ($pairedDeltaDurations | length) == 0 then null else ($pairedDeltaDurations | sort | .[(length - 1) / 2 | floor]) end)
+          pairedCurrentMedianDurationMs: ($pairedCurrentDurations | median),
+          pairedBaselineMedianDurationMs: ($pairedBaselineDurations | median),
+          pairedDeltaMedianDurationMs: $pairedDeltaMedian,
+          pairedDeltaMinDurationMs: ($pairedDeltaDurations | min),
+          pairedDeltaMaxDurationMs: ($pairedDeltaDurations | max),
+          pairedDeltaP25DurationMs: ($pairedDeltaDurations | percentile(0.25)),
+          pairedDeltaP75DurationMs: ($pairedDeltaDurations | percentile(0.75)),
+          pairedDeltaMadDurationMs: (
+            if $pairedDeltaMedian == null then null
+            else ($pairedDeltaDurations | map(. - $pairedDeltaMedian | if . < 0 then -. else . end) | median)
+            end
+          )
         },
         samples:$sampleList
       }' \
@@ -625,6 +654,8 @@ measure() {
   printf '[' >"$samples_file"
   local sample_first=1
   local sample_index measured_index total_repetitions phase sample_stdout sample_stderr sample_trace expanded
+  local order_offset
+  order_offset="$(printf '%s' "$CI_MEASUREMENT_ORDER_SEED:$id" | cksum | awk '{ print $1 % 2 }')"
   total_repetitions=$((warmup_repetitions + repetitions))
   for sample_index in $(seq 1 "$total_repetitions"); do
     if [ "$sample_index" -le "$warmup_repetitions" ]; then
@@ -667,7 +698,7 @@ measure() {
     done
 
     local base_ran_before_head=0 base_stdout base_stderr base_started base_ended base_status base_duration_ms
-    if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ $((measured_index % 2)) -eq 0 ]; then
+    if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ $(((measured_index + order_offset) % 2)) -eq 0 ]; then
       base_ran_before_head=1
       base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
       base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
@@ -690,7 +721,8 @@ measure() {
         --argjson durationMs "$base_duration_ms" \
         --arg stdout "$base_stdout" \
         --arg stderr "$base_stderr" \
-        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"base-head"}' \
+        --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
+        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"base-head",orderSeed:$orderSeed}' \
         >>"$samples_file"
 
       if [ "$base_status" -ne 0 ]; then
@@ -721,7 +753,8 @@ measure() {
       --arg stderr "$sample_stderr" \
       --arg trace "$sample_trace" \
       --arg order "$(if [ "$phase" = "measured" ] && [ "$base_ran_before_head" -eq 1 ]; then printf base-head; else printf head-base; fi)" \
-      '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),pairIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),subject:"head",phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end),order:(if $phase == "measured" then $order else null end)}' \
+      --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
+      '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),pairIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),subject:"head",phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end),order:(if $phase == "measured" then $order else null end),orderSeed:(if $phase == "measured" then $orderSeed else null end)}' \
       >>"$samples_file"
 
     if [ "$phase" = "measured" ] && [ "$status" -eq 0 ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$base_ran_before_head" -eq 0 ]; then
@@ -743,7 +776,8 @@ measure() {
         --argjson durationMs "$base_duration_ms" \
         --arg stdout "$base_stdout" \
         --arg stderr "$base_stderr" \
-        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"head-base"}' \
+        --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
+        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"head-base",orderSeed:$orderSeed}' \
         >>"$samples_file"
 
       if [ "$base_status" -ne 0 ]; then
@@ -833,6 +867,7 @@ jq -n \
   --arg traceId "${dollar}{TRACE_ID:-}" \
   --arg devenvRev "${dollar}{DEVENV_REV:-unknown}" \
   --arg otelServiceName "${dollar}{OTEL_SERVICE_NAME:-unknown}" \
+  --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
   --arg targetSystem "${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}" \
   '{
     schemaVersion: $schemaVersion,
@@ -910,6 +945,36 @@ jq -n \
               then null
               else (.statistics.pairedDeltaMedianDurationMs / 1000)
               end
+            ),
+            pairedDeltaMin: (
+              if (.statistics.pairedDeltaMinDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMinDurationMs / 1000)
+              end
+            ),
+            pairedDeltaMax: (
+              if (.statistics.pairedDeltaMaxDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMaxDurationMs / 1000)
+              end
+            ),
+            pairedDeltaP25: (
+              if (.statistics.pairedDeltaP25DurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaP25DurationMs / 1000)
+              end
+            ),
+            pairedDeltaP75: (
+              if (.statistics.pairedDeltaP75DurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaP75DurationMs / 1000)
+              end
+            ),
+            pairedDeltaMad: (
+              if (.statistics.pairedDeltaMadDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMadDurationMs / 1000)
+              end
             )
           },
           dimensions: {
@@ -922,7 +987,13 @@ jq -n \
             pairedSampleCount: (.statistics.pairedSampleCount // 0),
             pairedOrderProtocol: (
               if (.statistics.pairedSampleCount // 0) > 0
-              then "alternating-head-base"
+              then "balanced-seeded-alternating-v1"
+              else null
+              end
+            ),
+            pairedOrderSeed: (
+              if (.statistics.pairedSampleCount // 0) > 0
+              then $orderSeed
               else null
               end
             ),
@@ -1711,6 +1782,10 @@ jq -n \
     def observation_stats($items):
       ($items | map(.observation.value)) as $values
       | ($items | map(.observation.comparison.baseline // empty)) as $pairedBaselineValues
+      | ($items | map(.observation.statistics.pairedDeltaMedian // empty)) as $pairedDeltaMedianValues
+      | ($items | map(.observation.statistics.pairedDeltaP25 // empty)) as $pairedDeltaP25Values
+      | ($items | map(.observation.statistics.pairedDeltaP75 // empty)) as $pairedDeltaP75Values
+      | ($items | map(.observation.statistics.pairedDeltaMad // empty)) as $pairedDeltaMadValues
       | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
       | ($values | median) as $median
       | {
@@ -1728,6 +1803,10 @@ jq -n \
           sampleCount: $sampleCount,
           pairedSampleCount: ($items | map(.observation.statistics.pairedSampleCount // .observation.comparison.pairedSampleCount // 0) | add // 0),
           pairedBaselineValue: (if ($pairedBaselineValues | length) == 0 then null else ($pairedBaselineValues | median) end),
+          pairedDeltaMedianValue: (if ($pairedDeltaMedianValues | length) == 0 then null else ($pairedDeltaMedianValues | median) end),
+          pairedDeltaP25Value: (if ($pairedDeltaP25Values | length) == 0 then null else ($pairedDeltaP25Values | median) end),
+          pairedDeltaP75Value: (if ($pairedDeltaP75Values | length) == 0 then null else ($pairedDeltaP75Values | median) end),
+          pairedDeltaMadValue: (if ($pairedDeltaMadValues | length) == 0 then null else ($pairedDeltaMadValues | median) end),
           generatedAt: ($items[-1].generatedAt // null)
         };
 
@@ -1766,14 +1845,16 @@ jq -n \
     def policy_enabled($policy):
       if ($policy | has("enabled")) then $policy.enabled else true end;
 
-    def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples):
+    def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples; $pairedDeltaMedian; $pairedDeltaP25; $pairedDeltaP75; $pairedDeltaMad):
       $policy as $b
       | ($policy.comparisonMode // (if $measurementKind == "deterministic" or $unit != "seconds" then "budget" elif $measurementKind == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
       | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
+      | (if $comparisonMode == "paired" and $pairedDeltaMedian != null then $pairedDeltaMedian else $delta end) as $evidenceDelta
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
       | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
       | (($currentP75 // $current) - ($currentP25 // $current)) as $currentIqr
+      | (($pairedDeltaP75 // $evidenceDelta) - ($pairedDeltaP25 // $evidenceDelta)) as $pairedDeltaIqr
       | ([
           $noise,
           (($policy.statisticalToleranceAbs // 0) | tonumber),
@@ -1788,10 +1869,19 @@ jq -n \
           (($currentMad // 0) * 3),
           (($currentIqr // 0) * 1.5)
         ] | max) else 0 end) as $currentRobustTolerance
+      | ([
+          $noise,
+          (($policy.statisticalToleranceAbs // 0) | tonumber),
+          (if $baseline > 0 then ($baseline * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+          (($pairedDeltaMad // 0) * 3),
+          (($pairedDeltaIqr // 0) * 1.5)
+        ] | max) as $pairedDeltaTolerance
       | ($baseline + $robustTolerance) as $robustUpper
       | ($baseline - $robustTolerance) as $robustLower
       | ($current + $currentRobustTolerance) as $currentRobustUpper
       | ($current - $currentRobustTolerance) as $currentRobustLower
+      | ($evidenceDelta + $pairedDeltaTolerance) as $evidenceDeltaUpper
+      | ($evidenceDelta - $pairedDeltaTolerance) as $evidenceDeltaLower
       | ([($b.warnAbs // 0), (if $baseline > 0 then ($baseline * (($b.warnRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $warnBudget
       | ([($b.failAbs // 0), (if $baseline > 0 then ($baseline * (($b.failRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $failBudget
       | (
@@ -1806,6 +1896,9 @@ jq -n \
         ) as $withinBaselineRange
       | (
           if $baseline <= 0 then "unknown"
+          elif $comparisonMode == "paired" and $evidenceDeltaLower > $failBudget then "fail"
+          elif $comparisonMode == "paired" and $evidenceDeltaLower > $warnBudget then "warn"
+          elif $comparisonMode == "paired" then "pass"
           elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
           elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
           else "pass"
@@ -1817,6 +1910,7 @@ jq -n \
           and $baselineSources >= ($policy.minBaselineSources // 1)
           and $currentSamples >= ($policy.minCurrentSamples // 1)
           and (if $comparisonMode == "paired" then $pairedSamples >= ($policy.minPairedSamples // 1) else true end)
+          and (if $comparisonMode == "paired" then $pairedDeltaMedian != null else true end)
         ) as $gateable
       | (
           if (policy_enabled($policy) != true) then "disabled"
@@ -1824,6 +1918,7 @@ jq -n \
           elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
           elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+          elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
           else "eligible"
           end
         ) as $gateReason
@@ -1834,6 +1929,8 @@ jq -n \
           elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
           elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+          elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
+          elif $comparisonMode == "paired" and $thresholdStatus == "pass" and $evidenceDelta > $warnBudget then "paired_uncertain"
           elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
           elif $thresholdStatus == "pass" then "within_budget"
           else "threshold_exceeded"
@@ -1847,6 +1944,10 @@ jq -n \
         ) as $status
       | (
           if $baseline <= 0 then "unknown"
+          elif $comparisonMode == "paired" and ($evidenceDelta | abs_value) <= $noise then "unchanged"
+          elif $comparisonMode == "paired" and $evidenceDeltaLower <= 0 and $evidenceDeltaUpper >= 0 then "unchanged"
+          elif $comparisonMode == "paired" and $evidenceDelta < 0 then "improved"
+          elif $comparisonMode == "paired" then "regressed"
           elif ($delta | abs_value) <= $noise then "unchanged"
           elif $withinRobustBand then "unchanged"
           elif $delta < 0 then "improved"
@@ -1856,6 +1957,10 @@ jq -n \
       | (
           if $baseline <= 0 then null
           elif (policy_enabled($policy) != true) then null
+          elif $comparisonMode == "paired" and ($evidenceDeltaLower <= 0 and $evidenceDeltaUpper >= 0) then 0
+          elif $comparisonMode == "paired" and ($evidenceDelta | abs_value) <= $noise then 0
+          elif $comparisonMode == "paired" and $evidenceDelta > 0 then ([0, $evidenceDeltaLower] | max) / $warnBudget
+          elif $comparisonMode == "paired" then -(([0, (-$evidenceDeltaUpper)] | max) / $warnBudget)
           elif $withinRobustBand then 0
           elif ($delta | abs_value) <= $noise then 0
           elif ($confidence == "threshold_exceeded" and $delta > 0) then ([0, ($currentRobustLower - $robustUpper), $delta] | max) / $warnBudget
@@ -1874,7 +1979,7 @@ jq -n \
           else "improvement"
           end
         ) as $semanticImpactKind
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples};
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples,evidenceDelta:$evidenceDelta,evidenceDeltaLower:$evidenceDeltaLower,evidenceDeltaUpper:$evidenceDeltaUpper,evidenceDeltaTolerance:$pairedDeltaTolerance};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -1935,7 +2040,11 @@ jq -n \
                         $effectiveBaselineValue.mad;
                         $currentValue.sampleCount;
                         $effectiveBaselineValue.sourceCount;
-                        $currentValue.pairedSampleCount
+                        $currentValue.pairedSampleCount;
+                        $currentValue.pairedDeltaMedianValue;
+                        $currentValue.pairedDeltaP25Value;
+                        $currentValue.pairedDeltaP75Value;
+                        $currentValue.pairedDeltaMadValue
                       ) + {
                       target: $currentValue.target,
                       observation: $currentValue.observation,
@@ -1962,7 +2071,8 @@ jq -n \
           and (.gateReason == "missing_baseline"
             or .gateReason == "low_baseline_count"
             or .gateReason == "low_current_sample_count"
-            or .gateReason == "low_paired_sample_count")
+            or .gateReason == "low_paired_sample_count"
+            or .gateReason == "missing_paired_delta")
         ) then "partial"
         else "pass"
         end
@@ -1975,7 +2085,8 @@ jq -n \
             missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
             lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
             lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
-            lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length)
+            lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length),
+            missingPairedDeltaCount: (map(select(.gateReason == "missing_paired_delta")) | length)
           }
         | . + {
             nonGateableCount: (.enabledCount - .gateableCount),
@@ -2273,6 +2384,18 @@ const interpretation = (row) => {
   if (row.confidence === 'low_paired_sample_count') return {
     label: 'Needs paired evidence',
     detail: 'Wall-clock gates require same-run base/head samples before they can block merges.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'missing_paired_delta') return {
+    label: 'Needs paired delta stats',
+    detail: 'Wall-clock gates require per-pair delta statistics, not only paired medians.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'paired_uncertain') return {
+    label: 'Uncertain wall-clock movement',
+    detail: 'The paired median moved, but the paired delta band still crosses the configured budget.',
     tone: 'neutral',
     color: '#94a3b8',
   }

@@ -49,9 +49,18 @@ They need same-run base/head evidence before they can block a merge. Historical
 baselines remain useful for trend context, but they do not prove PR causality.
 For PR runs, the wall-clock producer checks out the PR base commit in a sibling
 worktree and alternates measured pair order (`head -> base`, then
-`base -> head`) to reduce cache and time drift bias. The current artifact
-stores the paired baseline median and paired sample count, and the comparison
-engine uses that embedded paired baseline for the gate.
+`base -> head`) from a recorded seed to reduce cache and time drift bias
+without making order a hidden variable. The current artifact stores the paired
+baseline median and paired sample count, and the comparison engine uses that
+embedded paired baseline for the gate.
+
+The gate evaluates per-pair deltas, not only the difference between medians.
+A paired wall-clock row is actionable only when the paired delta evidence band
+clears the configured warning or failure budget. If the point estimate moved
+but the paired delta band still crosses the budget, the row renders as
+`paired_uncertain` and does not block. This follows the same principle used by
+continuous benchmark tools: a point estimate without uncertainty is not enough
+evidence for a regression.
 
 Historical wall-clock comparison may be used as an advisory transition mode.
 It can warn, visualize trends, and guide investigation, but it must not be the
@@ -84,10 +93,8 @@ For merge-blocking use, same-run paired measurement is required:
 ```text
 base warmup
 head warmup
-base sample 1
-head sample 1
-head sample 2
-base sample 2
+sample pair 1: seeded order chooses base/head or head/base
+sample pair 2: opposite order
 ...
 ```
 
@@ -97,11 +104,13 @@ the row is partial/advisory even if the historical raw delta is large.
 
 ## Deterministic Measurements
 
-Nix closure size and source shape are not statistical performance probes. They
+Nix closure size, source shape, code complexity, lines of code, and file counts
+are deterministic or near-deterministic structural measurements. They are not
+wall-clock performance probes and must not use paired timing statistics. They
 should use explicit budgets and semantic buckets. A closure-size regression is
 actionable because the same installable and lock graph should produce a stable
-closure. Source-shape growth is an architecture signal and should remain
-advisory unless a repo defines an explicit owner-approved budget.
+closure. Source-shape or complexity growth is an architecture signal and should
+remain advisory unless a repo defines an explicit owner-approved budget.
 
 ## Visualization
 
@@ -111,6 +120,8 @@ Reports must distinguish raw movement from actionable evidence.
 - Actionable impact is only shown for gateable rows.
 - Diagnostic rows render as `diagnostic`, not `0.00x`.
 - Non-gateable paired wall-clock rows render as needing paired evidence.
+- Noisy paired wall-clock rows render as uncertain, with neutral actionable
+  impact, even when the raw percentage delta is large.
 
 This prevents a large historical wall-clock delta from looking like a proven
 PR regression when the measurement lacks causal evidence.

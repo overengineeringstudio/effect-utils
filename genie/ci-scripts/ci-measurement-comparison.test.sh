@@ -124,7 +124,12 @@ fi
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$paired_policy"
-jq '.observations[0].comparison = { mode: "paired", baseline: 12.95, pairedSampleCount: 5 } | .observations[0].statistics.pairedSampleCount = 5' \
+jq '.observations[0].comparison = { mode: "paired", baseline: 12.95, pairedSampleCount: 5 }
+  | .observations[0].statistics.pairedSampleCount = 5
+  | .observations[0].statistics.pairedDeltaMedian = 0.05
+  | .observations[0].statistics.pairedDeltaP25 = 0.04
+  | .observations[0].statistics.pairedDeltaP75 = 0.06
+  | .observations[0].statistics.pairedDeltaMad = 0.01' \
   "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
 mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
 write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$paired_policy"
@@ -136,6 +141,50 @@ actual_baseline="$(jq -r '.comparisons[] | .baseline' "$tmp_dir/comparison.json"
 actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
 if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "eligible" ] || [ "$actual_baseline" != "12.95" ] || [ "$actual_enforceable" != "true" ]; then
   echo "expected paired current artifact baseline to override historical baseline; got status=$actual_status row=$actual_row gate=$actual_gate baseline=$actual_baseline enforceable=$actual_enforceable" >&2
+  exit 1
+fi
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$paired_policy"
+jq '.observations[0].comparison = { mode: "paired", baseline: 10, pairedSampleCount: 5 }
+  | .observations[0].statistics.pairedSampleCount = 5
+  | .observations[0].statistics.pairedDeltaMedian = 1.2
+  | .observations[0].statistics.pairedDeltaP25 = -1
+  | .observations[0].statistics.pairedDeltaP75 = 3
+  | .observations[0].statistics.pairedDeltaMad = 1' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
+mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$paired_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
+actual_impact="$(jq -r '.comparisons[] | .semanticImpactScore' "$tmp_dir/comparison.json")"
+actual_lower="$(jq -r '.comparisons[] | .evidenceDeltaLower' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_confidence" != "paired_uncertain" ] || [ "$actual_impact" != "0" ] || ! awk "BEGIN { exit !($actual_lower < 0) }"; then
+  echo "expected noisy paired delta to stay pass/uncertain; got status=$actual_status row=$actual_row confidence=$actual_confidence impact=$actual_impact lower=$actual_lower" >&2
+  exit 1
+fi
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$paired_policy"
+jq '.observations[0].comparison = { mode: "paired", baseline: 10, pairedSampleCount: 5 }
+  | .observations[0].statistics.pairedSampleCount = 5
+  | .observations[0].statistics.pairedDeltaMedian = 3.2
+  | .observations[0].statistics.pairedDeltaP25 = 3.15
+  | .observations[0].statistics.pairedDeltaP75 = 3.25
+  | .observations[0].statistics.pairedDeltaMad = 0.03' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
+mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$paired_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
+actual_impact="$(jq -r '.comparisons[] | .semanticImpactScore' "$tmp_dir/comparison.json")"
+actual_lower="$(jq -r '.comparisons[] | .evidenceDeltaLower' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_confidence" != "threshold_exceeded" ] || ! awk "BEGIN { exit !($actual_impact > 1) }" || ! awk "BEGIN { exit !($actual_lower > 2) }"; then
+  echo "expected stable paired delta over fail budget to fail; got status=$actual_status row=$actual_row confidence=$actual_confidence impact=$actual_impact lower=$actual_lower" >&2
   exit 1
 fi
 
