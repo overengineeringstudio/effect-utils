@@ -2616,14 +2616,20 @@ const dimensions = (row) => {
 const rank = (row) => {
   if (row.status === 'fail') return 0
   if (row.status === 'warn') return 1
-  if (row.status === 'missing_baseline') return 2
-  return 3
+  if (row.status === 'missing_baseline') return 3
+  return 2
 }
 
 const allRows = Object.values(comparison.comparisons || {}).sort((left, right) => {
   const byRank = rank(left) - rank(right)
   if (byRank !== 0) return byRank
-  return (right.delta || 0) - (left.delta || 0)
+  const leftImpact = typeof left.semanticImpactScore === 'number' ? Math.abs(left.semanticImpactScore) : 0
+  const rightImpact = typeof right.semanticImpactScore === 'number' ? Math.abs(right.semanticImpactScore) : 0
+  if (rightImpact !== leftImpact) return rightImpact - leftImpact
+  const leftDelta = typeof left.delta === 'number' ? Math.abs(left.delta) : 0
+  const rightDelta = typeof right.delta === 'number' ? Math.abs(right.delta) : 0
+  if (rightDelta !== leftDelta) return rightDelta - leftDelta
+  return humanProbe(left).localeCompare(humanProbe(right))
 })
 const protocolLabel = (() => {
   const protocols = new Set(
