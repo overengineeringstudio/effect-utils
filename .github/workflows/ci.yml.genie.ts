@@ -22,9 +22,11 @@ import {
   ciMeasurementsCommentPermissions,
   ciMeasurementsArtifactStep,
   compareCiMeasurementsStep,
+  defaultNixClosureMeasurementBuckets,
   devenvPerfJob,
   downloadPreviousGitHubArtifactStep,
   namespaceRunner,
+  nixClosureMeasurementSteps,
   sourceShapeMeasurementStep,
   validateColdPnpmDepsStep,
   nixDiagnosticsArtifactStep,
@@ -277,6 +279,39 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
 
 const NETLIFY_SITE = 'overeng-utils'
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
+const nixClosureMeasurementsDir = 'tmp/nix-closure-ci'
+const nixClosureMeasurementTargets = [
+  {
+    installable: '.#genie',
+    id: 'genie_package',
+    name: 'genie',
+    label: 'Genie package',
+    group: 'packages',
+    path: ['nix', 'closures', 'packages', 'genie'],
+    description: 'the packaged Genie CLI closure',
+    system: 'x86_64-linux',
+  },
+  {
+    installable: '.#megarepo',
+    id: 'megarepo_package',
+    name: 'megarepo',
+    label: 'Megarepo package',
+    group: 'packages',
+    path: ['nix', 'closures', 'packages', 'megarepo'],
+    description: 'the packaged megarepo CLI closure',
+    system: 'x86_64-linux',
+  },
+  {
+    installable: '.#oxlint-npm',
+    id: 'oxlint_npm_package',
+    name: 'oxlint-npm',
+    label: 'oxlint npm package',
+    group: 'packages',
+    path: ['nix', 'closures', 'packages', 'oxlint-npm'],
+    description: 'the packaged oxlint npm compatibility wrapper closure',
+    system: 'x86_64-linux',
+  },
+] as const
 
 // Non-required jobs (separate from CIJobName — not required status checks)
 const extraJobs: Record<string, any> = {
@@ -406,6 +441,38 @@ const extraJobs: Record<string, any> = {
       },
     }),
     'timeout-minutes': jobTimeoutMinutes,
+  },
+  'nix-closure-sizes': {
+    if: normalCiIf,
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': jobTimeoutMinutes,
+    defaults: bashShellDefaults,
+    permissions: ciMeasurementsCommentPermissions,
+    env: ciMeasurementSubjectEnv,
+    steps: [
+      ...baseSteps,
+      ...nixClosureMeasurementSteps({
+        artifactName: 'nix-closure-measurements',
+        artifactDir: nixClosureMeasurementsDir,
+        baselineMaxRuns: 20,
+        targets: nixClosureMeasurementTargets,
+        buckets: defaultNixClosureMeasurementBuckets,
+        regressionMode: 'warn',
+        prComment: {
+          enabled: true,
+          title: 'Nix Closure Measurements',
+          maxRows: 8,
+          maxHistory: 20,
+        },
+      }),
+      savePnpmStateStep(),
+      nixDiagnosticsSummaryStep,
+      nixDiagnosticsArtifactStep(),
+      failureReminderStep,
+    ],
   },
   'source-shape': {
     'runs-on': namespaceRunner({
