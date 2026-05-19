@@ -508,6 +508,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       '| Group | Measurement | Baseline | Current | Raw change | Impact | Meaning | Gate | Evidence |',
     )
+    expect(ciWorkflowSource).toContain('const zeroImpactRows = comparableRows.filter(isZeroImpactRow)')
+    expect(ciWorkflowSource).toContain('<summary>Zero-impact measurements (')
+    expect(ciWorkflowSource).toContain(
+      'No non-zero actionable measurement impact detected.',
+    )
     expect(ciWorkflowSource).toContain("'- Readiness: ' + readinessLabel")
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
     expect(ciWorkflowSource).toContain('Actionable measurement impact')
