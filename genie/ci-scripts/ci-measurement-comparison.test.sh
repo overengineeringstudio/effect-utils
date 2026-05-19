@@ -67,6 +67,7 @@ run_compare() {
 
 policy='{"enabled":true,"minBaselineSources":1,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":1,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
+strict_paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":20,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 emit_compare_script
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
@@ -141,6 +142,27 @@ actual_baseline="$(jq -r '.comparisons[] | .baseline' "$tmp_dir/comparison.json"
 actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
 if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "eligible" ] || [ "$actual_baseline" != "12.95" ] || [ "$actual_enforceable" != "true" ]; then
   echo "expected paired current artifact baseline to override historical baseline; got status=$actual_status row=$actual_row gate=$actual_gate baseline=$actual_baseline enforceable=$actual_enforceable" >&2
+  exit 1
+fi
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$strict_paired_policy"
+jq '.observations[0].comparison = { mode: "paired", baseline: 12.95, pairedSampleCount: 5 }
+  | .observations[0].statistics.pairedSampleCount = 5
+  | .observations[0].statistics.pairedDeltaMedian = 0.05
+  | .observations[0].statistics.pairedDeltaP25 = 0.04
+  | .observations[0].statistics.pairedDeltaP75 = 0.06
+  | .observations[0].statistics.pairedDeltaMad = 0.01' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
+mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$strict_paired_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_gate="$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")"
+actual_confidence="$(jq -r '.comparisons[] | .confidence' "$tmp_dir/comparison.json")"
+actual_enforceable="$(jq -r '.readiness.enforceable' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "pass" ] || [ "$actual_gate" != "eligible" ] || [ "$actual_confidence" != "noise_floor" ] || [ "$actual_enforceable" != "true" ]; then
+  echo "expected paired wall-clock gate to ignore historical minBaselineSources when paired evidence is present; got status=$actual_status gate=$actual_gate confidence=$actual_confidence enforceable=$actual_enforceable" >&2
   exit 1
 fi
 

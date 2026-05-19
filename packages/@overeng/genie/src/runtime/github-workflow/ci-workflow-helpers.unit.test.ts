@@ -422,7 +422,7 @@ describe('ci workflow devenv perf helpers', () => {
     )
     expect(generatedCiWorkflowYamlSource).toContain('within_baseline_range')
     expect(generatedCiWorkflowYamlSource).toContain(
-      'elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"',
+      'elif $needsHistoricalBaselineCount and $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
       'elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"',

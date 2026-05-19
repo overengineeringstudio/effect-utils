@@ -99,6 +99,11 @@ but the paired delta band still crosses the budget, the row renders as
 continuous benchmark tools: a point estimate without uncertainty is not enough
 evidence for a regression.
 
+Paired wall-clock gates do not require a historical baseline source count. The
+same-run paired baseline is the comparable evidence. Historical runs may still
+appear in the report as trend context, but they do not decide whether paired PR
+evidence is gateable.
+
 Historical wall-clock comparison may be used as an advisory transition mode.
 It can warn, visualize trends, and guide investigation, but it must not be the
 required merge gate for noisy runner-dependent timings. Robust baseline/current

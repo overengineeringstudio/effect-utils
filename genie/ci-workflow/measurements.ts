@@ -1884,6 +1884,7 @@ jq -n \
       | ($evidenceDelta - $pairedDeltaTolerance) as $evidenceDeltaLower
       | ([($b.warnAbs // 0), (if $baseline > 0 then ($baseline * (($b.warnRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $warnBudget
       | ([($b.failAbs // 0), (if $baseline > 0 then ($baseline * (($b.failRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $failBudget
+      | ($comparisonMode != "paired") as $needsHistoricalBaselineCount
       | (
           ($current >= $robustLower and $current <= $robustUpper)
           or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
@@ -1908,7 +1909,7 @@ jq -n \
       | (
           policy_enabled($policy) == true
           and $baseline > 0
-          and $baselineSources >= ($policy.minBaselineSources // 1)
+          and (if $needsHistoricalBaselineCount then $baselineSources >= ($policy.minBaselineSources // 1) else true end)
           and $currentSamples >= ($policy.minCurrentSamples // 1)
           and (if $comparisonMode == "paired" then $pairedSamples >= ($policy.minPairedSamples // 1) else true end)
           and (if $comparisonMode == "paired" then $pairedDeltaMedian != null else true end)
@@ -1916,7 +1917,7 @@ jq -n \
       | (
           if (policy_enabled($policy) != true) then "disabled"
           elif $baseline <= 0 then "missing_baseline"
-          elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+          elif $needsHistoricalBaselineCount and $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
           elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
           elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
@@ -1927,7 +1928,7 @@ jq -n \
           if $baseline <= 0 then "unknown"
           elif (policy_enabled($policy) != true) then "diagnostic"
           elif ($delta | abs_value) <= $noise then "noise_floor"
-          elif $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+          elif $needsHistoricalBaselineCount and $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
           elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
           elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
           elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
