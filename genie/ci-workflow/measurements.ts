@@ -2773,6 +2773,13 @@ const visibleRows = (hasComparableBaseline
   ? allRows.filter((row) => typeof row.baseline === 'number')
   : allRows.slice().sort((left, right) => (right.current || 0) - (left.current || 0))
 ).slice(0, visibleLimit)
+const isZeroImpactRow = (row) =>
+  typeof row.semanticImpactScore === 'number' &&
+  !Number.isNaN(row.semanticImpactScore) &&
+  Math.abs(row.semanticImpactScore) < 0.005
+const nonZeroImpactRows = comparableRows.filter((row) => !isZeroImpactRow(row))
+const zeroImpactRows = comparableRows.filter(isZeroImpactRow)
+const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
 
 const comparisonTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
@@ -3047,7 +3054,28 @@ const summaryLines = [
   '',
   chartMarkdown,
   '',
-  hasComparableBaseline ? comparisonTable(visibleRows) : currentOnlyTable(visibleRows),
+  hasComparableBaseline
+    ? (visibleNonZeroImpactRows.length > 0
+        ? comparisonTable(visibleNonZeroImpactRows)
+        : 'No non-zero actionable measurement impact detected.')
+    : currentOnlyTable(visibleRows),
+]
+
+if (hasComparableBaseline && zeroImpactRows.length > 0) {
+  summaryLines.push(
+    '',
+    '<details>',
+    '<summary>Zero-impact measurements (' + zeroImpactRows.length + ')</summary>',
+    '',
+    'These rows had compatible baseline data, but their semantic impact rounded to 0.00x because the movement was below the configured budget, below the noise floor, or inside the robust noise band.',
+    '',
+    comparisonTable(zeroImpactRows),
+    '',
+    '</details>',
+  )
+}
+
+summaryLines.push(
   '',
   '<details>',
   '<summary>All measurements</summary>',
@@ -3055,7 +3083,7 @@ const summaryLines = [
   allMeasurementsTable(allRows),
   '',
   '</details>',
-]
+)
 
 if (historyRows.length > 0) {
   summaryLines.push(
