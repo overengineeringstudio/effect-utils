@@ -122,6 +122,16 @@ const targetExistsWithNodeResolution = (packageDir, target) => {
   return false
 }
 
+const packageTargetIsShipped = ({ includedFiles, target }) => {
+  if (!target.startsWith('./')) return false
+  if (target.includes('*')) return false
+
+  const relativeTarget = target.slice(2)
+  return includedFiles.some(
+    (file) => file === relativeTarget || relativeTarget.startsWith(`${file}/`),
+  )
+}
+
 const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
   if (!packageDir.includes('/v11/links/')) return
 
@@ -130,31 +140,26 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
     : []
   if (includedFiles.length === 0) return
 
-  const targets = []
-
   if (typeof pkg.main === 'string') {
-    targets.push(pkg.main)
+    if (
+      packageTargetIsShipped({ includedFiles, target: pkg.main }) &&
+      !targetExistsWithNodeResolution(packageDir, pkg.main)
+    ) {
+      failures.push(`${pkg.name ?? entryPath} -> ${pkg.main} (${packageDir})`)
+    }
   }
 
   if (pkg.exports !== undefined) {
-    targets.push(...collectRootRuntimeExportTargets(pkg.exports))
-  }
-
-  for (const target of targets) {
-    if (!target.startsWith('./')) continue
-    if (target.includes('*')) continue
-
-    const relativeTarget = target.slice(2)
+    const shippedExportTargets = collectRootRuntimeExportTargets(pkg.exports).filter((target) =>
+      packageTargetIsShipped({ includedFiles, target }),
+    )
     if (
-      !includedFiles.some(
-        (file) => file === relativeTarget || relativeTarget.startsWith(`${file}/`),
-      )
+      shippedExportTargets.length > 0 &&
+      !shippedExportTargets.some((target) => targetExistsWithNodeResolution(packageDir, target))
     ) {
-      continue
-    }
-
-    if (!targetExistsWithNodeResolution(packageDir, target)) {
-      failures.push(`${pkg.name ?? entryPath} -> ${target} (${packageDir})`)
+      failures.push(
+        `${pkg.name ?? entryPath} -> ${shippedExportTargets.join(' | ')} (${packageDir})`,
+      )
     }
   }
 }

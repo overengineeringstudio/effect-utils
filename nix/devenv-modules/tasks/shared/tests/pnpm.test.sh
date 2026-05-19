@@ -90,6 +90,20 @@ EOF
   ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 }
 
+make_missing_conditional_export_alternative_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root/build"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["build"],"main":"./build/pkg.esm.js","exports":{".":{"import":"./build/pkg.esm.js","require":"./build/index.js","browser":"./build/pkg.min.js"}}}
+EOF
+  touch "$package_root/build/pkg.esm.js"
+  touch "$package_root/build/pkg.min.js"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
 make_missing_type_export_fixture() {
   local root="$1"
   local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
@@ -351,7 +365,16 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores type-only export targets"
 
-echo "Test 18: Projection health ignores dependency names that Node resolves as built-ins"
+echo "Test 18: Projection health accepts a package when one root conditional export target exists"
+missing_condition_alternative_dir="$test_dir/missing-condition-alternative"
+make_missing_conditional_export_alternative_fixture "$missing_condition_alternative_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_condition_alternative_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health accepts alternate runtime export targets"
+
+echo "Test 19: Projection health ignores dependency names that Node resolves as built-ins"
 builtin_dependency_dir="$test_dir/builtin-dependency"
 make_builtin_dependency_fixture "$builtin_dependency_dir"
 set +e
@@ -360,7 +383,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores built-in dependency names"
 
-echo "Test 19: Projection health accepts extensionless main and root export targets"
+echo "Test 20: Projection health accepts extensionless main and root export targets"
 extensionless_main_dir="$test_dir/extensionless-main"
 make_extensionless_main_fixture "$extensionless_main_dir"
 set +e
@@ -369,7 +392,7 @@ exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health accepts extensionless runtime targets"
 
-echo "Test 20: Projection health ignores missing optional subpath export targets"
+echo "Test 21: Projection health ignores missing optional subpath export targets"
 missing_subpath_export_dir="$test_dir/missing-subpath-export"
 make_missing_subpath_export_fixture "$missing_subpath_export_dir"
 set +e
