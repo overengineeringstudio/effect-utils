@@ -151,10 +151,50 @@ export type NixClosureMeasurementStepOptions = {
   readonly targetName?: string
   readonly targetLabel?: string
   readonly targetGroup?: string
+  readonly targetPath?: readonly string[]
+  readonly targetDescription?: string
   readonly targetSystem?: string
   readonly artifactDir?: string
   readonly artifactFile?: string
   readonly buckets?: readonly NixClosureMeasurementBucket[]
+  readonly gate?: CiMeasurementGatePolicy
+}
+
+export type NixClosureMeasurementTarget = {
+  readonly installable: string
+  readonly id: string
+  readonly name?: string
+  readonly label: string
+  readonly group: string
+  readonly path?: readonly string[]
+  readonly description: string
+  readonly system?: string
+  readonly buckets?: readonly NixClosureMeasurementBucket[]
+  readonly gate?: CiMeasurementGatePolicy
+}
+
+export type NixClosureMeasurementsStepsOptions = {
+  readonly artifactDir?: string
+  readonly artifactName: string
+  readonly baselineArtifactName?: string
+  readonly baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]
+  readonly baselineSeedRunIds?: readonly string[]
+  readonly baselineMaxRuns?: number
+  readonly baselineMaxCandidateRuns?: number
+  readonly targets: readonly [NixClosureMeasurementTarget, ...NixClosureMeasurementTarget[]]
+  readonly buckets?: readonly NixClosureMeasurementBucket[]
+  readonly retentionDays?: number
+  readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
+}
+
+export type NixClosureMeasurementsJobOptions = NixClosureMeasurementsStepsOptions & {
+  readonly runsOn?: readonly string[]
+  readonly setupSteps?: readonly GitHubWorkflowArgs['jobs'][string]['steps'][number][]
+  readonly ifExpr?: string
+  readonly timeoutMinutes?: number
+  readonly env?: Record<string, string>
+  readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
 }
 
 export type SourceShapeMeasurementScope = CiMeasurementDescriptor & {
@@ -257,6 +297,12 @@ export const ciMeasurementBaselineBackfillPredicate =
   "github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != ''" as const
 export const ciMeasurementNotBaselineBackfillPredicate =
   `!(${ciMeasurementBaselineBackfillPredicate})` as const
+
+export const defaultNixClosureMeasurementBuckets = [
+  { name: 'node', label: 'Node / pnpm', pathRegex: 'node_modules|npm-deps|pnpm' },
+  { name: 'nix-sources', label: 'Nix sources', pathRegex: '-source$' },
+  { name: 'rust', label: 'Rust', pathRegex: 'cargo|rust|rustc' },
+] as const satisfies readonly NixClosureMeasurementBucket[]
 
 /** Conditional checkout step that replaces the default checkout with the baseline subject. */
 export const ciMeasurementBaselineCheckoutStep = {
@@ -1369,6 +1415,10 @@ export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions
   const targetLabel = opts.targetLabel ?? targetName
   const targetGroup = opts.targetGroup ?? 'nix closure'
   const buckets = JSON.stringify(opts.buckets ?? [])
+  const targetPath = JSON.stringify(opts.targetPath ?? [])
+  const gatePolicy = JSON.stringify(opts.gate ?? {})
+  const targetDescription =
+    opts.targetDescription ?? 'Resolved Nix closure for the configured flake installable.'
   const targetSystemAssignment =
     opts.targetSystem === undefined
       ? `target_system="${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}"`
@@ -1389,6 +1439,7 @@ target_id=${shellSingleQuote(targetId)}
 target_name=${shellSingleQuote(targetName)}
 target_label=${shellSingleQuote(targetLabel)}
 target_group=${shellSingleQuote(targetGroup)}
+target_description=${shellSingleQuote(targetDescription)}
 artifact_file=${artifactFileAssignment}
 ${targetSystemAssignment}
 
@@ -1422,9 +1473,12 @@ jq -n \
   --arg targetId "$target_id" \
   --arg targetLabel "$target_label" \
   --arg targetGroup "$target_group" \
+  --arg targetDescription "$target_description" \
   --arg targetSystem "$target_system" \
   --arg outPath "$out_path" \
   --argjson buckets ${shellSingleQuote(buckets)} \
+  --argjson targetPath ${shellSingleQuote(targetPath)} \
+  --argjson gatePolicy ${shellSingleQuote(gatePolicy)} \
   '
     ($paths[0] // []) as $closurePaths
     | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
@@ -1436,6 +1490,7 @@ jq -n \
             id: "nix.closure.bucket.nar_size",
             label: (($bucket.label // $bucket.name) + " closure size"),
             group: "nix closure buckets",
+            path: ($targetPath + ["buckets", $bucket.name]),
             description: ("NAR size contributed by closure paths matching " + $bucket.pathRegex),
             measurementKind: "deterministic",
             unit: "bytes",
@@ -1444,6 +1499,7 @@ jq -n \
               | map(select(.path | test($bucket.pathRegex)) | .narSize)
               | add // 0
             ),
+            policy: $gatePolicy,
             dimensions: { bucket: $bucket.name }
           }
       )) as $bucketObservations
@@ -1469,28 +1525,32 @@ jq -n \
           traceId: $traceId,
           runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
         },
-        target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, system: $targetSystem },
+        target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem },
         observations: ([
           {
             id: "nix.closure.nar_size",
             label: "Total closure size",
             group: "nix closure",
-            description: "Total NAR size for all paths in the resolved Nix closure.",
+            path: ($targetPath + ["total", "nar-size"]),
+            description: ("Total NAR size for all paths in " + $targetDescription),
             name: "nix.closure.nar_size",
             measurementKind: "deterministic",
             unit: "bytes",
             value: $totalNarSize,
+            policy: $gatePolicy,
             dimensions: { bucket: "total" }
           },
           {
             id: "nix.closure.path_count",
             label: "Total closure path count",
             group: "nix closure",
-            description: "Number of store paths in the resolved Nix closure.",
+            path: ($targetPath + ["total", "path-count"]),
+            description: ("Number of store paths in " + $targetDescription),
             name: "nix.closure.path_count",
             measurementKind: "deterministic",
             unit: "count",
             value: $pathCount,
+            policy: $gatePolicy,
             dimensions: { bucket: "total" }
           }
         ] + $bucketObservations),
@@ -1509,6 +1569,67 @@ cat "$artifact_file"
 `,
   } as const
 }
+
+export const nixClosureMeasurementSteps = (opts: NixClosureMeasurementsStepsOptions) => {
+  const artifactDir = opts.artifactDir ?? 'tmp/nix-closure-measurements'
+  const baselineArtifactName = opts.baselineArtifactName ?? opts.artifactName
+  const buckets = opts.buckets ?? defaultNixClosureMeasurementBuckets
+
+  return [
+    downloadPreviousGitHubArtifactStep({
+      artifactName: baselineArtifactName,
+      outputDir: `${artifactDir}/baseline`,
+      seedRuns: opts.baselineSeedRuns,
+      seedRunIds: opts.baselineSeedRunIds,
+      maxRuns: opts.baselineMaxRuns,
+      maxCandidateRuns: opts.baselineMaxCandidateRuns,
+    }),
+    ...opts.targets.map((target) =>
+      nixClosureMeasurementStep({
+        installable: target.installable,
+        targetId: target.id,
+        targetName: target.name ?? target.id,
+        targetLabel: target.label,
+        targetGroup: target.group,
+        targetPath: target.path,
+        targetDescription: target.description,
+        targetSystem: target.system,
+        artifactDir: `${artifactDir}/current/${target.id}`,
+        buckets: target.buckets ?? buckets,
+        gate: target.gate,
+      }),
+    ),
+    compareCiMeasurementsStep({
+      currentDir: `${artifactDir}/current`,
+      baselineDir: `${artifactDir}/baseline`,
+      outputFile: `${artifactDir}/measurement-comparison.json`,
+      regressionMode: opts.regressionMode ?? 'warn',
+      prComment: opts.prComment,
+    }),
+    ciMeasurementsArtifactStep({
+      artifactName: opts.artifactName,
+      path: artifactDir,
+      retentionDays: opts.retentionDays,
+    }),
+  ] as const
+}
+
+export const nixClosureMeasurementsJob = (opts: NixClosureMeasurementsJobOptions) =>
+  ({
+    ...(opts.ifExpr === undefined ? {} : { if: opts.ifExpr }),
+    'runs-on': opts.runsOn ?? linuxX64Runner,
+    ...(opts.timeoutMinutes === undefined ? {} : { 'timeout-minutes': opts.timeoutMinutes }),
+    ...(opts.permissions === undefined ? {} : { permissions: opts.permissions }),
+    defaults: bashShellDefaults,
+    env: {
+      ...standardCIEnv,
+      ...opts.env,
+    },
+    steps: [
+      ...(opts.setupSteps ?? [checkoutStep(), installNixStep(), validateNixStoreStep]),
+      ...nixClosureMeasurementSteps(opts),
+    ],
+  }) as const
 
 export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptions) => {
   const artifactDir = opts.artifactDir ?? 'tmp/ci-measurements'

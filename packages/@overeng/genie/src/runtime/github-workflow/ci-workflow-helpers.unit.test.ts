@@ -381,7 +381,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
     expect(ciWorkflowSource).toContain('export type DevenvPerfTaskProbe')
     expect(ciWorkflowSource).toContain('export const nixClosureMeasurementStep')
+    expect(ciWorkflowSource).toContain('export const nixClosureMeasurementSteps')
+    expect(ciWorkflowSource).toContain('export const nixClosureMeasurementsJob')
+    expect(ciWorkflowSource).toContain('export const defaultNixClosureMeasurementBuckets')
     expect(ciWorkflowSource).toContain('export type NixClosureMeasurementBucket')
+    expect(ciWorkflowSource).toContain('export type NixClosureMeasurementTarget')
   })
 
   it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
@@ -447,7 +451,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('artifact_file=${artifactFileAssignment}')
     expect(ciWorkflowSource).not.toContain('artifact_file=${shellSingleQuote(artifactFile)}')
     expect(ciWorkflowSource).toContain(
-      'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, system: $targetSystem }',
+      'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem }',
     )
     expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
     expect(ciWorkflowSource).toContain(
