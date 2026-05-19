@@ -587,7 +587,9 @@ export default ciWorkflow({
   name: 'CI',
   on: {
     push: { branches: ['main'] },
-    pull_request: { branches: ['main'] },
+    pull_request: {
+      branches: ['main', 'schickling/2026-05-14-ci-measurement-gates'],
+    },
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
