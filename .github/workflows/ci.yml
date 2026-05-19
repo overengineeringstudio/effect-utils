@@ -11,7 +11,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, schickling/2026-05-14-ci-measurement-gates]
   workflow_dispatch:
     inputs:
       measurement_baseline_ref:
