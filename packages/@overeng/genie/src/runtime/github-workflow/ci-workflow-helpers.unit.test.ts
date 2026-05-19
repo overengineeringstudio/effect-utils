@@ -464,7 +464,11 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_SEED_RUNS_JSON:')
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_REQUIRED_OBSERVATIONS_JSON:')
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_MAX_CANDIDATE_RUNS:')
-    expect(generatedCiWorkflowYamlSource).toContain('"id":"devenv.task_check_quick.duration"')
+    expect(generatedCiWorkflowYamlSource).toContain('"id":"devenv.task_check_quick_warm.duration"')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      '"id":"devenv.task_check_quick_forced.duration"',
+    )
+    expect(generatedCiWorkflowYamlSource).not.toContain('"id":"devenv.task_check_quick.duration"')
     expect(ciWorkflowSource).toContain(
       'requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]',
     )
