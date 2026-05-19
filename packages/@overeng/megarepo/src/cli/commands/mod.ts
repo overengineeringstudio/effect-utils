@@ -6,6 +6,7 @@
 
 export { addCommand } from './add.ts'
 export { applyCommand } from './apply.ts'
+export { checkCommand } from './check.ts'
 export { depsCommand } from './deps.ts'
 export { syncMegarepo } from './engine.ts'
 export { envCommand } from './env.ts'

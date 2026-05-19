@@ -368,6 +368,27 @@ let
         fi
       '';
     };
+
+    "mr:source-policy-check" = {
+      guard = "mr";
+      description = "Verify megarepo GitHub source and lock-file policy";
+      status = trace.status "mr:source-policy-check" "binary" ''
+        if [ ! -f ./megarepo.lock ]; then
+          exit 0
+        fi
+
+        mr check --all
+      '';
+      exec = trace.exec "mr:source-policy-check" ''
+        set -euo pipefail
+
+        if [ ! -f ./megarepo.lock ]; then
+          exit 0
+        fi
+
+        mr check --all
+      '';
+    };
   };
 in
 {
