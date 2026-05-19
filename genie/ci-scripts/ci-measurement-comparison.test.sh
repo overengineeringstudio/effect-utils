@@ -189,6 +189,28 @@ if [ "$actual_status" != "pass" ] || [ "$actual_row" != "pass" ] || [ "$actual_c
 fi
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+write_measurement "$tmp_dir/current/measurements.json" 12.1 devenv-perf-warm-median-v2 "$paired_policy"
+jq '.observations[0].comparison = { mode: "paired", baseline: 10, pairedSampleCount: 5 }
+  | .observations[0].statistics.pairedSampleCount = 5
+  | .observations[0].statistics.pairedDeltaMedian = 2.1
+  | .observations[0].statistics.pairedDeltaP25 = 2.05
+  | .observations[0].statistics.pairedDeltaP75 = 2.2
+  | .observations[0].statistics.pairedDeltaMad = 0.1
+  | .observations[0].statistics.pairedDeltaSamples = [0.2, 2.05, 2.1, 2.2, 2.3]' \
+  "$tmp_dir/current/measurements.json" >"$tmp_dir/current/measurements.updated.json"
+mv "$tmp_dir/current/measurements.updated.json" "$tmp_dir/current/measurements.json"
+write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$paired_policy"
+run_compare
+actual_status="$(jq -r '.status' "$tmp_dir/comparison.json")"
+actual_row="$(jq -r '.comparisons[] | .status' "$tmp_dir/comparison.json")"
+actual_protocol="$(jq -r '.comparisons[] | .pairedEvidenceProtocol' "$tmp_dir/comparison.json")"
+actual_lower="$(jq -r '.comparisons[] | .evidenceDeltaLower' "$tmp_dir/comparison.json")"
+if [ "$actual_status" != "fail" ] || [ "$actual_row" != "fail" ] || [ "$actual_protocol" != "paired-delta-quantile-v1" ] || ! awk "BEGIN { exit !($actual_lower > 2) }"; then
+  echo "expected raw paired delta quantile evidence to fail only when the lower evidence quantile exceeds budget; got status=$actual_status row=$actual_row protocol=$actual_protocol lower=$actual_lower" >&2
+  exit 1
+fi
+
+rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/measurements.json" 13 devenv-perf-warm-median-v2 "$paired_policy"
 jq '.observations[0].comparison = { mode: "paired", baseline: 10, pairedSampleCount: 5 }
   | .observations[0].statistics.pairedSampleCount = 5

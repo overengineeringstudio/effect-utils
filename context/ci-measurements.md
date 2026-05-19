@@ -24,7 +24,7 @@ semantics match:
 | `measurementKind` | Gateable `comparisonMode` | Baseline Meaning                              | Uncertainty Model                         |
 | ----------------- | ------------------------- | --------------------------------------------- | ----------------------------------------- |
 | `deterministic`   | `budget`                  | Same target on a comparable ref               | None by default; exact value plus budget. |
-| `wall-clock`      | `paired`                  | Same PR run, same runner, base/head pairs     | Per-pair delta band.                      |
+| `wall-clock`      | `paired`                  | Same PR run, same runner, base/head pairs     | Per-pair delta evidence interval.         |
 | `wall-clock`      | `historical`              | Previous comparable successful artifacts      | Advisory robust bands only.               |
 | `diagnostic`      | none                      | Optional context artifact or trace attachment | Not gateable.                             |
 
@@ -47,7 +47,8 @@ numeric `value`, `unit`, `measurementKind`, and a gate `policy`.
     "enabled": true,
     "comparisonMode": "paired",
     "minPairedSamples": 5,
-    "minCurrentSamples": 5
+    "minCurrentSamples": 5,
+    "pairedEvidenceQuantile": 0.25
   }
 }
 ```
@@ -91,13 +92,18 @@ without making order a hidden variable. The current artifact stores the paired
 baseline median and paired sample count, and the comparison engine uses that
 embedded paired baseline for the gate.
 
-The gate evaluates per-pair deltas, not only the difference between medians.
-A paired wall-clock row is actionable only when the paired delta evidence band
-clears the configured warning or failure budget. If the point estimate moved
-but the paired delta band still crosses the budget, the row renders as
-`paired_uncertain` and does not block. This follows the same principle used by
-continuous benchmark tools: a point estimate without uncertainty is not enough
-evidence for a regression.
+The gate evaluates per-pair deltas, not only the difference between medians. New
+artifacts carry the raw paired delta samples in the observation statistics. The
+comparison engine derives a nonparametric evidence interval from those samples
+using `pairedEvidenceQuantile` (default `0.25`, so the displayed interval is the
+25th-75th percentile by default). A paired wall-clock row blocks only when the
+lower evidence quantile clears the configured failure budget. If the point
+estimate moved but the paired delta evidence still crosses the budget, the row
+renders as `paired_uncertain` and does not block. Older artifacts that only have
+summary statistics use a conservative robust-band fallback and are labeled with
+that evidence protocol. This follows the same principle used by continuous
+benchmark tools: a point estimate without uncertainty is not enough evidence
+for a regression.
 
 Paired wall-clock gates do not require a historical baseline source count. The
 same-run paired baseline is the comparable evidence. Historical runs may still
@@ -147,6 +153,22 @@ sample pair 2: opposite order
 The comparison operates on per-pair deltas. A wall-clock row becomes gateable
 only when the configured minimum paired sample count is present. Until then,
 the row is partial/advisory even if the historical raw delta is large.
+
+For PR gates, the preferred evidence protocol is `paired-delta-quantile-v1`:
+
+```text
+paired deltas = current_duration(pair_i) - baseline_duration(pair_i)
+evidence lower = quantile(paired deltas, pairedEvidenceQuantile)
+evidence upper = quantile(paired deltas, 1 - pairedEvidenceQuantile)
+gate fail      = evidence lower > semantic fail budget
+gate warn      = evidence lower > semantic warn budget
+```
+
+This is intentionally nonparametric because CI timings are often skewed,
+heavy-tailed, and not normally distributed. A future scheduled calibration lane
+can increase sample counts or move to bootstrap intervals for selected
+high-value probes, but the PR gate should remain understandable from the raw
+pair deltas in the artifact.
 
 ## Deterministic Measurements
 

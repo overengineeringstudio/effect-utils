@@ -30,6 +30,7 @@ export type CiMeasurementGatePolicy = {
   readonly noiseFloor?: number
   readonly statisticalToleranceRatio?: number
   readonly statisticalToleranceAbs?: number
+  readonly pairedEvidenceQuantile?: number
   readonly warnRatio?: number
   readonly failRatio?: number
   readonly warnAbs?: number
@@ -79,6 +80,7 @@ export type CiMeasurementObservation = {
     readonly pairedDeltaP25?: number
     readonly pairedDeltaP75?: number
     readonly pairedDeltaMad?: number
+    readonly pairedDeltaSamples?: readonly number[]
   }
 }
 
@@ -618,7 +620,8 @@ json_append_timing() {
             if $pairedDeltaMedian == null then null
             else ($pairedDeltaDurations | map(. - $pairedDeltaMedian | if . < 0 then -. else . end) | median)
             end
-          )
+          ),
+          pairedDeltaSampleDurationMs: $pairedDeltaDurations
         },
         samples:$sampleList
       }' \
@@ -975,7 +978,8 @@ jq -n \
               then null
               else (.statistics.pairedDeltaMadDurationMs / 1000)
               end
-            )
+            ),
+            pairedDeltaSamples: ((.statistics.pairedDeltaSampleDurationMs // []) | map(. / 1000))
           },
           dimensions: {
             probe: .id,
@@ -1786,6 +1790,7 @@ jq -n \
       | ($items | map(.observation.statistics.pairedDeltaP25 // empty)) as $pairedDeltaP25Values
       | ($items | map(.observation.statistics.pairedDeltaP75 // empty)) as $pairedDeltaP75Values
       | ($items | map(.observation.statistics.pairedDeltaMad // empty)) as $pairedDeltaMadValues
+      | ($items | map(.observation.statistics.pairedDeltaSamples // []) | add // []) as $pairedDeltaSampleValues
       | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
       | ($values | median) as $median
       | {
@@ -1807,6 +1812,7 @@ jq -n \
           pairedDeltaP25Value: (if ($pairedDeltaP25Values | length) == 0 then null else ($pairedDeltaP25Values | median) end),
           pairedDeltaP75Value: (if ($pairedDeltaP75Values | length) == 0 then null else ($pairedDeltaP75Values | median) end),
           pairedDeltaMadValue: (if ($pairedDeltaMadValues | length) == 0 then null else ($pairedDeltaMadValues | median) end),
+          pairedDeltaSampleValues: $pairedDeltaSampleValues,
           generatedAt: ($items[-1].generatedAt // null)
         };
 
@@ -1845,12 +1851,13 @@ jq -n \
     def policy_enabled($policy):
       if ($policy | has("enabled")) then $policy.enabled else true end;
 
-    def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples; $pairedDeltaMedian; $pairedDeltaP25; $pairedDeltaP75; $pairedDeltaMad):
+    def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples; $pairedDeltaMedian; $pairedDeltaP25; $pairedDeltaP75; $pairedDeltaMad; $pairedDeltaValues):
       $policy as $b
       | ($policy.comparisonMode // (if $measurementKind == "deterministic" or $unit != "seconds" then "budget" elif $measurementKind == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
       | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
       | (if $comparisonMode == "paired" and $pairedDeltaMedian != null then $pairedDeltaMedian else $delta end) as $evidenceDelta
+      | (($policy.pairedEvidenceQuantile // 0.25) | tonumber) as $pairedEvidenceQuantile
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
       | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
       | (($currentP75 // $current) - ($currentP25 // $current)) as $currentIqr
@@ -1880,8 +1887,8 @@ jq -n \
       | ($baseline - $robustTolerance) as $robustLower
       | ($current + $currentRobustTolerance) as $currentRobustUpper
       | ($current - $currentRobustTolerance) as $currentRobustLower
-      | ($evidenceDelta + $pairedDeltaTolerance) as $evidenceDeltaUpper
-      | ($evidenceDelta - $pairedDeltaTolerance) as $evidenceDeltaLower
+      | (if $comparisonMode == "paired" and ($pairedDeltaValues | length) > 0 then ($pairedDeltaValues | percentile($pairedEvidenceQuantile)) else ($evidenceDelta - $pairedDeltaTolerance) end) as $evidenceDeltaLower
+      | (if $comparisonMode == "paired" and ($pairedDeltaValues | length) > 0 then ($pairedDeltaValues | percentile(1 - $pairedEvidenceQuantile)) else ($evidenceDelta + $pairedDeltaTolerance) end) as $evidenceDeltaUpper
       | ([($b.warnAbs // 0), (if $baseline > 0 then ($baseline * (($b.warnRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $warnBudget
       | ([($b.failAbs // 0), (if $baseline > 0 then ($baseline * (($b.failRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $failBudget
       | ($comparisonMode != "paired") as $needsHistoricalBaselineCount
@@ -1981,7 +1988,7 @@ jq -n \
           else "improvement"
           end
         ) as $semanticImpactKind
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples,evidenceDelta:$evidenceDelta,evidenceDeltaLower:$evidenceDeltaLower,evidenceDeltaUpper:$evidenceDeltaUpper,evidenceDeltaTolerance:$pairedDeltaTolerance};
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples,evidenceDelta:$evidenceDelta,evidenceDeltaLower:$evidenceDeltaLower,evidenceDeltaUpper:$evidenceDeltaUpper,evidenceDeltaTolerance:$pairedDeltaTolerance,pairedEvidenceQuantile:$pairedEvidenceQuantile,pairedEvidenceProtocol:(if $comparisonMode == "paired" and ($pairedDeltaValues | length) > 0 then "paired-delta-quantile-v1" elif $comparisonMode == "paired" then "paired-summary-robust-band-v1" else null end)};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -2046,7 +2053,8 @@ jq -n \
                         $currentValue.pairedDeltaMedianValue;
                         $currentValue.pairedDeltaP25Value;
                         $currentValue.pairedDeltaP75Value;
-                        $currentValue.pairedDeltaMadValue
+                        $currentValue.pairedDeltaMadValue;
+                        ($currentValue.pairedDeltaSampleValues // [])
                       ) + {
                       target: $currentValue.target,
                       observation: $currentValue.observation,
@@ -2370,6 +2378,22 @@ const formatRowImpact = (row) => {
   return formatSemanticImpact(row.semanticImpactScore)
 }
 
+const formatEvidence = (row) => {
+  const unit = row.observation?.unit
+  if (row.comparisonMode === 'paired' && typeof row.evidenceDeltaLower === 'number' && typeof row.evidenceDeltaUpper === 'number') {
+    const quantile = typeof row.pairedEvidenceQuantile === 'number'
+      ? Math.round(row.pairedEvidenceQuantile * 100)
+      : 25
+    return (row.confidence || 'unknown')
+      + '<br><sub>paired n=' + (row.pairedSamples ?? 0)
+      + ', ' + quantile + '-' + (100 - quantile) + '% delta '
+      + formatValue(row.evidenceDeltaLower, unit)
+      + ' - ' + formatValue(row.evidenceDeltaUpper, unit)
+      + '</sub>'
+  }
+  return (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>'
+}
+
 const interpretation = (row) => {
   if (row.confidence === 'low_baseline_count') return {
     label: 'Needs more baseline',
@@ -2587,7 +2611,7 @@ const comparisonTable = (rows) => {
         formatRowImpact(row),
         meaning.label + '<br><sub>' + meaning.detail + '</sub>',
         formatGate(row),
-        (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
+        formatEvidence(row),
       ].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
