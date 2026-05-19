@@ -4013,11 +4013,17 @@ jobs:
               tone: 'neutral',
               color: '#94a3b8',
             }
-            if (row.direction === 'improved') return {
+            if (row.direction === 'improved' && typeof row.semanticImpactScore === 'number' && row.semanticImpactScore <= -1) return {
               label: 'Meaningfully lower',
-              detail: 'Lower than baseline by more than the noise floor and outside normal range.',
+              detail: 'Lower than baseline by enough to cross the configured review threshold.',
               tone: 'good',
               color: '#10b981',
+            }
+            if (row.direction === 'improved') return {
+              label: 'Slightly lower, ok',
+              detail: 'Lower than baseline, but still inside the configured review budget.',
+              tone: 'neutral',
+              color: '#94a3b8',
             }
             if (row.direction === 'regressed') return {
               label: 'Slightly higher, ok',
@@ -5784,11 +5790,17 @@ jobs:
               tone: 'neutral',
               color: '#94a3b8',
             }
-            if (row.direction === 'improved') return {
+            if (row.direction === 'improved' && typeof row.semanticImpactScore === 'number' && row.semanticImpactScore <= -1) return {
               label: 'Meaningfully lower',
-              detail: 'Lower than baseline by more than the noise floor and outside normal range.',
+              detail: 'Lower than baseline by enough to cross the configured review threshold.',
               tone: 'good',
               color: '#10b981',
+            }
+            if (row.direction === 'improved') return {
+              label: 'Slightly lower, ok',
+              detail: 'Lower than baseline, but still inside the configured review budget.',
+              tone: 'neutral',
+              color: '#94a3b8',
             }
             if (row.direction === 'regressed') return {
               label: 'Slightly higher, ok',
