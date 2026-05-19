@@ -8,11 +8,11 @@ Active.
 
 ## Measurement Classes
 
-| Class | Examples | Primary Question | Gate Model |
-| --- | --- | --- | --- |
-| `deterministic` | Nix closure size, source lines, file counts | Did a structural quantity exceed its budget? | Budget/diff against a comparable baseline. |
-| `wall-clock` | Devenv shell eval, task runtime, CLI command latency | Did this PR make this operation slower on the same runner conditions? | Paired same-run base/head samples before merge blocking. |
-| `diagnostic` | OTEL-traced shell eval, host context, trace breakdowns | Where did time go? | Never merge-blocking; explains measurements. |
+| Class           | Examples                                               | Primary Question                                                      | Gate Model                                               |
+| --------------- | ------------------------------------------------------ | --------------------------------------------------------------------- | -------------------------------------------------------- |
+| `deterministic` | Nix closure size, source lines, file counts            | Did a structural quantity exceed its budget?                          | Budget/diff against a comparable baseline.               |
+| `wall-clock`    | Devenv shell eval, task runtime, CLI command latency   | Did this PR make this operation slower on the same runner conditions? | Paired same-run base/head samples before merge blocking. |
+| `diagnostic`    | OTEL-traced shell eval, host context, trace breakdowns | Where did time go?                                                    | Never merge-blocking; explains measurements.             |
 
 The class is part of the observation contract through `measurementKind`.
 The comparison policy is part of the gate contract through `comparisonMode`.
