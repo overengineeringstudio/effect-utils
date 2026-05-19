@@ -3233,7 +3233,7 @@ jobs:
                 ) as $direction
                 | (
                     if $baseline <= 0 then null
-                    elif (policy_enabled($policy) != true) then 0
+                    elif (policy_enabled($policy) != true) then null
                     elif $withinRobustBand then 0
                     elif ($delta | abs_value) <= $noise then 0
                     elif ($confidence == "threshold_exceeded" and $delta > 0) then ([0, ($currentRobustLower - $robustUpper), $delta] | max) / $warnBudget
@@ -3243,7 +3243,8 @@ jobs:
                     end
                   ) as $semanticImpactScore
                 | (
-                    if $semanticImpactScore == null then "unknown"
+                    if (policy_enabled($policy) != true) then "diagnostic"
+                    elif $semanticImpactScore == null then "unknown"
                     elif $semanticImpactScore == 0 then "neutral"
                     elif $semanticImpactScore >= ($failBudget / $warnBudget) then "fail_boundary"
                     elif $semanticImpactScore >= 1 then "warn_boundary"
@@ -3609,6 +3610,13 @@ jobs:
             return sign + formatNumber(Math.round(value * 100) / 100) + 'x'
           }
 
+          const formatRowImpact = (row) => {
+            if (row.confidence === 'diagnostic' || row.gateReason === 'disabled' || row.semanticImpactKind === 'diagnostic') {
+              return 'diagnostic'
+            }
+            return formatSemanticImpact(row.semanticImpactScore)
+          }
+
           const interpretation = (row) => {
             if (row.confidence === 'low_baseline_count') return {
               label: 'Needs more baseline',
@@ -3805,7 +3813,7 @@ jobs:
                   formatValue(row.baseline, unit) + baselineRange,
                   formatValue(row.current, unit),
                   formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
-                  formatSemanticImpact(row.semanticImpactScore),
+                  formatRowImpact(row),
                   meaning.label + '<br><sub>' + meaning.detail + '</sub>',
                   formatGate(row),
                   (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
@@ -3842,7 +3850,7 @@ jobs:
                   formatValue(row.current, unit),
                   formatDelta(row.delta, unit),
                   formatRatio(row.ratio),
-                  formatSemanticImpact(row.semanticImpactScore),
+                  formatRowImpact(row),
                 ].map(escapeCell).join(' | ') + ' |'
               }),
             ].join('\n')
@@ -3858,6 +3866,7 @@ jobs:
           const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
             const chartRows = rows
               .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
+              .filter((row) => row.gateable === true)
               .filter((row) => typeof row.semanticImpactScore === 'number')
               .sort((left, right) => (left.semanticImpactScore || 0) - (right.semanticImpactScore || 0))
               .slice(0, visibleLimit)
@@ -4870,7 +4879,7 @@ jobs:
                 ) as $direction
                 | (
                     if $baseline <= 0 then null
-                    elif (policy_enabled($policy) != true) then 0
+                    elif (policy_enabled($policy) != true) then null
                     elif $withinRobustBand then 0
                     elif ($delta | abs_value) <= $noise then 0
                     elif ($confidence == "threshold_exceeded" and $delta > 0) then ([0, ($currentRobustLower - $robustUpper), $delta] | max) / $warnBudget
@@ -4880,7 +4889,8 @@ jobs:
                     end
                   ) as $semanticImpactScore
                 | (
-                    if $semanticImpactScore == null then "unknown"
+                    if (policy_enabled($policy) != true) then "diagnostic"
+                    elif $semanticImpactScore == null then "unknown"
                     elif $semanticImpactScore == 0 then "neutral"
                     elif $semanticImpactScore >= ($failBudget / $warnBudget) then "fail_boundary"
                     elif $semanticImpactScore >= 1 then "warn_boundary"
@@ -5246,6 +5256,13 @@ jobs:
             return sign + formatNumber(Math.round(value * 100) / 100) + 'x'
           }
 
+          const formatRowImpact = (row) => {
+            if (row.confidence === 'diagnostic' || row.gateReason === 'disabled' || row.semanticImpactKind === 'diagnostic') {
+              return 'diagnostic'
+            }
+            return formatSemanticImpact(row.semanticImpactScore)
+          }
+
           const interpretation = (row) => {
             if (row.confidence === 'low_baseline_count') return {
               label: 'Needs more baseline',
@@ -5442,7 +5459,7 @@ jobs:
                   formatValue(row.baseline, unit) + baselineRange,
                   formatValue(row.current, unit),
                   formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
-                  formatSemanticImpact(row.semanticImpactScore),
+                  formatRowImpact(row),
                   meaning.label + '<br><sub>' + meaning.detail + '</sub>',
                   formatGate(row),
                   (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
@@ -5479,7 +5496,7 @@ jobs:
                   formatValue(row.current, unit),
                   formatDelta(row.delta, unit),
                   formatRatio(row.ratio),
-                  formatSemanticImpact(row.semanticImpactScore),
+                  formatRowImpact(row),
                 ].map(escapeCell).join(' | ') + ' |'
               }),
             ].join('\n')
@@ -5495,6 +5512,7 @@ jobs:
           const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
             const chartRows = rows
               .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
+              .filter((row) => row.gateable === true)
               .filter((row) => typeof row.semanticImpactScore === 'number')
               .sort((left, right) => (left.semanticImpactScore || 0) - (right.semanticImpactScore || 0))
               .slice(0, visibleLimit)
