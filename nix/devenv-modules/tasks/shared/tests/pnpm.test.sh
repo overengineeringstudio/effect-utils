@@ -72,7 +72,7 @@ make_missing_export_fixture() {
   mkdir -p "$package_root"
   mkdir -p "$root/node_modules"
   cat > "$package_root/package.json" <<'EOF'
-{"name":"pkg","files":["src"],"exports":{"./vitest":{"default":"./src/vitest.js"}}}
+{"name":"pkg","files":["src"],"exports":{".":{"default":"./src/index.js"}}}
 EOF
   ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 }
@@ -100,6 +100,43 @@ make_missing_type_export_fixture() {
 {"name":"pkg","files":["dist"],"exports":{"./internal/module-runner":{"types":"./dist/module-runner.d.ts","default":"./dist/module-runner.js"}}}
 EOF
   touch "$package_root/dist/module-runner.js"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
+make_builtin_dependency_fixture() {
+  local root="$1"
+
+  mkdir -p "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg"
+  mkdir -p "$root/node_modules"
+  cat > "$root/node_modules/.pnpm/pkg@1.0.0/node_modules/pkg/package.json" <<'EOF'
+{"name":"pkg","dependencies":{"buffer":"^5.0.0","node:test":"^1.0.0"}}
+EOF
+  ln -s .pnpm/pkg@1.0.0/node_modules/pkg "$root/node_modules/pkg"
+}
+
+make_extensionless_main_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root/lib"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["lib"],"main":"./lib/index","exports":{".":{"default":"./lib/index"}}}
+EOF
+  touch "$package_root/lib/index.js"
+  ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
+}
+
+make_missing_subpath_export_fixture() {
+  local root="$1"
+  local package_root="$root/store/v11/links/pkg/1.0.0/hash/node_modules/pkg"
+
+  mkdir -p "$package_root/dist"
+  mkdir -p "$root/node_modules"
+  cat > "$package_root/package.json" <<'EOF'
+{"name":"pkg","files":["dist"],"main":"./dist/index.js","exports":{".":{"default":"./dist/index.js"},"./optional":{"default":"./dist/optional.js"}}}
+EOF
+  touch "$package_root/dist/index.js"
   ln -s ../store/v11/links/pkg/1.0.0/hash/node_modules/pkg "$root/node_modules/pkg"
 }
 
@@ -313,6 +350,33 @@ check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_type_dir/no
 exit_code=$?
 set -e
 assert_exit_code 0 "$exit_code" "projection health ignores type-only export targets"
+
+echo "Test 18: Projection health ignores dependency names that Node resolves as built-ins"
+builtin_dependency_dir="$test_dir/builtin-dependency"
+make_builtin_dependency_fixture "$builtin_dependency_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$builtin_dependency_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health ignores built-in dependency names"
+
+echo "Test 19: Projection health accepts extensionless main and root export targets"
+extensionless_main_dir="$test_dir/extensionless-main"
+make_extensionless_main_fixture "$extensionless_main_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$extensionless_main_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health accepts extensionless runtime targets"
+
+echo "Test 20: Projection health ignores missing optional subpath export targets"
+missing_subpath_export_dir="$test_dir/missing-subpath-export"
+make_missing_subpath_export_fixture "$missing_subpath_export_dir"
+set +e
+check_node_modules_links_healthy node "$PROJECTION_SCRIPT" "$missing_subpath_export_dir/node_modules" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 0 "$exit_code" "projection health ignores optional subpath exports"
 
 echo ""
 echo "All pnpm task helper tests passed"

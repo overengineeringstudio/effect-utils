@@ -116,9 +116,12 @@ let
   injectedSourcePaths = lib.unique (lib.concatMap getInjectedDeps packages);
 
   manifestPaths = lib.concatMapStringsSep " " (path: ''"${path}/package.json"'') packages;
-  nodeModulesPaths = lib.concatMapStringsSep " " (path: ''"${path}/node_modules"'') packages;
+  packageNodeModulesPaths = map (
+    path: if path == "." then "node_modules" else "${path}/node_modules"
+  ) packages;
+  nodeModulesPaths = lib.concatMapStringsSep " " lib.escapeShellArg packageNodeModulesPaths;
   healthCheckNodeModulesPaths = lib.concatStringsSep " " (
-    [ ''"node_modules"'' ] ++ (map (path: ''"${path}/node_modules"'') packages)
+    map lib.escapeShellArg (lib.unique ([ "node_modules" ] ++ packageNodeModulesPaths))
   );
   lockFilePaths = ''"pnpm-lock.yaml"'';
 
