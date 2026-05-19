@@ -431,7 +431,7 @@ describe('ci workflow devenv perf helpers', () => {
       'if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      'elif ($comparisonMode == "historical" and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"',
+      'elif ($canUseRobustBandSuppression and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"',
     )
     expect(ciWorkflowSource).toContain("label: 'Needs more baseline'")
     expect(ciWorkflowSource).toContain("label: 'Needs repeat'")
