@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const { createRequire } = require('module')
+const { builtinModules, createRequire } = require('module')
 const crypto = require('crypto')
 
 const mode = process.env.NODE_MODULES_HELPER_MODE || 'health'
@@ -48,6 +48,13 @@ const collectHealthEntryPaths = (nodeModulesDir) => {
 }
 
 const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
+  if (
+    builtinModules.includes(dependencyName) ||
+    builtinModules.includes(dependencyName.replace(/^node:/, ''))
+  ) {
+    return 'builtin'
+  }
+
   const packagePath = dependencyName.split('/')
   const searchPaths = requireFromPkg.resolve.paths(dependencyName) ?? []
 
@@ -83,6 +90,38 @@ const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   return []
 }
 
+const collectRootRuntimeExportTargets = (exportsValue) => {
+  if (typeof exportsValue === 'string' || Array.isArray(exportsValue)) {
+    return collectRuntimeExportTargets(exportsValue)
+  }
+
+  if (!exportsValue || typeof exportsValue !== 'object') return []
+
+  if (Object.hasOwn(exportsValue, '.')) {
+    return collectRuntimeExportTargets(exportsValue['.'])
+  }
+
+  const keys = Object.keys(exportsValue)
+  if (keys.some((key) => key.startsWith('.'))) return []
+
+  return collectRuntimeExportTargets(exportsValue)
+}
+
+const targetExistsWithNodeResolution = (packageDir, target) => {
+  const resolved = path.resolve(packageDir, target)
+  if (fs.existsSync(resolved)) return true
+
+  for (const suffix of ['.js', '.json', '.node', '.mjs', '.cjs']) {
+    if (fs.existsSync(`${resolved}${suffix}`)) return true
+  }
+
+  for (const indexFile of ['index.js', 'index.json', 'index.node', 'index.mjs', 'index.cjs']) {
+    if (fs.existsSync(path.join(resolved, indexFile))) return true
+  }
+
+  return false
+}
+
 const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
   if (!packageDir.includes('/v11/links/')) return
 
@@ -98,7 +137,7 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
   }
 
   if (pkg.exports !== undefined) {
-    targets.push(...collectRuntimeExportTargets(pkg.exports))
+    targets.push(...collectRootRuntimeExportTargets(pkg.exports))
   }
 
   for (const target of targets) {
@@ -114,8 +153,7 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
       continue
     }
 
-    const resolved = path.resolve(packageDir, target)
-    if (!fs.existsSync(resolved)) {
+    if (!targetExistsWithNodeResolution(packageDir, target)) {
       failures.push(`${pkg.name ?? entryPath} -> ${target} (${packageDir})`)
     }
   }
