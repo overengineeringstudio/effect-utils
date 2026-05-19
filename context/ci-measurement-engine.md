@@ -72,6 +72,14 @@ Every observation is interpreted through a registry entry:
 The registry is the public API for cross-repo reuse. Repos may add local entries,
 but they must not fork comparison semantics.
 
+Wall-clock registry entries should include a workload dimension when the same
+logical command can be measured under different cache conditions. For example,
+`task_check_quick_warm` and `task_check_quick_forced` intentionally share the
+semantic path `devenv / quality gates / check:quick`, but they are separate IDs
+because one measures the warm cached no-op path while the other refreshes the
+devenv task cache. This avoids false product claims such as treating a cached
+orchestration improvement as a full developer quick-check improvement.
+
 ## Comparison Semantics
 
 | Kind            | Merge-gate mode | Evidence model                                     |

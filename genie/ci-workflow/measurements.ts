@@ -19,6 +19,7 @@ export type CiMeasurementDescriptor = {
   readonly group?: string
   readonly path?: readonly string[]
   readonly description?: string
+  readonly dimensions?: Record<string, string | number | boolean | null>
 }
 
 export type CiMeasurementGatePolicy = {
@@ -244,7 +245,8 @@ export const ciMeasurementBaselineWorkflowDispatchInputs = {
     type: 'string',
   },
   measurement_baseline_label: {
-    description: 'Optional human label for a measurement baseline backfill run, for example PR number.',
+    description:
+      'Optional human label for a measurement baseline backfill run, for example PR number.',
     required: false,
     default: '',
     type: 'string',
@@ -286,6 +288,9 @@ export type DevenvPerfTaskProbe =
       readonly label?: string
       readonly group?: string
       readonly description?: string
+      readonly path?: readonly string[]
+      readonly dimensions?: Record<string, string | number | boolean | null>
+      readonly extraArgs?: readonly string[]
       readonly warmupRepetitions?: number
       readonly repetitions?: number
       readonly gate?: CiMeasurementGatePolicy
@@ -341,6 +346,22 @@ const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy =
       statisticalToleranceAbs: 0.03,
     }
   }
+  if (probeId === 'task_check_quick_forced') {
+    return {
+      enabled: true,
+      comparisonMode: 'paired',
+      minPairedSamples: 3,
+      minBaselineSources: 10,
+      minCurrentSamples: 3,
+      warnRatio: 1.15,
+      failRatio: 1.3,
+      warnAbs: 1.5,
+      failAbs: 4,
+      noiseFloor: 0.75,
+      statisticalToleranceRatio: 0.15,
+      statisticalToleranceAbs: 1,
+    }
+  }
   return {
     enabled: true,
     comparisonMode: 'paired',
@@ -366,11 +387,18 @@ const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
   const args = probe.command.map(shellSingleQuote).join(' ')
   const trace = probe.traceOutput ?? ''
   const gatePolicy = devenvPerfGatePolicy(probe)
+  const metadata = JSON.stringify({
+    path: probe.path ?? [],
+    dimensions: probe.dimensions ?? {},
+  })
   const defaultRepetitions = gatePolicy.enabled ? gatePolicy.minCurrentSamples : 1
   const repetitions = Math.max(1, Math.floor(probe.repetitions ?? defaultRepetitions))
   const defaultWarmupRepetitions = gatePolicy.enabled && repetitions > 1 ? 1 : 0
-  const warmupRepetitions = Math.max(0, Math.floor(probe.warmupRepetitions ?? defaultWarmupRepetitions))
-  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(warmupRepetitions))} ${shellSingleQuote(String(repetitions))} ${shellSingleQuote(JSON.stringify(gatePolicy))} ${args}`
+  const warmupRepetitions = Math.max(
+    0,
+    Math.floor(probe.warmupRepetitions ?? defaultWarmupRepetitions),
+  )
+  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(warmupRepetitions))} ${shellSingleQuote(String(repetitions))} ${shellSingleQuote(JSON.stringify(gatePolicy))} ${shellSingleQuote(metadata)} ${args}`
 }
 
 const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe => {
@@ -379,6 +407,9 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
   const label = typeof probe === 'string' ? undefined : probe.label
   const group = typeof probe === 'string' ? undefined : probe.group
   const description = typeof probe === 'string' ? undefined : probe.description
+  const path = typeof probe === 'string' ? undefined : probe.path
+  const dimensions = typeof probe === 'string' ? undefined : probe.dimensions
+  const extraArgs = typeof probe === 'string' ? [] : (probe.extraArgs ?? [])
   const warmupRepetitions = typeof probe === 'string' ? undefined : probe.warmupRepetitions
   const repetitions = typeof probe === 'string' ? undefined : probe.repetitions
   const gate = typeof probe === 'string' ? undefined : probe.gate
@@ -386,11 +417,23 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
     id: id ?? `task_${task.replaceAll(':', '_')}`,
     label: label ?? task,
     group: group ?? 'devenv tasks',
+    path,
     description: description ?? `Runs the devenv task '${task}' in before mode without the TUI.`,
+    dimensions,
     warmupRepetitions,
     repetitions,
     gate,
-    command: ['$DEVENV_BIN', 'tasks', 'run', task, '--mode', 'before', '--no-tui', '--show-output'],
+    command: [
+      '$DEVENV_BIN',
+      'tasks',
+      'run',
+      task,
+      '--mode',
+      'before',
+      '--no-tui',
+      '--show-output',
+      ...extraArgs,
+    ],
   }
 }
 
@@ -402,9 +445,7 @@ const devenvPerfProbes = (
     label: 'Shell eval with OTEL trace',
     group: 'devenv shell',
     description: 'Evaluates the dev shell with native devenv JSON tracing enabled.',
-    command: [
-      '$DEVENV_SHELL_TRACE_COMMAND',
-    ],
+    command: ['$DEVENV_SHELL_TRACE_COMMAND'],
     traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
   },
   {
@@ -534,6 +575,7 @@ json_append_timing() {
   local stderr="$8"
   local trace="$9"
   local gate_policy="${dollar}{10}"
+  local metadata_json="${dollar}{11}"
   local samples_file="$ARTIFACT_DIR/$id.samples.json"
 
   if [ "$first" -eq 0 ]; then
@@ -553,6 +595,7 @@ json_append_timing() {
       --arg stderr "$stderr" \
       --arg trace "$trace" \
       --argjson gatePolicy "$gate_policy" \
+      --argjson metadata "$metadata_json" \
       'def median:
         sort as $sorted
         | ($sorted | length) as $count
@@ -594,7 +637,8 @@ json_append_timing() {
         durationMs:$durationMs,
         stdout:$stdout,
         stderr:$stderr,
-          trace:(if $trace == "" then null else $trace end),
+        trace:(if $trace == "" then null else $trace end),
+          metadata:$metadata,
           gatePolicy:$gatePolicy,
           statistics: {
           sampleCount: ($sampleList | length),
@@ -637,7 +681,8 @@ measure() {
     local warmup_repetitions="$6"
     local repetitions="$7"
     local gate_policy="$8"
-    shift 8
+    local metadata_json="$9"
+    shift 9
   case "$trace_file" in
     '$ARTIFACT_DIR'*) trace_file="${dollar}{ARTIFACT_DIR}${dollar}{trace_file#'$ARTIFACT_DIR'}" ;;
   esac
@@ -805,7 +850,7 @@ measure() {
   cp "$stdout" "$ARTIFACT_DIR/$id.stdout" 2>/dev/null || true
   cp "$stderr" "$ARTIFACT_DIR/$id.stderr" 2>/dev/null || true
 
-  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file" "$gate_policy"
+  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file" "$gate_policy" "$metadata_json"
 
   if [ "$status" -ne 0 ]; then
     if [ "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" = "1" ]; then
@@ -906,6 +951,7 @@ jq -n \
           id: ("devenv." + .id + ".duration"),
           label: .label,
           group: .group,
+          path: (.metadata.path // []),
           description: .description,
           measurementKind: (if (.gatePolicy.enabled == false) then "diagnostic" else "wall-clock" end),
           name: ("devenv." + .id + ".duration"),
@@ -981,7 +1027,7 @@ jq -n \
             ),
             pairedDeltaSamples: ((.statistics.pairedDeltaSampleDurationMs // []) | map(. / 1000))
           },
-          dimensions: {
+          dimensions: ((.metadata.dimensions // {}) + {
             probe: .id,
             probeLabel: .label,
             status: .status,
@@ -1006,7 +1052,7 @@ jq -n \
             phase: "warm",
             devenvRev: $devenvRev,
             otelServiceName: $otelServiceName
-          }
+          })
         })
     ),
     artifacts: [
@@ -1078,7 +1124,9 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
       BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
       BASELINE_SEED_RUNS_JSON: ciMeasurementBaselineSeedRunsJson(opts),
       BASELINE_MAX_RUNS: String(opts.maxRuns ?? 5),
-      BASELINE_MAX_CANDIDATE_RUNS: String(opts.maxCandidateRuns ?? Math.max((opts.maxRuns ?? 5) * 3, 20)),
+      BASELINE_MAX_CANDIDATE_RUNS: String(
+        opts.maxCandidateRuns ?? Math.max((opts.maxRuns ?? 5) * 3, 20),
+      ),
       BASELINE_REQUIRED_OBSERVATIONS_JSON: ciMeasurementRequiredObservationsJson(opts),
     },
     run: String.raw`set -euo pipefail
@@ -2512,6 +2560,8 @@ const humanProbe = (row) => {
     task_pnpm_install: 'pnpm:install',
     task_genie_run: 'genie:run',
     task_check_quick: 'check:quick',
+    task_check_quick_warm: 'Warm cached check:quick',
+    task_check_quick_forced: 'Forced check:quick',
   }
   if (probe && labels[probe]) return labels[probe]
   if (name.startsWith('devenv.') && name.endsWith('.duration')) {
@@ -2547,6 +2597,8 @@ const chartProbe = (row) => {
     task_pnpm_install: 'pnpm:install',
     task_genie_run: 'genie:run',
     task_check_quick: 'check:quick',
+    task_check_quick_warm: 'Warm cached check:quick',
+    task_check_quick_forced: 'Forced check:quick',
   }
   if (probe && labels[probe]) return labels[probe]
   return humanProbe(row)

@@ -315,7 +315,8 @@ const extraJobs: Record<string, any> = {
           sha,
           source: 'manual-backfill',
           artifacts: ['devenv-perf'],
-          notes: 'Backfilled with the current measurement workflow for the effect-utils #658 rollout.',
+          notes:
+            'Backfilled with the current measurement workflow for the effect-utils #658 rollout.',
         })),
       ],
       baselineMaxRuns: 20,
@@ -344,11 +345,34 @@ const extraJobs: Record<string, any> = {
         },
         {
           task: 'check:quick',
-          label: 'Quick check task',
+          id: 'task_check_quick_warm',
+          label: 'Warm cached check:quick',
           group: 'quality gates',
-          description: 'Runs the fast local quality gate through devenv.',
+          path: ['quality gates', 'check:quick'],
+          description:
+            'Runs the fast local quality gate through devenv after a warmup. This measures the cached no-op path and task/status orchestration overhead.',
+          dimensions: {
+            workload: 'cached-no-op',
+            taskCacheMode: 'warm',
+          },
           warmupRepetitions: 1,
           repetitions: 5,
+        },
+        {
+          task: 'check:quick',
+          id: 'task_check_quick_forced',
+          label: 'Forced check:quick',
+          group: 'quality gates',
+          path: ['quality gates', 'check:quick'],
+          description:
+            'Runs the fast local quality gate through devenv with task-cache refresh. This measures the developer-facing quick-check workload rather than the cached no-op path.',
+          dimensions: {
+            workload: 'forced-task-cache',
+            taskCacheMode: 'refresh',
+          },
+          extraArgs: ['--refresh-task-cache'],
+          warmupRepetitions: 0,
+          repetitions: 3,
         },
       ],
       probes: [

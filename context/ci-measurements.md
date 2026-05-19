@@ -160,6 +160,21 @@ The comparison operates on per-pair deltas. A wall-clock row becomes gateable
 only when the configured minimum paired sample count is present. Until then,
 the row is partial/advisory even if the historical raw delta is large.
 
+Wall-clock probe IDs must name the workload they actually measure. Repeated
+warm probes are useful for shell and task-orchestration overhead, but they are
+not a proxy for an uncached developer workflow. For example:
+
+| Probe                     | Workload                 | Interprets As                                      |
+| ------------------------- | ------------------------ | -------------------------------------------------- |
+| `task_check_quick_warm`   | Warm cached no-op path   | Devenv task/status orchestration overhead.         |
+| `task_check_quick_forced` | `--refresh-task-cache`   | Developer-facing quick-check work with cache miss. |
+| `shell_eval_warm`         | Warm shell entry         | Shell evaluation and setup overhead.               |
+| `shell_eval_traced`       | Trace capture diagnostic | Explanation input, not a gate.                     |
+
+The label and `dimensions.workload` must make this distinction visible in the
+PR comment so reviewers do not read a cached-path movement as an end-to-end
+developer speedup.
+
 For PR gates, the preferred evidence protocol is `paired-delta-quantile-v1`:
 
 ```text
