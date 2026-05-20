@@ -14,6 +14,7 @@ import { MR_VERSION } from '../lib/version.ts'
 import {
   addCommand,
   applyCommand,
+  checkCommand,
   configCommand,
   depsCommand,
   envCommand,
@@ -54,6 +55,7 @@ export const mrCommand = Cli.Command.make('mr', { cwd: cwdOption }).pipe(
     envCommand,
     statusCommand,
     lsCommand,
+    checkCommand,
     fetchCommand,
     applyCommand,
     lockCommand,
