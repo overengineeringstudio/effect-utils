@@ -259,7 +259,6 @@ describe('ci workflow merge queue helpers', () => {
     expect(ciWorkflowSource).toContain('export const mergeQueueAdmittedJob')
     expect(ciWorkflowSource).toContain('export const mergeQueueSemanticGateJob')
     expect(ciWorkflowSource).toContain('export const mergeQueueSemanticGateJobs')
-    expect(ciWorkflowSource).toContain("const defaultMergeQueueControlRunner = 'ubuntu-latest'")
     expect(ciWorkflowSource).toContain('trustNeedsAdmission: true')
     expect(ciWorkflowSource).toContain('requiredGateCheckName(name)')
   })

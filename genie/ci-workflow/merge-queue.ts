@@ -59,8 +59,6 @@ const defaultMergeQueuePermissions = {
   'pull-requests': 'read',
 } as const
 
-const defaultMergeQueueControlRunner = 'ubuntu-latest' as const
-
 const mergeRequiredAdmissionPermissions = (
   permissions: WorkflowPermissions | undefined,
 ): WorkflowPermissions => {
@@ -213,7 +211,7 @@ export type MergeQueueAdmissionGateJobOptions = MergeQueueAdmissionStepOptions &
 }
 
 export const mergeQueueAdmissionGateJob = ({
-  runsOn = defaultMergeQueueControlRunner,
+  runsOn = ['nix'],
   timeoutMinutes = 5,
   ...stepOptions
 }: MergeQueueAdmissionGateJobOptions = {}): WorkflowJob => ({
@@ -248,7 +246,7 @@ export const mergeQueueAdmissionDeferredLines = (name: string) =>
 export const mergeQueueSemanticGateJob = ({
   name,
   needs,
-  runsOn = defaultMergeQueueControlRunner,
+  runsOn = ['nix'],
   timeoutMinutes = 20,
   tokenExpression = '${{ secrets.GITHUB_TOKEN }}',
 }: MergeQueueSemanticGateJobOptions): WorkflowJob => ({
