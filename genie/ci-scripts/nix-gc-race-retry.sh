@@ -6,7 +6,7 @@ run_nix_gc_race_retry() {
   local max="${NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
-  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature had_errexit
+  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature had_errexit
 
   start="$(date +%s)"
 
@@ -54,7 +54,7 @@ run_nix_gc_race_retry() {
     if [ "$rc" -eq 0 ]; then
       echo "::notice::[ci] completed $task in $elapsed s"
       if [ "$attempt" -gt 1 ]; then
-        write_summary success "Recovered from Nix GC race after retry"
+        write_summary success "Recovered from transient Nix failure after retry"
       else
         write_summary success
       fi
@@ -70,18 +70,22 @@ run_nix_gc_race_retry() {
       tr -d '[:space:]' || true)
     saw_invalid_path=false
     saw_cachix_signature=false
+    saw_fetch_signature=false
     [ -n "$path" ] && saw_invalid_path=true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
+    printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot read file from tarball:[[:space:]]*Truncated tar archive detected while reading data' && saw_fetch_signature=true || true
     rm -f "$log"
 
-    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ]; then
-      echo "::warning::[ci] $task failed after $elapsed s without a detected Nix store validity race"
-      write_summary failure "No Nix GC race signature detected"
+    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ] && [ "$saw_fetch_signature" != true ]; then
+      echo "::warning::[ci] $task failed after $elapsed s without a detected transient Nix failure"
+      write_summary failure "No transient Nix failure signature detected"
       return "$rc"
     fi
 
-    if [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
+    if [ "$saw_fetch_signature" = true ]; then
+      echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
+    elif [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
       echo "::warning::Nix store validity race detected for $task via cachix eval wrapper (attempt $attempt/$max): $path"
     elif [ "$saw_cachix_signature" = true ]; then
       echo "::warning::Nix store validity race detected for $task via cachix eval wrapper without extracted store path (attempt $attempt/$max)"
@@ -96,7 +100,7 @@ run_nix_gc_race_retry() {
 
   now=$(date +%s)
   elapsed=$((now - start))
-  echo "::error::Nix GC race retry exhausted for $task ($max attempts)"
-  write_summary failure "Nix GC race retry exhausted"
+  echo "::error::Transient Nix retry exhausted for $task ($max attempts)"
+  write_summary failure "Transient Nix retry exhausted"
   return 1
 }

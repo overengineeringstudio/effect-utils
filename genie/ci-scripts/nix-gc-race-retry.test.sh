@@ -80,7 +80,28 @@ chmod +x "$cachix_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "cachix-fixture" "$cachix_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/cachix-attempt")" "cachix wrapper retry count"
 
-echo "Test 3: does not retry when literal signature strings appear outside Nix error context"
+echo "Test 3: retries truncated Nix input tarball failures"
+fetch_fixture="$test_dir/fetch-fixture.sh"
+cat > "$fetch_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/fetch-attempt"
+attempt=1
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+if [ "\$attempt" -eq 1 ]; then
+  echo 2 > "\$attempt_file"
+  echo "error: cannot read file from tarball: Truncated tar archive detected while reading data" >&2
+  exit 1
+fi
+echo "fetch recovered"
+EOF
+chmod +x "$fetch_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "fetch-fixture" "$fetch_fixture" >/dev/null
+assert_eq "2" "$(cat "$test_dir/fetch-attempt")" "truncated tarball retry count"
+
+echo "Test 4: does not retry when literal signature strings appear outside Nix error context"
 false_positive_fixture="$test_dir/false-positive-fixture.sh"
 cat > "$false_positive_fixture" <<'EOF'
 #!/usr/bin/env bash
@@ -96,7 +117,7 @@ exit_code=$?
 set -e
 assert_exit_code 9 "$exit_code" "non-error-context strings do not trigger retries"
 
-echo "Test 4: preserves the original exit code when no GC-race signature is present"
+echo "Test 5: preserves the original exit code when no retry signature is present"
 non_retry_fixture="$test_dir/non-retry-fixture.sh"
 cat > "$non_retry_fixture" <<'EOF'
 #!/usr/bin/env bash
