@@ -465,15 +465,13 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('devenv-perf-warm-median-v2')
     expect(generatedCiWorkflowYamlSource).toContain("CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'")
     expect(generatedCiWorkflowYamlSource).toContain(
-      'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
+      'CI_MEASUREMENT_PR_COMMENT_TITLE: CI Measurements',
     )
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_SEED_RUNS_JSON:')
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_REQUIRED_OBSERVATIONS_JSON:')
     expect(generatedCiWorkflowYamlSource).toContain('BASELINE_MAX_CANDIDATE_RUNS:')
-    expect(generatedCiWorkflowYamlSource).toContain('"id":"devenv.task_check_quick_warm.duration"')
-    expect(generatedCiWorkflowYamlSource).toContain(
-      '"id":"devenv.task_check_quick_forced.duration"',
-    )
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'task_check_quick_warm'")
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'task_check_quick_forced'")
     expect(generatedCiWorkflowYamlSource).not.toContain('"id":"devenv.task_check_quick.duration"')
     expect(ciWorkflowSource).toContain(
       'requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]',
@@ -481,10 +479,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('baselineMaxCandidateRuns?: number')
     expect(ciWorkflowSource).toContain('baseline_requirements_satisfied')
     expect(ciWorkflowSource).toContain('observationCounts: ($observationCounts[0] // null)')
-    expect(generatedCiWorkflowYamlSource).toContain('"runId":"25959801150"')
-    expect(generatedCiWorkflowYamlSource).toContain('"runId":"25959814835"')
-    expect(generatedCiWorkflowYamlSource).toContain('"label":"PR #655"')
-    expect(generatedCiWorkflowYamlSource).toContain('"label":"PR #632"')
+    expect(generatedCiWorkflowYamlSource).toContain('"runId":"26085158592"')
+    expect(generatedCiWorkflowYamlSource).toContain('"label":"main baseline"')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
     expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
     expect(ciWorkflowSource).toContain("contents: 'write'")
