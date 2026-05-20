@@ -24,6 +24,11 @@ on:
         required: false
         default: ''
         type: string
+      measurement_pr_number:
+        description: Optional pull request number to update with CI measurement comments during manual measurement runs.
+        required: false
+        default: ''
+        type: string
       debug_force_nix_diagnostics_failure:
         description: 'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary'
         required: false
@@ -3232,6 +3237,7 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
+          CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: ${{ inputs.measurement_pr_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -5443,6 +5449,7 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
+          CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: ${{ inputs.measurement_pr_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -7305,6 +7312,7 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '12'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
+          CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: ${{ inputs.measurement_pr_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail

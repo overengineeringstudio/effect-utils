@@ -490,6 +490,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
     expect(ciWorkflowSource).toContain('baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('measurement_pr_number:')
+    expect(ciWorkflowSource).toContain("CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: '${{ inputs.measurement_pr_number }}'")
     expect(ciWorkflowSource).toContain('seedRuns: ($seedRuns[0] // [])')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(

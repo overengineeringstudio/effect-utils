@@ -291,6 +291,13 @@ export const ciMeasurementBaselineWorkflowDispatchInputs = {
     default: '',
     type: 'string',
   },
+  measurement_pr_number: {
+    description:
+      'Optional pull request number to update with CI measurement comments during manual measurement runs.',
+    required: false,
+    default: '',
+    type: 'string',
+  },
 } as const
 
 export const ciMeasurementBaselineBackfillPredicate =
@@ -1849,6 +1856,7 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: String(opts?.prComment?.maxHistory ?? 20),
       CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH:
         opts?.prComment?.assetBranch ?? 'ci-measurement-assets',
+      CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: '${{ inputs.measurement_pr_number }}',
       ...(opts?.prComment?.publicAssetCommand === undefined
         ? {}
         : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
