@@ -539,12 +539,42 @@ const devenvPerfRequiredBaselineObservations = (
     .filter((probe) => probe.enabled)
     .map(({ id, minSources }) => ({ id, minSources }))
 
+const ciMeasurementToolBootstrapScript = String.raw`ensure_ci_measurement_tool() {
+  tool_name="$1"
+  nix_attr="$2"
+  if command -v "$tool_name" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v nix >/dev/null 2>&1; then
+    return 1
+  fi
+  if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+    export PATH="$tool_out/bin:$PATH"
+  fi
+  command -v "$tool_name" >/dev/null 2>&1
+}
+
+require_ci_measurement_tool() {
+  tool_name="$1"
+  nix_attr="$2"
+  if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+    return 0
+  fi
+  echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+  exit 1
+}
+`
+
 const renderDevenvPerfScript = (
   opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>,
 ) => {
   const probes = devenvPerfProbes(opts)
 
   return String.raw`set -euo pipefail
+
+${ciMeasurementToolBootstrapScript}
+require_ci_measurement_tool awk gawk
+require_ci_measurement_tool jq jq
 
 ARTIFACT_DIR="$(mkdir -p "$ARTIFACT_DIR" && cd "$ARTIFACT_DIR" && pwd -P)"
 CI_MEASUREMENT_HEAD_DIR="${dollar}{CI_MEASUREMENT_HEAD_DIR:-$PWD}"
@@ -1667,6 +1697,9 @@ export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptio
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
     run: String.raw`set -euo pipefail
+
+${ciMeasurementToolBootstrapScript}
+require_ci_measurement_tool node nodejs
 
 mkdir -p "$ARTIFACT_DIR"
 target_id=${shellSingleQuote(targetId)}
