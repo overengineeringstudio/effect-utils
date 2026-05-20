@@ -510,6 +510,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain(
       "github.workflow }}-${{ github.event_name }}-${{ github.ref }}",
     )
+    expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
+    expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
+    expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).toContain("format('manual-run-{0}', github.run_id)")

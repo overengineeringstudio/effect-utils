@@ -49,16 +49,17 @@ export const standardCIEnv = {
 } as const
 
 /**
- * Cancel superseded CI workflow runs for the same event and ref.
+ * Cancel superseded CI jobs for the same event, ref, and job id.
  *
- * The group key intentionally does not include the job name so a new push
- * cancels the entire older workflow run rather than letting stale sibling jobs
- * continue consuming runner capacity.
+ * This is intentionally job-level, not workflow-level. GitHub can wedge
+ * workflow_dispatch runs before job creation; when that happens, the run has no
+ * check runs, no logs, and the API may return 500 for cancellation. Keeping
+ * concurrency at job level lets workflow evaluation materialize visible jobs
+ * before any scarce-runner throttling applies.
  *
  * Code validation is a branch-protection signal for the latest PR head. Keeping
- * older code-triggered pull_request runs alive can wedge the concurrency bucket
- * behind a stale queued self-hosted job and prevent the current head from
- * materializing any jobs.
+ * older code-triggered pull_request jobs alive can consume scarce runners after
+ * a newer head exists, so jobs with the same id still cancel superseded work.
  *
  * Measurement baseline backfills are keyed by their subject ref and do not
  * cancel in-progress runs so several historical refs can be backfilled without
@@ -73,6 +74,23 @@ export const standardCIEnv = {
  * allowed to materialize full PR CI. Other label events do not change the
  * commit under test and must not cancel an already-running validation run.
  */
+export const ciJobConcurrency = (jobId: string) =>
+  ({
+    group:
+      "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}" +
+      `-${jobId}`,
+    'cancel-in-progress':
+      "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
+  }) as const
+
+const withDefaultJobConcurrency = (jobs: GitHubWorkflowArgs['jobs']): GitHubWorkflowArgs['jobs'] =>
+  Object.fromEntries(
+    Object.entries(jobs).map(([jobId, job]) => [
+      jobId,
+      job.concurrency === undefined ? { ...job, concurrency: ciJobConcurrency(jobId) } : job,
+    ]),
+  )
+
 export const ciWorkflowConcurrency = {
   group:
     "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}",
@@ -83,16 +101,17 @@ export const ciWorkflowConcurrency = {
 /**
  * Standard wrapper for composed CI workflows.
  *
- * This keeps cancellation policy centralized in `effect-utils` instead of
- * making each consumer remember to wire `concurrency` by hand. Repos can still
- * override the policy by passing an explicit `concurrency` field.
+ * This keeps cancellation policy centralized in `effect-utils`. Repos can still
+ * override the workflow-level policy by passing an explicit `concurrency`
+ * field, and individual jobs can opt out or provide their own `concurrency`.
  */
 export const ciWorkflow = (args: GitHubWorkflowArgs) =>
-  (({ concurrency, actionlint, ...rest }) =>
+  (({ concurrency, actionlint, jobs, ...rest }) =>
     githubWorkflow({
-      concurrency: concurrency ?? ciWorkflowConcurrency,
-      actionlint: actionlint ?? defaultActionlintConfig,
       ...rest,
+      ...(concurrency === undefined ? {} : { concurrency }),
+      actionlint: actionlint ?? defaultActionlintConfig,
+      jobs: concurrency === undefined ? withDefaultJobConcurrency(jobs) : jobs,
     }))(args)
 
 export type NixConfigOptions = {
