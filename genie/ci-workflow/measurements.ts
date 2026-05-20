@@ -1233,6 +1233,26 @@ else
 fi
 echo "Using GitHub CLI: $GH_BIN"
 
+CURL_BIN="$(command -v curl || true)"
+if [ -z "$CURL_BIN" ]; then
+  echo "::notice::curl is not on PATH; resolving curl through Nix"
+  if ! CURL_BIN="$(nix build --no-link --print-out-paths nixpkgs#curl 2>/dev/null)/bin/curl"; then
+    echo "::notice::unable to resolve curl through Nix; skipping previous artifact download"
+    exit 0
+  fi
+fi
+echo "Using curl: $CURL_BIN"
+
+UNZIP_BIN="$(command -v unzip || true)"
+if [ -z "$UNZIP_BIN" ]; then
+  echo "::notice::unzip is not on PATH; resolving unzip through Nix"
+  if ! UNZIP_BIN="$(nix build --no-link --print-out-paths nixpkgs#unzip 2>/dev/null)/bin/unzip"; then
+    echo "::notice::unable to resolve unzip through Nix; skipping previous artifact download"
+    exit 0
+  fi
+fi
+echo "Using unzip: $UNZIP_BIN"
+
 repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
 branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
@@ -1320,6 +1340,35 @@ baseline_requirements_satisfied() {
   jq -e '.required | all(.satisfied == true)' "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" >/dev/null
 }
 
+download_artifact_archive() {
+  local artifact_id="$1"
+  local output_dir="$2"
+  local archive_file="$output_dir/artifact.zip"
+  local artifact_url="https://api.github.com/repos/$repo/actions/artifacts/$artifact_id/zip"
+  local curl_args=(
+    --fail
+    --location
+    --silent
+    --show-error
+    --connect-timeout 15
+    --max-time "$download_timeout_seconds"
+    --retry 2
+    --retry-delay 2
+    --retry-max-time "$download_timeout_seconds"
+    --header "Accept: application/vnd.github+json"
+    --header "X-GitHub-Api-Version: 2022-11-28"
+    --output "$archive_file"
+  )
+
+  if [ -n "${dollar}{GH_TOKEN:-}" ]; then
+    curl_args+=(--header "Authorization: Bearer ${dollar}{GH_TOKEN}")
+  fi
+
+  "$CURL_BIN" "${dollar}{curl_args[@]}" "$artifact_url"
+  "$UNZIP_BIN" -q -o "$archive_file" -d "$output_dir"
+  rm -f "$archive_file"
+}
+
 run_id=""
 artifact_name=""
 artifact_id=""
@@ -1361,10 +1410,7 @@ for candidate_run in $candidate_runs; do
     current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
     current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
     mkdir -p "$current_output_dir"
-    if timeout "$download_timeout_seconds" "$GH_BIN" run download "$candidate_run" \
-      --repo "$repo" \
-      --name "$current_artifact_name" \
-      --dir "$current_output_dir"; then
+    if download_artifact_archive "$current_artifact_id" "$current_output_dir"; then
       if [ -z "$run_id" ]; then
         run_id="$candidate_run"
         artifact_name="$current_artifact_name"
@@ -1380,11 +1426,7 @@ for candidate_run in $candidate_runs; do
     else
       status="$?"
       rm -rf "$current_output_dir"
-      if [ "$status" -eq 124 ]; then
-        echo "::notice::timed out after ${dollar}{download_timeout_seconds}s downloading baseline artifact $current_artifact_name from run $candidate_run; skipping candidate"
-      else
-        echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run (exit $status)"
-      fi
+      echo "::notice::failed or timed out after ${dollar}{download_timeout_seconds}s downloading baseline artifact $current_artifact_name from run $candidate_run (exit $status); skipping candidate"
     fi
   fi
 done
