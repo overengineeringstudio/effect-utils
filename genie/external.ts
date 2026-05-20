@@ -204,7 +204,7 @@ export const catalog = defineCatalog({
   '@typescript-eslint/rule-tester': '8.52.0',
   '@typescript-eslint/utils': '8.52.0',
   'typescript-eslint': '8.52.0',
-  prettier: '3.6.2',
+  prettier: '3.8.3',
   oxfmt: '0.23.0',
   oxlint: '1.39.0',
   'oxlint-tsgolint': '0.11.4',
