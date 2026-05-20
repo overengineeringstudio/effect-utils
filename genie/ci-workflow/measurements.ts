@@ -184,6 +184,7 @@ export type NixClosureMeasurementsStepsOptions = {
   readonly targets: readonly [NixClosureMeasurementTarget, ...NixClosureMeasurementTarget[]]
   readonly buckets?: readonly NixClosureMeasurementBucket[]
   readonly retentionDays?: number
+  readonly compare?: boolean
   readonly regressionMode?: 'off' | 'warn' | 'fail'
   readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
 }
@@ -356,6 +357,7 @@ export type DevenvPerfJobOptions = {
   readonly taskProbes?: readonly DevenvPerfTaskProbe[]
   readonly probes?: readonly DevenvPerfProbe[]
   readonly retentionDays?: number
+  readonly compare?: boolean
   readonly regressionMode?: 'off' | 'warn' | 'fail'
   readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
   readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
@@ -1574,16 +1576,21 @@ export const nixClosureMeasurementSteps = (opts: NixClosureMeasurementsStepsOpti
   const artifactDir = opts.artifactDir ?? 'tmp/nix-closure-measurements'
   const baselineArtifactName = opts.baselineArtifactName ?? opts.artifactName
   const buckets = opts.buckets ?? defaultNixClosureMeasurementBuckets
+  const compare = opts.compare ?? true
 
   return [
-    downloadPreviousGitHubArtifactStep({
-      artifactName: baselineArtifactName,
-      outputDir: `${artifactDir}/baseline`,
-      seedRuns: opts.baselineSeedRuns,
-      seedRunIds: opts.baselineSeedRunIds,
-      maxRuns: opts.baselineMaxRuns,
-      maxCandidateRuns: opts.baselineMaxCandidateRuns,
-    }),
+    ...(compare
+      ? [
+          downloadPreviousGitHubArtifactStep({
+            artifactName: baselineArtifactName,
+            outputDir: `${artifactDir}/baseline`,
+            seedRuns: opts.baselineSeedRuns,
+            seedRunIds: opts.baselineSeedRunIds,
+            maxRuns: opts.baselineMaxRuns,
+            maxCandidateRuns: opts.baselineMaxCandidateRuns,
+          }),
+        ]
+      : []),
     ...opts.targets.map((target) =>
       nixClosureMeasurementStep({
         installable: target.installable,
@@ -1599,13 +1606,17 @@ export const nixClosureMeasurementSteps = (opts: NixClosureMeasurementsStepsOpti
         gate: target.gate,
       }),
     ),
-    compareCiMeasurementsStep({
-      currentDir: `${artifactDir}/current`,
-      baselineDir: `${artifactDir}/baseline`,
-      outputFile: `${artifactDir}/measurement-comparison.json`,
-      regressionMode: opts.regressionMode ?? 'warn',
-      prComment: opts.prComment,
-    }),
+    ...(compare
+      ? [
+          compareCiMeasurementsStep({
+            currentDir: `${artifactDir}/current`,
+            baselineDir: `${artifactDir}/baseline`,
+            outputFile: `${artifactDir}/measurement-comparison.json`,
+            regressionMode: opts.regressionMode ?? 'warn',
+            prComment: opts.prComment,
+          }),
+        ]
+      : []),
     ciMeasurementsArtifactStep({
       artifactName: opts.artifactName,
       path: artifactDir,
@@ -3416,6 +3427,7 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
     opts?.artifactName ??
     'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
   const baselineArtifactName = opts?.baselineArtifactName ?? opts?.artifactName
+  const compare = opts?.compare ?? true
   const probes = devenvPerfProbes({
     taskProbes: opts?.taskProbes ?? [],
     probes: opts?.probes ?? [],
@@ -3439,9 +3451,8 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
         preparePinnedDevenvStep,
         validateNixStoreStep,
       ]),
-      ...(baselineArtifactName === undefined
-        ? []
-        : [
+      ...(compare && baselineArtifactName !== undefined
+        ? [
             downloadPreviousGitHubArtifactStep({
               artifactName: baselineArtifactName,
               outputDir: `${artifactDir}/baseline`,
@@ -3451,18 +3462,23 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
               maxCandidateRuns: opts?.baselineMaxCandidateRuns,
               requiredObservations: devenvPerfRequiredBaselineObservations(probes),
             }),
-          ]),
+          ]
+        : []),
       devenvPerfBenchmarkStep({
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
       }),
-      compareCiMeasurementsStep({
-        currentDir: artifactDir,
-        baselineDir: `${artifactDir}/baseline`,
-        outputFile: `${artifactDir}/measurement-comparison.json`,
-        regressionMode: opts?.regressionMode ?? 'warn',
-        prComment: opts?.prComment,
-      }),
+      ...(compare
+        ? [
+            compareCiMeasurementsStep({
+              currentDir: artifactDir,
+              baselineDir: `${artifactDir}/baseline`,
+              outputFile: `${artifactDir}/measurement-comparison.json`,
+              regressionMode: opts?.regressionMode ?? 'warn',
+              prComment: opts?.prComment,
+            }),
+          ]
+        : []),
       devenvPerfArtifactStep({
         artifactDir,
         artifactName,

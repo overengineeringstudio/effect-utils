@@ -456,6 +456,7 @@ const extraJobs: Record<string, any> = {
         },
       ],
       permissions: ciMeasurementsCommentPermissions,
+      compare: false,
       prComment: {
         enabled: false,
         title: 'Devenv Performance',
@@ -483,6 +484,7 @@ const extraJobs: Record<string, any> = {
         baselineMaxRuns: 20,
         targets: nixClosureMeasurementTargets,
         buckets: defaultNixClosureMeasurementBuckets,
+        compare: false,
         regressionMode: 'warn',
         prComment: {
           enabled: false,
@@ -509,25 +511,6 @@ const extraJobs: Record<string, any> = {
     steps: [
       checkoutStep(),
       ciMeasurementBaselineCheckoutStep,
-      {
-        ...downloadPreviousGitHubArtifactStep({
-          artifactName: 'source-shape',
-          outputDir: `${sourceShapeMeasurementsDir}/baseline`,
-          seedRuns: [
-            {
-              runId: '26085158592',
-              label: 'main baseline',
-              sha: 'ce7cf8f8ebfaa1da6c7e9122cd195a5f95ce2fca',
-              source: 'manual-backfill',
-              artifacts: ['source-shape'],
-              notes:
-                'Backfilled with the current measurement workflow for the effect-utils #658 rollout.',
-            },
-          ],
-          maxRuns: 20,
-        }),
-        if: normalCiIf,
-      },
       sourceShapeMeasurementStep({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
         targetId: 'effect_utils',
@@ -562,21 +545,6 @@ const extraJobs: Record<string, any> = {
           },
         ],
       }),
-      {
-        ...compareCiMeasurementsStep({
-          currentDir: `${sourceShapeMeasurementsDir}/current`,
-          baselineDir: `${sourceShapeMeasurementsDir}/baseline`,
-          outputFile: `${sourceShapeMeasurementsDir}/measurement-comparison.json`,
-          regressionMode: 'warn',
-          prComment: {
-            enabled: false,
-            title: 'Source Shape Measurements',
-            maxRows: 12,
-            maxHistory: 20,
-          },
-        }),
-        if: normalCiIf,
-      },
       ciMeasurementsArtifactStep({
         artifactName: 'source-shape',
         path: sourceShapeMeasurementsDir,
