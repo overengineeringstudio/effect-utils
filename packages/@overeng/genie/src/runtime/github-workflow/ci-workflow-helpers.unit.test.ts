@@ -511,6 +511,8 @@ describe('ci workflow devenv perf helpers', () => {
       "github.workflow }}-${{ github.event_name }}-${{ github.ref }}",
     )
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
+    expect(generatedCiWorkflowYamlSource).toContain("format('measurement-pr-{0}-run-{1}'")
+    expect(generatedCiWorkflowYamlSource).toContain("format('manual-run-{0}', github.run_id)")
     expect(generatedCiWorkflowYamlSource).toContain("format('label-{0}', github.event.label.name)")
     expect(generatedCiWorkflowYamlSource).toContain(
       "inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request'",
@@ -518,7 +520,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
     )
-    expect(ciWorkflowSource).toContain('const zeroImpactRows = comparableRows.filter(isZeroImpactRow)')
+    expect(ciWorkflowSource).toContain(
+      'const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)',
+    )
     expect(ciWorkflowSource).toContain('<summary>Unchanged / 0-impact measurements (')
     expect(ciWorkflowSource).toContain('<summary>Source-of-truth JSON</summary>')
     expect(ciWorkflowSource).toContain('const sourceOfTruth = {')
