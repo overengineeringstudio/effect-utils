@@ -4214,6 +4214,7 @@ jobs:
           BASELINE_MAX_RUNS: '20'
           BASELINE_MAX_CANDIDATE_RUNS: '60'
           BASELINE_REQUIRED_OBSERVATIONS_JSON: '[]'
+          BASELINE_DOWNLOAD_TIMEOUT_SECONDS: '120'
         run: |
           set -euo pipefail
 
@@ -4272,6 +4273,10 @@ jobs:
           max_runs="${BASELINE_MAX_RUNS:-5}"
           if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
             max_runs=1
+          fi
+          download_timeout_seconds="${BASELINE_DOWNLOAD_TIMEOUT_SECONDS:-120}"
+          if ! [[ "$download_timeout_seconds" =~ ^[0-9]+$ ]] || [ "$download_timeout_seconds" -lt 1 ]; then
+            download_timeout_seconds=120
           fi
 
           write_baseline_observation_counts() {
@@ -4354,7 +4359,7 @@ jobs:
               current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
               current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
               mkdir -p "$current_output_dir"
-              if "$GH_BIN" run download "$candidate_run" \
+              if timeout "$download_timeout_seconds" "$GH_BIN" run download "$candidate_run" \
                 --repo "$repo" \
                 --name "$current_artifact_name" \
                 --dir "$current_output_dir"; then
@@ -4371,7 +4376,13 @@ jobs:
                   '{runId:$runId, artifactName:$artifactName, artifactId:$artifactId, path:$path}' \
                   >>"$downloaded_runs_file"
               else
-                echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run"
+                status="$?"
+                rm -rf "$current_output_dir"
+                if [ "$status" -eq 124 ]; then
+                  echo "::notice::timed out after ${download_timeout_seconds}s downloading baseline artifact $current_artifact_name from run $candidate_run; skipping candidate"
+                else
+                  echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run (exit $status)"
+                fi
               fi
             fi
           done
@@ -4422,6 +4433,7 @@ jobs:
           BASELINE_MAX_RUNS: '20'
           BASELINE_MAX_CANDIDATE_RUNS: '60'
           BASELINE_REQUIRED_OBSERVATIONS_JSON: '[]'
+          BASELINE_DOWNLOAD_TIMEOUT_SECONDS: '120'
         run: |
           set -euo pipefail
 
@@ -4480,6 +4492,10 @@ jobs:
           max_runs="${BASELINE_MAX_RUNS:-5}"
           if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
             max_runs=1
+          fi
+          download_timeout_seconds="${BASELINE_DOWNLOAD_TIMEOUT_SECONDS:-120}"
+          if ! [[ "$download_timeout_seconds" =~ ^[0-9]+$ ]] || [ "$download_timeout_seconds" -lt 1 ]; then
+            download_timeout_seconds=120
           fi
 
           write_baseline_observation_counts() {
@@ -4562,7 +4578,7 @@ jobs:
               current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
               current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
               mkdir -p "$current_output_dir"
-              if "$GH_BIN" run download "$candidate_run" \
+              if timeout "$download_timeout_seconds" "$GH_BIN" run download "$candidate_run" \
                 --repo "$repo" \
                 --name "$current_artifact_name" \
                 --dir "$current_output_dir"; then
@@ -4579,7 +4595,13 @@ jobs:
                   '{runId:$runId, artifactName:$artifactName, artifactId:$artifactId, path:$path}' \
                   >>"$downloaded_runs_file"
               else
-                echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run"
+                status="$?"
+                rm -rf "$current_output_dir"
+                if [ "$status" -eq 124 ]; then
+                  echo "::notice::timed out after ${download_timeout_seconds}s downloading baseline artifact $current_artifact_name from run $candidate_run; skipping candidate"
+                else
+                  echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run (exit $status)"
+                fi
               fi
             fi
           done
@@ -4630,6 +4652,7 @@ jobs:
           BASELINE_MAX_RUNS: '20'
           BASELINE_MAX_CANDIDATE_RUNS: '60'
           BASELINE_REQUIRED_OBSERVATIONS_JSON: '[]'
+          BASELINE_DOWNLOAD_TIMEOUT_SECONDS: '120'
         run: |
           set -euo pipefail
 
@@ -4688,6 +4711,10 @@ jobs:
           max_runs="${BASELINE_MAX_RUNS:-5}"
           if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
             max_runs=1
+          fi
+          download_timeout_seconds="${BASELINE_DOWNLOAD_TIMEOUT_SECONDS:-120}"
+          if ! [[ "$download_timeout_seconds" =~ ^[0-9]+$ ]] || [ "$download_timeout_seconds" -lt 1 ]; then
+            download_timeout_seconds=120
           fi
 
           write_baseline_observation_counts() {
@@ -4770,7 +4797,7 @@ jobs:
               current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
               current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
               mkdir -p "$current_output_dir"
-              if "$GH_BIN" run download "$candidate_run" \
+              if timeout "$download_timeout_seconds" "$GH_BIN" run download "$candidate_run" \
                 --repo "$repo" \
                 --name "$current_artifact_name" \
                 --dir "$current_output_dir"; then
@@ -4787,7 +4814,13 @@ jobs:
                   '{runId:$runId, artifactName:$artifactName, artifactId:$artifactId, path:$path}' \
                   >>"$downloaded_runs_file"
               else
-                echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run"
+                status="$?"
+                rm -rf "$current_output_dir"
+                if [ "$status" -eq 124 ]; then
+                  echo "::notice::timed out after ${download_timeout_seconds}s downloading baseline artifact $current_artifact_name from run $candidate_run; skipping candidate"
+                else
+                  echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run (exit $status)"
+                fi
               fi
             fi
           done
