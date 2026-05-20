@@ -2777,24 +2777,25 @@ const protocolLabel = (() => {
 const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
 const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
 const hasComparableBaseline = comparableRows.length > 0
-const visibleRows = (hasComparableBaseline
-  ? allRows.filter((row) => typeof row.baseline === 'number')
-  : allRows.slice().sort((left, right) => (right.current || 0) - (left.current || 0))
-).slice(0, visibleLimit)
-const isZeroImpactRow = (row) =>
-  typeof row.semanticImpactScore === 'number' &&
-  !Number.isNaN(row.semanticImpactScore) &&
-  Math.abs(row.semanticImpactScore) < 0.005
-const nonZeroImpactRows = comparableRows.filter((row) => !isZeroImpactRow(row))
-const zeroImpactRows = comparableRows.filter(isZeroImpactRow)
-const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
-const diagnosticRows = allRows.filter((row) =>
+const isDiagnosticRow = (row) =>
   row.status === 'missing_baseline' ||
   row.confidence === 'diagnostic' ||
   row.gateReason === 'disabled' ||
   row.semanticImpactKind === 'diagnostic' ||
   (!row.gateable && typeof row.baseline !== 'number')
-)
+const isZeroImpactRow = (row) =>
+  typeof row.semanticImpactScore === 'number' &&
+  !Number.isNaN(row.semanticImpactScore) &&
+  Math.abs(row.semanticImpactScore) < 0.005
+const actionableComparableRows = comparableRows.filter((row) => !isDiagnosticRow(row))
+const visibleRows = (hasComparableBaseline
+  ? actionableComparableRows
+  : allRows.filter((row) => !isDiagnosticRow(row)).sort((left, right) => (right.current || 0) - (left.current || 0))
+).slice(0, visibleLimit)
+const nonZeroImpactRows = actionableComparableRows.filter((row) => !isZeroImpactRow(row))
+const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)
+const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
+const diagnosticRows = allRows.filter(isDiagnosticRow)
 
 const baselineToCurrent = (row) => {
   const unit = row.observation?.unit
@@ -3176,8 +3177,8 @@ const sourceOfTruth = {
   },
   measurements: allRows.map(sourceMeasurement),
 }
-const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
-const chartDarkSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows, 'dark') : ''
+const chartSvg = hasComparableBaseline && visibleRows.length > 0 ? renderPerfChangeSvg(visibleRows) : ''
+const chartDarkSvg = hasComparableBaseline && visibleRows.length > 0 ? renderPerfChangeSvg(visibleRows, 'dark') : ''
 if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
 if (chartDarkPath && chartDarkSvg) writeFileSync(chartDarkPath, chartDarkSvg)
 const chartImageMarkdown = chartUrl && chartSvg
