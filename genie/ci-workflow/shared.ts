@@ -85,6 +85,31 @@ export const ciJobConcurrency = (jobId: string, opts?: { readonly matrix?: boole
 const isMatrixJob = (job: GitHubWorkflowArgs['jobs'][string]) =>
   typeof job.strategy === 'object' && job.strategy !== null && 'matrix' in job.strategy
 
+const workflowDispatchBaselineRefInput = {
+  description:
+    'Optional ref/SHA to checkout before running CI measurement jobs. Used to backfill comparable baseline artifacts.',
+  required: false,
+  default: '',
+  type: 'string',
+} as const
+
+const withJobConcurrencyDispatchInputs = (on: GitHubWorkflowArgs['on']): GitHubWorkflowArgs['on'] => {
+  if (typeof on !== 'object' || on === null || !('workflow_dispatch' in on) || on.workflow_dispatch === null) {
+    return on
+  }
+
+  return {
+    ...on,
+    workflow_dispatch: {
+      ...on.workflow_dispatch,
+      inputs: {
+        measurement_baseline_ref: workflowDispatchBaselineRefInput,
+        ...on.workflow_dispatch.inputs,
+      },
+    },
+  }
+}
+
 const withDefaultJobConcurrency = (jobs: GitHubWorkflowArgs['jobs']): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => [
@@ -110,9 +135,10 @@ export const ciWorkflowConcurrency = {
  * field, and individual jobs can opt out or provide their own `concurrency`.
  */
 export const ciWorkflow = (args: GitHubWorkflowArgs) =>
-  (({ concurrency, actionlint, jobs, ...rest }) =>
+  (({ concurrency, actionlint, jobs, on, ...rest }) =>
     githubWorkflow({
       ...rest,
+      on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
       ...(concurrency === undefined ? {} : { concurrency }),
       actionlint: actionlint ?? defaultActionlintConfig,
       jobs: concurrency === undefined ? withDefaultJobConcurrency(jobs) : jobs,
