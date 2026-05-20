@@ -4163,6 +4163,103 @@ jobs:
           const nonZeroImpactRows = comparableRows.filter((row) => !isZeroImpactRow(row))
           const zeroImpactRows = comparableRows.filter(isZeroImpactRow)
           const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
+          const diagnosticRows = allRows.filter((row) =>
+            row.status === 'missing_baseline' ||
+            row.confidence === 'diagnostic' ||
+            row.gateReason === 'disabled' ||
+            row.semanticImpactKind === 'diagnostic' ||
+            (!row.gateable && typeof row.baseline !== 'number')
+          )
+
+          const baselineToCurrent = (row) => {
+            const unit = row.observation?.unit
+            return formatValue(row.baseline, unit) + ' -> ' + formatValue(row.current, unit)
+          }
+
+          const rawChange = (row) => {
+            const unit = row.observation?.unit
+            return formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio)
+          }
+
+          const confidenceSummary = (row) => {
+            const unit = row.observation?.unit
+            if (row.comparisonMode === 'paired' && typeof row.evidenceDeltaLower === 'number' && typeof row.evidenceDeltaUpper === 'number') {
+              const quantile = typeof row.pairedEvidenceQuantile === 'number'
+                ? Math.round(row.pairedEvidenceQuantile * 100)
+                : 25
+              return 'paired n=' + (row.pairedSamples ?? 0)
+                + ', ' + quantile + '-' + (100 - quantile) + '% delta '
+                + formatValue(row.evidenceDeltaLower, unit)
+                + '..' + formatValue(row.evidenceDeltaUpper, unit)
+            }
+            return (row.confidence || 'unknown') + ', baseline n=' + (row.baselineSources ?? 0) + ', current n=' + (row.currentSamples ?? 1)
+          }
+
+          const scanDecision = (row) => {
+            if (row.status === 'fail') return 'regression blocks'
+            if (row.status === 'warn') return 'regression review'
+            if (row.status === 'missing_baseline') return 'needs baseline'
+            if (row.direction === 'improved') return 'faster'
+            if (row.direction === 'regressed') return 'no material impact'
+            return 'unchanged'
+          }
+
+          const scanTable = (rows) => {
+            if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
+            return [
+              '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+              '| --- | --- | --- | ---: | ---: | --- |',
+              ...rows.map((row) => {
+                return '| ' + [
+                  scanDecision(row),
+                  humanProbe(row),
+                  baselineToCurrent(row),
+                  rawChange(row),
+                  formatRowImpact(row),
+                  confidenceSummary(row),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const zeroImpactTable = (rows) => {
+            if (rows.length === 0) return 'No zero-impact measurements.'
+            return [
+              '| Probe | Baseline -> current | Raw change | Impact | Gate | Evidence | Why hidden |',
+              '| --- | --- | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                const meaning = interpretation(row)
+                return '| ' + [
+                  humanProbe(row),
+                  baselineToCurrent(row),
+                  rawChange(row),
+                  formatRowImpact(row),
+                  row.gateable ? 'yes' : (row.gateReason || 'no'),
+                  confidenceSummary(row),
+                  meaning.label,
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const diagnosticTable = (rows) => {
+            if (rows.length === 0) return 'No diagnostic or ungated measurements.'
+            return [
+              '| Probe | Current | Baseline | Impact | Gate | Reason | Evidence |',
+              '| --- | ---: | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                return '| ' + [
+                  humanProbe(row),
+                  formatValue(row.current, row.observation?.unit),
+                  formatValue(row.baseline, row.observation?.unit),
+                  formatRowImpact(row),
+                  row.gateable ? 'yes' : (row.gateReason || row.status || 'no'),
+                  interpretation(row).label,
+                  confidenceSummary(row),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
 
           const comparisonTable = (rows) => {
             if (rows.length === 0) return 'No measurement regressions detected.'
@@ -4225,6 +4322,32 @@ jobs:
               }),
             ].join('\n')
           }
+
+          const sourceMeasurement = (row) => ({
+            id: row.observation?.dimensions?.probe || row.observation?.name || humanProbe(row),
+            label: humanProbe(row),
+            group: semanticPath(row),
+            status: row.status,
+            direction: row.direction,
+            gateable: row.gateable,
+            gateReason: row.gateReason,
+            confidence: row.confidence,
+            comparisonMode: row.comparisonMode,
+            unit: row.observation?.unit,
+            baseline: row.baseline ?? null,
+            current: row.current ?? null,
+            delta: row.delta ?? null,
+            ratio: row.ratio ?? null,
+            semanticImpactScore: row.semanticImpactScore ?? null,
+            semanticImpactKind: row.semanticImpactKind ?? null,
+            baselineSources: row.baselineSources ?? null,
+            currentSamples: row.currentSamples ?? null,
+            pairedSamples: row.pairedSamples ?? null,
+            evidenceDeltaLower: row.evidenceDeltaLower ?? null,
+            evidenceDeltaUpper: row.evidenceDeltaUpper ?? null,
+            pairedEvidenceQuantile: row.pairedEvidenceQuantile ?? null,
+            dimensions: row.observation?.dimensions || {},
+          })
 
           const truncate = (value, maxLength) => {
             const text = String(value)
@@ -4402,6 +4525,32 @@ jobs:
             ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')' +
               (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
             : 'not available'
+          const sourceOfTruth = {
+            schemaVersion,
+            title,
+            status: statusWord,
+            gate: gateModeLabel(comparison.mode),
+            readiness: readinessLabel,
+            commit: {
+              shortSha,
+              sha: headSha || sha || 'unknown',
+            },
+            run: {
+              id: runId || null,
+              attempt: runAttempt || null,
+              url: runUrl || null,
+            },
+            baseline: baselineProvenance || null,
+            protocol: protocolLabel,
+            chart: {
+              meaning: 'semantic-impact',
+              zeroImpactMeaning: 'no actionable PR impact after budgets, noise floor, and robust evidence checks',
+              svg: chartSourceUrl || null,
+              lightPng: chartUrl || null,
+              darkPng: chartDarkUrl || null,
+            },
+            measurements: allRows.map(sourceMeasurement),
+          }
           const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
           const chartDarkSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows, 'dark') : ''
           if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
@@ -4420,27 +4569,28 @@ jobs:
               (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
             : ''
 
+          const regressionCount = allRows.filter((row) => row.status === 'fail' || row.status === 'warn').length
+          const improvementCount = comparableRows.filter((row) => row.direction === 'improved' && !isZeroImpactRow(row)).length
+          const neutralCount = zeroImpactRows.length + diagnosticRows.length
+          const humanSummary = hasComparableBaseline
+            ? regressionCount > 0
+              ? String(regressionCount) + ' regression' + (regressionCount === 1 ? '' : 's') + ' need review.'
+              : improvementCount > 0
+                ? 'No regressions. ' + String(improvementCount) + ' probe' + (improvementCount === 1 ? '' : 's') + ' got faster; ' + String(neutralCount) + ' neutral or ungated row' + (neutralCount === 1 ? '' : 's') + ' are collapsed below.'
+                : 'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.'
+            : 'No compatible baseline was available, so this run shows current measurements only.'
+
           const summaryLines = [
             '## ' + title,
             '',
-            '- Status: ' + statusWord,
-            '- Gate: ' + gateModeLabel(comparison.mode),
-            '- Commit: ' + shortSha,
-            '- Run: ' + runLink,
-            '- Baseline: ' + baselineLabel,
-            '- Readiness: ' + readinessLabel,
-            '- Protocol: ' + protocolLabel,
+            '**' + statusWord + '** - ' + gateModeLabel(comparison.mode) + ' gate - readiness <code>' + readinessLabel + '</code> - commit <code>' + shortSha + '</code> - protocol <code>' + protocolLabel + '</code>',
             '',
-            hasComparableBaseline
-              ? 'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.'
-              : 'No compatible baseline was available, so this run shows current measurements only.',
+            '> ' + humanSummary,
             '',
             chartMarkdown,
             '',
             hasComparableBaseline
-              ? (visibleNonZeroImpactRows.length > 0
-                  ? comparisonTable(visibleNonZeroImpactRows)
-                  : 'No non-zero actionable measurement impact detected.')
+              ? scanTable(visibleNonZeroImpactRows)
               : currentOnlyTable(visibleRows),
           ]
 
@@ -4448,11 +4598,23 @@ jobs:
             summaryLines.push(
               '',
               '<details>',
-              '<summary>Zero-impact measurements (' + zeroImpactRows.length + ')</summary>',
+              '<summary>Unchanged / 0-impact measurements (' + zeroImpactRows.length + ')</summary>',
               '',
               'These rows had compatible baseline data, but their semantic impact rounded to 0.00x because the movement was below the configured budget, below the noise floor, or inside the robust noise band.',
               '',
-              comparisonTable(zeroImpactRows),
+              zeroImpactTable(zeroImpactRows),
+              '',
+              '</details>',
+            )
+          }
+
+          if (diagnosticRows.length > 0) {
+            summaryLines.push(
+              '',
+              '<details>',
+              '<summary>Diagnostic / ungated measurements (' + diagnosticRows.length + ')</summary>',
+              '',
+              diagnosticTable(diagnosticRows),
               '',
               '</details>',
             )
@@ -4481,6 +4643,18 @@ jobs:
               '</details>',
             )
           }
+
+          summaryLines.push(
+            '',
+            '<details>',
+            '<summary>Source-of-truth JSON</summary>',
+            '',
+            '~~~json',
+            JSON.stringify(sourceOfTruth, null, 2),
+            '~~~',
+            '',
+            '</details>',
+          )
 
           summaryLines.push('', marker, statePrefix + JSON.stringify(state, null, 2) + stateSuffix)
           writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
@@ -6375,6 +6549,103 @@ jobs:
           const nonZeroImpactRows = comparableRows.filter((row) => !isZeroImpactRow(row))
           const zeroImpactRows = comparableRows.filter(isZeroImpactRow)
           const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
+          const diagnosticRows = allRows.filter((row) =>
+            row.status === 'missing_baseline' ||
+            row.confidence === 'diagnostic' ||
+            row.gateReason === 'disabled' ||
+            row.semanticImpactKind === 'diagnostic' ||
+            (!row.gateable && typeof row.baseline !== 'number')
+          )
+
+          const baselineToCurrent = (row) => {
+            const unit = row.observation?.unit
+            return formatValue(row.baseline, unit) + ' -> ' + formatValue(row.current, unit)
+          }
+
+          const rawChange = (row) => {
+            const unit = row.observation?.unit
+            return formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio)
+          }
+
+          const confidenceSummary = (row) => {
+            const unit = row.observation?.unit
+            if (row.comparisonMode === 'paired' && typeof row.evidenceDeltaLower === 'number' && typeof row.evidenceDeltaUpper === 'number') {
+              const quantile = typeof row.pairedEvidenceQuantile === 'number'
+                ? Math.round(row.pairedEvidenceQuantile * 100)
+                : 25
+              return 'paired n=' + (row.pairedSamples ?? 0)
+                + ', ' + quantile + '-' + (100 - quantile) + '% delta '
+                + formatValue(row.evidenceDeltaLower, unit)
+                + '..' + formatValue(row.evidenceDeltaUpper, unit)
+            }
+            return (row.confidence || 'unknown') + ', baseline n=' + (row.baselineSources ?? 0) + ', current n=' + (row.currentSamples ?? 1)
+          }
+
+          const scanDecision = (row) => {
+            if (row.status === 'fail') return 'regression blocks'
+            if (row.status === 'warn') return 'regression review'
+            if (row.status === 'missing_baseline') return 'needs baseline'
+            if (row.direction === 'improved') return 'faster'
+            if (row.direction === 'regressed') return 'no material impact'
+            return 'unchanged'
+          }
+
+          const scanTable = (rows) => {
+            if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
+            return [
+              '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+              '| --- | --- | --- | ---: | ---: | --- |',
+              ...rows.map((row) => {
+                return '| ' + [
+                  scanDecision(row),
+                  humanProbe(row),
+                  baselineToCurrent(row),
+                  rawChange(row),
+                  formatRowImpact(row),
+                  confidenceSummary(row),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const zeroImpactTable = (rows) => {
+            if (rows.length === 0) return 'No zero-impact measurements.'
+            return [
+              '| Probe | Baseline -> current | Raw change | Impact | Gate | Evidence | Why hidden |',
+              '| --- | --- | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                const meaning = interpretation(row)
+                return '| ' + [
+                  humanProbe(row),
+                  baselineToCurrent(row),
+                  rawChange(row),
+                  formatRowImpact(row),
+                  row.gateable ? 'yes' : (row.gateReason || 'no'),
+                  confidenceSummary(row),
+                  meaning.label,
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const diagnosticTable = (rows) => {
+            if (rows.length === 0) return 'No diagnostic or ungated measurements.'
+            return [
+              '| Probe | Current | Baseline | Impact | Gate | Reason | Evidence |',
+              '| --- | ---: | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                return '| ' + [
+                  humanProbe(row),
+                  formatValue(row.current, row.observation?.unit),
+                  formatValue(row.baseline, row.observation?.unit),
+                  formatRowImpact(row),
+                  row.gateable ? 'yes' : (row.gateReason || row.status || 'no'),
+                  interpretation(row).label,
+                  confidenceSummary(row),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
 
           const comparisonTable = (rows) => {
             if (rows.length === 0) return 'No measurement regressions detected.'
@@ -6437,6 +6708,32 @@ jobs:
               }),
             ].join('\n')
           }
+
+          const sourceMeasurement = (row) => ({
+            id: row.observation?.dimensions?.probe || row.observation?.name || humanProbe(row),
+            label: humanProbe(row),
+            group: semanticPath(row),
+            status: row.status,
+            direction: row.direction,
+            gateable: row.gateable,
+            gateReason: row.gateReason,
+            confidence: row.confidence,
+            comparisonMode: row.comparisonMode,
+            unit: row.observation?.unit,
+            baseline: row.baseline ?? null,
+            current: row.current ?? null,
+            delta: row.delta ?? null,
+            ratio: row.ratio ?? null,
+            semanticImpactScore: row.semanticImpactScore ?? null,
+            semanticImpactKind: row.semanticImpactKind ?? null,
+            baselineSources: row.baselineSources ?? null,
+            currentSamples: row.currentSamples ?? null,
+            pairedSamples: row.pairedSamples ?? null,
+            evidenceDeltaLower: row.evidenceDeltaLower ?? null,
+            evidenceDeltaUpper: row.evidenceDeltaUpper ?? null,
+            pairedEvidenceQuantile: row.pairedEvidenceQuantile ?? null,
+            dimensions: row.observation?.dimensions || {},
+          })
 
           const truncate = (value, maxLength) => {
             const text = String(value)
@@ -6614,6 +6911,32 @@ jobs:
             ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')' +
               (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
             : 'not available'
+          const sourceOfTruth = {
+            schemaVersion,
+            title,
+            status: statusWord,
+            gate: gateModeLabel(comparison.mode),
+            readiness: readinessLabel,
+            commit: {
+              shortSha,
+              sha: headSha || sha || 'unknown',
+            },
+            run: {
+              id: runId || null,
+              attempt: runAttempt || null,
+              url: runUrl || null,
+            },
+            baseline: baselineProvenance || null,
+            protocol: protocolLabel,
+            chart: {
+              meaning: 'semantic-impact',
+              zeroImpactMeaning: 'no actionable PR impact after budgets, noise floor, and robust evidence checks',
+              svg: chartSourceUrl || null,
+              lightPng: chartUrl || null,
+              darkPng: chartDarkUrl || null,
+            },
+            measurements: allRows.map(sourceMeasurement),
+          }
           const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
           const chartDarkSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows, 'dark') : ''
           if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
@@ -6632,27 +6955,28 @@ jobs:
               (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
             : ''
 
+          const regressionCount = allRows.filter((row) => row.status === 'fail' || row.status === 'warn').length
+          const improvementCount = comparableRows.filter((row) => row.direction === 'improved' && !isZeroImpactRow(row)).length
+          const neutralCount = zeroImpactRows.length + diagnosticRows.length
+          const humanSummary = hasComparableBaseline
+            ? regressionCount > 0
+              ? String(regressionCount) + ' regression' + (regressionCount === 1 ? '' : 's') + ' need review.'
+              : improvementCount > 0
+                ? 'No regressions. ' + String(improvementCount) + ' probe' + (improvementCount === 1 ? '' : 's') + ' got faster; ' + String(neutralCount) + ' neutral or ungated row' + (neutralCount === 1 ? '' : 's') + ' are collapsed below.'
+                : 'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.'
+            : 'No compatible baseline was available, so this run shows current measurements only.'
+
           const summaryLines = [
             '## ' + title,
             '',
-            '- Status: ' + statusWord,
-            '- Gate: ' + gateModeLabel(comparison.mode),
-            '- Commit: ' + shortSha,
-            '- Run: ' + runLink,
-            '- Baseline: ' + baselineLabel,
-            '- Readiness: ' + readinessLabel,
-            '- Protocol: ' + protocolLabel,
+            '**' + statusWord + '** - ' + gateModeLabel(comparison.mode) + ' gate - readiness <code>' + readinessLabel + '</code> - commit <code>' + shortSha + '</code> - protocol <code>' + protocolLabel + '</code>',
             '',
-            hasComparableBaseline
-              ? 'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.'
-              : 'No compatible baseline was available, so this run shows current measurements only.',
+            '> ' + humanSummary,
             '',
             chartMarkdown,
             '',
             hasComparableBaseline
-              ? (visibleNonZeroImpactRows.length > 0
-                  ? comparisonTable(visibleNonZeroImpactRows)
-                  : 'No non-zero actionable measurement impact detected.')
+              ? scanTable(visibleNonZeroImpactRows)
               : currentOnlyTable(visibleRows),
           ]
 
@@ -6660,11 +6984,23 @@ jobs:
             summaryLines.push(
               '',
               '<details>',
-              '<summary>Zero-impact measurements (' + zeroImpactRows.length + ')</summary>',
+              '<summary>Unchanged / 0-impact measurements (' + zeroImpactRows.length + ')</summary>',
               '',
               'These rows had compatible baseline data, but their semantic impact rounded to 0.00x because the movement was below the configured budget, below the noise floor, or inside the robust noise band.',
               '',
-              comparisonTable(zeroImpactRows),
+              zeroImpactTable(zeroImpactRows),
+              '',
+              '</details>',
+            )
+          }
+
+          if (diagnosticRows.length > 0) {
+            summaryLines.push(
+              '',
+              '<details>',
+              '<summary>Diagnostic / ungated measurements (' + diagnosticRows.length + ')</summary>',
+              '',
+              diagnosticTable(diagnosticRows),
               '',
               '</details>',
             )
@@ -6693,6 +7029,18 @@ jobs:
               '</details>',
             )
           }
+
+          summaryLines.push(
+            '',
+            '<details>',
+            '<summary>Source-of-truth JSON</summary>',
+            '',
+            '~~~json',
+            JSON.stringify(sourceOfTruth, null, 2),
+            '~~~',
+            '',
+            '</details>',
+          )
 
           summaryLines.push('', marker, statePrefix + JSON.stringify(state, null, 2) + stateSuffix)
           writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
@@ -8238,6 +8586,103 @@ jobs:
           const nonZeroImpactRows = comparableRows.filter((row) => !isZeroImpactRow(row))
           const zeroImpactRows = comparableRows.filter(isZeroImpactRow)
           const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
+          const diagnosticRows = allRows.filter((row) =>
+            row.status === 'missing_baseline' ||
+            row.confidence === 'diagnostic' ||
+            row.gateReason === 'disabled' ||
+            row.semanticImpactKind === 'diagnostic' ||
+            (!row.gateable && typeof row.baseline !== 'number')
+          )
+
+          const baselineToCurrent = (row) => {
+            const unit = row.observation?.unit
+            return formatValue(row.baseline, unit) + ' -> ' + formatValue(row.current, unit)
+          }
+
+          const rawChange = (row) => {
+            const unit = row.observation?.unit
+            return formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio)
+          }
+
+          const confidenceSummary = (row) => {
+            const unit = row.observation?.unit
+            if (row.comparisonMode === 'paired' && typeof row.evidenceDeltaLower === 'number' && typeof row.evidenceDeltaUpper === 'number') {
+              const quantile = typeof row.pairedEvidenceQuantile === 'number'
+                ? Math.round(row.pairedEvidenceQuantile * 100)
+                : 25
+              return 'paired n=' + (row.pairedSamples ?? 0)
+                + ', ' + quantile + '-' + (100 - quantile) + '% delta '
+                + formatValue(row.evidenceDeltaLower, unit)
+                + '..' + formatValue(row.evidenceDeltaUpper, unit)
+            }
+            return (row.confidence || 'unknown') + ', baseline n=' + (row.baselineSources ?? 0) + ', current n=' + (row.currentSamples ?? 1)
+          }
+
+          const scanDecision = (row) => {
+            if (row.status === 'fail') return 'regression blocks'
+            if (row.status === 'warn') return 'regression review'
+            if (row.status === 'missing_baseline') return 'needs baseline'
+            if (row.direction === 'improved') return 'faster'
+            if (row.direction === 'regressed') return 'no material impact'
+            return 'unchanged'
+          }
+
+          const scanTable = (rows) => {
+            if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
+            return [
+              '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+              '| --- | --- | --- | ---: | ---: | --- |',
+              ...rows.map((row) => {
+                return '| ' + [
+                  scanDecision(row),
+                  humanProbe(row),
+                  baselineToCurrent(row),
+                  rawChange(row),
+                  formatRowImpact(row),
+                  confidenceSummary(row),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const zeroImpactTable = (rows) => {
+            if (rows.length === 0) return 'No zero-impact measurements.'
+            return [
+              '| Probe | Baseline -> current | Raw change | Impact | Gate | Evidence | Why hidden |',
+              '| --- | --- | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                const meaning = interpretation(row)
+                return '| ' + [
+                  humanProbe(row),
+                  baselineToCurrent(row),
+                  rawChange(row),
+                  formatRowImpact(row),
+                  row.gateable ? 'yes' : (row.gateReason || 'no'),
+                  confidenceSummary(row),
+                  meaning.label,
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
+
+          const diagnosticTable = (rows) => {
+            if (rows.length === 0) return 'No diagnostic or ungated measurements.'
+            return [
+              '| Probe | Current | Baseline | Impact | Gate | Reason | Evidence |',
+              '| --- | ---: | ---: | ---: | --- | --- | --- |',
+              ...rows.map((row) => {
+                return '| ' + [
+                  humanProbe(row),
+                  formatValue(row.current, row.observation?.unit),
+                  formatValue(row.baseline, row.observation?.unit),
+                  formatRowImpact(row),
+                  row.gateable ? 'yes' : (row.gateReason || row.status || 'no'),
+                  interpretation(row).label,
+                  confidenceSummary(row),
+                ].map(escapeCell).join(' | ') + ' |'
+              }),
+            ].join('\n')
+          }
 
           const comparisonTable = (rows) => {
             if (rows.length === 0) return 'No measurement regressions detected.'
@@ -8300,6 +8745,32 @@ jobs:
               }),
             ].join('\n')
           }
+
+          const sourceMeasurement = (row) => ({
+            id: row.observation?.dimensions?.probe || row.observation?.name || humanProbe(row),
+            label: humanProbe(row),
+            group: semanticPath(row),
+            status: row.status,
+            direction: row.direction,
+            gateable: row.gateable,
+            gateReason: row.gateReason,
+            confidence: row.confidence,
+            comparisonMode: row.comparisonMode,
+            unit: row.observation?.unit,
+            baseline: row.baseline ?? null,
+            current: row.current ?? null,
+            delta: row.delta ?? null,
+            ratio: row.ratio ?? null,
+            semanticImpactScore: row.semanticImpactScore ?? null,
+            semanticImpactKind: row.semanticImpactKind ?? null,
+            baselineSources: row.baselineSources ?? null,
+            currentSamples: row.currentSamples ?? null,
+            pairedSamples: row.pairedSamples ?? null,
+            evidenceDeltaLower: row.evidenceDeltaLower ?? null,
+            evidenceDeltaUpper: row.evidenceDeltaUpper ?? null,
+            pairedEvidenceQuantile: row.pairedEvidenceQuantile ?? null,
+            dimensions: row.observation?.dimensions || {},
+          })
 
           const truncate = (value, maxLength) => {
             const text = String(value)
@@ -8477,6 +8948,32 @@ jobs:
             ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')' +
               (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
             : 'not available'
+          const sourceOfTruth = {
+            schemaVersion,
+            title,
+            status: statusWord,
+            gate: gateModeLabel(comparison.mode),
+            readiness: readinessLabel,
+            commit: {
+              shortSha,
+              sha: headSha || sha || 'unknown',
+            },
+            run: {
+              id: runId || null,
+              attempt: runAttempt || null,
+              url: runUrl || null,
+            },
+            baseline: baselineProvenance || null,
+            protocol: protocolLabel,
+            chart: {
+              meaning: 'semantic-impact',
+              zeroImpactMeaning: 'no actionable PR impact after budgets, noise floor, and robust evidence checks',
+              svg: chartSourceUrl || null,
+              lightPng: chartUrl || null,
+              darkPng: chartDarkUrl || null,
+            },
+            measurements: allRows.map(sourceMeasurement),
+          }
           const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
           const chartDarkSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows, 'dark') : ''
           if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
@@ -8495,27 +8992,28 @@ jobs:
               (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
             : ''
 
+          const regressionCount = allRows.filter((row) => row.status === 'fail' || row.status === 'warn').length
+          const improvementCount = comparableRows.filter((row) => row.direction === 'improved' && !isZeroImpactRow(row)).length
+          const neutralCount = zeroImpactRows.length + diagnosticRows.length
+          const humanSummary = hasComparableBaseline
+            ? regressionCount > 0
+              ? String(regressionCount) + ' regression' + (regressionCount === 1 ? '' : 's') + ' need review.'
+              : improvementCount > 0
+                ? 'No regressions. ' + String(improvementCount) + ' probe' + (improvementCount === 1 ? '' : 's') + ' got faster; ' + String(neutralCount) + ' neutral or ungated row' + (neutralCount === 1 ? '' : 's') + ' are collapsed below.'
+                : 'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.'
+            : 'No compatible baseline was available, so this run shows current measurements only.'
+
           const summaryLines = [
             '## ' + title,
             '',
-            '- Status: ' + statusWord,
-            '- Gate: ' + gateModeLabel(comparison.mode),
-            '- Commit: ' + shortSha,
-            '- Run: ' + runLink,
-            '- Baseline: ' + baselineLabel,
-            '- Readiness: ' + readinessLabel,
-            '- Protocol: ' + protocolLabel,
+            '**' + statusWord + '** - ' + gateModeLabel(comparison.mode) + ' gate - readiness <code>' + readinessLabel + '</code> - commit <code>' + shortSha + '</code> - protocol <code>' + protocolLabel + '</code>',
             '',
-            hasComparableBaseline
-              ? 'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.'
-              : 'No compatible baseline was available, so this run shows current measurements only.',
+            '> ' + humanSummary,
             '',
             chartMarkdown,
             '',
             hasComparableBaseline
-              ? (visibleNonZeroImpactRows.length > 0
-                  ? comparisonTable(visibleNonZeroImpactRows)
-                  : 'No non-zero actionable measurement impact detected.')
+              ? scanTable(visibleNonZeroImpactRows)
               : currentOnlyTable(visibleRows),
           ]
 
@@ -8523,11 +9021,23 @@ jobs:
             summaryLines.push(
               '',
               '<details>',
-              '<summary>Zero-impact measurements (' + zeroImpactRows.length + ')</summary>',
+              '<summary>Unchanged / 0-impact measurements (' + zeroImpactRows.length + ')</summary>',
               '',
               'These rows had compatible baseline data, but their semantic impact rounded to 0.00x because the movement was below the configured budget, below the noise floor, or inside the robust noise band.',
               '',
-              comparisonTable(zeroImpactRows),
+              zeroImpactTable(zeroImpactRows),
+              '',
+              '</details>',
+            )
+          }
+
+          if (diagnosticRows.length > 0) {
+            summaryLines.push(
+              '',
+              '<details>',
+              '<summary>Diagnostic / ungated measurements (' + diagnosticRows.length + ')</summary>',
+              '',
+              diagnosticTable(diagnosticRows),
               '',
               '</details>',
             )
@@ -8556,6 +9066,18 @@ jobs:
               '</details>',
             )
           }
+
+          summaryLines.push(
+            '',
+            '<details>',
+            '<summary>Source-of-truth JSON</summary>',
+            '',
+            '~~~json',
+            JSON.stringify(sourceOfTruth, null, 2),
+            '~~~',
+            '',
+            '</details>',
+          )
 
           summaryLines.push('', marker, statePrefix + JSON.stringify(state, null, 2) + stateSuffix)
           writeFileSync(bodyPath, summaryLines.join('\n') + '\n')

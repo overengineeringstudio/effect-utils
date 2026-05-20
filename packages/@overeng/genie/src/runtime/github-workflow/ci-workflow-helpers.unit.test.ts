@@ -505,7 +505,7 @@ describe('ci workflow devenv perf helpers', () => {
       'chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"',
     )
     expect(ciWorkflowSource).toContain(
-      'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.',
+      'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
       "github.workflow }}-${{ github.event_name }}-${{ github.ref }}",
@@ -516,14 +516,16 @@ describe('ci workflow devenv perf helpers', () => {
       "inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request'",
     )
     expect(ciWorkflowSource).toContain(
-      '| Group | Measurement | Baseline | Current | Raw change | Impact | Meaning | Gate | Evidence |',
+      '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
     )
     expect(ciWorkflowSource).toContain('const zeroImpactRows = comparableRows.filter(isZeroImpactRow)')
-    expect(ciWorkflowSource).toContain('<summary>Zero-impact measurements (')
+    expect(ciWorkflowSource).toContain('<summary>Unchanged / 0-impact measurements (')
+    expect(ciWorkflowSource).toContain('<summary>Source-of-truth JSON</summary>')
+    expect(ciWorkflowSource).toContain('const sourceOfTruth = {')
     expect(ciWorkflowSource).toContain(
       'No non-zero actionable measurement impact detected.',
     )
-    expect(ciWorkflowSource).toContain("'- Readiness: ' + readinessLabel")
+    expect(ciWorkflowSource).toContain('readiness <code>')
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
     expect(ciWorkflowSource).toContain('Actionable measurement impact')
     expect(ciWorkflowSource).toContain(
