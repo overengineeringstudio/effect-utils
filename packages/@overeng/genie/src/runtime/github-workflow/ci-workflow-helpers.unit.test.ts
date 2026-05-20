@@ -497,9 +497,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'CI measurement PR comments are produced only by pull_request workflows',
     )
-    expect(ciWorkflowSource).toContain(
-      'unable to publish required CI measurement PR comment',
-    )
+    expect(ciWorkflowSource).toContain('unable to publish required CI measurement PR comment')
     expect(ciWorkflowSource).toContain('seedRuns: ($seedRuns[0] // [])')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(
@@ -516,7 +514,7 @@ describe('ci workflow devenv perf helpers', () => {
       'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      "github.workflow }}-${{ github.event_name }}-${{ github.ref }}",
+      'github.workflow }}-${{ github.event_name }}-${{ github.ref }}',
     )
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
@@ -538,9 +536,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('<summary>Unchanged / 0-impact measurements (')
     expect(ciWorkflowSource).toContain('<summary>Source-of-truth JSON</summary>')
     expect(ciWorkflowSource).toContain('const sourceOfTruth = {')
-    expect(ciWorkflowSource).toContain(
-      'No non-zero actionable measurement impact detected.',
-    )
+    expect(ciWorkflowSource).toContain('No non-zero actionable measurement impact detected.')
     expect(ciWorkflowSource).toContain('readiness <code>')
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
     expect(ciWorkflowSource).toContain('Actionable measurement impact')
