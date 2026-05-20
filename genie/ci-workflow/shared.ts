@@ -49,19 +49,30 @@ export const standardCIEnv = {
 } as const
 
 /**
- * Cancel superseded CI workflow runs for the same PR or branch.
+ * Cancel superseded CI workflow runs for the same event and ref.
  *
  * The group key intentionally does not include the job name so a new push
  * cancels the entire older workflow run rather than letting stale sibling jobs
  * continue consuming runner capacity.
  *
- * Measurement baseline backfills are keyed by their subject ref so several
- * historical refs can be backfilled without canceling each other.
+ * Code validation is a branch-protection signal for the latest PR head. Keeping
+ * older code-triggered pull_request runs alive can wedge the concurrency bucket
+ * behind a stale queued self-hosted job and prevent the current head from
+ * materializing any jobs.
+ *
+ * Measurement baseline backfills are keyed by their subject ref and do not
+ * cancel in-progress runs so several historical refs can be backfilled without
+ * canceling each other.
+ *
+ * Merge-queue label churn is different: only the mq:ci-admitted label event is
+ * allowed to materialize full PR CI. Other label events do not change the
+ * commit under test and must not cancel an already-running validation run.
  */
 export const ciWorkflowConcurrency = {
   group:
-    '${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.measurement_baseline_ref || github.ref }}',
-  'cancel-in-progress': true,
+    "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code') }}",
+  'cancel-in-progress':
+    "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
 } as const
 
 /**

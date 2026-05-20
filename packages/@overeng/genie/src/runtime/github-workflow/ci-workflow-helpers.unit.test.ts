@@ -505,6 +505,14 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'Chart: bars show semantic impact. A value of 0 means the raw change is not actionable for this PR; raw percentage and nominal values stay in the table.',
     )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "github.workflow }}-${{ github.event_name }}-${{ github.ref }}",
+    )
+    expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
+    expect(generatedCiWorkflowYamlSource).toContain("format('label-{0}', github.event.label.name)")
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request'",
+    )
     expect(ciWorkflowSource).toContain(
       '| Group | Measurement | Baseline | Current | Raw change | Impact | Meaning | Gate | Evidence |',
     )
