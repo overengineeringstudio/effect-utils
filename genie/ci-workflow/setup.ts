@@ -16,6 +16,7 @@ import {
   runDevenvTasksBefore,
   shellSingleQuote,
   standardCIEnv,
+  withGcRaceRetry,
   workspaceLocalNixCachePath,
   workspaceLocalNixCacheRoot,
   type NixBinaryCache,
@@ -735,7 +736,7 @@ export const validateColdPnpmDepsStep = ({
         ? ''
         : ` --option substituters ${shellSingleQuote(substituters.join(' '))}`
 
-    return [
+    const command = [
       'set -euo pipefail',
       `for attr in ${flakeRefs.map(shellSingleQuote).join(' ')}; do`,
       '  echo "::group::rebuild-check $attr"',
@@ -747,6 +748,8 @@ export const validateColdPnpmDepsStep = ({
       '  echo "::endgroup::"',
       'done',
     ].join('\n')
+
+    return withGcRaceRetry({ command, label: name })
   })(),
 })
 

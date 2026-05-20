@@ -549,7 +549,16 @@ const ciMeasurementToolBootstrapScript = String.raw`ensure_ci_measurement_tool()
     return 1
   fi
   if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
-    export PATH="$tool_out/bin:$PATH"
+    while IFS= read -r tool_path; do
+      [ -n "$tool_path" ] || continue
+      [ -d "$tool_path/bin" ] || continue
+      export PATH="$tool_path/bin:$PATH"
+      if command -v "$tool_name" >/dev/null 2>&1; then
+        return 0
+      fi
+    done <<EOF
+$tool_out
+EOF
   fi
   command -v "$tool_name" >/dev/null 2>&1
 }
@@ -573,8 +582,8 @@ const renderDevenvPerfScript = (
   return String.raw`set -euo pipefail
 
 ${ciMeasurementToolBootstrapScript}
-require_ci_measurement_tool awk gawk
-require_ci_measurement_tool jq jq
+require_ci_measurement_tool awk gawk.out
+require_ci_measurement_tool jq jq.bin
 
 ARTIFACT_DIR="$(mkdir -p "$ARTIFACT_DIR" && cd "$ARTIFACT_DIR" && pwd -P)"
 CI_MEASUREMENT_HEAD_DIR="${dollar}{CI_MEASUREMENT_HEAD_DIR:-$PWD}"
