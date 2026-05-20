@@ -515,6 +515,13 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
     expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
+    expect(ciWorkflowSource).toContain('export const ciJobConcurrency = (jobId: string, opts?:')
+    expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
+    expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
+    expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      '}}-nix-check-${{ strategy.job-index }}',
+    )
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
     expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
     expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')

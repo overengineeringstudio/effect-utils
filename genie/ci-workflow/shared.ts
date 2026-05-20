@@ -72,20 +72,26 @@ export const standardCIEnv = {
  * allowed to materialize full PR CI. Other label events do not change the
  * commit under test and must not cancel an already-running validation run.
  */
-export const ciJobConcurrency = (jobId: string) =>
+export const ciJobConcurrency = (jobId: string, opts?: { readonly matrix?: boolean }) =>
   ({
     group:
       "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}" +
-      `-${jobId}`,
+      `-${jobId}` +
+      (opts?.matrix === true ? '-${{ strategy.job-index }}' : ''),
     'cancel-in-progress':
       "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
   }) as const
+
+const isMatrixJob = (job: GitHubWorkflowArgs['jobs'][string]) =>
+  typeof job.strategy === 'object' && job.strategy !== null && 'matrix' in job.strategy
 
 const withDefaultJobConcurrency = (jobs: GitHubWorkflowArgs['jobs']): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => [
       jobId,
-      job.concurrency === undefined ? { ...job, concurrency: ciJobConcurrency(jobId) } : job,
+      job.concurrency === undefined
+        ? { ...job, concurrency: ciJobConcurrency(jobId, { matrix: isMatrixJob(job) }) }
+        : job,
     ]),
   )
 
