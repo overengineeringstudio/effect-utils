@@ -20,11 +20,6 @@ on:
         required: false
         default: ''
         type: string
-      measurement_pr_number:
-        description: Optional pull request number to update with CI measurement comments during manual measurement runs.
-        required: false
-        default: ''
-        type: string
       debug_force_nix_diagnostics_failure:
         description: 'Temporary debug switch (#272): force post-validation failure to verify diagnostics artifact + summary'
         required: false
@@ -503,7 +498,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-typecheck"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-typecheck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   lint:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -854,7 +849,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-lint"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-lint"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -1208,7 +1203,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-test"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   nix-check:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -1562,7 +1557,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-nix-check"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-check"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   nix-fod-check:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -1728,7 +1723,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-nix-fod-check"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-fod-check"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   pnpm-builder-contract:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -1996,7 +1991,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-pnpm-builder-contract"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-builder-contract"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   pnpm-regression:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -2242,7 +2237,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-pnpm-regression"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-pnpm-regression"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   devenv-perf:
     runs-on:
@@ -3254,7 +3249,6 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
-          CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: ${{ inputs.measurement_pr_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -3743,7 +3737,12 @@ jobs:
             } >>"$GITHUB_STEP_SUMMARY"
           fi
 
-          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
+          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
+            if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+              echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${GITHUB_EVENT_NAME:-unknown}"
+              exit 0
+            fi
+
             can_render_pr_comment=true
 
             ensure_ci_measurement_tool() {
@@ -3762,34 +3761,38 @@ jobs:
             }
 
             if ! ensure_ci_measurement_tool gh gh; then
-              echo "::notice::gh is not available; skipping CI measurement PR comment"
+              echo "::error::gh is not available; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! ensure_ci_measurement_tool node nodejs; then
-              echo "::notice::node is not available; skipping CI measurement PR comment"
+              echo "::error::node is not available; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! command -v jq >/dev/null 2>&1; then
               if ensure_ci_measurement_tool jq jq; then
                 :
               else
-                echo "::notice::jq is not available; skipping CI measurement PR comment"
+                echo "::error::jq is not available; unable to publish required CI measurement PR comment"
                 can_render_pr_comment=false
               fi
             fi
             if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-              echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+              echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
 
             event_path="${GITHUB_EVENT_PATH:-}"
-            pr_number="${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
+            pr_number=""
             if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
-              pr_number="${pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
+              pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
             fi
             if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-              echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+              echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
+            fi
+
+            if [ "$can_render_pr_comment" != "true" ]; then
+              exit 1
             fi
 
             if [ "$can_render_pr_comment" = "true" ]; then
@@ -4810,7 +4813,7 @@ jobs:
           retention-days: 30
     timeout-minutes: 30
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-devenv-perf"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   nix-closure-sizes:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -5644,7 +5647,6 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '8'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
-          CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: ${{ inputs.measurement_pr_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -6133,7 +6135,12 @@ jobs:
             } >>"$GITHUB_STEP_SUMMARY"
           fi
 
-          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
+          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
+            if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+              echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${GITHUB_EVENT_NAME:-unknown}"
+              exit 0
+            fi
+
             can_render_pr_comment=true
 
             ensure_ci_measurement_tool() {
@@ -6152,34 +6159,38 @@ jobs:
             }
 
             if ! ensure_ci_measurement_tool gh gh; then
-              echo "::notice::gh is not available; skipping CI measurement PR comment"
+              echo "::error::gh is not available; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! ensure_ci_measurement_tool node nodejs; then
-              echo "::notice::node is not available; skipping CI measurement PR comment"
+              echo "::error::node is not available; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! command -v jq >/dev/null 2>&1; then
               if ensure_ci_measurement_tool jq jq; then
                 :
               else
-                echo "::notice::jq is not available; skipping CI measurement PR comment"
+                echo "::error::jq is not available; unable to publish required CI measurement PR comment"
                 can_render_pr_comment=false
               fi
             fi
             if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-              echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+              echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
 
             event_path="${GITHUB_EVENT_PATH:-}"
-            pr_number="${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
+            pr_number=""
             if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
-              pr_number="${pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
+              pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
             fi
             if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-              echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+              echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
+            fi
+
+            if [ "$can_render_pr_comment" != "true" ]; then
+              exit 1
             fi
 
             if [ "$can_render_pr_comment" = "true" ]; then
@@ -7257,7 +7268,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-nix-closure-sizes"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   source-shape:
     runs-on:
@@ -7685,7 +7696,6 @@ jobs:
           CI_MEASUREMENT_PR_COMMENT_MAX_ROWS: '12'
           CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: '20'
           CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH: ci-measurement-assets
-          CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: ${{ inputs.measurement_pr_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -8174,7 +8184,12 @@ jobs:
             } >>"$GITHUB_STEP_SUMMARY"
           fi
 
-          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
+          if [ "${CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
+            if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+              echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${GITHUB_EVENT_NAME:-unknown}"
+              exit 0
+            fi
+
             can_render_pr_comment=true
 
             ensure_ci_measurement_tool() {
@@ -8193,34 +8208,38 @@ jobs:
             }
 
             if ! ensure_ci_measurement_tool gh gh; then
-              echo "::notice::gh is not available; skipping CI measurement PR comment"
+              echo "::error::gh is not available; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! ensure_ci_measurement_tool node nodejs; then
-              echo "::notice::node is not available; skipping CI measurement PR comment"
+              echo "::error::node is not available; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
             if ! command -v jq >/dev/null 2>&1; then
               if ensure_ci_measurement_tool jq jq; then
                 :
               else
-                echo "::notice::jq is not available; skipping CI measurement PR comment"
+                echo "::error::jq is not available; unable to publish required CI measurement PR comment"
                 can_render_pr_comment=false
               fi
             fi
             if [ -z "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]; then
-              echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+              echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
             fi
 
             event_path="${GITHUB_EVENT_PATH:-}"
-            pr_number="${CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
+            pr_number=""
             if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
-              pr_number="${pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
+              pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
             fi
             if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-              echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+              echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
               can_render_pr_comment=false
+            fi
+
+            if [ "$can_render_pr_comment" != "true" ]; then
+              exit 1
             fi
 
             if [ "$can_render_pr_comment" = "true" ]; then
@@ -9241,7 +9260,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-source-shape"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   test-integration-notion:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -9593,7 +9612,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-test-integration-notion"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   deploy-storybooks:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -10421,7 +10440,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-deploy-storybooks"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-deploy-storybooks"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   notify-alignment:
     runs-on:
@@ -10452,5 +10471,5 @@ jobs:
             --data "$payload"
         shell: bash
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}-notify-alignment"
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-notify-alignment"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}

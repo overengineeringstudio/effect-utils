@@ -291,13 +291,6 @@ export const ciMeasurementBaselineWorkflowDispatchInputs = {
     default: '',
     type: 'string',
   },
-  measurement_pr_number: {
-    description:
-      'Optional pull request number to update with CI measurement comments during manual measurement runs.',
-    required: false,
-    default: '',
-    type: 'string',
-  },
 } as const
 
 export const ciMeasurementBaselineBackfillPredicate =
@@ -1856,7 +1849,6 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: String(opts?.prComment?.maxHistory ?? 20),
       CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH:
         opts?.prComment?.assetBranch ?? 'ci-measurement-assets',
-      CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: '${{ inputs.measurement_pr_number }}',
       ...(opts?.prComment?.publicAssetCommand === undefined
         ? {}
         : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
@@ -2351,7 +2343,12 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
-if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ] || [ -n "${dollar}{CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}" ]; }; then
+if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
+  if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+    echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${dollar}{GITHUB_EVENT_NAME:-unknown}"
+    exit 0
+  fi
+
   can_render_pr_comment=true
 
   ensure_ci_measurement_tool() {
@@ -2370,34 +2367,38 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && { [ "${
   }
 
   if ! ensure_ci_measurement_tool gh gh; then
-    echo "::notice::gh is not available; skipping CI measurement PR comment"
+    echo "::error::gh is not available; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
   fi
   if ! ensure_ci_measurement_tool node nodejs; then
-    echo "::notice::node is not available; skipping CI measurement PR comment"
+    echo "::error::node is not available; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
   fi
   if ! command -v jq >/dev/null 2>&1; then
     if ensure_ci_measurement_tool jq jq; then
       :
     else
-      echo "::notice::jq is not available; skipping CI measurement PR comment"
+      echo "::error::jq is not available; unable to publish required CI measurement PR comment"
       can_render_pr_comment=false
     fi
   fi
   if [ -z "${dollar}{GH_TOKEN:-${dollar}{GITHUB_TOKEN:-}}" ]; then
-    echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+    echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
   fi
 
   event_path="${dollar}{GITHUB_EVENT_PATH:-}"
-  pr_number="${dollar}{CI_MEASUREMENT_PR_COMMENT_PR_NUMBER:-}"
+  pr_number=""
   if [ "$can_render_pr_comment" = "true" ] && [ -n "$event_path" ] && [ -f "$event_path" ]; then
-    pr_number="${dollar}{pr_number:-$(jq -r '.pull_request.number // empty' "$event_path")}"
+    pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
   fi
   if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-    echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+    echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
+  fi
+
+  if [ "$can_render_pr_comment" != "true" ]; then
+    exit 1
   fi
 
   if [ "$can_render_pr_comment" = "true" ]; then

@@ -490,8 +490,14 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
     expect(ciWorkflowSource).toContain('baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
-    expect(ciWorkflowSource).toContain('measurement_pr_number:')
-    expect(ciWorkflowSource).toContain("CI_MEASUREMENT_PR_COMMENT_PR_NUMBER: '${{ inputs.measurement_pr_number }}'")
+    expect(ciWorkflowSource).not.toContain('measurement_pr_number:')
+    expect(ciWorkflowSource).not.toContain('CI_MEASUREMENT_PR_COMMENT_PR_NUMBER')
+    expect(ciWorkflowSource).toContain(
+      'CI measurement PR comments are produced only by pull_request workflows',
+    )
+    expect(ciWorkflowSource).toContain(
+      'unable to publish required CI measurement PR comment',
+    )
     expect(ciWorkflowSource).toContain('seedRuns: ($seedRuns[0] // [])')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(
@@ -514,7 +520,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
     expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
     expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
-    expect(generatedCiWorkflowYamlSource).toContain("format('measurement-pr-{0}-run-{1}'")
+    expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
+    expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')
     expect(generatedCiWorkflowYamlSource).toContain("format('manual-run-{0}', github.run_id)")
     expect(generatedCiWorkflowYamlSource).toContain("format('label-{0}', github.event.label.name)")
     expect(generatedCiWorkflowYamlSource).toContain(

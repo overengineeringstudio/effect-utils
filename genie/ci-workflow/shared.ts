@@ -65,10 +65,8 @@ export const standardCIEnv = {
  * cancel in-progress runs so several historical refs can be backfilled without
  * canceling each other.
  *
- * Manual PR measurement refreshes are intentionally keyed by run id. They are
- * used as operational probes to update managed PR comments, and stale queued
- * GitHub workflow_dispatch runs can otherwise hold the shared branch bucket
- * indefinitely when GitHub refuses cancellation.
+ * Manual dispatches are intentionally keyed by run id. They are operator probes
+ * and baseline/debug tools, not the authoritative PR-comment path.
  *
  * Merge-queue label churn is different: only the mq:ci-admitted label event is
  * allowed to materialize full PR CI. Other label events do not change the
@@ -77,7 +75,7 @@ export const standardCIEnv = {
 export const ciJobConcurrency = (jobId: string) =>
   ({
     group:
-      "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}" +
+      "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}" +
       `-${jobId}`,
     'cancel-in-progress':
       "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
@@ -93,7 +91,7 @@ const withDefaultJobConcurrency = (jobs: GitHubWorkflowArgs['jobs']): GitHubWork
 
 export const ciWorkflowConcurrency = {
   group:
-    "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && inputs.measurement_pr_number != '' && format('measurement-pr-{0}-run-{1}', inputs.measurement_pr_number, github.run_id) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code'))) }}",
+    "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}",
   'cancel-in-progress':
     "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
 } as const
