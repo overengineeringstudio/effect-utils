@@ -219,8 +219,10 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(megarepoTaskModuleSource).not.toContain('MR_SKIP_ARGS+=(--skip "$member")')
   })
 
-  it('accepts both historical and nested mr ls success payloads', () => {
-    expect(megarepoTaskModuleSource).toContain('(.value.members // .value.value.members // [])')
+  it('accepts current, historical, and nested mr ls success payloads', () => {
+    expect(megarepoTaskModuleSource).toContain(
+      '(.members // .value.members // .value.value.members // [])',
+    )
     expect(megarepoTaskModuleSource).not.toContain('.value.members[].name')
   })
 

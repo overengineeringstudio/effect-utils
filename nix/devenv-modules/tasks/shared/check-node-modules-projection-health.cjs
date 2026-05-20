@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path')
-const { createRequire } = require('module')
+const { builtinModules, createRequire } = require('module')
 const crypto = require('crypto')
 
 const mode = process.env.NODE_MODULES_HELPER_MODE || 'health'
@@ -48,6 +48,13 @@ const collectHealthEntryPaths = (nodeModulesDir) => {
 }
 
 const resolveDependencyPackageRoot = ({ requireFromPkg, dependencyName }) => {
+  if (
+    builtinModules.includes(dependencyName) ||
+    builtinModules.includes(dependencyName.replace(/^node:/, ''))
+  ) {
+    return 'builtin'
+  }
+
   const packagePath = dependencyName.split('/')
   const searchPaths = requireFromPkg.resolve.paths(dependencyName) ?? []
 
@@ -83,6 +90,48 @@ const collectRuntimeExportTargets = (value, conditionName = undefined) => {
   return []
 }
 
+const collectRootRuntimeExportTargets = (exportsValue) => {
+  if (typeof exportsValue === 'string' || Array.isArray(exportsValue)) {
+    return collectRuntimeExportTargets(exportsValue)
+  }
+
+  if (!exportsValue || typeof exportsValue !== 'object') return []
+
+  if (Object.hasOwn(exportsValue, '.')) {
+    return collectRuntimeExportTargets(exportsValue['.'])
+  }
+
+  const keys = Object.keys(exportsValue)
+  if (keys.some((key) => key.startsWith('.'))) return []
+
+  return collectRuntimeExportTargets(exportsValue)
+}
+
+const targetExistsWithNodeResolution = (packageDir, target) => {
+  const resolved = path.resolve(packageDir, target)
+  if (fs.existsSync(resolved)) return true
+
+  for (const suffix of ['.js', '.json', '.node', '.mjs', '.cjs']) {
+    if (fs.existsSync(`${resolved}${suffix}`)) return true
+  }
+
+  for (const indexFile of ['index.js', 'index.json', 'index.node', 'index.mjs', 'index.cjs']) {
+    if (fs.existsSync(path.join(resolved, indexFile))) return true
+  }
+
+  return false
+}
+
+const packageTargetIsShipped = ({ includedFiles, target }) => {
+  if (!target.startsWith('./')) return false
+  if (target.includes('*')) return false
+
+  const relativeTarget = target.slice(2)
+  return includedFiles.some(
+    (file) => file === relativeTarget || relativeTarget.startsWith(`${file}/`),
+  )
+}
+
 const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
   if (!packageDir.includes('/v11/links/')) return
 
@@ -91,32 +140,26 @@ const verifyPackageContent = ({ pkg, packageDir, entryPath, failures }) => {
     : []
   if (includedFiles.length === 0) return
 
-  const targets = []
-
   if (typeof pkg.main === 'string') {
-    targets.push(pkg.main)
+    if (
+      packageTargetIsShipped({ includedFiles, target: pkg.main }) &&
+      !targetExistsWithNodeResolution(packageDir, pkg.main)
+    ) {
+      failures.push(`${pkg.name ?? entryPath} -> ${pkg.main} (${packageDir})`)
+    }
   }
 
   if (pkg.exports !== undefined) {
-    targets.push(...collectRuntimeExportTargets(pkg.exports))
-  }
-
-  for (const target of targets) {
-    if (!target.startsWith('./')) continue
-    if (target.includes('*')) continue
-
-    const relativeTarget = target.slice(2)
+    const shippedExportTargets = collectRootRuntimeExportTargets(pkg.exports).filter((target) =>
+      packageTargetIsShipped({ includedFiles, target }),
+    )
     if (
-      !includedFiles.some(
-        (file) => file === relativeTarget || relativeTarget.startsWith(`${file}/`),
-      )
+      shippedExportTargets.length > 0 &&
+      !shippedExportTargets.some((target) => targetExistsWithNodeResolution(packageDir, target))
     ) {
-      continue
-    }
-
-    const resolved = path.resolve(packageDir, target)
-    if (!fs.existsSync(resolved)) {
-      failures.push(`${pkg.name ?? entryPath} -> ${target} (${packageDir})`)
+      failures.push(
+        `${pkg.name ?? entryPath} -> ${shippedExportTargets.join(' | ')} (${packageDir})`,
+      )
     }
   }
 }
