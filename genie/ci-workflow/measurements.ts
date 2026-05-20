@@ -2343,7 +2343,7 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
-if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
+${opts?.prComment?.enabled === true ? String.raw`if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
   if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
     echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${dollar}{GITHUB_EVENT_NAME:-unknown}"
     exit 0
@@ -3402,6 +3402,7 @@ EOF
     fi
   fi
 fi
+` : ''}
 
 if [ "$exit_code" -ne 0 ]; then
   exit "$exit_code"

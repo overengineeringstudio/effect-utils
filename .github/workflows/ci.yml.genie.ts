@@ -280,6 +280,29 @@ const jobs: Record<CIJobName, ReturnType<typeof job> | ReturnType<typeof multiPl
 const NETLIFY_SITE = 'overeng-utils'
 const sourceShapeMeasurementsDir = 'tmp/source-shape-ci'
 const nixClosureMeasurementsDir = 'tmp/nix-closure-ci'
+const ciMeasurementReportDir = 'tmp/ci-measurement-report'
+
+const downloadCurrentMeasurementArtifactStep = (artifactName: string, outputDir: string) =>
+  ({
+    name: `Download current measurement artifact: ${artifactName}`,
+    uses: 'actions/download-artifact@v4',
+    with: {
+      name: artifactName,
+      path: outputDir,
+    },
+  }) as const
+
+const ciMeasurementReportToolStep = {
+  name: 'Provide CI measurement report tools',
+  shell: 'bash',
+  run: [
+    'set -euo pipefail',
+    'for out in $(nix build --no-link --print-out-paths nixpkgs#jq nixpkgs#nodejs nixpkgs#gh nixpkgs#resvg); do',
+    '  echo "$out/bin" >> "$GITHUB_PATH"',
+    'done',
+  ].join('\n'),
+} as const
+
 const nixClosureMeasurementTargets = [
   {
     installable: '.#genie',
@@ -434,7 +457,7 @@ const extraJobs: Record<string, any> = {
       ],
       permissions: ciMeasurementsCommentPermissions,
       prComment: {
-        enabled: true,
+        enabled: false,
         title: 'Devenv Performance',
         maxRows: 8,
         maxHistory: 20,
@@ -462,7 +485,7 @@ const extraJobs: Record<string, any> = {
         buckets: defaultNixClosureMeasurementBuckets,
         regressionMode: 'warn',
         prComment: {
-          enabled: true,
+          enabled: false,
           title: 'Nix Closure Measurements',
           maxRows: 8,
           maxHistory: 20,
@@ -546,7 +569,7 @@ const extraJobs: Record<string, any> = {
           outputFile: `${sourceShapeMeasurementsDir}/measurement-comparison.json`,
           regressionMode: 'warn',
           prComment: {
-            enabled: true,
+            enabled: false,
             title: 'Source Shape Measurements',
             maxRows: 12,
             maxHistory: 20,
@@ -557,6 +580,78 @@ const extraJobs: Record<string, any> = {
       ciMeasurementsArtifactStep({
         artifactName: 'source-shape',
         path: sourceShapeMeasurementsDir,
+      }),
+    ],
+  },
+  'ci-measurements-report': {
+    name: 'ci/measurements-report',
+    if: normalCiIf,
+    needs: ['devenv-perf', 'nix-closure-sizes', 'source-shape'],
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+    }),
+    'timeout-minutes': jobTimeoutMinutes,
+    defaults: bashShellDefaults,
+    permissions: ciMeasurementsCommentPermissions,
+    env: ciMeasurementSubjectEnv,
+    steps: [
+      checkoutStep(),
+      installNixStep(),
+      ciMeasurementReportToolStep,
+      downloadCurrentMeasurementArtifactStep(
+        'devenv-perf',
+        `${ciMeasurementReportDir}/current/devenv-perf`,
+      ),
+      downloadCurrentMeasurementArtifactStep(
+        'nix-closure-measurements',
+        `${ciMeasurementReportDir}/current/nix-closure-measurements`,
+      ),
+      downloadCurrentMeasurementArtifactStep(
+        'source-shape',
+        `${ciMeasurementReportDir}/current/source-shape`,
+      ),
+      downloadPreviousGitHubArtifactStep({
+        artifactName: 'devenv-perf',
+        outputDir: `${ciMeasurementReportDir}/baseline/devenv-perf`,
+        maxRuns: 20,
+      }),
+      downloadPreviousGitHubArtifactStep({
+        artifactName: 'nix-closure-measurements',
+        outputDir: `${ciMeasurementReportDir}/baseline/nix-closure-measurements`,
+        maxRuns: 20,
+      }),
+      downloadPreviousGitHubArtifactStep({
+        artifactName: 'source-shape',
+        outputDir: `${ciMeasurementReportDir}/baseline/source-shape`,
+        seedRuns: [
+          {
+            runId: '26085158592',
+            label: 'main baseline',
+            sha: 'ce7cf8f8ebfaa1da6c7e9122cd195a5f95ce2fca',
+            source: 'manual-backfill',
+            artifacts: ['source-shape'],
+            notes:
+              'Backfilled with the current measurement workflow for the effect-utils #658 rollout.',
+          },
+        ],
+        maxRuns: 20,
+      }),
+      compareCiMeasurementsStep({
+        currentDir: `${ciMeasurementReportDir}/current`,
+        baselineDir: `${ciMeasurementReportDir}/baseline`,
+        outputFile: `${ciMeasurementReportDir}/measurement-comparison.json`,
+        regressionMode: 'warn',
+        prComment: {
+          enabled: true,
+          title: 'CI Measurements',
+          maxRows: 16,
+          maxHistory: 20,
+        },
+      }),
+      ciMeasurementsArtifactStep({
+        artifactName: 'ci-measurements-report',
+        path: ciMeasurementReportDir,
       }),
     ],
   },
