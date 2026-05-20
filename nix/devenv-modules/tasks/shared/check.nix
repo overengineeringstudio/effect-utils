@@ -57,6 +57,7 @@ let
   megarepoTasks = lib.optionals hasMegarepoCheck [
     "mr:check"
     "mr:lock-sync-check"
+    "mr:source-policy-check"
   ];
 
   # Build description parts
