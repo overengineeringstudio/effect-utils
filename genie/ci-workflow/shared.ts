@@ -72,14 +72,28 @@ export const standardCIEnv = {
  * allowed to materialize full PR CI. Other label events do not change the
  * commit under test and must not cancel an already-running validation run.
  */
-export const ciJobConcurrency = (jobId: string, opts?: { readonly matrix?: boolean }) =>
+type CiConcurrencyOptions = {
+  readonly matrix?: boolean
+  readonly measurementBaselineBackfill?: boolean
+}
+
+const ciConcurrencyScope = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>) =>
+  opts?.measurementBaselineBackfill === true
+    ? "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}"
+    : "${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code') }}"
+
+const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>) =>
+  opts?.measurementBaselineBackfill === true
+    ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
+    : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+
+export const ciJobConcurrency = (jobId: string, opts?: CiConcurrencyOptions) =>
   ({
-    group:
-      "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}" +
+    group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-" +
+      ciConcurrencyScope(opts) +
       `-${jobId}` +
       (opts?.matrix === true ? '-${{ strategy.job-index }}' : ''),
-    'cancel-in-progress':
-      "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
+    'cancel-in-progress': ciCancelInProgress(opts),
   }) as const
 
 const isMatrixJob = (job: GitHubWorkflowArgs['jobs'][string]) =>
@@ -110,21 +124,25 @@ const withJobConcurrencyDispatchInputs = (on: GitHubWorkflowArgs['on']): GitHubW
   }
 }
 
-const withDefaultJobConcurrency = (jobs: GitHubWorkflowArgs['jobs']): GitHubWorkflowArgs['jobs'] =>
+const supportsMeasurementBaselineBackfill = (on: GitHubWorkflowArgs['on']) =>
+  typeof on === 'object' && on !== null && 'workflow_dispatch' in on && on.workflow_dispatch !== null
+
+const withDefaultJobConcurrency = (
+  jobs: GitHubWorkflowArgs['jobs'],
+  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>,
+): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => [
       jobId,
       job.concurrency === undefined
-        ? { ...job, concurrency: ciJobConcurrency(jobId, { matrix: isMatrixJob(job) }) }
+        ? { ...job, concurrency: ciJobConcurrency(jobId, { ...opts, matrix: isMatrixJob(job) }) }
         : job,
     ]),
   )
 
 export const ciWorkflowConcurrency = {
-  group:
-    "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}",
-  'cancel-in-progress':
-    "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}",
+  group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-" + ciConcurrencyScope(),
+  'cancel-in-progress': ciCancelInProgress(),
 } as const
 
 /**
@@ -141,7 +159,11 @@ export const ciWorkflow = (args: GitHubWorkflowArgs) =>
       on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
       ...(concurrency === undefined ? {} : { concurrency }),
       actionlint: actionlint ?? defaultActionlintConfig,
-      jobs: concurrency === undefined ? withDefaultJobConcurrency(jobs) : jobs,
+      jobs: concurrency === undefined
+        ? withDefaultJobConcurrency(jobs, {
+          measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+        })
+        : jobs,
     }))(args)
 
 export type NixConfigOptions = {
