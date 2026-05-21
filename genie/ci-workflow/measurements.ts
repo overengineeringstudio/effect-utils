@@ -1542,8 +1542,8 @@ out_path="$(nix build --no-update-lock-file --no-link --print-out-paths "$instal
 path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
 paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
 
-nix path-info --recursive --json "$out_path" >"$path_info"
-jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0) })' "$path_info" >"$paths_file"
+nix path-info --recursive --closure-size --json "$out_path" >"$path_info"
+jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0), closureSize: (.value.closureSize // 0) })' "$path_info" >"$paths_file"
 
 jq -n \
   --slurpfile paths "$paths_file" \
@@ -1576,6 +1576,7 @@ jq -n \
   --argjson gatePolicy ${shellSingleQuote(gatePolicy)} \
   '
     ($paths[0] // []) as $closurePaths
+    | ($closurePaths | map(select(.path == $outPath) | .closureSize) | first // ($closurePaths | map(.narSize) | add // 0)) as $totalClosureSize
     | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
     | ($closurePaths | length) as $pathCount
     | ($buckets | map(
@@ -1586,7 +1587,7 @@ jq -n \
             label: (($bucket.label // $bucket.name) + " closure size"),
             group: "nix closure buckets",
             path: ($targetPath + ["buckets", $bucket.name]),
-            description: ("NAR size contributed by closure paths matching " + $bucket.pathRegex),
+            description: ("Store size contributed by closure paths matching " + $bucket.pathRegex),
             measurementKind: "deterministic",
             unit: "bytes",
             value: (
@@ -1626,14 +1627,27 @@ jq -n \
             id: "nix.closure.nar_size",
             label: "Total closure size",
             group: "nix closure",
-            path: ($targetPath + ["total", "nar-size"]),
-            description: ("Total NAR size for all paths in " + $targetDescription),
+            path: ($targetPath + ["total", "closure-size"]),
+            description: ("Total recursive store closure size for " + $targetDescription),
             name: "nix.closure.nar_size",
             measurementKind: "deterministic",
             unit: "bytes",
-            value: $totalNarSize,
+            value: $totalClosureSize,
             policy: $gatePolicy,
             dimensions: { bucket: "total" }
+          },
+          {
+            id: "nix.closure.serialized_nar_size",
+            label: "Total serialized NAR size",
+            group: "nix closure diagnostics",
+            path: ($targetPath + ["total", "serialized-nar-size"]),
+            description: ("Diagnostic sum of serialized NAR sizes for all paths in " + $targetDescription),
+            name: "nix.closure.serialized_nar_size",
+            measurementKind: "diagnostic",
+            unit: "bytes",
+            value: $totalNarSize,
+            policy: { comparisonMode: "diagnostic", gate: "off" },
+            dimensions: { bucket: "total", sizeKind: "nar" }
           },
           {
             id: "nix.closure.path_count",
@@ -2814,6 +2828,11 @@ const humanProbe = (row) => {
 }
 
 const semanticPath = (row) => {
+  const parts = semanticSegments(row)
+  return parts.length > 0 ? parts.join(' / ') : '-'
+}
+
+const semanticSegments = (row) => {
   const parts = [
     ...(Array.isArray(row.target?.path) ? row.target.path : []),
     row.target?.group,
@@ -2826,7 +2845,46 @@ const semanticPath = (row) => {
     seen.add(part)
     return true
   })
-  return unique.length > 0 ? unique.join(' / ') : '-'
+  if (unique.length > 0) return unique
+
+  const kind = row.target?.kind || row.observation?.measurementKind || 'measurements'
+  if (kind === 'devenv') return ['performance', 'devenv']
+  if (kind === 'nix-closure') return ['nix', 'closures']
+  return [String(kind)]
+}
+
+const semanticGroupSegments = (row) => {
+  const segments = semanticSegments(row)
+  if (segments.length <= 1) return segments
+  const targetKind = row.target?.kind
+  if (targetKind === 'devenv') return segments.slice(0, Math.min(2, segments.length))
+  if (targetKind === 'nix-closure') return segments.slice(0, Math.min(3, segments.length))
+  if (targetKind === 'source-shape') return segments.slice(0, Math.min(2, segments.length))
+  return segments.slice(0, Math.min(2, segments.length))
+}
+
+const semanticGroupLabel = (row) => {
+  const segments = semanticGroupSegments(row)
+  return segments.length > 0 ? segments.join(' / ') : 'measurements'
+}
+
+const groupRows = (rows) => {
+  const groups = new Map()
+  for (const row of rows) {
+    const label = semanticGroupLabel(row)
+    const existing = groups.get(label)
+    if (existing) existing.rows.push(row)
+    else groups.set(label, { label, rows: [row] })
+  }
+  return Array.from(groups.values()).sort((left, right) => {
+    const leftRank = Math.min(...left.rows.map(rank))
+    const rightRank = Math.min(...right.rows.map(rank))
+    if (leftRank !== rightRank) return leftRank - rightRank
+    const leftImpact = Math.max(...left.rows.map((row) => Math.abs(row.semanticImpactScore || 0)))
+    const rightImpact = Math.max(...right.rows.map((row) => Math.abs(row.semanticImpactScore || 0)))
+    if (rightImpact !== leftImpact) return rightImpact - leftImpact
+    return left.label.localeCompare(right.label)
+  })
 }
 
 const chartProbe = (row) => {
@@ -2941,11 +2999,12 @@ const scanDecision = (row) => {
 const scanTable = (rows) => {
   if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
   return [
-    '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
-    '| --- | --- | --- | ---: | ---: | --- |',
+    '| What changed? | Group | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+    '| --- | --- | --- | --- | ---: | ---: | --- |',
     ...rows.map((row) => {
       return '| ' + [
         scanDecision(row),
+        semanticGroupLabel(row),
         humanProbe(row),
         baselineToCurrent(row),
         rawChange(row),
@@ -2956,14 +3015,24 @@ const scanTable = (rows) => {
   ].join('\n')
 }
 
+const groupedScanTables = (rows) => {
+  if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
+  return groupRows(rows).map((group) => [
+    '### ' + group.label,
+    '',
+    scanTable(group.rows),
+  ].join('\n')).join('\n\n')
+}
+
 const zeroImpactTable = (rows) => {
   if (rows.length === 0) return 'No zero-impact measurements.'
   return [
-    '| Probe | Baseline -> current | Raw change | Impact | Gate | Evidence | Why hidden |',
-    '| --- | --- | ---: | ---: | --- | --- | --- |',
+    '| Group | Probe | Baseline -> current | Raw change | Impact | Gate | Evidence | Why hidden |',
+    '| --- | --- | --- | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       const meaning = interpretation(row)
       return '| ' + [
+        semanticGroupLabel(row),
         humanProbe(row),
         baselineToCurrent(row),
         rawChange(row),
@@ -2976,13 +3045,23 @@ const zeroImpactTable = (rows) => {
   ].join('\n')
 }
 
+const groupedZeroImpactTables = (rows) => {
+  if (rows.length === 0) return 'No zero-impact measurements.'
+  return groupRows(rows).map((group) => [
+    '### ' + group.label,
+    '',
+    zeroImpactTable(group.rows),
+  ].join('\n')).join('\n\n')
+}
+
 const diagnosticTable = (rows) => {
   if (rows.length === 0) return 'No diagnostic or ungated measurements.'
   return [
-    '| Probe | Current | Baseline | Impact | Gate | Reason | Evidence |',
-    '| --- | ---: | ---: | ---: | --- | --- | --- |',
+    '| Group | Probe | Current | Baseline | Impact | Gate | Reason | Evidence |',
+    '| --- | --- | ---: | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       return '| ' + [
+        semanticGroupLabel(row),
         humanProbe(row),
         formatValue(row.current, row.observation?.unit),
         formatValue(row.baseline, row.observation?.unit),
@@ -2993,6 +3072,15 @@ const diagnosticTable = (rows) => {
       ].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
+}
+
+const groupedDiagnosticTables = (rows) => {
+  if (rows.length === 0) return 'No diagnostic or ungated measurements.'
+  return groupRows(rows).map((group) => [
+    '### ' + group.label,
+    '',
+    diagnosticTable(group.rows),
+  ].join('\n')).join('\n\n')
 }
 
 const comparisonTable = (rows) => {
@@ -3060,7 +3148,9 @@ const allMeasurementsTable = (rows) => {
 const sourceMeasurement = (row) => ({
   id: row.observation?.dimensions?.probe || row.observation?.name || humanProbe(row),
   label: humanProbe(row),
-  group: semanticPath(row),
+  group: semanticGroupLabel(row),
+  path: semanticSegments(row),
+  groupPath: semanticGroupSegments(row),
   status: row.status,
   direction: row.direction,
   gateable: row.gateable,
@@ -3324,7 +3414,7 @@ const summaryLines = [
   chartMarkdown,
   '',
   hasComparableBaseline
-    ? scanTable(visibleNonZeroImpactRows)
+    ? groupedScanTables(visibleNonZeroImpactRows)
     : currentOnlyTable(visibleRows),
 ]
 
@@ -3336,7 +3426,7 @@ if (hasComparableBaseline && zeroImpactRows.length > 0) {
     '',
     'These rows had compatible baseline data, but their semantic impact rounded to 0.00x because the movement was below the configured budget, below the noise floor, or inside the robust noise band.',
     '',
-    zeroImpactTable(zeroImpactRows),
+    groupedZeroImpactTables(zeroImpactRows),
     '',
     '</details>',
   )
@@ -3348,7 +3438,7 @@ if (diagnosticRows.length > 0) {
     '<details>',
     '<summary>Diagnostic / ungated measurements (' + diagnosticRows.length + ')</summary>',
     '',
-    diagnosticTable(diagnosticRows),
+    groupedDiagnosticTables(diagnosticRows),
     '',
     '</details>',
   )
