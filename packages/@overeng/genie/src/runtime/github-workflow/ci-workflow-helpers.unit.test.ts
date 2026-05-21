@@ -455,7 +455,6 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem }',
     )
-    expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
     expect(ciWorkflowSource).toContain(
       'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
     )
@@ -567,7 +566,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_dark_png_path"')
     expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
     expect(ciWorkflowSource).toContain('base64 <"$chart_png_file" | tr -d \'\\n\'')
-    expect(ciWorkflowSource).toContain('nix path-info --recursive --closure-size --json "$out_path"')
+    expect(ciWorkflowSource).toContain(
+      'nix path-info --recursive --closure-size --json "$out_path"',
+    )
     expect(ciWorkflowSource).toContain('nix.closure.serialized_nar_size')
   })
 })
