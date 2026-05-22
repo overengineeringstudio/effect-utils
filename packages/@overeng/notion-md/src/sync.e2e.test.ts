@@ -10,6 +10,7 @@ import type { NmdStorage } from '@overeng/notion-effect-client'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 import { NotionMdGateway, type PullPageResult } from './model.ts'
+import { baseSnapshotPath } from './sidecar.ts'
 import { pullPage, pushPage, statusPage } from './sync.ts'
 
 const pageId = '00000000-0000-4000-8000-000000000001'
@@ -216,8 +217,14 @@ describe('notion-md e2e prototype', () => {
       const pull = await runWithFake(pullPage({ pageId, outPath: path }), fake)
       const parsed = await parseFile(path)
       const status = await runWithFake(statusPage({ path }), fake)
+      const base = JSON.parse(await readFile(baseSnapshotPath(path), 'utf8'))
 
       expect(pull.storage).toBe('self_contained')
+      expect(base).toMatchObject({
+        version: 1,
+        page_id: pageId,
+        body: '# Probe\n\nBody\n',
+      })
       expect(parsed.frontmatter.notion_md.storage._tag).toBe('self_contained')
       expect(parsed.frontmatter.notion_md.properties.Status).toEqual({
         _tag: 'read_only',
@@ -263,6 +270,8 @@ describe('notion-md e2e prototype', () => {
       )
       const conflict = await readFile(`${path}.conflict.roughdraft.md`, 'utf8')
       expect(conflict).toContain('{==Body conflict==}')
+      expect(conflict).toContain('## Base body')
+      expect(conflict).toContain('Body')
       expect(conflict).toContain('Local body')
       expect(conflict).toContain('Remote body')
 

@@ -16,6 +16,7 @@ import {
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
+import { baseSnapshotPath } from './sidecar.ts'
 import { pullPage, pushPage, statusPage } from './sync.ts'
 
 const token = process.env.NOTION_TOKEN ?? process.env.NOTION_API_TOKEN
@@ -104,6 +105,7 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         expect(pulled.storage).toBe('self_contained')
         expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
         expect(parsed.body).toContain('Initial body')
+        await expect(readFile(baseSnapshotPath(path), 'utf8')).resolves.toContain('Initial body')
         expect(cleanStatus.localChanged).toBe(false)
         expect(cleanStatus.remoteChanged).toBe(false)
 
@@ -133,6 +135,10 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         await expect(runLive(pushPage({ path }))).rejects.toThrow(
           'Remote page changed since the last clean pull',
         )
+        const conflict = await readFile(`${path}.conflict.roughdraft.md`, 'utf8')
+        expect(conflict).toContain('## Base body')
+        expect(conflict).toContain('Local body')
+        expect(conflict).toContain('Remote body')
       })
     })
   })

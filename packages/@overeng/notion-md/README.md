@@ -25,6 +25,7 @@ The CLI reads `NOTION_TOKEN` first and `NOTION_API_TOKEN` second.
 ## Safety Model
 
 - `pull` writes a strict `.nmd` envelope and computes the clean body hash over the stripped Markdown body.
+- `pull` writes a strict `<file>.base.json` snapshot with the last clean body so guarded conflicts can show base/local/remote evidence.
 - `status` compares local body hash, remote body hash, and remote `last_edited_time`.
 - `push` refuses to overwrite remote body changes unless `--force` is explicit.
 - `push` refuses to update pages with unresolved unknown Notion blocks unless destructive deletion is explicit.
@@ -39,6 +40,7 @@ Sidecars are not the normal format. They are overflow storage for state that doe
 
 - storage payloads above the strict size budget,
 - volatile signed Notion retrieval URLs,
+- last-clean body snapshots used for conflict evidence,
 - future binary/cache artifacts.
 
 The frontmatter keeps a tagged pointer and stable ids when a sidecar is required.

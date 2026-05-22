@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { Effect, Schema } from 'effect'
@@ -6,6 +6,7 @@ import { Effect, Schema } from 'effect'
 import { NmdStorageSchema, type NmdFrontmatterV1 } from '@overeng/notion-effect-client'
 
 import { NmdSidecarError } from './errors.ts'
+import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 
 export const NmdSidecarV1 = Schema.Struct({
   version: Schema.Literal(1),
@@ -16,12 +17,24 @@ export const NmdSidecarV1 = Schema.Struct({
 
 export type NmdSidecarV1 = typeof NmdSidecarV1.Type
 
+export const NmdBaseSnapshotV1 = Schema.Struct({
+  version: Schema.Literal(1),
+  page_id: Schema.String,
+  body_hash: Schema.String,
+  body: Schema.String,
+}).annotations({ identifier: 'NotionMd.BaseSnapshotV1' })
+
+export type NmdBaseSnapshotV1 = typeof NmdBaseSnapshotV1.Type
+
 const strictOptions = {
   errors: 'all',
   onExcessProperty: 'error',
 } as const
 
 const decodeSidecar = Schema.decodeUnknownSync(NmdSidecarV1, strictOptions)
+const decodeBaseSnapshot = Schema.decodeUnknownSync(NmdBaseSnapshotV1, strictOptions)
+
+export const baseSnapshotPath = (path: string): string => `${path}.base.json`
 
 const sameIds = (left: readonly string[], right: readonly string[]): boolean => {
   if (left.length !== right.length) return false
@@ -130,4 +143,82 @@ export const validateReferencedSidecar = (opts: {
     })
 
     return sidecar
+  })
+
+/** Write the last clean body snapshot needed for three-way conflict evidence. */
+export const writeBaseSnapshot = (opts: {
+  readonly path: string
+  readonly frontmatter: NmdFrontmatterV1
+  readonly body: string
+}): Effect.Effect<void, NmdSidecarError> =>
+  Effect.tryPromise({
+    try: () => {
+      const body = canonicalizeMarkdown(opts.body)
+      return writeFile(
+        baseSnapshotPath(opts.path),
+        `${JSON.stringify(
+          {
+            version: 1,
+            page_id: opts.frontmatter.notion_md.page_id,
+            body_hash: opts.frontmatter.notion_md.body.hash,
+            body,
+          },
+          null,
+          2,
+        )}\n`,
+      )
+    },
+    catch: (cause) =>
+      new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: baseSnapshotPath(opts.path),
+        cause,
+        message: `Failed to write .nmd base snapshot ${baseSnapshotPath(opts.path)}`,
+      }),
+  })
+
+/** Load and validate the last clean body snapshot for conflict handling. */
+export const readBaseSnapshot = (opts: {
+  readonly path: string
+  readonly frontmatter: NmdFrontmatterV1
+}): Effect.Effect<NmdBaseSnapshotV1, NmdSidecarError> =>
+  Effect.gen(function* () {
+    const snapshotPath = baseSnapshotPath(opts.path)
+    const snapshot = yield* Effect.tryPromise({
+      try: () => readFile(snapshotPath, 'utf8'),
+      catch: (cause) =>
+        new NmdSidecarError({
+          path: opts.path,
+          sidecar_path: snapshotPath,
+          cause,
+          message: `Failed to read .nmd base snapshot ${snapshotPath}`,
+        }),
+    }).pipe(
+      Effect.flatMap((content) =>
+        Effect.try({
+          try: () => decodeBaseSnapshot(JSON.parse(content)),
+          catch: (cause) =>
+            new NmdSidecarError({
+              path: opts.path,
+              sidecar_path: snapshotPath,
+              cause,
+              message: `Failed to parse .nmd base snapshot ${snapshotPath}`,
+            }),
+        }),
+      ),
+    )
+
+    if (
+      snapshot.page_id !== opts.frontmatter.notion_md.page_id ||
+      snapshot.body_hash !== opts.frontmatter.notion_md.body.hash ||
+      sha256Digest(snapshot.body) !== snapshot.body_hash
+    ) {
+      return yield* new NmdSidecarError({
+        path: opts.path,
+        sidecar_path: snapshotPath,
+        message: `Invalid .nmd base snapshot ${snapshotPath}`,
+      })
+    }
+
+    return snapshot
   })

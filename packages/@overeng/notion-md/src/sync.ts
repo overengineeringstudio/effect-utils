@@ -19,7 +19,7 @@ import {
   type RemoteMarkdownSnapshot,
   type RemotePageSnapshot,
 } from './model.ts'
-import { validateReferencedSidecar } from './sidecar.ts'
+import { readBaseSnapshot, validateReferencedSidecar, writeBaseSnapshot } from './sidecar.ts'
 import { decideStorage } from './storage-policy.ts'
 
 export interface PullOptions {
@@ -198,6 +198,7 @@ const roughdraftConflictPath = (path: string): string => `${path}.conflict.rough
 const writeRoughdraftConflict = (opts: {
   readonly path: string
   readonly pageId: string
+  readonly baseBody: string
   readonly localBody: string
   readonly remoteBody: string
 }): Effect.Effect<string, unknown> =>
@@ -211,6 +212,12 @@ const writeRoughdraftConflict = (opts: {
 {==Body conflict==}{>>Remote and local body content both changed since the last clean pull. Resolve the chosen content back into the .nmd file, then rerun status/push.<<}{id="body-conflict" by="notion-md" at="${now}"}
 
 Page: ${opts.pageId}
+
+## Base body
+
+\`\`\`markdown
+${opts.baseBody}
+\`\`\`
 
 ## Local body
 
@@ -314,6 +321,13 @@ const writeNmdWithStoragePolicy = (opts: {
     }
 
     await writeFile(opts.path, renderNmdFile(frontmatter, opts.body))
+    await Effect.runPromise(
+      writeBaseSnapshot({
+        path: opts.path,
+        frontmatter,
+        body: opts.body,
+      }),
+    )
     const storage: PullResult['storage'] =
       frontmatter.notion_md.storage._tag === 'sidecar' ? 'sidecar' : 'self_contained'
 
@@ -427,9 +441,14 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
     if (status.remoteChanged === true && opts.force !== true) {
       const gateway = yield* NotionMdGateway
       const remote = yield* gateway.pullPage({ pageId: status.pageId })
+      const baseSnapshot = yield* readBaseSnapshot({
+        path: opts.path,
+        frontmatter: local.frontmatter,
+      })
       const conflictPath = yield* writeRoughdraftConflict({
         path: opts.path,
         pageId: status.pageId,
+        baseBody: baseSnapshot.body,
         localBody: local.body,
         remoteBody: remote.markdown.markdown,
       })
