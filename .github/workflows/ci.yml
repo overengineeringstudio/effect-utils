@@ -3206,7 +3206,7 @@ jobs:
             tmp/devenv-perf-ci
             !tmp/devenv-perf-ci/baseline/**
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
     timeout-minutes: 30
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-devenv-perf"
@@ -3874,7 +3874,7 @@ jobs:
             tmp/nix-closure-ci
             !tmp/nix-closure-ci/baseline/**
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
       - name: Save pnpm state
         if: ${{ success() && steps.restore-pnpm-state.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -4186,7 +4186,7 @@ jobs:
             tmp/source-shape-ci
             !tmp/source-shape-ci/baseline/**
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
@@ -6677,7 +6677,7 @@ jobs:
             tmp/ci-measurement-report
             !tmp/ci-measurement-report/baseline/**
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-ci-measurements-report"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}

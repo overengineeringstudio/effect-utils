@@ -139,6 +139,9 @@ export const ciMeasurementMetrics = {
   codeComplexity: 'code.complexity',
 } as const
 
+export const ciMeasurementProducerArtifactRetentionDays = 7
+export const ciMeasurementReportArtifactRetentionDays = 14
+
 export type NixClosureMeasurementBucket = {
   readonly name: string
   readonly label?: string
@@ -1481,7 +1484,7 @@ export const devenvPerfArtifactStep = (
         'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
       path: [artifactDir, `!${artifactDir}/baseline/**`].join('\n'),
       'if-no-files-found': 'error',
-      'retention-days': opts?.retentionDays ?? 30,
+      'retention-days': opts?.retentionDays ?? ciMeasurementProducerArtifactRetentionDays,
     },
   } as const
 }
@@ -1495,7 +1498,7 @@ export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptio
       name: opts.artifactName,
       path: [opts.path, `!${opts.path}/baseline/**`].join('\n'),
       'if-no-files-found': 'error',
-      'retention-days': opts.retentionDays ?? 30,
+      'retention-days': opts.retentionDays ?? ciMeasurementReportArtifactRetentionDays,
     },
   }) as const
 
