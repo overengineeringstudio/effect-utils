@@ -45,40 +45,6 @@ const resolveToken = Effect.sync(
   ),
 )
 
-const program = Effect.gen(function* () {
-  const args = process.argv.slice(2)
-  const command = args[0]
-
-  if (command === undefined || command === '--help' || command === '-h') {
-    yield* Console.log(usage)
-    return
-  }
-
-  switch (command) {
-    case 'pull': {
-      const pageId = yield* requireArg(args[1], 'pull requires <page-id>')
-      const outPath = yield* requireArg(argAfter(args, '--out'), 'pull requires --out <file.nmd>')
-      const result = yield* pullPage({ pageId, outPath })
-      yield* Console.log(JSON.stringify(result, null, 2))
-      return
-    }
-    case 'status': {
-      const path = yield* requireArg(args[1], 'status requires <file.nmd>')
-      const result = yield* statusPage({ path })
-      yield* Console.log(JSON.stringify(result, null, 2))
-      return
-    }
-    case 'push': {
-      const path = yield* requireArg(args[1], 'push requires <file.nmd>')
-      const result = yield* pushPage({ path, force: args.includes('--force') })
-      yield* Console.log(JSON.stringify(result, null, 2))
-      return
-    }
-    default:
-      return yield* new NmdCliError({ message: `Unknown command: ${command}` })
-  }
-})
-
 const MainLayer = Layer.unwrapEffect(
   resolveToken.pipe(
     Effect.map((token) => {
@@ -92,8 +58,43 @@ const MainLayer = Layer.unwrapEffect(
   ),
 )
 
+const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provide(effect, MainLayer)
+
+const program = Effect.gen(function* () {
+  const args = process.argv.slice(2)
+  const command = args[0]
+
+  if (command === undefined || command === '--help' || command === '-h') {
+    yield* Console.log(usage)
+    return
+  }
+
+  switch (command) {
+    case 'pull': {
+      const pageId = yield* requireArg(args[1], 'pull requires <page-id>')
+      const outPath = yield* requireArg(argAfter(args, '--out'), 'pull requires --out <file.nmd>')
+      const result = yield* withNotion(pullPage({ pageId, outPath }))
+      yield* Console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    case 'status': {
+      const path = yield* requireArg(args[1], 'status requires <file.nmd>')
+      const result = yield* withNotion(statusPage({ path }))
+      yield* Console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    case 'push': {
+      const path = yield* requireArg(args[1], 'push requires <file.nmd>')
+      const result = yield* withNotion(pushPage({ path, force: args.includes('--force') }))
+      yield* Console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    default:
+      return yield* new NmdCliError({ message: `Unknown command: ${command}` })
+  }
+})
+
 program.pipe(
-  Effect.provide(MainLayer),
   Effect.tapError((error) => Console.error(JSON.stringify(error, null, 2))),
   NodeRuntime.runMain({ disableErrorReporting: true }),
 )

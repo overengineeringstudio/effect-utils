@@ -79,6 +79,15 @@
               ;
             src = self;
           };
+          notion-md = import (rootPath + "/packages/@overeng/notion-md/nix/build.nix") {
+            inherit
+              pkgs
+              gitRev
+              commitTs
+              dirty
+              ;
+            src = self;
+          };
         };
         cliPackagesDirty = {
           genie = import (rootPath + "/packages/@overeng/genie/nix/build.nix") {
@@ -101,6 +110,11 @@
             src = self;
             dirty = true;
           };
+          notion-md = import (rootPath + "/packages/@overeng/notion-md/nix/build.nix") {
+            inherit pkgs gitRev commitTs;
+            src = self;
+            dirty = true;
+          };
         };
       in
       {
@@ -119,6 +133,9 @@
           notion-cli = cliPackages.notion-cli;
           notion-cli-dirty = cliPackagesDirty.notion-cli;
           "notion-cli-pnpm-deps" = cliPackages.notion-cli.passthru.depsBuildsByInstallRoot.root;
+          notion-md = cliPackages.notion-md;
+          notion-md-dirty = cliPackagesDirty.notion-md;
+          "notion-md-pnpm-deps" = cliPackages.notion-md.passthru.depsBuildsByInstallRoot.root;
           "oxc-config-plugin-pnpm-deps" = oxlintNpm.pluginBundle.passthru.pnpmDeps;
           # npm oxlint with NAPI bindings + pre-bundled @overeng/oxc-config plugin
           oxlint-npm = oxlintNpm;
@@ -133,12 +150,14 @@
           megarepo = cliPackages.megarepo.outPath;
           tui-stories = cliPackages.tui-stories.outPath;
           notion-cli = cliPackages.notion-cli.outPath;
+          notion-md = cliPackages.notion-md.outPath;
         };
         cliOutPathsDirty = {
           genie = cliPackagesDirty.genie.outPath;
           megarepo = cliPackagesDirty.megarepo.outPath;
           tui-stories = cliPackagesDirty.tui-stories.outPath;
           notion-cli = cliPackagesDirty.notion-cli.outPath;
+          notion-md = cliPackagesDirty.notion-md.outPath;
         };
 
         apps.update-bun-hashes = flake-utils.lib.mkApp {
