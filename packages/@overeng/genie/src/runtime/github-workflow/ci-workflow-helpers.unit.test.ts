@@ -204,14 +204,30 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(installMegarepoStepSource).toContain(
       'MR_OUT=$(nix build --no-link --print-out-paths "$MR_REF")',
     )
-    expect(installMegarepoStepSource).toContain('printf \'%s\\n\' "$MR_BIN_DIR" >> "$GITHUB_PATH"')
+    expect(installMegarepoStepSource).toContain('${appendGitHubPathLine(\'"$MR_BIN_DIR"\')}')
     expect(installMegarepoStepSource).not.toContain('nix profile install')
   })
 
   it('only exports skipped megarepo members when the CI lane actually skips members', () => {
     expect(applyMegarepoLockStepSource).toContain('MEGAREPO_SKIP_MEMBERS')
     expect(applyMegarepoLockStepSource).toContain("skipCsv === ''")
-    expect(applyMegarepoLockStepSource).toContain(`printf 'MEGAREPO_SKIP_MEMBERS=%s\\n'`)
+    expect(applyMegarepoLockStepSource).toContain(
+      "appendGitHubEnvLine('MEGAREPO_SKIP_MEMBERS', quotedSkipCsv)",
+    )
+  })
+
+  it('keeps GitHub env/path printf newlines escaped in shared megarepo steps', () => {
+    expect(ciWorkflowSource).toContain("const appendGitHubPathLine = (valueExpression: string)")
+    expect(ciWorkflowSource).toContain("`printf '%s\\\\n' ${valueExpression} >> \"$GITHUB_PATH\"`")
+    expect(ciWorkflowSource).toContain(
+      "`printf '${name}=%s\\\\n' ${valueExpression} >> \"$GITHUB_ENV\"`",
+    )
+    expect(installMegarepoStepSource).not.toContain("printf '%s\n'")
+    expect(applyMegarepoLockStepSource).not.toContain("printf 'MEGAREPO_STORE=%s\n'")
+    expect(applyMegarepoLockStepSource).not.toContain("printf 'MEGAREPO_SKIP_MEMBERS=%s\n'")
+    expect(generatedCiWorkflowYamlSource).not.toContain("printf '%s\n")
+    expect(generatedCiWorkflowYamlSource).not.toContain("printf 'MEGAREPO_STORE=%s\n")
+    expect(generatedCiWorkflowYamlSource).not.toContain("printf 'MEGAREPO_SKIP_MEMBERS=%s\n")
   })
 
   it('passes skipped megarepo members as one comma-separated CLI option', () => {
