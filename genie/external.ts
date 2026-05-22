@@ -11,6 +11,7 @@ import {
   defineCatalog,
   definePatchedDependencies,
   defineRepoContext,
+  githubLabels,
   githubRuleset,
   githubWorkflow,
   megarepoJson,
@@ -20,8 +21,11 @@ import {
   pnpmWorkspaceYaml,
   tsconfigJson,
   type GenieOutput,
+  type GithubLabelsArgs,
   type GithubRulesetArgs,
   type GitHubWorkflowArgs,
+  type LabelDef,
+  type LegacyMigration,
   type MegarepoConfigArgs,
   type OxfmtConfigArgs,
   type OxlintConfigArgs,
@@ -53,6 +57,7 @@ export {
   defineCatalog,
   definePatchedDependencies,
   defineRepoContext,
+  githubLabels,
   githubRuleset,
   githubWorkflow,
   megarepoJson,
@@ -65,8 +70,11 @@ export {
 export type {
   AggregatePackageJsonData,
   GenieOutput,
+  GithubLabelsArgs,
   GithubRulesetArgs,
   GitHubWorkflowArgs,
+  LabelDef,
+  LegacyMigration,
   MegarepoConfigArgs,
   OxfmtConfigArgs,
   OxlintConfigArgs,
@@ -85,6 +93,18 @@ export type {
   WorkspacePackage,
   WorkspacePackageLike,
 }
+
+// =============================================================================
+// Shared label catalog (consumed by per-repo `.github/labels.json.genie.ts`)
+// =============================================================================
+
+export {
+  andonLabels,
+  commonLabels,
+  deprecatedDefaults,
+  legacyMigrations,
+  mqLabels,
+} from './labels.ts'
 
 /**
  * Catalog versions - single source of truth for dependency versions
