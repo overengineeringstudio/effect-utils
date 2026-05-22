@@ -217,10 +217,10 @@ describe('ci workflow pnpm cache defaults', () => {
   })
 
   it('keeps GitHub env/path printf newlines escaped in shared megarepo steps', () => {
-    expect(ciWorkflowSource).toContain("const appendGitHubPathLine = (valueExpression: string)")
-    expect(ciWorkflowSource).toContain("`printf '%s\\\\n' ${valueExpression} >> \"$GITHUB_PATH\"`")
+    expect(ciWorkflowSource).toContain('const appendGitHubPathLine = (valueExpression: string)')
+    expect(ciWorkflowSource).toContain('`printf \'%s\\\\n\' ${valueExpression} >> "$GITHUB_PATH"`')
     expect(ciWorkflowSource).toContain(
-      "`printf '${name}=%s\\\\n' ${valueExpression} >> \"$GITHUB_ENV\"`",
+      '`printf \'${name}=%s\\\\n\' ${valueExpression} >> "$GITHUB_ENV"`',
     )
     expect(installMegarepoStepSource).not.toContain("printf '%s\n'")
     expect(applyMegarepoLockStepSource).not.toContain("printf 'MEGAREPO_STORE=%s\n'")
