@@ -210,23 +210,73 @@ const tryMergeBodies = (opts: {
   const localLines = local.split('\n')
   const remoteLines = remote.split('\n')
 
-  if (baseLines.length !== localLines.length || baseLines.length !== remoteLines.length) {
-    return undefined
+  const localRange = changedRange(baseLines, localLines)
+  const remoteRange = changedRange(baseLines, remoteLines)
+
+  if (sameRange(localRange, remoteRange) === true) {
+    return sameLines(localRange.replacement, remoteRange.replacement) === true ? local : undefined
   }
 
-  const merged = baseLines.map((baseLine, index) => {
-    const localLine = localLines[index]
-    const remoteLine = remoteLines[index]
+  if (localRange.end <= remoteRange.start) {
+    return applyRanges(baseLines, [remoteRange, localRange])
+  }
 
-    if (localLine === remoteLine) return localLine
-    if (localLine === baseLine) return remoteLine
-    if (remoteLine === baseLine) return localLine
+  if (remoteRange.end <= localRange.start) {
+    return applyRanges(baseLines, [localRange, remoteRange])
+  }
 
-    return undefined
-  })
+  return undefined
+}
 
-  if (merged.some((line) => line === undefined)) return undefined
+interface ChangedRange {
+  readonly start: number
+  readonly end: number
+  readonly replacement: readonly string[]
+}
 
+const changedRange = (
+  baseLines: readonly string[],
+  changedLines: readonly string[],
+): ChangedRange => {
+  let prefix = 0
+  while (
+    prefix < baseLines.length &&
+    prefix < changedLines.length &&
+    baseLines[prefix] === changedLines[prefix]
+  ) {
+    prefix += 1
+  }
+
+  let suffix = 0
+  while (
+    suffix < baseLines.length - prefix &&
+    suffix < changedLines.length - prefix &&
+    baseLines[baseLines.length - 1 - suffix] === changedLines[changedLines.length - 1 - suffix]
+  ) {
+    suffix += 1
+  }
+
+  return {
+    start: prefix,
+    end: baseLines.length - suffix,
+    replacement: changedLines.slice(prefix, changedLines.length - suffix),
+  }
+}
+
+const sameRange = (left: ChangedRange, right: ChangedRange): boolean =>
+  left.start === right.start && left.end === right.end
+
+const sameLines = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && left.every((line, index) => line === right[index])
+
+const applyRanges = (
+  baseLines: readonly string[],
+  rangesDescending: readonly ChangedRange[],
+): string => {
+  const merged = [...baseLines]
+  for (const range of rangesDescending) {
+    merged.splice(range.start, range.end - range.start, ...range.replacement)
+  }
   return merged.join('\n')
 }
 

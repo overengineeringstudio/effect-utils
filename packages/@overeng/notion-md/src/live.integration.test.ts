@@ -209,6 +209,43 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
     })
   })
 
+  it('auto-merges non-overlapping local insertions and remote deletions against Notion', async () => {
+    await withScratchPage('auto-merge-insert-delete', async (pageId) => {
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'merge-insert-delete.nmd')
+        await runLive(
+          NotionPages.updateMarkdown({
+            pageId,
+            type: 'replace_content',
+            new_str: 'Keep\nDelete remotely\nTail',
+            allow_deleting_content: true,
+          }),
+        )
+        await runLive(pullPage({ pageId, outPath: path }))
+
+        const content = await readFile(path, 'utf8')
+        await writeFile(path, content.replace('Keep', 'Local intro\nKeep'))
+        await runLive(
+          NotionPages.updateMarkdown({
+            pageId,
+            type: 'replace_content',
+            new_str: 'Keep\nTail',
+            allow_deleting_content: true,
+          }),
+        )
+
+        const pushed = await runLive(pushPage({ path }))
+        const remote = await runLive(NotionPages.getMarkdown({ pageId }))
+
+        expect(pushed.pushed).toBe(true)
+        expect(remote.markdown).toContain('Local intro')
+        expect(remote.markdown).toContain('Keep')
+        expect(remote.markdown).toContain('Tail')
+        expect(remote.markdown).not.toContain('Delete remotely')
+      })
+    })
+  })
+
   it('pushes explicit title property edits against Notion', async () => {
     await withScratchPage('property-write', async (pageId) => {
       await withTempDir(async (dir) => {

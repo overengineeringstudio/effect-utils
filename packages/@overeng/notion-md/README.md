@@ -28,7 +28,7 @@ The CLI reads `NOTION_TOKEN` first and `NOTION_API_TOKEN` second.
 - `pull` writes a strict `<file>.base.json` snapshot with the last clean body so guarded conflicts can show base/local/remote evidence.
 - `status` compares local body hash, remote body hash, and remote `last_edited_time`.
 - `push` refuses to overwrite remote body changes unless `--force` is explicit.
-- `push` automatically merges simple non-overlapping line edits using the base snapshot.
+- `push` automatically merges simple non-overlapping line edits, insertions, and deletions using the base snapshot.
 - `push` refuses to update pages with unresolved unknown Notion blocks unless destructive deletion is explicit.
 - `push` writes a Roughdraft conflict artifact next to the `.nmd` file when remote body content changed.
 - `push` refuses unresolved Roughdraft review markup unless `--allow-review-markup` is explicit.

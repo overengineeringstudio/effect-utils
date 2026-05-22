@@ -285,6 +285,33 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('auto-merges non-overlapping local insertions and remote deletions from the base snapshot', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nKeep\nDelete remotely\nTail',
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Keep', 'Local intro\nKeep'))
+      fake.mutateRemote(pageId, '# Probe\n\nKeep\nTail')
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const remote = fake.remoteMarkdown(pageId)
+
+      expect(pushed.pushed).toBe(true)
+      expect(remote).toContain('Local intro')
+      expect(remote).toContain('Keep')
+      expect(remote).toContain('Tail')
+      expect(remote).not.toContain('Delete remotely')
+    })
+  })
+
   it('refuses to overwrite a remote edit unless force is explicit', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
