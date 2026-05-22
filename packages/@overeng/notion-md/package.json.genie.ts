@@ -44,6 +44,9 @@ export default packageJson(
     exports: {
       '.': './src/mod.ts',
     },
+    scripts: {
+      'test:integration': 'vitest run --config vitest.integration.config.ts',
+    },
     publishConfig: {
       access: 'public',
       bin: {

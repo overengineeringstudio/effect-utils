@@ -346,7 +346,7 @@ const extraJobs: Record<string, any> = {
       }),
       artifactName: 'devenv-perf',
       baselineSeedRuns: [
-        ...[
+        [
           ['25959801150', '655', 'df0420cd0397ffc6928d3c6ccc9c23052d6bc255'],
           ['25959802067', '657', '62833cba5d83b1c13462728edeafa684e61c006f'],
           ['25959802958', '656', '21029998522a0e9435df151259611650fb948a20'],
@@ -635,6 +635,7 @@ const extraJobs: Record<string, any> = {
     env: {
       ...standardCIEnv,
       NOTION_TOKEN: '${{ secrets.NOTION_TOKEN }}',
+      NOTION_MD_TEST_PARENT_PAGE_ID: '368f141b18dc8069976ac54ae50ea3eb',
     },
     steps: [
       ...baseSteps,
