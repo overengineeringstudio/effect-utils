@@ -171,6 +171,44 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
     })
   })
 
+  it('auto-merges non-overlapping local and remote body edits against Notion', async () => {
+    await withScratchPage('auto-merge', async (pageId) => {
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'merge.nmd')
+        await runLive(
+          NotionPages.updateMarkdown({
+            pageId,
+            type: 'replace_content',
+            new_str: 'Line A\nLine B',
+            allow_deleting_content: true,
+          }),
+        )
+        await runLive(pullPage({ pageId, outPath: path }))
+
+        const content = await readFile(path, 'utf8')
+        await writeFile(path, content.replace('Line A', 'Local line A'))
+        await runLive(
+          NotionPages.updateMarkdown({
+            pageId,
+            type: 'replace_content',
+            new_str: 'Line A\nRemote line B',
+            allow_deleting_content: true,
+          }),
+        )
+
+        const pushed = await runLive(pushPage({ path }))
+        const remote = await runLive(NotionPages.getMarkdown({ pageId }))
+        const refreshed = await runLive(statusPage({ path }))
+
+        expect(pushed.pushed).toBe(true)
+        expect(remote.markdown).toContain('Local line A')
+        expect(remote.markdown).toContain('Remote line B')
+        expect(refreshed.localChanged).toBe(false)
+        expect(refreshed.remoteChanged).toBe(false)
+      })
+    })
+  })
+
   it('pushes explicit title property edits against Notion', async () => {
     await withScratchPage('property-write', async (pageId) => {
       await withTempDir(async (dir) => {

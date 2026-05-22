@@ -255,6 +255,36 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('auto-merges non-overlapping local and remote body edits from the base snapshot', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nLine A\nLine B',
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Line A', 'Local line A'))
+      fake.mutateRemote(pageId, '# Probe\n\nLine A\nRemote line B')
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const status = await runWithFake(statusPage({ path }), fake)
+      const base = JSON.parse(await readFile(baseSnapshotPath(path), 'utf8'))
+
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteMarkdown(pageId)).toContain('Local line A')
+      expect(fake.remoteMarkdown(pageId)).toContain('Remote line B')
+      expect(status.localChanged).toBe(false)
+      expect(status.remoteChanged).toBe(false)
+      expect(base.body).toContain('Local line A')
+      expect(base.body).toContain('Remote line B')
+    })
+  })
+
   it('refuses to overwrite a remote edit unless force is explicit', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])

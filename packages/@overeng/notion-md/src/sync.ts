@@ -193,6 +193,43 @@ const unresolvedUnknownBlockIds = (opts: {
 const containsRoughdraftReviewMarkup = (body: string): boolean =>
   /\{(?:==|\+\+|--|~~|>>)/u.test(body)
 
+const tryMergeBodies = (opts: {
+  readonly baseBody: string
+  readonly localBody: string
+  readonly remoteBody: string
+}): string | undefined => {
+  const base = canonicalizeMarkdown(opts.baseBody)
+  const local = canonicalizeMarkdown(opts.localBody)
+  const remote = canonicalizeMarkdown(opts.remoteBody)
+
+  if (local === remote) return local
+  if (local === base) return remote
+  if (remote === base) return local
+
+  const baseLines = base.split('\n')
+  const localLines = local.split('\n')
+  const remoteLines = remote.split('\n')
+
+  if (baseLines.length !== localLines.length || baseLines.length !== remoteLines.length) {
+    return undefined
+  }
+
+  const merged = baseLines.map((baseLine, index) => {
+    const localLine = localLines[index]
+    const remoteLine = remoteLines[index]
+
+    if (localLine === remoteLine) return localLine
+    if (localLine === baseLine) return remoteLine
+    if (remoteLine === baseLine) return localLine
+
+    return undefined
+  })
+
+  if (merged.some((line) => line === undefined)) return undefined
+
+  return merged.join('\n')
+}
+
 const roughdraftConflictPath = (path: string): string => `${path}.conflict.roughdraft.md`
 
 const writeRoughdraftConflict = (opts: {
@@ -445,6 +482,48 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
         path: opts.path,
         frontmatter: local.frontmatter,
       })
+      const mergedBody =
+        status.localChanged === true
+          ? tryMergeBodies({
+              baseBody: baseSnapshot.body,
+              localBody: local.body,
+              remoteBody: remote.markdown.markdown,
+            })
+          : undefined
+
+      if (mergedBody !== undefined) {
+        if (status.localPropertiesChanged === true) {
+          yield* gateway.updatePageProperties({
+            pageId: status.pageId,
+            properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+          })
+        }
+        const updated = yield* gateway.updateMarkdown({
+          pageId: status.pageId,
+          markdown: mergedBody,
+          allowDeletingContent: false,
+        })
+        const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+        const frontmatter = buildFrontmatter({
+          page: pulled.page,
+          markdown: updated.markdown,
+          storage: pulled.storage ?? local.frontmatter.notion_md.storage,
+        })
+
+        yield* writeNmdWithStoragePolicy({
+          path: opts.path,
+          frontmatter,
+          body: mergedBody,
+        })
+
+        return {
+          path: opts.path,
+          pageId: status.pageId,
+          pushed: true,
+          status,
+        }
+      }
+
       const conflictPath = yield* writeRoughdraftConflict({
         path: opts.path,
         pageId: status.pageId,
