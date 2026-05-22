@@ -455,7 +455,6 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain(
       'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem }',
     )
-    expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
     expect(ciWorkflowSource).toContain(
       'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
     )
@@ -482,7 +481,8 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('"runId":"26085158592"')
     expect(generatedCiWorkflowYamlSource).toContain('"label":"main baseline"')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
-    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
+    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 7')
+    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 14')
     expect(ciWorkflowSource).toContain("contents: 'write'")
     expect(ciWorkflowSource).toContain('seedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
@@ -529,8 +529,10 @@ describe('ci workflow devenv perf helpers', () => {
       "inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request'",
     )
     expect(ciWorkflowSource).toContain(
-      '| What changed? | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+      '| What changed? | Group | Probe | Baseline -> current | Raw change | Impact | Confidence |',
     )
+    expect(ciWorkflowSource).toContain('const semanticGroupLabel = (row) =>')
+    expect(ciWorkflowSource).toContain('groupedScanTables(visibleNonZeroImpactRows)')
     expect(ciWorkflowSource).toContain(
       'const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)',
     )
@@ -565,5 +567,9 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_dark_png_path"')
     expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
     expect(ciWorkflowSource).toContain('base64 <"$chart_png_file" | tr -d \'\\n\'')
+    expect(ciWorkflowSource).toContain(
+      'nix path-info --recursive --closure-size --json "$out_path"',
+    )
+    expect(ciWorkflowSource).toContain('nix.closure.serialized_nar_size')
   })
 })
