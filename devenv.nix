@@ -105,6 +105,7 @@ let
     "packages/@overeng/notion-cli"
     "packages/@overeng/notion-effect-client"
     "packages/@overeng/notion-effect-schema"
+    "packages/@overeng/notion-md"
     "packages/@overeng/notion-react"
     "packages/@overeng/oxc-config"
     "packages/@overeng/pty-effect"
@@ -158,6 +159,10 @@ let
     {
       path = "packages/@overeng/notion-effect-schema";
       name = "notion-effect-schema";
+    }
+    {
+      path = "packages/@overeng/notion-md";
+      name = "notion-md";
     }
     {
       path = "packages/@overeng/notion-react";

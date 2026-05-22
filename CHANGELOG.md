@@ -28,6 +28,8 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-client**: Add `markdown` option to `CreatePageOptions` (alternative to `children`)
 - **@overeng/notion-effect-client**: Add `is_locked` and `erase_content` to `UpdatePageOptions`
 - **@overeng/notion-effect-client**: Add `filterProperties` and `inTrash` to data source query options
+- **@overeng/notion-effect-client**: Add strict `.nmd` frontmatter schemas and a storage-size classifier for Notion enhanced Markdown sync metadata
+- **@overeng/notion-md**: Add prototype `notion-md` CLI package for self-contained `.nmd` pull/status/push flows with guarded conflict detection and sidecar escalation tests
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Fixed
