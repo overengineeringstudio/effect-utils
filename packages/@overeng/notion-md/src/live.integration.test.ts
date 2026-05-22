@@ -6,9 +6,14 @@ import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { Effect, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { type NotionConfig, NotionConfigLive, NotionPages } from '@overeng/notion-effect-client'
+import {
+  NotionBlocks,
+  type NotionConfig,
+  NotionConfigLive,
+  NotionPages,
+} from '@overeng/notion-effect-client'
 
-import { parseNmdFile } from './frontmatter.ts'
+import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { pullPage, pushPage, statusPage } from './sync.ts'
@@ -128,6 +133,74 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         await expect(runLive(pushPage({ path }))).rejects.toThrow(
           'Remote page changed since the last clean pull',
         )
+      })
+    })
+  })
+
+  it('refuses to push over unresolved unknown blocks against Notion', async () => {
+    await withScratchPage('unknown-block-guard', async (pageId) => {
+      await runLive(
+        NotionBlocks.append({
+          blockId: pageId,
+          children: [
+            {
+              type: 'bookmark',
+              bookmark: { url: 'https://developers.notion.com/' },
+            },
+          ],
+        }),
+      )
+
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'unknown.nmd')
+        const pulled = await runLive(pullPage({ pageId, outPath: path }))
+        const content = await readFile(path, 'utf8')
+        await writeFile(path, content.replace('Initial body', 'Local body'))
+
+        expect(pulled.storage).toBe('self_contained')
+        await expect(runLive(pushPage({ path }))).rejects.toThrow(
+          'Page contains unresolved unknown Notion blocks',
+        )
+      })
+    })
+  })
+
+  it('pushes explicit title property edits against Notion', async () => {
+    await withScratchPage('property-write', async (pageId) => {
+      await withTempDir(async (dir) => {
+        const path = join(dir, 'property.nmd')
+        await runLive(pullPage({ pageId, outPath: path }))
+        const parsed = await runLive(
+          Effect.promise(() => readFile(path, 'utf8')).pipe(
+            Effect.flatMap((content) => parseNmdFile({ path, content })),
+          ),
+        )
+        const nextTitle = `notion-md property updated ${new Date().toISOString()}`
+        await writeFile(
+          path,
+          renderNmdFile(
+            {
+              notion_md: {
+                ...parsed.frontmatter.notion_md,
+                properties: {
+                  ...parsed.frontmatter.notion_md.properties,
+                  title: { _tag: 'title', value: nextTitle },
+                },
+              },
+            },
+            parsed.body,
+          ),
+        )
+
+        const pushed = await runLive(pushPage({ path }))
+        const refreshed = await runLive(
+          Effect.promise(() => readFile(path, 'utf8')).pipe(
+            Effect.flatMap((content) => parseNmdFile({ path, content })),
+          ),
+        )
+
+        expect(pushed.pushed).toBe(true)
+        expect(refreshed.frontmatter.notion_md.page.title).toBe(nextTitle)
       })
     })
   })

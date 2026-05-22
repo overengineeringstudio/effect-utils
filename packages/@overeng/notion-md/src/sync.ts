@@ -42,6 +42,7 @@ export interface StatusResult {
   readonly path: string
   readonly pageId: string
   readonly localChanged: boolean
+  readonly localPropertiesChanged: boolean
   readonly remoteChanged: boolean
   readonly bodyHash: string
   readonly localBodyHash: string
@@ -52,6 +53,8 @@ export interface StatusResult {
 export interface PushOptions {
   readonly path: string
   readonly force?: boolean
+  readonly allowDeletingUnknownBlocks?: boolean
+  readonly allowReviewMarkup?: boolean
 }
 
 export interface PushResult {
@@ -96,6 +99,134 @@ const inferPropertyType = (value: unknown): string => {
 
   return 'unknown'
 }
+
+const hasWritablePropertyValues = (properties: Record<string, NmdPropertyValue>): boolean =>
+  Object.values(properties).some((property) => property._tag !== 'read_only')
+
+const richText = (value: string): readonly unknown[] => [{ type: 'text', text: { content: value } }]
+
+const encodePropertyValue = (property: NmdPropertyValue): unknown | undefined => {
+  switch (property._tag) {
+    case 'read_only':
+      return undefined
+    case 'title':
+      return { title: richText(property.value) }
+    case 'rich_text':
+      return { rich_text: property.value === null ? [] : richText(property.value) }
+    case 'number':
+      return { number: property.value }
+    case 'select':
+      return { select: property.value === null ? null : { name: property.value } }
+    case 'multi_select':
+      return { multi_select: property.value.map((name) => ({ name })) }
+    case 'status':
+      return { status: property.value === null ? null : { name: property.value } }
+    case 'date':
+      return { date: property.value }
+    case 'people':
+      return { people: property.value.map((id) => ({ id })) }
+    case 'checkbox':
+      return { checkbox: property.value }
+    case 'url':
+      return { url: property.value }
+    case 'email':
+      return { email: property.value }
+    case 'phone_number':
+      return { phone_number: property.value }
+    case 'relation':
+      return { relation: property.value.map((id) => ({ id })) }
+    case 'files':
+      return {
+        files: property.value
+          .map((file) => {
+            switch (file._tag) {
+              case 'external_url':
+                return { type: 'external', name: file.url, external: { url: file.url } }
+              case 'notion_file':
+                return file.file_upload_id === undefined
+                  ? undefined
+                  : {
+                      type: 'file_upload',
+                      name: file.filename,
+                      file_upload: { id: file.file_upload_id },
+                    }
+              case 'local_file':
+                return undefined
+            }
+          })
+          .filter((file) => file !== undefined),
+      }
+  }
+}
+
+const encodeWritableProperties = (
+  properties: Record<string, NmdPropertyValue>,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    Object.entries(properties).flatMap(([name, property]) => {
+      const encoded = encodePropertyValue(property)
+      return encoded === undefined ? [] : [[name, encoded]]
+    }),
+  )
+
+const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
+  switch (storage._tag) {
+    case 'self_contained':
+      return storage.unsupported_blocks.map((block) => block.block_id)
+    case 'sidecar':
+      return storage.unsupported_block_ids
+  }
+}
+
+const unique = (values: readonly string[]): readonly string[] => [...new Set(values)]
+
+const unresolvedUnknownBlockIds = (opts: {
+  readonly frontmatter: NmdFrontmatterV1
+  readonly remoteMarkdown?: RemoteMarkdownSnapshot
+}): readonly string[] =>
+  unique([
+    ...opts.frontmatter.notion_md.body.unknown_block_ids,
+    ...storageUnknownBlockIds(opts.frontmatter.notion_md.storage),
+    ...(opts.remoteMarkdown?.unknown_block_ids ?? []),
+  ])
+
+const containsRoughdraftReviewMarkup = (body: string): boolean =>
+  /\{(?:==|\+\+|--|~~|>>)/u.test(body)
+
+const roughdraftConflictPath = (path: string): string => `${path}.conflict.roughdraft.md`
+
+const writeRoughdraftConflict = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly localBody: string
+  readonly remoteBody: string
+}): Effect.Effect<string, unknown> =>
+  Effect.tryPromise(async () => {
+    const conflictPath = roughdraftConflictPath(opts.path)
+    const now = new Date().toISOString()
+    await writeFile(
+      conflictPath,
+      `# notion-md body conflict
+
+{==Body conflict==}{>>Remote and local body content both changed since the last clean pull. Resolve the chosen content back into the .nmd file, then rerun status/push.<<}{id="body-conflict" by="notion-md" at="${now}"}
+
+Page: ${opts.pageId}
+
+## Local body
+
+\`\`\`markdown
+${opts.localBody}
+\`\`\`
+
+## Remote body
+
+\`\`\`markdown
+${opts.remoteBody}
+\`\`\`
+`,
+    )
+    return conflictPath
+  })
 
 const buildFrontmatter = (opts: {
   readonly page: RemotePageSnapshot
@@ -240,19 +371,25 @@ export const statusPage = (
     const remoteBodyHash = sha256Digest(remoteBody)
     const bodyHash = local.frontmatter.notion_md.body.hash
     const localChanged = localBodyHash !== bodyHash
+    const localPropertiesChanged = hasWritablePropertyValues(local.frontmatter.notion_md.properties)
     const remoteChanged =
       remoteBodyHash !== bodyHash ||
       remote.page.last_edited_time !== local.frontmatter.notion_md.body.remote_last_edited_time
+    const unknownBlockIds = unresolvedUnknownBlockIds({
+      frontmatter: local.frontmatter,
+      remoteMarkdown: remote.markdown,
+    })
 
     return {
       path: opts.path,
       pageId: local.frontmatter.notion_md.page_id,
       localChanged,
+      localPropertiesChanged,
       remoteChanged,
       bodyHash,
       localBodyHash,
       remoteBodyHash,
-      unresolvedUnknownBlocks: local.frontmatter.notion_md.body.unknown_block_ids,
+      unresolvedUnknownBlocks: unknownBlockIds,
     }
   }).pipe(Effect.withSpan('notion-md.statusPage'))
 
@@ -261,30 +398,70 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
     const local = yield* readNmd(opts.path)
     const status = yield* statusPage({ path: opts.path })
 
-    if (status.localChanged === false) {
+    if (status.localChanged === false && status.localPropertiesChanged === false) {
       return { path: opts.path, pageId: status.pageId, pushed: false, status }
     }
 
-    if (status.remoteChanged === true && opts.force !== true) {
+    if (containsRoughdraftReviewMarkup(local.body) === true && opts.allowReviewMarkup !== true) {
       return yield* new NmdConflictError({
         path: opts.path,
         page_id: status.pageId,
         local_changed: status.localChanged,
         remote_changed: status.remoteChanged,
+        message:
+          'Local body contains unresolved Roughdraft review markup; refusing push so review state is not sent as Notion content',
+      })
+    }
+
+    if (status.unresolvedUnknownBlocks.length > 0 && opts.allowDeletingUnknownBlocks !== true) {
+      return yield* new NmdConflictError({
+        path: opts.path,
+        page_id: status.pageId,
+        local_changed: status.localChanged,
+        remote_changed: status.remoteChanged,
+        message:
+          'Page contains unresolved unknown Notion blocks; refusing push because replace_content can delete them. Pass allowDeletingUnknownBlocks only for explicit destructive intent.',
+      })
+    }
+
+    if (status.remoteChanged === true && opts.force !== true) {
+      const gateway = yield* NotionMdGateway
+      const remote = yield* gateway.pullPage({ pageId: status.pageId })
+      const conflictPath = yield* writeRoughdraftConflict({
+        path: opts.path,
+        pageId: status.pageId,
+        localBody: local.body,
+        remoteBody: remote.markdown.markdown,
+      })
+      return yield* new NmdConflictError({
+        path: opts.path,
+        page_id: status.pageId,
+        local_changed: status.localChanged,
+        remote_changed: status.remoteChanged,
+        conflict_path: conflictPath,
         message: 'Remote page changed since the last clean pull; refusing guarded push',
       })
     }
 
     const gateway = yield* NotionMdGateway
-    const updated = yield* gateway.updateMarkdown({
-      pageId: status.pageId,
-      markdown: local.body,
-      allowDeletingContent: false,
-    })
+    if (status.localPropertiesChanged === true) {
+      yield* gateway.updatePageProperties({
+        pageId: status.pageId,
+        properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+      })
+    }
+    const updated =
+      status.localChanged === true
+        ? yield* gateway.updateMarkdown({
+            pageId: status.pageId,
+            markdown: local.body,
+            allowDeletingContent: false,
+          })
+        : undefined
     const pulled = yield* gateway.pullPage({ pageId: status.pageId })
     const frontmatter = buildFrontmatter({
       page: pulled.page,
-      markdown: updated.markdown,
+      markdown: updated?.markdown ?? pulled.markdown,
       storage: pulled.storage ?? local.frontmatter.notion_md.storage,
     })
 

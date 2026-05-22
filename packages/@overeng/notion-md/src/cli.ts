@@ -15,7 +15,7 @@ const usage = `notion-md <command>
 Commands:
   pull <page-id> --out <file.nmd>
   status <file.nmd>
-  push <file.nmd> [--force]
+  push <file.nmd> [--force] [--allow-delete-unknown-blocks] [--allow-review-markup]
 
 Environment:
   NOTION_TOKEN or NOTION_API_TOKEN
@@ -85,7 +85,14 @@ const program = Effect.gen(function* () {
     }
     case 'push': {
       const path = yield* requireArg(args[1], 'push requires <file.nmd>')
-      const result = yield* withNotion(pushPage({ path, force: args.includes('--force') }))
+      const result = yield* withNotion(
+        pushPage({
+          path,
+          force: args.includes('--force'),
+          allowDeletingUnknownBlocks: args.includes('--allow-delete-unknown-blocks'),
+          allowReviewMarkup: args.includes('--allow-review-markup'),
+        }),
+      )
       yield* Console.log(JSON.stringify(result, null, 2))
       return
     }

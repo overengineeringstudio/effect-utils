@@ -25,6 +25,7 @@ export class NmdConflictError extends Schema.TaggedError<NmdConflictError>()('Nm
   message: Schema.String,
   local_changed: Schema.Boolean,
   remote_changed: Schema.Boolean,
+  conflict_path: Schema.optional(Schema.String),
 }) {}
 
 /** Raised when a command needs a Notion token and none was supplied. */

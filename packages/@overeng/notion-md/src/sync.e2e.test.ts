@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { NmdStorage } from '@overeng/notion-effect-client'
 
-import { parseNmdFile } from './frontmatter.ts'
+import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown } from './hash.ts'
 import { NotionMdGateway, type PullPageResult } from './model.ts'
 import { pullPage, pushPage, statusPage } from './sync.ts'
@@ -116,6 +116,16 @@ class FakeNotion {
           },
         }
       }),
+    updatePageProperties: ({ pageId: id, properties }) =>
+      Effect.sync(() => {
+        const page = this.requirePage(id)
+        const next = {
+          ...page,
+          properties: { ...page.properties, ...properties },
+        }
+        this.pages.set(id, next)
+        return this.toPullResult(next).page
+      }),
   })
 
   mutateRemote(pageIdToMutate: string, markdown: string): void {
@@ -135,6 +145,10 @@ class FakeNotion {
 
   remoteMarkdown(pageIdToRead: string): string {
     return this.requirePage(pageIdToRead).markdown
+  }
+
+  remoteProperties(pageIdToRead: string): Record<string, unknown> {
+    return this.requirePage(pageIdToRead).properties
   }
 
   private requirePage(id: string): Required<FakePage> {
@@ -247,10 +261,76 @@ describe('notion-md e2e prototype', () => {
       await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
         'Remote page changed since the last clean pull',
       )
+      const conflict = await readFile(`${path}.conflict.roughdraft.md`, 'utf8')
+      expect(conflict).toContain('{==Body conflict==}')
+      expect(conflict).toContain('Local body')
+      expect(conflict).toContain('Remote body')
 
       const forced = await runWithFake(pushPage({ path, force: true }), fake)
       expect(forced.pushed).toBe(true)
       expect(fake.remoteMarkdown(pageId)).toContain('Local body')
+    })
+  })
+
+  it('refuses to push unresolved Roughdraft review markup by default', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('Body', '{==Body==}{>>Needs review.<<}{id="c1"}'))
+
+      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+        'Local body contains unresolved Roughdraft review markup',
+      )
+
+      const allowed = await runWithFake(pushPage({ path, allowReviewMarkup: true }), fake)
+      expect(allowed.pushed).toBe(true)
+      expect(fake.remoteMarkdown(pageId)).toContain('{==Body==}')
+    })
+  })
+
+  it('pushes explicit typed frontmatter property edits through the page property API', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile(
+          {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          parsed.body,
+        ),
+      )
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const refreshed = await parseFile(path)
+
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
+      expect(refreshed.frontmatter.notion_md.properties.Done).toEqual({
+        _tag: 'read_only',
+        property_type: 'unknown',
+        value: { checkbox: true },
+      })
     })
   })
 
@@ -277,6 +357,37 @@ describe('notion-md e2e prototype', () => {
         expect(parsed.frontmatter.notion_md.storage.comments).toHaveLength(1)
       }
       expect(parsed.frontmatter.notion_md.body.unknown_block_ids).toEqual([blockId])
+    })
+  })
+
+  it('refuses to push local edits when unresolved unknown blocks could be deleted', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Unknowns',
+          markdown: '# Unknowns\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>',
+          storage: unsupportedStorage(),
+          unknownBlockIds: [blockId],
+        },
+      ])
+      const path = join(dir, 'unknowns.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(path, content.replace('# Unknowns', '# Unknowns\n\nLocal edit'))
+
+      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+        'Page contains unresolved unknown Notion blocks',
+      )
+      expect(fake.remoteMarkdown(pageId)).toContain('<unknown')
+
+      const destructive = await runWithFake(
+        pushPage({ path, allowDeletingUnknownBlocks: true }),
+        fake,
+      )
+      expect(destructive.pushed).toBe(true)
+      expect(fake.remoteMarkdown(pageId)).toContain('Local edit')
     })
   })
 
@@ -335,7 +446,7 @@ describe('notion-md e2e prototype', () => {
       const content = await readFile(path, 'utf8')
       await writeFile(path, content.replace('Body', 'Local body'))
 
-      await runWithFake(pushPage({ path }), fake)
+      await runWithFake(pushPage({ path, allowDeletingUnknownBlocks: true }), fake)
       const sidecar = await readFile(join(dir, 'volatile.nmd.notion.json'), 'utf8')
 
       expect(sidecar).toContain('X-Amz-Signature=new')

@@ -139,6 +139,8 @@ export const NotionMdGatewayLive = Layer.effect(
             },
           })),
         ),
+      updatePageProperties: ({ pageId, properties }) =>
+        provideHttp(NotionPages.update({ pageId, properties })).pipe(Effect.map(toRemotePage)),
     }
   }),
 )

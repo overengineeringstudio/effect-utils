@@ -16,6 +16,8 @@ notion-md pull <page-id> --out page.nmd
 notion-md status page.nmd
 notion-md push page.nmd
 notion-md push page.nmd --force
+notion-md push page.nmd --allow-delete-unknown-blocks
+notion-md push page.nmd --allow-review-markup
 ```
 
 The CLI reads `NOTION_TOKEN` first and `NOTION_API_TOKEN` second.
@@ -25,6 +27,9 @@ The CLI reads `NOTION_TOKEN` first and `NOTION_API_TOKEN` second.
 - `pull` writes a strict `.nmd` envelope and computes the clean body hash over the stripped Markdown body.
 - `status` compares local body hash, remote body hash, and remote `last_edited_time`.
 - `push` refuses to overwrite remote body changes unless `--force` is explicit.
+- `push` refuses to update pages with unresolved unknown Notion blocks unless destructive deletion is explicit.
+- `push` writes a Roughdraft conflict artifact next to the `.nmd` file when remote body content changed.
+- `push` refuses unresolved Roughdraft review markup unless `--allow-review-markup` is explicit.
 - Missing or malformed sidecars fail `status` and `push`.
 - Unknown Notion blocks are fetched through the block API and stored as compact unsupported-block units.
 

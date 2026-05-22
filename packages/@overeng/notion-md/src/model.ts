@@ -46,6 +46,10 @@ export interface NotionMdGatewayShape {
     readonly markdown: string
     readonly allowDeletingContent: boolean
   }) => Effect.Effect<UpdateMarkdownResult, unknown>
+  readonly updatePageProperties: (opts: {
+    readonly pageId: string
+    readonly properties: Record<string, unknown>
+  }) => Effect.Effect<RemotePageSnapshot, unknown>
 }
 
 export class NotionMdGateway extends Context.Tag('NotionMdGateway')<

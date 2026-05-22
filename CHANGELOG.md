@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-md**: Add prototype `notion-md` CLI package for self-contained `.nmd` pull/status/push flows with guarded conflict detection and sidecar escalation tests
 - **@overeng/notion-md**: Add live Notion E2E coverage for pull/status/push/conflict detection and wire it into the Notion integration CI job
 - **@overeng/notion-md**: Expose `notion-md` as a Nix flake package with managed pnpm dependency hash refresh support
+- **@overeng/notion-md**: Harden push safety for unknown blocks, Roughdraft review markup, body conflicts, and explicit typed property writes
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Fixed
