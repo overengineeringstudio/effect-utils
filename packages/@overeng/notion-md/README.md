@@ -2,6 +2,15 @@
 
 CLI and library for syncing Notion pages with local `.nmd` files.
 
+## Docs
+
+- [Getting Started](./docs/getting-started.md)
+- [CLI Reference](./docs/cli.md)
+- [File Format](./docs/file-format.md)
+- [Sync Safety](./docs/sync-safety.md)
+- [Troubleshooting](./docs/troubleshooting.md)
+- [VRS Spec](../../../context/notion-md-sync/spec.md)
+
 An `.nmd` file is:
 
 - strict JSON-compatible frontmatter between Markdown `---` markers,
