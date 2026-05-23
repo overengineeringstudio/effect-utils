@@ -18,7 +18,7 @@ import {
   type NmdFileSystemError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile, type ParsedNmdFile } from './frontmatter.ts'
-import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 import {
   NotionMdGateway,
@@ -452,7 +452,7 @@ const buildSyncState = (opts: {
   readonly storage: NmdStorage
   readonly base: NmdObjectRef
 }): NmdSyncStateV1 => {
-  const body = canonicalizeMarkdown(opts.markdown.markdown)
+  const body = normalizeMarkdownLineEndings(opts.markdown.markdown)
   return {
     version: 1,
     page_id: opts.page.id,
@@ -640,22 +640,21 @@ const assertLocalBodyUnchanged = (opts: {
 
 /*
  * Push paths that touch the body merge logic require the sidecar to be
- * present (no base snapshot ⇒ no three-way merge possible). The status
- * preflight earlier in `pushPage` ensures we never enter these branches
- * for an unmaterialized `.nmd`, so a missing sidecar here is a defect.
+ * present (no base snapshot ⇒ no three-way merge possible). The
+ * page_id-null preflight in `pushPage` short-circuits into create, and
+ * `readNmd` fails fast on materialized-but-sidecar-missing, so a defined
+ * sync state at this point is an enforced invariant. If it ever isn't,
+ * we want an explicit defect rather than an ergonomic null deref.
  */
 const requireSyncState = (opts: {
   readonly path: string
   readonly local: LocalState
-}): NmdSyncStateV1 => {
-  if (opts.local.syncState === undefined) {
-    throw new NmdFrontmatterError({
-      path: opts.path,
-      message: 'Internal invariant violation: sync state required for guarded push',
-    })
-  }
-  return opts.local.syncState
-}
+}): Effect.Effect<NmdSyncStateV1, never, never> =>
+  opts.local.syncState === undefined
+    ? Effect.dieMessage(
+        `Internal invariant violation: sync state required for guarded push of ${opts.path}`,
+      )
+    : Effect.succeed(opts.local.syncState)
 
 const statusFromSnapshots = (opts: {
   readonly path: string
@@ -663,7 +662,7 @@ const statusFromSnapshots = (opts: {
   readonly remote: PullPageResult
 }): StatusResult => {
   const localBodyHash = sha256Digest(opts.local.body)
-  const remoteBody = canonicalizeMarkdown(opts.remote.markdown.markdown)
+  const remoteBody = normalizeMarkdownLineEndings(opts.remote.markdown.markdown)
   const remoteBodyHash = sha256Digest(remoteBody)
   /*
    * Without a sidecar (fresh checkout, or pre-create), there is no
@@ -878,7 +877,7 @@ export const pushPage = (
     if (status.remoteBodyChanged === true && opts.force !== true) {
       const baseSnapshot = yield* readBaseSnapshot({
         path: opts.path,
-        syncState: requireSyncState({ path: opts.path, local }),
+        syncState: yield* requireSyncState({ path: opts.path, local }),
       })
       const mergedBody =
         status.localChanged === true
@@ -1013,7 +1012,7 @@ export const pushPage = (
       yield* Effect.gen(function* () {
         const baseSnapshot = yield* readBaseSnapshot({
           path: opts.path,
-          syncState: requireSyncState({ path: opts.path, local }),
+          syncState: yield* requireSyncState({ path: opts.path, local }),
         })
         const remote = yield* gateway.pullPage({ pageId: status.pageId })
         if (

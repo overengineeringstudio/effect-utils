@@ -15,7 +15,7 @@ import {
 } from '@overeng/notion-effect-client'
 
 import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
-import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 
 /** Strict schema for overflow `.nmd` storage payloads in the object store. */
 export const NmdStorageObjectV2 = Schema.Struct({
@@ -396,7 +396,7 @@ export const NmdStateStoreLive = Layer.effect(
       )
 
     const writeBaseSnapshot: NmdStateStoreShape['writeBaseSnapshot'] = (opts) => {
-      const body = canonicalizeMarkdown(opts.body)
+      const body = normalizeMarkdownLineEndings(opts.body)
       return writeObjectContent({
         path: opts.path,
         role: 'base_snapshot',

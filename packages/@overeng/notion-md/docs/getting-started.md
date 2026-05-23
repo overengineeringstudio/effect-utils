@@ -24,13 +24,46 @@ notion-md pull 00000000000040008000000000000001 --out notes.nmd
 
 This writes:
 
-- `notes.nmd`, containing strict frontmatter and the Notion enhanced Markdown
-  body.
+- `notes.nmd`, containing strict frontmatter (user-facing only) and the Notion
+  enhanced Markdown body.
+- `.notion-md/sync/<page_id>.json`, the sidecar sync state keyed by the
+  immutable page id (body hash, base ref, last-pulled timestamps, storage
+  inventory, read-only property echoes).
 - `.notion-md/objects/sha256/...`, containing the last clean body snapshot and
   any overflow metadata.
 
 Commit both the `.nmd` file and its reachable `.notion-md` objects when using
 Git. The object store is part of the local sync state, not a disposable cache.
+The sidecar can be gitignored — if it goes missing, `notion-md` will tell you
+to re-`pull` to rebuild it rather than silently sync against a non-baseline.
+
+## Creating A New Page From Markdown
+
+Author a `.nmd` file with `page_id: null` and a `parent` set; the first
+`push` materializes the Notion page and fills in `page_id` plus the
+sidecar:
+
+```
+---
+{
+  "notion_md": {
+    "version": 2,
+    "api_version": "2026-03-11",
+    "object": "page",
+    "page_id": null,
+    "parent": { "_tag": "page", "id": "<parent-page-id>" },
+    "page": { "title": "Patterns", "icon": null, "cover": null, "in_trash": false, "is_locked": false },
+    "properties": {}
+  }
+}
+---
+
+Body goes here.
+```
+
+Notion's create endpoint deduplicates the first H1 of the initial body
+against the page title. If `page.title` is `"Patterns"` and the body starts
+with `# Patterns`, Notion drops the H1 — pick one home.
 
 ## Edit And Inspect
 

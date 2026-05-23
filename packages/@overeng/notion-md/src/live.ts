@@ -13,7 +13,7 @@ import type { Block } from '@overeng/notion-effect-schema'
 
 import { canonicalizeBlockMarkdown, semanticEquivalent } from './canonical-markdown.ts'
 import { NmdGatewayError } from './errors.ts'
-import { canonicalizeMarkdown } from './hash.ts'
+import { normalizeMarkdownLineEndings } from './hash.ts'
 import {
   type CreatePageInput,
   type MarkdownUpdateCommand,
@@ -230,7 +230,7 @@ export const NotionMdGatewayLive = Layer.effect(
         ).pipe(
           Effect.flatMap((markdownResult) => {
             const remoteMarkdown = {
-              markdown: canonicalizeMarkdown(markdownResult.markdown),
+              markdown: normalizeMarkdownLineEndings(markdownResult.markdown),
               truncated: markdownResult.truncated,
               unknown_block_ids: markdownResult.unknown_block_ids,
             }

@@ -18,7 +18,7 @@ import {
   NmdObjectStoreError,
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
-import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
 import { NotionMdGateway, type MarkdownUpdateCommand, type PullPageResult } from './model.ts'
 import {
   NmdStateStoreLive,
@@ -151,7 +151,7 @@ class FakeNotion {
               }, page.markdown)
         if (
           command._tag === 'update_content' &&
-          canonicalizeMarkdown(markdown) !== canonicalizeMarkdown(command.expectedMarkdown)
+          normalizeMarkdownLineEndings(markdown) !== normalizeMarkdownLineEndings(command.expectedMarkdown)
         ) {
           throw new NmdGatewayError({
             operation: 'update_markdown',
@@ -163,12 +163,12 @@ class FakeNotion {
           pageId: id,
           allowDeletingContent,
           command: command._tag,
-          markdown: canonicalizeMarkdown(markdown),
+          markdown: normalizeMarkdownLineEndings(markdown),
         })
         this.tick += 1
         const nextStorage =
           allowDeletingContent === true &&
-          canonicalizeMarkdown(markdown).includes('<unknown') === false
+          normalizeMarkdownLineEndings(markdown).includes('<unknown') === false
             ? ({
                 _tag: 'self_contained',
                 unsupported_blocks: [],
@@ -178,12 +178,12 @@ class FakeNotion {
             : page.storage
         const nextUnknownBlockIds =
           allowDeletingContent === true &&
-          canonicalizeMarkdown(markdown).includes('<unknown') === false
+          normalizeMarkdownLineEndings(markdown).includes('<unknown') === false
             ? []
             : page.unknownBlockIds
         const next = {
           ...page,
-          markdown: canonicalizeMarkdown(markdown),
+          markdown: normalizeMarkdownLineEndings(markdown),
           storage: nextStorage,
           unknownBlockIds: nextUnknownBlockIds,
           lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
@@ -238,7 +238,7 @@ class FakeNotion {
         const page: Required<FakePage> = {
           pageId: newId,
           title: input.title,
-          markdown: canonicalizeMarkdown(input.body ?? `# ${input.title}\n`),
+          markdown: normalizeMarkdownLineEndings(input.body ?? `# ${input.title}\n`),
           properties: {},
           storage: {
             _tag: 'self_contained',
@@ -263,7 +263,7 @@ class FakeNotion {
     this.tick += 1
     this.pages.set(pageIdToMutate, {
       ...page,
-      markdown: canonicalizeMarkdown(markdown),
+      markdown: normalizeMarkdownLineEndings(markdown),
       lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
     })
   }
@@ -341,7 +341,7 @@ class FakeNotion {
         properties: page.properties,
       },
       markdown: {
-        markdown: canonicalizeMarkdown(page.markdown),
+        markdown: normalizeMarkdownLineEndings(page.markdown),
         truncated: page.unknownBlockIds.length > 0,
         unknown_block_ids: page.unknownBlockIds,
       },

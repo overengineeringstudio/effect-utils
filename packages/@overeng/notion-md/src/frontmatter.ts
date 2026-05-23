@@ -4,7 +4,7 @@ import { NmdFrontmatterV2Schema } from '@overeng/notion-effect-client'
 import type { NmdFrontmatterV2 } from '@overeng/notion-effect-client'
 
 import { NmdFrontmatterError } from './errors.ts'
-import { canonicalizeMarkdown } from './hash.ts'
+import { normalizeMarkdownLineEndings } from './hash.ts'
 
 /** Parsed `.nmd` file split into validated frontmatter and canonical body. */
 export interface ParsedNmdFile {
@@ -26,7 +26,7 @@ export const renderNmdFile = (opts: {
   readonly frontmatter: NmdFrontmatterV2
   readonly body: string
 }): string =>
-  `---\n${encodeNmdFrontmatterJsonSync(opts.frontmatter)}\n---\n\n${canonicalizeMarkdown(opts.body)}`
+  `---\n${encodeNmdFrontmatterJsonSync(opts.frontmatter)}\n---\n\n${normalizeMarkdownLineEndings(opts.body)}`
 
 /** Parse the local `.nmd` envelope and validate it with the Effect schema. */
 export const parseNmdFile = (opts: {
@@ -48,7 +48,7 @@ export const parseNmdFile = (opts: {
 
         const rawFrontmatter = content.slice(4, endIndex)
         const body = content.slice(endIndex + frontmatterEndMarker.length).replace(/^\n/u, '')
-        return { rawFrontmatter, body: canonicalizeMarkdown(body) }
+        return { rawFrontmatter, body: normalizeMarkdownLineEndings(body) }
       },
       catch: (cause) =>
         new NmdFrontmatterError({

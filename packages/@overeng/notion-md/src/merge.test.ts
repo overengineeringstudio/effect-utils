@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 import * as fc from 'effect/FastCheck'
 
-import { canonicalizeMarkdown } from './hash.ts'
+import { normalizeMarkdownLineEndings } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 
 const applyMarkdownUpdate = (opts: {
@@ -14,15 +14,15 @@ const applyMarkdownUpdate = (opts: {
     remoteBody: opts.remoteBody,
     desiredBody: opts.desiredBody,
   })
-  if (command._tag === 'replace_content') return canonicalizeMarkdown(command.markdown)
+  if (command._tag === 'replace_content') return normalizeMarkdownLineEndings(command.markdown)
 
-  return canonicalizeMarkdown(
+  return normalizeMarkdownLineEndings(
     command.contentUpdates.reduce(
       (body, update) =>
         update.replaceAllMatches === true
           ? body.replaceAll(update.oldStr, update.newStr)
           : body.replace(update.oldStr, update.newStr),
-      canonicalizeMarkdown(opts.remoteBody),
+      normalizeMarkdownLineEndings(opts.remoteBody),
     ),
   )
 }
@@ -104,7 +104,7 @@ describe('notion-md merge planning', () => {
           localBody,
           remoteBody: baseBody,
         }),
-      ).toBe(canonicalizeMarkdown(localBody))
+      ).toBe(normalizeMarkdownLineEndings(localBody))
     },
     { fastCheck: { numRuns: 80 } },
   )
@@ -119,7 +119,7 @@ describe('notion-md merge planning', () => {
           localBody: baseBody,
           remoteBody,
         }),
-      ).toBe(canonicalizeMarkdown(remoteBody))
+      ).toBe(normalizeMarkdownLineEndings(remoteBody))
     },
     { fastCheck: { numRuns: 80 } },
   )
@@ -129,7 +129,7 @@ describe('notion-md merge planning', () => {
     [fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 })],
     ([baseBody, remoteBody, desiredBody]) => {
       expect(applyMarkdownUpdate({ baseBody, remoteBody, desiredBody })).toBe(
-        canonicalizeMarkdown(desiredBody),
+        normalizeMarkdownLineEndings(desiredBody),
       )
     },
     { fastCheck: { numRuns: 80 } },
