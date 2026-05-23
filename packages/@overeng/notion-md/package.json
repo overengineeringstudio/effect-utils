@@ -16,6 +16,8 @@
     }
   },
   "scripts": {
+    "storybook": "storybook dev -p 6015",
+    "storybook:build": "storybook build",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
@@ -24,6 +26,7 @@
     "@overeng/utils": "workspace:^"
   },
   "devDependencies": {
+    "@effect-atom/atom": "0.5.3",
     "@effect/cli": "0.75.1",
     "@effect/cluster": "0.58.2",
     "@effect/experimental": "0.60.0",
@@ -33,11 +36,22 @@
     "@effect/rpc": "0.75.1",
     "@effect/vitest": "0.29.0",
     "@effect/workflow": "0.18.0",
+    "@overeng/tui-react": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.59.1",
+    "@storybook/react": "10.2.3",
+    "@storybook/react-vite": "10.2.3",
     "@types/node": "25.3.3",
+    "@types/react": "19.2.7",
+    "@types/react-reconciler": "0.28.9",
+    "@vitejs/plugin-react": "5.1.2",
     "effect": "3.21.2",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-reconciler": "0.33.0",
+    "storybook": "10.2.3",
     "typescript": "5.9.3",
+    "vite": "7.3.1",
     "vitest": "3.2.4"
   },
   "peerDependencies": {
@@ -59,6 +73,8 @@
       "packages/@overeng/notion-effect-client",
       "packages/@overeng/notion-effect-schema",
       "packages/@overeng/notion-md",
+      "packages/@overeng/tui-core",
+      "packages/@overeng/tui-react",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

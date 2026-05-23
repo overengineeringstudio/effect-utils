@@ -7,6 +7,7 @@ import {
 } from '../../../genie/internal.ts'
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
+import tuiReactPkg from '../tui-react/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
 
@@ -29,9 +30,26 @@ const workspaceDeps = catalog.compose({
     workspace: [notionEffectClientPkg, notionEffectSchemaPkg, utilsPkg],
   },
   devDependencies: {
-    workspace: [utilsDevPkg],
+    workspace: [tuiReactPkg, utilsDevPkg],
     external: {
-      ...catalog.pick(...peerDepNames, '@effect/vitest', '@types/node', 'typescript', 'vitest'),
+      ...catalog.pick(
+        ...peerDepNames,
+        '@effect-atom/atom',
+        '@effect/vitest',
+        '@storybook/react',
+        '@storybook/react-vite',
+        '@types/node',
+        '@types/react',
+        '@types/react-reconciler',
+        '@vitejs/plugin-react',
+        'react',
+        'react-dom',
+        'react-reconciler',
+        'storybook',
+        'typescript',
+        'vite',
+        'vitest',
+      ),
     },
   },
   peerDependencies: {
@@ -47,6 +65,8 @@ export default packageJson(
       '.': './src/mod.ts',
     },
     scripts: {
+      storybook: 'storybook dev -p 6015',
+      'storybook:build': 'storybook build',
       'test:integration': 'vitest run --config vitest.integration.config.ts',
     },
     publishConfig: {
