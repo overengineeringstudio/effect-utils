@@ -349,6 +349,83 @@ export const NmdFrontmatterV1 = Schema.Struct({
 
 export type NmdFrontmatterV1 = typeof NmdFrontmatterV1.Type
 
+/*
+ * Writable subset of `NmdPropertyValue`, used by the V2 split: read-only
+ * echoes move to the sidecar sync state, so the frontmatter only carries
+ * the property tags a user can actually edit.
+ */
+export const NmdWritablePropertyValue = Schema.Union(
+  Schema.TaggedStruct('title', { value: Schema.String }),
+  Schema.TaggedStruct('rich_text', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('number', { value: Schema.NullOr(Schema.Number) }),
+  Schema.TaggedStruct('select', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('multi_select', { value: Schema.Array(Schema.String) }),
+  Schema.TaggedStruct('status', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('date', { value: Schema.NullOr(NmdDateValue) }),
+  Schema.TaggedStruct('people', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('files', { value: Schema.Array(NmdPropertyFileRef) }),
+  Schema.TaggedStruct('checkbox', { value: Schema.Boolean }),
+  Schema.TaggedStruct('url', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('email', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('phone_number', { value: Schema.NullOr(Schema.String) }),
+  Schema.TaggedStruct('relation', { value: Schema.Array(NotionUUID) }),
+  Schema.TaggedStruct('place', { value: Schema.NullOr(NmdPlaceValue) }),
+  Schema.TaggedStruct('verification', { value: NmdVerificationValue }),
+).annotations({ identifier: 'NotionMd.WritablePropertyValue' })
+
+export type NmdWritablePropertyValue = typeof NmdWritablePropertyValue.Type
+
+/*
+ * V2 frontmatter — user-facing state only.
+ *
+ * Two-tier split from V1: derived sync bookkeeping (body hash, base
+ * snapshot ref, last-pulled timestamps, unknown-block ids, storage
+ * inventory, read-only property echoes, data-source binding) moves to
+ * the sidecar `NmdSyncStateV1` at `.notion-md/sync/{page_id}.json`.
+ *
+ * `page_id` is nullable so a `.nmd` file can describe an unmaterialized
+ * page (with `parent` set); `push` then creates the Notion page and
+ * fills `page_id` on first sync. This is the "convention-driven create"
+ * design — same artifact through the whole lifecycle, same `push` verb.
+ */
+export const NmdFrontmatterV2 = Schema.Struct({
+  notion_md: Schema.Struct({
+    version: Schema.Literal(2),
+    api_version: Schema.Literal('2026-03-11'),
+    object: Schema.Literal('page'),
+    page_id: Schema.NullOr(NotionUUID),
+    url: Schema.optional(Schema.String),
+    parent: NmdParentRef,
+    page: NmdPageState,
+    properties: Schema.Record({ key: Schema.String, value: NmdWritablePropertyValue }),
+  }),
+}).annotations({ identifier: 'NotionMd.FrontmatterV2' })
+
+export type NmdFrontmatterV2 = typeof NmdFrontmatterV2.Type
+
+/*
+ * Sidecar sync state — machine-managed bookkeeping that lives at
+ * `.notion-md/sync/{page_id}.json`. Mirrors the `.git/` model: working
+ * tree is human-facing, sidecar is machine state. Files survive `git mv`
+ * since they're keyed by immutable `page_id`, not filename.
+ */
+export const NmdSyncStateV1 = Schema.Struct({
+  version: Schema.Literal(1),
+  page_id: NotionUUID,
+  body: NmdBodyState,
+  storage: NmdStorage,
+  read_only_properties: Schema.Record({
+    key: Schema.String,
+    value: Schema.Struct({
+      property_type: Schema.String,
+      value: Schema.Unknown,
+    }),
+  }),
+  data_source: Schema.NullOr(NmdDataSourceBinding),
+}).annotations({ identifier: 'NotionMd.SyncStateV1' })
+
+export type NmdSyncStateV1 = typeof NmdSyncStateV1.Type
+
 /** Strict parse options for local sync metadata; extra keys are schema violations. */
 export const nmdStrictParseOptions = {
   errors: 'all',
@@ -363,6 +440,18 @@ export const decodeNmdFrontmatterV1Sync = Schema.decodeUnknownSync(
   NmdFrontmatterV1,
   nmdStrictParseOptions,
 )
+
+/** Decode V2 frontmatter with strict excess-property checks. */
+export const decodeNmdFrontmatterV2 = Schema.decodeUnknown(NmdFrontmatterV2, nmdStrictParseOptions)
+
+/** Synchronous strict decoder for V2 frontmatter. */
+export const decodeNmdFrontmatterV2Sync = Schema.decodeUnknownSync(
+  NmdFrontmatterV2,
+  nmdStrictParseOptions,
+)
+
+/** Decode sidecar sync state with strict excess-property checks. */
+export const decodeNmdSyncStateV1 = Schema.decodeUnknown(NmdSyncStateV1, nmdStrictParseOptions)
 
 /** Size class for deciding whether `.nmd` metadata can stay in frontmatter. */
 export type NmdFrontmatterPayloadClass = 'small' | 'large' | 'too_large'

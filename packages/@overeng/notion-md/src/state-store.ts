@@ -6,11 +6,12 @@ import { Context, Effect, Layer, Schema } from 'effect'
 import {
   NmdObjectRefSchema,
   NmdStorageSchema,
+  NmdSyncStateV1Schema,
   Sha256DigestSchema,
-  type NmdFrontmatterV1,
   type NmdObjectRef,
   type NmdObjectRole,
   type NmdStorage,
+  type NmdSyncStateV1,
 } from '@overeng/notion-effect-client'
 
 import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
@@ -45,12 +46,17 @@ const encodeStorageObjectJson = Schema.encodeSync(
   Schema.parseJson(NmdStorageObjectV2, { space: 2 }),
 )
 const encodeBaseSnapshotJson = Schema.encodeSync(Schema.parseJson(NmdBaseSnapshotV2, { space: 2 }))
+const encodeSyncStateJson = Schema.encodeSync(Schema.parseJson(NmdSyncStateV1Schema, { space: 2 }))
 const decodeStorageObjectJson = Schema.decodeUnknown(
   Schema.parseJson(NmdStorageObjectV2),
   strictOptions,
 )
 const decodeBaseSnapshotJson = Schema.decodeUnknown(
   Schema.parseJson(NmdBaseSnapshotV2),
+  strictOptions,
+)
+const decodeSyncStateJson = Schema.decodeUnknown(
+  Schema.parseJson(NmdSyncStateV1Schema),
   strictOptions,
 )
 const decodeObjectRef = Schema.decodeUnknownSync(NmdObjectRefSchema, strictOptions)
@@ -72,6 +78,13 @@ export const objectPath = (opts: { readonly path: string; readonly hash: string 
   const baseName = opts.path.split(/[\\/]/u).at(-1) ?? opts.path
   const root = opts.path.slice(0, Math.max(0, opts.path.length - baseName.length))
   return `${root}${objectRelativePath(opts.hash)}`
+}
+
+/** Absolute sidecar sync-state path for a `.nmd` file, keyed by immutable page id. */
+export const syncStatePath = (opts: { readonly path: string; readonly pageId: string }): string => {
+  const baseName = opts.path.split(/[\\/]/u).at(-1) ?? opts.path
+  const root = opts.path.slice(0, Math.max(0, opts.path.length - baseName.length))
+  return `${root}.notion-md/sync/${opts.pageId}.json`
 }
 
 const byteLength = (content: string): number => new TextEncoder().encode(content).byteLength
@@ -185,7 +198,7 @@ export interface NmdStateStoreShape {
   }) => Effect.Effect<NmdObjectRef, NmdFileSystemError>
   readonly readBaseSnapshot: (opts: {
     readonly path: string
-    readonly frontmatter: NmdFrontmatterV1
+    readonly syncState: NmdSyncStateV1
   }) => Effect.Effect<NmdBaseSnapshotV2, NmdObjectStoreError>
   readonly writeStorageObject: (opts: {
     readonly path: string
@@ -195,8 +208,28 @@ export interface NmdStateStoreShape {
   }) => Effect.Effect<NmdObjectRef, NmdFileSystemError>
   readonly validateReferencedObjects: (opts: {
     readonly path: string
-    readonly frontmatter: NmdFrontmatterV1
+    readonly syncState: NmdSyncStateV1
   }) => Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError>
+  /*
+   * Sidecar sync state at `.notion-md/sync/{page_id}.json`. Holds the
+   * derived bookkeeping (body hash, base ref, last-pulled timestamps,
+   * read-only property echoes, data-source binding) that used to live
+   * inside the `.nmd` frontmatter. Keyed by immutable `page_id`, so the
+   * file survives a `git mv` of the `.nmd` companion.
+   */
+  readonly writeSyncState: (opts: {
+    readonly path: string
+    readonly syncState: NmdSyncStateV1
+  }) => Effect.Effect<void, NmdFileSystemError>
+  readonly readSyncState: (opts: {
+    readonly path: string
+    readonly pageId: string
+  }) => Effect.Effect<NmdSyncStateV1, NmdObjectStoreError>
+  /** Returns `undefined` when the sidecar has not been materialized yet (pre-first-sync). */
+  readonly readSyncStateOptional: (opts: {
+    readonly path: string
+    readonly pageId: string
+  }) => Effect.Effect<NmdSyncStateV1 | undefined, NmdObjectStoreError>
 }
 
 /** Service tag for the local notion-md state store. */
@@ -378,7 +411,7 @@ export const NmdStateStoreLive = Layer.effect(
 
     const readBaseSnapshot: NmdStateStoreShape['readBaseSnapshot'] = (opts) =>
       Effect.gen(function* () {
-        const ref = opts.frontmatter.notion_md.body.base
+        const ref = opts.syncState.body.base
         if (ref.role !== 'base_snapshot') {
           return yield* new NmdObjectStoreError({
             path: opts.path,
@@ -399,8 +432,8 @@ export const NmdStateStoreLive = Layer.effect(
         )
 
         if (
-          snapshot.page_id !== opts.frontmatter.notion_md.page_id ||
-          snapshot.body_hash !== opts.frontmatter.notion_md.body.hash ||
+          snapshot.page_id !== opts.syncState.page_id ||
+          snapshot.body_hash !== opts.syncState.body.hash ||
           sha256Digest(snapshot.body) !== snapshot.body_hash
         ) {
           return yield* new NmdObjectStoreError({
@@ -428,7 +461,7 @@ export const NmdStateStoreLive = Layer.effect(
     const validateReferencedObjects: NmdStateStoreShape['validateReferencedObjects'] = (opts) =>
       Effect.gen(function* () {
         yield* readBaseSnapshot(opts)
-        const storage = opts.frontmatter.notion_md.storage
+        const storage = opts.syncState.storage
         if (storage._tag !== 'object_store') return undefined
         const ref = storage.object
         if (ref.role !== 'storage_payload') {
@@ -449,11 +482,11 @@ export const NmdStateStoreLive = Layer.effect(
             }),
           ),
         )
-        if (storageObject.page_id !== opts.frontmatter.notion_md.page_id) {
+        if (storageObject.page_id !== opts.syncState.page_id) {
           return yield* new NmdObjectStoreError({
             path: opts.path,
             object_path: ref.path,
-            message: `Storage object page id ${storageObject.page_id} does not match ${opts.frontmatter.notion_md.page_id}`,
+            message: `Storage object page id ${storageObject.page_id} does not match ${opts.syncState.page_id}`,
           })
         }
         if (sameInventory({ left: storage, right: storageObject.storage }) === false) {
@@ -464,6 +497,63 @@ export const NmdStateStoreLive = Layer.effect(
           })
         }
         return storageObject
+      })
+
+    const writeSyncState: NmdStateStoreShape['writeSyncState'] = (opts) =>
+      writeTextFile({
+        operation: 'write_sync_state',
+        path: syncStatePath({ path: opts.path, pageId: opts.syncState.page_id }),
+        content: encodeSyncStateJson(opts.syncState),
+        label: '.nmd sync state',
+      })
+
+    const readSyncState: NmdStateStoreShape['readSyncState'] = (opts) =>
+      Effect.gen(function* () {
+        const sidecarPath = syncStatePath({ path: opts.path, pageId: opts.pageId })
+        const content = yield* fs.readFileString(sidecarPath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new NmdObjectStoreError({
+                path: opts.path,
+                object_path: sidecarPath,
+                cause,
+                message: `Failed to read .nmd sync state ${sidecarPath}`,
+              }),
+          ),
+        )
+        const decoded = yield* parseObjectJson({
+          parse: decodeSyncStateJson,
+          path: opts.path,
+          objectPath: sidecarPath,
+          content,
+          label: '.nmd sync state',
+        })
+        if (decoded.page_id !== opts.pageId) {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: sidecarPath,
+            message: `Sync state page id ${decoded.page_id} does not match expected ${opts.pageId}`,
+          })
+        }
+        return decoded
+      })
+
+    const readSyncStateOptional: NmdStateStoreShape['readSyncStateOptional'] = (opts) =>
+      Effect.gen(function* () {
+        const sidecarPath = syncStatePath({ path: opts.path, pageId: opts.pageId })
+        const exists = yield* fs.exists(sidecarPath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new NmdObjectStoreError({
+                path: opts.path,
+                object_path: sidecarPath,
+                cause,
+                message: `Failed to probe .nmd sync state ${sidecarPath}`,
+              }),
+          ),
+        )
+        if (exists === false) return undefined
+        return yield* readSyncState(opts)
       })
 
     return {
@@ -486,6 +576,9 @@ export const NmdStateStoreLive = Layer.effect(
       readBaseSnapshot,
       writeStorageObject,
       validateReferencedObjects,
+      writeSyncState,
+      readSyncState,
+      readSyncStateOptional,
     }
   }),
 )
@@ -501,7 +594,7 @@ export const writeBaseSnapshot = (opts: {
 /** Load and validate the last clean body snapshot for conflict handling. */
 export const readBaseSnapshot = (opts: {
   readonly path: string
-  readonly frontmatter: NmdFrontmatterV1
+  readonly syncState: NmdSyncStateV1
 }): Effect.Effect<NmdBaseSnapshotV2, NmdObjectStoreError, NmdStateStore> =>
   NmdStateStore.pipe(Effect.flatMap((store) => store.readBaseSnapshot(opts)))
 
@@ -514,9 +607,30 @@ export const writeStorageObject = (opts: {
 }): Effect.Effect<NmdObjectRef, NmdFileSystemError, NmdStateStore> =>
   NmdStateStore.pipe(Effect.flatMap((store) => store.writeStorageObject(opts)))
 
-/** Load and validate object-store storage referenced by frontmatter, if present. */
+/** Load and validate object-store storage referenced by the sync state, if present. */
 export const validateReferencedObjects = (opts: {
   readonly path: string
-  readonly frontmatter: NmdFrontmatterV1
+  readonly syncState: NmdSyncStateV1
 }): Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError, NmdStateStore> =>
   NmdStateStore.pipe(Effect.flatMap((store) => store.validateReferencedObjects(opts)))
+
+/** Write the sidecar sync state at `.notion-md/sync/{page_id}.json`. */
+export const writeSyncState = (opts: {
+  readonly path: string
+  readonly syncState: NmdSyncStateV1
+}): Effect.Effect<void, NmdFileSystemError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.writeSyncState(opts)))
+
+/** Read the sidecar sync state for a known page id; fails if missing. */
+export const readSyncState = (opts: {
+  readonly path: string
+  readonly pageId: string
+}): Effect.Effect<NmdSyncStateV1, NmdObjectStoreError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.readSyncState(opts)))
+
+/** Read the sidecar sync state if it exists, else undefined (pre-first-sync). */
+export const readSyncStateOptional = (opts: {
+  readonly path: string
+  readonly pageId: string
+}): Effect.Effect<NmdSyncStateV1 | undefined, NmdObjectStoreError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.readSyncStateOptional(opts)))

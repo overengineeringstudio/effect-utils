@@ -7,7 +7,7 @@ import { NodeContext } from '@effect/platform-node'
 import { Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import type { NmdPageState, NmdStorage } from '@overeng/notion-effect-client'
+import type { NmdPageState, NmdStorage, NmdSyncStateV1 } from '@overeng/notion-effect-client'
 
 import { resolveNmdTargets, runBatchWatch, syncMany } from './batch.ts'
 import { runWatch } from './cli-program.ts'
@@ -224,6 +224,32 @@ class FakeNotion {
         this.pages.set(id, next)
         return this.toPullResult(next).page
       }),
+    createPage: (input) =>
+      Effect.sync(() => {
+        const newId = `00000000-0000-4000-8000-${(this.pages.size + 1)
+          .toString()
+          .padStart(12, '0')}`
+        const page: Required<FakePage> = {
+          pageId: newId,
+          title: input.title,
+          markdown: canonicalizeMarkdown(input.body ?? `# ${input.title}\n`),
+          properties: {},
+          storage: {
+            _tag: 'self_contained',
+            unsupported_blocks: [],
+            files: [],
+            comments: [],
+          },
+          unknownBlockIds: [],
+          icon: null,
+          cover: null,
+          inTrash: false,
+          isLocked: false,
+          lastEditedTime: '2026-05-22T12:00:00.000Z',
+        }
+        this.pages.set(newId, page)
+        return this.toPullResult(page).page
+      }),
   })
 
   mutateRemote(pageIdToMutate: string, markdown: string): void {
@@ -349,9 +375,28 @@ const parseFile = async (path: string) => {
   return Effect.runPromise(parseNmdFile({ path, content }))
 }
 
-const baseSnapshotObjectPath = async (path: string): Promise<string> => {
+/*
+ * After the V2 split derived sync state (body hash, base ref, storage,
+ * read-only echoes) lives in `.notion-md/sync/{page_id}.json`. Tests need
+ * the same content the engine reads, so this helper resolves the parsed
+ * `.nmd` to its sidecar without going through `NmdStateStore` (which
+ * requires an effect runtime that not every test fixture wants).
+ */
+const readSyncStateFile = async (path: string): Promise<NmdSyncStateV1> => {
   const parsed = await parseFile(path)
-  return objectPath({ path, hash: parsed.frontmatter.notion_md.body.base.hash })
+  const pageId = parsed.frontmatter.notion_md.page_id
+  if (pageId === null) {
+    throw new Error(`Cannot read sync state for unmaterialized .nmd at ${path}`)
+  }
+  const baseName = path.split(/[\\/]/u).at(-1) ?? path
+  const root = path.slice(0, Math.max(0, path.length - baseName.length))
+  const sidecarPath = `${root}.notion-md/sync/${pageId}.json`
+  return JSON.parse(await readFile(sidecarPath, 'utf8')) as NmdSyncStateV1
+}
+
+const baseSnapshotObjectPath = async (path: string): Promise<string> => {
+  const syncState = await readSyncStateFile(path)
+  return objectPath({ path, hash: syncState.body.base.hash })
 }
 
 const readBaseSnapshotFile = async (
@@ -377,9 +422,9 @@ describe('notion-md e2e prototype', () => {
       const path = join(dir, 'probe.nmd')
 
       const pull = await runWithFake(pullPage({ pageId, outPath: path }), fake)
-      const parsed = await parseFile(path)
       const status = await runWithFake(statusPage({ path }), fake)
       const base = await readBaseSnapshotFile(path)
+      const syncState = await readSyncStateFile(path)
 
       expect(pull.storage).toBe('self_contained')
       expect(base).toMatchObject({
@@ -387,9 +432,8 @@ describe('notion-md e2e prototype', () => {
         page_id: pageId,
         body: '# Probe\n\nBody\n',
       })
-      expect(parsed.frontmatter.notion_md.storage._tag).toBe('self_contained')
-      expect(parsed.frontmatter.notion_md.properties.Status).toEqual({
-        _tag: 'read_only',
+      expect(syncState.storage._tag).toBe('self_contained')
+      expect(syncState.read_only_properties.Status).toEqual({
         property_type: 'select',
         value: { type: 'select', select: { name: 'Ready' } },
       })
@@ -871,12 +915,11 @@ describe('notion-md e2e prototype', () => {
       )
 
       const pushed = await runWithFake(pushPage({ path }), fake)
-      const refreshed = await parseFile(path)
+      const refreshedSync = await readSyncStateFile(path)
 
       expect(pushed.pushed).toBe(true)
       expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
-      expect(refreshed.frontmatter.notion_md.properties.Done).toEqual({
-        _tag: 'read_only',
+      expect(refreshedSync.read_only_properties.Done).toEqual({
         property_type: 'unknown',
         value: { checkbox: true },
       })
@@ -1238,15 +1281,15 @@ describe('notion-md e2e prototype', () => {
       const path = join(dir, 'unknowns.nmd')
 
       await runWithFake(pullPage({ pageId, outPath: path }), fake)
-      const parsed = await parseFile(path)
+      const syncState = await readSyncStateFile(path)
 
-      expect(parsed.frontmatter.notion_md.storage._tag).toBe('self_contained')
-      if (parsed.frontmatter.notion_md.storage._tag === 'self_contained') {
-        expect(parsed.frontmatter.notion_md.storage.unsupported_blocks).toHaveLength(1)
-        expect(parsed.frontmatter.notion_md.storage.files).toHaveLength(1)
-        expect(parsed.frontmatter.notion_md.storage.comments).toHaveLength(1)
+      expect(syncState.storage._tag).toBe('self_contained')
+      if (syncState.storage._tag === 'self_contained') {
+        expect(syncState.storage.unsupported_blocks).toHaveLength(1)
+        expect(syncState.storage.files).toHaveLength(1)
+        expect(syncState.storage.comments).toHaveLength(1)
       }
-      expect(parsed.frontmatter.notion_md.body.unknown_block_ids).toEqual([blockId])
+      expect(syncState.body.unknown_block_ids).toEqual([blockId])
     })
   })
 
@@ -1312,17 +1355,17 @@ describe('notion-md e2e prototype', () => {
       )
 
       const pushed = await runWithFake(pushPage({ path, allowDeletingUnknownBlocks: true }), fake)
-      const parsed = await parseFile(path)
+      const syncState = await readSyncStateFile(path)
       const status = await runWithFake(statusPage({ path }), fake)
 
       expect(pushed.pushed).toBe(true)
-      expect(parsed.frontmatter.notion_md.storage).toMatchObject({
+      expect(syncState.storage).toMatchObject({
         _tag: 'self_contained',
         unsupported_blocks: [],
         files: [],
         comments: [],
       })
-      expect(parsed.frontmatter.notion_md.body.unknown_block_ids).toEqual([])
+      expect(syncState.body.unknown_block_ids).toEqual([])
       expect(status.unresolvedUnknownBlocks).toEqual([])
       expect(status.localChanged).toBe(false)
       expect(status.remoteChanged).toBe(false)
@@ -1345,10 +1388,10 @@ describe('notion-md e2e prototype', () => {
       const path = join(dir, 'volatile.nmd')
 
       const result = await runWithFake(pullPage({ pageId, outPath: path }), fake)
-      const parsed = await parseFile(path)
+      const syncState = await readSyncStateFile(path)
 
       expect(result.storage).toBe('object_store')
-      expect(parsed.frontmatter.notion_md.storage).toMatchObject({
+      expect(syncState.storage).toMatchObject({
         _tag: 'object_store',
         unsupported_block_ids: [blockId],
       })
@@ -1641,7 +1684,62 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
-  it('rejects v2 frontmatter instead of silently migrating state stores', async () => {
+  it('materializes an unmaterialized .nmd on first push (page_id null → create)', async () => {
+    await withTempDir(async (dir) => {
+      const parentPageId = '00000000-0000-4000-8000-00000000aaaa'
+      const fake = new FakeNotion([])
+      const path = join(dir, 'unmaterialized.nmd')
+
+      /*
+       * Convention-driven create: write a `.nmd` with `page_id: null`
+       * and a parent set. `push` materializes the Notion page, fills
+       * `page_id`, writes the sidecar, and subsequent pushes go through
+       * the normal guarded path — no `--create` flag, no second tool.
+       */
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              version: 2,
+              api_version: '2026-03-11',
+              object: 'page',
+              page_id: null,
+              parent: { _tag: 'page', id: parentPageId },
+              page: {
+                title: 'Brand New Doc',
+                icon: null,
+                cover: null,
+                in_trash: false,
+                is_locked: false,
+              },
+              properties: {},
+            },
+          },
+          body: '# Brand New Doc\n\nFirst body.\n',
+        }),
+      )
+
+      const status = await runWithFake(statusPage({ path }), fake)
+      expect(status.pageId).toBe('unmaterialized')
+      expect(status.localChanged).toBe(true)
+
+      const pushed = await runWithFake(pushPage({ path }), fake)
+
+      expect(pushed.pushed).toBe(true)
+      expect(pushed.pageId).not.toBe('unmaterialized')
+      expect(fake.remoteMarkdown(pushed.pageId)).toContain('First body.')
+
+      const refreshed = await parseFile(path)
+      expect(refreshed.frontmatter.notion_md.page_id).toBe(pushed.pageId)
+
+      /* Sidecar exists and is keyed by the new page id. */
+      const syncState = await readSyncStateFile(path)
+      expect(syncState.page_id).toBe(pushed.pageId)
+    })
+  })
+
+  it('rejects unknown frontmatter versions instead of silently migrating state stores', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
       const path = join(dir, 'probe.nmd')
@@ -1654,7 +1752,7 @@ describe('notion-md e2e prototype', () => {
           {
             notion_md: {
               ...parsed.frontmatter.notion_md,
-              version: 2,
+              version: 99,
             },
           },
           null,
@@ -1693,13 +1791,13 @@ describe('notion-md e2e prototype', () => {
       ])
       const path = join(dir, 'volatile.nmd')
       await runWithFake(pullPage({ pageId, outPath: path }), fake)
-      const parsed = await parseFile(path)
-      if (parsed.frontmatter.notion_md.storage._tag !== 'object_store') {
+      const syncState = await readSyncStateFile(path)
+      if (syncState.storage._tag !== 'object_store') {
         throw new Error('Expected volatile payload to be stored in the object store')
       }
       const storagePath = objectPath({
         path,
-        hash: parsed.frontmatter.notion_md.storage.object.hash,
+        hash: syncState.storage.object.hash,
       })
       await writeFile(
         storagePath,
@@ -1738,25 +1836,30 @@ describe('notion-md e2e prototype', () => {
       ])
       const path = join(dir, 'volatile.nmd')
       await runWithFake(pullPage({ pageId, outPath: path }), fake)
-      const parsed = await parseFile(path)
-      if (parsed.frontmatter.notion_md.storage._tag !== 'object_store') {
+      const syncState = await readSyncStateFile(path)
+      if (syncState.storage._tag !== 'object_store') {
         throw new Error('Expected volatile payload to be stored in the object store')
       }
 
+      /*
+       * Tamper the sidecar inventory directly — the engine validates it
+       * against the storage payload before status can pass.
+       */
+      const sidecarRoot = path.slice(0, Math.max(0, path.length - 'volatile.nmd'.length))
+      const sidecarPath = `${sidecarRoot}.notion-md/sync/${pageId}.json`
       await writeFile(
-        path,
-        renderNmdFile({
-          frontmatter: {
-            notion_md: {
-              ...parsed.frontmatter.notion_md,
-              storage: {
-                ...parsed.frontmatter.notion_md.storage,
-                unsupported_block_ids: [],
-              },
+        sidecarPath,
+        JSON.stringify(
+          {
+            ...syncState,
+            storage: {
+              ...syncState.storage,
+              unsupported_block_ids: [],
             },
           },
-          body: parsed.body,
-        }),
+          null,
+          2,
+        ) + '\n',
       )
 
       const result = await runEitherWithFake(statusPage({ path }), fake)
@@ -1784,34 +1887,39 @@ describe('notion-md e2e prototype', () => {
       const content = await readFile(path, 'utf8')
       await writeFile(path, content.replace('Body', 'Local body'))
       fake.mutateRemote(pageId, '# Probe\n\nRemote body')
-      const parsed = await parseFile(path)
+      const syncState = await readSyncStateFile(path)
       const base = await readBaseSnapshotFile(path)
       const legacyBaseContent = JSON.stringify({ ...base, version: 1 }, null, 2)
       const legacyHash = sha256Digest(legacyBaseContent)
       const legacyPath = objectPath({ path, hash: legacyHash })
       await mkdir(dirname(legacyPath), { recursive: true })
       await writeFile(legacyPath, `${legacyBaseContent}\n`)
+      /*
+       * Point the sidecar at the legacy v1 base snapshot blob; the engine
+       * must reject it (no silent migration of content-addressed objects).
+       */
+      const sidecarRoot = path.slice(0, Math.max(0, path.length - 'probe.nmd'.length))
+      const sidecarPath = `${sidecarRoot}.notion-md/sync/${pageId}.json`
       await writeFile(
-        path,
-        renderNmdFile({
-          frontmatter: {
-            notion_md: {
-              ...parsed.frontmatter.notion_md,
-              body: {
-                ...parsed.frontmatter.notion_md.body,
-                base: {
-                  _tag: 'object_ref',
-                  role: 'base_snapshot',
-                  hash: legacyHash,
-                  path: objectRelativePath(legacyHash),
-                  media_type: 'application/json',
-                  byte_length: new TextEncoder().encode(legacyBaseContent).byteLength,
-                },
+        sidecarPath,
+        JSON.stringify(
+          {
+            ...syncState,
+            body: {
+              ...syncState.body,
+              base: {
+                _tag: 'object_ref',
+                role: 'base_snapshot',
+                hash: legacyHash,
+                path: objectRelativePath(legacyHash),
+                media_type: 'application/json',
+                byte_length: new TextEncoder().encode(legacyBaseContent).byteLength,
               },
             },
           },
-          body: parsed.body,
-        }),
+          null,
+          2,
+        ) + '\n',
       )
 
       const result = await runEitherWithFake(pushPage({ path }), fake)
