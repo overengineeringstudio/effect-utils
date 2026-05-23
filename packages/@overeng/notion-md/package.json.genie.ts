@@ -8,6 +8,7 @@ import {
 import notionEffectClientPkg from '../notion-effect-client/package.json.genie.ts'
 import notionEffectSchemaPkg from '../notion-effect-schema/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const peerDepNames = [
   '@effect/cli',
@@ -25,7 +26,7 @@ const peerDepNames = [
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-md' }),
   dependencies: {
-    workspace: [notionEffectClientPkg, notionEffectSchemaPkg],
+    workspace: [notionEffectClientPkg, notionEffectSchemaPkg, utilsPkg],
   },
   devDependencies: {
     workspace: [utilsDevPkg],
@@ -51,10 +52,10 @@ export default packageJson(
     publishConfig: {
       access: 'public',
       bin: {
-        'notion-md': './dist/cli.js',
+        'notion-md': './dist/src/cli.js',
       },
       exports: {
-        '.': './dist/mod.js',
+        '.': './dist/src/mod.js',
       },
     },
   } satisfies PackageJsonData,

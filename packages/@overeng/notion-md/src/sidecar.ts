@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, normalize } from 'node:path'
 
 import { Effect, Schema } from 'effect'
 
@@ -33,8 +33,11 @@ const strictOptions = {
   onExcessProperty: 'error',
 } as const
 
-const decodeSidecar = Schema.decodeUnknownSync(NmdSidecarV1, strictOptions)
-const decodeBaseSnapshot = Schema.decodeUnknownSync(NmdBaseSnapshotV1, strictOptions)
+const decodeSidecarJson = Schema.decodeUnknownSync(Schema.parseJson(NmdSidecarV1), strictOptions)
+const decodeBaseSnapshotJson = Schema.decodeUnknownSync(
+  Schema.parseJson(NmdBaseSnapshotV1),
+  strictOptions,
+)
 
 /** Path for the last clean body snapshot next to a `.nmd` file. */
 export const baseSnapshotPath = (path: string): string => `${path}.base.json`
@@ -48,6 +51,34 @@ const sameIds = (opts: {
   const rightSet = new Set(right)
   return left.every((id) => rightSet.has(id))
 }
+
+const resolveWorkspaceRelativePath = (opts: {
+  readonly basePath: string
+  readonly relativePath: string
+}): Effect.Effect<string, NmdSidecarError> =>
+  Effect.try({
+    try: () => {
+      if (isAbsolute(opts.relativePath) === true) {
+        throw new Error('Sidecar path must be relative')
+      }
+      const normalized = normalize(opts.relativePath)
+      if (
+        normalized === '..' ||
+        normalized.startsWith(`..${'/'}`) === true ||
+        normalized.includes(`..\\`) === true
+      ) {
+        throw new Error('Sidecar path must not traverse outside the .nmd directory')
+      }
+      return join(dirname(opts.basePath), normalized)
+    },
+    catch: (cause) =>
+      new NmdSidecarError({
+        path: opts.basePath,
+        sidecar_path: opts.relativePath,
+        cause,
+        message: `Invalid .nmd sidecar path ${opts.relativePath}`,
+      }),
+  })
 
 const validateSidecarReferences = (opts: {
   readonly path: string
@@ -117,7 +148,10 @@ export const validateReferencedSidecar = (opts: {
     const storage = opts.frontmatter.notion_md.storage
     if (storage._tag !== 'sidecar') return undefined
 
-    const sidecarPath = join(dirname(opts.path), storage.path)
+    const sidecarPath = yield* resolveWorkspaceRelativePath({
+      basePath: opts.path,
+      relativePath: storage.path,
+    })
     const sidecar = yield* Effect.tryPromise({
       try: () => readFile(sidecarPath, 'utf8'),
       catch: (cause) =>
@@ -130,7 +164,7 @@ export const validateReferencedSidecar = (opts: {
     }).pipe(
       Effect.flatMap((content) =>
         Effect.try({
-          try: () => decodeSidecar(JSON.parse(content)),
+          try: () => decodeSidecarJson(content),
           catch: (cause) =>
             new NmdSidecarError({
               path: opts.path,
@@ -203,7 +237,7 @@ export const readBaseSnapshot = (opts: {
     }).pipe(
       Effect.flatMap((content) =>
         Effect.try({
-          try: () => decodeBaseSnapshot(JSON.parse(content)),
+          try: () => decodeBaseSnapshotJson(content),
           catch: (cause) =>
             new NmdSidecarError({
               path: opts.path,

@@ -1,6 +1,7 @@
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 
-import { decodeNmdFrontmatterV1Sync, type NmdFrontmatterV1 } from '@overeng/notion-effect-client'
+import { NmdFrontmatterV1Schema } from '@overeng/notion-effect-client'
+import type { NmdFrontmatterV1 } from '@overeng/notion-effect-client'
 
 import { NmdFrontmatterError } from './errors.ts'
 import { canonicalizeMarkdown } from './hash.ts'
@@ -12,6 +13,13 @@ export interface ParsedNmdFile {
 }
 
 const frontmatterEndMarker = '\n---\n'
+const decodeNmdFrontmatterJsonSync = Schema.decodeUnknownSync(
+  Schema.parseJson(NmdFrontmatterV1Schema),
+  {
+    errors: 'all',
+    onExcessProperty: 'error',
+  },
+)
 
 /** Render strict frontmatter as JSON-compatible YAML to keep parsing dependency-free. */
 export const renderNmdFile = (opts: {
@@ -27,18 +35,19 @@ export const parseNmdFile = (opts: {
 }): Effect.Effect<ParsedNmdFile, NmdFrontmatterError> =>
   Effect.try({
     try: () => {
-      if (opts.content.startsWith('---\n') === false) {
+      const content = opts.content.replace(/\r\n/g, '\n')
+      if (content.startsWith('---\n') === false) {
         throw new Error('Expected `.nmd` frontmatter to start with `---`')
       }
 
-      const endIndex = opts.content.indexOf(frontmatterEndMarker, 4)
+      const endIndex = content.indexOf(frontmatterEndMarker, 4)
       if (endIndex === -1) {
         throw new Error('Expected closing `---` frontmatter marker')
       }
 
-      const rawFrontmatter = opts.content.slice(4, endIndex)
-      const body = opts.content.slice(endIndex + frontmatterEndMarker.length).replace(/^\n/u, '')
-      const decoded = decodeNmdFrontmatterV1Sync(JSON.parse(rawFrontmatter))
+      const rawFrontmatter = content.slice(4, endIndex)
+      const body = content.slice(endIndex + frontmatterEndMarker.length).replace(/^\n/u, '')
+      const decoded = decodeNmdFrontmatterJsonSync(rawFrontmatter)
       return { frontmatter: decoded, body: canonicalizeMarkdown(body) }
     },
     catch: (cause) =>

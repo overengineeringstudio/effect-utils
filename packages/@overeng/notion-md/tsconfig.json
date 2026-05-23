@@ -51,6 +51,9 @@
       "path": "../notion-effect-schema"
     },
     {
+      "path": "../utils"
+    },
+    {
       "path": "../utils-dev"
     }
   ]

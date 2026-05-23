@@ -75,6 +75,10 @@ const unsupportedStorage = (payload: unknown = { url: 'https://www.notion.com/' 
 class FakeNotion {
   private readonly pages = new Map<string, Required<FakePage>>()
   private tick = 0
+  readonly updateMarkdownCalls: Array<{
+    readonly pageId: string
+    readonly allowDeletingContent: boolean
+  }> = []
 
   constructor(pages: readonly FakePage[]) {
     for (const page of pages) {
@@ -99,9 +103,10 @@ class FakeNotion {
         const page = this.requirePage(id)
         return this.toPullResult(page)
       }),
-    updateMarkdown: ({ pageId: id, markdown }) =>
+    updateMarkdown: ({ pageId: id, markdown, allowDeletingContent }) =>
       Effect.sync(() => {
         const page = this.requirePage(id)
+        this.updateMarkdownCalls.push({ pageId: id, allowDeletingContent })
         this.tick += 1
         const next = {
           ...page,
@@ -135,6 +140,15 @@ class FakeNotion {
     this.pages.set(pageIdToMutate, {
       ...page,
       markdown: canonicalizeMarkdown(markdown),
+      lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
+    })
+  }
+
+  touchRemoteMetadata(pageIdToMutate: string): void {
+    const page = this.requirePage(pageIdToMutate)
+    this.tick += 1
+    this.pages.set(pageIdToMutate, {
+      ...page,
       lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
     })
   }
@@ -438,6 +452,49 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('does not treat remote metadata-only edits as body conflicts', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      fake.touchRemoteMetadata(pageId)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const beforePushStatus = await runWithFake(statusPage({ path }), fake)
+      const pushed = await runWithFake(pushPage({ path }), fake)
+
+      expect(beforePushStatus.remoteChanged).toBe(true)
+      expect(beforePushStatus.remoteBodyChanged).toBe(false)
+      expect(beforePushStatus.remotePageMetadataChanged).toBe(true)
+      expect(pushed.pushed).toBe(true)
+      expect(fake.remoteMarkdown(pageId)).toBe('# Probe\n\nBody')
+      expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
+    })
+  })
+
   it('keeps compact unsupported blocks, file units, and comment bridge metadata self-contained', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([
@@ -491,6 +548,10 @@ describe('notion-md e2e prototype', () => {
         fake,
       )
       expect(destructive.pushed).toBe(true)
+      expect(fake.updateMarkdownCalls.at(-1)).toEqual({
+        pageId,
+        allowDeletingContent: true,
+      })
       expect(fake.remoteMarkdown(pageId)).toContain('Local edit')
     })
   })

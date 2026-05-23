@@ -16,9 +16,16 @@ export type Sha256Digest = typeof Sha256Digest.Type
 
 /** Relative path inside the local workspace. */
 export const RelativePath = Schema.String.pipe(
-  Schema.filter((value) => value.length > 0 && value.startsWith('/') === false, {
-    message: () => 'Expected a non-empty relative path',
-  }),
+  Schema.filter(
+    (value) => {
+      if (value.length === 0 || value.startsWith('/') === true) return false
+      const segments = value.split(/[\\/]+/u)
+      return segments.every((segment) => segment !== '..')
+    },
+    {
+      message: () => 'Expected a non-empty relative path without parent traversal',
+    },
+  ),
 ).annotations({
   identifier: 'NotionMd.RelativePath',
 })

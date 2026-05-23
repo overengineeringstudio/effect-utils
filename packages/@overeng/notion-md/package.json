@@ -9,10 +9,10 @@
   "publishConfig": {
     "access": "public",
     "bin": {
-      "notion-md": "./dist/cli.js"
+      "notion-md": "./dist/src/cli.js"
     },
     "exports": {
-      ".": "./dist/mod.js"
+      ".": "./dist/src/mod.js"
     }
   },
   "scripts": {
@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@overeng/notion-effect-client": "workspace:^",
-    "@overeng/notion-effect-schema": "workspace:^"
+    "@overeng/notion-effect-schema": "workspace:^",
+    "@overeng/utils": "workspace:^"
   },
   "devDependencies": {
     "@effect/cli": "0.75.1",

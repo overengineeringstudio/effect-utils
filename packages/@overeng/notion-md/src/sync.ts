@@ -48,6 +48,8 @@ export interface StatusResult {
   readonly localChanged: boolean
   readonly localPropertiesChanged: boolean
   readonly remoteChanged: boolean
+  readonly remoteBodyChanged: boolean
+  readonly remotePageMetadataChanged: boolean
   readonly bodyHash: string
   readonly localBodyHash: string
   readonly remoteBodyHash: string
@@ -327,13 +329,14 @@ const writeRoughdraftConflict = (opts: {
   readonly baseBody: string
   readonly localBody: string
   readonly remoteBody: string
-}): Effect.Effect<string, unknown> =>
-  Effect.tryPromise(async () => {
-    const conflictPath = roughdraftConflictPath(opts.path)
-    const now = new Date().toISOString()
-    await writeFile(
-      conflictPath,
-      `# notion-md body conflict
+}): Effect.Effect<string, NmdConflictError> => {
+  const conflictPath = roughdraftConflictPath(opts.path)
+  return Effect.tryPromise({
+    try: () => {
+      const now = new Date().toISOString()
+      return writeFile(
+        conflictPath,
+        `# notion-md body conflict
 
 {==Body conflict==}{>>Remote and local body content both changed since the last clean pull. Resolve the chosen content back into the .nmd file, then rerun status/push.<<}{id="body-conflict" by="notion-md" at="${now}"}
 
@@ -357,9 +360,19 @@ ${opts.localBody}
 ${opts.remoteBody}
 \`\`\`
 `,
-    )
-    return conflictPath
+      ).then(() => conflictPath)
+    },
+    catch: (_cause) =>
+      new NmdConflictError({
+        path: opts.path,
+        page_id: opts.pageId,
+        local_changed: true,
+        remote_changed: true,
+        conflict_path: conflictPath,
+        message: `Failed to write Roughdraft conflict file ${conflictPath}`,
+      }),
   })
+}
 
 const buildFrontmatter = (opts: {
   readonly page: RemotePageSnapshot
@@ -403,7 +416,7 @@ const writeNmdWithStoragePolicy = (opts: {
   readonly frontmatter: NmdFrontmatterV1
   readonly body: string
 }): Effect.Effect<PullResult, unknown> =>
-  Effect.tryPromise(async () => {
+  Effect.gen(function* () {
     const decision = decideStorage(opts.frontmatter)
     let frontmatter = opts.frontmatter
     let sidecarPath: string | undefined
@@ -412,18 +425,20 @@ const writeNmdWithStoragePolicy = (opts: {
       sidecarPath = `${basename(opts.path)}.notion.json`
       const sidecarFullPath = join(dirname(opts.path), sidecarPath)
       const storage = opts.frontmatter.notion_md.storage
-      await writeFile(
-        sidecarFullPath,
-        `${JSON.stringify(
-          {
-            version: 1,
-            page_id: opts.frontmatter.notion_md.page_id,
-            reason: decision.reason,
-            storage,
-          },
-          null,
-          2,
-        )}\n`,
+      yield* Effect.tryPromise(() =>
+        writeFile(
+          sidecarFullPath,
+          `${JSON.stringify(
+            {
+              version: 1,
+              page_id: opts.frontmatter.notion_md.page_id,
+              reason: decision.reason,
+              storage,
+            },
+            null,
+            2,
+          )}\n`,
+        ),
       )
 
       frontmatter = {
@@ -446,14 +461,14 @@ const writeNmdWithStoragePolicy = (opts: {
       }
     }
 
-    await writeFile(opts.path, renderNmdFile({ frontmatter, body: opts.body }))
-    await Effect.runPromise(
-      writeBaseSnapshot({
-        path: opts.path,
-        frontmatter,
-        body: opts.body,
-      }),
+    yield* Effect.tryPromise(() =>
+      writeFile(opts.path, renderNmdFile({ frontmatter, body: opts.body })),
     )
+    yield* writeBaseSnapshot({
+      path: opts.path,
+      frontmatter,
+      body: opts.body,
+    })
     const storage: PullResult['storage'] =
       frontmatter.notion_md.storage._tag === 'sidecar' ? 'sidecar' : 'self_contained'
 
@@ -492,7 +507,15 @@ export const pullPage = (opts: PullOptions): Effect.Effect<PullResult, unknown, 
       frontmatter,
       body: pulled.markdown.markdown,
     })
-  }).pipe(Effect.withSpan('notion-md.pullPage'))
+  }).pipe(
+    Effect.withSpan('notion-md.pull-page', {
+      attributes: {
+        'span.label': opts.pageId.slice(0, 8),
+        'notion_md.page_id': opts.pageId,
+        'notion_md.path.basename': basename(opts.outPath),
+      },
+    }),
+  )
 
 const readNmd = (path: string) =>
   Effect.tryPromise(() => readFile(path, 'utf8')).pipe(
@@ -514,9 +537,10 @@ export const statusPage = (
     const bodyHash = local.frontmatter.notion_md.body.hash
     const localChanged = localBodyHash !== bodyHash
     const localPropertiesChanged = hasWritablePropertyValues(local.frontmatter.notion_md.properties)
-    const remoteChanged =
-      remoteBodyHash !== bodyHash ||
+    const remoteBodyChanged = remoteBodyHash !== bodyHash
+    const remotePageMetadataChanged =
       remote.page.last_edited_time !== local.frontmatter.notion_md.body.remote_last_edited_time
+    const remoteChanged = remoteBodyChanged || remotePageMetadataChanged
     const unknownBlockIds = unresolvedUnknownBlockIds({
       frontmatter: local.frontmatter,
       remoteMarkdown: remote.markdown,
@@ -528,12 +552,32 @@ export const statusPage = (
       localChanged,
       localPropertiesChanged,
       remoteChanged,
+      remoteBodyChanged,
+      remotePageMetadataChanged,
       bodyHash,
       localBodyHash,
       remoteBodyHash,
       unresolvedUnknownBlocks: unknownBlockIds,
     }
-  }).pipe(Effect.withSpan('notion-md.statusPage'))
+  }).pipe(
+    Effect.tap((status) =>
+      Effect.annotateCurrentSpan({
+        'notion_md.page_id': status.pageId,
+        'notion_md.status.local_changed': status.localChanged,
+        'notion_md.status.local_properties_changed': status.localPropertiesChanged,
+        'notion_md.status.remote_changed': status.remoteChanged,
+        'notion_md.status.remote_body_changed': status.remoteBodyChanged,
+        'notion_md.status.remote_page_metadata_changed': status.remotePageMetadataChanged,
+        'notion_md.status.unknown_block_count': status.unresolvedUnknownBlocks.length,
+      }),
+    ),
+    Effect.withSpan('notion-md.status-page', {
+      attributes: {
+        'span.label': basename(opts.path),
+        'notion_md.path.basename': basename(opts.path),
+      },
+    }),
+  )
 
 /** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
 export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, NotionMdGateway> =>
@@ -567,7 +611,7 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
       })
     }
 
-    if (status.remoteChanged === true && opts.force !== true) {
+    if (status.remoteBodyChanged === true && opts.force !== true) {
       const gateway = yield* NotionMdGateway
       const remote = yield* gateway.pullPage({ pageId: status.pageId })
       const baseSnapshot = yield* readBaseSnapshot({
@@ -584,17 +628,17 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
           : undefined
 
       if (mergedBody !== undefined) {
+        const updated = yield* gateway.updateMarkdown({
+          pageId: status.pageId,
+          markdown: mergedBody,
+          allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+        })
         if (status.localPropertiesChanged === true) {
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
             properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
           })
         }
-        const updated = yield* gateway.updateMarkdown({
-          pageId: status.pageId,
-          markdown: mergedBody,
-          allowDeletingContent: false,
-        })
         const pulled = yield* gateway.pullPage({ pageId: status.pageId })
         const frontmatter = buildFrontmatter({
           page: pulled.page,
@@ -634,20 +678,20 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
     }
 
     const gateway = yield* NotionMdGateway
+    const updated =
+      status.localChanged === true
+        ? yield* gateway.updateMarkdown({
+            pageId: status.pageId,
+            markdown: local.body,
+            allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+          })
+        : undefined
     if (status.localPropertiesChanged === true) {
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
         properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
       })
     }
-    const updated =
-      status.localChanged === true
-        ? yield* gateway.updateMarkdown({
-            pageId: status.pageId,
-            markdown: local.body,
-            allowDeletingContent: false,
-          })
-        : undefined
     const pulled = yield* gateway.pullPage({ pageId: status.pageId })
     const frontmatter = buildFrontmatter({
       page: pulled.page,
@@ -667,7 +711,22 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, unknown, 
       pushed: true,
       status,
     }
-  }).pipe(Effect.withSpan('notion-md.pushPage'))
+  }).pipe(
+    Effect.tap((result) =>
+      Effect.annotateCurrentSpan({
+        'notion_md.page_id': result.pageId,
+        'notion_md.push.pushed': result.pushed,
+      }),
+    ),
+    Effect.withSpan('notion-md.push-page', {
+      attributes: {
+        'span.label': basename(opts.path),
+        'notion_md.path.basename': basename(opts.path),
+        'notion_md.push.force': opts.force === true,
+        'notion_md.push.allow_delete_unknown_blocks': opts.allowDeletingUnknownBlocks === true,
+      },
+    }),
+  )
 
 /** Run one two-way reconciliation pass for a `.nmd` file. */
 export const syncPage = (opts: SyncOptions): Effect.Effect<SyncResult, unknown, NotionMdGateway> =>
@@ -702,7 +761,20 @@ export const syncPage = (opts: SyncOptions): Effect.Effect<SyncResult, unknown, 
       pageId: status.pageId,
       status,
     } as const
-  }).pipe(Effect.withSpan('notion-md.syncPage'))
+  }).pipe(
+    Effect.tap((result) =>
+      Effect.annotateCurrentSpan({
+        'notion_md.page_id': result.pageId,
+        'notion_md.sync.result': result._tag,
+      }),
+    ),
+    Effect.withSpan('notion-md.sync-page', {
+      attributes: {
+        'span.label': basename(opts.path),
+        'notion_md.path.basename': basename(opts.path),
+      },
+    }),
+  )
 
 /** Build strict `.nmd` frontmatter from a remote pull result. */
 export const buildFrontmatterFromPull = (pulled: PullPageResult): NmdFrontmatterV1 =>
