@@ -13,16 +13,10 @@ import type {
 import { NmdConflictError, type NmdError, type NmdFileSystemError } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
-import {
-  NotionMdGateway,
-  type MarkdownUpdateCommand,
-  type PullPageResult,
-  type RemoteMarkdownSnapshot,
-  type RemotePageSnapshot,
-} from './model.ts'
+import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
+import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
 import {
   NmdStateStore,
-  objectRelativePath,
   readBaseSnapshot,
   validateReferencedObjects,
   writeBaseSnapshot,
@@ -234,159 +228,6 @@ const unresolvedUnknownBlockIds = (opts: {
 
 const containsRoughdraftReviewMarkup = (body: string): boolean =>
   /\{(?:==|\+\+|--|~~|>>)/u.test(body)
-
-const tryMergeBodies = (opts: {
-  readonly baseBody: string
-  readonly localBody: string
-  readonly remoteBody: string
-}): string | undefined => {
-  const base = canonicalizeMarkdown(opts.baseBody)
-  const local = canonicalizeMarkdown(opts.localBody)
-  const remote = canonicalizeMarkdown(opts.remoteBody)
-
-  if (local === remote) return local
-  if (local === base) return remote
-  if (remote === base) return local
-
-  const baseLines = base.split('\n')
-  const localLines = local.split('\n')
-  const remoteLines = remote.split('\n')
-
-  const localRange = changedRange({ baseLines, changedLines: localLines })
-  const remoteRange = changedRange({ baseLines, changedLines: remoteLines })
-
-  if (sameRange({ left: localRange, right: remoteRange }) === true) {
-    return sameLines({ left: localRange.replacement, right: remoteRange.replacement }) === true
-      ? local
-      : undefined
-  }
-
-  if (localRange.end <= remoteRange.start) {
-    return applyRanges({ baseLines, rangesDescending: [remoteRange, localRange] })
-  }
-
-  if (remoteRange.end <= localRange.start) {
-    return applyRanges({ baseLines, rangesDescending: [localRange, remoteRange] })
-  }
-
-  return undefined
-}
-
-interface ChangedRange {
-  readonly start: number
-  readonly end: number
-  readonly replacement: readonly string[]
-}
-
-const changedRange = (opts: {
-  readonly baseLines: readonly string[]
-  readonly changedLines: readonly string[]
-}): ChangedRange => {
-  const { baseLines, changedLines } = opts
-  let prefix = 0
-  while (
-    prefix < baseLines.length &&
-    prefix < changedLines.length &&
-    baseLines[prefix] === changedLines[prefix]
-  ) {
-    prefix += 1
-  }
-
-  let suffix = 0
-  while (
-    suffix < baseLines.length - prefix &&
-    suffix < changedLines.length - prefix &&
-    baseLines[baseLines.length - 1 - suffix] === changedLines[changedLines.length - 1 - suffix]
-  ) {
-    suffix += 1
-  }
-
-  return {
-    start: prefix,
-    end: baseLines.length - suffix,
-    replacement: changedLines.slice(prefix, changedLines.length - suffix),
-  }
-}
-
-const sameRange = (opts: { readonly left: ChangedRange; readonly right: ChangedRange }): boolean =>
-  opts.left.start === opts.right.start && opts.left.end === opts.right.end
-
-const sameLines = (opts: {
-  readonly left: readonly string[]
-  readonly right: readonly string[]
-}): boolean =>
-  opts.left.length === opts.right.length &&
-  opts.left.every((line, index) => line === opts.right[index])
-
-const applyRanges = (opts: {
-  readonly baseLines: readonly string[]
-  readonly rangesDescending: readonly ChangedRange[]
-}): string => {
-  const merged = [...opts.baseLines]
-  for (const range of opts.rangesDescending) {
-    merged.splice(range.start, range.end - range.start, ...range.replacement)
-  }
-  return merged.join('\n')
-}
-
-const countOccurrences = (opts: { readonly haystack: string; readonly needle: string }): number => {
-  if (opts.needle.length === 0) return 0
-
-  let count = 0
-  let offset = 0
-  while (true) {
-    const index = opts.haystack.indexOf(opts.needle, offset)
-    if (index === -1) return count
-    count += 1
-    offset = index + opts.needle.length
-  }
-}
-
-const planMarkdownUpdate = (opts: {
-  readonly baseBody: string
-  readonly remoteBody: string
-  readonly desiredBody: string
-}): MarkdownUpdateCommand => {
-  const base = canonicalizeMarkdown(opts.baseBody)
-  const remote = canonicalizeMarkdown(opts.remoteBody)
-  const desired = canonicalizeMarkdown(opts.desiredBody)
-
-  let prefix = 0
-  while (
-    prefix < base.length &&
-    prefix < desired.length &&
-    base.charCodeAt(prefix) === desired.charCodeAt(prefix)
-  ) {
-    prefix += 1
-  }
-
-  let suffix = 0
-  while (
-    suffix < base.length - prefix &&
-    suffix < desired.length - prefix &&
-    base.charCodeAt(base.length - 1 - suffix) === desired.charCodeAt(desired.length - 1 - suffix)
-  ) {
-    suffix += 1
-  }
-
-  const oldStr = base.slice(prefix, base.length - suffix)
-  const newStr = desired.slice(prefix, desired.length - suffix)
-  const isSafeTargetedUpdate =
-    oldStr.length > 0 &&
-    countOccurrences({ haystack: remote, needle: oldStr }) === 1 &&
-    remote.replace(oldStr, newStr) === desired
-
-  return isSafeTargetedUpdate === true
-    ? {
-        _tag: 'update_content',
-        contentUpdates: [{ oldStr, newStr }],
-        expectedMarkdown: desired,
-      }
-    : {
-        _tag: 'replace_content',
-        markdown: desired,
-      }
-}
 
 const roughdraftConflictPath = (path: string): string => `${path}.conflict.roughdraft.md`
 
@@ -697,7 +538,7 @@ export const pushPage = (
       })
       const mergedBody =
         status.localChanged === true
-          ? tryMergeBodies({
+          ? tryMergeMarkdownBodies({
               baseBody: baseSnapshot.body,
               localBody: local.body,
               remoteBody: remote.markdown.markdown,
@@ -705,13 +546,20 @@ export const pushPage = (
           : undefined
 
       if (mergedBody !== undefined) {
+        yield* Effect.annotateCurrentSpan({
+          'notion_md.push.decision': 'auto_merge',
+        })
+        const command = planMarkdownUpdate({
+          baseBody: baseSnapshot.body,
+          remoteBody: remote.markdown.markdown,
+          desiredBody: mergedBody,
+        })
+        yield* Effect.annotateCurrentSpan({
+          'notion_md.push.markdown_command': command._tag,
+        })
         const updated = yield* gateway.updateMarkdown({
           pageId: status.pageId,
-          command: planMarkdownUpdate({
-            baseBody: baseSnapshot.body,
-            remoteBody: remote.markdown.markdown,
-            desiredBody: mergedBody,
-          }),
+          command,
           allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
         })
         if (status.localPropertiesChanged === true) {
@@ -744,6 +592,9 @@ export const pushPage = (
         localBody: local.body,
         remoteBody: remote.markdown.markdown,
       })
+      yield* Effect.annotateCurrentSpan({
+        'notion_md.push.decision': 'body_conflict',
+      })
       return yield* new NmdConflictError({
         path: opts.path,
         page_id: status.pageId,
@@ -775,16 +626,21 @@ export const pushPage = (
                 message: 'Remote page changed while preparing guarded Markdown push',
               })
             }
+            const command =
+              opts.force === true
+                ? ({ _tag: 'replace_content', markdown: local.body } as const)
+                : planMarkdownUpdate({
+                    baseBody: baseSnapshot.body,
+                    remoteBody: remote.markdown.markdown,
+                    desiredBody: local.body,
+                  })
+            yield* Effect.annotateCurrentSpan({
+              'notion_md.push.decision': opts.force === true ? 'force_replace' : 'guarded_update',
+              'notion_md.push.markdown_command': command._tag,
+            })
             return yield* gateway.updateMarkdown({
               pageId: status.pageId,
-              command:
-                opts.force === true
-                  ? { _tag: 'replace_content', markdown: local.body }
-                  : planMarkdownUpdate({
-                      baseBody: baseSnapshot.body,
-                      remoteBody: remote.markdown.markdown,
-                      desiredBody: local.body,
-                    }),
+              command,
               allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
             })
           })
@@ -876,24 +732,3 @@ export const syncPage = (
       },
     }),
   )
-
-/** Build strict `.nmd` frontmatter from a remote pull result. */
-export const buildFrontmatterFromPull = (pulled: PullPageResult): NmdFrontmatterV1 =>
-  buildFrontmatter({
-    page: pulled.page,
-    markdown: pulled.markdown,
-    base: {
-      _tag: 'object_ref',
-      role: 'base_snapshot',
-      hash: sha256Digest(''),
-      path: objectRelativePath(sha256Digest('')),
-      media_type: 'application/json',
-      byte_length: 0,
-    },
-    storage: pulled.storage ?? {
-      _tag: 'self_contained',
-      unsupported_blocks: [],
-      files: [],
-      comments: [],
-    },
-  })

@@ -9,7 +9,12 @@ import { describe, expect, it } from 'vitest'
 import type { NmdStorage } from '@overeng/notion-effect-client'
 
 import { runWatch } from './cli-program.ts'
-import { NmdConflictError, NmdFrontmatterError, NmdObjectStoreError } from './errors.ts'
+import {
+  NmdConflictError,
+  NmdFrontmatterError,
+  NmdGatewayError,
+  NmdObjectStoreError,
+} from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 import { NotionMdGateway, type MarkdownUpdateCommand, type PullPageResult } from './model.ts'
@@ -120,11 +125,28 @@ class FakeNotion {
           command._tag === 'replace_content'
             ? command.markdown
             : command.contentUpdates.reduce((body, update) => {
-                if (update.replaceAllMatches === true) {
-                  return body.replaceAll(update.oldStr, update.newStr)
+                const occurrences = body.split(update.oldStr).length - 1
+                if (occurrences === 0 || (update.replaceAllMatches !== true && occurrences > 1)) {
+                  throw new NmdGatewayError({
+                    operation: 'update_markdown',
+                    page_id: id,
+                    message: 'Fake Notion rejected ambiguous update_content command',
+                  })
                 }
-                return body.replace(update.oldStr, update.newStr)
+                return update.replaceAllMatches === true
+                  ? body.replaceAll(update.oldStr, update.newStr)
+                  : body.replace(update.oldStr, update.newStr)
               }, page.markdown)
+        if (
+          command._tag === 'update_content' &&
+          canonicalizeMarkdown(markdown) !== canonicalizeMarkdown(command.expectedMarkdown)
+        ) {
+          throw new NmdGatewayError({
+            operation: 'update_markdown',
+            page_id: id,
+            message: 'Fake Notion update_content result did not match expected Markdown',
+          })
+        }
         this.updateMarkdownCalls.push({
           pageId: id,
           allowDeletingContent,
@@ -871,6 +893,32 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('rejects trailing-byte mutations in content-addressed objects', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const basePath = await baseSnapshotObjectPath(path)
+      await writeFile(basePath, `${await readFile(basePath, 'utf8')} `)
+
+      const result = await runEitherWithFake(statusPage({ path }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: {
+          _tag: 'NmdObjectStoreError',
+          path,
+          object_path: basePath,
+        },
+      })
+      if (result._tag !== 'Left') {
+        throw new Error('Expected statusPage to fail')
+      }
+      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+    })
+  })
+
   it('rejects legacy sidecar references as typed frontmatter errors instead of migrating them', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([
@@ -1006,6 +1054,58 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('rejects object-store inventory mismatches between frontmatter and payload', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Volatile',
+          markdown: '# Volatile',
+          storage: unsupportedStorage({
+            url: 'https://secure.notion-static.com/image.png?X-Amz-Signature=abc',
+          }),
+          unknownBlockIds: [blockId],
+        },
+      ])
+      const path = join(dir, 'volatile.nmd')
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      if (parsed.frontmatter.notion_md.storage._tag !== 'object_store') {
+        throw new Error('Expected volatile payload to be stored in the object store')
+      }
+
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              storage: {
+                ...parsed.frontmatter.notion_md.storage,
+                unsupported_block_ids: [],
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const result = await runEitherWithFake(statusPage({ path }), fake)
+
+      expect(result).toMatchObject({
+        _tag: 'Left',
+        left: {
+          _tag: 'NmdObjectStoreError',
+          path,
+        },
+      })
+      if (result._tag !== 'Left') {
+        throw new Error('Expected statusPage to fail')
+      }
+      expect(result.left).toBeInstanceOf(NmdObjectStoreError)
+    })
+  })
+
   it('rejects v1 base snapshot objects instead of migrating them', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
@@ -1052,7 +1152,7 @@ describe('notion-md e2e prototype', () => {
         left: {
           _tag: 'NmdObjectStoreError',
           path,
-          object_path: objectRelativePath(legacyHash),
+          object_path: objectPath({ path, hash: legacyHash }),
         },
       })
       if (result._tag !== 'Left') {

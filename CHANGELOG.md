@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-md**: Add conservative automatic three-way body merge for non-overlapping line edits, insertions, and deletions
 - **@overeng/notion-md**: Replace ad hoc sidecar/base files with strict frontmatter object refs and an Effect-native content-addressed `.notion-md` state store
 - **@overeng/notion-md**: Use Notion Markdown `update_content` for proven unique body edits, with guarded `replace_content` fallback and live Notion E2E coverage
+- **@overeng/notion-md**: Extract body merge/update planning into a focused pure module with unit coverage
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Fixed
@@ -45,6 +46,7 @@ All notable changes to this project will be documented in this file.
   - Restores the intended `dt nix:hash:genie` workflow for package-version bumps that only need the fixed-output deps hash refreshed
 - **@overeng/notion-react**: Route `<ChildPage>` title updates through `pages.update` instead of `blocks.update` (#618). Notion's `PATCH /v1/blocks/{id}` rejects a `{ child_page: { title } }` body with `validation_error`; the sync driver now emits `PATCH /v1/pages/{id}` with a properly-shaped `title` property for `child_page` updates.
 - **@overeng/pty-effect/client**: Fix flaky timeout in `followEvents` (#577) — `asyncScoped`'s setup ran lazily inside the forked consumer fiber, missing events fired before the fiber started. Replaced with `Stream.asyncPush` (setup still lazy, but `emit.single` is now correctly synchronous for `fs.watch` callbacks). Test updated to watch `session_exit` instead of `session_start`, since `EventFollower.watchFile` starts reading at the current end-of-file when a new session is discovered, making `session_start` unreachable via live following.
+- **@overeng/notion-md**: Verify content-addressed object bytes exactly, reject object-store inventory mismatches, and emit structured watch errors as compact JSON lines
 
 ### Changed
 

@@ -117,14 +117,34 @@ const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provide(e
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
 
 const safeJsonError = (error: unknown): Record<string, unknown> => {
-  if (error instanceof Error) {
-    return { name: error.name, message: error.message }
-  }
   if (typeof error === 'object' && error !== null && '_tag' in error) {
-    const tagged = error as { readonly _tag?: unknown; readonly message?: unknown }
+    const tagged = error as {
+      readonly _tag?: unknown
+      readonly message?: unknown
+      readonly path?: unknown
+      readonly page_id?: unknown
+      readonly conflict_path?: unknown
+      readonly object_path?: unknown
+      readonly operation?: unknown
+      readonly block_id?: unknown
+    }
+    return Object.fromEntries(
+      Object.entries({
+        _tag: tagged._tag,
+        message: typeof tagged.message === 'string' ? tagged.message : String(error),
+        path: tagged.path,
+        page_id: tagged.page_id,
+        conflict_path: tagged.conflict_path,
+        object_path: tagged.object_path,
+        operation: tagged.operation,
+        block_id: tagged.block_id,
+      }).filter(([, value]) => value !== undefined),
+    )
+  }
+  if (error instanceof Error) {
     return {
-      _tag: tagged._tag,
-      message: typeof tagged.message === 'string' ? tagged.message : String(error),
+      name: error.name,
+      message: error.message,
     }
   }
   return { message: String(error) }
@@ -132,7 +152,7 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
 
 const writeJsonLine = (value: unknown): Effect.Effect<void> =>
   Effect.sync(() => {
-    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+    process.stdout.write(`${JSON.stringify(value)}\n`)
   })
 
 type WatchReason = 'file' | 'initial' | 'poll'
@@ -181,7 +201,17 @@ export const runWatch = (opts: {
           ),
           Effect.tap((result) => emit({ event: 'sync', reason, result })),
           Effect.catchAll((error: unknown) =>
-            emit({ event: 'sync_error', reason, error: safeJsonError(error) }),
+            Effect.annotateCurrentSpan({
+              'notion_md.sync.error': true,
+              'notion_md.sync.error_tag':
+                typeof error === 'object' && error !== null && '_tag' in error
+                  ? String((error as { readonly _tag?: unknown })._tag)
+                  : error instanceof Error
+                    ? error.name
+                    : 'unknown',
+            }).pipe(
+              Effect.zipRight(emit({ event: 'sync_error', reason, error: safeJsonError(error) })),
+            ),
           ),
           Effect.withSpan('notion-md.watch.sync-pass', {
             root: true,

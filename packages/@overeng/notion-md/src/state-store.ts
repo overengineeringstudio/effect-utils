@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { FileSystem, Path } from '@effect/platform'
 import { Context, Effect, Layer, Schema } from 'effect'
 
@@ -115,6 +117,52 @@ const parseObjectJson = <A>(opts: {
       }),
   })
 
+const inventory = (
+  storage: NmdStorage,
+): {
+  readonly unsupportedBlockIds: readonly string[]
+  readonly fileIds: readonly string[]
+  readonly commentIds: readonly string[]
+} => {
+  switch (storage._tag) {
+    case 'self_contained':
+      return {
+        unsupportedBlockIds: storage.unsupported_blocks.map((block) => block.block_id).toSorted(),
+        fileIds: storage.files.map((file) => file.id).toSorted(),
+        commentIds: storage.comments.map((comment) => comment.id).toSorted(),
+      }
+    case 'object_store':
+      return {
+        unsupportedBlockIds: [...storage.unsupported_block_ids].toSorted(),
+        fileIds: [...storage.file_ids].toSorted(),
+        commentIds: [...storage.comment_ids].toSorted(),
+      }
+  }
+}
+
+const sameStrings = (opts: {
+  readonly left: readonly string[]
+  readonly right: readonly string[]
+}): boolean =>
+  opts.left.length === opts.right.length &&
+  opts.left.every((value, index) => value === opts.right[index])
+
+const sameInventory = (opts: {
+  readonly left: NmdStorage
+  readonly right: NmdStorage
+}): boolean => {
+  const leftInventory = inventory(opts.left)
+  const rightInventory = inventory(opts.right)
+  return (
+    sameStrings({
+      left: leftInventory.unsupportedBlockIds,
+      right: rightInventory.unsupportedBlockIds,
+    }) &&
+    sameStrings({ left: leftInventory.fileIds, right: rightInventory.fileIds }) &&
+    sameStrings({ left: leftInventory.commentIds, right: rightInventory.commentIds })
+  )
+}
+
 /** Effect service contract for all local `.nmd` and `.notion-md` filesystem state. */
 export interface NmdStateStoreShape {
   readonly readNmdFile: (opts: {
@@ -201,12 +249,16 @@ export const NmdStateStoreLive = Layer.effect(
       readonly content: string
       readonly label: string
     }): Effect.Effect<void, NmdFileSystemError> =>
-      Effect.gen(function* () {
-        const temporaryPath = `${opts.path}.tmp-${process.pid}-${Date.now()}`
-        yield* fs.makeDirectory(path.dirname(opts.path), { recursive: true })
-        yield* fs.writeFileString(temporaryPath, opts.content)
-        yield* fs.rename(temporaryPath, opts.path)
-      }).pipe(
+      Effect.acquireUseRelease(
+        Effect.sync(() => `${opts.path}.tmp-${process.pid}-${randomUUID()}`),
+        (temporaryPath) =>
+          Effect.gen(function* () {
+            yield* fs.makeDirectory(path.dirname(opts.path), { recursive: true })
+            yield* fs.writeFileString(temporaryPath, opts.content)
+            yield* fs.rename(temporaryPath, opts.path)
+          }),
+        (temporaryPath) => fs.remove(temporaryPath).pipe(Effect.ignore),
+      ).pipe(
         Effect.mapError((cause) =>
           makeFileSystemError({
             operation: opts.operation,
@@ -215,6 +267,13 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to write ${opts.label} ${opts.path}`,
           }),
         ),
+        Effect.withSpan(`notion-md.state.${opts.operation}`, {
+          attributes: {
+            'span.label': path.basename(opts.path),
+            'notion_md.state.operation': opts.operation,
+            'notion_md.path.basename': path.basename(opts.path),
+          },
+        }),
       )
 
     const readNmdFile: NmdStateStoreShape['readNmdFile'] = (opts) =>
@@ -227,6 +286,13 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Failed to read .nmd file ${opts.path}`,
           }),
         ),
+        Effect.withSpan('notion-md.state.read-nmd', {
+          attributes: {
+            'span.label': path.basename(opts.path),
+            'notion_md.state.operation': 'read_nmd',
+            'notion_md.path.basename': path.basename(opts.path),
+          },
+        }),
       )
 
     const writeObjectContent = (opts: {
@@ -236,7 +302,7 @@ export const NmdStateStoreLive = Layer.effect(
     }): Effect.Effect<NmdObjectRef, NmdFileSystemError> =>
       Effect.gen(function* () {
         const content = `${opts.content.trimEnd()}\n`
-        const hash = sha256Digest(content.trimEnd())
+        const hash = sha256Digest(content)
         const destination = objectPath({ path: opts.path, hash })
         yield* writeTextFile({
           operation: 'write_object',
@@ -244,7 +310,8 @@ export const NmdStateStoreLive = Layer.effect(
           content,
           label: '.notion-md object',
         })
-        return makeObjectRef({ role: opts.role, hash, content: content.trimEnd() })
+        yield* Effect.annotateCurrentSpan('notion_md.object.hash_prefix', hash.slice(0, 18))
+        return makeObjectRef({ role: opts.role, hash, content })
       }).pipe(
         Effect.withSpan('notion-md.state.write-object', {
           attributes: {
@@ -272,8 +339,7 @@ export const NmdStateStoreLive = Layer.effect(
               }),
           ),
         )
-        const trimmed = content.trimEnd()
-        const hash = sha256Digest(trimmed)
+        const hash = sha256Digest(content)
         if (hash !== opts.object.hash) {
           return yield* new NmdObjectStoreError({
             path: opts.path,
@@ -281,13 +347,13 @@ export const NmdStateStoreLive = Layer.effect(
             message: `Invalid .nmd object hash for ${objectFullPath}`,
           })
         }
-        return trimmed
+        return content
       }).pipe(
         Effect.withSpan('notion-md.state.read-object', {
           attributes: {
             'span.label': opts.object.role,
             'notion_md.object.role': opts.object.role,
-            'notion_md.object.hash': opts.object.hash,
+            'notion_md.object.hash_prefix': opts.object.hash.slice(0, 18),
           },
         }),
       )
@@ -384,6 +450,13 @@ export const NmdStateStoreLive = Layer.effect(
             path: opts.path,
             object_path: ref.path,
             message: `Storage object page id ${storageObject.page_id} does not match ${opts.frontmatter.notion_md.page_id}`,
+          })
+        }
+        if (sameInventory({ left: storage, right: storageObject.storage }) === false) {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: ref.path,
+            message: `Storage object inventory does not match frontmatter inventory for ${ref.path}`,
           })
         }
         return storageObject

@@ -219,6 +219,9 @@ export const NotionMdGatewayLive = Layer.effect(
               'span.label': pageId.slice(0, 8),
               'notion_md.page_id': pageId,
               'notion_md.markdown_update.type': command._tag,
+              'notion_md.markdown_update.allow_deleting_content': allowDeletingContent,
+              'notion_md.markdown_update.content_update_count':
+                command._tag === 'update_content' ? command.contentUpdates.length : 0,
             },
           }),
         ),
