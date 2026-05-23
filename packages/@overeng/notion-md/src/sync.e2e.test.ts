@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -236,6 +237,10 @@ class FakeNotion {
     this.afterPagePropertiesUpdate = () => {
       this.mutateRemote(pageIdToMutate, markdown)
     }
+  }
+
+  runAfterNextPropertyUpdate(callback: () => void): void {
+    this.afterPagePropertiesUpdate = callback
   }
 
   touchRemoteMetadata(pageIdToMutate: string): void {
@@ -703,6 +708,78 @@ describe('notion-md e2e prototype', () => {
         property_type: 'unknown',
         value: { checkbox: true },
       })
+    })
+  })
+
+  it('refuses to refresh a property-only push over a concurrent local body edit', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      const propertyOnlyContent = renderNmdFile({
+        frontmatter: {
+          notion_md: {
+            ...parsed.frontmatter.notion_md,
+            properties: {
+              ...parsed.frontmatter.notion_md.properties,
+              Done: { _tag: 'checkbox', value: true },
+            },
+          },
+        },
+        body: parsed.body,
+      })
+      await writeFile(path, propertyOnlyContent)
+      fake.runAfterNextPropertyUpdate(() => {
+        writeFileSync(path, propertyOnlyContent.replace('Body', 'Concurrent local body'))
+      })
+
+      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+        'Local .nmd body changed while push was in progress',
+      )
+      const after = await parseFile(path)
+
+      expect(after.body).toContain('Concurrent local body')
+      expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
+    })
+  })
+
+  it('refuses to silently drop unsupported file property values during push', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                Attachment: {
+                  _tag: 'files',
+                  value: [{ _tag: 'local_file', path: 'attachments/hero.png' }],
+                },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      await expect(runWithFake(pushPage({ path }), fake)).rejects.toThrow(
+        'file upload is not implemented',
+      )
     })
   })
 

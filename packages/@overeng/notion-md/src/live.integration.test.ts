@@ -67,8 +67,13 @@ const TestLayer = Layer.mergeAll(
 type LiveEnv = NotionMdGateway | NotionConfig | HttpClient.HttpClient | NmdStateStore
 
 const runLive = <A, E>(effect: Effect.Effect<A, E, LiveEnv>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(TestLayer)) as Effect.Effect<A, E, never>)
+  Effect.runPromise(Effect.scoped(effect.pipe(Effect.provide(TestLayer))))
 
+/**
+ * The configured parent must be a private, dedicated notion-md test page.
+ * Scratch cleanup archives only children with this exact prefix, but the ledger
+ * still records CI identifiers such as GitHub SHA/run id for traceability.
+ */
 const scratchTitlePrefix = 'notion-md e2e: '
 const ledgerTitle = 'notion-md e2e run ledger'
 

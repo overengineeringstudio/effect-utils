@@ -4,6 +4,7 @@ import { Args, Command, Options } from '@effect/cli'
 import { FetchHttpClient, FileSystem } from '@effect/platform'
 import {
   Cause,
+  Config,
   Console,
   Duration,
   Effect,
@@ -16,12 +17,14 @@ import {
 } from 'effect'
 
 import { NotionConfigLive } from '@overeng/notion-effect-client'
+import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
 import { NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage, type SyncOptions } from './sync.ts'
+import { NOTION_MD_VERSION } from './version.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
   identifier: 'NotionMd.Cli.NonEmptyText',
@@ -78,16 +81,25 @@ const pushSafetyOptions = {
   allowDeletingUnknownBlocks: allowDeleteUnknownBlocksOption,
   allowReviewMarkup: allowReviewMarkupOption,
 } as const
+const buildStamp = '__CLI_BUILD_STAMP__'
+const cliVersion = resolveCliVersion({
+  baseVersion: NOTION_MD_VERSION,
+  buildStamp,
+})
 
-const resolveToken = Effect.sync(() => process.env.NOTION_TOKEN).pipe(
-  Effect.flatMap((token) =>
-    token !== undefined && token.length > 0
-      ? Effect.succeed(token)
-      : Effect.fail(
-          new NmdTokenMissingError({
-            message: 'NOTION_TOKEN is required',
-          }),
-        ),
+const resolveToken = Config.redacted('NOTION_TOKEN').pipe(
+  Effect.filterOrFail(
+    (token) => Redacted.value(token).length > 0,
+    () =>
+      new NmdTokenMissingError({
+        message: 'NOTION_TOKEN is required',
+      }),
+  ),
+  Effect.mapError(
+    () =>
+      new NmdTokenMissingError({
+        message: 'NOTION_TOKEN is required',
+      }),
   ),
 )
 
@@ -96,7 +108,7 @@ export const MainLayer = Layer.unwrapEffect(
   resolveToken.pipe(
     Effect.map((token) => {
       const baseLayer = Layer.mergeAll(
-        NotionConfigLive({ authToken: Redacted.make(token) }),
+        NotionConfigLive({ authToken: token }),
         FetchHttpClient.layer,
       )
 
@@ -109,7 +121,8 @@ export const MainLayer = Layer.unwrapEffect(
   ),
 )
 
-const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.provide(effect, MainLayer)
+const withNotion = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  resolveToken.pipe(Effect.zipRight(Effect.provide(effect, MainLayer)))
 
 const logJson = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value, null, 2))
 
@@ -147,10 +160,7 @@ const safeJsonError = (error: unknown): Record<string, unknown> => {
   return { message: String(error) }
 }
 
-const writeJsonLine = (value: unknown): Effect.Effect<void> =>
-  Effect.sync(() => {
-    process.stdout.write(`${JSON.stringify(value)}\n`)
-  })
+const writeJsonLine = (value: unknown): Effect.Effect<void> => Console.log(JSON.stringify(value))
 
 type WatchReason = 'file' | 'initial' | 'poll'
 
@@ -343,7 +353,7 @@ export const notionMdCommand = Command.make('notion-md').pipe(
 /** Process argv runner for the notion-md command tree. */
 export const cli = Command.run(notionMdCommand, {
   name: 'notion-md',
-  version: '0.1.0',
+  version: cliVersion,
 })
 
 /** Render expected CLI failures without duplicating Effect's defect reporter. */

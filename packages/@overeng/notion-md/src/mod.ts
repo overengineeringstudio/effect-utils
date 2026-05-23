@@ -1,8 +1,60 @@
-export * from './errors.ts'
-export * from './frontmatter.ts'
-export * from './hash.ts'
-export * from './live.ts'
-export * from './model.ts'
-export * from './state-store.ts'
-export * from './storage-policy.ts'
-export * from './sync.ts'
+export {
+  NmdCliError,
+  NmdConflictError,
+  NmdFileSystemError,
+  NmdFrontmatterError,
+  NmdGatewayError,
+  NmdObjectStoreError,
+  NmdTokenMissingError,
+} from './errors.ts'
+export type { NmdError } from './errors.ts'
+export { parseNmdFile, renderNmdFile } from './frontmatter.ts'
+export type { ParsedNmdFile } from './frontmatter.ts'
+export { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+export { NotionMdGatewayLive } from './live.ts'
+export { NotionMdGateway } from './model.ts'
+export type {
+  MarkdownContentUpdate,
+  MarkdownUpdateCommand,
+  NotionMdGatewayShape,
+  PageMetadataUpdate,
+  PullPageResult,
+  RemoteMarkdownSnapshot,
+  RemotePageSnapshot,
+  RemoteParent,
+  UpdateMarkdownResult,
+  WritablePageCover,
+  WritablePageIcon,
+} from './model.ts'
+export {
+  isSafeRelativePath,
+  NmdBaseSnapshotV2,
+  NmdStateStore,
+  NmdStateStoreLive,
+  NmdStorageObjectV2,
+  objectPath,
+  objectRelativePath,
+  readBaseSnapshot,
+  stateRootPath,
+  validateReferencedObjects,
+  writeBaseSnapshot,
+  writeStorageObject,
+} from './state-store.ts'
+export type {
+  NmdBaseSnapshotV2 as NmdBaseSnapshotV2Type,
+  NmdStateStoreShape,
+} from './state-store.ts'
+export { decideStorage } from './storage-policy.ts'
+export type { StorageDecision } from './storage-policy.ts'
+export { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
+export type {
+  PullOptions,
+  PullResult,
+  PushOptions,
+  PushResult,
+  StatusOptions,
+  StatusResult,
+  SyncOptions,
+  SyncResult,
+} from './sync.ts'
+export { NOTION_MD_VERSION } from './version.ts'

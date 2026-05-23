@@ -45,11 +45,11 @@ const encodeStorageObjectJson = Schema.encodeSync(
   Schema.parseJson(NmdStorageObjectV2, { space: 2 }),
 )
 const encodeBaseSnapshotJson = Schema.encodeSync(Schema.parseJson(NmdBaseSnapshotV2, { space: 2 }))
-const decodeStorageObjectJson = Schema.decodeUnknownSync(
+const decodeStorageObjectJson = Schema.decodeUnknown(
   Schema.parseJson(NmdStorageObjectV2),
   strictOptions,
 )
-const decodeBaseSnapshotJson = Schema.decodeUnknownSync(
+const decodeBaseSnapshotJson = Schema.decodeUnknown(
   Schema.parseJson(NmdBaseSnapshotV2),
   strictOptions,
 )
@@ -90,7 +90,8 @@ const makeObjectRef = (opts: {
     byte_length: byteLength(opts.content),
   })
 
-const isSafeRelativePath = (opts: {
+/** Returns whether an object-store path is relative and cannot traverse above the `.nmd` directory. */
+export const isSafeRelativePath = (opts: {
   readonly path: Path.Path
   readonly relativePath: string
 }): boolean => {
@@ -100,22 +101,23 @@ const isSafeRelativePath = (opts: {
 }
 
 const parseObjectJson = <A>(opts: {
-  readonly parse: (content: string) => A
+  readonly parse: (content: string) => Effect.Effect<A, unknown>
   readonly path: string
   readonly objectPath: string
   readonly content: string
   readonly label: string
 }): Effect.Effect<A, NmdObjectStoreError> =>
-  Effect.try({
-    try: () => opts.parse(opts.content),
-    catch: (cause) =>
-      new NmdObjectStoreError({
-        path: opts.path,
-        object_path: opts.objectPath,
-        cause,
-        message: `Failed to parse ${opts.label} ${opts.objectPath}`,
-      }),
-  })
+  opts.parse(opts.content).pipe(
+    Effect.mapError(
+      (cause) =>
+        new NmdObjectStoreError({
+          path: opts.path,
+          object_path: opts.objectPath,
+          cause,
+          message: `Failed to parse ${opts.label} ${opts.objectPath}`,
+        }),
+    ),
+  )
 
 const inventory = (
   storage: NmdStorage,
@@ -252,15 +254,14 @@ export const NmdStateStoreLive = Layer.effect(
       readonly content: string
       readonly label: string
     }): Effect.Effect<void, NmdFileSystemError> =>
-      Effect.acquireUseRelease(
-        Effect.sync(() => `${opts.path}.tmp-${process.pid}-${randomUUID()}`),
-        (temporaryPath) =>
-          Effect.gen(function* () {
-            yield* fs.makeDirectory(path.dirname(opts.path), { recursive: true })
-            yield* fs.writeFileString(temporaryPath, opts.content)
-            yield* fs.rename(temporaryPath, opts.path)
-          }),
-        (temporaryPath) => fs.remove(temporaryPath).pipe(Effect.ignore),
+      Effect.scoped(
+        Effect.gen(function* () {
+          const temporaryPath = `${opts.path}.tmp-${process.pid}-${randomUUID()}`
+          yield* Effect.addFinalizer(() => fs.remove(temporaryPath).pipe(Effect.ignore))
+          yield* fs.makeDirectory(path.dirname(opts.path), { recursive: true })
+          yield* fs.writeFileString(temporaryPath, opts.content)
+          yield* fs.rename(temporaryPath, opts.path)
+        }),
       ).pipe(
         Effect.mapError((cause) =>
           makeFileSystemError({

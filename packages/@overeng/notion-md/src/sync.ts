@@ -10,7 +10,12 @@ import type {
   NmdStorage,
 } from '@overeng/notion-effect-client'
 
-import { NmdConflictError, type NmdError, type NmdFileSystemError } from './errors.ts'
+import {
+  NmdConflictError,
+  NmdFrontmatterError,
+  type NmdError,
+  type NmdFileSystemError,
+} from './errors.ts'
 import { parseNmdFile, renderNmdFile, type ParsedNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
@@ -199,73 +204,90 @@ const hasPageMetadataUpdate = (update: PageMetadataUpdate): boolean =>
 
 const richText = (value: string): readonly unknown[] => [{ type: 'text', text: { content: value } }]
 
-const encodePropertyValue = (property: NmdPropertyValue): unknown | undefined => {
-  switch (property._tag) {
-    case 'read_only':
-      return undefined
-    case 'title':
-      return { title: richText(property.value) }
-    case 'rich_text':
-      return { rich_text: property.value === null ? [] : richText(property.value) }
-    case 'number':
-      return { number: property.value }
-    case 'select':
-      return { select: property.value === null ? null : { name: property.value } }
-    case 'multi_select':
-      return { multi_select: property.value.map((name) => ({ name })) }
-    case 'status':
-      return { status: property.value === null ? null : { name: property.value } }
-    case 'date':
-      return { date: property.value }
-    case 'people':
-      return { people: property.value.map((id) => ({ id })) }
-    case 'checkbox':
-      return { checkbox: property.value }
-    case 'url':
-      return { url: property.value }
-    case 'email':
-      return { email: property.value }
-    case 'phone_number':
-      return { phone_number: property.value }
-    case 'relation':
-      return { relation: property.value.map((id) => ({ id })) }
-    case 'place':
-      return { place: property.value }
-    case 'verification':
-      return { verification: property.value }
-    case 'files':
-      return {
-        files: property.value
-          .map((file) => {
-            switch (file._tag) {
-              case 'external_url':
-                return { type: 'external', name: file.url, external: { url: file.url } }
-              case 'notion_file':
-                return file.file_upload_id === undefined
-                  ? undefined
-                  : {
-                      type: 'file_upload',
-                      name: file.filename,
-                      file_upload: { id: file.file_upload_id },
-                    }
-              case 'local_file':
-                return undefined
-            }
-          })
-          .filter((file) => file !== undefined),
+const encodePropertyValue = (opts: {
+  readonly path: string
+  readonly name: string
+  readonly property: NmdPropertyValue
+}): Effect.Effect<unknown | undefined, NmdFrontmatterError> =>
+  Effect.gen(function* () {
+    const property = opts.property
+    switch (property._tag) {
+      case 'read_only':
+        return undefined
+      case 'title':
+        return { title: richText(property.value) }
+      case 'rich_text':
+        return { rich_text: property.value === null ? [] : richText(property.value) }
+      case 'number':
+        return { number: property.value }
+      case 'select':
+        return { select: property.value === null ? null : { name: property.value } }
+      case 'multi_select':
+        return { multi_select: property.value.map((name) => ({ name })) }
+      case 'status':
+        return { status: property.value === null ? null : { name: property.value } }
+      case 'date':
+        return { date: property.value }
+      case 'people':
+        return { people: property.value.map((id) => ({ id })) }
+      case 'checkbox':
+        return { checkbox: property.value }
+      case 'url':
+        return { url: property.value }
+      case 'email':
+        return { email: property.value }
+      case 'phone_number':
+        return { phone_number: property.value }
+      case 'relation':
+        return { relation: property.value.map((id) => ({ id })) }
+      case 'place':
+        return { place: property.value }
+      case 'verification':
+        return { verification: property.value }
+      case 'files': {
+        const files: unknown[] = []
+        for (const file of property.value) {
+          switch (file._tag) {
+            case 'external_url':
+              files.push({ type: 'external', name: file.url, external: { url: file.url } })
+              break
+            case 'notion_file':
+              if (file.file_upload_id === undefined) {
+                return yield* new NmdFrontmatterError({
+                  path: opts.path,
+                  message: `File property ${opts.name} contains a Notion-hosted file without file_upload_id; notion-md refuses to drop it during push`,
+                })
+              }
+              files.push({
+                type: 'file_upload',
+                name: file.filename,
+                file_upload: { id: file.file_upload_id },
+              })
+              break
+            case 'local_file':
+              return yield* new NmdFrontmatterError({
+                path: opts.path,
+                message: `File property ${opts.name} contains local_file ${file.path}; file upload is not implemented by notion-md push yet`,
+              })
+          }
+        }
+        return { files }
       }
-  }
-}
+    }
+  })
 
-const encodeWritableProperties = (
-  properties: Record<string, NmdPropertyValue>,
-): Record<string, unknown> =>
-  Object.fromEntries(
-    Object.entries(properties).flatMap(([name, property]) => {
-      const encoded = encodePropertyValue(property)
-      return encoded === undefined ? [] : [[name, encoded]]
-    }),
-  )
+const encodeWritableProperties = (opts: {
+  readonly path: string
+  readonly properties: Record<string, NmdPropertyValue>
+}): Effect.Effect<Record<string, unknown>, NmdFrontmatterError> =>
+  Effect.gen(function* () {
+    const entries: Array<readonly [string, unknown]> = []
+    for (const [name, property] of Object.entries(opts.properties)) {
+      const encoded = yield* encodePropertyValue({ path: opts.path, name, property })
+      if (encoded !== undefined) entries.push([name, encoded])
+    }
+    return Object.fromEntries(entries)
+  })
 
 const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
   switch (storage._tag) {
@@ -300,6 +322,16 @@ const containsRoughdraftReviewMarkup = (body: string): boolean =>
 
 const roughdraftConflictPath = (path: string): string => `${path}.conflict.roughdraft.md`
 
+const markdownFenceFor = (bodies: readonly string[]): string => {
+  let longestFenceLength = 2
+  for (const body of bodies) {
+    for (const match of body.matchAll(/`{3,}/gu)) {
+      longestFenceLength = Math.max(longestFenceLength, match[0].length)
+    }
+  }
+  return '`'.repeat(longestFenceLength + 1)
+}
+
 const writeRoughdraftConflict = (opts: {
   readonly path: string
   readonly pageId: string
@@ -308,6 +340,7 @@ const writeRoughdraftConflict = (opts: {
   readonly remoteBody: string
 }): Effect.Effect<string, NmdConflictError, NmdStateStore> => {
   const conflictPath = roughdraftConflictPath(opts.path)
+  const fence = markdownFenceFor([opts.baseBody, opts.localBody, opts.remoteBody])
   return Effect.gen(function* () {
     const store = yield* NmdStateStore
     const now = new Date().toISOString()
@@ -322,21 +355,21 @@ Page: ${opts.pageId}
 
 ## Base body
 
-\`\`\`markdown
+${fence}markdown
 ${opts.baseBody}
-\`\`\`
+${fence}
 
 ## Local body
 
-\`\`\`markdown
+${fence}markdown
 ${opts.localBody}
-\`\`\`
+${fence}
 
 ## Remote body
 
-\`\`\`markdown
+${fence}markdown
 ${opts.remoteBody}
-\`\`\`
+${fence}
 `,
       })
       .pipe(
@@ -503,6 +536,27 @@ const readNmd = (path: string) =>
     Effect.tap((local) => validateReferencedObjects({ path, frontmatter: local.frontmatter })),
   )
 
+const assertLocalBodyUnchanged = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly expectedBodyHash: string
+  readonly status: StatusResult
+}): Effect.Effect<void, NmdError, NmdStateStore> =>
+  readNmd(opts.path).pipe(
+    Effect.flatMap((current) =>
+      sha256Digest(current.body) === opts.expectedBodyHash
+        ? Effect.void
+        : new NmdConflictError({
+            path: opts.path,
+            page_id: opts.pageId,
+            local_changed: true,
+            remote_changed: opts.status.remoteChanged,
+            message:
+              'Local .nmd body changed while push was in progress; refusing to overwrite it with refreshed Notion state',
+          }),
+    ),
+  )
+
 const statusFromSnapshots = (opts: {
   readonly path: string
   readonly local: ParsedNmdFile
@@ -658,10 +712,19 @@ export const pushPage = (
         if (status.localPropertiesChanged === true) {
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
-            properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+            properties: yield* encodeWritableProperties({
+              path: opts.path,
+              properties: local.frontmatter.notion_md.properties,
+            }),
           })
         }
         const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+        yield* assertLocalBodyUnchanged({
+          path: opts.path,
+          pageId: status.pageId,
+          expectedBodyHash: status.localBodyHash,
+          status,
+        })
         yield* writeNmdWithStoragePolicy({
           path: opts.path,
           page: pulled.page,
@@ -698,7 +761,10 @@ export const pushPage = (
         if (status.localPropertiesChanged === true) {
           yield* gateway.updatePageProperties({
             pageId: status.pageId,
-            properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+            properties: yield* encodeWritableProperties({
+              path: opts.path,
+              properties: local.frontmatter.notion_md.properties,
+            }),
           })
         }
         if (hasPageMetadataUpdate(metadataUpdate) === true) {
@@ -708,6 +774,12 @@ export const pushPage = (
           })
         }
         const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+        yield* assertLocalBodyUnchanged({
+          path: opts.path,
+          pageId: status.pageId,
+          expectedBodyHash: status.localBodyHash,
+          status,
+        })
         yield* writeNmdWithStoragePolicy({
           path: opts.path,
           page: pulled.page,
@@ -785,7 +857,10 @@ export const pushPage = (
     if (status.localPropertiesChanged === true) {
       yield* gateway.updatePageProperties({
         pageId: status.pageId,
-        properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+        properties: yield* encodeWritableProperties({
+          path: opts.path,
+          properties: local.frontmatter.notion_md.properties,
+        }),
       })
     }
     if (hasPageMetadataUpdate(metadataUpdate) === true) {
@@ -795,6 +870,12 @@ export const pushPage = (
       })
     }
     const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+    yield* assertLocalBodyUnchanged({
+      path: opts.path,
+      pageId: status.pageId,
+      expectedBodyHash: status.localBodyHash,
+      status,
+    })
     yield* writeNmdWithStoragePolicy({
       path: opts.path,
       page: pulled.page,

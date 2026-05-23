@@ -13,13 +13,10 @@ export interface ParsedNmdFile {
 }
 
 const frontmatterEndMarker = '\n---\n'
-const decodeNmdFrontmatterJsonSync = Schema.decodeUnknownSync(
-  Schema.parseJson(NmdFrontmatterV1Schema),
-  {
-    errors: 'all',
-    onExcessProperty: 'error',
-  },
-)
+const decodeNmdFrontmatterJson = Schema.decodeUnknown(Schema.parseJson(NmdFrontmatterV1Schema), {
+  errors: 'all',
+  onExcessProperty: 'error',
+})
 const encodeNmdFrontmatterJsonSync = Schema.encodeSync(
   Schema.parseJson(NmdFrontmatterV1Schema, { space: 2 }),
 )
@@ -36,27 +33,39 @@ export const parseNmdFile = (opts: {
   readonly path: string
   readonly content: string
 }): Effect.Effect<ParsedNmdFile, NmdFrontmatterError> =>
-  Effect.try({
-    try: () => {
-      const content = opts.content.replace(/\r\n/g, '\n')
-      if (content.startsWith('---\n') === false) {
-        throw new Error('Expected `.nmd` frontmatter to start with `---`')
-      }
+  Effect.gen(function* () {
+    const parsed = yield* Effect.try({
+      try: () => {
+        const content = opts.content.replace(/\r\n/g, '\n')
+        if (content.startsWith('---\n') === false) {
+          throw new Error('Expected `.nmd` frontmatter to start with `---`')
+        }
 
-      const endIndex = content.indexOf(frontmatterEndMarker, 4)
-      if (endIndex === -1) {
-        throw new Error('Expected closing `---` frontmatter marker')
-      }
+        const endIndex = content.indexOf(frontmatterEndMarker, 4)
+        if (endIndex === -1) {
+          throw new Error('Expected closing `---` frontmatter marker')
+        }
 
-      const rawFrontmatter = content.slice(4, endIndex)
-      const body = content.slice(endIndex + frontmatterEndMarker.length).replace(/^\n/u, '')
-      const decoded = decodeNmdFrontmatterJsonSync(rawFrontmatter)
-      return { frontmatter: decoded, body: canonicalizeMarkdown(body) }
-    },
-    catch: (cause) =>
-      new NmdFrontmatterError({
-        path: opts.path,
-        cause,
-        message: `Failed to parse strict .nmd frontmatter in ${opts.path}`,
-      }),
+        const rawFrontmatter = content.slice(4, endIndex)
+        const body = content.slice(endIndex + frontmatterEndMarker.length).replace(/^\n/u, '')
+        return { rawFrontmatter, body: canonicalizeMarkdown(body) }
+      },
+      catch: (cause) =>
+        new NmdFrontmatterError({
+          path: opts.path,
+          cause,
+          message: `Failed to parse strict .nmd frontmatter in ${opts.path}`,
+        }),
+    })
+    const decoded = yield* decodeNmdFrontmatterJson(parsed.rawFrontmatter).pipe(
+      Effect.mapError(
+        (cause) =>
+          new NmdFrontmatterError({
+            path: opts.path,
+            cause,
+            message: `Failed to parse strict .nmd frontmatter in ${opts.path}`,
+          }),
+      ),
+    )
+    return { frontmatter: decoded, body: parsed.body }
   })
