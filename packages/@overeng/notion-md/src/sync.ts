@@ -11,10 +11,15 @@ import type {
 } from '@overeng/notion-effect-client'
 
 import { NmdConflictError, type NmdError, type NmdFileSystemError } from './errors.ts'
-import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
+import { parseNmdFile, renderNmdFile, type ParsedNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
-import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
+import {
+  NotionMdGateway,
+  type PullPageResult,
+  type RemoteMarkdownSnapshot,
+  type RemotePageSnapshot,
+} from './model.ts'
 import {
   NmdStateStore,
   readBaseSnapshot,
@@ -214,6 +219,13 @@ const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
   }
 }
 
+const emptyStorage = (): NmdStorage => ({
+  _tag: 'self_contained',
+  unsupported_blocks: [],
+  files: [],
+  comments: [],
+})
+
 const unique = (values: readonly string[]): readonly string[] => [...new Set(values)]
 
 const unresolvedUnknownBlockIds = (opts: {
@@ -408,12 +420,7 @@ export const pullPage = (
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
-    const storage = pulled.storage ?? {
-      _tag: 'self_contained',
-      unsupported_blocks: [],
-      files: [],
-      comments: [],
-    }
+    const storage = pulled.storage ?? emptyStorage()
 
     return yield* writeNmdWithStoragePolicy({
       path: opts.outPath,
@@ -439,6 +446,44 @@ const readNmd = (path: string) =>
     Effect.tap((local) => validateReferencedObjects({ path, frontmatter: local.frontmatter })),
   )
 
+const statusFromSnapshots = (opts: {
+  readonly path: string
+  readonly local: ParsedNmdFile
+  readonly remote: PullPageResult
+}): StatusResult => {
+  const localBodyHash = sha256Digest(opts.local.body)
+  const remoteBody = canonicalizeMarkdown(opts.remote.markdown.markdown)
+  const remoteBodyHash = sha256Digest(remoteBody)
+  const bodyHash = opts.local.frontmatter.notion_md.body.hash
+  const localChanged = localBodyHash !== bodyHash
+  const localPropertiesChanged = hasWritablePropertyValues(
+    opts.local.frontmatter.notion_md.properties,
+  )
+  const remoteBodyChanged = remoteBodyHash !== bodyHash
+  const remotePageMetadataChanged =
+    opts.remote.page.last_edited_time !==
+    opts.local.frontmatter.notion_md.body.remote_last_edited_time
+  const remoteChanged = remoteBodyChanged || remotePageMetadataChanged
+  const unknownBlockIds = unresolvedUnknownBlockIds({
+    frontmatter: opts.local.frontmatter,
+    remoteMarkdown: opts.remote.markdown,
+  })
+
+  return {
+    path: opts.path,
+    pageId: opts.local.frontmatter.notion_md.page_id,
+    localChanged,
+    localPropertiesChanged,
+    remoteChanged,
+    remoteBodyChanged,
+    remotePageMetadataChanged,
+    bodyHash,
+    localBodyHash,
+    remoteBodyHash,
+    unresolvedUnknownBlocks: unknownBlockIds,
+  }
+}
+
 /** Compare local body/frontmatter state with the current remote Notion page. */
 export const statusPage = (
   opts: StatusOptions,
@@ -447,34 +492,7 @@ export const statusPage = (
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
     const remote = yield* gateway.pullPage({ pageId: local.frontmatter.notion_md.page_id })
-    const localBodyHash = sha256Digest(local.body)
-    const remoteBody = canonicalizeMarkdown(remote.markdown.markdown)
-    const remoteBodyHash = sha256Digest(remoteBody)
-    const bodyHash = local.frontmatter.notion_md.body.hash
-    const localChanged = localBodyHash !== bodyHash
-    const localPropertiesChanged = hasWritablePropertyValues(local.frontmatter.notion_md.properties)
-    const remoteBodyChanged = remoteBodyHash !== bodyHash
-    const remotePageMetadataChanged =
-      remote.page.last_edited_time !== local.frontmatter.notion_md.body.remote_last_edited_time
-    const remoteChanged = remoteBodyChanged || remotePageMetadataChanged
-    const unknownBlockIds = unresolvedUnknownBlockIds({
-      frontmatter: local.frontmatter,
-      remoteMarkdown: remote.markdown,
-    })
-
-    return {
-      path: opts.path,
-      pageId: local.frontmatter.notion_md.page_id,
-      localChanged,
-      localPropertiesChanged,
-      remoteChanged,
-      remoteBodyChanged,
-      remotePageMetadataChanged,
-      bodyHash,
-      localBodyHash,
-      remoteBodyHash,
-      unresolvedUnknownBlocks: unknownBlockIds,
-    }
+    return statusFromSnapshots({ path: opts.path, local, remote })
   }).pipe(
     Effect.tap((status) =>
       Effect.annotateCurrentSpan({
@@ -501,7 +519,11 @@ export const pushPage = (
 ): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
-    const status = yield* statusPage({ path: opts.path })
+    const gateway = yield* NotionMdGateway
+    const remoteForStatus = yield* gateway.pullPage({
+      pageId: local.frontmatter.notion_md.page_id,
+    })
+    const status = statusFromSnapshots({ path: opts.path, local, remote: remoteForStatus })
 
     if (status.localChanged === false && status.localPropertiesChanged === false) {
       return { path: opts.path, pageId: status.pageId, pushed: false, status }
@@ -518,7 +540,11 @@ export const pushPage = (
       })
     }
 
-    if (status.unresolvedUnknownBlocks.length > 0 && opts.allowDeletingUnknownBlocks !== true) {
+    if (
+      status.localChanged === true &&
+      status.unresolvedUnknownBlocks.length > 0 &&
+      opts.allowDeletingUnknownBlocks !== true
+    ) {
       return yield* new NmdConflictError({
         path: opts.path,
         page_id: status.pageId,
@@ -530,8 +556,6 @@ export const pushPage = (
     }
 
     if (status.remoteBodyChanged === true && opts.force !== true) {
-      const gateway = yield* NotionMdGateway
-      const remote = yield* gateway.pullPage({ pageId: status.pageId })
       const baseSnapshot = yield* readBaseSnapshot({
         path: opts.path,
         frontmatter: local.frontmatter,
@@ -541,9 +565,34 @@ export const pushPage = (
           ? tryMergeMarkdownBodies({
               baseBody: baseSnapshot.body,
               localBody: local.body,
-              remoteBody: remote.markdown.markdown,
+              remoteBody: remoteForStatus.markdown.markdown,
             })
           : undefined
+
+      if (status.localChanged === false && status.localPropertiesChanged === true) {
+        yield* Effect.annotateCurrentSpan({
+          'notion_md.push.decision': 'property_only_remote_body_changed',
+        })
+        yield* gateway.updatePageProperties({
+          pageId: status.pageId,
+          properties: encodeWritableProperties(local.frontmatter.notion_md.properties),
+        })
+        const pulled = yield* gateway.pullPage({ pageId: status.pageId })
+        yield* writeNmdWithStoragePolicy({
+          path: opts.path,
+          page: pulled.page,
+          markdown: pulled.markdown,
+          storage: pulled.storage ?? emptyStorage(),
+          body: pulled.markdown.markdown,
+        })
+
+        return {
+          path: opts.path,
+          pageId: status.pageId,
+          pushed: true,
+          status,
+        }
+      }
 
       if (mergedBody !== undefined) {
         yield* Effect.annotateCurrentSpan({
@@ -551,7 +600,7 @@ export const pushPage = (
         })
         const command = planMarkdownUpdate({
           baseBody: baseSnapshot.body,
-          remoteBody: remote.markdown.markdown,
+          remoteBody: remoteForStatus.markdown.markdown,
           desiredBody: mergedBody,
         })
         yield* Effect.annotateCurrentSpan({
@@ -573,7 +622,7 @@ export const pushPage = (
           path: opts.path,
           page: pulled.page,
           markdown: updated.markdown,
-          storage: pulled.storage ?? local.frontmatter.notion_md.storage,
+          storage: pulled.storage ?? emptyStorage(),
           body: mergedBody,
         })
 
@@ -590,7 +639,7 @@ export const pushPage = (
         pageId: status.pageId,
         baseBody: baseSnapshot.body,
         localBody: local.body,
-        remoteBody: remote.markdown.markdown,
+        remoteBody: remoteForStatus.markdown.markdown,
       })
       yield* Effect.annotateCurrentSpan({
         'notion_md.push.decision': 'body_conflict',
@@ -605,7 +654,6 @@ export const pushPage = (
       })
     }
 
-    const gateway = yield* NotionMdGateway
     const updated =
       status.localChanged === true
         ? yield* Effect.gen(function* () {
@@ -656,7 +704,7 @@ export const pushPage = (
       path: opts.path,
       page: pulled.page,
       markdown: updated?.markdown ?? pulled.markdown,
-      storage: pulled.storage ?? local.frontmatter.notion_md.storage,
+      storage: pulled.storage ?? emptyStorage(),
       body: local.body,
     })
 

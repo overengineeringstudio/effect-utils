@@ -229,7 +229,10 @@ export const NmdStateStoreLive = Layer.effect(
           if (isSafeRelativePath({ path, relativePath: opts.object.path }) === false) {
             throw new Error('Object path must be relative and must not traverse')
           }
-          if (path.normalize(opts.object.path) !== objectRelativePath(opts.object.hash)) {
+          if (
+            path.normalize(opts.object.path) !==
+            path.normalize(objectRelativePath(opts.object.hash))
+          ) {
             throw new Error('Object path must match its content hash')
           }
           return path.join(path.dirname(opts.nmdPath), path.normalize(opts.object.path))

@@ -200,7 +200,7 @@ export const runWatch = (opts: {
             }),
           ),
           Effect.tap((result) => emit({ event: 'sync', reason, result })),
-          Effect.catchAll((error: unknown) =>
+          Effect.tapError((error: unknown) =>
             Effect.annotateCurrentSpan({
               'notion_md.sync.error': true,
               'notion_md.sync.error_tag':
@@ -209,9 +209,7 @@ export const runWatch = (opts: {
                   : error instanceof Error
                     ? error.name
                     : 'unknown',
-            }).pipe(
-              Effect.zipRight(emit({ event: 'sync_error', reason, error: safeJsonError(error) })),
-            ),
+            }),
           ),
           Effect.withSpan('notion-md.watch.sync-pass', {
             root: true,
@@ -223,6 +221,9 @@ export const runWatch = (opts: {
               'notion_md.path.basename': watchedFile,
             },
           }),
+          Effect.catchAll((error: unknown) =>
+            emit({ event: 'sync_error', reason, error: safeJsonError(error) }),
+          ),
         )
 
       yield* Effect.acquireRelease(

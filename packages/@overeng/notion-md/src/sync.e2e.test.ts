@@ -154,9 +154,26 @@ class FakeNotion {
           markdown: canonicalizeMarkdown(markdown),
         })
         this.tick += 1
+        const nextStorage =
+          allowDeletingContent === true &&
+          canonicalizeMarkdown(markdown).includes('<unknown') === false
+            ? ({
+                _tag: 'self_contained',
+                unsupported_blocks: [],
+                files: [],
+                comments: [],
+              } satisfies NmdStorage)
+            : page.storage
+        const nextUnknownBlockIds =
+          allowDeletingContent === true &&
+          canonicalizeMarkdown(markdown).includes('<unknown') === false
+            ? []
+            : page.unknownBlockIds
         const next = {
           ...page,
           markdown: canonicalizeMarkdown(markdown),
+          storage: nextStorage,
+          unknownBlockIds: nextUnknownBlockIds,
           lastEditedTime: `2026-05-22T12:00:0${this.tick}.000Z`,
         }
         this.pages.set(id, next)
@@ -436,6 +453,46 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('watch mode emits structured sync errors and continues running', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
+      const path = join(dir, 'missing.nmd')
+      const events: unknown[] = []
+
+      await runWithFake(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.fork(
+              runWatch({
+                syncOptions: { path },
+                pollIntervalMs: 10_000,
+                emit: (event) =>
+                  Effect.sync(() => {
+                    events.push(event)
+                  }),
+              }),
+            )
+            yield* Effect.sleep('500 millis')
+            yield* Fiber.interrupt(fiber)
+          }),
+        ),
+        fake,
+      )
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          event: 'sync_error',
+          reason: 'initial',
+          error: expect.objectContaining({
+            _tag: 'NmdFileSystemError',
+            operation: 'read_nmd',
+            path,
+          }),
+        }),
+      )
+    })
+  })
+
   it('sync pulls remote-only edits into the existing local file', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([{ pageId, title: 'Probe', markdown: '# Probe\n\nBody' }])
@@ -643,6 +700,55 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it('pushes property-only edits when the remote body changed concurrently', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Probe',
+          markdown: '# Probe\n\nBody',
+          properties: { Done: { type: 'checkbox', checkbox: false } },
+        },
+      ])
+      const path = join(dir, 'probe.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      fake.mutateRemote(pageId, '# Probe\n\nRemote body')
+      const parsed = await parseFile(path)
+      await writeFile(
+        path,
+        renderNmdFile({
+          frontmatter: {
+            notion_md: {
+              ...parsed.frontmatter.notion_md,
+              properties: {
+                ...parsed.frontmatter.notion_md.properties,
+                Done: { _tag: 'checkbox', value: true },
+              },
+            },
+          },
+          body: parsed.body,
+        }),
+      )
+
+      const beforePushStatus = await runWithFake(statusPage({ path }), fake)
+      const pushed = await runWithFake(pushPage({ path }), fake)
+      const afterPushStatus = await runWithFake(statusPage({ path }), fake)
+      const refreshed = await parseFile(path)
+
+      expect(beforePushStatus.localChanged).toBe(false)
+      expect(beforePushStatus.localPropertiesChanged).toBe(true)
+      expect(beforePushStatus.remoteBodyChanged).toBe(true)
+      expect(pushed.pushed).toBe(true)
+      expect(fake.updateMarkdownCalls).toEqual([])
+      expect(fake.remoteMarkdown(pageId)).toBe('# Probe\n\nRemote body\n')
+      expect(fake.remoteProperties(pageId).Done).toEqual({ checkbox: true })
+      expect(refreshed.body).toBe('# Probe\n\nRemote body\n')
+      expect(afterPushStatus.localChanged).toBe(false)
+      expect(afterPushStatus.remoteChanged).toBe(false)
+    })
+  })
+
   it('keeps compact unsupported blocks, file units, and comment bridge metadata self-contained', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeNotion([
@@ -704,6 +810,47 @@ describe('notion-md e2e prototype', () => {
           '# Unknowns\n\nLocal edit\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>\n',
       })
       expect(fake.remoteMarkdown(pageId)).toContain('Local edit')
+    })
+  })
+
+  it('clears stale unknown-block storage after an explicit destructive body replacement', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeNotion([
+        {
+          pageId,
+          title: 'Unknowns',
+          markdown: '# Unknowns\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>',
+          storage: unsupportedStorage(),
+          unknownBlockIds: [blockId],
+        },
+      ])
+      const path = join(dir, 'unknowns.nmd')
+
+      await runWithFake(pullPage({ pageId, outPath: path }), fake)
+      const content = await readFile(path, 'utf8')
+      await writeFile(
+        path,
+        content.replace(
+          '\n\n<unknown url="https://www.notion.com/" alt="bookmark"/>',
+          '\n\nReplacement body',
+        ),
+      )
+
+      const pushed = await runWithFake(pushPage({ path, allowDeletingUnknownBlocks: true }), fake)
+      const parsed = await parseFile(path)
+      const status = await runWithFake(statusPage({ path }), fake)
+
+      expect(pushed.pushed).toBe(true)
+      expect(parsed.frontmatter.notion_md.storage).toMatchObject({
+        _tag: 'self_contained',
+        unsupported_blocks: [],
+        files: [],
+        comments: [],
+      })
+      expect(parsed.frontmatter.notion_md.body.unknown_block_ids).toEqual([])
+      expect(status.unresolvedUnknownBlocks).toEqual([])
+      expect(status.localChanged).toBe(false)
+      expect(status.remoteChanged).toBe(false)
     })
   })
 
