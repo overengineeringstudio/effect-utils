@@ -37,6 +37,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-md**: Replace ad hoc sidecar/base files with strict frontmatter object refs and an Effect-native content-addressed `.notion-md` state store
 - **@overeng/notion-md**: Use Notion Markdown `update_content` for proven unique body edits, with guarded `replace_content` fallback and live Notion E2E coverage
 - **@overeng/notion-md**: Extract body merge/update planning into a focused pure module with unit coverage
+- **@overeng/notion-md docs**: Consolidate scattered research/spec notes into the VRS `context/notion-md-sync/spec.md` source of truth
 - **@overeng/tui-stories**: Export `tui-stories` CLI as a Nix package via the flake (#525)
 
 ### Fixed

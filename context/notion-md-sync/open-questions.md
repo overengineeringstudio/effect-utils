@@ -61,3 +61,23 @@ Resolution path:
 - Validate Notion webhook verification and HMAC handling.
 - Define local dirty-marker format.
 - Keep CLI correctness independent from webhook delivery.
+
+## DQ7 CLI Output Modes
+
+Question: What stable output envelopes should one-shot commands and watch mode expose?
+
+Resolution path:
+
+- Define human, JSON, and NDJSON modes with explicit schema versions.
+- Test command success, typed errors, and watch `sync_error` events at the CLI boundary.
+- Decide which mode is default for TTY, non-TTY, and `--watch`.
+
+## DQ8 Watch Event Core
+
+Question: How should file events, self-writes, poll events, and webhook marks coalesce deterministically?
+
+Resolution path:
+
+- Extract a watch event core with injectable clock/events.
+- Test debounce, queue pressure, self-write suppression, and failure recovery with `TestClock`.
+- Keep the production file watcher as a thin adapter around the tested core.
