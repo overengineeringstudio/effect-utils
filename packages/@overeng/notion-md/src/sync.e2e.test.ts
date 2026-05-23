@@ -579,10 +579,7 @@ describe('notion-md e2e prototype', () => {
 
       await runWithFake(pullPage({ pageId, outPath: localPath }), fake)
       await runWithFake(pullPage({ pageId: secondPageId, outPath: remotePath }), fake)
-      await writeFile(
-        localPath,
-        (await readFile(localPath, 'utf8')).replace('Body', 'Local body'),
-      )
+      await writeFile(localPath, (await readFile(localPath, 'utf8')).replace('Body', 'Local body'))
       fake.mutateRemote(secondPageId, '# Remote\n\nRemote body')
 
       const batch = await runWithFake(

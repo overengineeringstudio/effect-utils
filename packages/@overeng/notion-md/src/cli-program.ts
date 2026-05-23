@@ -19,7 +19,6 @@ import {
 import { NotionConfigLive } from '@overeng/notion-effect-client'
 import { resolveCliVersion } from '@overeng/utils/node/cli-version'
 
-import { NmdCliError, NmdTokenMissingError } from './errors.ts'
 import {
   isSingleFileTarget,
   pushMany,
@@ -28,6 +27,7 @@ import {
   statusMany,
   syncMany,
 } from './batch.ts'
+import { NmdCliError, NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
 import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'

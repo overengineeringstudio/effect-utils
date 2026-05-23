@@ -3,14 +3,10 @@ import { basename, dirname, resolve } from 'node:path'
 import { FileSystem, Path } from '@effect/platform'
 import { Duration, Effect, Queue, Stream } from 'effect'
 
-import {
-  NmdCliError,
-  NmdFileSystemError,
-  type NmdError,
-} from './errors.ts'
+import { NmdCliError, NmdFileSystemError, type NmdError } from './errors.ts'
 import { parseNmdFile } from './frontmatter.ts'
 import type { NotionMdGateway } from './model.ts'
-import { NmdStateStore, type NmdStateStoreShape } from './state-store.ts'
+import { NmdStateStore } from './state-store.ts'
 import {
   pushPage,
   statusPage,
@@ -27,8 +23,10 @@ const WATCH_DEBOUNCE = Duration.millis(250)
 
 const SKIPPED_DIRECTORIES = new Set(['.git', '.notion-md', 'node_modules'])
 
+/** Batch-capable page operation names. */
 export type BatchOperation = 'push' | 'status' | 'sync'
 
+/** Successful per-file result inside a batch operation. */
 export interface BatchSuccess<A> {
   readonly _tag: 'success'
   readonly operation: BatchOperation
@@ -36,6 +34,7 @@ export interface BatchSuccess<A> {
   readonly result: A
 }
 
+/** Failed per-file result inside a batch operation. */
 export interface BatchFailure {
   readonly _tag: 'error'
   readonly operation: BatchOperation
@@ -43,8 +42,10 @@ export interface BatchFailure {
   readonly error: unknown
 }
 
+/** Per-file item in a batch result. */
 export type BatchItemResult<A> = BatchSuccess<A> | BatchFailure
 
+/** Summary envelope for multi-file status, push, or sync. */
 export interface BatchResult<A> {
   readonly _tag: 'batch'
   readonly operation: BatchOperation
@@ -54,29 +55,35 @@ export interface BatchResult<A> {
   readonly items: readonly BatchItemResult<A>[]
 }
 
+/** Inputs for resolving file and directory targets into `.nmd` files. */
 export interface ResolveTargetsOptions {
   readonly targets: readonly string[]
   readonly recursive?: boolean
   readonly operation?: BatchOperation
 }
 
+/** Resolved `.nmd` files plus non-fatal target resolution errors. */
 export interface ResolveTargetsResult {
   readonly paths: readonly string[]
   readonly errors: readonly BatchFailure[]
 }
 
+/** Inputs for checking multiple `.nmd` files. */
 export interface StatusManyOptions extends ResolveTargetsOptions {
   readonly concurrency?: number
 }
 
+/** Inputs for pushing multiple `.nmd` files. */
 export interface PushManyOptions extends ResolveTargetsOptions, Omit<PushOptions, 'path'> {
   readonly concurrency?: number
 }
 
+/** Inputs for syncing multiple `.nmd` files. */
 export interface SyncManyOptions extends ResolveTargetsOptions, Omit<SyncOptions, 'path'> {
   readonly concurrency?: number
 }
 
+/** Trigger reason emitted by one-file and batch watch loops. */
 export type WatchReason = 'file' | 'initial' | 'poll'
 
 interface WatchTrigger {
@@ -84,6 +91,7 @@ interface WatchTrigger {
   readonly reason: WatchReason
 }
 
+/** Inputs for continuous watch mode over a resolved set of `.nmd` files. */
 export interface BatchWatchOptions extends Omit<SyncManyOptions, 'targets' | 'recursive'> {
   readonly paths: readonly string[]
   readonly pollIntervalMs: number
@@ -149,7 +157,7 @@ const discoverDirectory = (opts: {
 }): Effect.Effect<readonly string[], NmdFileSystemError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
+    const platformPath = yield* Path.Path
     const discovered: string[] = []
     const directories = [opts.root]
 
@@ -170,7 +178,7 @@ const discoverDirectory = (opts: {
       for (const entry of entries) {
         if (SKIPPED_DIRECTORIES.has(entry) === true) continue
 
-        const fullPath = path.join(current, entry)
+        const fullPath = platformPath.join(current, entry)
         const info = yield* fs.stat(fullPath).pipe(
           Effect.mapError((cause) =>
             makeFsError({
@@ -193,9 +201,10 @@ const discoverDirectory = (opts: {
       }
     }
 
-    return uniqueSorted(discovered.map((path) => resolve(path)))
+    return uniqueSorted(discovered.map((itemPath) => resolve(itemPath)))
   })
 
+/** Resolve explicit file targets and recursive directory targets into `.nmd` paths. */
 export const resolveNmdTargets = (
   opts: ResolveTargetsOptions,
 ): Effect.Effect<ResolveTargetsResult, NmdCliError, FileSystem.FileSystem | Path.Path> =>
@@ -297,7 +306,9 @@ const preflightPageIds = (opts: {
 
     for (const item of parsed) {
       if (item.result._tag === 'Left') {
-        errors.push(failure({ operation: opts.operation, path: item.path, error: item.result.left }))
+        errors.push(
+          failure({ operation: opts.operation, path: item.path, error: item.result.left }),
+        )
         continue
       }
 
@@ -382,6 +393,7 @@ const runBatch = <A>(opts: {
     }),
   )
 
+/** Compare multiple local `.nmd` files with their remote Notion pages. */
 export const statusMany = (
   opts: StatusManyOptions,
 ): Effect.Effect<
@@ -397,6 +409,7 @@ export const statusMany = (
     run: (path) => statusPage({ path }),
   })
 
+/** Push guarded local edits from multiple `.nmd` files. */
 export const pushMany = (
   opts: PushManyOptions,
 ): Effect.Effect<
@@ -416,10 +429,13 @@ export const pushMany = (
         ...(opts.allowDeletingUnknownBlocks === undefined
           ? {}
           : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-        ...(opts.allowReviewMarkup === undefined ? {} : { allowReviewMarkup: opts.allowReviewMarkup }),
+        ...(opts.allowReviewMarkup === undefined
+          ? {}
+          : { allowReviewMarkup: opts.allowReviewMarkup }),
       }),
   })
 
+/** Run one guarded reconciliation pass for multiple `.nmd` files. */
 export const syncMany = (
   opts: SyncManyOptions,
 ): Effect.Effect<
@@ -439,7 +455,9 @@ export const syncMany = (
         ...(opts.allowDeletingUnknownBlocks === undefined
           ? {}
           : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-        ...(opts.allowReviewMarkup === undefined ? {} : { allowReviewMarkup: opts.allowReviewMarkup }),
+        ...(opts.allowReviewMarkup === undefined
+          ? {}
+          : { allowReviewMarkup: opts.allowReviewMarkup }),
       }),
   })
 
@@ -493,7 +511,10 @@ const watchErrorJson = (error: unknown): Record<string, unknown> => {
   return { message: String(error) }
 }
 
-export const runBatchWatch = (opts: BatchWatchOptions): Effect.Effect<
+/** Watch a resolved set of `.nmd` files and run coalesced batch sync passes. */
+export const runBatchWatch = (
+  opts: BatchWatchOptions,
+): Effect.Effect<
   never,
   never,
   FileSystem.FileSystem | Path.Path | NotionMdGateway | NmdStateStore
@@ -553,7 +574,9 @@ export const runBatchWatch = (opts: BatchWatchOptions): Effect.Effect<
             ...(opts.allowDeletingUnknownBlocks === undefined
               ? {}
               : { allowDeletingUnknownBlocks: opts.allowDeletingUnknownBlocks }),
-            ...(opts.allowReviewMarkup === undefined ? {} : { allowReviewMarkup: opts.allowReviewMarkup }),
+            ...(opts.allowReviewMarkup === undefined
+              ? {}
+              : { allowReviewMarkup: opts.allowReviewMarkup }),
           })
           yield* emit({
             event: 'sync',
@@ -569,7 +592,7 @@ export const runBatchWatch = (opts: BatchWatchOptions): Effect.Effect<
               error: watchErrorJson(error),
             }),
           ),
-        )
+        ),
       )
     }),
   ).pipe(
@@ -584,6 +607,7 @@ export const runBatchWatch = (opts: BatchWatchOptions): Effect.Effect<
     }),
   )
 
+/** Return whether CLI targets should preserve the legacy single-file output shape. */
 export const isSingleFileTarget = (opts: {
   readonly targets: readonly string[]
   readonly recursive?: boolean
