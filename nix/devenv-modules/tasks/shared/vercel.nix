@@ -277,27 +277,16 @@ let
           fi
 
           # Determine alias name based on deploy type
-          alias_name=""
-          ${lib.optionalString (aliasPrefix != null && aliasSuffix != null) ''
-            case "$deploy_type" in
-              prod)
-                alias_name="${aliasPrefix}-${aliasSuffix}"
-                ;;
-              pr)
-                pr_number="$(echo "$input" | ${pkgs.jq}/bin/jq -r '.pr // empty')"
-                if [ -z "$pr_number" ]; then
-                  echo "Error: PR deploy requires 'pr' input (e.g. --input pr=123)" >&2
-                  exit 1
-                fi
-                alias_name="${aliasPrefix}-pr-''${pr_number}-${aliasSuffix}"
-                ;;
-              preview) ;;
-              *)
-                echo "Error: Unknown deploy type '$deploy_type'. Use: prod, pr, preview" >&2
-                exit 1
-                ;;
-            esac
-          ''}
+          ${
+            if aliasPrefix != null && aliasSuffix != null then
+              deployTask.mkAliasResolver {
+                prefix = aliasPrefix;
+                suffix = aliasSuffix;
+                previewKeyword = "preview";
+              }
+            else
+              ''alias_name=""''
+          }
 
           # Package as Vercel Build Output API v3
           work_dir="$(mktemp -d)"

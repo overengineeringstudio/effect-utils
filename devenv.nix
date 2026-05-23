@@ -277,7 +277,12 @@ in
     (taskModules.netlify {
       siteName = "overeng-utils";
       siteId = "462d2440-fb38-4e69-8023-9c425d1e2132";
-      packages = packagesWithNetlifyPreview;
+      deployments = map (pkg: {
+        name = pkg.name;
+        staticDir = "${pkg.path}/storybook-static";
+        afterTask = "storybook:build:${pkg.name}";
+        workspaceFilter = true;
+      }) packagesWithNetlifyPreview;
     })
     (taskModules.lint-oxc {
       lintPaths = [
