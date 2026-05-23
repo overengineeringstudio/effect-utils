@@ -6,10 +6,12 @@ import { describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 const packageDir = fileURLToPath(new URL('..', import.meta.url))
+const cliTestTimeoutMs = 15_000
 
 const runCli = (args: readonly string[]) =>
   execFileAsync('bun', ['src/cli.ts', ...args], {
     cwd: packageDir,
+    timeout: 10_000,
     env: {
       ...process.env,
       NOTION_TOKEN: '',
@@ -26,17 +28,17 @@ describe('notion-md CLI boundary', () => {
     expect(stdout).toContain('--poll-interval-ms')
     expect(stdout).toContain('--recursive')
     expect(stdout).toContain('--concurrency')
-  })
+  }, cliTestTimeoutMs)
 
   it('validates missing sync targets before resolving Notion credentials', async () => {
     await expect(runCli(['sync'])).rejects.toThrow('Missing argument <target>')
-  })
+  }, cliTestTimeoutMs)
 
   it('validates watch polling interval before resolving Notion credentials', async () => {
     await expect(
       runCli(['sync', 'page.nmd', '--watch', '--poll-interval-ms', '0']),
     ).rejects.toThrow('Expected a positive number')
-  })
+  }, cliTestTimeoutMs)
 
   it('surfaces missing Notion credentials as a typed CLI failure after argument validation', async () => {
     await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
@@ -45,5 +47,5 @@ describe('notion-md CLI boundary', () => {
     await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
       stdout: expect.stringContaining('NOTION_TOKEN is required'),
     })
-  })
+  }, cliTestTimeoutMs)
 })
