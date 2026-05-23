@@ -24,6 +24,12 @@ describe('notion-md CLI boundary', () => {
     expect(stdout).toContain('Reconcile a local .nmd file with its Notion page')
     expect(stdout).toContain('--watch')
     expect(stdout).toContain('--poll-interval-ms')
+    expect(stdout).toContain('--recursive')
+    expect(stdout).toContain('--concurrency')
+  })
+
+  it('validates missing sync targets before resolving Notion credentials', async () => {
+    await expect(runCli(['sync'])).rejects.toThrow('Missing argument <target>')
   })
 
   it('validates watch polling interval before resolving Notion credentials', async () => {
