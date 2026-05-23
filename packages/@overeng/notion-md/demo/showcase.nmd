@@ -11,17 +11,17 @@
     },
     "body": {
       "format": "notion-enhanced-markdown",
-      "hash": "sha256:cef2021a0d68449c83913db1a43650825d43620fe7843a420ad4e3e640f3fc85",
+      "hash": "sha256:44564817026c96d97a4b489d96ce1397cf8600df8a3146ab8c09fc0dfe1c52db",
       "base": {
         "_tag": "object_ref",
         "role": "base_snapshot",
-        "hash": "sha256:dbf898f49cd6f8d9d7186961698f7cb76a80580795b1df37523fca85146ea1d7",
-        "path": ".notion-md/objects/sha256/db/f898f49cd6f8d9d7186961698f7cb76a80580795b1df37523fca85146ea1d7.json",
+        "hash": "sha256:ec5a46b8a4f5cbf80b619416821e715c9cc444c40bb3b893bf25cb65b3d2bb57",
+        "path": ".notion-md/objects/sha256/ec/5a46b8a4f5cbf80b619416821e715c9cc444c40bb3b893bf25cb65b3d2bb57.json",
         "media_type": "application/json",
-        "byte_length": 2221
+        "byte_length": 6999
       },
-      "last_pulled_at": "2026-05-23T05:30:41.527Z",
-      "remote_last_edited_time": "2026-05-23T05:30:00.000Z",
+      "last_pulled_at": "2026-05-23T05:57:21.052Z",
+      "remote_last_edited_time": "2026-05-23T05:57:00.000Z",
       "truncated": false,
       "unknown_block_ids": []
     },
@@ -129,3 +129,150 @@ const command = 'notion-md sync packages/@overeng/notion-md/demo/showcase.nmd'
 ## Demo identity
 - Notion page: <mention-page url="https://www.notion.so/369f141b18dc80e4850cff344ad5b48e">@overeng/notion-md demo (automated)</mention-page>
 - Local file: `packages/@overeng/notion-md/demo/showcase.nmd`
+## Exhaustive feature showcase
+This bottom section is intentionally broad. It keeps the basic demo readable above, then exercises the body and frontmatter-backed surfaces we expect the sync tool to preserve.
+### Inline formatting
+Plain text can mix **bold**, *italic*, ~~strikethrough~~, `inline code`, [links](https://developers.notion.com/), <span color="green">colored text</span>, and <span color="yellow_bg">highlighted text</span>.
+Inline date mentions round-trip as enhanced Markdown: <mention-date start="2026-05-22" end="2026-05-23"/> and <mention-date start="2026-05-22" startTime="09:30" timeZone="Europe/Berlin"/>.
+### Headings and structure
+# Heading level 1 sample
+## Heading level 2 sample
+### Heading level 3 sample
+#### Heading level 4 sample
+---
+The divider above is part of the Markdown body. It is not the `.nmd` frontmatter boundary because it appears after the local frontmatter block.
+### Lists
+- Top-level bullet
+	- Nested bullet
+		- Deep nested bullet
+1. Ordered item
+	1. Nested ordered item
+	2. Another nested ordered item
+- [x] Completed task
+- [ ] Open task
+### Blocks
+> Quote block with a short note about guarded sync.
+<callout icon="💡" color="blue_bg">
+	Callout block with **rich text** and a child list.
+	- Callout child bullet
+</callout>
+<details color="purple_bg">
+<summary>Toggle block with **formatted** summary</summary>
+	Toggle child paragraph.
+	- Toggle child bullet
+</details>
+# Toggle heading sample {toggle="true" color="orange_bg"}
+	Toggle heading child paragraph.
+### Columns
+<columns>
+	<column>
+		Column one paragraph.
+		- Column one bullet
+	</column>
+	<column>
+		Column two paragraph.
+		1. Column two ordered item
+	</column>
+</columns>
+### Tables
+<table fit-page-width="true" header-row="true" header-column="true">
+<colgroup>
+<col color="gray_bg">
+<col color="blue_bg">
+<col color="green_bg">
+</colgroup>
+<tr color="gray_bg">
+<td>Feature</td>
+<td>Representation</td>
+<td>Policy</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>Stock enhanced Markdown</td>
+<td>Guarded update</td>
+</tr>
+<tr>
+<td>Frontmatter</td>
+<td>Strict JSON schema</td>
+<td>Stripped before body push</td>
+</tr>
+<tr>
+<td>Objects</td>
+<td>Content-addressed refs</td>
+<td>Exact-byte validation</td>
+</tr>
+</table>
+### Code and equations
+```typescript
+const page = await notionMd.sync({
+  path: 'packages/@overeng/notion-md/demo/showcase.nmd',
+})
+```
+Block equation:
+$$
+E = mc^2
+$$
+Inline equation input is tracked as a known fidelity question: \$a\^2 + b\^2 = c\^2\$.
+### Enhanced references
+- Page mention: <mention-page url="https://www.notion.so/369f141b18dc80e4850cff344ad5b48e">@overeng/notion-md demo (automated)</mention-page>
+- Table of contents:
+<table_of_contents color="gray"/>
+### Sync surface coverage
+<table header-row="true">
+<tr>
+<td>Notion feature</td>
+<td>Local surface</td>
+<td>Demo status</td>
+</tr>
+<tr>
+<td>Paragraphs, headings, lists, quotes, dividers</td>
+<td>Body Markdown</td>
+<td>Shown above</td>
+</tr>
+<tr>
+<td>Tasks, code, links, rich text, colors</td>
+<td>Body enhanced Markdown</td>
+<td>Shown above</td>
+</tr>
+<tr>
+<td>Callouts, toggles, toggle headings, columns, tables, table of contents</td>
+<td>Body enhanced Markdown tags</td>
+<td>Shown above</td>
+</tr>
+<tr>
+<td>Date mentions and page mentions</td>
+<td>Body enhanced Markdown tags</td>
+<td>Shown above</td>
+</tr>
+<tr>
+<td>Page title, icon, cover, trash, lock</td>
+<td>Strict frontmatter page metadata</td>
+<td>Modeled outside body</td>
+</tr>
+<tr>
+<td>Page properties: title, text, number, select, multi-select, status, date, people, files, checkbox, URL, email, phone, relation, place, verification</td>
+<td>Strict tagged frontmatter properties</td>
+<td>Modeled outside body</td>
+</tr>
+<tr>
+<td>Unsupported blocks, bookmarks, embeds, link previews, child pages, child databases</td>
+<td>Unknown placeholders plus object storage</td>
+<td>Preserve or explicit delete</td>
+</tr>
+<tr>
+<td>Comments and suggestions</td>
+<td>Future Roughdraft/Notion comment bridge</td>
+<td>Guarded; not silently pushed</td>
+</tr>
+<tr>
+<td>Files and media bytes</td>
+<td>Future content-addressed file payloads</td>
+<td>Metadata modeled; durable bytes pending</td>
+</tr>
+</table>
+### Local-only safety checks
+- Frontmatter is visible in the local file but never sent as body content.
+- Body pushes use Notion Markdown updates with stale-write checks.
+- Property and metadata pushes can proceed independently from remote body edits.
+- Unknown-block deletion requires explicit destructive intent.
+- Roughdraft review markers are refused by default so local review state does not leak into Notion.
