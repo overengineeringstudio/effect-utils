@@ -23,6 +23,13 @@ import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
 const token = process.env.NOTION_TOKEN
 const testParentPageId = process.env.NOTION_MD_TEST_PARENT_PAGE_ID
+const defaultAllowedTestParentPageIds = ['368f141b18dc8069976ac54ae50ea3eb']
+const allowedTestParentPageIds = new Set(
+  (process.env.NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST ?? defaultAllowedTestParentPageIds.join(','))
+    .split(',')
+    .map((id) => id.trim().replaceAll('-', ''))
+    .filter((id) => id.length > 0),
+)
 const skipLive =
   token === undefined ||
   token.length === 0 ||
@@ -40,11 +47,15 @@ describe('notion-md live integration configuration', () => {
       {
         hasToken: token !== undefined && token.length > 0,
         hasParentPage: testParentPageId !== undefined && testParentPageId.length > 0,
+        hasAllowedParentPage:
+          testParentPageId !== undefined &&
+          allowedTestParentPageIds.has(testParentPageId.replaceAll('-', '')),
       },
-      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_TOKEN and NOTION_MD_TEST_PARENT_PAGE_ID',
+      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_TOKEN, NOTION_MD_TEST_PARENT_PAGE_ID, and an allowed test parent',
     ).toEqual({
       hasToken: true,
       hasParentPage: true,
+      hasAllowedParentPage: true,
     })
   })
 })
@@ -76,6 +87,15 @@ const runLive = <A, E>(effect: Effect.Effect<A, E, LiveEnv>) =>
  */
 const scratchTitlePrefix = 'notion-md e2e: '
 const ledgerTitle = 'notion-md e2e run ledger'
+
+const assertAllowedTestParentPage = (pageId: string) =>
+  allowedTestParentPageIds.has(pageId.replaceAll('-', '')) === true
+    ? Effect.void
+    : Effect.fail(
+        new Error(
+          `Refusing live notion-md cleanup for unallowlisted parent page ${pageId}. Set NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST for a dedicated private test page.`,
+        ),
+      )
 
 type LiveTestRecord =
   | {
@@ -110,6 +130,7 @@ const retrieveTopLevelChildren = (pageId: string) =>
 
 const archiveLeakedScratchPages = (pageId: string) =>
   Effect.gen(function* () {
+    yield* assertAllowedTestParentPage(pageId)
     const children = yield* retrieveTopLevelChildren(pageId)
     const leakedScratchPages = children.filter(
       (block) => childPageTitle(block)?.startsWith(scratchTitlePrefix) === true,
@@ -193,6 +214,7 @@ const publishLedger = (opts: {
   readonly leakedScratchPagesArchived: number
 }) =>
   Effect.gen(function* () {
+    yield* assertAllowedTestParentPage(opts.pageId)
     const ledgerPageId = yield* ensureLedgerPage(opts.pageId)
     yield* NotionPages.updateMarkdown({
       pageId: ledgerPageId,

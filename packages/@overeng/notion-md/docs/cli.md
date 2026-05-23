@@ -11,9 +11,10 @@ notion-md sync <file.nmd> [--watch] [--poll-interval-ms <ms>] [--force] [--allow
 
 ## Environment
 
-| Variable       | Required | Meaning          |
-| -------------- | -------- | ---------------- |
-| `NOTION_TOKEN` | yes      | Notion API token |
+| Variable                                  | Required | Meaning                                           |
+| ----------------------------------------- | -------- | ------------------------------------------------- |
+| `NOTION_TOKEN`                            | yes      | Notion API token                                  |
+| `NOTION_MD_TEST_PARENT_PAGE_ID_ALLOWLIST` | live e2e | Comma-separated parent page ids cleanup may touch |
 
 ## `pull`
 
@@ -87,6 +88,9 @@ Options:
 
 One-shot commands print pretty JSON. Watch mode prints newline-delimited compact
 JSON events.
+
+Error payloads can include local paths and Notion page ids. Treat CLI stdout as
+operational output; redact it before pasting into public issues or logs.
 
 Watch event examples:
 

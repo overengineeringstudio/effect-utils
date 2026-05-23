@@ -4,11 +4,15 @@ import * as fc from 'effect/FastCheck'
 import { canonicalizeMarkdown } from './hash.ts'
 import { planMarkdownUpdate, tryMergeMarkdownBodies } from './merge.ts'
 
-const applyMarkdownUpdate = (remoteBody: string, desiredBody: string): string => {
+const applyMarkdownUpdate = (opts: {
+  readonly baseBody: string
+  readonly remoteBody: string
+  readonly desiredBody: string
+}): string => {
   const command = planMarkdownUpdate({
-    baseBody: remoteBody,
-    remoteBody,
-    desiredBody,
+    baseBody: opts.baseBody,
+    remoteBody: opts.remoteBody,
+    desiredBody: opts.desiredBody,
   })
   if (command._tag === 'replace_content') return canonicalizeMarkdown(command.markdown)
 
@@ -18,7 +22,7 @@ const applyMarkdownUpdate = (remoteBody: string, desiredBody: string): string =>
         update.replaceAllMatches === true
           ? body.replaceAll(update.oldStr, update.newStr)
           : body.replace(update.oldStr, update.newStr),
-      canonicalizeMarkdown(remoteBody),
+      canonicalizeMarkdown(opts.remoteBody),
     ),
   )
 }
@@ -122,9 +126,11 @@ describe('notion-md merge planning', () => {
 
   it.prop(
     'plans Markdown updates that transform the current remote body into the desired body',
-    [fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 })],
-    ([remoteBody, desiredBody]) => {
-      expect(applyMarkdownUpdate(remoteBody, desiredBody)).toBe(canonicalizeMarkdown(desiredBody))
+    [fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 }), fc.string({ maxLength: 80 })],
+    ([baseBody, remoteBody, desiredBody]) => {
+      expect(applyMarkdownUpdate({ baseBody, remoteBody, desiredBody })).toBe(
+        canonicalizeMarkdown(desiredBody),
+      )
     },
     { fastCheck: { numRuns: 80 } },
   )
