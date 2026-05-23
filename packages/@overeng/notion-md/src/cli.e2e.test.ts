@@ -32,4 +32,13 @@ describe('notion-md CLI boundary', () => {
       runCli(['sync', 'page.nmd', '--watch', '--poll-interval-ms', '0']),
     ).rejects.toThrow('Expected a positive number')
   })
+
+  it('surfaces missing Notion credentials as a typed CLI failure after argument validation', async () => {
+    await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
+      stdout: expect.stringContaining('NmdTokenMissingError'),
+    })
+    await expect(runCli(['status', 'page.nmd'])).rejects.toMatchObject({
+      stdout: expect.stringContaining('NOTION_TOKEN or NOTION_API_TOKEN is required'),
+    })
+  })
 })

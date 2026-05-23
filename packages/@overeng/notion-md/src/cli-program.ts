@@ -21,6 +21,7 @@ import { NotionConfigLive } from '@overeng/notion-effect-client'
 import { NmdTokenMissingError } from './errors.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
+import { NmdStateStoreLive, type NmdStateStore } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage, type SyncOptions } from './sync.ts'
 
 const NonEmptyCliText = Schema.NonEmptyTrimmedString.annotations({
@@ -102,7 +103,11 @@ export const MainLayer = Layer.unwrapEffect(
         FetchHttpClient.layer,
       )
 
-      return Layer.mergeAll(baseLayer, NotionMdGatewayLive.pipe(Layer.provide(baseLayer)))
+      return Layer.mergeAll(
+        baseLayer,
+        NotionMdGatewayLive.pipe(Layer.provide(baseLayer)),
+        NmdStateStoreLive,
+      )
     }),
   ),
 )
@@ -152,7 +157,7 @@ export const runWatch = (opts: {
   readonly syncOptions: SyncOptions
   readonly pollIntervalMs: number
   readonly emit?: (value: unknown) => Effect.Effect<void>
-}): Effect.Effect<never, never, NotionMdGateway> =>
+}): Effect.Effect<never, never, NotionMdGateway | NmdStateStore> =>
   Effect.scoped(
     Effect.gen(function* () {
       const queue = yield* Queue.sliding<WatchEvent>(1024)

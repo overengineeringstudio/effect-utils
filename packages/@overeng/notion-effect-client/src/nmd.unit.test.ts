@@ -18,6 +18,14 @@ const baseFrontmatter = {
     body: {
       format: 'notion-enhanced-markdown',
       hash,
+      base: {
+        _tag: 'object_ref',
+        role: 'base_snapshot',
+        hash,
+        path: `.notion-md/objects/sha256/${hash.slice('sha256:'.length)}.json`,
+        media_type: 'application/json',
+        byte_length: 128,
+      },
       last_pulled_at: '2026-05-22T14:50:00.000Z',
       remote_last_edited_time: '2026-05-22T14:49:59.000Z',
       truncated: false,

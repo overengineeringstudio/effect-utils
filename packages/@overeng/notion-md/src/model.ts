@@ -46,6 +46,25 @@ export interface UpdateMarkdownResult {
   readonly markdown: RemoteMarkdownSnapshot
 }
 
+/** Exact search-and-replace operation for Notion's `update_content` command. */
+export interface MarkdownContentUpdate {
+  readonly oldStr: string
+  readonly newStr: string
+  readonly replaceAllMatches?: boolean
+}
+
+/** Markdown update transport selected by the sync engine. */
+export type MarkdownUpdateCommand =
+  | {
+      readonly _tag: 'update_content'
+      readonly contentUpdates: readonly MarkdownContentUpdate[]
+      readonly expectedMarkdown: string
+    }
+  | {
+      readonly _tag: 'replace_content'
+      readonly markdown: string
+    }
+
 /** Minimal gateway boundary between sync logic and the Notion API. */
 export interface NotionMdGatewayShape {
   readonly pullPage: (opts: {
@@ -53,7 +72,7 @@ export interface NotionMdGatewayShape {
   }) => Effect.Effect<PullPageResult, NmdGatewayError>
   readonly updateMarkdown: (opts: {
     readonly pageId: string
-    readonly markdown: string
+    readonly command: MarkdownUpdateCommand
     readonly allowDeletingContent: boolean
   }) => Effect.Effect<UpdateMarkdownResult, NmdGatewayError>
   readonly updatePageProperties: (opts: {

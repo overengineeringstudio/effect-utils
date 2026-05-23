@@ -10,13 +10,16 @@ export class NmdFrontmatterError extends Schema.TaggedError<NmdFrontmatterError>
   },
 ) {}
 
-/** Raised when `.nmd` frontmatter points at an invalid or missing sidecar. */
-export class NmdSidecarError extends Schema.TaggedError<NmdSidecarError>()('NmdSidecarError', {
-  path: Schema.String,
-  sidecar_path: Schema.String,
-  message: Schema.String,
-  cause: Schema.optional(Schema.Defect),
-}) {}
+/** Raised when `.nmd` frontmatter points at an invalid local object-store entry. */
+export class NmdObjectStoreError extends Schema.TaggedError<NmdObjectStoreError>()(
+  'NmdObjectStoreError',
+  {
+    path: Schema.String,
+    object_path: Schema.String,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
 
 /** Raised when local and remote edits cannot be reconciled automatically. */
 export class NmdConflictError extends Schema.TaggedError<NmdConflictError>()('NmdConflictError', {
@@ -65,7 +68,7 @@ export class NmdCliError extends Schema.TaggedError<NmdCliError>()('NmdCliError'
 /** Expected failures surfaced by the notion-md sync engine. */
 export type NmdError =
   | NmdFrontmatterError
-  | NmdSidecarError
+  | NmdObjectStoreError
   | NmdConflictError
   | NmdFileSystemError
   | NmdGatewayError

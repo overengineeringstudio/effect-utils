@@ -32,6 +32,31 @@ export const RelativePath = Schema.String.pipe(
 
 export type RelativePath = typeof RelativePath.Type
 
+/** Role of a content-addressed local object referenced by `.nmd` frontmatter. */
+export const NmdObjectRole = Schema.Literal(
+  'base_snapshot',
+  'storage_payload',
+  'file_payload',
+  'comment_payload',
+).annotations({
+  identifier: 'NotionMd.ObjectRole',
+})
+
+export type NmdObjectRole = typeof NmdObjectRole.Type
+
+/** Strict reference to a local content-addressed object. */
+export const NmdObjectRef = Schema.TaggedStruct('object_ref', {
+  role: NmdObjectRole,
+  hash: Sha256Digest,
+  path: RelativePath,
+  media_type: Schema.String,
+  byte_length: Schema.NonNegativeInt,
+}).annotations({
+  identifier: 'NotionMd.ObjectRef',
+})
+
+export type NmdObjectRef = typeof NmdObjectRef.Type
+
 /** Parent location of a synced Notion page. */
 export const NmdParentRef = Schema.Union(
   Schema.TaggedStruct('page', {
@@ -61,6 +86,7 @@ export type NmdParentRef = typeof NmdParentRef.Type
 export const NmdBodyState = Schema.Struct({
   format: Schema.Literal('notion-enhanced-markdown'),
   hash: Sha256Digest,
+  base: NmdObjectRef,
   last_pulled_at: ISO8601DateTime,
   remote_last_edited_time: ISO8601DateTime,
   truncated: Schema.Boolean,
@@ -217,8 +243,8 @@ export const NmdStorage = Schema.Union(
     files: Schema.Array(NmdFileUnit),
     comments: Schema.Array(NmdCommentUnit),
   }),
-  Schema.TaggedStruct('sidecar', {
-    path: RelativePath,
+  Schema.TaggedStruct('object_store', {
+    object: NmdObjectRef,
     unsupported_block_ids: Schema.Array(NotionUUID),
     file_ids: Schema.Array(Schema.String),
     comment_ids: Schema.Array(Schema.String),
@@ -274,7 +300,7 @@ export interface ClassifyNmdFrontmatterPayloadOptions {
   readonly largeBytes?: number
 }
 
-/** Classify whether frontmatter metadata should remain self-contained or move to sidecar. */
+/** Classify whether frontmatter metadata should remain self-contained or move to object storage. */
 // oxlint-disable-next-line overeng/named-args -- public helper already accepts value plus optional thresholds.
 export const classifyNmdFrontmatterPayload = (
   value: NmdFrontmatterV1,

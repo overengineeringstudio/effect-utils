@@ -6,13 +6,14 @@ import {
   NotionConfig,
   NotionPages,
   type NmdStorage,
+  type UpdateMarkdownOptions,
 } from '@overeng/notion-effect-client'
 import type { Page } from '@overeng/notion-effect-schema'
 import type { Block } from '@overeng/notion-effect-schema'
 
 import { NmdGatewayError } from './errors.ts'
 import { canonicalizeMarkdown } from './hash.ts'
-import { NotionMdGateway, type RemotePageSnapshot } from './model.ts'
+import { type MarkdownUpdateCommand, NotionMdGateway, type RemotePageSnapshot } from './model.ts'
 
 const titleFromProperties = (properties: Record<string, unknown>): string => {
   for (const property of Object.values(properties)) {
@@ -96,6 +97,40 @@ const mapGatewayError =
           : `Notion gateway operation failed for page ${opts.pageId}: ${opts.operation}`,
     })
 
+const toNotionUpdateMarkdownOptions = (opts: {
+  readonly pageId: string
+  readonly command: MarkdownUpdateCommand
+  readonly allowDeletingContent: boolean
+}): UpdateMarkdownOptions => {
+  switch (opts.command._tag) {
+    case 'update_content':
+      return {
+        pageId: opts.pageId,
+        type: 'update_content',
+        content_updates: opts.command.contentUpdates.map((update) =>
+          update.replaceAllMatches === undefined
+            ? {
+                old_str: update.oldStr,
+                new_str: update.newStr,
+              }
+            : {
+                old_str: update.oldStr,
+                new_str: update.newStr,
+                replace_all_matches: update.replaceAllMatches,
+              },
+        ),
+        allow_deleting_content: opts.allowDeletingContent,
+      }
+    case 'replace_content':
+      return {
+        pageId: opts.pageId,
+        type: 'replace_content',
+        new_str: canonicalizeMarkdown(opts.command.markdown),
+        allow_deleting_content: opts.allowDeletingContent,
+      }
+  }
+}
+
 /** Live Notion-backed gateway for page Markdown and page property operations. */
 export const NotionMdGatewayLive = Layer.effect(
   NotionMdGateway,
@@ -143,25 +178,48 @@ export const NotionMdGatewayLive = Layer.effect(
             attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
           }),
         ),
-      updateMarkdown: ({ pageId, markdown, allowDeletingContent }) =>
+      updateMarkdown: ({ pageId, command, allowDeletingContent }) =>
         provideHttp(
-          NotionPages.updateMarkdown({
-            pageId,
-            type: 'replace_content',
-            new_str: canonicalizeMarkdown(markdown),
-            allow_deleting_content: allowDeletingContent,
-          }),
+          NotionPages.updateMarkdown(
+            toNotionUpdateMarkdownOptions({
+              pageId,
+              command,
+              allowDeletingContent,
+            }),
+          ),
         ).pipe(
-          Effect.map((markdownResult) => ({
-            markdown: {
+          Effect.flatMap((markdownResult) => {
+            const remoteMarkdown = {
               markdown: canonicalizeMarkdown(markdownResult.markdown),
               truncated: markdownResult.truncated,
               unknown_block_ids: markdownResult.unknown_block_ids,
-            },
-          })),
-          Effect.mapError(mapGatewayError({ operation: 'update_markdown', pageId })),
+            }
+            if (
+              command._tag === 'update_content' &&
+              remoteMarkdown.markdown !== canonicalizeMarkdown(command.expectedMarkdown)
+            ) {
+              return Effect.fail(
+                new NmdGatewayError({
+                  operation: 'update_markdown',
+                  page_id: pageId,
+                  message: `Notion gateway operation failed for page ${pageId}: update_markdown returned unexpected Markdown`,
+                }),
+              )
+            }
+
+            return Effect.succeed({ markdown: remoteMarkdown })
+          }),
+          Effect.mapError((cause) =>
+            cause instanceof NmdGatewayError
+              ? cause
+              : mapGatewayError({ operation: 'update_markdown', pageId })(cause),
+          ),
           Effect.withSpan('notion-md.gateway.update-markdown', {
-            attributes: { 'span.label': pageId.slice(0, 8), 'notion_md.page_id': pageId },
+            attributes: {
+              'span.label': pageId.slice(0, 8),
+              'notion_md.page_id': pageId,
+              'notion_md.markdown_update.type': command._tag,
+            },
           }),
         ),
       updatePageProperties: ({ pageId, properties }) =>

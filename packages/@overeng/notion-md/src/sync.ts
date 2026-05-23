@@ -1,30 +1,33 @@
-import { readFile, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename } from 'node:path'
 
 import { Effect } from 'effect'
 
 import type {
   NmdFrontmatterV1,
+  NmdObjectRef,
   NmdParentRef,
   NmdPropertyValue,
   NmdStorage,
 } from '@overeng/notion-effect-client'
 
-import { NmdConflictError, NmdFileSystemError, type NmdError } from './errors.ts'
+import { NmdConflictError, type NmdError, type NmdFileSystemError } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
 import {
   NotionMdGateway,
+  type MarkdownUpdateCommand,
   type PullPageResult,
   type RemoteMarkdownSnapshot,
   type RemotePageSnapshot,
 } from './model.ts'
 import {
+  NmdStateStore,
+  objectRelativePath,
   readBaseSnapshot,
-  renderSidecarFile,
-  validateReferencedSidecar,
+  validateReferencedObjects,
   writeBaseSnapshot,
-} from './sidecar.ts'
+  writeStorageObject,
+} from './state-store.ts'
 import { decideStorage } from './storage-policy.ts'
 
 /** Inputs for pulling a Notion page into a local `.nmd` file. */
@@ -37,8 +40,8 @@ export interface PullOptions {
 export interface PullResult {
   readonly path: string
   readonly pageId: string
-  readonly storage: 'self_contained' | 'sidecar'
-  readonly sidecarPath?: string
+  readonly storage: 'self_contained' | 'object_store'
+  readonly storageObjectPath?: string
 }
 
 /** Inputs for checking local and remote page state. */
@@ -212,7 +215,7 @@ const storageUnknownBlockIds = (storage: NmdStorage): readonly string[] => {
   switch (storage._tag) {
     case 'self_contained':
       return storage.unsupported_blocks.map((block) => block.block_id)
-    case 'sidecar':
+    case 'object_store':
       return storage.unsupported_block_ids
   }
 }
@@ -326,6 +329,65 @@ const applyRanges = (opts: {
   return merged.join('\n')
 }
 
+const countOccurrences = (opts: { readonly haystack: string; readonly needle: string }): number => {
+  if (opts.needle.length === 0) return 0
+
+  let count = 0
+  let offset = 0
+  while (true) {
+    const index = opts.haystack.indexOf(opts.needle, offset)
+    if (index === -1) return count
+    count += 1
+    offset = index + opts.needle.length
+  }
+}
+
+const planMarkdownUpdate = (opts: {
+  readonly baseBody: string
+  readonly remoteBody: string
+  readonly desiredBody: string
+}): MarkdownUpdateCommand => {
+  const base = canonicalizeMarkdown(opts.baseBody)
+  const remote = canonicalizeMarkdown(opts.remoteBody)
+  const desired = canonicalizeMarkdown(opts.desiredBody)
+
+  let prefix = 0
+  while (
+    prefix < base.length &&
+    prefix < desired.length &&
+    base.charCodeAt(prefix) === desired.charCodeAt(prefix)
+  ) {
+    prefix += 1
+  }
+
+  let suffix = 0
+  while (
+    suffix < base.length - prefix &&
+    suffix < desired.length - prefix &&
+    base.charCodeAt(base.length - 1 - suffix) === desired.charCodeAt(desired.length - 1 - suffix)
+  ) {
+    suffix += 1
+  }
+
+  const oldStr = base.slice(prefix, base.length - suffix)
+  const newStr = desired.slice(prefix, desired.length - suffix)
+  const isSafeTargetedUpdate =
+    oldStr.length > 0 &&
+    countOccurrences({ haystack: remote, needle: oldStr }) === 1 &&
+    remote.replace(oldStr, newStr) === desired
+
+  return isSafeTargetedUpdate === true
+    ? {
+        _tag: 'update_content',
+        contentUpdates: [{ oldStr, newStr }],
+        expectedMarkdown: desired,
+      }
+    : {
+        _tag: 'replace_content',
+        markdown: desired,
+      }
+}
+
 const roughdraftConflictPath = (path: string): string => `${path}.conflict.roughdraft.md`
 
 const writeRoughdraftConflict = (opts: {
@@ -334,14 +396,15 @@ const writeRoughdraftConflict = (opts: {
   readonly baseBody: string
   readonly localBody: string
   readonly remoteBody: string
-}): Effect.Effect<string, NmdConflictError> => {
+}): Effect.Effect<string, NmdConflictError, NmdStateStore> => {
   const conflictPath = roughdraftConflictPath(opts.path)
-  return Effect.tryPromise({
-    try: () => {
-      const now = new Date().toISOString()
-      return writeFile(
-        conflictPath,
-        `# notion-md body conflict
+  return Effect.gen(function* () {
+    const store = yield* NmdStateStore
+    const now = new Date().toISOString()
+    yield* store
+      .writeConflictFile({
+        path: conflictPath,
+        content: `# notion-md body conflict
 
 {==Body conflict==}{>>Remote and local body content both changed since the last clean pull. Resolve the chosen content back into the .nmd file, then rerun status/push.<<}{id="body-conflict" by="notion-md" at="${now}"}
 
@@ -365,18 +428,22 @@ ${opts.localBody}
 ${opts.remoteBody}
 \`\`\`
 `,
-      ).then(() => conflictPath)
-    },
-    catch: (_cause) =>
-      new NmdConflictError({
-        path: opts.path,
-        page_id: opts.pageId,
-        local_changed: true,
-        remote_changed: true,
-        conflict_path: conflictPath,
-        cause: _cause,
-        message: `Failed to write Roughdraft conflict file ${conflictPath}`,
-      }),
+      })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new NmdConflictError({
+              path: opts.path,
+              page_id: opts.pageId,
+              local_changed: true,
+              remote_changed: true,
+              conflict_path: conflictPath,
+              cause,
+              message: `Failed to write Roughdraft conflict file ${conflictPath}`,
+            }),
+        ),
+      )
+    return conflictPath
   })
 }
 
@@ -384,6 +451,7 @@ const buildFrontmatter = (opts: {
   readonly page: RemotePageSnapshot
   readonly markdown: RemoteMarkdownSnapshot
   readonly storage: NmdStorage
+  readonly base: NmdObjectRef
 }): NmdFrontmatterV1 => {
   const body = canonicalizeMarkdown(opts.markdown.markdown)
 
@@ -398,6 +466,7 @@ const buildFrontmatter = (opts: {
       body: {
         format: 'notion-enhanced-markdown',
         hash: sha256Digest(body),
+        base: opts.base,
         last_pulled_at: new Date().toISOString(),
         remote_last_edited_time: opts.page.last_edited_time,
         truncated: opts.markdown.truncated,
@@ -419,44 +488,42 @@ const buildFrontmatter = (opts: {
 
 const writeNmdWithStoragePolicy = (opts: {
   readonly path: string
-  readonly frontmatter: NmdFrontmatterV1
+  readonly page: RemotePageSnapshot
+  readonly markdown: RemoteMarkdownSnapshot
+  readonly storage: NmdStorage
   readonly body: string
-}): Effect.Effect<PullResult, NmdFileSystemError> =>
+}): Effect.Effect<PullResult, NmdFileSystemError, NmdStateStore> =>
   Effect.gen(function* () {
-    const decision = decideStorage(opts.frontmatter)
-    let frontmatter = opts.frontmatter
-    let sidecarPath: string | undefined
+    const base = yield* writeBaseSnapshot({
+      path: opts.path,
+      pageId: opts.page.id,
+      body: opts.body,
+    })
+    let frontmatter = buildFrontmatter({
+      page: opts.page,
+      markdown: opts.markdown,
+      storage: opts.storage,
+      base,
+    })
+    const decision = decideStorage(frontmatter)
+    let storageObjectPath: string | undefined
 
-    if (decision._tag === 'requires_sidecar') {
-      sidecarPath = `${basename(opts.path)}.notion.json`
-      const sidecarFullPath = join(dirname(opts.path), sidecarPath)
-      const storage = opts.frontmatter.notion_md.storage
-      yield* Effect.tryPromise({
-        try: () =>
-          writeFile(
-            sidecarFullPath,
-            renderSidecarFile({
-              version: 1,
-              page_id: opts.frontmatter.notion_md.page_id,
-              reason: decision.reason,
-              storage,
-            }),
-          ),
-        catch: (cause) =>
-          new NmdFileSystemError({
-            operation: 'write_sidecar',
-            path: sidecarFullPath,
-            cause,
-            message: `Failed to write .nmd sidecar ${sidecarFullPath}`,
-          }),
+    if (decision._tag === 'requires_object_store') {
+      const storage = frontmatter.notion_md.storage
+      const object = yield* writeStorageObject({
+        path: opts.path,
+        pageId: opts.page.id,
+        reason: decision.reason,
+        storage,
       })
+      storageObjectPath = object.path
 
       frontmatter = {
         notion_md: {
-          ...opts.frontmatter.notion_md,
+          ...frontmatter.notion_md,
           storage: {
-            _tag: 'sidecar',
-            path: sidecarPath,
+            _tag: 'object_store',
+            object,
             unsupported_block_ids:
               storage._tag === 'self_contained'
                 ? storage.unsupported_blocks.map((block) => block.block_id)
@@ -471,57 +538,47 @@ const writeNmdWithStoragePolicy = (opts: {
       }
     }
 
-    yield* Effect.tryPromise({
-      try: () => writeFile(opts.path, renderNmdFile({ frontmatter, body: opts.body })),
-      catch: (cause) =>
-        new NmdFileSystemError({
-          operation: 'write_nmd',
-          path: opts.path,
-          cause,
-          message: `Failed to write .nmd file ${opts.path}`,
-        }),
-    })
-    yield* writeBaseSnapshot({
+    const store = yield* NmdStateStore
+    yield* store.writeNmdFile({
       path: opts.path,
-      frontmatter,
-      body: opts.body,
+      content: renderNmdFile({ frontmatter, body: opts.body }),
     })
     const storage: PullResult['storage'] =
-      frontmatter.notion_md.storage._tag === 'sidecar' ? 'sidecar' : 'self_contained'
+      frontmatter.notion_md.storage._tag === 'object_store' ? 'object_store' : 'self_contained'
 
-    return sidecarPath === undefined
+    return storageObjectPath === undefined
       ? {
           path: opts.path,
-          pageId: opts.frontmatter.notion_md.page_id,
+          pageId: opts.page.id,
           storage,
         }
       : {
           path: opts.path,
-          pageId: opts.frontmatter.notion_md.page_id,
+          pageId: opts.page.id,
           storage,
-          sidecarPath,
+          storageObjectPath,
         }
   })
 
 /** Pull a Notion page through the Markdown endpoint and write a local `.nmd` file. */
-export const pullPage = (opts: PullOptions): Effect.Effect<PullResult, NmdError, NotionMdGateway> =>
+export const pullPage = (
+  opts: PullOptions,
+): Effect.Effect<PullResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const gateway = yield* NotionMdGateway
     const pulled = yield* gateway.pullPage({ pageId: opts.pageId })
-    const frontmatter = buildFrontmatter({
-      page: pulled.page,
-      markdown: pulled.markdown,
-      storage: pulled.storage ?? {
-        _tag: 'self_contained',
-        unsupported_blocks: [],
-        files: [],
-        comments: [],
-      },
-    })
+    const storage = pulled.storage ?? {
+      _tag: 'self_contained',
+      unsupported_blocks: [],
+      files: [],
+      comments: [],
+    }
 
     return yield* writeNmdWithStoragePolicy({
       path: opts.outPath,
-      frontmatter,
+      page: pulled.page,
+      markdown: pulled.markdown,
+      storage,
       body: pulled.markdown.markdown,
     })
   }).pipe(
@@ -535,24 +592,16 @@ export const pullPage = (opts: PullOptions): Effect.Effect<PullResult, NmdError,
   )
 
 const readNmd = (path: string) =>
-  Effect.tryPromise({
-    try: () => readFile(path, 'utf8'),
-    catch: (cause) =>
-      new NmdFileSystemError({
-        operation: 'read_nmd',
-        path,
-        cause,
-        message: `Failed to read .nmd file ${path}`,
-      }),
-  }).pipe(
+  NmdStateStore.pipe(
+    Effect.flatMap((store) => store.readNmdFile({ path })),
     Effect.flatMap((content) => parseNmdFile({ path, content })),
-    Effect.tap((local) => validateReferencedSidecar({ path, frontmatter: local.frontmatter })),
+    Effect.tap((local) => validateReferencedObjects({ path, frontmatter: local.frontmatter })),
   )
 
 /** Compare local body/frontmatter state with the current remote Notion page. */
 export const statusPage = (
   opts: StatusOptions,
-): Effect.Effect<StatusResult, NmdError, NotionMdGateway> =>
+): Effect.Effect<StatusResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
     const gateway = yield* NotionMdGateway
@@ -606,7 +655,9 @@ export const statusPage = (
   )
 
 /** Push local `.nmd` edits to Notion after conflict, unknown-block, and review-markup checks. */
-export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, NmdError, NotionMdGateway> =>
+export const pushPage = (
+  opts: PushOptions,
+): Effect.Effect<PushResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const local = yield* readNmd(opts.path)
     const status = yield* statusPage({ path: opts.path })
@@ -656,7 +707,11 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, NmdError,
       if (mergedBody !== undefined) {
         const updated = yield* gateway.updateMarkdown({
           pageId: status.pageId,
-          markdown: mergedBody,
+          command: planMarkdownUpdate({
+            baseBody: baseSnapshot.body,
+            remoteBody: remote.markdown.markdown,
+            desiredBody: mergedBody,
+          }),
           allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
         })
         if (status.localPropertiesChanged === true) {
@@ -666,15 +721,11 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, NmdError,
           })
         }
         const pulled = yield* gateway.pullPage({ pageId: status.pageId })
-        const frontmatter = buildFrontmatter({
+        yield* writeNmdWithStoragePolicy({
+          path: opts.path,
           page: pulled.page,
           markdown: updated.markdown,
           storage: pulled.storage ?? local.frontmatter.notion_md.storage,
-        })
-
-        yield* writeNmdWithStoragePolicy({
-          path: opts.path,
-          frontmatter,
           body: mergedBody,
         })
 
@@ -706,10 +757,36 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, NmdError,
     const gateway = yield* NotionMdGateway
     const updated =
       status.localChanged === true
-        ? yield* gateway.updateMarkdown({
-            pageId: status.pageId,
-            markdown: local.body,
-            allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+        ? yield* Effect.gen(function* () {
+            const baseSnapshot = yield* readBaseSnapshot({
+              path: opts.path,
+              frontmatter: local.frontmatter,
+            })
+            const remote = yield* gateway.pullPage({ pageId: status.pageId })
+            if (
+              opts.force !== true &&
+              sha256Digest(remote.markdown.markdown) !== status.remoteBodyHash
+            ) {
+              return yield* new NmdConflictError({
+                path: opts.path,
+                page_id: status.pageId,
+                local_changed: status.localChanged,
+                remote_changed: true,
+                message: 'Remote page changed while preparing guarded Markdown push',
+              })
+            }
+            return yield* gateway.updateMarkdown({
+              pageId: status.pageId,
+              command:
+                opts.force === true
+                  ? { _tag: 'replace_content', markdown: local.body }
+                  : planMarkdownUpdate({
+                      baseBody: baseSnapshot.body,
+                      remoteBody: remote.markdown.markdown,
+                      desiredBody: local.body,
+                    }),
+              allowDeletingContent: opts.allowDeletingUnknownBlocks === true,
+            })
           })
         : undefined
     if (status.localPropertiesChanged === true) {
@@ -719,15 +796,11 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, NmdError,
       })
     }
     const pulled = yield* gateway.pullPage({ pageId: status.pageId })
-    const frontmatter = buildFrontmatter({
+    yield* writeNmdWithStoragePolicy({
+      path: opts.path,
       page: pulled.page,
       markdown: updated?.markdown ?? pulled.markdown,
       storage: pulled.storage ?? local.frontmatter.notion_md.storage,
-    })
-
-    yield* writeNmdWithStoragePolicy({
-      path: opts.path,
-      frontmatter,
       body: local.body,
     })
 
@@ -755,7 +828,9 @@ export const pushPage = (opts: PushOptions): Effect.Effect<PushResult, NmdError,
   )
 
 /** Run one two-way reconciliation pass for a `.nmd` file. */
-export const syncPage = (opts: SyncOptions): Effect.Effect<SyncResult, NmdError, NotionMdGateway> =>
+export const syncPage = (
+  opts: SyncOptions,
+): Effect.Effect<SyncResult, NmdError, NotionMdGateway | NmdStateStore> =>
   Effect.gen(function* () {
     const status = yield* statusPage({ path: opts.path })
 
@@ -807,6 +882,14 @@ export const buildFrontmatterFromPull = (pulled: PullPageResult): NmdFrontmatter
   buildFrontmatter({
     page: pulled.page,
     markdown: pulled.markdown,
+    base: {
+      _tag: 'object_ref',
+      role: 'base_snapshot',
+      hash: sha256Digest(''),
+      path: objectRelativePath(sha256Digest('')),
+      media_type: 'application/json',
+      byte_length: 0,
+    },
     storage: pulled.storage ?? {
       _tag: 'self_contained',
       unsupported_blocks: [],

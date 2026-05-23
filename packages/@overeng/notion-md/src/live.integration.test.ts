@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
+import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -16,7 +17,7 @@ import {
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { NotionMdGatewayLive } from './live.ts'
 import type { NotionMdGateway } from './model.ts'
-import { baseSnapshotPath } from './sidecar.ts'
+import { NmdStateStoreLive, objectPath, type NmdStateStore } from './state-store.ts'
 import { pullPage, pushPage, statusPage, syncPage } from './sync.ts'
 
 const token = process.env.NOTION_TOKEN ?? process.env.NOTION_API_TOKEN
@@ -27,6 +28,26 @@ const skipLive =
   testParentPageId === undefined ||
   testParentPageId.length === 0
 
+describe('notion-md live integration configuration', () => {
+  it('fails fast in required-live mode when credentials or parent page are missing', () => {
+    if (process.env.NOTION_MD_LIVE_REQUIRED !== '1') {
+      expect(skipLive).toBeTypeOf('boolean')
+      return
+    }
+
+    expect(
+      {
+        hasToken: token !== undefined && token.length > 0,
+        hasParentPage: testParentPageId !== undefined && testParentPageId.length > 0,
+      },
+      'NOTION_MD_LIVE_REQUIRED=1 requires NOTION_TOKEN/NOTION_API_TOKEN and NOTION_MD_TEST_PARENT_PAGE_ID',
+    ).toEqual({
+      hasToken: true,
+      hasParentPage: true,
+    })
+  })
+})
+
 const ConfigLayer = NotionConfigLive({
   authToken: Redacted.make(token ?? ''),
   retryEnabled: true,
@@ -35,9 +56,14 @@ const ConfigLayer = NotionConfigLive({
 })
 
 const BaseLayer = Layer.mergeAll(ConfigLayer, FetchHttpClient.layer)
-const TestLayer = Layer.mergeAll(BaseLayer, NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)))
+const StateStoreLayer = NmdStateStoreLive.pipe(Layer.provide(NodeContext.layer))
+const TestLayer = Layer.mergeAll(
+  BaseLayer,
+  StateStoreLayer,
+  NotionMdGatewayLive.pipe(Layer.provide(BaseLayer)),
+)
 
-type LiveEnv = NotionMdGateway | NotionConfig | HttpClient.HttpClient
+type LiveEnv = NotionMdGateway | NotionConfig | HttpClient.HttpClient | NmdStateStore
 
 const runLive = <A, E>(effect: Effect.Effect<A, E, LiveEnv>) =>
   Effect.runPromise(effect.pipe(Effect.provide(TestLayer)) as Effect.Effect<A, E, never>)
@@ -105,7 +131,9 @@ describe.skipIf(skipLive)('notion-md live integration', () => {
         expect(pulled.storage).toBe('self_contained')
         expect(parsed.frontmatter.notion_md.page_id).toBe(pageId)
         expect(parsed.body).toContain('Initial body')
-        await expect(readFile(baseSnapshotPath(path), 'utf8')).resolves.toContain('Initial body')
+        await expect(
+          readFile(objectPath({ path, hash: parsed.frontmatter.notion_md.body.base.hash }), 'utf8'),
+        ).resolves.toContain('Initial body')
         expect(cleanStatus.localChanged).toBe(false)
         expect(cleanStatus.remoteChanged).toBe(false)
 

@@ -1,0 +1,445 @@
+import { FileSystem, Path } from '@effect/platform'
+import { Context, Effect, Layer, Schema } from 'effect'
+
+import {
+  NmdObjectRefSchema,
+  NmdStorageSchema,
+  Sha256DigestSchema,
+  type NmdFrontmatterV1,
+  type NmdObjectRef,
+  type NmdObjectRole,
+  type NmdStorage,
+} from '@overeng/notion-effect-client'
+
+import { NmdFileSystemError, NmdObjectStoreError } from './errors.ts'
+import { canonicalizeMarkdown, sha256Digest } from './hash.ts'
+
+/** Strict schema for overflow `.nmd` storage payloads in the object store. */
+export const NmdStorageObjectV2 = Schema.Struct({
+  version: Schema.Literal(2),
+  page_id: Schema.String,
+  reason: Schema.Literal('too_large', 'volatile_url'),
+  storage: NmdStorageSchema,
+}).annotations({ identifier: 'NotionMd.StorageObjectV2' })
+
+export type NmdStorageObjectV2 = typeof NmdStorageObjectV2.Type
+
+/** Strict schema for the last clean body snapshot used by guarded merges. */
+export const NmdBaseSnapshotV2 = Schema.Struct({
+  version: Schema.Literal(2),
+  page_id: Schema.String,
+  body_hash: Sha256DigestSchema,
+  body: Schema.String,
+}).annotations({ identifier: 'NotionMd.BaseSnapshotV2' })
+
+export type NmdBaseSnapshotV2 = typeof NmdBaseSnapshotV2.Type
+
+const strictOptions = {
+  errors: 'all',
+  onExcessProperty: 'error',
+} as const
+
+const encodeStorageObjectJson = Schema.encodeSync(
+  Schema.parseJson(NmdStorageObjectV2, { space: 2 }),
+)
+const encodeBaseSnapshotJson = Schema.encodeSync(Schema.parseJson(NmdBaseSnapshotV2, { space: 2 }))
+const decodeStorageObjectJson = Schema.decodeUnknownSync(
+  Schema.parseJson(NmdStorageObjectV2),
+  strictOptions,
+)
+const decodeBaseSnapshotJson = Schema.decodeUnknownSync(
+  Schema.parseJson(NmdBaseSnapshotV2),
+  strictOptions,
+)
+const decodeObjectRef = Schema.decodeUnknownSync(NmdObjectRefSchema, strictOptions)
+
+/** Local metadata root next to a synced `.nmd` file. */
+export const stateRootPath = (path: string): string => {
+  const baseName = path.split(/[\\/]/u).at(-1) ?? path
+  return `${path.slice(0, Math.max(0, path.length - baseName.length))}.notion-md`
+}
+
+/** Relative path for a content-addressed object inside the local metadata root. */
+export const objectRelativePath = (hash: string): string => {
+  const hex = hash.slice('sha256:'.length)
+  return `.notion-md/objects/sha256/${hex.slice(0, 2)}/${hex.slice(2)}.json`
+}
+
+/** Absolute object path for a content-addressed hash next to a synced `.nmd` file. */
+export const objectPath = (opts: { readonly path: string; readonly hash: string }): string => {
+  const baseName = opts.path.split(/[\\/]/u).at(-1) ?? opts.path
+  const root = opts.path.slice(0, Math.max(0, opts.path.length - baseName.length))
+  return `${root}${objectRelativePath(opts.hash)}`
+}
+
+const byteLength = (content: string): number => new TextEncoder().encode(content).byteLength
+
+const makeObjectRef = (opts: {
+  readonly role: NmdObjectRole
+  readonly hash: string
+  readonly content: string
+}): NmdObjectRef =>
+  decodeObjectRef({
+    _tag: 'object_ref',
+    role: opts.role,
+    hash: opts.hash,
+    path: objectRelativePath(opts.hash),
+    media_type: 'application/json',
+    byte_length: byteLength(opts.content),
+  })
+
+const isSafeRelativePath = (opts: {
+  readonly path: Path.Path
+  readonly relativePath: string
+}): boolean => {
+  if (opts.path.isAbsolute(opts.relativePath) === true) return false
+  const normalized = opts.path.normalize(opts.relativePath)
+  return normalized !== '..' && normalized.startsWith(`..${opts.path.sep}`) === false
+}
+
+const parseObjectJson = <A>(opts: {
+  readonly parse: (content: string) => A
+  readonly path: string
+  readonly objectPath: string
+  readonly content: string
+  readonly label: string
+}): Effect.Effect<A, NmdObjectStoreError> =>
+  Effect.try({
+    try: () => opts.parse(opts.content),
+    catch: (cause) =>
+      new NmdObjectStoreError({
+        path: opts.path,
+        object_path: opts.objectPath,
+        cause,
+        message: `Failed to parse ${opts.label} ${opts.objectPath}`,
+      }),
+  })
+
+/** Effect service contract for all local `.nmd` and `.notion-md` filesystem state. */
+export interface NmdStateStoreShape {
+  readonly readNmdFile: (opts: {
+    readonly path: string
+  }) => Effect.Effect<string, NmdFileSystemError>
+  readonly writeNmdFile: (opts: {
+    readonly path: string
+    readonly content: string
+  }) => Effect.Effect<void, NmdFileSystemError>
+  readonly writeConflictFile: (opts: {
+    readonly path: string
+    readonly content: string
+  }) => Effect.Effect<void, NmdFileSystemError>
+  readonly writeBaseSnapshot: (opts: {
+    readonly path: string
+    readonly pageId: string
+    readonly body: string
+  }) => Effect.Effect<NmdObjectRef, NmdFileSystemError>
+  readonly readBaseSnapshot: (opts: {
+    readonly path: string
+    readonly frontmatter: NmdFrontmatterV1
+  }) => Effect.Effect<NmdBaseSnapshotV2, NmdObjectStoreError>
+  readonly writeStorageObject: (opts: {
+    readonly path: string
+    readonly pageId: string
+    readonly reason: 'too_large' | 'volatile_url'
+    readonly storage: NmdStorage
+  }) => Effect.Effect<NmdObjectRef, NmdFileSystemError>
+  readonly validateReferencedObjects: (opts: {
+    readonly path: string
+    readonly frontmatter: NmdFrontmatterV1
+  }) => Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError>
+}
+
+/** Service tag for the local notion-md state store. */
+export class NmdStateStore extends Context.Tag('NmdStateStore')<
+  NmdStateStore,
+  NmdStateStoreShape
+>() {}
+
+/** Live state-store implementation backed by `@effect/platform` filesystem services. */
+export const NmdStateStoreLive = Layer.effect(
+  NmdStateStore,
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+
+    const makeFileSystemError = (opts: {
+      readonly operation: string
+      readonly path: string
+      readonly cause: unknown
+      readonly message: string
+    }): NmdFileSystemError =>
+      new NmdFileSystemError({
+        operation: opts.operation,
+        path: opts.path,
+        cause: opts.cause,
+        message: opts.message,
+      })
+
+    const fullObjectPath = (opts: { readonly nmdPath: string; readonly object: NmdObjectRef }) =>
+      Effect.try({
+        try: () => {
+          if (isSafeRelativePath({ path, relativePath: opts.object.path }) === false) {
+            throw new Error('Object path must be relative and must not traverse')
+          }
+          if (path.normalize(opts.object.path) !== objectRelativePath(opts.object.hash)) {
+            throw new Error('Object path must match its content hash')
+          }
+          return path.join(path.dirname(opts.nmdPath), path.normalize(opts.object.path))
+        },
+        catch: (cause) =>
+          new NmdObjectStoreError({
+            path: opts.nmdPath,
+            object_path: opts.object.path,
+            cause,
+            message: `Invalid .nmd object reference ${opts.object.path}`,
+          }),
+      })
+
+    const writeTextFile = (opts: {
+      readonly operation: string
+      readonly path: string
+      readonly content: string
+      readonly label: string
+    }): Effect.Effect<void, NmdFileSystemError> =>
+      Effect.gen(function* () {
+        const temporaryPath = `${opts.path}.tmp-${process.pid}-${Date.now()}`
+        yield* fs.makeDirectory(path.dirname(opts.path), { recursive: true })
+        yield* fs.writeFileString(temporaryPath, opts.content)
+        yield* fs.rename(temporaryPath, opts.path)
+      }).pipe(
+        Effect.mapError((cause) =>
+          makeFileSystemError({
+            operation: opts.operation,
+            path: opts.path,
+            cause,
+            message: `Failed to write ${opts.label} ${opts.path}`,
+          }),
+        ),
+      )
+
+    const readNmdFile: NmdStateStoreShape['readNmdFile'] = (opts) =>
+      fs.readFileString(opts.path).pipe(
+        Effect.mapError((cause) =>
+          makeFileSystemError({
+            operation: 'read_nmd',
+            path: opts.path,
+            cause,
+            message: `Failed to read .nmd file ${opts.path}`,
+          }),
+        ),
+      )
+
+    const writeObjectContent = (opts: {
+      readonly path: string
+      readonly role: NmdObjectRole
+      readonly content: string
+    }): Effect.Effect<NmdObjectRef, NmdFileSystemError> =>
+      Effect.gen(function* () {
+        const content = `${opts.content.trimEnd()}\n`
+        const hash = sha256Digest(content.trimEnd())
+        const destination = objectPath({ path: opts.path, hash })
+        yield* writeTextFile({
+          operation: 'write_object',
+          path: destination,
+          content,
+          label: '.notion-md object',
+        })
+        return makeObjectRef({ role: opts.role, hash, content: content.trimEnd() })
+      }).pipe(
+        Effect.withSpan('notion-md.state.write-object', {
+          attributes: {
+            'span.label': opts.role,
+            'notion_md.object.role': opts.role,
+            'notion_md.path.basename': path.basename(opts.path),
+          },
+        }),
+      )
+
+    const readObjectContent = (opts: {
+      readonly path: string
+      readonly object: NmdObjectRef
+    }): Effect.Effect<string, NmdObjectStoreError> =>
+      Effect.gen(function* () {
+        const objectFullPath = yield* fullObjectPath({ nmdPath: opts.path, object: opts.object })
+        const content = yield* fs.readFileString(objectFullPath).pipe(
+          Effect.mapError(
+            (cause) =>
+              new NmdObjectStoreError({
+                path: opts.path,
+                object_path: objectFullPath,
+                cause,
+                message: `Failed to read .nmd object ${objectFullPath}`,
+              }),
+          ),
+        )
+        const trimmed = content.trimEnd()
+        const hash = sha256Digest(trimmed)
+        if (hash !== opts.object.hash) {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: objectFullPath,
+            message: `Invalid .nmd object hash for ${objectFullPath}`,
+          })
+        }
+        return trimmed
+      }).pipe(
+        Effect.withSpan('notion-md.state.read-object', {
+          attributes: {
+            'span.label': opts.object.role,
+            'notion_md.object.role': opts.object.role,
+            'notion_md.object.hash': opts.object.hash,
+          },
+        }),
+      )
+
+    const writeBaseSnapshot: NmdStateStoreShape['writeBaseSnapshot'] = (opts) => {
+      const body = canonicalizeMarkdown(opts.body)
+      return writeObjectContent({
+        path: opts.path,
+        role: 'base_snapshot',
+        content: encodeBaseSnapshotJson({
+          version: 2,
+          page_id: opts.pageId,
+          body_hash: sha256Digest(body),
+          body,
+        }),
+      })
+    }
+
+    const readBaseSnapshot: NmdStateStoreShape['readBaseSnapshot'] = (opts) =>
+      Effect.gen(function* () {
+        const ref = opts.frontmatter.notion_md.body.base
+        if (ref.role !== 'base_snapshot') {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: ref.path,
+            message: `Expected base_snapshot object but found ${ref.role}`,
+          })
+        }
+        const snapshot = yield* readObjectContent({ path: opts.path, object: ref }).pipe(
+          Effect.flatMap((content) =>
+            parseObjectJson({
+              parse: decodeBaseSnapshotJson,
+              path: opts.path,
+              objectPath: ref.path,
+              content,
+              label: '.nmd base snapshot',
+            }),
+          ),
+        )
+
+        if (
+          snapshot.page_id !== opts.frontmatter.notion_md.page_id ||
+          snapshot.body_hash !== opts.frontmatter.notion_md.body.hash ||
+          sha256Digest(snapshot.body) !== snapshot.body_hash
+        ) {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: ref.path,
+            message: `Invalid .nmd base snapshot ${ref.path}`,
+          })
+        }
+
+        return snapshot
+      })
+
+    const writeStorageObject: NmdStateStoreShape['writeStorageObject'] = (opts) =>
+      writeObjectContent({
+        path: opts.path,
+        role: 'storage_payload',
+        content: encodeStorageObjectJson({
+          version: 2,
+          page_id: opts.pageId,
+          reason: opts.reason,
+          storage: opts.storage,
+        }),
+      })
+
+    const validateReferencedObjects: NmdStateStoreShape['validateReferencedObjects'] = (opts) =>
+      Effect.gen(function* () {
+        yield* readBaseSnapshot(opts)
+        const storage = opts.frontmatter.notion_md.storage
+        if (storage._tag !== 'object_store') return undefined
+        const ref = storage.object
+        if (ref.role !== 'storage_payload') {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: ref.path,
+            message: `Expected storage_payload object but found ${ref.role}`,
+          })
+        }
+        const storageObject = yield* readObjectContent({ path: opts.path, object: ref }).pipe(
+          Effect.flatMap((content) =>
+            parseObjectJson({
+              parse: decodeStorageObjectJson,
+              path: opts.path,
+              objectPath: ref.path,
+              content,
+              label: '.nmd storage object',
+            }),
+          ),
+        )
+        if (storageObject.page_id !== opts.frontmatter.notion_md.page_id) {
+          return yield* new NmdObjectStoreError({
+            path: opts.path,
+            object_path: ref.path,
+            message: `Storage object page id ${storageObject.page_id} does not match ${opts.frontmatter.notion_md.page_id}`,
+          })
+        }
+        return storageObject
+      })
+
+    return {
+      readNmdFile,
+      writeNmdFile: (opts) =>
+        writeTextFile({
+          operation: 'write_nmd',
+          path: opts.path,
+          content: opts.content,
+          label: '.nmd file',
+        }),
+      writeConflictFile: (opts) =>
+        writeTextFile({
+          operation: 'write_conflict',
+          path: opts.path,
+          content: opts.content,
+          label: 'Roughdraft conflict file',
+        }),
+      writeBaseSnapshot,
+      readBaseSnapshot,
+      writeStorageObject,
+      validateReferencedObjects,
+    }
+  }),
+)
+
+/** Write the last clean body snapshot and return the strict frontmatter reference. */
+export const writeBaseSnapshot = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly body: string
+}): Effect.Effect<NmdObjectRef, NmdFileSystemError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.writeBaseSnapshot(opts)))
+
+/** Load and validate the last clean body snapshot for conflict handling. */
+export const readBaseSnapshot = (opts: {
+  readonly path: string
+  readonly frontmatter: NmdFrontmatterV1
+}): Effect.Effect<NmdBaseSnapshotV2, NmdObjectStoreError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.readBaseSnapshot(opts)))
+
+/** Write a storage overflow payload and return the strict frontmatter reference. */
+export const writeStorageObject = (opts: {
+  readonly path: string
+  readonly pageId: string
+  readonly reason: 'too_large' | 'volatile_url'
+  readonly storage: NmdStorage
+}): Effect.Effect<NmdObjectRef, NmdFileSystemError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.writeStorageObject(opts)))
+
+/** Load and validate object-store storage referenced by frontmatter, if present. */
+export const validateReferencedObjects = (opts: {
+  readonly path: string
+  readonly frontmatter: NmdFrontmatterV1
+}): Effect.Effect<NmdStorageObjectV2 | undefined, NmdObjectStoreError, NmdStateStore> =>
+  NmdStateStore.pipe(Effect.flatMap((store) => store.validateReferencedObjects(opts)))

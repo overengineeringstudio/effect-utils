@@ -1,7 +1,7 @@
 import type { NmdFrontmatterV1 } from '@overeng/notion-effect-client'
 import { classifyNmdFrontmatterPayload } from '@overeng/notion-effect-client'
 
-/** Decision for whether `.nmd` auxiliary storage stays inline or moves to sidecar. */
+/** Decision for whether `.nmd` auxiliary storage stays inline or moves to object storage. */
 export type StorageDecision =
   | {
       readonly _tag: 'keep_self_contained'
@@ -9,7 +9,7 @@ export type StorageDecision =
       readonly classification: 'small' | 'large'
     }
   | {
-      readonly _tag: 'requires_sidecar'
+      readonly _tag: 'requires_object_store'
       readonly bytes: number
       readonly reason: 'too_large' | 'volatile_url'
     }
@@ -41,11 +41,11 @@ export const decideStorage = (frontmatter: NmdFrontmatterV1): StorageDecision =>
   const payload = classifyNmdFrontmatterPayload(frontmatter)
 
   if (containsVolatileUrl(frontmatter.notion_md.storage) === true) {
-    return { _tag: 'requires_sidecar', bytes: payload.bytes, reason: 'volatile_url' }
+    return { _tag: 'requires_object_store', bytes: payload.bytes, reason: 'volatile_url' }
   }
 
   if (payload.classification === 'too_large') {
-    return { _tag: 'requires_sidecar', bytes: payload.bytes, reason: 'too_large' }
+    return { _tag: 'requires_object_store', bytes: payload.bytes, reason: 'too_large' }
   }
 
   return {
