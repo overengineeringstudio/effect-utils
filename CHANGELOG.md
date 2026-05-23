@@ -75,6 +75,7 @@ All notable changes to this project will be documented in this file.
 - **@overeng/notion-effect-schema**: Add `data_source_id` parent variant to `PageParent` schema
 - **@overeng/notion-effect-schema**: Rename `DataSource` → `DataSourceRef` for lightweight reference in `DatabaseSchema.data_sources`
 - **@overeng/notion-effect-client**: Widen `SchemaHelpers` to accept both `DatabaseSchema` and `DataSourceSchema`
+- **@overeng/notion-md**: Require `NOTION_TOKEN` as the only Notion credential environment variable across code, docs, tests, and SecretSpec
 
 ### Fixed
 

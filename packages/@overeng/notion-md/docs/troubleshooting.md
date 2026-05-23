@@ -5,7 +5,7 @@
 Symptom:
 
 ```text
-NOTION_TOKEN or NOTION_API_TOKEN is required
+NOTION_TOKEN is required
 ```
 
 Fix:

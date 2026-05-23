@@ -6,13 +6,11 @@ large or immutable evidence, `.notion-md/objects`.
 
 ## Credentials
 
-Set one of these environment variables before running commands:
+Set the Notion token before running commands:
 
 ```sh
 export NOTION_TOKEN="secret_..."
 ```
-
-`NOTION_TOKEN` is preferred. `NOTION_API_TOKEN` is accepted as a fallback.
 
 The integration must have access to the page you sync. If a command can
 authenticate but cannot read the page, share the page with the integration in

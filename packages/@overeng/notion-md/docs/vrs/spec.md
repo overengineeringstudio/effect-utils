@@ -403,10 +403,9 @@ notion-md sync page.nmd [--watch] [--poll-interval-ms 30000]
 
 Environment:
 
-| Variable           | Meaning                    |
-| ------------------ | -------------------------- |
-| `NOTION_TOKEN`     | preferred Notion API token |
-| `NOTION_API_TOKEN` | fallback token name        |
+| Variable       | Meaning          |
+| -------------- | ---------------- |
+| `NOTION_TOKEN` | Notion API token |
 
 Output:
 

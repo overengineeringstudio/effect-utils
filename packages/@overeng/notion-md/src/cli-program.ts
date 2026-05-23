@@ -80,15 +80,13 @@ const pushSafetyOptions = {
   allowReviewMarkup: allowReviewMarkupOption,
 } as const
 
-const resolveToken = Effect.sync(
-  () => process.env.NOTION_TOKEN ?? process.env.NOTION_API_TOKEN,
-).pipe(
+const resolveToken = Effect.sync(() => process.env.NOTION_TOKEN).pipe(
   Effect.flatMap((token) =>
     token !== undefined && token.length > 0
       ? Effect.succeed(token)
       : Effect.fail(
           new NmdTokenMissingError({
-            message: 'NOTION_TOKEN or NOTION_API_TOKEN is required',
+            message: 'NOTION_TOKEN is required',
           }),
         ),
   ),

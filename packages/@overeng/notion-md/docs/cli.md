@@ -11,10 +11,9 @@ notion-md sync <file.nmd> [--watch] [--poll-interval-ms <ms>] [--force] [--allow
 
 ## Environment
 
-| Variable           | Required | Meaning                    |
-| ------------------ | -------- | -------------------------- |
-| `NOTION_TOKEN`     | yes      | Preferred Notion API token |
-| `NOTION_API_TOKEN` | fallback | Legacy token variable      |
+| Variable       | Required | Meaning          |
+| -------------- | -------- | ---------------- |
+| `NOTION_TOKEN` | yes      | Notion API token |
 
 ## `pull`
 

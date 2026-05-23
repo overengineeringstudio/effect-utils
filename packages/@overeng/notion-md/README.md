@@ -34,7 +34,7 @@ notion-md sync page.nmd
 notion-md sync page.nmd --watch --poll-interval-ms 30000
 ```
 
-The CLI reads `NOTION_TOKEN` first and `NOTION_API_TOKEN` second.
+The CLI reads `NOTION_TOKEN`.
 
 ## Safety Model
 
