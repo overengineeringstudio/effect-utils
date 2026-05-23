@@ -9,9 +9,16 @@
  * `flakes/merge-queue/crates/mq-core/src/gh_client.rs` in dotfiles, which is
  * the runtime safety net for lazy label creation. The reconciler is the
  * canonical writer once `dt gh:apply-labels` has run.
+ *
+ * Every description includes a trailing `· Set: <who>` clause naming the
+ * party responsible for applying the label (manual, Hypermerge daemon,
+ * janitor-cli, andon CLI, or AI agent).
  */
 
-import type { LabelDef, LegacyMigration } from '../packages/@overeng/genie/src/runtime/github-labels/mod.ts'
+import type {
+  LabelDef,
+  LegacyMigration,
+} from '../packages/@overeng/genie/src/runtime/github-labels/mod.ts'
 
 // ============================================================================
 // Color palette (GitHub stores colors as 6-char hex without `#`)
@@ -43,18 +50,46 @@ const colors = {
 // ============================================================================
 
 const typeLabels: readonly LabelDef[] = [
-  { name: 'type:epic', color: colors.brightBlue, description: 'Large tracking issue with child tasks' },
-  { name: 'type:rca', color: colors.purple, description: 'Root-cause analysis or investigation record' },
-  { name: 'type:bug', color: colors.bugRed, description: 'Something broken or a regression' },
-  { name: 'type:feature', color: colors.green, description: 'New user-visible or system capability' },
-  { name: 'type:chore', color: colors.grey, description: 'Maintenance, cleanup, dependencies, CI, or refactoring' },
+  {
+    name: 'type:epic',
+    color: colors.brightBlue,
+    description: 'Large tracking issue with child tasks · Set: manual',
+  },
+  {
+    name: 'type:rca',
+    color: colors.purple,
+    description: 'Root-cause analysis or investigation record · Set: manual',
+  },
+  {
+    name: 'type:bug',
+    color: colors.bugRed,
+    description: 'Something broken or a regression · Set: manual',
+  },
+  {
+    name: 'type:feature',
+    color: colors.green,
+    description: 'New user-visible or system capability · Set: manual',
+  },
+  {
+    name: 'type:chore',
+    color: colors.grey,
+    description: 'Maintenance, cleanup, dependencies, CI, or refactoring · Set: manual',
+  },
   {
     name: 'type:agent-tooling',
     color: colors.lightBlue,
-    description: 'Agent, automation, AI workflow, or developer-agent tooling',
+    description: 'Agent, automation, AI workflow, or developer-agent tooling · Set: manual',
   },
-  { name: 'type:docs', color: colors.docsBlue, description: 'Documentation-only change or documentation task' },
-  { name: 'type:incident', color: colors.red, description: 'Live or recent operational incident' },
+  {
+    name: 'type:docs',
+    color: colors.docsBlue,
+    description: 'Documentation-only change or documentation task · Set: manual',
+  },
+  {
+    name: 'type:incident',
+    color: colors.red,
+    description: 'Live or recent operational incident · Set: manual or andon CLI',
+  },
 ]
 
 // ============================================================================
@@ -62,12 +97,20 @@ const typeLabels: readonly LabelDef[] = [
 // ============================================================================
 
 const stateLabels: readonly LabelDef[] = [
-  { name: 'state:triage', color: colors.yellow, description: 'Needs classification or owner decision' },
-  { name: 'state:blocked', color: colors.pink, description: 'Blocked on an external dependency or decision' },
+  {
+    name: 'state:triage',
+    color: colors.yellow,
+    description: 'Needs classification or owner decision · Set: manual',
+  },
+  {
+    name: 'state:blocked',
+    color: colors.pink,
+    description: 'Blocked on an external dependency or decision · Set: manual',
+  },
   {
     name: 'state:needs-research',
     color: colors.lightBlue,
-    description: 'Needs research / investigation before scope or approach is clear',
+    description: 'Needs research / investigation before scope or approach is clear · Set: manual',
   },
 ]
 
@@ -76,8 +119,16 @@ const stateLabels: readonly LabelDef[] = [
 // ============================================================================
 
 const originLabels: readonly LabelDef[] = [
-  { name: 'origin:agent', color: colors.lightPurple, description: 'Filed or primarily produced by an AI agent' },
-  { name: 'origin:janitor', color: colors.darkPurple, description: 'Filed by janitor automation' },
+  {
+    name: 'origin:agent',
+    color: colors.lightPurple,
+    description: 'Filed or primarily produced by an AI agent · Set: AI agent or manual',
+  },
+  {
+    name: 'origin:janitor',
+    color: colors.darkPurple,
+    description: 'Filed by janitor automation · Set: janitor-cli',
+  },
 ]
 
 // ============================================================================
@@ -85,13 +136,41 @@ const originLabels: readonly LabelDef[] = [
 // ============================================================================
 
 const sharedAreaLabels: readonly LabelDef[] = [
-  { name: 'area:nix', color: colors.brightBlue, description: 'Nix flakes, derivations, FOD hashes, builders' },
-  { name: 'area:typescript', color: colors.brightBlue, description: 'TypeScript code, tsconfig, and type definitions' },
-  { name: 'area:ci', color: colors.brightBlue, description: 'CI workflows, runners, and pipeline configuration' },
-  { name: 'area:storybook', color: colors.brightBlue, description: 'Storybook configuration and stories' },
-  { name: 'area:effect', color: colors.brightBlue, description: 'Effect framework usage' },
-  { name: 'area:devenv', color: colors.brightBlue, description: 'devenv tasks, inputs, and environment configuration' },
-  { name: 'area:tooling', color: colors.brightBlue, description: 'Developer tooling, scripts, and utilities' },
+  {
+    name: 'area:nix',
+    color: colors.brightBlue,
+    description: 'Nix flakes, derivations, FOD hashes, builders · Set: manual',
+  },
+  {
+    name: 'area:typescript',
+    color: colors.brightBlue,
+    description: 'TypeScript code, tsconfig, and type definitions · Set: manual',
+  },
+  {
+    name: 'area:ci',
+    color: colors.brightBlue,
+    description: 'CI workflows, runners, and pipeline configuration · Set: manual',
+  },
+  {
+    name: 'area:storybook',
+    color: colors.brightBlue,
+    description: 'Storybook configuration and stories · Set: manual',
+  },
+  {
+    name: 'area:effect',
+    color: colors.brightBlue,
+    description: 'Effect framework usage · Set: manual',
+  },
+  {
+    name: 'area:devenv',
+    color: colors.brightBlue,
+    description: 'devenv tasks, inputs, and environment configuration · Set: manual',
+  },
+  {
+    name: 'area:tooling',
+    color: colors.brightBlue,
+    description: 'Developer tooling, scripts, and utilities · Set: manual',
+  },
 ]
 
 // ============================================================================
@@ -101,27 +180,51 @@ const sharedAreaLabels: readonly LabelDef[] = [
 // ============================================================================
 
 const mqStaticLabels: readonly LabelDef[] = [
-  { name: 'mq:enrolled', color: colors.purple, description: 'PR is enrolled in Hypermerge' },
+  {
+    name: 'mq:enrolled',
+    color: colors.purple,
+    description: 'PR is enrolled in Hypermerge · Set: manual (mirrors GH auto-merge)',
+  },
   {
     name: 'mq:merge-held',
     color: colors.pale,
-    description: 'Hypermerge may prove this PR green but must not merge it',
+    description: 'Hypermerge may prove this PR green but must not merge it · Set: manual',
   },
   {
     name: 'mq:blocked',
     color: colors.red,
-    description: 'Hypermerge is not currently advancing this PR',
+    description: 'Hypermerge is not currently advancing this PR · Set: Hypermerge daemon',
   },
-  { name: 'mq:needs-agent', color: colors.orange, description: 'Hypermerge needs agentic intervention' },
-  { name: 'mq:agent-active', color: colors.blue, description: 'Hypermerge has dispatched an agent' },
-  { name: 'mq:needs-human', color: colors.brightPurple, description: 'Hypermerge needs human review' },
+  {
+    name: 'mq:needs-agent',
+    color: colors.orange,
+    description: 'Hypermerge needs agentic intervention · Set: Hypermerge daemon',
+  },
+  {
+    name: 'mq:agent-active',
+    color: colors.blue,
+    description: 'Hypermerge has dispatched an agent · Set: Hypermerge daemon',
+  },
+  {
+    name: 'mq:needs-human',
+    color: colors.brightPurple,
+    description: 'Hypermerge needs human review · Set: Hypermerge daemon',
+  },
   {
     name: 'mq:ci-admitted',
     color: colors.brightGreen,
-    description: 'Hypermerge admitted this PR to scarce-runner CI',
+    description: 'Hypermerge admitted this PR to scarce-runner CI · Set: Hypermerge daemon',
   },
-  { name: 'mq:queue-head', color: colors.yellow, description: 'Current Hypermerge head for this repository' },
-  { name: 'mq:status', color: colors.purple, description: 'Pinned Hypermerge status issue' },
+  {
+    name: 'mq:queue-head',
+    color: colors.yellow,
+    description: 'Current Hypermerge head for this repository · Set: Hypermerge daemon',
+  },
+  {
+    name: 'mq:status',
+    color: colors.purple,
+    description: 'Pinned Hypermerge status issue · Set: Hypermerge daemon',
+  },
 ]
 
 /**
@@ -134,7 +237,7 @@ const mqPriorityLevels = [0, 1, 10, 20, 30, 100] as const
 const mqPriorityLabels: readonly LabelDef[] = mqPriorityLevels.map((n) => ({
   name: `mq:priority-${n}`,
   color: colors.green,
-  description: 'Hypermerge priority mirror',
+  description: 'Hypermerge priority mirror · Set: manual (via mq-cli)',
 }))
 
 // ============================================================================
@@ -142,10 +245,26 @@ const mqPriorityLabels: readonly LabelDef[] = mqPriorityLevels.map((n) => ({
 // ============================================================================
 
 const andonStateLabels: readonly LabelDef[] = [
-  { name: 'andon:firing', color: colors.red, description: 'Andon: actively impacting development right now' },
-  { name: 'andon:degraded', color: colors.orange, description: 'Andon: partial impact / workaround available' },
-  { name: 'andon:watching', color: colors.yellow, description: 'Andon: known concern, not yet impacting' },
-  { name: 'andon:claimed', color: colors.green, description: 'Andon: someone is actively triaging' },
+  {
+    name: 'andon:firing',
+    color: colors.red,
+    description: 'Andon: actively impacting development right now · Set: andon CLI',
+  },
+  {
+    name: 'andon:degraded',
+    color: colors.orange,
+    description: 'Andon: partial impact / workaround available · Set: andon CLI',
+  },
+  {
+    name: 'andon:watching',
+    color: colors.yellow,
+    description: 'Andon: known concern, not yet impacting · Set: andon CLI',
+  },
+  {
+    name: 'andon:claimed',
+    color: colors.green,
+    description: 'Andon: someone is actively triaging · Set: andon CLI',
+  },
 ]
 
 // ============================================================================
