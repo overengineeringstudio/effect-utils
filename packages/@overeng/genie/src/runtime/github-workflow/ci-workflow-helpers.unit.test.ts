@@ -204,14 +204,30 @@ describe('ci workflow pnpm cache defaults', () => {
     expect(installMegarepoStepSource).toContain(
       'MR_OUT=$(nix build --no-link --print-out-paths "$MR_REF")',
     )
-    expect(installMegarepoStepSource).toContain('printf \'%s\\n\' "$MR_BIN_DIR" >> "$GITHUB_PATH"')
+    expect(installMegarepoStepSource).toContain('${appendGitHubPathLine(\'"$MR_BIN_DIR"\')}')
     expect(installMegarepoStepSource).not.toContain('nix profile install')
   })
 
   it('only exports skipped megarepo members when the CI lane actually skips members', () => {
     expect(applyMegarepoLockStepSource).toContain('MEGAREPO_SKIP_MEMBERS')
     expect(applyMegarepoLockStepSource).toContain("skipCsv === ''")
-    expect(applyMegarepoLockStepSource).toContain(`printf 'MEGAREPO_SKIP_MEMBERS=%s\\n'`)
+    expect(applyMegarepoLockStepSource).toContain(
+      "appendGitHubEnvLine('MEGAREPO_SKIP_MEMBERS', quotedSkipCsv)",
+    )
+  })
+
+  it('keeps GitHub env/path printf newlines escaped in shared megarepo steps', () => {
+    expect(ciWorkflowSource).toContain('const appendGitHubPathLine = (valueExpression: string)')
+    expect(ciWorkflowSource).toContain('`printf \'%s\\\\n\' ${valueExpression} >> "$GITHUB_PATH"`')
+    expect(ciWorkflowSource).toContain(
+      '`printf \'${name}=%s\\\\n\' ${valueExpression} >> "$GITHUB_ENV"`',
+    )
+    expect(installMegarepoStepSource).not.toContain("printf '%s\n'")
+    expect(applyMegarepoLockStepSource).not.toContain("printf 'MEGAREPO_STORE=%s\n'")
+    expect(applyMegarepoLockStepSource).not.toContain("printf 'MEGAREPO_SKIP_MEMBERS=%s\n'")
+    expect(generatedCiWorkflowYamlSource).not.toContain("printf '%s\n")
+    expect(generatedCiWorkflowYamlSource).not.toContain("printf 'MEGAREPO_STORE=%s\n")
+    expect(generatedCiWorkflowYamlSource).not.toContain("printf 'MEGAREPO_SKIP_MEMBERS=%s\n")
   })
 
   it('passes skipped megarepo members as one comma-separated CLI option', () => {
@@ -383,14 +399,18 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('export type DevenvPerfProbe')
     expect(ciWorkflowSource).toContain('export type DevenvPerfTaskProbe')
     expect(ciWorkflowSource).toContain('export const nixClosureMeasurementStep')
+    expect(ciWorkflowSource).toContain('export const nixClosureMeasurementSteps')
+    expect(ciWorkflowSource).toContain('export const nixClosureMeasurementsJob')
+    expect(ciWorkflowSource).toContain('export const defaultNixClosureMeasurementBuckets')
     expect(ciWorkflowSource).toContain('export type NixClosureMeasurementBucket')
+    expect(ciWorkflowSource).toContain('export type NixClosureMeasurementTarget')
   })
 
   it('emits the standard warm shell and task-list probes with native trace artifacts', () => {
     expect(generatedCiWorkflowYamlSource).toContain('devenv-perf:')
     expect(generatedCiWorkflowYamlSource).toContain('OTEL_SERVICE_NAME: devenv-perf-ci')
     expect(generatedCiWorkflowYamlSource).toContain(
-      "measure 'shell_eval_traced' 'Shell eval with OTEL trace' 'devenv shell' 'Evaluates the dev shell with native devenv JSON tracing enabled.' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '1'",
+      "measure 'shell_eval_traced' 'Shell eval with OTEL trace' 'devenv shell' 'Evaluates the dev shell with native devenv JSON tracing enabled.' '$ARTIFACT_DIR/traces/shell_eval_traced.json' '0' '1'",
     )
     expect(generatedCiWorkflowYamlSource).toContain('--trace-to')
     expect(generatedCiWorkflowYamlSource).toContain('json:file:$trace_file')
@@ -398,7 +418,7 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain("measure 'shell_eval_warm' 'Warm shell eval'")
     expect(generatedCiWorkflowYamlSource).toContain("measure 'tasks_list' 'devenv tasks list'")
     expect(generatedCiWorkflowYamlSource).toContain(
-      "'Loads the devenv processes command help path.' '' '5'",
+      "'Loads the devenv processes command help path.' '' '1' '9'",
     )
   })
 
@@ -415,17 +435,32 @@ describe('ci workflow devenv perf helpers', () => {
     expect(generatedCiWorkflowYamlSource).toContain('probeLabel: .label')
     expect(generatedCiWorkflowYamlSource).toContain('sampleCount: (.statistics.sampleCount // 1)')
     expect(generatedCiWorkflowYamlSource).toContain('baselineSources')
-    expect(generatedCiWorkflowYamlSource).toContain('low_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('low_baseline_count')
+    expect(generatedCiWorkflowYamlSource).toContain('low_current_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('low_paired_sample_count')
+    expect(generatedCiWorkflowYamlSource).toContain('readiness:$readiness')
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'enforceable: (.enabledCount == .gateableCount)',
+    )
     expect(generatedCiWorkflowYamlSource).toContain('within_baseline_range')
     expect(generatedCiWorkflowYamlSource).toContain(
-      'elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"',
+      'elif $needsHistoricalBaselineCount and $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"',
     )
     expect(generatedCiWorkflowYamlSource).toContain(
-      'if $confidence == "threshold_exceeded" then $thresholdStatus',
+      'elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"',
     )
-    expect(ciWorkflowSource).toContain(
-      "if (row.confidence === 'low_sample_count') return 'gray needs repeat'",
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus',
     )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'elif ($canUseRobustBandSuppression and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"',
+    )
+    expect(ciWorkflowSource).toContain("label: 'Needs more baseline'")
+    expect(ciWorkflowSource).toContain("label: 'Needs repeat'")
+    expect(ciWorkflowSource).toContain("label: 'Needs paired evidence'")
+    expect(ciWorkflowSource).toContain("label: 'Too small to matter'")
+    expect(ciWorkflowSource).toContain("label: 'Within noise band'")
+    expect(ciWorkflowSource).toContain("label: 'Meaningfully lower'")
     expect(generatedCiWorkflowYamlSource).toContain('RUNNER_CLASS:')
     expect(generatedCiWorkflowYamlSource).toContain('namespace-profile-linux-x86-64')
     expect(ciWorkflowSource).toContain('nix.closure.nar_size')
@@ -434,38 +469,123 @@ describe('ci workflow devenv perf helpers', () => {
     expect(ciWorkflowSource).toContain('artifact_file=${artifactFileAssignment}')
     expect(ciWorkflowSource).not.toContain('artifact_file=${shellSingleQuote(artifactFile)}')
     expect(ciWorkflowSource).toContain(
-      'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, system: $targetSystem }',
+      'target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem }',
     )
-    expect(ciWorkflowSource).toContain('nix path-info --recursive --json "$out_path"')
     expect(ciWorkflowSource).toContain(
       'topPaths: ($closurePaths | sort_by(.narSize) | reverse | .[:30])',
     )
     expect(generatedCiWorkflowYamlSource).not.toContain('dev3')
-    expect(generatedCiWorkflowYamlSource).toContain('perf-comparison.json')
-    expect(generatedCiWorkflowYamlSource).toContain('DEVENV_PERF_REGRESSION_MODE')
+    expect(generatedCiWorkflowYamlSource).not.toContain('perf-comparison.json')
+    expect(generatedCiWorkflowYamlSource).not.toContain('DEVENV_PERF_REGRESSION_MODE')
+    expect(generatedCiWorkflowYamlSource).toContain('devenv-perf-warm-median-v2')
     expect(generatedCiWorkflowYamlSource).toContain("CI_MEASUREMENT_PR_COMMENT_ENABLED: 'true'")
     expect(generatedCiWorkflowYamlSource).toContain(
-      'CI_MEASUREMENT_PR_COMMENT_TITLE: Devenv Performance',
+      'CI_MEASUREMENT_PR_COMMENT_TITLE: CI Measurements',
     )
-    expect(generatedCiWorkflowYamlSource).toContain("BASELINE_SEED_RUN_IDS: '25710204667'")
+    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_SEED_RUNS_JSON:')
+    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_REQUIRED_OBSERVATIONS_JSON:')
+    expect(generatedCiWorkflowYamlSource).toContain('BASELINE_MAX_CANDIDATE_RUNS:')
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'task_check_quick_warm'")
+    expect(generatedCiWorkflowYamlSource).toContain("measure 'task_check_quick_forced'")
+    expect(generatedCiWorkflowYamlSource).not.toContain('"id":"devenv.task_check_quick.duration"')
+    expect(ciWorkflowSource).toContain(
+      'requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]',
+    )
+    expect(ciWorkflowSource).toContain('baselineMaxCandidateRuns?: number')
+    expect(ciWorkflowSource).toContain('baseline_requirements_satisfied')
+    expect(ciWorkflowSource).toContain('observationCounts: ($observationCounts[0] // null)')
+    expect(generatedCiWorkflowYamlSource).toContain('"runId":"26085158592"')
+    expect(generatedCiWorkflowYamlSource).toContain('"label":"main baseline"')
     expect(generatedCiWorkflowYamlSource).toContain('Upload devenv perf artifacts')
-    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 30')
+    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 7')
+    expect(generatedCiWorkflowYamlSource).toContain('retention-days: 14')
     expect(ciWorkflowSource).toContain("contents: 'write'")
+    expect(ciWorkflowSource).toContain('seedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('seedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).toContain('baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]')
     expect(ciWorkflowSource).toContain('baselineSeedRunIds?: readonly string[]')
+    expect(ciWorkflowSource).not.toContain('measurement_pr_number:')
+    expect(ciWorkflowSource).not.toContain('CI_MEASUREMENT_PR_COMMENT_PR_NUMBER')
+    expect(ciWorkflowSource).toContain(
+      'CI measurement PR comments are produced only by pull_request workflows',
+    )
+    expect(ciWorkflowSource).toContain('unable to publish required CI measurement PR comment')
+    expect(ciWorkflowSource).toContain('seedRuns: ($seedRuns[0] // [])')
     expect(ciWorkflowSource).toContain('baselineProvenance: ($baselineProvenance[0] // null)')
     expect(ciWorkflowSource).toContain(
-      '["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount"] | index($key) | not',
+      '["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount", "measuredSampleCount"] | index($key) | not',
     )
     expect(ciWorkflowSource).toContain('chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"')
     expect(ciWorkflowSource).toContain(
-      'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.',
+      'chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"',
     )
+    expect(ciWorkflowSource).toContain(
+      'chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"',
+    )
+    expect(ciWorkflowSource).toContain(
+      'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.',
+    )
+    expect(generatedCiWorkflowYamlSource).toContain(
+      'github.workflow }}-${{ github.event_name }}-${{ github.ref }}',
+    )
+    expect(generatedCiWorkflowYamlSource).not.toMatch(/^concurrency:/m)
+    expect(generatedCiWorkflowYamlSource).toContain('concurrency:\n      group:')
+    expect(generatedCiWorkflowYamlSource).toContain('}}-typecheck')
+    expect(ciWorkflowSource).toContain('export const ciJobConcurrency = (jobId: string, opts?:')
+    expect(ciWorkflowSource).toContain("opts?.matrix === true ? '-${{ strategy.job-index }}' : ''")
+    expect(ciWorkflowSource).toContain('const isMatrixJob = (job: GitHubWorkflowArgs')
+    expect(generatedCiWorkflowYamlSource).toContain('}}-test-${{ strategy.job-index }}')
+    expect(generatedCiWorkflowYamlSource).toContain('}}-nix-check-${{ strategy.job-index }}')
+    expect(generatedCiWorkflowYamlSource).toContain("format('measurement-baseline-{0}'")
+    expect(generatedCiWorkflowYamlSource).not.toContain("format('measurement-pr-{0}-run-{1}'")
+    expect(generatedCiWorkflowYamlSource).not.toContain('inputs.measurement_pr_number')
+    expect(generatedCiWorkflowYamlSource).toContain("format('manual-run-{0}', github.run_id)")
+    expect(generatedCiWorkflowYamlSource).toContain("format('label-{0}', github.event.label.name)")
+    expect(generatedCiWorkflowYamlSource).toContain(
+      "inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request'",
+    )
+    expect(ciWorkflowSource).toContain(
+      '| What changed? | Group | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+    )
+    expect(ciWorkflowSource).toContain('const semanticGroupLabel = (row) =>')
+    expect(ciWorkflowSource).toContain('groupedScanTables(visibleNonZeroImpactRows)')
+    expect(ciWorkflowSource).toContain(
+      'const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)',
+    )
+    expect(ciWorkflowSource).toContain('<summary>Unchanged / 0-impact measurements (')
+    expect(ciWorkflowSource).toContain('<summary>Source-of-truth JSON</summary>')
+    expect(ciWorkflowSource).toContain('const sourceOfTruth = {')
+    expect(ciWorkflowSource).toContain('No non-zero actionable measurement impact detected.')
+    expect(ciWorkflowSource).toContain('readiness <code>')
     expect(ciWorkflowSource).toContain('renderPerfChangeSvg')
-    expect(ciWorkflowSource).toContain('Perf change vs baseline (%)')
-    expect(ciWorkflowSource).toContain('![Perf change vs baseline chart]')
+    expect(ciWorkflowSource).toContain('Actionable measurement impact')
+    expect(ciWorkflowSource).toContain(
+      '0 means no actionable PR impact; 1x reaches the warning budget.',
+    )
+    expect(ciWorkflowSource).toContain('@media (prefers-color-scheme: dark)')
+    expect(ciWorkflowSource).toContain('.chart-bg { fill: #0d1117; }')
+    expect(ciWorkflowSource).toContain('<picture>')
+    expect(ciWorkflowSource).toContain('<source media="(prefers-color-scheme: dark)"')
+    expect(ciWorkflowSource).toContain('[SVG source]')
+    expect(ciWorkflowSource).toContain('ensure_ci_measurement_tool resvg resvg')
+    expect(ciWorkflowSource).toContain('nixpkgs#dejavu_fonts')
+    expect(ciWorkflowSource).toContain('DejaVu Sans')
     expect(ciWorkflowSource).toContain('https://raw.githubusercontent.com')
-    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_path"')
+    expect(ciWorkflowSource).toContain('repo_private="$(gh api "repos/$repo"')
+    expect(ciWorkflowSource).toContain('if [ "$repo_private" = "true" ]; then')
+    expect(ciWorkflowSource).toContain('CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND')
+    expect(ciWorkflowSource).toContain('bash -c "$public_asset_command" _ "$chart_png_file" png')
+    expect(ciWorkflowSource).toContain(
+      'bash -c "$public_asset_command" _ "$chart_dark_png_file" png',
+    )
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_svg_path"')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_png_path"')
+    expect(ciWorkflowSource).toContain('gh api "repos/$repo/contents/$asset_dark_png_path"')
     expect(ciWorkflowSource).toContain('base64 <"$chart_file" | tr -d \'\\n\'')
+    expect(ciWorkflowSource).toContain('base64 <"$chart_png_file" | tr -d \'\\n\'')
+    expect(ciWorkflowSource).toContain(
+      'nix path-info --recursive --closure-size --json "$out_path"',
+    )
+    expect(ciWorkflowSource).toContain('nix.closure.serialized_nar_size')
   })
 })

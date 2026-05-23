@@ -49,30 +49,121 @@ export const standardCIEnv = {
 } as const
 
 /**
- * Cancel superseded CI workflow runs for the same PR or branch.
+ * Cancel superseded CI jobs for the same event, ref, and job id.
  *
- * The group key intentionally does not include the job name so a new push
- * cancels the entire older workflow run rather than letting stale sibling jobs
- * continue consuming runner capacity.
+ * This is intentionally job-level, not workflow-level. GitHub can wedge
+ * workflow_dispatch runs before job creation; when that happens, the run has no
+ * check runs, no logs, and the API may return 500 for cancellation. Keeping
+ * concurrency at job level lets workflow evaluation materialize visible jobs
+ * before any scarce-runner throttling applies.
+ *
+ * Code validation is a branch-protection signal for the latest PR head. Keeping
+ * older code-triggered pull_request jobs alive can consume scarce runners after
+ * a newer head exists, so jobs with the same id still cancel superseded work.
+ *
+ * Measurement baseline backfills are keyed by their subject ref and do not
+ * cancel in-progress runs so several historical refs can be backfilled without
+ * canceling each other.
+ *
+ * Manual dispatches are intentionally keyed by run id. They are operator probes
+ * and baseline/debug tools, not the authoritative PR-comment path.
+ *
+ * Merge-queue label churn is different: only the mq:ci-admitted label event is
+ * allowed to materialize full PR CI. Other label events do not change the
+ * commit under test and must not cancel an already-running validation run.
  */
+type CiConcurrencyOptions = {
+  readonly matrix?: boolean
+  readonly measurementBaselineBackfill?: boolean
+}
+
+const ciConcurrencyScope = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>) =>
+  opts?.measurementBaselineBackfill === true
+    ? "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}"
+    : "${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code') }}"
+
+const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>) =>
+  opts?.measurementBaselineBackfill === true
+    ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
+    : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+
+export const ciJobConcurrency = (jobId: string, opts?: CiConcurrencyOptions) =>
+  ({
+    group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-" +
+      ciConcurrencyScope(opts) +
+      `-${jobId}` +
+      (opts?.matrix === true ? '-${{ strategy.job-index }}' : ''),
+    'cancel-in-progress': ciCancelInProgress(opts),
+  }) as const
+
+const isMatrixJob = (job: GitHubWorkflowArgs['jobs'][string]) =>
+  typeof job.strategy === 'object' && job.strategy !== null && 'matrix' in job.strategy
+
+const workflowDispatchBaselineRefInput = {
+  description:
+    'Optional ref/SHA to checkout before running CI measurement jobs. Used to backfill comparable baseline artifacts.',
+  required: false,
+  default: '',
+  type: 'string',
+} as const
+
+const withJobConcurrencyDispatchInputs = (on: GitHubWorkflowArgs['on']): GitHubWorkflowArgs['on'] => {
+  if (typeof on !== 'object' || on === null || !('workflow_dispatch' in on) || on.workflow_dispatch === null) {
+    return on
+  }
+
+  return {
+    ...on,
+    workflow_dispatch: {
+      ...on.workflow_dispatch,
+      inputs: {
+        measurement_baseline_ref: workflowDispatchBaselineRefInput,
+        ...on.workflow_dispatch.inputs,
+      },
+    },
+  }
+}
+
+const supportsMeasurementBaselineBackfill = (on: GitHubWorkflowArgs['on']) =>
+  typeof on === 'object' && on !== null && 'workflow_dispatch' in on && on.workflow_dispatch !== null
+
+const withDefaultJobConcurrency = (
+  jobs: GitHubWorkflowArgs['jobs'],
+  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill'>,
+): GitHubWorkflowArgs['jobs'] =>
+  Object.fromEntries(
+    Object.entries(jobs).map(([jobId, job]) => [
+      jobId,
+      job.concurrency === undefined
+        ? { ...job, concurrency: ciJobConcurrency(jobId, { ...opts, matrix: isMatrixJob(job) }) }
+        : job,
+    ]),
+  )
+
 export const ciWorkflowConcurrency = {
-  group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
-  'cancel-in-progress': true,
+  group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-" + ciConcurrencyScope(),
+  'cancel-in-progress': ciCancelInProgress(),
 } as const
 
 /**
  * Standard wrapper for composed CI workflows.
  *
- * This keeps cancellation policy centralized in `effect-utils` instead of
- * making each consumer remember to wire `concurrency` by hand. Repos can still
- * override the policy by passing an explicit `concurrency` field.
+ * This keeps cancellation policy centralized in `effect-utils`. Repos can still
+ * override the workflow-level policy by passing an explicit `concurrency`
+ * field, and individual jobs can opt out or provide their own `concurrency`.
  */
 export const ciWorkflow = (args: GitHubWorkflowArgs) =>
-  (({ concurrency, actionlint, ...rest }) =>
+  (({ concurrency, actionlint, jobs, on, ...rest }) =>
     githubWorkflow({
-      concurrency: concurrency ?? ciWorkflowConcurrency,
-      actionlint: actionlint ?? defaultActionlintConfig,
       ...rest,
+      on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
+      ...(concurrency === undefined ? {} : { concurrency }),
+      actionlint: actionlint ?? defaultActionlintConfig,
+      jobs: concurrency === undefined
+        ? withDefaultJobConcurrency(jobs, {
+          measurementBaselineBackfill: supportsMeasurementBaselineBackfill(on),
+        })
+        : jobs,
     }))(args)
 
 export type NixConfigOptions = {
@@ -230,7 +321,7 @@ run_nix_gc_race_retry() {
   local max="${dollar}{NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${dollar}{CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local attempt=1
-  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature had_errexit
+  local log rc path start now elapsed hb_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature had_errexit
 
   start="$(date +%s)"
 
@@ -278,7 +369,7 @@ run_nix_gc_race_retry() {
     if [ "$rc" -eq 0 ]; then
       echo "::notice::[ci] completed $task in $elapsed s"
       if [ "$attempt" -gt 1 ]; then
-        write_summary success "Recovered from Nix GC race after retry"
+        write_summary success "Recovered from transient Nix failure after retry"
       else
         write_summary success
       fi
@@ -294,18 +385,22 @@ run_nix_gc_race_retry() {
       tr -d '[:space:]' || true)
     saw_invalid_path=false
     saw_cachix_signature=false
+    saw_fetch_signature=false
     [ -n "$path" ] && saw_invalid_path=true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*Failed to convert config\.cachix to JSON' && saw_cachix_signature=true || true
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*.*while evaluating the option.*cachix\.package' && saw_cachix_signature=true || true
+    printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot read file from tarball:[[:space:]]*Truncated tar archive detected while reading data' && saw_fetch_signature=true || true
     rm -f "$log"
 
-    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ]; then
-      echo "::warning::[ci] $task failed after $elapsed s without a detected Nix store validity race"
-      write_summary failure "No Nix GC race signature detected"
+    if [ "$saw_invalid_path" != true ] && [ "$saw_cachix_signature" != true ] && [ "$saw_fetch_signature" != true ]; then
+      echo "::warning::[ci] $task failed after $elapsed s without a detected transient Nix failure"
+      write_summary failure "No transient Nix failure signature detected"
       return "$rc"
     fi
 
-    if [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
+    if [ "$saw_fetch_signature" = true ]; then
+      echo "::warning::Nix source fetch corruption detected for $task (attempt $attempt/$max); retrying with a refreshed eval cache"
+    elif [ "$saw_cachix_signature" = true ] && [ -n "$path" ]; then
       echo "::warning::Nix store validity race detected for $task via cachix eval wrapper (attempt $attempt/$max): $path"
     elif [ "$saw_cachix_signature" = true ]; then
       echo "::warning::Nix store validity race detected for $task via cachix eval wrapper without extracted store path (attempt $attempt/$max)"
@@ -320,8 +415,8 @@ run_nix_gc_race_retry() {
 
   now=$(date +%s)
   elapsed=$((now - start))
-  echo "::error::Nix GC race retry exhausted for $task ($max attempts)"
-  write_summary failure "Nix GC race retry exhausted"
+  echo "::error::Transient Nix retry exhausted for $task ($max attempts)"
+  write_summary failure "Transient Nix retry exhausted"
   return 1
 }`
 

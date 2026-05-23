@@ -17,23 +17,116 @@ export type CiMeasurementDescriptor = {
   readonly id: string
   readonly label: string
   readonly group?: string
+  readonly path?: readonly string[]
   readonly description?: string
+  readonly dimensions?: Record<string, string | number | boolean | null>
+}
+
+export type CiMeasurementGatePolicy = {
+  readonly enabled?: boolean
+  readonly comparisonMode?: 'budget' | 'historical' | 'paired'
+  readonly minBaselineSources?: number
+  readonly minCurrentSamples?: number
+  readonly minPairedSamples?: number
+  readonly noiseFloor?: number
+  readonly statisticalToleranceRatio?: number
+  readonly statisticalToleranceAbs?: number
+  readonly pairedEvidenceQuantile?: number
+  readonly warnRatio?: number
+  readonly failRatio?: number
+  readonly warnAbs?: number
+  readonly failAbs?: number
 }
 
 export type DevenvPerfProbe = CiMeasurementDescriptor & {
   readonly command: readonly [string, ...string[]]
   readonly traceOutput?: string
+  readonly warmupRepetitions?: number
   readonly repetitions?: number
+  readonly gate?: CiMeasurementGatePolicy
 }
 
 export type CiMeasurementObservation = {
   readonly id?: string
   readonly label?: string
   readonly group?: string
+  readonly path?: readonly string[]
+  readonly description?: string
+  readonly measurementKind?: 'deterministic' | 'wall-clock' | 'diagnostic' | (string & {})
   readonly name: string
-  readonly unit: string
+  readonly unit: CiMeasurementUnit
   readonly value: number
   readonly dimensions?: Record<string, string | number | boolean | null>
+  readonly policy?: CiMeasurementGatePolicy
+  readonly comparison?: {
+    readonly mode?: 'budget' | 'historical' | 'paired' | (string & {})
+    readonly baseline?: number
+    readonly pairedSampleCount?: number
+  }
+  readonly statistics?: {
+    readonly sampleCount?: number
+    readonly measuredSampleCount?: number
+    readonly min?: number
+    readonly max?: number
+    readonly median?: number
+    readonly p25?: number
+    readonly p75?: number
+    readonly p95?: number
+    readonly pairedSampleCount?: number
+    readonly pairedBaselineMedian?: number
+    readonly pairedCurrentMedian?: number
+    readonly pairedDeltaMedian?: number
+    readonly pairedDeltaMin?: number
+    readonly pairedDeltaMax?: number
+    readonly pairedDeltaP25?: number
+    readonly pairedDeltaP75?: number
+    readonly pairedDeltaMad?: number
+    readonly pairedDeltaSamples?: readonly number[]
+  }
+}
+
+export type CiMeasurementUnit =
+  | 'seconds'
+  | 'milliseconds'
+  | 'bytes'
+  | 'count'
+  | 'lines'
+  | 'score'
+  | 'ratio'
+  | 'percent'
+  | (string & {})
+
+export type CiMeasurementTarget = {
+  readonly kind: string
+  readonly id: string
+  readonly name?: string
+  readonly label?: string
+  readonly group?: string
+  readonly path?: readonly string[]
+  readonly system?: string
+}
+
+export type CiMeasurementArtifact = {
+  readonly schemaVersion: number
+  readonly generatedAt: string
+  readonly producer: {
+    readonly name: string
+    readonly version: number
+    readonly measurementProtocol: string
+  }
+  readonly subject?: {
+    readonly ref?: string
+    readonly sha?: string
+    readonly label?: string
+  }
+  readonly target: CiMeasurementTarget
+  readonly observations: readonly CiMeasurementObservation[]
+  readonly attachments?: readonly {
+    readonly name: string
+    readonly path: string
+    readonly contentType?: string
+  }[]
+  readonly summary?: unknown
 }
 
 export const ciMeasurementMetrics = {
@@ -41,7 +134,13 @@ export const ciMeasurementMetrics = {
   nixClosureNarSize: 'nix.closure.nar_size',
   nixClosurePathCount: 'nix.closure.path_count',
   nixClosureBucketNarSize: 'nix.closure.bucket.nar_size',
+  sourceLines: 'source.lines',
+  sourceFiles: 'source.files',
+  codeComplexity: 'code.complexity',
 } as const
+
+export const ciMeasurementProducerArtifactRetentionDays = 7
+export const ciMeasurementReportArtifactRetentionDays = 14
 
 export type NixClosureMeasurementBucket = {
   readonly name: string
@@ -55,10 +154,71 @@ export type NixClosureMeasurementStepOptions = {
   readonly targetName?: string
   readonly targetLabel?: string
   readonly targetGroup?: string
+  readonly targetPath?: readonly string[]
+  readonly targetDescription?: string
   readonly targetSystem?: string
   readonly artifactDir?: string
   readonly artifactFile?: string
   readonly buckets?: readonly NixClosureMeasurementBucket[]
+  readonly gate?: CiMeasurementGatePolicy
+}
+
+export type NixClosureMeasurementTarget = {
+  readonly installable: string
+  readonly id: string
+  readonly name?: string
+  readonly label: string
+  readonly group: string
+  readonly path?: readonly string[]
+  readonly description: string
+  readonly system?: string
+  readonly buckets?: readonly NixClosureMeasurementBucket[]
+  readonly gate?: CiMeasurementGatePolicy
+}
+
+export type NixClosureMeasurementsStepsOptions = {
+  readonly artifactDir?: string
+  readonly artifactName: string
+  readonly baselineArtifactName?: string
+  readonly baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]
+  readonly baselineSeedRunIds?: readonly string[]
+  readonly baselineMaxRuns?: number
+  readonly baselineMaxCandidateRuns?: number
+  readonly targets: readonly [NixClosureMeasurementTarget, ...NixClosureMeasurementTarget[]]
+  readonly buckets?: readonly NixClosureMeasurementBucket[]
+  readonly retentionDays?: number
+  readonly compare?: boolean
+  readonly regressionMode?: 'off' | 'warn' | 'fail'
+  readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
+}
+
+export type NixClosureMeasurementsJobOptions = NixClosureMeasurementsStepsOptions & {
+  readonly runsOn?: readonly string[]
+  readonly setupSteps?: readonly GitHubWorkflowArgs['jobs'][string]['steps'][number][]
+  readonly ifExpr?: string
+  readonly timeoutMinutes?: number
+  readonly env?: Record<string, string>
+  readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
+}
+
+export type SourceShapeMeasurementScope = CiMeasurementDescriptor & {
+  readonly root?: string
+  readonly includePaths?: readonly string[]
+  readonly excludePaths?: readonly string[]
+  readonly includeExtensions?: readonly string[]
+  readonly gate?: CiMeasurementGatePolicy
+}
+
+export type SourceShapeMeasurementStepOptions = {
+  readonly targetId?: string
+  readonly targetName?: string
+  readonly targetLabel?: string
+  readonly targetGroup?: string
+  readonly targetPath?: readonly string[]
+  readonly targetSystem?: string
+  readonly artifactDir?: string
+  readonly artifactFile?: string
+  readonly scopes: readonly [SourceShapeMeasurementScope, ...SourceShapeMeasurementScope[]]
 }
 
 export type GitHubPreviousArtifactStepOptions = {
@@ -66,9 +226,27 @@ export type GitHubPreviousArtifactStepOptions = {
   readonly outputDir: string
   readonly workflowName?: string
   readonly branch?: string
+  readonly seedRuns?: readonly CiMeasurementBaselineSeedRun[]
   readonly seedRunIds?: readonly string[]
   readonly maxRuns?: number
+  readonly maxCandidateRuns?: number
+  readonly downloadTimeoutSeconds?: number
+  readonly requiredObservations?: readonly CiMeasurementRequiredBaselineObservation[]
   readonly tokenExpression?: string
+}
+
+export type CiMeasurementBaselineSeedRun = {
+  readonly runId: string
+  readonly label?: string
+  readonly sha?: string
+  readonly source?: 'manual-backfill' | 'main-history' | 'pr-history' | string
+  readonly artifacts?: readonly string[]
+  readonly notes?: string
+}
+
+export type CiMeasurementRequiredBaselineObservation = {
+  readonly id: string
+  readonly minSources: number
 }
 
 export type CiMeasurementsComparisonStepOptions = {
@@ -82,6 +260,8 @@ export type CiMeasurementsComparisonStepOptions = {
     readonly maxRows?: number
     readonly maxHistory?: number
     readonly assetBranch?: string
+    readonly publicAssetCommand?: string
+    readonly publicAssetEnv?: Readonly<Record<string, string>>
     readonly tokenExpression?: string
   }
 }
@@ -94,9 +274,60 @@ export type CiMeasurementsArtifactStepOptions = {
 
 /** Job-level permissions required when CI measurement comparison posts PR comments. */
 export const ciMeasurementsCommentPermissions = {
+  actions: 'read',
   contents: 'write',
   issues: 'write',
   'pull-requests': 'write',
+} as const
+
+/** Workflow-dispatch inputs used to recreate measurement baselines for older commits. */
+export const ciMeasurementBaselineWorkflowDispatchInputs = {
+  measurement_baseline_ref: {
+    description:
+      'Optional ref/SHA to checkout before running CI measurement jobs. Used to backfill comparable baseline artifacts.',
+    required: false,
+    default: '',
+    type: 'string',
+  },
+  measurement_baseline_label: {
+    description:
+      'Optional human label for a measurement baseline backfill run, for example PR number.',
+    required: false,
+    default: '',
+    type: 'string',
+  },
+} as const
+
+export const ciMeasurementBaselineBackfillPredicate =
+  "github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != ''" as const
+export const ciMeasurementNotBaselineBackfillPredicate =
+  `!(${ciMeasurementBaselineBackfillPredicate})` as const
+
+export const defaultNixClosureMeasurementBuckets = [
+  { name: 'node', label: 'Node / pnpm', pathRegex: 'node_modules|npm-deps|pnpm' },
+  { name: 'nix-sources', label: 'Nix sources', pathRegex: '-source$' },
+  { name: 'rust', label: 'Rust', pathRegex: 'cargo|rust|rustc' },
+] as const satisfies readonly NixClosureMeasurementBucket[]
+
+/** Conditional checkout step that replaces the default checkout with the baseline subject. */
+export const ciMeasurementBaselineCheckoutStep = {
+  name: 'Checkout CI measurement baseline ref',
+  if: `\${{ ${ciMeasurementBaselineBackfillPredicate} }}`,
+  uses: 'actions/checkout@v6',
+  with: {
+    ref: '${{ inputs.measurement_baseline_ref }}',
+  },
+} as const
+
+/** Subject metadata env for measurement artifacts produced by a baseline backfill run. */
+export const ciMeasurementSubjectEnv = {
+  CI_MEASUREMENT_SUBJECT_REF:
+    '${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}',
+  CI_MEASUREMENT_SUBJECT_SHA:
+    '${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}',
+  CI_MEASUREMENT_SUBJECT_LABEL: '${{ inputs.measurement_baseline_label }}',
+  CI_MEASUREMENT_ALLOW_PROBE_FAILURES:
+    "${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}",
 } as const
 
 type DevenvPerfSetupStep = GitHubWorkflowArgs['jobs'][string]['steps'][number]
@@ -108,7 +339,12 @@ export type DevenvPerfTaskProbe =
       readonly label?: string
       readonly group?: string
       readonly description?: string
+      readonly path?: readonly string[]
+      readonly dimensions?: Record<string, string | number | boolean | null>
+      readonly extraArgs?: readonly string[]
+      readonly warmupRepetitions?: number
       readonly repetitions?: number
+      readonly gate?: CiMeasurementGatePolicy
     }
 
 export type DevenvPerfJobOptions = {
@@ -116,23 +352,105 @@ export type DevenvPerfJobOptions = {
   readonly artifactDir?: string
   readonly artifactName?: string
   readonly baselineArtifactName?: string
+  readonly baselineSeedRuns?: readonly CiMeasurementBaselineSeedRun[]
   readonly baselineSeedRunIds?: readonly string[]
   readonly baselineMaxRuns?: number
+  readonly baselineMaxCandidateRuns?: number
   readonly setupSteps?: readonly DevenvPerfSetupStep[]
   readonly env?: Record<string, string>
   readonly taskProbes?: readonly DevenvPerfTaskProbe[]
   readonly probes?: readonly DevenvPerfProbe[]
   readonly retentionDays?: number
+  readonly compare?: boolean
   readonly regressionMode?: 'off' | 'warn' | 'fail'
   readonly prComment?: CiMeasurementsComparisonStepOptions['prComment']
   readonly permissions?: GitHubWorkflowArgs['jobs'][string]['permissions']
 }
 
+const defaultDevenvPerfGatePolicy = (probeId: string): CiMeasurementGatePolicy => {
+  if (probeId === 'shell_eval_traced') {
+    return {
+      enabled: false,
+      minBaselineSources: 10,
+      minCurrentSamples: 3,
+      warnRatio: 1.25,
+      failRatio: 1.5,
+      warnAbs: 1.5,
+      failAbs: 3,
+      noiseFloor: 0.5,
+      statisticalToleranceRatio: 0.2,
+      statisticalToleranceAbs: 1,
+    }
+  }
+  if (probeId === 'tasks_list' || probeId === 'processes_help') {
+    return {
+      enabled: true,
+      comparisonMode: 'paired',
+      minPairedSamples: 7,
+      minBaselineSources: 10,
+      minCurrentSamples: 5,
+      warnRatio: 1.25,
+      failRatio: 1.5,
+      warnAbs: 0.05,
+      failAbs: 0.15,
+      noiseFloor: 0.03,
+      statisticalToleranceRatio: 0.1,
+      statisticalToleranceAbs: 0.03,
+    }
+  }
+  if (probeId === 'task_check_quick_forced') {
+    return {
+      enabled: true,
+      comparisonMode: 'paired',
+      minPairedSamples: 3,
+      minBaselineSources: 10,
+      minCurrentSamples: 3,
+      warnRatio: 1.15,
+      failRatio: 1.3,
+      warnAbs: 1.5,
+      failAbs: 4,
+      noiseFloor: 0.75,
+      statisticalToleranceRatio: 0.15,
+      statisticalToleranceAbs: 1,
+    }
+  }
+  return {
+    enabled: true,
+    comparisonMode: 'paired',
+    minPairedSamples: 5,
+    minBaselineSources: 10,
+    minCurrentSamples: 5,
+    warnRatio: 1.1,
+    failRatio: 1.2,
+    warnAbs: 0.25,
+    failAbs: 1,
+    noiseFloor: 0.1,
+    statisticalToleranceRatio: 0.1,
+    statisticalToleranceAbs: 0.25,
+  }
+}
+
+const devenvPerfGatePolicy = (probe: Pick<DevenvPerfProbe, 'id' | 'gate'>) => ({
+  ...defaultDevenvPerfGatePolicy(probe.id),
+  ...probe.gate,
+})
+
 const devenvPerfProbeLine = (probe: DevenvPerfProbe) => {
   const args = probe.command.map(shellSingleQuote).join(' ')
   const trace = probe.traceOutput ?? ''
-  const repetitions = Math.max(1, Math.floor(probe.repetitions ?? 1))
-  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(repetitions))} ${args}`
+  const gatePolicy = devenvPerfGatePolicy(probe)
+  const metadata = JSON.stringify({
+    path: probe.path ?? [],
+    dimensions: probe.dimensions ?? {},
+  })
+  const defaultRepetitions = gatePolicy.enabled ? gatePolicy.minCurrentSamples : 1
+  const repetitions = Math.max(1, Math.floor(probe.repetitions ?? defaultRepetitions))
+  const defaultWarmupRepetitions = gatePolicy.enabled && repetitions > 1 ? 1 : 0
+  const warmupRepetitions = Math.max(
+    0,
+    Math.floor(probe.warmupRepetitions ?? defaultWarmupRepetitions),
+  )
+  return `measure ${shellSingleQuote(probe.id)} ${shellSingleQuote(probe.label)} ${shellSingleQuote(probe.group ?? '')} ${shellSingleQuote(probe.description ?? '')} ${shellSingleQuote(trace)} ${shellSingleQuote(String(warmupRepetitions))} ${shellSingleQuote(String(repetitions))} ${shellSingleQuote(JSON.stringify(gatePolicy))} ${shellSingleQuote(metadata)} ${args}`
 }
 
 const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe => {
@@ -141,66 +459,173 @@ const defaultDevenvPerfTaskProbe = (probe: DevenvPerfTaskProbe): DevenvPerfProbe
   const label = typeof probe === 'string' ? undefined : probe.label
   const group = typeof probe === 'string' ? undefined : probe.group
   const description = typeof probe === 'string' ? undefined : probe.description
+  const path = typeof probe === 'string' ? undefined : probe.path
+  const dimensions = typeof probe === 'string' ? undefined : probe.dimensions
+  const extraArgs = typeof probe === 'string' ? [] : (probe.extraArgs ?? [])
+  const warmupRepetitions = typeof probe === 'string' ? undefined : probe.warmupRepetitions
   const repetitions = typeof probe === 'string' ? undefined : probe.repetitions
+  const gate = typeof probe === 'string' ? undefined : probe.gate
   return {
     id: id ?? `task_${task.replaceAll(':', '_')}`,
     label: label ?? task,
     group: group ?? 'devenv tasks',
+    path,
     description: description ?? `Runs the devenv task '${task}' in before mode without the TUI.`,
+    dimensions,
+    warmupRepetitions,
     repetitions,
-    command: ['$DEVENV_BIN', 'tasks', 'run', task, '--mode', 'before', '--no-tui', '--show-output'],
+    gate,
+    command: [
+      '$DEVENV_BIN',
+      'tasks',
+      'run',
+      task,
+      '--mode',
+      'before',
+      '--no-tui',
+      '--show-output',
+      ...extraArgs,
+    ],
   }
 }
+
+const devenvPerfProbes = (
+  opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>,
+): readonly DevenvPerfProbe[] => [
+  {
+    id: 'shell_eval_traced',
+    label: 'Shell eval with OTEL trace',
+    group: 'devenv shell',
+    description: 'Evaluates the dev shell with native devenv JSON tracing enabled.',
+    command: ['$DEVENV_SHELL_TRACE_COMMAND'],
+    traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
+  },
+  {
+    id: 'shell_eval_warm',
+    label: 'Warm shell eval',
+    group: 'devenv shell',
+    description: 'Evaluates a warm dev shell without reloading direnv state.',
+    warmupRepetitions: 1,
+    repetitions: 5,
+    command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
+  },
+  {
+    id: 'tasks_list',
+    label: 'devenv tasks list',
+    group: 'devenv cli',
+    description: 'Lists devenv tasks to measure task graph loading overhead.',
+    warmupRepetitions: 1,
+    repetitions: 9,
+    command: ['$DEVENV_BIN', 'tasks', 'list'],
+  },
+  {
+    id: 'processes_help',
+    label: 'devenv processes --help',
+    group: 'devenv cli',
+    description: 'Loads the devenv processes command help path.',
+    warmupRepetitions: 1,
+    repetitions: 9,
+    command: ['$DEVENV_BIN', 'processes', '--help'],
+  },
+  ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
+  ...opts.probes,
+]
+
+const devenvPerfRequiredBaselineObservations = (
+  probes: readonly DevenvPerfProbe[],
+): readonly CiMeasurementRequiredBaselineObservation[] =>
+  probes
+    .map((probe) => ({
+      id: `devenv.${probe.id}.duration`,
+      minSources: devenvPerfGatePolicy(probe).minBaselineSources ?? 1,
+      enabled: devenvPerfGatePolicy(probe).enabled ?? true,
+    }))
+    .filter((probe) => probe.enabled)
+    .map(({ id, minSources }) => ({ id, minSources }))
+
+const ciMeasurementToolBootstrapScript = String.raw`ensure_ci_measurement_tool() {
+  tool_name="$1"
+  nix_attr="$2"
+  if command -v "$tool_name" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v nix >/dev/null 2>&1; then
+    return 1
+  fi
+  if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+    while IFS= read -r tool_path; do
+      [ -n "$tool_path" ] || continue
+      [ -d "$tool_path/bin" ] || continue
+      export PATH="$tool_path/bin:$PATH"
+      if command -v "$tool_name" >/dev/null 2>&1; then
+        return 0
+      fi
+    done <<EOF
+$tool_out
+EOF
+  fi
+  command -v "$tool_name" >/dev/null 2>&1
+}
+
+require_ci_measurement_tool() {
+  tool_name="$1"
+  nix_attr="$2"
+  if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
+    return 0
+  fi
+  echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
+  exit 1
+}
+`
 
 const renderDevenvPerfScript = (
   opts: Required<Pick<DevenvPerfJobOptions, 'taskProbes' | 'probes'>>,
 ) => {
-  const probes: readonly DevenvPerfProbe[] = [
-    {
-      id: 'shell_eval_traced',
-      label: 'Shell eval with OTEL trace',
-      group: 'devenv shell',
-      description: 'Evaluates the dev shell with native devenv JSON tracing enabled.',
-      command: [
-        '$DEVENV_BIN',
-        '--trace-to',
-        'json:file:$trace_file',
-        'shell',
-        '--no-reload',
-        '--',
-        'true',
-      ],
-      traceOutput: '$ARTIFACT_DIR/traces/shell_eval_traced.json',
-    },
-    {
-      id: 'shell_eval_warm',
-      label: 'Warm shell eval',
-      group: 'devenv shell',
-      description: 'Evaluates a warm dev shell without reloading direnv state.',
-      repetitions: 3,
-      command: ['$DEVENV_BIN', 'shell', '--no-reload', '--', 'true'],
-    },
-    {
-      id: 'tasks_list',
-      label: 'devenv tasks list',
-      group: 'devenv cli',
-      description: 'Lists devenv tasks to measure task graph loading overhead.',
-      repetitions: 5,
-      command: ['$DEVENV_BIN', 'tasks', 'list'],
-    },
-    {
-      id: 'processes_help',
-      label: 'devenv processes --help',
-      group: 'devenv cli',
-      description: 'Loads the devenv processes command help path.',
-      repetitions: 5,
-      command: ['$DEVENV_BIN', 'processes', '--help'],
-    },
-    ...opts.taskProbes.map(defaultDevenvPerfTaskProbe),
-    ...opts.probes,
-  ]
+  const probes = devenvPerfProbes(opts)
 
   return String.raw`set -euo pipefail
+
+${ciMeasurementToolBootstrapScript}
+require_ci_measurement_tool awk gawk.out
+require_ci_measurement_tool jq jq.bin
+
+ARTIFACT_DIR="$(mkdir -p "$ARTIFACT_DIR" && cd "$ARTIFACT_DIR" && pwd -P)"
+CI_MEASUREMENT_HEAD_DIR="${dollar}{CI_MEASUREMENT_HEAD_DIR:-$PWD}"
+CI_MEASUREMENT_BASE_DIR="${dollar}{CI_MEASUREMENT_BASE_DIR:-${dollar}{RUNNER_TEMP:-/tmp}/ci-measurement-base}"
+CI_MEASUREMENT_PAIRED_ENABLED=0
+CI_MEASUREMENT_ORDER_SEED="${dollar}{CI_MEASUREMENT_ORDER_SEED:-${dollar}{GITHUB_RUN_ID:-local}-${dollar}{GITHUB_RUN_ATTEMPT:-0}-${dollar}{GITHUB_SHA:-unknown}}"
+
+prepare_paired_base_worktree() {
+  if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+    return 0
+  fi
+  if [ -n "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" ]; then
+    return 0
+  fi
+  if [ ! -f "${dollar}{GITHUB_EVENT_PATH:-}" ]; then
+    return 0
+  fi
+
+  local base_sha
+  base_sha="$(jq -r '.pull_request.base.sha // empty' "$GITHUB_EVENT_PATH")"
+  if [ -z "$base_sha" ]; then
+    echo "::notice::paired wall-clock baseline unavailable: pull_request.base.sha missing"
+    return 0
+  fi
+
+  rm -rf "$CI_MEASUREMENT_BASE_DIR"
+  git worktree prune >/dev/null 2>&1 || true
+  if git fetch --no-tags --depth=1 origin "$base_sha" \
+    && git worktree add --detach "$CI_MEASUREMENT_BASE_DIR" "$base_sha" >/dev/null; then
+    CI_MEASUREMENT_PAIRED_ENABLED=1
+    echo "::notice::paired wall-clock baseline prepared at $CI_MEASUREMENT_BASE_DIR ($base_sha)"
+  else
+    echo "::warning::paired wall-clock baseline unavailable: failed to prepare base worktree $base_sha"
+    CI_MEASUREMENT_PAIRED_ENABLED=0
+  fi
+}
+
+prepare_paired_base_worktree
 
 mkdir -p "$ARTIFACT_DIR/traces"
 
@@ -240,6 +665,8 @@ json_append_timing() {
   local stdout="$7"
   local stderr="$8"
   local trace="$9"
+  local gate_policy="${dollar}{10}"
+  local metadata_json="${dollar}{11}"
   local samples_file="$ARTIFACT_DIR/$id.samples.json"
 
   if [ "$first" -eq 0 ]; then
@@ -254,13 +681,44 @@ json_append_timing() {
     --arg group "$group" \
     --arg description "$description" \
     --argjson status "$status" \
-    --argjson durationMs "$duration_ms" \
-    --arg stdout "$stdout" \
-    --arg stderr "$stderr" \
-    --arg trace "$trace" \
-    '($samples[0] // []) as $sampleList
-    | ($sampleList | map(select(.status == 0) | .durationMs)) as $successfulDurations
-    | {
+      --argjson durationMs "$duration_ms" \
+      --arg stdout "$stdout" \
+      --arg stderr "$stderr" \
+      --arg trace "$trace" \
+      --argjson gatePolicy "$gate_policy" \
+      --argjson metadata "$metadata_json" \
+      'def median:
+        sort as $sorted
+        | ($sorted | length) as $count
+        | if $count == 0 then null
+          elif ($count % 2) == 1 then $sorted[($count / 2 | floor)]
+          else (($sorted[($count / 2 - 1)] + $sorted[($count / 2)]) / 2)
+          end;
+      def percentile($p):
+        sort as $sorted
+        | ($sorted | length) as $count
+        | if $count == 0 then null
+          else $sorted[(($p * ($count - 1)) | floor)]
+          end;
+      ($samples[0] // []) as $sampleList
+      | ($sampleList | map(select((.subject // "head") == "head" and .phase != "warmup" and .status == 0) | .durationMs)) as $successfulDurations
+      | ($sampleList | map(select((.subject // "head") == "head" and .phase == "warmup"))) as $warmupSamples
+      | ($sampleList | map(select((.subject // "head") == "head" and .phase == "measured" and .status == 0 and .pairIndex != null))) as $headSamples
+      | ($sampleList | map(select(.subject == "base" and .phase == "measured" and .status == 0 and .pairIndex != null))) as $baseSamples
+      | (
+          $headSamples
+          | map(. as $head | $baseSamples[]? | select(.pairIndex == $head.pairIndex) | {
+              pairIndex: $head.pairIndex,
+              currentDurationMs: $head.durationMs,
+              baselineDurationMs: .durationMs,
+              deltaMs: ($head.durationMs - .durationMs)
+            })
+        ) as $pairedSamples
+      | ($pairedSamples | map(.currentDurationMs)) as $pairedCurrentDurations
+      | ($pairedSamples | map(.baselineDurationMs)) as $pairedBaselineDurations
+      | ($pairedSamples | map(.deltaMs)) as $pairedDeltaDurations
+      | ($pairedDeltaDurations | median) as $pairedDeltaMedian
+      | {
         id:$id,
         name:$id,
         label:$label,
@@ -271,12 +729,34 @@ json_append_timing() {
         stdout:$stdout,
         stderr:$stderr,
         trace:(if $trace == "" then null else $trace end),
-        statistics: {
+          metadata:$metadata,
+          gatePolicy:$gatePolicy,
+          statistics: {
           sampleCount: ($sampleList | length),
+          warmupCount: ($warmupSamples | length),
+          measuredSampleCount: (
+            $sampleList
+            | map(select((.subject // "head") == "head" and .phase != "warmup"))
+            | length
+          ),
           successfulSampleCount: ($successfulDurations | length),
           minDurationMs: ($successfulDurations | min),
           maxDurationMs: ($successfulDurations | max),
-          medianDurationMs: $durationMs
+          medianDurationMs: $durationMs,
+          pairedSampleCount: ($pairedSamples | length),
+          pairedCurrentMedianDurationMs: ($pairedCurrentDurations | median),
+          pairedBaselineMedianDurationMs: ($pairedBaselineDurations | median),
+          pairedDeltaMedianDurationMs: $pairedDeltaMedian,
+          pairedDeltaMinDurationMs: ($pairedDeltaDurations | min),
+          pairedDeltaMaxDurationMs: ($pairedDeltaDurations | max),
+          pairedDeltaP25DurationMs: ($pairedDeltaDurations | percentile(0.25)),
+          pairedDeltaP75DurationMs: ($pairedDeltaDurations | percentile(0.75)),
+          pairedDeltaMadDurationMs: (
+            if $pairedDeltaMedian == null then null
+            else ($pairedDeltaDurations | map(. - $pairedDeltaMedian | if . < 0 then -. else . end) | median)
+            end
+          ),
+          pairedDeltaSampleDurationMs: $pairedDeltaDurations
         },
         samples:$sampleList
       }' \
@@ -287,10 +767,13 @@ measure() {
   local id="$1"
   local label="$2"
   local group="$3"
-  local description="$4"
-  local trace_file="$5"
-  local repetitions="$6"
-  shift 6
+    local description="$4"
+    local trace_file="$5"
+    local warmup_repetitions="$6"
+    local repetitions="$7"
+    local gate_policy="$8"
+    local metadata_json="$9"
+    shift 9
   case "$trace_file" in
     '$ARTIFACT_DIR'*) trace_file="${dollar}{ARTIFACT_DIR}${dollar}{trace_file#'$ARTIFACT_DIR'}" ;;
   esac
@@ -303,11 +786,24 @@ measure() {
   if ! [[ "$repetitions" =~ ^[0-9]+$ ]] || [ "$repetitions" -lt 1 ]; then
     repetitions=1
   fi
+  if ! [[ "$warmup_repetitions" =~ ^[0-9]+$ ]] || [ "$warmup_repetitions" -lt 0 ]; then
+    warmup_repetitions=0
+  fi
 
   printf '[' >"$samples_file"
   local sample_first=1
-  local sample_index sample_stdout sample_stderr sample_trace expanded
-  for sample_index in $(seq 1 "$repetitions"); do
+  local sample_index measured_index total_repetitions phase sample_stdout sample_stderr sample_trace expanded
+  local order_offset
+  order_offset="$(printf '%s' "$CI_MEASUREMENT_ORDER_SEED:$id" | cksum | awk '{ print $1 % 2 }')"
+  total_repetitions=$((warmup_repetitions + repetitions))
+  for sample_index in $(seq 1 "$total_repetitions"); do
+    if [ "$sample_index" -le "$warmup_repetitions" ]; then
+      phase="warmup"
+      measured_index=""
+    else
+      phase="measured"
+      measured_index=$((sample_index - warmup_repetitions))
+    fi
     sample_stdout="$ARTIFACT_DIR/$id.$sample_index.stdout"
     sample_stderr="$ARTIFACT_DIR/$id.$sample_index.stderr"
     sample_trace=""
@@ -318,19 +814,65 @@ measure() {
       fi
     fi
 
-    started="$(date +%s%3N)"
-    set +e
     expanded=()
     for arg in "$@"; do
       case "$arg" in
         '$DEVENV_BIN') expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}") ;;
+        '$DEVENV_SHELL_TRACE_COMMAND')
+          if "${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" --help 2>&1 | grep -q -- '--trace-to'; then
+            expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" "--trace-to" "json:file:$sample_trace" "shell" "--no-reload" "--" "true")
+          elif "${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" --help 2>&1 | grep -q -- '--trace-format'; then
+            expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" "--trace-format" "json" "shell" "--no-reload" "--" "true")
+            sample_trace=""
+          else
+            expanded+=("${dollar}{DEVENV_BIN:?DEVENV_BIN not set}" "shell" "--no-reload" "--" "true")
+            sample_trace=""
+          fi
+          ;;
         '$ARTIFACT_DIR'*) expanded+=("${dollar}{ARTIFACT_DIR}${dollar}{arg#'$ARTIFACT_DIR'}") ;;
         'json:file:$trace_file') expanded+=("json:file:$sample_trace") ;;
         '$trace_file') expanded+=("file:$sample_trace") ;;
         *) expanded+=("$arg") ;;
       esac
     done
-    "${dollar}{expanded[@]}" >"$sample_stdout" 2>"$sample_stderr"
+
+    local base_ran_before_head=0 base_stdout base_stderr base_started base_ended base_status base_duration_ms
+    if [ "$phase" = "measured" ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ $(((measured_index + order_offset) % 2)) -eq 0 ]; then
+      base_ran_before_head=1
+      base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
+      base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
+      base_started="$(date +%s%3N)"
+      set +e
+      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      base_status=$?
+      set -e
+      base_ended="$(date +%s%3N)"
+      base_duration_ms=$((base_ended - base_started))
+
+      if [ "$sample_first" -eq 0 ]; then
+        printf ',' >>"$samples_file"
+      fi
+      sample_first=0
+      jq -cn \
+        --argjson index "$sample_index" \
+        --arg measuredIndex "$measured_index" \
+        --argjson status "$base_status" \
+        --argjson durationMs "$base_duration_ms" \
+        --arg stdout "$base_stdout" \
+        --arg stderr "$base_stderr" \
+        --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
+        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"base-head",orderSeed:$orderSeed}' \
+        >>"$samples_file"
+
+      if [ "$base_status" -ne 0 ]; then
+        echo "::warning::$id paired baseline sample $measured_index failed after ${dollar}{base_duration_ms}ms; this pair is excluded from wall-clock gating"
+        tail -40 "$base_stderr" || true
+      fi
+    fi
+
+    started="$(date +%s%3N)"
+    set +e
+    (cd "$CI_MEASUREMENT_HEAD_DIR" && "${dollar}{expanded[@]}") >"$sample_stdout" 2>"$sample_stderr"
     status=$?
     set -e
     ended="$(date +%s%3N)"
@@ -342,13 +884,46 @@ measure() {
     sample_first=0
     jq -cn \
       --argjson index "$sample_index" \
+      --arg measuredIndex "$measured_index" \
+      --arg phase "$phase" \
       --argjson status "$status" \
       --argjson durationMs "$duration_ms" \
       --arg stdout "$sample_stdout" \
       --arg stderr "$sample_stderr" \
       --arg trace "$sample_trace" \
-      '{index:$index,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end)}' \
+      --arg order "$(if [ "$phase" = "measured" ] && [ "$base_ran_before_head" -eq 1 ]; then printf base-head; else printf head-base; fi)" \
+      --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
+      '{index:$index,measuredIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),pairIndex:(if $measuredIndex == "" then null else ($measuredIndex | tonumber) end),subject:"head",phase:$phase,status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:(if $trace == "" then null else $trace end),order:(if $phase == "measured" then $order else null end),orderSeed:(if $phase == "measured" then $orderSeed else null end)}' \
       >>"$samples_file"
+
+    if [ "$phase" = "measured" ] && [ "$status" -eq 0 ] && [ "$CI_MEASUREMENT_PAIRED_ENABLED" -eq 1 ] && [ "$base_ran_before_head" -eq 0 ]; then
+      base_stdout="$ARTIFACT_DIR/$id.$sample_index.base.stdout"
+      base_stderr="$ARTIFACT_DIR/$id.$sample_index.base.stderr"
+      base_started="$(date +%s%3N)"
+      set +e
+      (cd "$CI_MEASUREMENT_BASE_DIR" && "${dollar}{expanded[@]}") >"$base_stdout" 2>"$base_stderr"
+      base_status=$?
+      set -e
+      base_ended="$(date +%s%3N)"
+      base_duration_ms=$((base_ended - base_started))
+
+      printf ',' >>"$samples_file"
+      jq -cn \
+        --argjson index "$sample_index" \
+        --arg measuredIndex "$measured_index" \
+        --argjson status "$base_status" \
+        --argjson durationMs "$base_duration_ms" \
+        --arg stdout "$base_stdout" \
+        --arg stderr "$base_stderr" \
+        --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
+        '{index:$index,measuredIndex:($measuredIndex | tonumber),pairIndex:($measuredIndex | tonumber),subject:"base",phase:"measured",status:$status,durationMs:$durationMs,stdout:$stdout,stderr:$stderr,trace:null,order:"head-base",orderSeed:$orderSeed}' \
+        >>"$samples_file"
+
+      if [ "$base_status" -ne 0 ]; then
+        echo "::warning::$id paired baseline sample $measured_index failed after ${dollar}{base_duration_ms}ms; this pair is excluded from wall-clock gating"
+        tail -40 "$base_stderr" || true
+      fi
+    fi
 
     stdout="$sample_stdout"
     stderr="$sample_stderr"
@@ -360,18 +935,24 @@ measure() {
   done
   printf ']\n' >>"$samples_file"
 
-  status="$(jq -r 'map(.status) | max // 0' "$samples_file")"
-  duration_ms="$(jq -r 'map(select(.status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(.durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
+  status="$(jq -r 'map(select((.subject // "head") == "head") | .status) | max // 0' "$samples_file")"
+  duration_ms="$(jq -r 'map(select((.subject // "head") == "head" and .phase != "warmup" and .status == 0) | .durationMs) as $values | if ($values | length) == 0 then (map(select((.subject // "head") == "head") | .durationMs) | max // 0) else ($values | sort | .[(length - 1) / 2 | floor]) end' "$samples_file")"
 
   cp "$stdout" "$ARTIFACT_DIR/$id.stdout" 2>/dev/null || true
   cp "$stderr" "$ARTIFACT_DIR/$id.stderr" 2>/dev/null || true
 
-  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file"
+  json_append_timing "$id" "$label" "$group" "$description" "$status" "$duration_ms" "$ARTIFACT_DIR/$id.stdout" "$ARTIFACT_DIR/$id.stderr" "$trace_file" "$gate_policy" "$metadata_json"
 
   if [ "$status" -ne 0 ]; then
-    echo "::error::$id failed after ${dollar}{duration_ms}ms; stderr tail follows"
+    if [ "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" = "1" ]; then
+      echo "::warning::$id failed after ${dollar}{duration_ms}ms; keeping earlier successful baseline probes and excluding this failed probe from numeric observations"
+    else
+      echo "::error::$id failed after ${dollar}{duration_ms}ms; stderr tail follows"
+    fi
     tail -80 "$stderr" || true
-    return "$status"
+    if [ "${dollar}{CI_MEASUREMENT_ALLOW_PROBE_FAILURES:-}" != "1" ]; then
+      return "$status"
+    fi
   fi
 }
 
@@ -410,8 +991,8 @@ jq -n \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
-  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
-  --arg headSha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg ref "${dollar}{CI_MEASUREMENT_SUBJECT_REF:-${dollar}{GITHUB_REF:-unknown}}" \
+  --arg headSha "${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
   --arg baseSha "${dollar}{GITHUB_BASE_SHA:-}" \
   --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
   --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \
@@ -425,11 +1006,16 @@ jq -n \
   --arg traceId "${dollar}{TRACE_ID:-}" \
   --arg devenvRev "${dollar}{DEVENV_REV:-unknown}" \
   --arg otelServiceName "${dollar}{OTEL_SERVICE_NAME:-unknown}" \
+  --arg orderSeed "$CI_MEASUREMENT_ORDER_SEED" \
   --arg targetSystem "${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}" \
   '{
     schemaVersion: $schemaVersion,
     generatedAt: $generatedAt,
-    producer: { name: "effect-utils-ci-measurement", version: 1 },
+    producer: {
+      name: "effect-utils-ci-measurement",
+      version: 2,
+      measurementProtocol: "devenv-perf-warm-median-v2"
+    },
     subject: {
       repo: $repository,
       branchKind: (if $branchKind == "" then "unknown" else $branchKind end),
@@ -451,28 +1037,113 @@ jq -n \
     target: { kind: "devenv", id: "dev-shell", name: "dev-shell", label: "Dev shell", group: "devenv", system: $targetSystem },
     observations: (
       $timings[0]
+      | map(select(.status == 0))
       | map({
           id: ("devenv." + .id + ".duration"),
           label: .label,
           group: .group,
+          path: (.metadata.path // []),
+          description: .description,
+          measurementKind: (if (.gatePolicy.enabled == false) then "diagnostic" else "wall-clock" end),
           name: ("devenv." + .id + ".duration"),
           unit: "seconds",
           value: (.durationMs / 1000),
+          policy: .gatePolicy,
+          comparison: {
+            mode: (.gatePolicy.comparisonMode // "historical"),
+            pairedSampleCount: (.statistics.pairedSampleCount // 0),
+            baseline: (
+              if (.statistics.pairedBaselineMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedBaselineMedianDurationMs / 1000)
+              end
+            )
+          },
           statistics: {
             sampleCount: (.statistics.sampleCount // 1),
+            warmupCount: (.statistics.warmupCount // 0),
+            measuredSampleCount: (.statistics.measuredSampleCount // (.statistics.sampleCount // 1)),
             successfulSampleCount: (.statistics.successfulSampleCount // (if .status == 0 then 1 else 0 end)),
             min: ((.statistics.minDurationMs // .durationMs) / 1000),
             max: ((.statistics.maxDurationMs // .durationMs) / 1000),
-            median: ((.statistics.medianDurationMs // .durationMs) / 1000)
+            median: ((.statistics.medianDurationMs // .durationMs) / 1000),
+            pairedSampleCount: (.statistics.pairedSampleCount // 0),
+            pairedCurrentMedian: (
+              if (.statistics.pairedCurrentMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedCurrentMedianDurationMs / 1000)
+              end
+            ),
+            pairedBaselineMedian: (
+              if (.statistics.pairedBaselineMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedBaselineMedianDurationMs / 1000)
+              end
+            ),
+            pairedDeltaMedian: (
+              if (.statistics.pairedDeltaMedianDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMedianDurationMs / 1000)
+              end
+            ),
+            pairedDeltaMin: (
+              if (.statistics.pairedDeltaMinDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMinDurationMs / 1000)
+              end
+            ),
+            pairedDeltaMax: (
+              if (.statistics.pairedDeltaMaxDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMaxDurationMs / 1000)
+              end
+            ),
+            pairedDeltaP25: (
+              if (.statistics.pairedDeltaP25DurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaP25DurationMs / 1000)
+              end
+            ),
+            pairedDeltaP75: (
+              if (.statistics.pairedDeltaP75DurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaP75DurationMs / 1000)
+              end
+            ),
+            pairedDeltaMad: (
+              if (.statistics.pairedDeltaMadDurationMs // null) == null
+              then null
+              else (.statistics.pairedDeltaMadDurationMs / 1000)
+              end
+            ),
+            pairedDeltaSamples: ((.statistics.pairedDeltaSampleDurationMs // []) | map(. / 1000))
           },
-          dimensions: {
+          dimensions: ((.metadata.dimensions // {}) + {
             probe: .id,
             probeLabel: .label,
             status: .status,
             sampleCount: (.statistics.sampleCount // 1),
+            warmupCount: (.statistics.warmupCount // 0),
+            measuredSampleCount: (.statistics.measuredSampleCount // (.statistics.sampleCount // 1)),
+            pairedSampleCount: (.statistics.pairedSampleCount // 0),
+            pairedOrderProtocol: (
+              if (.statistics.pairedSampleCount // 0) > 0
+              then "balanced-seeded-alternating-v1"
+              else null
+              end
+            ),
+            pairedOrderSeed: (
+              if (.statistics.pairedSampleCount // 0) > 0
+              then $orderSeed
+              else null
+              end
+            ),
+            measurementProtocol: "devenv-perf-warm-median-v2",
+            aggregation: "median",
+            phase: "warm",
             devenvRev: $devenvRev,
             otelServiceName: $otelServiceName
-          }
+          })
         })
     ),
     artifacts: [
@@ -490,109 +1161,6 @@ jq -n \
     }
   }' >"$ARTIFACT_DIR/measurements.json"
 
-compare_baseline() {
-  local baseline_path="${dollar}{DEVENV_PERF_BASELINE_SUMMARY:-$ARTIFACT_DIR/baseline/summary.json}"
-  local mode="${dollar}{DEVENV_PERF_REGRESSION_MODE:-warn}"
-
-  if [ "$mode" = "off" ]; then
-    jq -n --argjson schemaVersion 1 --arg status skipped --arg mode "$mode" '{schemaVersion:$schemaVersion, status:$status, mode:$mode, checks:{}}' >"$ARTIFACT_DIR/perf-comparison.json"
-    return 0
-  fi
-
-  if [ ! -f "$baseline_path" ]; then
-    jq -n \
-      --argjson schemaVersion 1 \
-      --arg status baseline_missing \
-      --arg mode "$mode" \
-      --arg baseline "$baseline_path" \
-      '{schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baseline, checks:{}}' \
-      >"$ARTIFACT_DIR/perf-comparison.json"
-    echo "::notice::devenv perf baseline not found at $baseline_path; recorded current measurements only"
-    return 0
-  fi
-
-  jq -n \
-    --slurpfile current "$ARTIFACT_DIR/summary.json" \
-    --slurpfile baseline "$baseline_path" \
-    --argjson schemaVersion 1 \
-    --arg mode "$mode" \
-    --arg baselinePath "$baseline_path" \
-    '
-      def budget($name):
-        if $name == "shell_eval_traced" then
-          {warnRatio:1.25, failRatio:1.5, warnMs:1500, failMs:3000}
-        elif $name == "shell_eval_warm" then
-          {warnRatio:1.5, failRatio:2.0, warnMs:500, failMs:1000}
-        elif $name == "tasks_list" or $name == "processes_help" then
-          {warnRatio:2.0, failRatio:3.0, warnMs:250, failMs:1000}
-        else
-          {warnRatio:1.5, failRatio:2.0, warnMs:1000, failMs:3000}
-        end;
-      def classify($name; $current; $baseline):
-        budget($name) as $b
-        | ($current - $baseline) as $delta
-        | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
-        | (
-            if $baseline <= 0 then "unknown"
-            elif ($delta > $b.failMs and $current > ($baseline * $b.failRatio)) then "fail"
-            elif ($delta > $b.warnMs and $current > ($baseline * $b.warnRatio)) then "warn"
-            else "pass"
-            end
-          ) as $status
-        | {status:$status, currentMs:$current, baselineMs:$baseline, deltaMs:$delta, ratio:$ratio, budget:$b};
-      ($current[0].checks // {}) as $currentChecks
-      | ($baseline[0].checks // {}) as $baselineChecks
-      | (
-          $currentChecks
-          | to_entries
-          | map(
-              .key as $name
-              | .value as $current
-              | ($baselineChecks[$name] // null) as $base
-              | {
-                  key: $name,
-                  value: (
-                    if $base == null then
-                      {status:"missing_baseline", currentMs:$current.durationMs}
-                    elif ($current.status != 0) then
-                      {status:"current_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
-                    elif ($base.status != 0) then
-                      {status:"baseline_failed", currentMs:$current.durationMs, baselineMs:$base.durationMs}
-                    else
-                      classify($name; $current.durationMs; $base.durationMs)
-                    end
-                  )
-                }
-            )
-          | from_entries
-        ) as $checks
-      | (
-          if any($checks[]; .status == "fail") then "fail"
-          elif any($checks[]; .status == "warn") then "warn"
-          elif any($checks[]; .status == "missing_baseline") then "partial"
-          else "pass"
-          end
-        ) as $status
-      | {schemaVersion:$schemaVersion, status:$status, mode:$mode, baseline:$baselinePath, checks:$checks}
-    ' >"$ARTIFACT_DIR/perf-comparison.json"
-
-  local status
-  status="$(jq -r '.status' "$ARTIFACT_DIR/perf-comparison.json")"
-  case "$status:$mode" in
-    fail:fail)
-      echo "::error::devenv perf regression detected"
-      jq . "$ARTIFACT_DIR/perf-comparison.json"
-      return 1
-      ;;
-    fail:*|warn:*)
-      echo "::warning::devenv perf regression threshold exceeded"
-      jq . "$ARTIFACT_DIR/perf-comparison.json"
-      ;;
-  esac
-}
-
-compare_baseline
-
 if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### Devenv perf"
@@ -603,12 +1171,6 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
     echo ""
     echo "- Artifact directory: \`$ARTIFACT_DIR\`"
     echo "- OTEL service: \`${dollar}{OTEL_SERVICE_NAME:-unknown}\`"
-    echo ""
-    echo "#### Regression comparison"
-    echo ""
-    if [ -f "$ARTIFACT_DIR/perf-comparison.json" ]; then
-      jq -r '["- Status: " + .status, "- Mode: " + .mode, "- Baseline: " + (.baseline // "none")] | .[]' "$ARTIFACT_DIR/perf-comparison.json"
-    fi
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
@@ -628,6 +1190,19 @@ export const devenvPerfBenchmarkStep = (
     }),
   }) as const
 
+const ciMeasurementBaselineSeedRunsJson = (opts: GitHubPreviousArtifactStepOptions) =>
+  JSON.stringify(
+    opts.seedRuns ??
+      opts.seedRunIds?.map((runId) => ({
+        runId,
+        source: 'manual-backfill',
+      })) ??
+      [],
+  )
+
+const ciMeasurementRequiredObservationsJson = (opts: GitHubPreviousArtifactStepOptions) =>
+  JSON.stringify(opts.requiredObservations ?? [])
+
 export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactStepOptions) =>
   ({
     name: `Download previous artifact: ${opts.artifactName}`,
@@ -638,41 +1213,164 @@ export const downloadPreviousGitHubArtifactStep = (opts: GitHubPreviousArtifactS
       BASELINE_OUTPUT_DIR: opts.outputDir,
       BASELINE_WORKFLOW_NAME: opts.workflowName ?? '${{ github.workflow }}',
       BASELINE_BRANCH: opts.branch ?? '${{ github.base_ref || github.ref_name }}',
-      BASELINE_SEED_RUN_IDS: opts.seedRunIds?.join(' ') ?? '',
+      BASELINE_SEED_RUNS_JSON: ciMeasurementBaselineSeedRunsJson(opts),
       BASELINE_MAX_RUNS: String(opts.maxRuns ?? 5),
+      BASELINE_MAX_CANDIDATE_RUNS: String(
+        opts.maxCandidateRuns ?? Math.max((opts.maxRuns ?? 5) * 3, 20),
+      ),
+      BASELINE_REQUIRED_OBSERVATIONS_JSON: ciMeasurementRequiredObservationsJson(opts),
+      BASELINE_DOWNLOAD_TIMEOUT_SECONDS: String(opts.downloadTimeoutSeconds ?? 120),
     },
     run: String.raw`set -euo pipefail
 
 mkdir -p "$BASELINE_OUTPUT_DIR"
 
-if ! command -v gh >/dev/null 2>&1; then
-  echo "::notice::gh is not available; skipping previous artifact download"
-  exit 0
+if command -v gh >/dev/null 2>&1; then
+  GH_BIN="$(command -v gh)"
+else
+  echo "::notice::gh is not on PATH; resolving GitHub CLI through Nix"
+  if ! GH_BIN="$(nix build --no-link --print-out-paths nixpkgs#gh 2>/dev/null)/bin/gh"; then
+    echo "::notice::unable to resolve GitHub CLI through Nix; skipping previous artifact download"
+    exit 0
+  fi
 fi
+echo "Using GitHub CLI: $GH_BIN"
+
+CURL_BIN="$(command -v curl || true)"
+if [ -z "$CURL_BIN" ]; then
+  echo "::notice::curl is not on PATH; resolving curl through Nix"
+  if ! CURL_BIN="$(nix build --no-link --print-out-paths nixpkgs#curl 2>/dev/null)/bin/curl"; then
+    echo "::notice::unable to resolve curl through Nix; skipping previous artifact download"
+    exit 0
+  fi
+fi
+echo "Using curl: $CURL_BIN"
+
+UNZIP_BIN="$(command -v unzip || true)"
+if [ -z "$UNZIP_BIN" ]; then
+  echo "::notice::unzip is not on PATH; resolving unzip through Nix"
+  if ! UNZIP_BIN="$(nix build --no-link --print-out-paths nixpkgs#unzip 2>/dev/null)/bin/unzip"; then
+    echo "::notice::unable to resolve unzip through Nix; skipping previous artifact download"
+    exit 0
+  fi
+fi
+echo "Using unzip: $UNZIP_BIN"
 
 repo="${dollar}{GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 workflow="${dollar}{BASELINE_WORKFLOW_NAME:-CI}"
 branch="${dollar}{BASELINE_BRANCH:-${dollar}{GITHUB_BASE_REF:-${dollar}{GITHUB_REF_NAME:-main}}}"
+seed_runs_file="$BASELINE_OUTPUT_DIR/baseline-seed-runs.json"
+required_observations_file="$BASELINE_OUTPUT_DIR/baseline-required-observations.json"
+printf '%s' "${dollar}{BASELINE_SEED_RUNS_JSON:-[]}" >"$seed_runs_file"
+printf '%s' "${dollar}{BASELINE_REQUIRED_OBSERVATIONS_JSON:-[]}" >"$required_observations_file"
+if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.runId | type == "string")) else false end' \
+  "$seed_runs_file" >/dev/null; then
+  echo "::error::BASELINE_SEED_RUNS_JSON must be an array of objects with string runId fields"
+  exit 1
+fi
+if ! jq -e 'if type == "array" then all(.[]; type == "object" and (.id | type == "string") and (.minSources | type == "number")) else false end' \
+  "$required_observations_file" >/dev/null; then
+  echo "::error::BASELINE_REQUIRED_OBSERVATIONS_JSON must be an array of objects with string id and numeric minSources fields"
+  exit 1
+fi
+seed_run_ids="$(jq -r '.[].runId' "$seed_runs_file")"
+required_observation_count="$(jq 'length' "$required_observations_file")"
+max_candidate_runs="${dollar}{BASELINE_MAX_CANDIDATE_RUNS:-${dollar}{BASELINE_MAX_RUNS:-5}}"
+if ! [[ "$max_candidate_runs" =~ ^[0-9]+$ ]] || [ "$max_candidate_runs" -lt 1 ]; then
+  max_candidate_runs=1
+fi
 
 candidate_runs="$(
-  gh run list \
+  "$GH_BIN" run list \
     --repo "$repo" \
     --workflow "$workflow" \
     --branch "$branch" \
     --event push \
     --status success \
     --json databaseId,headSha \
-    --limit 20 \
+    --limit "$max_candidate_runs" \
     --jq '[.[] | select(.headSha != env.GITHUB_SHA) | .databaseId] | .[]'
 )"
 
-candidate_runs="$candidate_runs
-$BASELINE_SEED_RUN_IDS"
+candidate_runs="$seed_run_ids
+$candidate_runs"
 
 max_runs="${dollar}{BASELINE_MAX_RUNS:-5}"
 if ! [[ "$max_runs" =~ ^[0-9]+$ ]] || [ "$max_runs" -lt 1 ]; then
   max_runs=1
 fi
+download_timeout_seconds="${dollar}{BASELINE_DOWNLOAD_TIMEOUT_SECONDS:-120}"
+if ! [[ "$download_timeout_seconds" =~ ^[0-9]+$ ]] || [ "$download_timeout_seconds" -lt 1 ]; then
+  download_timeout_seconds=120
+fi
+
+write_baseline_observation_counts() {
+  local measurement_index="$BASELINE_OUTPUT_DIR/baseline-measurement-files.txt"
+  local counts_file="$BASELINE_OUTPUT_DIR/baseline-observation-counts.json"
+  find "$BASELINE_OUTPUT_DIR" \
+    -mindepth 2 \
+    -maxdepth 2 \
+    -name measurements.json \
+    -type f \
+    -print \
+    | sort >"$measurement_index" || true
+
+  if [ -s "$measurement_index" ]; then
+    xargs -r jq -s \
+      --slurpfile required "$required_observations_file" \
+      '
+        ([.[] | (.observations // [])[]? | select(.value | type == "number") | .id] | sort | group_by(.) | map({id: .[0], sources: length})) as $counts
+        | ($required[0] // []) as $requiredRows
+        | {
+            counts: $counts,
+            required: (
+              $requiredRows
+              | map(. as $requiredRow | ($counts | map(select(.id == $requiredRow.id)) | .[0].sources // 0) as $actual | $requiredRow + {sources:$actual, satisfied:($actual >= $requiredRow.minSources)})
+            )
+          }
+      ' <"$measurement_index" >"$counts_file"
+  else
+    jq -n --slurpfile required "$required_observations_file" \
+      '{counts: [], required: (($required[0] // []) | map(. + {sources:0, satisfied:false}))}' >"$counts_file"
+  fi
+}
+
+baseline_requirements_satisfied() {
+  if [ "$required_observation_count" -eq 0 ]; then
+    return 1
+  fi
+  write_baseline_observation_counts
+  jq -e '.required | all(.satisfied == true)' "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" >/dev/null
+}
+
+download_artifact_archive() {
+  local artifact_id="$1"
+  local output_dir="$2"
+  local archive_file="$output_dir/artifact.zip"
+  local artifact_url="https://api.github.com/repos/$repo/actions/artifacts/$artifact_id/zip"
+  local curl_args=(
+    --fail
+    --location
+    --silent
+    --show-error
+    --connect-timeout 15
+    --max-time "$download_timeout_seconds"
+    --retry 2
+    --retry-delay 2
+    --retry-max-time "$download_timeout_seconds"
+    --header "Accept: application/vnd.github+json"
+    --header "X-GitHub-Api-Version: 2022-11-28"
+    --output "$archive_file"
+  )
+
+  if [ -n "${dollar}{GH_TOKEN:-}" ]; then
+    curl_args+=(--header "Authorization: Bearer ${dollar}{GH_TOKEN}")
+  fi
+
+  "$CURL_BIN" "${dollar}{curl_args[@]}" "$artifact_url"
+  "$UNZIP_BIN" -q -o "$archive_file" -d "$output_dir"
+  rm -f "$archive_file"
+}
 
 run_id=""
 artifact_name=""
@@ -688,16 +1386,23 @@ for candidate_run in $candidate_runs; do
   if grep -qxF "$candidate_run" "$seen_runs_file"; then
     continue
   fi
-  printf '%s\n' "$candidate_run" >>"$seen_runs_file"
-  if [ "$(wc -l <"$downloaded_runs_file" | tr -d ' ')" -ge "$max_runs" ]; then
+  downloaded_count="$(wc -l <"$downloaded_runs_file" | tr -d ' ')"
+  if [ "$downloaded_count" -ge "$max_runs" ]; then
+    if baseline_requirements_satisfied; then
+      break
+    fi
+    echo "::notice::downloaded $downloaded_count baseline artifact(s), but required observation counts are not satisfied yet; continuing through bounded candidate history"
+  fi
+  if [ "$(wc -l <"$seen_runs_file" | tr -d ' ')" -ge "$max_candidate_runs" ]; then
     break
   fi
+  printf '%s\n' "$candidate_run" >>"$seen_runs_file"
 
   artifact_json="$(
-    gh api "repos/$repo/actions/runs/$candidate_run/artifacts" \
-      --jq '.artifacts
+    "$GH_BIN" api "repos/$repo/actions/runs/$candidate_run/artifacts" \
+      | jq --arg artifactName "$BASELINE_ARTIFACT_NAME" '.artifacts
         | map(select(.expired == false))
-        | map(select(.name == env.BASELINE_ARTIFACT_NAME or (.name | startswith(env.BASELINE_ARTIFACT_NAME + "-"))))
+        | map(select(.name == $artifactName or (.name | startswith($artifactName + "-"))))
         | sort_by(.created_at // "")
         | reverse
         | .[0] // empty'
@@ -708,10 +1413,7 @@ for candidate_run in $candidate_runs; do
     current_artifact_id="$(printf '%s' "$artifact_json" | jq -r '.id')"
     current_output_dir="$BASELINE_OUTPUT_DIR/run-$candidate_run"
     mkdir -p "$current_output_dir"
-    if gh run download "$candidate_run" \
-      --repo "$repo" \
-      --name "$current_artifact_name" \
-      --dir "$current_output_dir"; then
+    if download_artifact_archive "$current_artifact_id" "$current_output_dir"; then
       if [ -z "$run_id" ]; then
         run_id="$candidate_run"
         artifact_name="$current_artifact_name"
@@ -725,10 +1427,14 @@ for candidate_run in $candidate_runs; do
         '{runId:$runId, artifactName:$artifactName, artifactId:$artifactId, path:$path}' \
         >>"$downloaded_runs_file"
     else
-      echo "::notice::failed to download baseline artifact $current_artifact_name from run $candidate_run"
+      status="$?"
+      rm -rf "$current_output_dir"
+      echo "::notice::failed or timed out after ${dollar}{download_timeout_seconds}s downloading baseline artifact $current_artifact_name from run $candidate_run (exit $status); skipping candidate"
     fi
   fi
 done
+
+write_baseline_observation_counts
 
 if [ -z "$run_id" ] || [ -z "$artifact_name" ]; then
   echo "::notice::no successful baseline run found for $repo workflow=$workflow branch=$branch"
@@ -737,6 +1443,8 @@ fi
 
 jq -n \
   --slurpfile runs "$downloaded_runs_file" \
+  --slurpfile seedRuns "$seed_runs_file" \
+  --slurpfile observationCounts "$BASELINE_OUTPUT_DIR/baseline-observation-counts.json" \
   --argjson schemaVersion 1 \
   --arg repository "$repo" \
   --arg workflow "$workflow" \
@@ -753,7 +1461,9 @@ jq -n \
     runId: $runId,
     artifactName: $artifactName,
     artifactId: $artifactId,
-    runs: $runs
+    seedRuns: ($seedRuns[0] // []),
+    runs: $runs,
+    observationCounts: ($observationCounts[0] // null)
   }' >"$BASELINE_OUTPUT_DIR/baseline-provenance.json"
 
 echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact(s), latest $artifact_name from run $run_id into $BASELINE_OUTPUT_DIR"
@@ -762,8 +1472,9 @@ echo "Downloaded $(wc -l <"$downloaded_runs_file" | tr -d ' ') baseline artifact
 
 export const devenvPerfArtifactStep = (
   opts?: Pick<DevenvPerfJobOptions, 'artifactDir' | 'artifactName' | 'retentionDays'>,
-) =>
-  ({
+) => {
+  const artifactDir = opts?.artifactDir ?? 'tmp/devenv-perf-ci'
+  return {
     name: 'Upload devenv perf artifacts',
     if: 'always()',
     uses: 'actions/upload-artifact@v4',
@@ -771,11 +1482,12 @@ export const devenvPerfArtifactStep = (
       name:
         opts?.artifactName ??
         'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
-      path: opts?.artifactDir ?? 'tmp/devenv-perf-ci',
+      path: [artifactDir, `!${artifactDir}/baseline/**`].join('\n'),
       'if-no-files-found': 'error',
-      'retention-days': opts?.retentionDays ?? 30,
+      'retention-days': opts?.retentionDays ?? ciMeasurementProducerArtifactRetentionDays,
     },
-  }) as const
+  } as const
+}
 
 export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptions) =>
   ({
@@ -784,9 +1496,9 @@ export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptio
     uses: 'actions/upload-artifact@v4',
     with: {
       name: opts.artifactName,
-      path: opts.path,
+      path: [opts.path, `!${opts.path}/baseline/**`].join('\n'),
       'if-no-files-found': 'error',
-      'retention-days': opts.retentionDays ?? 30,
+      'retention-days': opts.retentionDays ?? ciMeasurementReportArtifactRetentionDays,
     },
   }) as const
 
@@ -801,6 +1513,10 @@ export const nixClosureMeasurementStep = (opts: NixClosureMeasurementStepOptions
   const targetLabel = opts.targetLabel ?? targetName
   const targetGroup = opts.targetGroup ?? 'nix closure'
   const buckets = JSON.stringify(opts.buckets ?? [])
+  const targetPath = JSON.stringify(opts.targetPath ?? [])
+  const gatePolicy = JSON.stringify(opts.gate ?? {})
+  const targetDescription =
+    opts.targetDescription ?? 'Resolved Nix closure for the configured flake installable.'
   const targetSystemAssignment =
     opts.targetSystem === undefined
       ? `target_system="${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}"`
@@ -821,15 +1537,16 @@ target_id=${shellSingleQuote(targetId)}
 target_name=${shellSingleQuote(targetName)}
 target_label=${shellSingleQuote(targetLabel)}
 target_group=${shellSingleQuote(targetGroup)}
+target_description=${shellSingleQuote(targetDescription)}
 artifact_file=${artifactFileAssignment}
 ${targetSystemAssignment}
 
-out_path="$(nix build --no-link --print-out-paths "$installable")"
+out_path="$(nix build --no-update-lock-file --no-link --print-out-paths "$installable")"
 path_info="$ARTIFACT_DIR/nix-closure-path-info.json"
 paths_file="$ARTIFACT_DIR/nix-closure-paths.json"
 
-nix path-info --recursive --json "$out_path" >"$path_info"
-jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0) })' "$path_info" >"$paths_file"
+nix path-info --recursive --closure-size --json "$out_path" >"$path_info"
+jq 'to_entries | map({ path: .key, narSize: (.value.narSize // 0), closureSize: (.value.closureSize // 0) })' "$path_info" >"$paths_file"
 
 jq -n \
   --slurpfile paths "$paths_file" \
@@ -837,8 +1554,8 @@ jq -n \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repository "${dollar}{GITHUB_REPOSITORY:-unknown}" \
   --arg branchKind "${dollar}{GITHUB_EVENT_NAME:-unknown}" \
-  --arg ref "${dollar}{GITHUB_REF:-unknown}" \
-  --arg headSha "${dollar}{GITHUB_SHA:-unknown}" \
+  --arg ref "${dollar}{CI_MEASUREMENT_SUBJECT_REF:-${dollar}{GITHUB_REF:-unknown}}" \
+  --arg headSha "${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_SHA:-unknown}}" \
   --arg baseSha "${dollar}{GITHUB_BASE_SHA:-}" \
   --arg runnerName "${dollar}{RUNNER_NAME:-unknown}" \
   --arg runnerOs "${dollar}{RUNNER_OS:-unknown}" \
@@ -854,11 +1571,15 @@ jq -n \
   --arg targetId "$target_id" \
   --arg targetLabel "$target_label" \
   --arg targetGroup "$target_group" \
+  --arg targetDescription "$target_description" \
   --arg targetSystem "$target_system" \
   --arg outPath "$out_path" \
   --argjson buckets ${shellSingleQuote(buckets)} \
+  --argjson targetPath ${shellSingleQuote(targetPath)} \
+  --argjson gatePolicy ${shellSingleQuote(gatePolicy)} \
   '
     ($paths[0] // []) as $closurePaths
+    | ($closurePaths | map(select(.path == $outPath) | .closureSize) | first // ($closurePaths | map(.narSize) | add // 0)) as $totalClosureSize
     | ($closurePaths | map(.narSize) | add // 0) as $totalNarSize
     | ($closurePaths | length) as $pathCount
     | ($buckets | map(
@@ -868,12 +1589,16 @@ jq -n \
             id: "nix.closure.bucket.nar_size",
             label: (($bucket.label // $bucket.name) + " closure size"),
             group: "nix closure buckets",
+            path: ($targetPath + ["buckets", $bucket.name]),
+            description: ("Store size contributed by closure paths matching " + $bucket.pathRegex),
+            measurementKind: "deterministic",
             unit: "bytes",
             value: (
               $closurePaths
               | map(select(.path | test($bucket.pathRegex)) | .narSize)
               | add // 0
             ),
+            policy: $gatePolicy,
             dimensions: { bucket: $bucket.name }
           }
       )) as $bucketObservations
@@ -899,24 +1624,45 @@ jq -n \
           traceId: $traceId,
           runner: { name: $runnerName, os: $runnerOs, arch: $runnerArch, class: $runnerClass }
         },
-        target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, system: $targetSystem },
+        target: { kind: "nix-closure", id: $targetId, name: $targetName, label: $targetLabel, group: $targetGroup, path: $targetPath, system: $targetSystem },
         observations: ([
           {
             id: "nix.closure.nar_size",
             label: "Total closure size",
             group: "nix closure",
+            path: ($targetPath + ["total", "closure-size"]),
+            description: ("Total recursive store closure size for " + $targetDescription),
             name: "nix.closure.nar_size",
+            measurementKind: "deterministic",
+            unit: "bytes",
+            value: $totalClosureSize,
+            policy: $gatePolicy,
+            dimensions: { bucket: "total" }
+          },
+          {
+            id: "nix.closure.serialized_nar_size",
+            label: "Total serialized NAR size",
+            group: "nix closure diagnostics",
+            path: ($targetPath + ["total", "serialized-nar-size"]),
+            description: ("Diagnostic sum of serialized NAR sizes for all paths in " + $targetDescription),
+            name: "nix.closure.serialized_nar_size",
+            measurementKind: "diagnostic",
             unit: "bytes",
             value: $totalNarSize,
-            dimensions: { bucket: "total" }
+            policy: { comparisonMode: "diagnostic", gate: "off" },
+            dimensions: { bucket: "total", sizeKind: "nar" }
           },
           {
             id: "nix.closure.path_count",
             label: "Total closure path count",
             group: "nix closure",
+            path: ($targetPath + ["total", "path-count"]),
+            description: ("Number of store paths in " + $targetDescription),
             name: "nix.closure.path_count",
+            measurementKind: "deterministic",
             unit: "count",
             value: $pathCount,
+            policy: $gatePolicy,
             dimensions: { bucket: "total" }
           }
         ] + $bucketObservations),
@@ -930,6 +1676,281 @@ jq -n \
         }
       }
   ' >"$artifact_file"
+
+cat "$artifact_file"
+`,
+  } as const
+}
+
+export const nixClosureMeasurementSteps = (opts: NixClosureMeasurementsStepsOptions) => {
+  const artifactDir = opts.artifactDir ?? 'tmp/nix-closure-measurements'
+  const baselineArtifactName = opts.baselineArtifactName ?? opts.artifactName
+  const buckets = opts.buckets ?? defaultNixClosureMeasurementBuckets
+  const compare = opts.compare ?? true
+
+  return [
+    ...(compare
+      ? [
+          downloadPreviousGitHubArtifactStep({
+            artifactName: baselineArtifactName,
+            outputDir: `${artifactDir}/baseline`,
+            seedRuns: opts.baselineSeedRuns,
+            seedRunIds: opts.baselineSeedRunIds,
+            maxRuns: opts.baselineMaxRuns,
+            maxCandidateRuns: opts.baselineMaxCandidateRuns,
+          }),
+        ]
+      : []),
+    ...opts.targets.map((target) =>
+      nixClosureMeasurementStep({
+        installable: target.installable,
+        targetId: target.id,
+        targetName: target.name ?? target.id,
+        targetLabel: target.label,
+        targetGroup: target.group,
+        targetPath: target.path,
+        targetDescription: target.description,
+        targetSystem: target.system,
+        artifactDir: `${artifactDir}/current/${target.id}`,
+        buckets: target.buckets ?? buckets,
+        gate: target.gate,
+      }),
+    ),
+    ...(compare
+      ? [
+          compareCiMeasurementsStep({
+            currentDir: `${artifactDir}/current`,
+            baselineDir: `${artifactDir}/baseline`,
+            outputFile: `${artifactDir}/measurement-comparison.json`,
+            regressionMode: opts.regressionMode ?? 'warn',
+            prComment: opts.prComment,
+          }),
+        ]
+      : []),
+    ciMeasurementsArtifactStep({
+      artifactName: opts.artifactName,
+      path: artifactDir,
+      retentionDays: opts.retentionDays,
+    }),
+  ] as const
+}
+
+export const nixClosureMeasurementsJob = (opts: NixClosureMeasurementsJobOptions) =>
+  ({
+    ...(opts.ifExpr === undefined ? {} : { if: opts.ifExpr }),
+    'runs-on': opts.runsOn ?? linuxX64Runner,
+    ...(opts.timeoutMinutes === undefined ? {} : { 'timeout-minutes': opts.timeoutMinutes }),
+    ...(opts.permissions === undefined ? {} : { permissions: opts.permissions }),
+    defaults: bashShellDefaults,
+    env: {
+      ...standardCIEnv,
+      ...opts.env,
+    },
+    steps: [
+      ...(opts.setupSteps ?? [checkoutStep(), installNixStep(), validateNixStoreStep]),
+      ...nixClosureMeasurementSteps(opts),
+    ],
+  }) as const
+
+export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptions) => {
+  const artifactDir = opts.artifactDir ?? 'tmp/ci-measurements'
+  const artifactFileAssignment =
+    opts.artifactFile === undefined
+      ? '"$ARTIFACT_DIR/measurements.json"'
+      : shellSingleQuote(opts.artifactFile)
+  const targetName = opts.targetName ?? 'source shape'
+  const targetId = opts.targetId ?? targetName
+  const targetLabel = opts.targetLabel ?? targetName
+  const targetGroup = opts.targetGroup ?? 'source shape'
+  const targetPath = JSON.stringify(opts.targetPath ?? ['source'])
+  const scopes = JSON.stringify(opts.scopes)
+  const targetSystemAssignment =
+    opts.targetSystem === undefined
+      ? `target_system="${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}"`
+      : `target_system=${shellSingleQuote(opts.targetSystem)}`
+
+  return {
+    name: `Measure source shape: ${targetName}`,
+    shell: 'bash',
+    env: {
+      ARTIFACT_DIR: artifactDir,
+      RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
+    },
+    run: String.raw`set -euo pipefail
+
+${ciMeasurementToolBootstrapScript}
+require_ci_measurement_tool node nodejs
+
+mkdir -p "$ARTIFACT_DIR"
+target_id=${shellSingleQuote(targetId)}
+target_name=${shellSingleQuote(targetName)}
+target_label=${shellSingleQuote(targetLabel)}
+target_group=${shellSingleQuote(targetGroup)}
+artifact_file=${artifactFileAssignment}
+${targetSystemAssignment}
+
+SCOPES_JSON=${shellSingleQuote(scopes)} \
+TARGET_PATH_JSON=${shellSingleQuote(targetPath)} \
+TARGET_ID="$target_id" \
+TARGET_NAME="$target_name" \
+TARGET_LABEL="$target_label" \
+TARGET_GROUP="$target_group" \
+TARGET_SYSTEM="$target_system" \
+node <<'NODE' >"$artifact_file"
+const cp = require('node:child_process')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const normalize = (value) => {
+  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  return normalized === '.' ? '' : normalized
+}
+const scopes = JSON.parse(process.env.SCOPES_JSON || '[]')
+const targetPath = JSON.parse(process.env.TARGET_PATH_JSON || '["source"]')
+const gitFiles = cp
+  .execFileSync('git', ['ls-files', '-z'], { encoding: 'buffer' })
+  .toString('utf8')
+  .split('\0')
+  .filter(Boolean)
+  .map(normalize)
+
+const includesPath = (file, candidates) => {
+  if (!Array.isArray(candidates) || candidates.length === 0) return true
+  return candidates.map(normalize).some((candidate) => candidate === '' || file === candidate || file.startsWith(candidate + '/'))
+}
+
+const excludesPath = (file, candidates) =>
+  Array.isArray(candidates) &&
+  candidates.map(normalize).some((candidate) => candidate !== '' && (file === candidate || file.startsWith(candidate + '/')))
+
+const matchesExtension = (file, extensions) => {
+  if (!Array.isArray(extensions) || extensions.length === 0) return true
+  const ext = path.extname(file).toLowerCase()
+  return extensions.map((extension) => extension.toLowerCase()).some((extension) => ext === extension)
+}
+
+const countLines = (file) => {
+  const buffer = fs.readFileSync(file)
+  if (buffer.includes(0)) return undefined
+  if (buffer.length === 0) return 0
+  let lines = 0
+  for (const byte of buffer) {
+    if (byte === 10) lines += 1
+  }
+  return buffer[buffer.length - 1] === 10 ? lines : lines + 1
+}
+
+const observations = []
+const scopeSummaries = []
+
+for (const scope of scopes) {
+  const root = normalize(scope.root || '.')
+  const includePaths = Array.isArray(scope.includePaths) && scope.includePaths.length > 0 ? scope.includePaths : [root]
+  const files = gitFiles
+    .filter((file) => includesPath(file, includePaths))
+    .filter((file) => !excludesPath(file, scope.excludePaths))
+    .filter((file) => matchesExtension(file, scope.includeExtensions))
+
+  let lineCount = 0
+  let measuredFileCount = 0
+  for (const file of files) {
+    const lines = countLines(file)
+    if (lines === undefined) continue
+    lineCount += lines
+    measuredFileCount += 1
+  }
+
+  const group = scope.group || 'source shape'
+  const scopePath = Array.isArray(scope.path) ? scope.path : ['source', scope.id]
+  const policy = scope.gate || { enabled: false, minBaselineSources: 3, minCurrentSamples: 1 }
+  observations.push(
+    {
+      id: 'source.lines',
+      label: scope.label + ' lines',
+      group,
+      path: scopePath,
+      description: 'Tracked non-binary source lines in the configured scope.',
+      measurementKind: 'deterministic',
+      name: 'source.lines',
+      unit: 'lines',
+      value: lineCount,
+      dimensions: { scope: scope.id },
+      policy,
+      statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+    },
+    {
+      id: 'source.files',
+      label: scope.label + ' files',
+      group,
+      path: scopePath,
+      description: 'Tracked non-binary source files in the configured scope.',
+      measurementKind: 'deterministic',
+      name: 'source.files',
+      unit: 'count',
+      value: measuredFileCount,
+      dimensions: { scope: scope.id },
+      policy,
+      statistics: { sampleCount: 1, measuredSampleCount: measuredFileCount },
+    },
+  )
+  scopeSummaries.push({
+    id: scope.id,
+    label: scope.label,
+    root,
+    includePaths,
+    excludePaths: scope.excludePaths || [],
+    includeExtensions: scope.includeExtensions || [],
+    fileCount: measuredFileCount,
+    lineCount,
+  })
+}
+
+const artifact = {
+  schemaVersion: 1,
+  generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  producer: {
+    name: 'effect-utils-ci-measurement',
+    version: 1,
+    measurementProtocol: 'source-shape-v1',
+  },
+  subject: {
+    repo: process.env.GITHUB_REPOSITORY || 'unknown',
+    branchKind: process.env.GITHUB_EVENT_NAME || 'unknown',
+    ref: process.env.CI_MEASUREMENT_SUBJECT_REF || process.env.GITHUB_REF || 'unknown',
+    headSha: process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_SHA || 'unknown',
+    baseSha: process.env.GITHUB_BASE_SHA || '',
+  },
+  execution: {
+    provider: process.env.GITHUB_RUN_ID && process.env.GITHUB_RUN_ID !== 'unknown' ? 'github-actions' : 'local',
+    workflow: 'CI',
+    job: process.env.GITHUB_JOB || 'unknown',
+    runId: process.env.GITHUB_RUN_ID || 'unknown',
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT || 'unknown',
+    taskId: process.env.CROSSTASK_TASK_ID || '',
+    attemptId: process.env.CROSSTASK_ATTEMPT_ID || '',
+    traceId: process.env.TRACE_ID || '',
+    runner: {
+      name: process.env.RUNNER_NAME || 'unknown',
+      os: process.env.RUNNER_OS || 'unknown',
+      arch: process.env.RUNNER_ARCH || 'unknown',
+      class: process.env.RUNNER_CLASS || 'unknown',
+    },
+  },
+  target: {
+    kind: 'source-shape',
+    id: process.env.TARGET_ID,
+    name: process.env.TARGET_NAME,
+    label: process.env.TARGET_LABEL,
+    group: process.env.TARGET_GROUP,
+    path: targetPath,
+    system: process.env.TARGET_SYSTEM,
+  },
+  observations,
+  details: { scopes: scopeSummaries },
+}
+
+process.stdout.write(JSON.stringify(artifact, null, 2) + '\n')
+NODE
 
 cat "$artifact_file"
 `,
@@ -952,9 +1973,13 @@ export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOpt
       CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY: String(opts?.prComment?.maxHistory ?? 20),
       CI_MEASUREMENT_PR_COMMENT_ASSET_BRANCH:
         opts?.prComment?.assetBranch ?? 'ci-measurement-assets',
-      ...(opts?.prComment?.tokenExpression === undefined
+      ...(opts?.prComment?.publicAssetCommand === undefined
         ? {}
-        : { GH_TOKEN: opts.prComment.tokenExpression }),
+        : { CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND: opts.prComment.publicAssetCommand }),
+      ...(opts?.prComment?.publicAssetEnv ?? {}),
+      ...(opts?.prComment?.enabled === true
+        ? { GH_TOKEN: opts.prComment.tokenExpression ?? '${{ github.token }}' }
+        : {}),
     },
     run: String.raw`set -euo pipefail
 
@@ -975,8 +2000,10 @@ fi
 
 current_index="$(mktemp)"
 baseline_index="$(mktemp)"
-find "$current_dir" -path "$baseline_dir" -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
-find "$baseline_dir" -name measurements.json -type f -print | sort >"$baseline_index" || true
+find "$current_dir" -name baseline -type d -prune -o -name measurements.json -type f -print | sort >"$current_index" || true
+{
+  find "$baseline_dir" -name baseline -type d ! -path "$baseline_dir" -prune -o -name measurements.json -type f -print
+} | sort -u >"$baseline_index" || true
 
 if [ ! -s "$current_index" ]; then
   echo "::error::no current measurements.json files found under $current_dir"
@@ -1003,7 +2030,7 @@ jq -n \
     def identity_dimensions:
       (.dimensions // {})
       | to_entries
-      | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount"] | index($key) | not))
+      | map(select(.key as $key | ["devenvRev", "otelServiceName", "status", "probeLabel", "sampleCount", "measuredSampleCount"] | index($key) | not))
       | sort_by(.key)
       | map("\(.key)=\(.value|tostring)")
       | join(",");
@@ -1026,6 +2053,15 @@ jq -n \
         else (($sorted[($count / 2 - 1)] + $sorted[($count / 2)]) / 2)
         end;
 
+    def percentile($p):
+      sort as $sorted
+      | ($sorted | length) as $count
+      | if $count == 0 then null
+        else $sorted[(($p * ($count - 1)) | floor)]
+        end;
+
+    def abs_value: if . < 0 then -. else . end;
+
     def observations_by_key($docs):
       reduce $docs[]? as $doc
         ({};
@@ -1042,29 +2078,48 @@ jq -n \
 
     def observation_stats($items):
       ($items | map(.observation.value)) as $values
-      | ($items | map(.observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
+      | ($items | map(.observation.comparison.baseline // empty)) as $pairedBaselineValues
+      | ($items | map(.observation.statistics.pairedDeltaMedian // empty)) as $pairedDeltaMedianValues
+      | ($items | map(.observation.statistics.pairedDeltaP25 // empty)) as $pairedDeltaP25Values
+      | ($items | map(.observation.statistics.pairedDeltaP75 // empty)) as $pairedDeltaP75Values
+      | ($items | map(.observation.statistics.pairedDeltaMad // empty)) as $pairedDeltaMadValues
+      | ($items | map(.observation.statistics.pairedDeltaSamples // []) | add // []) as $pairedDeltaSampleValues
+      | ($items | map(.observation.statistics.measuredSampleCount // .observation.statistics.sampleCount // 1) | add // ($items | length)) as $sampleCount
+      | ($values | median) as $median
       | {
           target: ($items[0].target // {}),
           observation: ($items[-1].observation // {}),
-          value: ($values | median),
+          measurementKind: ($items[-1].observation.measurementKind // null),
+          value: $median,
           min: ($values | min),
           max: ($values | max),
+          p25: ($values | percentile(0.25)),
+          p75: ($values | percentile(0.75)),
+          p95: ($values | percentile(0.95)),
+          mad: ($values | map(. - $median | if . < 0 then -. else . end) | median),
           sourceCount: ($items | length),
           sampleCount: $sampleCount,
+          pairedSampleCount: ($items | map(.observation.statistics.pairedSampleCount // .observation.comparison.pairedSampleCount // 0) | add // 0),
+          pairedBaselineValue: (if ($pairedBaselineValues | length) == 0 then null else ($pairedBaselineValues | median) end),
+          pairedDeltaMedianValue: (if ($pairedDeltaMedianValues | length) == 0 then null else ($pairedDeltaMedianValues | median) end),
+          pairedDeltaP25Value: (if ($pairedDeltaP25Values | length) == 0 then null else ($pairedDeltaP25Values | median) end),
+          pairedDeltaP75Value: (if ($pairedDeltaP75Values | length) == 0 then null else ($pairedDeltaP75Values | median) end),
+          pairedDeltaMadValue: (if ($pairedDeltaMadValues | length) == 0 then null else ($pairedDeltaMadValues | median) end),
+          pairedDeltaSampleValues: $pairedDeltaSampleValues,
           generatedAt: ($items[-1].generatedAt // null)
         };
 
     def budget($metric; $unit):
       if $metric == "nix.closure.nar_size" then
-        {warnRatio:1.10, failRatio:1.25, warnAbs:52428800, failAbs:209715200}
+        {warnRatio:1.05, failRatio:1.10, warnAbs:52428800, failAbs:209715200, statisticalToleranceRatio:0.02, statisticalToleranceAbs:10485760}
       elif $metric == "nix.closure.bucket.nar_size" then
-        {warnRatio:1.15, failRatio:1.35, warnAbs:52428800, failAbs:209715200}
+        {warnRatio:1.10, failRatio:1.20, warnAbs:52428800, failAbs:209715200, statisticalToleranceRatio:0.05, statisticalToleranceAbs:10485760}
       elif $metric == "nix.closure.path_count" then
-        {warnRatio:1.10, failRatio:1.25, warnAbs:100, failAbs:500}
+        {warnRatio:1.05, failRatio:1.10, warnAbs:100, failAbs:500, statisticalToleranceRatio:0.02, statisticalToleranceAbs:10}
       elif $unit == "seconds" then
-        {warnRatio:1.25, failRatio:1.50, warnAbs:1.5, failAbs:3.0}
+        {warnRatio:1.10, failRatio:1.20, warnAbs:0.25, failAbs:1, statisticalToleranceRatio:0.10, statisticalToleranceAbs:0.25}
       else
-        {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3}
+        {warnRatio:1.25, failRatio:1.50, warnAbs:1, failAbs:3, statisticalToleranceRatio:0.10, statisticalToleranceAbs:1}
       end;
 
     def noise_floor($metric; $unit):
@@ -1073,13 +2128,68 @@ jq -n \
       elif $unit == "seconds" then 0.1
       else 0
       end;
-    def abs_value: if . < 0 then -. else . end;
-
-    def classify($metric; $unit; $current; $baseline; $baselineMin; $baselineMax; $currentSamples; $baselineSources):
+    def default_policy($metric; $unit):
       budget($metric; $unit) as $b
       | noise_floor($metric; $unit) as $noise
+      | $b + {
+          enabled:true,
+          comparisonMode:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then "budget" else "historical" end),
+          minBaselineSources:(if $metric == "nix.closure.nar_size" or $metric == "nix.closure.bucket.nar_size" or $metric == "nix.closure.path_count" or $unit != "seconds" then 1 else 10 end),
+          minCurrentSamples:(if $unit == "seconds" then 3 else 1 end),
+          minPairedSamples:(if $unit == "seconds" then 5 else 0 end),
+          noiseFloor:$noise
+        };
+    def observation_policy($obs):
+      default_policy($obs.name // "unknown"; $obs.unit // "unknown") + ($obs.policy // {});
+    def policy_enabled($policy):
+      if ($policy | has("enabled")) then $policy.enabled else true end;
+
+    def classify($metric; $unit; $measurementKind; $policy; $current; $currentP25; $currentP75; $currentMad; $baseline; $baselineMin; $baselineMax; $baselineP25; $baselineP75; $baselineP95; $baselineMad; $currentSamples; $baselineSources; $pairedSamples; $pairedDeltaMedian; $pairedDeltaP25; $pairedDeltaP75; $pairedDeltaMad; $pairedDeltaValues):
+      $policy as $b
+      | ($policy.comparisonMode // (if $measurementKind == "deterministic" or $unit != "seconds" then "budget" elif $measurementKind == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
+      | ($policy.noiseFloor // noise_floor($metric; $unit)) as $noise
       | ($current - $baseline) as $delta
+      | (if $comparisonMode == "paired" and $pairedDeltaMedian != null then $pairedDeltaMedian else $delta end) as $evidenceDelta
+      | (($policy.pairedEvidenceQuantile // 0.25) | tonumber) as $pairedEvidenceQuantile
       | (if $baseline > 0 then ($current / $baseline) else null end) as $ratio
+      | (($baselineP75 // $baseline) - ($baselineP25 // $baseline)) as $iqr
+      | (($currentP75 // $current) - ($currentP25 // $current)) as $currentIqr
+      | (($pairedDeltaP75 // $evidenceDelta) - ($pairedDeltaP25 // $evidenceDelta)) as $pairedDeltaIqr
+      | ([
+          $noise,
+          (($policy.statisticalToleranceAbs // 0) | tonumber),
+          (if $baseline > 0 then ($baseline * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+          (($baselineMad // 0) * 3),
+          (($iqr // 0) * 1.5)
+        ] | max) as $robustTolerance
+      | (if $currentSamples > 1 then ([
+          $noise,
+          (($policy.statisticalToleranceAbs // 0) | tonumber),
+          (if $current > 0 then ($current * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+          (($currentMad // 0) * 3),
+          (($currentIqr // 0) * 1.5)
+        ] | max) else 0 end) as $currentRobustTolerance
+      | ([
+          $noise,
+          (($policy.statisticalToleranceAbs // 0) | tonumber),
+          (if $baseline > 0 then ($baseline * (($policy.statisticalToleranceRatio // 0) | tonumber)) else 0 end),
+          (($pairedDeltaMad // 0) * 3),
+          (($pairedDeltaIqr // 0) * 1.5)
+        ] | max) as $pairedDeltaTolerance
+      | ($baseline + $robustTolerance) as $robustUpper
+      | ($baseline - $robustTolerance) as $robustLower
+      | ($current + $currentRobustTolerance) as $currentRobustUpper
+      | ($current - $currentRobustTolerance) as $currentRobustLower
+      | (if $comparisonMode == "paired" and ($pairedDeltaValues | length) > 0 then ($pairedDeltaValues | percentile($pairedEvidenceQuantile)) else ($evidenceDelta - $pairedDeltaTolerance) end) as $evidenceDeltaLower
+      | (if $comparisonMode == "paired" and ($pairedDeltaValues | length) > 0 then ($pairedDeltaValues | percentile(1 - $pairedEvidenceQuantile)) else ($evidenceDelta + $pairedDeltaTolerance) end) as $evidenceDeltaUpper
+      | ([($b.warnAbs // 0), (if $baseline > 0 then ($baseline * (($b.warnRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $warnBudget
+      | ([($b.failAbs // 0), (if $baseline > 0 then ($baseline * (($b.failRatio // 1) - 1)) else 0 end), $noise, 0.000000001] | max) as $failBudget
+      | ($comparisonMode != "paired") as $needsHistoricalBaselineCount
+      | (
+          ($current >= $robustLower and $current <= $robustUpper)
+          or ($currentRobustTolerance > 0 and $currentRobustLower <= $robustUpper and $currentRobustUpper >= $robustLower)
+        ) as $withinRobustBand
+      | ($comparisonMode == "historical" and $measurementKind != "deterministic") as $canUseRobustBandSuppression
       | (
           $baselineMin != null
           and $baselineMax != null
@@ -1088,35 +2198,90 @@ jq -n \
         ) as $withinBaselineRange
       | (
           if $baseline <= 0 then "unknown"
+          elif $comparisonMode == "paired" and $evidenceDeltaLower > $failBudget then "fail"
+          elif $comparisonMode == "paired" and $evidenceDeltaLower > $warnBudget then "warn"
+          elif $comparisonMode == "paired" then "pass"
           elif ($delta > $b.failAbs and $current > ($baseline * $b.failRatio)) then "fail"
           elif ($delta > $b.warnAbs and $current > ($baseline * $b.warnRatio)) then "warn"
           else "pass"
           end
         ) as $thresholdStatus
       | (
+          policy_enabled($policy) == true
+          and $baseline > 0
+          and (if $needsHistoricalBaselineCount then $baselineSources >= ($policy.minBaselineSources // 1) else true end)
+          and $currentSamples >= ($policy.minCurrentSamples // 1)
+          and (if $comparisonMode == "paired" then $pairedSamples >= ($policy.minPairedSamples // 1) else true end)
+          and (if $comparisonMode == "paired" then $pairedDeltaMedian != null else true end)
+        ) as $gateable
+      | (
+          if (policy_enabled($policy) != true) then "disabled"
+          elif $baseline <= 0 then "missing_baseline"
+          elif $needsHistoricalBaselineCount and $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+          elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+          elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+          elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
+          else "eligible"
+          end
+        ) as $gateReason
+      | (
           if $baseline <= 0 then "unknown"
+          elif (policy_enabled($policy) != true) then "diagnostic"
           elif ($delta | abs_value) <= $noise then "noise_floor"
-          elif ($withinBaselineRange and $thresholdStatus == "pass") then "within_baseline_range"
-          elif ($baselineSources < 3 or $currentSamples < 3) then "low_sample_count"
+          elif $needsHistoricalBaselineCount and $baselineSources < ($policy.minBaselineSources // 1) then "low_baseline_count"
+          elif $currentSamples < ($policy.minCurrentSamples // 1) then "low_current_sample_count"
+          elif $comparisonMode == "paired" and $pairedSamples < ($policy.minPairedSamples // 1) then "low_paired_sample_count"
+          elif $comparisonMode == "paired" and $pairedDeltaMedian == null then "missing_paired_delta"
+          elif $comparisonMode == "paired" and $thresholdStatus == "pass" and $evidenceDelta > $warnBudget then "paired_uncertain"
+          elif ($canUseRobustBandSuppression and $thresholdStatus != "pass" and $withinRobustBand) then "within_robust_band"
           elif $thresholdStatus == "pass" then "within_budget"
           else "threshold_exceeded"
           end
         ) as $confidence
       | (
-          if $confidence == "threshold_exceeded" then $thresholdStatus
+          if ($gateable and $confidence == "threshold_exceeded") then $thresholdStatus
           elif $thresholdStatus == "unknown" then "unknown"
           else "pass"
           end
         ) as $status
       | (
           if $baseline <= 0 then "unknown"
+          elif $comparisonMode == "paired" and ($evidenceDelta | abs_value) <= $noise then "unchanged"
+          elif $comparisonMode == "paired" and $evidenceDeltaLower <= 0 and $evidenceDeltaUpper >= 0 then "unchanged"
+          elif $comparisonMode == "paired" and $evidenceDelta < 0 then "improved"
+          elif $comparisonMode == "paired" then "regressed"
           elif ($delta | abs_value) <= $noise then "unchanged"
-          elif ($withinBaselineRange and $thresholdStatus == "pass") then "unchanged"
+          elif $canUseRobustBandSuppression and $withinRobustBand then "unchanged"
           elif $delta < 0 then "improved"
           else "regressed"
+        end
+      ) as $direction
+      | (
+          if $baseline <= 0 then null
+          elif (policy_enabled($policy) != true) then null
+          elif $comparisonMode == "paired" and ($evidenceDeltaLower <= 0 and $evidenceDeltaUpper >= 0) then 0
+          elif $comparisonMode == "paired" and ($evidenceDelta | abs_value) <= $noise then 0
+          elif $comparisonMode == "paired" and $evidenceDelta > 0 then ([0, $evidenceDeltaLower] | max) / $warnBudget
+          elif $comparisonMode == "paired" then -(([0, (-$evidenceDeltaUpper)] | max) / $warnBudget)
+          elif $canUseRobustBandSuppression and $withinRobustBand then 0
+          elif ($delta | abs_value) <= $noise then 0
+          elif ($confidence == "threshold_exceeded" and $delta > 0) then ([0, ($currentRobustLower - $robustUpper), $delta] | max) / $warnBudget
+          elif ($confidence == "threshold_exceeded" and $delta < 0) then -(([0, ($robustLower - $currentRobustUpper), (-$delta)] | max) / $warnBudget)
+          elif $delta > 0 then ([0, ($currentRobustLower - $robustUpper)] | max) / $warnBudget
+          else -(([0, ($robustLower - $currentRobustUpper)] | max) / $warnBudget)
           end
-        ) as $direction
-      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,confidence:$confidence,direction:$direction};
+        ) as $semanticImpactScore
+      | (
+          if (policy_enabled($policy) != true) then "diagnostic"
+          elif $semanticImpactScore == null then "unknown"
+          elif $semanticImpactScore == 0 then "neutral"
+          elif $semanticImpactScore >= ($failBudget / $warnBudget) then "fail_boundary"
+          elif $semanticImpactScore >= 1 then "warn_boundary"
+          elif $semanticImpactScore > 0 then "below_warn_boundary"
+          else "improvement"
+          end
+        ) as $semanticImpactKind
+      | {status:$status,current:$current,baseline:$baseline,delta:$delta,ratio:$ratio,budget:$b,gatePolicy:$policy,comparisonMode:$comparisonMode,gateable:$gateable,gateReason:$gateReason,confidence:$confidence,direction:$direction,semanticImpactScore:$semanticImpactScore,semanticImpactKind:$semanticImpactKind,semanticWarnBudget:$warnBudget,semanticFailBudget:$failBudget,baselineRobustLower:$robustLower,baselineRobustUpper:$robustUpper,baselineRobustTolerance:$robustTolerance,currentRobustLower:$currentRobustLower,currentRobustUpper:$currentRobustUpper,currentRobustTolerance:$currentRobustTolerance,withinBaselineRange:$withinBaselineRange,pairedSamples:$pairedSamples,evidenceDelta:$evidenceDelta,evidenceDeltaLower:$evidenceDeltaLower,evidenceDeltaUpper:$evidenceDeltaUpper,evidenceDeltaTolerance:$pairedDeltaTolerance,pairedEvidenceQuantile:$pairedEvidenceQuantile,pairedEvidenceProtocol:(if $comparisonMode == "paired" and ($pairedDeltaValues | length) > 0 then "paired-delta-quantile-v1" elif $comparisonMode == "paired" then "paired-summary-robust-band-v1" else null end)};
 
     (observations_by_key($current[0]) | with_entries(.value = observation_stats(.value))) as $currentObs
     | (observations_by_key($baseline[0]) | with_entries(.value = observation_stats(.value))) as $baselineObs
@@ -1127,38 +2292,74 @@ jq -n \
             .key as $key
             | .value as $currentValue
             | ($baselineObs[$key] // null) as $baselineValue
+            | ($currentValue.observation | observation_policy(.)) as $policy
+            | ($policy.comparisonMode // (if ($currentValue.observation.measurementKind // $currentValue.measurementKind) == "deterministic" or ($currentValue.observation.unit // "") != "seconds" then "budget" elif ($currentValue.observation.measurementKind // $currentValue.measurementKind) == "diagnostic" then "diagnostic" else "historical" end)) as $comparisonMode
+            | ($currentValue.pairedBaselineValue // null) as $pairedBaselineValue
+            | (if $comparisonMode == "paired" and $pairedBaselineValue != null then {
+                value: $pairedBaselineValue,
+                min: $pairedBaselineValue,
+                max: $pairedBaselineValue,
+                p25: $pairedBaselineValue,
+                p75: $pairedBaselineValue,
+                p95: $pairedBaselineValue,
+                mad: 0,
+                sourceCount: $currentValue.pairedSampleCount
+              } else $baselineValue end) as $effectiveBaselineValue
             | {
                 key: $key,
                 value: (
-                  if $baselineValue == null then
+                  if $effectiveBaselineValue == null then
                     {
                       status: "missing_baseline",
                       target: $currentValue.target,
                       observation: $currentValue.observation,
-                      current: $currentValue.value,
-                      currentSamples: $currentValue.sampleCount,
-                      baselineSources: 0,
-                      confidence: "missing_baseline",
-                      direction: "unknown"
-                    }
-                  else
-                    classify(
-                      $currentValue.observation.name;
-                      $currentValue.observation.unit;
-                      $currentValue.value;
-                      $baselineValue.value;
-                      $baselineValue.min;
-                      $baselineValue.max;
-                      $currentValue.sampleCount;
-                      $baselineValue.sourceCount
-                    ) + {
+                        current: $currentValue.value,
+                        currentSamples: $currentValue.sampleCount,
+                        baselineSources: 0,
+                        gatePolicy: $policy,
+                        comparisonMode: $comparisonMode,
+                        gateable: false,
+                        gateReason: "missing_baseline",
+                        confidence: "missing_baseline",
+                        direction: "unknown"
+                      }
+                    else
+                      classify(
+                        $currentValue.observation.name;
+                        $currentValue.observation.unit;
+                        ($currentValue.observation.measurementKind // $currentValue.measurementKind);
+                        $policy;
+                        $currentValue.value;
+                        $currentValue.p25;
+                        $currentValue.p75;
+                        $currentValue.mad;
+                        $effectiveBaselineValue.value;
+                        $effectiveBaselineValue.min;
+                        $effectiveBaselineValue.max;
+                        $effectiveBaselineValue.p25;
+                        $effectiveBaselineValue.p75;
+                        $effectiveBaselineValue.p95;
+                        $effectiveBaselineValue.mad;
+                        $currentValue.sampleCount;
+                        $effectiveBaselineValue.sourceCount;
+                        $currentValue.pairedSampleCount;
+                        $currentValue.pairedDeltaMedianValue;
+                        $currentValue.pairedDeltaP25Value;
+                        $currentValue.pairedDeltaP75Value;
+                        $currentValue.pairedDeltaMadValue;
+                        ($currentValue.pairedDeltaSampleValues // [])
+                      ) + {
                       target: $currentValue.target,
                       observation: $currentValue.observation,
-                      currentSamples: $currentValue.sampleCount,
-                      baselineSources: $baselineValue.sourceCount,
-                      baselineMin: $baselineValue.min,
-                      baselineMax: $baselineValue.max
-                    }
+                        currentSamples: $currentValue.sampleCount,
+                        baselineSources: $effectiveBaselineValue.sourceCount,
+                        baselineMin: $effectiveBaselineValue.min,
+                        baselineMax: $effectiveBaselineValue.max,
+                        baselineP25: $effectiveBaselineValue.p25,
+                        baselineP75: $effectiveBaselineValue.p75,
+                        baselineP95: $effectiveBaselineValue.p95
+                        ,baselineMad: $effectiveBaselineValue.mad
+                      }
                   end
                 )
               }
@@ -1168,14 +2369,38 @@ jq -n \
     | (
         if any($comparisons[]?; .status == "fail") then "fail"
         elif any($comparisons[]?; .status == "warn") then "warn"
-        elif any($comparisons[]?; .status == "missing_baseline") then "partial"
+        elif any($comparisons[]?;
+          (if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end)
+          and (.gateReason == "missing_baseline"
+            or .gateReason == "low_baseline_count"
+            or .gateReason == "low_current_sample_count"
+            or .gateReason == "low_paired_sample_count"
+            or .gateReason == "missing_paired_delta")
+        ) then "partial"
         else "pass"
         end
       ) as $status
+    | (
+        [$comparisons[]?]
+        | {
+            enabledCount: (map(select((if (.gatePolicy | has("enabled")) then .gatePolicy.enabled else true end))) | length),
+            gateableCount: (map(select(.gateable == true)) | length),
+            missingBaselineCount: (map(select(.gateReason == "missing_baseline")) | length),
+            lowBaselineCount: (map(select(.gateReason == "low_baseline_count")) | length),
+            lowCurrentSampleCount: (map(select(.gateReason == "low_current_sample_count")) | length),
+            lowPairedSampleCount: (map(select(.gateReason == "low_paired_sample_count")) | length),
+            missingPairedDeltaCount: (map(select(.gateReason == "missing_paired_delta")) | length)
+          }
+        | . + {
+            nonGateableCount: (.enabledCount - .gateableCount),
+            enforceable: (.enabledCount == .gateableCount)
+          }
+      ) as $readiness
     | {
         schemaVersion:$schemaVersion,
         status:$status,
         mode:$mode,
+        readiness:$readiness,
         currentDir:$currentDir,
         baselineDir:$baselineDir,
         comparisons:$comparisons
@@ -1202,7 +2427,7 @@ case "$status:$mode" in
     echo "::warning::CI measurement regression threshold exceeded"
     ;;
   partial:*)
-    echo "::notice::CI measurement baseline is missing for one or more observations"
+    echo "::notice::CI measurement comparison is partial because one or more enabled observations are not gateable"
     ;;
 esac
 
@@ -1210,10 +2435,10 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   {
     echo "### ${dollar}{CI_MEASUREMENT_PR_COMMENT_TITLE:-CI Measurements}"
     echo ""
-    jq -r '"- Status: " + .status + "\n- Mode: " + .mode + "\n- Baseline: " + .baselineDir' "$comparison_file"
+    jq -r '"- Status: " + .status + "\n- Gate: " + (if .mode == "fail" then "enforced" elif .mode == "warn" then "advisory" elif .mode == "off" then "off" else (.mode // "unknown") end) + "\n- Baseline: " + .baselineDir' "$comparison_file"
     echo ""
-    echo "| Status | Target | Observation | Current | Baseline | Delta | Ratio |"
-    echo "| --- | --- | --- | ---: | ---: | ---: | ---: |"
+    echo "| Status | Gate | Target | Observation | Current | Baseline | Delta | Ratio |"
+    echo "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |"
     jq -r '
       .comparisons
       | to_entries
@@ -1227,9 +2452,10 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
       | .[:20]
       | .[]
       | .value as $v
-      | [
-          $v.status,
-          (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
+        | [
+            $v.status,
+            (if ($v.gateable // false) then "yes" else ($v.gateReason // "no") end),
+            (($v.target.kind // "unknown") + "/" + ($v.target.name // "unknown") + "/" + ($v.target.system // "unknown")),
           ($v.observation.name // "unknown"),
           (($v.current // $v.observation.value // 0) | tostring),
           (($v.baseline // "") | tostring),
@@ -1241,18 +2467,47 @@ if [ -n "${dollar}{GITHUB_STEP_SUMMARY:-}" ]; then
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 
-if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${dollar}{GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+${opts?.prComment?.enabled === true ? String.raw`if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ]; then
+  if [ "${dollar}{GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
+    echo "::notice::CI measurement PR comments are produced only by pull_request workflows; skipping comment for event ${dollar}{GITHUB_EVENT_NAME:-unknown}"
+    exit 0
+  fi
+
   can_render_pr_comment=true
-  if ! command -v gh >/dev/null 2>&1; then
-    echo "::notice::gh is not available; skipping CI measurement PR comment"
+
+  ensure_ci_measurement_tool() {
+    tool_name="$1"
+    nix_attr="$2"
+    if command -v "$tool_name" >/dev/null 2>&1; then
+      return 0
+    fi
+    if ! command -v nix >/dev/null 2>&1; then
+      return 1
+    fi
+    if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
+      export PATH="$tool_out/bin:$PATH"
+    fi
+    command -v "$tool_name" >/dev/null 2>&1
+  }
+
+  if ! ensure_ci_measurement_tool gh gh; then
+    echo "::error::gh is not available; unable to publish required CI measurement PR comment"
+    can_render_pr_comment=false
+  fi
+  if ! ensure_ci_measurement_tool node nodejs; then
+    echo "::error::node is not available; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
   fi
   if ! command -v jq >/dev/null 2>&1; then
-    echo "::notice::jq is not available; skipping CI measurement PR comment"
-    can_render_pr_comment=false
+    if ensure_ci_measurement_tool jq jq; then
+      :
+    else
+      echo "::error::jq is not available; unable to publish required CI measurement PR comment"
+      can_render_pr_comment=false
+    fi
   fi
   if [ -z "${dollar}{GH_TOKEN:-${dollar}{GITHUB_TOKEN:-}}" ]; then
-    echo "::notice::GH_TOKEN/GITHUB_TOKEN is not set; skipping CI measurement PR comment"
+    echo "::error::GH_TOKEN/GITHUB_TOKEN is not set; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
   fi
 
@@ -1262,8 +2517,12 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
     pr_number="$(jq -r '.pull_request.number // empty' "$event_path")"
   fi
   if [ "$can_render_pr_comment" = "true" ] && [ -z "$pr_number" ]; then
-    echo "::notice::pull request number is unavailable; skipping CI measurement PR comment"
+    echo "::error::pull request number is unavailable; unable to publish required CI measurement PR comment"
     can_render_pr_comment=false
+  fi
+
+  if [ "$can_render_pr_comment" != "true" ]; then
+    exit 1
   fi
 
   if [ "$can_render_pr_comment" = "true" ]; then
@@ -1273,6 +2532,9 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
     comment_body="$comment_tmp_dir/comment.md"
     comment_id_file="$comment_tmp_dir/comment-id.txt"
     chart_file="$comment_tmp_dir/perf-change-vs-baseline.svg"
+    chart_dark_file="$comment_tmp_dir/perf-change-vs-baseline-dark.svg"
+    chart_png_file="$comment_tmp_dir/perf-change-vs-baseline.png"
+    chart_dark_png_file="$comment_tmp_dir/perf-change-vs-baseline-dark.png"
     renderer_script="$comment_tmp_dir/render-ci-measurement-comment.mjs"
 
     if ! gh api "repos/$repo/issues/$pr_number/comments" --paginate >"$comments_json"; then
@@ -1286,21 +2548,44 @@ if [ "${dollar}{CI_MEASUREMENT_PR_COMMENT_ENABLED:-false}" = "true" ] && [ "${do
       if [ -z "$asset_title" ]; then
         asset_title="ci-measurements"
       fi
-      asset_head_sha="${dollar}{GITHUB_HEAD_SHA:-${dollar}{GITHUB_SHA:-unknown}}"
+      asset_head_sha="${dollar}{CI_MEASUREMENT_SUBJECT_SHA:-${dollar}{GITHUB_HEAD_SHA:-${dollar}{GITHUB_SHA:-unknown}}}"
       asset_run_id="${dollar}{GITHUB_RUN_ID:-local}"
       asset_run_attempt="${dollar}{GITHUB_RUN_ATTEMPT:-0}"
-      asset_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
+      asset_svg_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.svg"
+      asset_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}.png"
+      asset_dark_png_path="ci-measurements/pr-$pr_number/${dollar}{asset_head_sha}/run-${dollar}{asset_run_id}-attempt-${dollar}{asset_run_attempt}/${dollar}{asset_title}-dark.png"
+      public_asset_command="${dollar}{CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND:-}"
+      repo_private="$(gh api "repos/$repo" --jq '.private // false' 2>/dev/null || printf 'true')"
+      require_public_asset=false
+      if [ "$repo_private" = "true" ]; then
+        require_public_asset=true
+      fi
       if [ "${dollar}{GITHUB_SERVER_URL:-https://github.com}" = "https://github.com" ]; then
-        chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_path"
+        github_raw_chart_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_png_path"
+        github_raw_chart_dark_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_dark_png_path"
+        github_raw_chart_source_url="https://raw.githubusercontent.com/$repo/$asset_branch/$asset_svg_path"
       else
-        chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_path"
+        github_raw_chart_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_png_path"
+        github_raw_chart_dark_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_dark_png_path"
+        github_raw_chart_source_url="${dollar}{GITHUB_SERVER_URL:-https://github.com}/$repo/raw/$asset_branch/$asset_svg_path"
+      fi
+      if [ "$repo_private" = "true" ]; then
+        chart_url=""
+        chart_dark_url=""
+        chart_source_url=""
+      else
+        chart_url="$github_raw_chart_url"
+        chart_dark_url="$github_raw_chart_dark_url"
+        chart_source_url="$github_raw_chart_source_url"
       fi
       export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+      export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL="$chart_dark_url"
+      export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
 
       cat > "$renderer_script" <<'EOF'
 import { readFileSync, writeFileSync } from 'node:fs'
 
-const [comparisonPath, commentsPath, bodyPath, commentIdPath, chartPath] = process.argv.slice(2)
+const [comparisonPath, commentsPath, bodyPath, commentIdPath, chartPath, chartDarkPath] = process.argv.slice(2)
 const title = process.env.CI_MEASUREMENT_PR_COMMENT_TITLE || 'CI Measurements'
 const maxRows = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_ROWS || '10', 10)
 const maxHistory = Number.parseInt(process.env.CI_MEASUREMENT_PR_COMMENT_MAX_HISTORY || '20', 10)
@@ -1308,13 +2593,20 @@ const repo = process.env.GITHUB_REPOSITORY || 'unknown'
 const runId = process.env.GITHUB_RUN_ID || ''
 const runAttempt = process.env.GITHUB_RUN_ATTEMPT || ''
 const sha = process.env.GITHUB_SHA || ''
-const headSha = process.env.GITHUB_HEAD_SHA || sha
+const headSha = process.env.CI_MEASUREMENT_SUBJECT_SHA || process.env.GITHUB_HEAD_SHA || sha
 const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
 const workflow = process.env.GITHUB_WORKFLOW || 'CI'
 const job = process.env.GITHUB_JOB || ''
 const chartUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_URL || ''
+const chartDarkUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL || ''
+const chartSourceUrl = process.env.CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL || ''
 
-const marker = '<!-- ci-measurement-comment:managed -->'
+const markerScope = (process.env.CI_MEASUREMENT_PR_COMMENT_MARKER || title)
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '') || 'default'
+const marker = '<!-- ci-measurement-comment:managed:' + markerScope + ' -->'
+const legacyMarker = '<!-- ci-measurement-comment:managed -->'
 const statePrefix = '<!-- ci-measurement-comment:state\n'
 const stateSuffix = '\n-->'
 const stateTag = 'ci-measurement-comment-state'
@@ -1325,7 +2617,9 @@ const comments = JSON.parse(readFileSync(commentsPath, 'utf8'))
 if (!Array.isArray(comments)) throw new Error('comments response must be an array')
 
 const existing = comments.find((comment) => {
-  return typeof comment?.body === 'string' && comment.body.includes(marker)
+  if (typeof comment?.body !== 'string') return false
+  return comment.body.includes(marker) ||
+    (comment.body.includes(legacyMarker) && comment.body.includes('## ' + title))
 })
 
 const extractState = (body) => {
@@ -1372,15 +2666,139 @@ const formatRatio = (value) => {
   return formatNumber(Math.round((value - 1) * 1000) / 10) + '%'
 }
 
-const formatResult = (row) => {
-  if (row.confidence === 'low_sample_count') return 'gray needs repeat'
-  if (row.status === 'fail') return 'red regression'
-  if (row.status === 'warn') return 'yellow regression'
-  if (row.status === 'missing_baseline') return 'gray no baseline'
-  if (row.confidence === 'noise_floor') return 'gray noise floor'
-  if (row.confidence === 'within_baseline_range') return 'gray within range'
-  if (row.direction === 'improved') return 'green improved'
-  return 'gray unchanged'
+const formatSemanticImpact = (value) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
+  if (Math.abs(value) < 0.005) return '0.00x'
+  const sign = value > 0 ? '+' : ''
+  return sign + formatNumber(Math.round(value * 100) / 100) + 'x'
+}
+
+const formatRowImpact = (row) => {
+  if (row.confidence === 'diagnostic' || row.gateReason === 'disabled' || row.semanticImpactKind === 'diagnostic') {
+    return 'diagnostic'
+  }
+  return formatSemanticImpact(row.semanticImpactScore)
+}
+
+const formatEvidence = (row) => {
+  const unit = row.observation?.unit
+  if (row.comparisonMode === 'paired' && typeof row.evidenceDeltaLower === 'number' && typeof row.evidenceDeltaUpper === 'number') {
+    const quantile = typeof row.pairedEvidenceQuantile === 'number'
+      ? Math.round(row.pairedEvidenceQuantile * 100)
+      : 25
+    return (row.confidence || 'unknown')
+      + '<br><sub>paired n=' + (row.pairedSamples ?? 0)
+      + ', ' + quantile + '-' + (100 - quantile) + '% delta '
+      + formatValue(row.evidenceDeltaLower, unit)
+      + ' - ' + formatValue(row.evidenceDeltaUpper, unit)
+      + '</sub>'
+  }
+  return (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>'
+}
+
+const interpretation = (row) => {
+  if (row.confidence === 'low_baseline_count') return {
+    label: 'Needs more baseline',
+    detail: 'Not enough compatible baseline runs to make this gate trustworthy.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'low_current_sample_count') return {
+    label: 'Needs repeat',
+    detail: 'Current run has too few successful measured samples.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'low_paired_sample_count') return {
+    label: 'Needs paired evidence',
+    detail: 'Wall-clock gates require same-run base/head samples before they can block merges.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'missing_paired_delta') return {
+    label: 'Needs paired delta stats',
+    detail: 'Wall-clock gates require per-pair delta statistics, not only paired medians.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'paired_uncertain') return {
+    label: 'Uncertain wall-clock movement',
+    detail: 'The paired median moved, but the paired delta band still crosses the configured budget.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'diagnostic') return {
+    label: 'Diagnostic only',
+    detail: 'Shown for investigation, but intentionally excluded from gating.',
+    tone: 'diagnostic',
+    color: '#a78bfa',
+  }
+  if (row.status === 'fail') return {
+    label: 'Regression - blocks merge',
+    detail: 'Worse than the configured fail threshold with enough samples.',
+    tone: 'bad',
+    color: '#ef4444',
+  }
+  if (row.status === 'warn') return {
+    label: 'Regression - review',
+    detail: 'Worse than the configured warning threshold.',
+    tone: 'warn',
+    color: '#f59e0b',
+  }
+  if (row.status === 'missing_baseline') return {
+    label: 'No baseline yet',
+    detail: 'Current value is measured, but no comparable baseline exists.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'noise_floor') return {
+    label: 'Too small to matter',
+    detail: 'The absolute change is below the noise floor for this metric.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'within_baseline_range') return {
+    label: 'Historical range only',
+    detail: 'Inside the full historical min/max range, but this range is not used to pass a gate.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.confidence === 'within_robust_band' || row.confidence === 'within_baseline_distribution') return {
+    label: 'Within noise band',
+    detail: 'Current and baseline robust noise bands overlap.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.direction === 'improved' && typeof row.semanticImpactScore === 'number' && row.semanticImpactScore <= -1) return {
+    label: 'Meaningfully lower',
+    detail: 'Lower than baseline by enough to cross the configured review threshold.',
+    tone: 'good',
+    color: '#10b981',
+  }
+  if (row.direction === 'improved') return {
+    label: 'Slightly lower, ok',
+    detail: 'Lower than baseline, but still inside the configured review budget.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  if (row.direction === 'regressed') return {
+    label: 'Slightly higher, ok',
+    detail: 'Higher than baseline but still inside the configured budget.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+  return {
+    label: 'Unchanged',
+    detail: 'No meaningful movement from baseline.',
+    tone: 'neutral',
+    color: '#94a3b8',
+  }
+}
+
+const formatGate = (row) => {
+  if (row.gateable) return 'yes'
+  const reason = row.gateReason || row.confidence || 'unknown'
+  return 'no<br><sub>' + reason + '</sub>'
 }
 
 const escapeCell = (value) => String(value ?? '-').replaceAll('|', '\\|').replaceAll('\n', '<br>')
@@ -1402,12 +2820,74 @@ const humanProbe = (row) => {
     task_pnpm_install: 'pnpm:install',
     task_genie_run: 'genie:run',
     task_check_quick: 'check:quick',
+    task_check_quick_warm: 'Warm cached check:quick',
+    task_check_quick_forced: 'Forced check:quick',
   }
   if (probe && labels[probe]) return labels[probe]
   if (name.startsWith('devenv.') && name.endsWith('.duration')) {
     return name.slice('devenv.'.length, -'.duration'.length).replaceAll('_', ' ')
   }
   return name
+}
+
+const semanticPath = (row) => {
+  const parts = semanticSegments(row)
+  return parts.length > 0 ? parts.join(' / ') : '-'
+}
+
+const semanticSegments = (row) => {
+  const parts = [
+    ...(Array.isArray(row.target?.path) ? row.target.path : []),
+    row.target?.group,
+    ...(Array.isArray(row.observation?.path) ? row.observation.path : []),
+    row.observation?.group,
+  ].filter((value) => typeof value === 'string' && value.length > 0)
+  const seen = new Set()
+  const unique = parts.filter((part) => {
+    if (seen.has(part)) return false
+    seen.add(part)
+    return true
+  })
+  if (unique.length > 0) return unique
+
+  const kind = row.target?.kind || row.observation?.measurementKind || 'measurements'
+  if (kind === 'devenv') return ['performance', 'devenv']
+  if (kind === 'nix-closure') return ['nix', 'closures']
+  return [String(kind)]
+}
+
+const semanticGroupSegments = (row) => {
+  const segments = semanticSegments(row)
+  if (segments.length <= 1) return segments
+  const targetKind = row.target?.kind
+  if (targetKind === 'devenv') return segments.slice(0, Math.min(2, segments.length))
+  if (targetKind === 'nix-closure') return segments.slice(0, Math.min(3, segments.length))
+  if (targetKind === 'source-shape') return segments.slice(0, Math.min(2, segments.length))
+  return segments.slice(0, Math.min(2, segments.length))
+}
+
+const semanticGroupLabel = (row) => {
+  const segments = semanticGroupSegments(row)
+  return segments.length > 0 ? segments.join(' / ') : 'measurements'
+}
+
+const groupRows = (rows) => {
+  const groups = new Map()
+  for (const row of rows) {
+    const label = semanticGroupLabel(row)
+    const existing = groups.get(label)
+    if (existing) existing.rows.push(row)
+    else groups.set(label, { label, rows: [row] })
+  }
+  return Array.from(groups.values()).sort((left, right) => {
+    const leftRank = Math.min(...left.rows.map(rank))
+    const rightRank = Math.min(...right.rows.map(rank))
+    if (leftRank !== rightRank) return leftRank - rightRank
+    const leftImpact = Math.max(...left.rows.map((row) => Math.abs(row.semanticImpactScore || 0)))
+    const rightImpact = Math.max(...right.rows.map((row) => Math.abs(row.semanticImpactScore || 0)))
+    if (rightImpact !== leftImpact) return rightImpact - leftImpact
+    return left.label.localeCompare(right.label)
+  })
 }
 
 const chartProbe = (row) => {
@@ -1421,6 +2901,8 @@ const chartProbe = (row) => {
     task_pnpm_install: 'pnpm:install',
     task_genie_run: 'genie:run',
     task_check_quick: 'check:quick',
+    task_check_quick_warm: 'Warm cached check:quick',
+    task_check_quick_forced: 'Forced check:quick',
   }
   if (probe && labels[probe]) return labels[probe]
   return humanProbe(row)
@@ -1438,40 +2920,195 @@ const dimensions = (row) => {
 const rank = (row) => {
   if (row.status === 'fail') return 0
   if (row.status === 'warn') return 1
-  if (row.status === 'missing_baseline') return 2
-  return 3
+  if (row.status === 'missing_baseline') return 3
+  return 2
 }
 
 const allRows = Object.values(comparison.comparisons || {}).sort((left, right) => {
   const byRank = rank(left) - rank(right)
   if (byRank !== 0) return byRank
-  return (right.delta || 0) - (left.delta || 0)
+  const leftImpact = typeof left.semanticImpactScore === 'number' ? Math.abs(left.semanticImpactScore) : 0
+  const rightImpact = typeof right.semanticImpactScore === 'number' ? Math.abs(right.semanticImpactScore) : 0
+  if (rightImpact !== leftImpact) return rightImpact - leftImpact
+  const leftDelta = typeof left.delta === 'number' ? Math.abs(left.delta) : 0
+  const rightDelta = typeof right.delta === 'number' ? Math.abs(right.delta) : 0
+  if (rightDelta !== leftDelta) return rightDelta - leftDelta
+  return humanProbe(left).localeCompare(humanProbe(right))
 })
+const protocolLabel = (() => {
+  const protocols = new Set(
+    allRows
+      .map((row) => row.observation?.dimensions?.measurementProtocol)
+      .filter((value) => typeof value === 'string' && value.length > 0),
+  )
+  return protocols.size > 0 ? Array.from(protocols).join(', ') : 'legacy'
+})()
 const visibleLimit = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 10
 const comparableRows = allRows.filter((row) => typeof row.baseline === 'number')
 const hasComparableBaseline = comparableRows.length > 0
+const isDiagnosticRow = (row) =>
+  row.status === 'missing_baseline' ||
+  row.confidence === 'diagnostic' ||
+  row.gateReason === 'disabled' ||
+  row.semanticImpactKind === 'diagnostic' ||
+  (!row.gateable && typeof row.baseline !== 'number')
+const isZeroImpactRow = (row) =>
+  typeof row.semanticImpactScore === 'number' &&
+  !Number.isNaN(row.semanticImpactScore) &&
+  Math.abs(row.semanticImpactScore) < 0.005
+const actionableComparableRows = comparableRows.filter((row) => !isDiagnosticRow(row))
 const visibleRows = (hasComparableBaseline
-  ? allRows.filter((row) => typeof row.baseline === 'number')
-  : allRows.slice().sort((left, right) => (right.current || 0) - (left.current || 0))
+  ? actionableComparableRows
+  : allRows.filter((row) => !isDiagnosticRow(row)).sort((left, right) => (right.current || 0) - (left.current || 0))
 ).slice(0, visibleLimit)
+const nonZeroImpactRows = actionableComparableRows.filter((row) => !isZeroImpactRow(row))
+const zeroImpactRows = actionableComparableRows.filter(isZeroImpactRow)
+const visibleNonZeroImpactRows = nonZeroImpactRows.slice(0, visibleLimit)
+const diagnosticRows = allRows.filter(isDiagnosticRow)
+
+const baselineToCurrent = (row) => {
+  const unit = row.observation?.unit
+  return formatValue(row.baseline, unit) + ' -> ' + formatValue(row.current, unit)
+}
+
+const rawChange = (row) => {
+  const unit = row.observation?.unit
+  return formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio)
+}
+
+const confidenceSummary = (row) => {
+  const unit = row.observation?.unit
+  if (row.comparisonMode === 'paired' && typeof row.evidenceDeltaLower === 'number' && typeof row.evidenceDeltaUpper === 'number') {
+    const quantile = typeof row.pairedEvidenceQuantile === 'number'
+      ? Math.round(row.pairedEvidenceQuantile * 100)
+      : 25
+    return 'paired n=' + (row.pairedSamples ?? 0)
+      + ', ' + quantile + '-' + (100 - quantile) + '% delta '
+      + formatValue(row.evidenceDeltaLower, unit)
+      + '..' + formatValue(row.evidenceDeltaUpper, unit)
+  }
+  return (row.confidence || 'unknown') + ', baseline n=' + (row.baselineSources ?? 0) + ', current n=' + (row.currentSamples ?? 1)
+}
+
+const scanDecision = (row) => {
+  if (row.status === 'fail') return 'regression blocks'
+  if (row.status === 'warn') return 'regression review'
+  if (row.status === 'missing_baseline') return 'needs baseline'
+  if (row.direction === 'improved') return 'faster'
+  if (row.direction === 'regressed') return 'no material impact'
+  return 'unchanged'
+}
+
+const scanTable = (rows) => {
+  if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
+  return [
+    '| What changed? | Group | Probe | Baseline -> current | Raw change | Impact | Confidence |',
+    '| --- | --- | --- | --- | ---: | ---: | --- |',
+    ...rows.map((row) => {
+      return '| ' + [
+        scanDecision(row),
+        semanticGroupLabel(row),
+        humanProbe(row),
+        baselineToCurrent(row),
+        rawChange(row),
+        formatRowImpact(row),
+        confidenceSummary(row),
+      ].map(escapeCell).join(' | ') + ' |'
+    }),
+  ].join('\n')
+}
+
+const groupedScanTables = (rows) => {
+  if (rows.length === 0) return 'No non-zero actionable measurement impact detected.'
+  return groupRows(rows).map((group) => [
+    '### ' + group.label,
+    '',
+    scanTable(group.rows),
+  ].join('\n')).join('\n\n')
+}
+
+const zeroImpactTable = (rows) => {
+  if (rows.length === 0) return 'No zero-impact measurements.'
+  return [
+    '| Group | Probe | Baseline -> current | Raw change | Impact | Gate | Evidence | Why hidden |',
+    '| --- | --- | --- | ---: | ---: | --- | --- | --- |',
+    ...rows.map((row) => {
+      const meaning = interpretation(row)
+      return '| ' + [
+        semanticGroupLabel(row),
+        humanProbe(row),
+        baselineToCurrent(row),
+        rawChange(row),
+        formatRowImpact(row),
+        row.gateable ? 'yes' : (row.gateReason || 'no'),
+        confidenceSummary(row),
+        meaning.label,
+      ].map(escapeCell).join(' | ') + ' |'
+    }),
+  ].join('\n')
+}
+
+const groupedZeroImpactTables = (rows) => {
+  if (rows.length === 0) return 'No zero-impact measurements.'
+  return groupRows(rows).map((group) => [
+    '### ' + group.label,
+    '',
+    zeroImpactTable(group.rows),
+  ].join('\n')).join('\n\n')
+}
+
+const diagnosticTable = (rows) => {
+  if (rows.length === 0) return 'No diagnostic or ungated measurements.'
+  return [
+    '| Group | Probe | Current | Baseline | Impact | Gate | Reason | Evidence |',
+    '| --- | --- | ---: | ---: | ---: | --- | --- | --- |',
+    ...rows.map((row) => {
+      return '| ' + [
+        semanticGroupLabel(row),
+        humanProbe(row),
+        formatValue(row.current, row.observation?.unit),
+        formatValue(row.baseline, row.observation?.unit),
+        formatRowImpact(row),
+        row.gateable ? 'yes' : (row.gateReason || row.status || 'no'),
+        interpretation(row).label,
+        confidenceSummary(row),
+      ].map(escapeCell).join(' | ') + ' |'
+    }),
+  ].join('\n')
+}
+
+const groupedDiagnosticTables = (rows) => {
+  if (rows.length === 0) return 'No diagnostic or ungated measurements.'
+  return groupRows(rows).map((group) => [
+    '### ' + group.label,
+    '',
+    diagnosticTable(group.rows),
+  ].join('\n')).join('\n\n')
+}
 
 const comparisonTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Probe | Baseline | Current | Change | Result | Confidence |',
-    '| --- | ---: | ---: | ---: | --- | --- |',
+    '| Group | Measurement | Baseline | Current | Raw change | Impact | Meaning | Gate | Evidence |',
+    '| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
-      const baselineRange = typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
-        ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
+      const baselineRange = typeof row.baselineRobustLower === 'number' && typeof row.baselineRobustUpper === 'number' && row.baselineRobustLower !== row.baselineRobustUpper
+        ? '<br><sub>noise band ' + formatValue(row.baselineRobustLower, unit) + ' - ' + formatValue(row.baselineRobustUpper, unit) + '</sub>'
+        : typeof row.baselineMin === 'number' && typeof row.baselineMax === 'number' && row.baselineMin !== row.baselineMax
+          ? '<br><sub>range ' + formatValue(row.baselineMin, unit) + ' - ' + formatValue(row.baselineMax, unit) + '</sub>'
         : ''
+      const meaning = interpretation(row)
       return '| ' + [
+        semanticPath(row),
         humanProbe(row),
         formatValue(row.baseline, unit) + baselineRange,
         formatValue(row.current, unit),
         formatDelta(row.delta, unit) + ' / ' + formatRatio(row.ratio),
-        formatResult(row),
-        (row.confidence || 'unknown') + '<br><sub>baseline n=' + (row.baselineSources ?? 0) + ', current samples=' + (row.currentSamples ?? 1) + '</sub>',
+        formatRowImpact(row),
+        meaning.label + '<br><sub>' + meaning.detail + '</sub>',
+        formatGate(row),
+        formatEvidence(row),
       ].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
@@ -1480,10 +3117,10 @@ const comparisonTable = (rows) => {
 const currentOnlyTable = (rows) => {
   if (rows.length === 0) return 'No current measurements found.'
   return [
-    '| Probe | Current |',
-    '| --- | ---: |',
+    '| Group | Measurement | Current |',
+    '| --- | --- | ---: |',
     ...rows.map((row) => {
-      return '| ' + [humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
+      return '| ' + [semanticPath(row), humanProbe(row), formatValue(row.current, row.observation?.unit)].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
 }
@@ -1491,12 +3128,13 @@ const currentOnlyTable = (rows) => {
 const allMeasurementsTable = (rows) => {
   if (rows.length === 0) return 'No measurement regressions detected.'
   return [
-    '| Status | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio |',
-    '| --- | --- | --- | --- | ---: | ---: | ---: | ---: |',
+    '| Status | Gate | Target | Observation | Dimensions | Baseline | Current | Delta | Ratio | Impact |',
+    '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |',
     ...rows.map((row) => {
       const unit = row.observation?.unit
       return '| ' + [
         row.status,
+        row.gateable ? 'yes' : (row.gateReason || 'no'),
         row.target?.label || row.target?.name || 'unknown',
         row.observation?.label || row.observation?.name || 'unknown',
         dimensions(row),
@@ -1504,10 +3142,39 @@ const allMeasurementsTable = (rows) => {
         formatValue(row.current, unit),
         formatDelta(row.delta, unit),
         formatRatio(row.ratio),
+        formatRowImpact(row),
       ].map(escapeCell).join(' | ') + ' |'
     }),
   ].join('\n')
 }
+
+const sourceMeasurement = (row) => ({
+  id: row.observation?.dimensions?.probe || row.observation?.name || humanProbe(row),
+  label: humanProbe(row),
+  group: semanticGroupLabel(row),
+  path: semanticSegments(row),
+  groupPath: semanticGroupSegments(row),
+  status: row.status,
+  direction: row.direction,
+  gateable: row.gateable,
+  gateReason: row.gateReason,
+  confidence: row.confidence,
+  comparisonMode: row.comparisonMode,
+  unit: row.observation?.unit,
+  baseline: row.baseline ?? null,
+  current: row.current ?? null,
+  delta: row.delta ?? null,
+  ratio: row.ratio ?? null,
+  semanticImpactScore: row.semanticImpactScore ?? null,
+  semanticImpactKind: row.semanticImpactKind ?? null,
+  baselineSources: row.baselineSources ?? null,
+  currentSamples: row.currentSamples ?? null,
+  pairedSamples: row.pairedSamples ?? null,
+  evidenceDeltaLower: row.evidenceDeltaLower ?? null,
+  evidenceDeltaUpper: row.evidenceDeltaUpper ?? null,
+  pairedEvidenceQuantile: row.pairedEvidenceQuantile ?? null,
+  dimensions: row.observation?.dimensions || {},
+})
 
 const truncate = (value, maxLength) => {
   const text = String(value)
@@ -1516,70 +3183,121 @@ const truncate = (value, maxLength) => {
   return text.slice(0, Math.max(0, maxLength - 3)) + '...'
 }
 
-const renderPerfChangeSvg = (rows) => {
+const renderPerfChangeSvg = (rows, theme = 'adaptive') => {
   const chartRows = rows
-    .filter((row) => row.observation?.unit === 'seconds')
     .filter((row) => typeof row.current === 'number' && typeof row.baseline === 'number')
-    .filter((row) => typeof row.ratio === 'number')
-    .sort((left, right) => ((left.ratio || 1) - 1) - ((right.ratio || 1) - 1))
+    .filter((row) => row.gateable === true)
+    .filter((row) => typeof row.semanticImpactScore === 'number')
+    .sort((left, right) => (left.semanticImpactScore || 0) - (right.semanticImpactScore || 0))
     .slice(0, visibleLimit)
   if (chartRows.length === 0) return ''
 
-  const percentages = chartRows.map((row) => ((row.ratio || 1) - 1) * 100)
-  const minPct = Math.min(-1, ...percentages)
-  const maxPct = Math.max(1, ...percentages)
-  const lower = Math.floor(minPct)
-  const upper = Math.ceil(maxPct)
+  const impactScores = chartRows.map((row) => row.semanticImpactScore || 0)
+  const minImpact = Math.min(-1, ...impactScores)
+  const maxImpact = Math.max(1, ...impactScores)
+  const lower = Math.floor(minImpact)
+  const upper = Math.ceil(maxImpact)
   const span = upper - lower || 1
-  const width = 900
-  const rowHeight = 42
-  const height = 96 + chartRows.length * rowHeight + 34
-  const labelX = 238
-  const plotX = 260
-  const plotWidth = 342
-  const percentX = 626
-  const nominalX = 704
-  const topY = 78
+  const width = 1040
+  const rowHeight = 46
+  const height = 112 + chartRows.length * rowHeight + 34
+  const labelX = 230
+  const plotX = 252
+  const plotWidth = 320
+  const impactX = 596
+  const nominalX = 672
+  const meaningX = 804
+  const topY = 92
   const barHeight = 18
   const zeroX = plotX + ((0 - lower) / span) * plotWidth
+  const themeCss = theme === 'dark'
+    ? [
+        '  .chart-bg { fill: #0d1117; }',
+        '  .chart-border { fill: none; stroke: #30363d; }',
+        '  .chart-title { fill: #f0f6fc; }',
+        '  .chart-muted { fill: #8b949e; }',
+        '  .chart-axis { stroke: #8b949e; }',
+        '  .chart-label { fill: #c9d1d9; }',
+        '  .chart-value { fill: #8b949e; }',
+        '  .chart-track { fill: #21262d; }',
+      ]
+    : [
+        '  .chart-bg { fill: #ffffff; }',
+        '  .chart-border { fill: none; stroke: #d0d7de; }',
+        '  .chart-title { fill: #24292f; }',
+        '  .chart-muted { fill: #57606a; }',
+        '  .chart-axis { stroke: #8c959f; }',
+        '  .chart-label { fill: #24292f; }',
+        '  .chart-value { fill: #57606a; }',
+        '  .chart-track { fill: #f6f8fa; }',
+        ...(theme === 'adaptive'
+          ? [
+              '  @media (prefers-color-scheme: dark) {',
+              '    .chart-bg { fill: #0d1117; }',
+              '    .chart-border { stroke: #30363d; }',
+              '    .chart-title { fill: #f0f6fc; }',
+              '    .chart-muted { fill: #8b949e; }',
+              '    .chart-axis { stroke: #8b949e; }',
+              '    .chart-label { fill: #c9d1d9; }',
+              '    .chart-value { fill: #8b949e; }',
+              '    .chart-track { fill: #21262d; }',
+              '  }',
+            ]
+          : []),
+      ]
 
   const svg = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
-    '<rect width="' + width + '" height="' + height + '" rx="10" fill="#050b1f"/>',
-    '<text x="' + width / 2 + '" y="28" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700" fill="#e5e7eb">Perf change vs baseline (%)</text>',
-    '<text x="' + plotX + '" y="55" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#20d6a3">faster</text>',
-    '<text x="' + (plotX + plotWidth) + '" y="55" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#fb6b6b">slower</text>',
-    '<text x="' + nominalX + '" y="55" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#64748b">baseline -> current</text>',
-    '<line x1="' + zeroX.toFixed(1) + '" y1="66" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke="#ef4444" stroke-width="1.2" opacity="0.85"/>',
+    '<style>',
+    ...themeCss,
+    '</style>',
+    '<rect class="chart-bg" width="' + width + '" height="' + height + '" rx="8"/>',
+    '<rect class="chart-border" x="0.5" y="0.5" width="' + (width - 1) + '" height="' + (height - 1) + '" rx="7.5"/>',
+    '<text class="chart-title" x="' + width / 2 + '" y="28" text-anchor="middle" font-family="DejaVu Sans" font-size="16" font-weight="700">Actionable measurement impact</text>',
+    '<text class="chart-muted" x="' + width / 2 + '" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="11">0 means no actionable PR impact; 1x reaches the warning budget.</text>',
+    '<text x="' + plotX + '" y="72" font-family="DejaVu Sans" font-size="11" fill="#059669">improved</text>',
+    '<text x="' + (plotX + plotWidth) + '" y="72" text-anchor="end" font-family="DejaVu Sans" font-size="11" fill="#dc2626">regressed</text>',
+    '<text class="chart-muted" x="' + impactX + '" y="72" font-family="DejaVu Sans" font-size="11">impact</text>',
+    '<text class="chart-muted" x="' + nominalX + '" y="72" font-family="DejaVu Sans" font-size="11">baseline -> current</text>',
+    '<text class="chart-muted" x="' + meaningX + '" y="72" font-family="DejaVu Sans" font-size="11">meaning</text>',
+    '<line class="chart-axis" x1="' + zeroX.toFixed(1) + '" y1="82" x2="' + zeroX.toFixed(1) + '" y2="' + (height - 34) + '" stroke-width="1.1" opacity="0.9"/>',
   ]
 
   for (const [index, row] of chartRows.entries()) {
-    const pct = ((row.ratio || 1) - 1) * 100
+    const impact = row.semanticImpactScore || 0
     const y = topY + index * rowHeight
-    const valueWidth = Math.max(2, Math.abs(pct) / span * plotWidth)
-    const x = pct < 0 ? zeroX - valueWidth : zeroX
-    const color = pct < 0 ? '#20d6a3' : '#fb6b6b'
-    const formattedPct = (pct > 0 ? '+' : '') + formatNumber(Math.round(pct * 10) / 10) + '%'
+    const valueWidth = Math.max(2, Math.abs(impact) / span * plotWidth)
+    const x = impact < 0 ? zeroX - valueWidth : zeroX
+    const meaning = interpretation(row)
+    const color = meaning.color
+    const formattedImpact = formatSemanticImpact(impact)
     const label = chartProbe(row)
     const nominal = formatValue(row.baseline, row.observation?.unit).replaceAll(' ', '') + ' -> ' + formatValue(row.current, row.observation?.unit).replaceAll(' ', '')
+    const barOpacity = meaning.tone === 'neutral' ? '0.65' : '1'
+    const dash = meaning.tone === 'diagnostic' ? ' stroke-dasharray="3 3"' : ''
     svg.push(
-      '<text x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#cbd5e1"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 30)) + '</text>',
-      '<rect x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5" fill="#111827"/>',
-      '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '"/>',
-      '<text x="' + percentX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedPct) + '</text>',
-      '<text x="' + nominalX + '" y="' + (y + 13) + '" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#94a3b8"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 24)) + '</text>',
+      '<text class="chart-label" x="' + labelX + '" y="' + (y + 13) + '" text-anchor="end" font-family="DejaVu Sans" font-size="12"><title>' + escapeXml(label) + '</title>' + escapeXml(truncate(label, 28)) + '</text>',
+      '<rect class="chart-track" x="' + plotX + '" y="' + y + '" width="' + plotWidth + '" height="' + barHeight + '" rx="5"/>',
+      '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + valueWidth.toFixed(1) + '" height="' + barHeight + '" rx="5" fill="' + color + '" opacity="' + barOpacity + '"' + dash + '/>',
+      '<text x="' + impactX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="12" font-weight="700" fill="' + color + '">' + escapeXml(formattedImpact) + '</text>',
+      '<text class="chart-value" x="' + nominalX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11"><title>' + escapeXml(nominal) + '</title>' + escapeXml(truncate(nominal, 21)) + '</text>',
+      '<text x="' + meaningX + '" y="' + (y + 13) + '" font-family="DejaVu Sans" font-size="11" font-weight="600" fill="' + color + '"><title>' + escapeXml(meaning.detail) + '</title>' + escapeXml(truncate(meaning.label, 30)) + '</text>',
     )
   }
 
   svg.push(
-    '<text x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="10" fill="#94a3b8">0%</text>',
+    '<text class="chart-muted" x="' + zeroX.toFixed(1) + '" y="' + (height - 16) + '" text-anchor="middle" font-family="DejaVu Sans" font-size="10">0</text>',
     '</svg>',
   )
   return svg.join('\n')
 }
 
 const statusWord = comparison.status || 'unknown'
+const readiness = comparison.readiness || {}
+const readinessLabel = readiness.enforceable
+  ? 'enforceable'
+  : 'partial (' + (readiness.gateableCount ?? 0) + '/' + (readiness.enabledCount ?? 0) + ' enabled observations gateable)'
 const runUrl = runId ? serverUrl + '/' + repo + '/actions/runs/' + runId : undefined
 const shortSha = (headSha || sha || 'unknown').slice(0, 7)
 const existingState = extractState(existing?.body)
@@ -1597,22 +3315,35 @@ const currentRun = {
     status: row.status,
     target: row.target?.label || row.target?.name || 'unknown',
     observation: row.observation?.label || row.observation?.name || 'unknown',
+    meaning: interpretation(row).label,
     dimensions: dimensions(row).replaceAll('<br>', ', '),
     baseline: formatValue(row.baseline, row.observation?.unit),
     current: formatValue(row.current, row.observation?.unit),
     delta: formatDelta(row.delta, row.observation?.unit),
     ratio: formatRatio(row.ratio),
+    impact: formatSemanticImpact(row.semanticImpactScore),
   })),
 }
-const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha)
+const hasComparableHistory = (run) => Array.isArray(run.visibleRows) && run.visibleRows.some((row) =>
+  row.status !== 'missing_baseline' &&
+  row.baseline !== 'n/a' &&
+  row.ratio !== 'n/a'
+)
+const previousRuns = (existingState?.runs || []).filter((run) => run.commitSha !== currentRun.commitSha && hasComparableHistory(run))
 const historyLimit = Number.isFinite(maxHistory) && maxHistory > 0 ? maxHistory : 20
 const state = { _tag: stateTag, schemaVersion, title, runs: [currentRun, ...previousRuns].slice(0, historyLimit) }
+const gateModeLabel = (mode) => {
+  if (mode === 'fail') return 'enforced'
+  if (mode === 'warn') return 'advisory'
+  if (mode === 'off') return 'off'
+  return mode || 'unknown'
+}
 const historyRows = state.runs.slice(1).map((run) => {
   const link = run.runUrl ? '[' + run.shortSha + '](' + run.runUrl + ')' : run.shortSha
   const top = Array.isArray(run.visibleRows) && run.visibleRows.length > 0
-    ? run.visibleRows.slice(0, 3).map((row) => row.status + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
+    ? run.visibleRows.slice(0, 3).map((row) => (row.meaning || row.status) + ' ' + row.target + ' ' + row.observation + ' ' + row.delta + ' / ' + row.ratio).join('<br>')
     : 'No regressions'
-  return '| ' + [link, run.status, run.mode, top].map(escapeCell).join(' | ') + ' |'
+  return '| ' + [link, run.status, gateModeLabel(run.mode), top].map(escapeCell).join(' | ') + ' |'
 })
 
 const runLink = runUrl ? '[workflow run](' + runUrl + ')' : 'workflow run unavailable'
@@ -1621,26 +3352,102 @@ const baselineLabel = baselineProvenance?.runId
   ? '[main run ' + baselineProvenance.runId + '](' + serverUrl + '/' + repo + '/actions/runs/' + baselineProvenance.runId + ')' +
     (Array.isArray(baselineProvenance.runs) && baselineProvenance.runs.length > 1 ? ' + ' + (baselineProvenance.runs.length - 1) + ' older baseline runs' : '')
   : 'not available'
-const chartSvg = hasComparableBaseline ? renderPerfChangeSvg(visibleRows.length > 0 ? visibleRows : allRows) : ''
+const sourceOfTruth = {
+  schemaVersion,
+  title,
+  status: statusWord,
+  gate: gateModeLabel(comparison.mode),
+  readiness: readinessLabel,
+  commit: {
+    shortSha,
+    sha: headSha || sha || 'unknown',
+  },
+  run: {
+    id: runId || null,
+    attempt: runAttempt || null,
+    url: runUrl || null,
+  },
+  baseline: baselineProvenance || null,
+  protocol: protocolLabel,
+  chart: {
+    meaning: 'semantic-impact',
+    zeroImpactMeaning: 'no actionable PR impact after budgets, noise floor, and robust evidence checks',
+    svg: chartSourceUrl || null,
+    lightPng: chartUrl || null,
+    darkPng: chartDarkUrl || null,
+  },
+  measurements: allRows.map(sourceMeasurement),
+}
+const chartSvg = hasComparableBaseline && visibleRows.length > 0 ? renderPerfChangeSvg(visibleRows) : ''
+const chartDarkSvg = hasComparableBaseline && visibleRows.length > 0 ? renderPerfChangeSvg(visibleRows, 'dark') : ''
 if (chartPath && chartSvg) writeFileSync(chartPath, chartSvg)
-const chartMarkdown = chartUrl && chartSvg ? '![Perf change vs baseline chart](' + chartUrl + ')' : ''
+if (chartDarkPath && chartDarkSvg) writeFileSync(chartDarkPath, chartDarkSvg)
+const chartImageMarkdown = chartUrl && chartSvg
+  ? (chartDarkUrl
+      ? '<picture>\n' +
+        '  <source media="(prefers-color-scheme: dark)" srcset="' + chartDarkUrl + '">\n' +
+        '  <source media="(prefers-color-scheme: light)" srcset="' + chartUrl + '">\n' +
+        '  <img alt="Measurement change vs baseline chart" src="' + chartUrl + '">\n' +
+        '</picture>'
+      : '![Measurement change vs baseline chart](' + chartUrl + ')')
+  : ''
+const chartMarkdown = chartImageMarkdown
+  ? chartImageMarkdown +
+    (chartSourceUrl ? '\n\n[SVG source](' + chartSourceUrl + ')' : '')
+  : ''
+
+const regressionCount = allRows.filter((row) => row.status === 'fail' || row.status === 'warn').length
+const improvementCount = comparableRows.filter((row) => row.direction === 'improved' && !isZeroImpactRow(row)).length
+const neutralCount = zeroImpactRows.length + diagnosticRows.length
+const humanSummary = hasComparableBaseline
+  ? regressionCount > 0
+    ? String(regressionCount) + ' regression' + (regressionCount === 1 ? '' : 's') + ' need review.'
+    : improvementCount > 0
+      ? 'No regressions. ' + String(improvementCount) + ' probe' + (improvementCount === 1 ? '' : 's') + ' got faster; ' + String(neutralCount) + ' neutral or ungated row' + (neutralCount === 1 ? '' : 's') + ' are collapsed below.'
+      : 'No regressions. Comparable movement is below the semantic impact threshold; neutral rows are collapsed below.'
+  : 'No compatible baseline was available, so this run shows current measurements only.'
 
 const summaryLines = [
   '## ' + title,
   '',
-  '- Status: ' + statusWord,
-  '- Mode: ' + (comparison.mode || 'unknown'),
-  '- Commit: ' + shortSha,
-  '- Run: ' + runLink,
-  '- Baseline: ' + baselineLabel,
+  '**' + statusWord + '** - ' + gateModeLabel(comparison.mode) + ' gate - readiness <code>' + readinessLabel + '</code> - commit <code>' + shortSha + '</code> - protocol <code>' + protocolLabel + '</code>',
   '',
-  hasComparableBaseline
-    ? 'Chart: performance change versus baseline median. Green is faster, red is slower, gray is within noise or baseline range.'
-    : 'No compatible baseline was available, so this run shows current measurements only.',
+  '> ' + humanSummary,
   '',
   chartMarkdown,
   '',
-  hasComparableBaseline ? comparisonTable(visibleRows) : currentOnlyTable(visibleRows),
+  hasComparableBaseline
+    ? groupedScanTables(visibleNonZeroImpactRows)
+    : currentOnlyTable(visibleRows),
+]
+
+if (hasComparableBaseline && zeroImpactRows.length > 0) {
+  summaryLines.push(
+    '',
+    '<details>',
+    '<summary>Unchanged / 0-impact measurements (' + zeroImpactRows.length + ')</summary>',
+    '',
+    'These rows had compatible baseline data, but their semantic impact rounded to 0.00x because the movement was below the configured budget, below the noise floor, or inside the robust noise band.',
+    '',
+    groupedZeroImpactTables(zeroImpactRows),
+    '',
+    '</details>',
+  )
+}
+
+if (diagnosticRows.length > 0) {
+  summaryLines.push(
+    '',
+    '<details>',
+    '<summary>Diagnostic / ungated measurements (' + diagnosticRows.length + ')</summary>',
+    '',
+    groupedDiagnosticTables(diagnosticRows),
+    '',
+    '</details>',
+  )
+}
+
+summaryLines.push(
   '',
   '<details>',
   '<summary>All measurements</summary>',
@@ -1648,7 +3455,7 @@ const summaryLines = [
   allMeasurementsTable(allRows),
   '',
   '</details>',
-]
+)
 
 if (historyRows.length > 0) {
   summaryLines.push(
@@ -1656,7 +3463,7 @@ if (historyRows.length > 0) {
     '<details>',
     '<summary>Previous runs</summary>',
     '',
-    '| Commit | Status | Mode | Top changes |',
+    '| Commit | Status | Gate | Top changes |',
     '| --- | --- | --- | --- |',
     ...historyRows,
     '',
@@ -1664,14 +3471,50 @@ if (historyRows.length > 0) {
   )
 }
 
+summaryLines.push(
+  '',
+  '<details>',
+  '<summary>Source-of-truth JSON</summary>',
+  '',
+  '~~~json',
+  JSON.stringify(sourceOfTruth, null, 2),
+  '~~~',
+  '',
+  '</details>',
+)
+
 summaryLines.push('', marker, statePrefix + JSON.stringify(state, null, 2) + stateSuffix)
 writeFileSync(bodyPath, summaryLines.join('\n') + '\n')
 writeFileSync(commentIdPath, existing?.id ? String(existing.id) : '')
 EOF
 
-      node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file"
+      node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
 
       if [ -s "$chart_file" ]; then
+        if [ "$require_public_asset" = "true" ] && [ -z "$public_asset_command" ]; then
+          echo "::error::CI measurement chart was rendered for a private repository, but CI_MEASUREMENT_PR_COMMENT_PUBLIC_ASSET_COMMAND is not configured. Private raw GitHub URLs cannot be embedded in PR comments."
+          exit 1
+        fi
+
+        if ensure_ci_measurement_tool resvg resvg; then
+          resvg_font_args=()
+          if command -v nix >/dev/null 2>&1; then
+            if font_out="$(nix build --no-link --print-out-paths nixpkgs#dejavu_fonts 2>/dev/null)"; then
+              resvg_font_args+=(--use-fonts-dir "$font_out/share/fonts/truetype")
+            fi
+          fi
+          if ! resvg --background '#ffffff' "${dollar}{resvg_font_args[@]}" "$chart_file" "$chart_png_file"; then
+            echo "::notice::unable to render CI measurement chart PNG"
+            rm -f "$chart_png_file"
+          fi
+          if [ -s "$chart_dark_file" ] && ! resvg --background '#0d1117' "${dollar}{resvg_font_args[@]}" "$chart_dark_file" "$chart_dark_png_file"; then
+            echo "::notice::unable to render dark CI measurement chart PNG"
+            rm -f "$chart_dark_png_file"
+          fi
+        else
+          echo "::notice::resvg is not available; skipping embedded CI measurement chart PNG"
+        fi
+
         if ! gh api "repos/$repo/git/ref/heads/$asset_branch" >/dev/null 2>&1; then
           default_branch_sha="$(gh api "repos/$repo/git/ref/heads/${dollar}{GITHUB_BASE_REF:-main}" --jq '.object.sha' 2>/dev/null || true)"
           if [ -z "$default_branch_sha" ]; then
@@ -1682,25 +3525,84 @@ EOF
           fi
         fi
         chart_content="$(base64 <"$chart_file" | tr -d '\n')"
-        if ! gh api "repos/$repo/contents/$asset_path" --method PUT --field message="Update CI measurement chart for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
-          echo "::notice::unable to upload CI measurement chart asset"
-          sed -i.bak '/!\[Perf change vs baseline chart\]/d' "$comment_body"
+        if ! gh api "repos/$repo/contents/$asset_svg_path" --method PUT --field message="Update CI measurement chart SVG for PR #$pr_number" --field content="$chart_content" --field branch="$asset_branch" >/dev/null; then
+          echo "::notice::unable to upload CI measurement chart SVG asset"
+          if [ -z "$public_asset_command" ]; then
+            sed -i.bak '/\[SVG source\]/d' "$comment_body"
+          fi
+        fi
+        if [ -s "$chart_png_file" ]; then
+          chart_png_content="$(base64 <"$chart_png_file" | tr -d '\n')"
+          if ! gh api "repos/$repo/contents/$asset_png_path" --method PUT --field message="Update CI measurement chart PNG for PR #$pr_number" --field content="$chart_png_content" --field branch="$asset_branch" >/dev/null; then
+            echo "::notice::unable to upload CI measurement chart PNG asset"
+            if [ -z "$public_asset_command" ]; then
+              sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+            fi
+          fi
+        else
+          sed -i.bak '/!\[Measurement change vs baseline chart\]/d; /!\[Perf change vs baseline chart\]/d; /<picture>/,/<\\/picture>/d' "$comment_body"
+        fi
+        if [ -s "$chart_dark_png_file" ]; then
+          chart_dark_png_content="$(base64 <"$chart_dark_png_file" | tr -d '\n')"
+          if ! gh api "repos/$repo/contents/$asset_dark_png_path" --method PUT --field message="Update dark CI measurement chart PNG for PR #$pr_number" --field content="$chart_dark_png_content" --field branch="$asset_branch" >/dev/null; then
+            echo "::notice::unable to upload dark CI measurement chart PNG asset"
+            if [ -z "$public_asset_command" ]; then
+              export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+              node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
+            fi
+          fi
+        fi
+
+        if [ -n "$public_asset_command" ] && [ -s "$chart_png_file" ]; then
+          if public_chart_url="$(bash -c "$public_asset_command" _ "$chart_png_file" png)" && [ -n "$public_chart_url" ]; then
+            chart_url="$public_chart_url"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_URL="$chart_url"
+          else
+            echo "::notice::unable to publish CI measurement chart PNG to public asset host"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_URL=""
+          fi
+          if [ -s "$chart_dark_png_file" ] && public_chart_dark_url="$(bash -c "$public_asset_command" _ "$chart_dark_png_file" png)" && [ -n "$public_chart_dark_url" ]; then
+            chart_dark_url="$public_chart_dark_url"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL="$chart_dark_url"
+          else
+            echo "::notice::unable to publish dark CI measurement chart PNG to public asset host"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_DARK_URL=""
+          fi
+          if public_chart_source_url="$(bash -c "$public_asset_command" _ "$chart_file" svg)" && [ -n "$public_chart_source_url" ]; then
+            chart_source_url="$public_chart_source_url"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL="$chart_source_url"
+          else
+            echo "::notice::unable to publish CI measurement chart SVG to public asset host"
+            export CI_MEASUREMENT_PR_COMMENT_CHART_SOURCE_URL=""
+          fi
+          if [ "$require_public_asset" = "true" ] && [ -z "$chart_url" ]; then
+            echo "::error::unable to publish CI measurement chart PNG to a public asset host for private repository $repo"
+            exit 1
+          fi
+          if [ "$require_public_asset" = "true" ] && [ -s "$chart_dark_png_file" ] && [ -z "$chart_dark_url" ]; then
+            echo "::error::unable to publish dark CI measurement chart PNG to a public asset host for private repository $repo"
+            exit 1
+          fi
+          node "$renderer_script" "$comparison_file" "$comments_json" "$comment_body" "$comment_id_file" "$chart_file" "$chart_dark_file"
         fi
       fi
 
       comment_id="$(cat "$comment_id_file")"
+      comment_payload_file="$comment_body.payload.json"
+      node -e "const fs=require('node:fs'); fs.writeFileSync(process.argv[2], JSON.stringify({ body: fs.readFileSync(process.argv[1], 'utf8') }))" "$comment_body" "$comment_payload_file"
       if [ -n "$comment_id" ]; then
-        if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --field body="$(cat "$comment_body")" >/dev/null; then
+        if ! gh api "repos/$repo/issues/comments/$comment_id" --method PATCH --input "$comment_payload_file" >/dev/null; then
           echo "::notice::unable to update CI measurement PR comment"
         fi
       else
-        if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --field body="$(cat "$comment_body")" >/dev/null; then
+        if ! gh api "repos/$repo/issues/$pr_number/comments" --method POST --input "$comment_payload_file" >/dev/null; then
           echo "::notice::unable to create CI measurement PR comment"
         fi
       fi
     fi
   fi
 fi
+` : ''}
 
 if [ "$exit_code" -ne 0 ]; then
   exit "$exit_code"
@@ -1714,6 +3616,11 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
     opts?.artifactName ??
     'devenv-perf-${{ github.job }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
   const baselineArtifactName = opts?.baselineArtifactName ?? opts?.artifactName
+  const compare = opts?.compare ?? true
+  const probes = devenvPerfProbes({
+    taskProbes: opts?.taskProbes ?? [],
+    probes: opts?.probes ?? [],
+  })
 
   return {
     'runs-on': opts?.runsOn ?? linuxX64Runner,
@@ -1723,7 +3630,6 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
       ...standardCIEnv,
       ARTIFACT_DIR: artifactDir,
       OTEL_SERVICE_NAME: 'devenv-perf-ci',
-      DEVENV_PERF_REGRESSION_MODE: opts?.regressionMode ?? 'warn',
       RUNNER_CLASS: (opts?.runsOn ?? linuxX64Runner).join(','),
       ...opts?.env,
     },
@@ -1734,27 +3640,34 @@ export const devenvPerfJob = (opts?: DevenvPerfJobOptions) => {
         preparePinnedDevenvStep,
         validateNixStoreStep,
       ]),
-      ...(baselineArtifactName === undefined
-        ? []
-        : [
+      ...(compare && baselineArtifactName !== undefined
+        ? [
             downloadPreviousGitHubArtifactStep({
               artifactName: baselineArtifactName,
               outputDir: `${artifactDir}/baseline`,
+              seedRuns: opts?.baselineSeedRuns,
               seedRunIds: opts?.baselineSeedRunIds,
               maxRuns: opts?.baselineMaxRuns,
+              maxCandidateRuns: opts?.baselineMaxCandidateRuns,
+              requiredObservations: devenvPerfRequiredBaselineObservations(probes),
             }),
-          ]),
+          ]
+        : []),
       devenvPerfBenchmarkStep({
         taskProbes: opts?.taskProbes,
         probes: opts?.probes,
       }),
-      compareCiMeasurementsStep({
-        currentDir: artifactDir,
-        baselineDir: `${artifactDir}/baseline`,
-        outputFile: `${artifactDir}/measurement-comparison.json`,
-        regressionMode: opts?.regressionMode ?? 'warn',
-        prComment: opts?.prComment,
-      }),
+      ...(compare
+        ? [
+            compareCiMeasurementsStep({
+              currentDir: artifactDir,
+              baselineDir: `${artifactDir}/baseline`,
+              outputFile: `${artifactDir}/measurement-comparison.json`,
+              regressionMode: opts?.regressionMode ?? 'warn',
+              prComment: opts?.prComment,
+            }),
+          ]
+        : []),
       devenvPerfArtifactStep({
         artifactDir,
         artifactName,
